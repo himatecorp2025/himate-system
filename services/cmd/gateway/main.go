@@ -86,7 +86,7 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/", a.api)
-	mux.Handle("/", a.spa())
+	mux.Handle("/", a.web())
 	common.Run(log, "gateway", common.Env("PORT", "10000"), securityHeaders(mux))
 }
 
@@ -347,9 +347,24 @@ func pbkdf2SHA256(password, salt []byte, iterations, length int) []byte {
 	return out[:length]
 }
 
-func (a *app) spa() http.Handler {
+func (a *app) web() http.Handler {
 	root := filepath.Clean(a.webDir)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			landing := filepath.Join(root, "landing.html")
+			if _, err := os.Stat(landing); err == nil {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				http.ServeFile(w, r, landing)
+				return
+			}
+		}
+
+		if r.URL.Path == "/login" || r.URL.Path == "/app" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			http.ServeFile(w, r, filepath.Join(root, "index.html"))
+			return
+		}
+
 		clean := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
 		if clean == "." {
 			clean = "index.html"
@@ -364,9 +379,23 @@ func (a *app) spa() http.Handler {
 				return
 			}
 		}
-		http.ServeFile(w, r, filepath.Join(root, "index.html"))
+
+		if strings.HasPrefix(r.URL.Path, "/assets/") ||
+			strings.HasPrefix(r.URL.Path, "/canvaskit/") ||
+			strings.HasSuffix(r.URL.Path, ".js") ||
+			strings.HasSuffix(r.URL.Path, ".wasm") ||
+			strings.HasSuffix(r.URL.Path, ".json") ||
+			strings.HasSuffix(r.URL.Path, ".ico") ||
+			strings.HasSuffix(r.URL.Path, ".png") ||
+			strings.HasSuffix(r.URL.Path, ".svg") {
+			http.NotFound(w, r)
+			return
+		}
+
+		http.Redirect(w, r, "/", http.StatusFound)
 	})
 }
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
