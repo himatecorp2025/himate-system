@@ -1172,30 +1172,68 @@ class PlannedPage extends StatelessWidget {
   }
 }
 
-class DashboardPageclass DashboardPage extends StatelessWidget {
+class DashboardPage extends StatelessWidget {
   const DashboardPage({required this.api, super.key});
   final Api api;
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
       future: api.get('/api/v1/dashboard/summary'),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        final d = snapshot.data!;
+        if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
+        if (snapshot.hasError) {
+          return Content(
+            title: 'Welcome to HIMATE System',
+            subtitle: 'Manage partners, programs and cultural impact — all in one place.',
+            child: _MessageCard(
+              icon: Icons.cloud_off_outlined,
+              title: 'Dashboard data is temporarily unavailable',
+              message: '${snapshot.error}',
+            ),
+          );
+        }
+
+        final d = snapshot.data ?? <String, dynamic>{};
         final p = Map<String, dynamic>.from(d['partners'] ?? <String, dynamic>{});
         final m = Map<String, dynamic>.from(d['modules'] ?? <String, dynamic>{});
-        final s = Map<String, dynamic>.from(d['system'] ?? <String, dynamic>{});
+        final sys = Map<String, dynamic>.from(d['system'] ?? <String, dynamic>{});
+        final hour = DateTime.now().hour;
+        final greeting = hour < 12 ? 'Good morning,' : hour < 18 ? 'Good afternoon,' : 'Good evening,';
+
         return Content(
-          title: 'HIMATE overview',
-          subtitle: 'START-04–08 control plane · Go + Flutter · containerized microservices',
-          child: Wrap(
-            spacing: 16,
-            runSpacing: 16,
+          eyebrow: greeting,
+          title: 'Welcome to HIMATE System',
+          subtitle: 'Manage partners, modules and cultural impact — all in one place.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Kpi(label: 'Partners', value: '${p['total'] ?? 0}', note: '${p['live'] ?? 0} live'),
-              Kpi(label: 'Module catalog', value: '${m['catalog_total'] ?? 0}', note: '38 verified Klavierhaus reference modules'),
-              Kpi(label: 'Architecture', value: 'MICROSERVICES', note: 'Gateway · Partners · Catalog · Billing'),
-              Kpi(label: 'System', value: '${s['status'] ?? 'unknown'}'.toUpperCase(), note: '${s['version'] ?? ''}'),
+              Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  Kpi(label: 'Active Partners', value: '${p['live'] ?? 0}', note: '${p['total'] ?? 0} partner records', icon: Icons.groups_2_outlined, accent: const Color(0xFF0B5DA8)),
+                  Kpi(label: 'Module Catalog', value: '${m['catalog_total'] ?? 0}', note: 'Reference + custom modules', icon: Icons.description_outlined, accent: brandNavy),
+                  Kpi(label: 'Architecture', value: 'MICRO', note: '${sys['architecture'] ?? 'microservices'}', icon: Icons.bar_chart_rounded, accent: brandGold),
+                  Kpi(label: 'System Status', value: '${sys['status'] ?? 'unknown'}'.toUpperCase(), note: '${sys['version'] ?? ''}', icon: Icons.verified_user_outlined, accent: brandSuccess),
+                ],
+              ),
+              const SizedBox(height: 18),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  if (constraints.maxWidth < 920) {
+                    return const Column(children: [_ImpactPanel(), SizedBox(height: 16), _ActivityPanel()]);
+                  }
+                  return const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 7, child: _ImpactPanel()),
+                      SizedBox(width: 16),
+                      Expanded(flex: 4, child: _ActivityPanel()),
+                    ],
+                  );
+                },
+              ),
             ],
           ),
         );
@@ -1204,7 +1242,135 @@ class DashboardPageclass DashboardPage extends StatelessWidget {
   }
 }
 
-class PartnersPage extends StatefulWidget {
+class _ImpactPanel extends StatelessWidget {
+  const _ImpactPanel();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 290,
+    child: Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 17, 18, 15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Expanded(child: Text('Program Impact', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 15))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(border: Border.all(color: brandMist), borderRadius: BorderRadius.circular(8)),
+                child: const Row(children: [Text('START-13', style: TextStyle(color: brandTextSoft, fontSize: 10.5)), SizedBox(width: 4), Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: brandTextSoft)]),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            const Expanded(child: _ImpactChart()),
+            const SizedBox(height: 8),
+            const Text('Impact metrics will populate from verified partner data in START-13.', style: TextStyle(color: brandTextSoft, fontSize: 10.5)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _ImpactChart extends StatelessWidget {
+  const _ImpactChart();
+  @override
+  Widget build(BuildContext context) => CustomPaint(painter: _ImpactChartPainter(), child: const SizedBox.expand());
+}
+
+class _ImpactChartPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final grid = Paint()..color = brandMist.withOpacity(.85)..strokeWidth = 1;
+    for (var i = 1; i < 6; i++) {
+      final y = size.height * i / 6;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+    for (var i = 1; i < 12; i++) {
+      final x = size.width * i / 12;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+    }
+
+    final values = <double>[.16, .25, .22, .34, .46, .39, .51, .56, .50, .67, .72, .69, .82];
+    final path = Path();
+    for (var i = 0; i < values.length; i++) {
+      final x = size.width * i / (values.length - 1);
+      final y = size.height * (1 - values[i]);
+      if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = brandNavy
+        ..strokeWidth = 2.1
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    final dot = Paint()..color = brandNavy;
+    for (var i = 0; i < values.length; i++) {
+      canvas.drawCircle(Offset(size.width * i / (values.length - 1), size.height * (1 - values[i])), 2.6, dot);
+    }
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ActivityPanel extends StatelessWidget {
+  const _ActivityPanel();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 290,
+    child: Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 17, 18, 15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(children: [
+              Expanded(child: Text('Recent Activity', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 15))),
+              Text('Audit-ready', style: TextStyle(color: brandSteel, fontSize: 10.5, fontWeight: FontWeight.w600)),
+            ]),
+            const SizedBox(height: 14),
+            const _ActivityRow(icon: Icons.person_add_alt_1_outlined, title: 'Partner activity', subtitle: 'Will appear from audited partner events', tone: Color(0xFF1D6FC2)),
+            const Divider(height: 17),
+            const _ActivityRow(icon: Icons.description_outlined, title: 'Module updates', subtitle: 'Catalog changes will be recorded here', tone: brandGold),
+            const Divider(height: 17),
+            const _ActivityRow(icon: Icons.payments_outlined, title: 'Billing events', subtitle: 'Invoice lifecycle events are prepared', tone: brandSuccess),
+            const Spacer(),
+            const Text('The activity feed becomes authoritative when the audit service is implemented.', style: TextStyle(color: brandTextSoft, fontSize: 10.2, height: 1.4)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.icon, required this.title, required this.subtitle, required this.tone});
+  final IconData icon;
+  final String title, subtitle;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(width: 34, height: 34, decoration: BoxDecoration(color: tone.withOpacity(.10), shape: BoxShape.circle), child: Icon(icon, color: tone, size: 17)),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 11.5)),
+          const SizedBox(height: 2),
+          Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+        ]),
+      ),
+    ],
+  );
+}
+
+class PartnersPageclass PartnersPage extends StatefulWidget {
   const PartnersPage({required this.api, super.key});
   final Api api;
   @override
@@ -1391,24 +1557,155 @@ class SystemPage extends StatelessWidget {
 }
 
 class Content extends StatelessWidget {
-  const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], super.key});
+  const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, super.key});
   final String title, subtitle;
+  final String? eyebrow;
   final Widget child;
   final List<Widget> actions;
+
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(padding: const EdgeInsets.all(28), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)), const SizedBox(height: 6), Text(subtitle, style: const TextStyle(color: muted))])), if (actions.isNotEmpty) Wrap(spacing: 10, children: actions)]), const SizedBox(height: 24), child]));
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 760;
+        final padding = constraints.maxWidth < 520 ? 16.0 : constraints.maxWidth < 1050 ? 22.0 : 28.0;
+        final header = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (eyebrow != null) ...[
+              Text(eyebrow!, style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontSize: 14)),
+              const SizedBox(height: 3),
+            ],
+            Text(title, style: Theme.of(context).textTheme.headlineMedium),
+            const SizedBox(height: 6),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12.5, height: 1.45))),
+          ],
+        );
+
+        return Scrollbar(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(padding, 24, padding, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (narrow)
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [header, if (actions.isNotEmpty) ...[const SizedBox(height: 16), Wrap(spacing: 9, runSpacing: 9, children: actions)]])
+                else
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: header), if (actions.isNotEmpty) ...[const SizedBox(width: 20), Wrap(spacing: 9, runSpacing: 9, children: actions)]]),
+                const SizedBox(height: 22),
+                child,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
-class Kpi extends StatelessWidget {
-  const Kpi({required this.label, required this.value, required this.note, super.key});
+class Kpi extends StatefulWidget {
+  const Kpi({required this.label, required this.value, required this.note, this.icon = Icons.auto_graph_outlined, this.accent = brandNavy, super.key});
   final String label, value, note;
+  final IconData icon;
+  final Color accent;
   @override
-  Widget build(BuildContext context) => SizedBox(width: 290, height: 135, child: Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(color: muted)), const SizedBox(height: 8), FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700))), const Spacer(), Text(note, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 12))]))));
+  State<Kpi> createState() => _KpiState();
+}
+
+class _KpiState extends State<Kpi> {
+  bool hover = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => hover = true),
+    onExit: (_) => setState(() => hover = false),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      width: 248,
+      height: 118,
+      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: hover ? widget.accent.withOpacity(.24) : brandMist),
+        boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .085 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Icon(widget.icon, color: widget.accent, size: 22), const Spacer(), Container(width: 5, height: 5, decoration: BoxDecoration(color: widget.accent, shape: BoxShape.circle))]),
+          const Spacer(),
+          Text(widget.label, style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(widget.value, style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
+          Text(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.3)),
+        ]),
+      ),
+    ),
+  );
 }
 
 class ServiceCard extends StatelessWidget {
   const ServiceCard({required this.name, required this.status, super.key});
   final String name, status;
+
   @override
-  Widget build(BuildContext context) => SizedBox(width: 300, height: 120, child: Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)), const Spacer(), Row(children: [Icon(status == 'ok' ? Icons.check_circle : Icons.warning_amber, color: status == 'ok' ? success : Colors.orange), const SizedBox(width: 8), Text(status.toUpperCase())])]))));
+  Widget build(BuildContext context) {
+    final ok = status.toLowerCase() == 'ok';
+    final tone = ok ? brandSuccess : brandWarning;
+    return SizedBox(
+      width: 290,
+      height: 118,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 36, height: 36, decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(9)), child: const Icon(Icons.dns_outlined, color: brandNavy, size: 19)),
+              const Spacer(),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99)), child: Text(status.toUpperCase(), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w700))),
+            ]),
+            const Spacer(),
+            Text(name, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14)),
+            const SizedBox(height: 3),
+            Text(ok ? 'Service responding normally' : 'Awaiting healthy response', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrandLoading extends StatelessWidget {
+  const _BrandLoading();
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      BrandMark(size: 42),
+      SizedBox(height: 16),
+      SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 2.1, color: brandGold)),
+    ]),
+  );
+}
+
+class _MessageCard extends StatelessWidget {
+  const _MessageCard({required this.icon, required this.title, required this.message});
+  final IconData icon;
+  final String title, message;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(width: 46, height: 46, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(11)), child: Icon(icon, color: brandGold, size: 22)),
+        const SizedBox(width: 15),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 16)),
+          const SizedBox(height: 6),
+          Text(message, style: const TextStyle(color: brandTextSoft, height: 1.45)),
+        ])),
+      ]),
+    ),
+  );
 }
