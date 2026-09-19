@@ -834,41 +834,6 @@ class _HeritagePanel extends StatelessWidget {
   }
 }
 
-class _HeritagePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final haze = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [Colors.transparent, Color(0x143F6D95), Color(0x337B674B)],
-      ).createShader(Rect.fromLTWH(size.width * .42, 0, size.width * .58, size.height));
-    canvas.drawRect(Rect.fromLTWH(size.width * .42, 0, size.width * .58, size.height), haze);
-
-    final columnPaint = Paint()
-      ..shader = LinearGradient(
-        colors: [const Color(0xFF1A3550).withOpacity(.18), const Color(0xFFC7B189).withOpacity(.34), const Color(0xFFF2E6CE).withOpacity(.45)],
-      ).createShader(Rect.fromLTWH(size.width * .56, 0, size.width * .44, size.height));
-    for (var i = 0; i < 4; i++) {
-      final x = size.width * (.61 + i * .105);
-      final w = size.width * .052;
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x, size.height * .22, w, size.height * .68), const Radius.circular(5)), columnPaint);
-      canvas.drawRect(Rect.fromLTWH(x - w * .18, size.height * .21, w * 1.36, size.height * .026), columnPaint);
-      canvas.drawRect(Rect.fromLTWH(x - w * .20, size.height * .89, w * 1.40, size.height * .026), columnPaint);
-    }
-
-    final blueArc = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.1..color = const Color(0xFF3B78B8).withOpacity(.62);
-    final goldArc = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.4..color = brandGold.withOpacity(.92);
-    final p1 = Path()..moveTo(size.width * .26, -10)..cubicTo(size.width * .62, size.height * .18, size.width * .36, size.height * .52, size.width * .88, size.height * .34);
-    canvas.drawPath(p1, blueArc);
-    final p2 = Path()..moveTo(size.width * .12, size.height * .78)..cubicTo(size.width * .45, size.height * .64, size.width * .56, size.height * .32, size.width * 1.04, size.height * .24);
-    canvas.drawPath(p2, goldArc);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class NavSpec {
   const NavSpec(this.label, this.icon, this.subtitle);
   final String label;
