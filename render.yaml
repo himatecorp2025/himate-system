@@ -8,7 +8,7 @@ services:
     name: himate-catalog
     runtime: docker
     dockerfilePath: ./services/docker/catalog.Dockerfile
-    dockerContext: ./services
+    dockerContext: .
     autoDeploy: false
     envVars:
       - key: DATABASE_URL
@@ -22,7 +22,7 @@ services:
     name: himate-partners
     runtime: docker
     dockerfilePath: ./services/docker/partners.Dockerfile
-    dockerContext: ./services
+    dockerContext: .
     autoDeploy: false
     envVars:
       - key: DATABASE_URL
@@ -39,7 +39,7 @@ services:
     name: himate-billing
     runtime: docker
     dockerfilePath: ./services/docker/billing.Dockerfile
-    dockerContext: ./services
+    dockerContext: .
     autoDeploy: false
     envVars:
       - key: DATABASE_URL
@@ -69,7 +69,7 @@ services:
       - key: HIMATE_ENV
         value: production
       - key: HIMATE_APP_VERSION
-        value: 0.2.0-start-04-08
+        value: 0.2.1-start-04-08
       - key: COOKIE_SECURE
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS
@@ -112,7 +112,7 @@ services:
     runtime: docker
     schedule: "0 6 1 * *"
     dockerfilePath: ./services/docker/billing.Dockerfile
-    dockerContext: ./services
+    dockerContext: .
     dockerCommand: /app/service --run-invoice-cycle
     autoDeploy: false
     envVars:
