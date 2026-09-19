@@ -406,6 +406,9 @@ func (a *app) web() http.Handler {
 			strings.HasSuffix(r.URL.Path, ".json") ||
 			strings.HasSuffix(r.URL.Path, ".ico") ||
 			strings.HasSuffix(r.URL.Path, ".png") ||
+			strings.HasSuffix(r.URL.Path, ".jpg") ||
+			strings.HasSuffix(r.URL.Path, ".jpeg") ||
+			strings.HasSuffix(r.URL.Path, ".webp") ||
 			strings.HasSuffix(r.URL.Path, ".svg") {
 			http.NotFound(w, r)
 			return
@@ -422,7 +425,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		path := r.URL.Path
-		if path == "/" || path == "/login" || path == "/app" || path == "/platform" || path == "/modules" || path == "/programs" || path == "/impact" || path == "/partners" || path == "/contact" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".css") {
+		if path == "/" || path == "/login" || path == "/app" || path == "/platform" || path == "/modules" || path == "/programs" || path == "/impact" || path == "/partners" || path == "/contact" || strings.HasPrefix(path, "/art/") || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".css") {
 			w.Header().Set("Cache-Control", "no-store, max-age=0, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
