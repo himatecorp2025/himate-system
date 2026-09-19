@@ -8,13 +8,59 @@ void main() {
   runApp(const HimateApp());
 }
 
-const navy = Color(0xFF071B33);
-const gold = Color(0xFFD5A23F);
-const canvas = Color(0xFFF5F7FA);
-const muted = Color(0xFF667085);
-const success = Color(0xFF18794E);
+const brandInk = Color(0xFF03111F);
+const brandNavy = Color(0xFF071B33);
+const brandNavy2 = Color(0xFF0D2B4B);
+const brandBlue = Color(0xFF17466F);
+const brandSteel = Color(0xFF426784);
+const brandGold = Color(0xFFD5A23F);
+const brandGold2 = Color(0xFFF0D47D);
+const brandCanvas = Color(0xFFF4F7FB);
+const brandText = Color(0xFF132033);
+const brandMuted = Color(0xFF6A778A);
+const brandBorder = Color(0xFFDDE5EF);
+const brandSuccess = Color(0xFF1E7D5A);
+const brandWarning = Color(0xFFB56A19);
+const brandDanger = Color(0xFFB53A3A);
+const navy = brandNavy;
+const gold = brandGold;
+const canvas = brandCanvas;
+const muted = brandMuted;
+const success = brandSuccess;
+const _logoBase64 = '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';
+final _logoBytes = base64Decode(_logoBase64);
 
-class ApiError implements Exception {
+ThemeData buildBrandTheme() {
+  final scheme = ColorScheme.fromSeed(seedColor: brandNavy, brightness: Brightness.light, primary: brandNavy, secondary: brandGold, surface: Colors.white, error: brandDanger);
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: brandCanvas,
+    fontFamily: 'Arial',
+    textTheme: const TextTheme(
+      headlineMedium: TextStyle(color: brandText, fontWeight: FontWeight.w800, letterSpacing: -.6),
+      headlineSmall: TextStyle(color: brandText, fontWeight: FontWeight.w800),
+      titleLarge: TextStyle(color: brandText, fontWeight: FontWeight.w700),
+      titleMedium: TextStyle(color: brandText, fontWeight: FontWeight.w700),
+      bodyLarge: TextStyle(color: brandText, height: 1.45),
+      bodyMedium: TextStyle(color: brandText, height: 1.4),
+    ),
+    cardTheme: CardThemeData(color: Colors.white, elevation: 0, margin: EdgeInsets.zero, shadowColor: brandNavy.withOpacity(.08), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: brandBorder))),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true, fillColor: Colors.white, labelStyle: const TextStyle(color: brandMuted), hintStyle: const TextStyle(color: brandMuted),
+      prefixIconColor: brandSteel, suffixIconColor: brandSteel, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: brandBorder)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: brandGold, width: 1.6)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: brandBorder)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(backgroundColor: brandNavy, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)), textStyle: const TextStyle(fontWeight: FontWeight.w700))),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(foregroundColor: brandNavy, side: const BorderSide(color: brandBorder), padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)), textStyle: const TextStyle(fontWeight: FontWeight.w700))),
+    appBarTheme: const AppBarTheme(backgroundColor: brandInk, foregroundColor: Colors.white, elevation: 0),
+    dividerColor: brandBorder,
+  );
+}
+
+class ApiErrorclass ApiError implements Exception {
   ApiError(this.status, this.message);
   final int status;
   final String message;
@@ -79,57 +125,27 @@ class _HimateAppState extends State<HimateApp> {
   final api = Api();
   Map<String, dynamic>? user;
   bool loading = true;
-
   @override
-  void initState() {
-    super.initState();
-    restore();
-  }
-
+  void initState() { super.initState(); restore(); }
   Future<void> restore() async {
-    try {
-      user = await api.get('/api/v1/auth/me');
-    } on ApiError catch (e) {
-      if (e.status != 401) rethrow;
-    } finally {
-      if (mounted) setState(() => loading = false);
-    }
+    try { user = await api.get('/api/v1/auth/me'); }
+    on ApiError catch (e) { if (e.status != 401) rethrow; }
+    finally { if (mounted) setState(() => loading = false); }
   }
-
-  Future<void> login(String email, String password) async {
-    user = await api.post('/api/v1/auth/login', {'email': email, 'password': password});
-    if (mounted) setState(() {});
-  }
-
-  Future<void> logout() async {
-    await api.post('/api/v1/auth/logout');
-    user = null;
-    if (mounted) setState(() {});
-  }
-
+  Future<void> login(String email, String password) async { user = await api.post('/api/v1/auth/login', {'email': email, 'password': password}); if (mounted) setState(() {}); }
+  Future<void> logout() async { await api.post('/api/v1/auth/logout'); user = null; if (mounted) setState(() {}); }
   @override
-  Widget build(BuildContext context) {
-    final theme = ThemeData(
-      useMaterial3: true,
-      scaffoldBackgroundColor: canvas,
-      colorScheme: ColorScheme.fromSeed(seedColor: navy, primary: navy, secondary: gold),
-      inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
-      cardTheme: const CardThemeData(color: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18)), side: BorderSide(color: Color(0xFFE2E8F0)))),
-    );
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'HIMATE System',
-      theme: theme,
-      home: loading
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : user == null
-              ? LoginPage(onLogin: login)
-              : Shell(api: api, user: user!, onLogout: logout),
-    );
-  }
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: 'HIMATE System',
+    theme: buildBrandTheme(),
+    home: loading
+      ? const Scaffold(backgroundColor: brandInk, body: Center(child: SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 2.5, color: brandGold))))
+      : user == null ? LoginPage(onLogin: login) : Shell(api: api, user: user!, onLogout: logout),
+  );
 }
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends StatefulWidgetclass LoginPage extends StatefulWidget {
   const LoginPage({required this.onLogin, super.key});
   final Future<void> Function(String email, String password) onLogin;
   @override
