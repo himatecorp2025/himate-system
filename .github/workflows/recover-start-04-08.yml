@@ -19,25 +19,19 @@ jobs:
       - name: Recover package contents
         shell: bash
         run: |
-          set -u
+          set -eu
           cat .himate-bootstrap/part-* > /tmp/final.b64
           base64 -d /tmp/final.b64 > /tmp/final.tar.gz
           gzip -dc /tmp/final.tar.gz > /tmp/final.tar || true
-          echo "Recovered tar bytes:"
-          wc -c /tmp/final.tar
-          echo "Recoverable entries:"
-          tar -tvf /tmp/final.tar || true
           mkdir -p /tmp/recovered
           tar -xf /tmp/final.tar -C /tmp/recovered || true
-          echo "Recovered files:"
-          find /tmp/recovered -type f -maxdepth 8 -print | sort
           test -f /tmp/recovered/services/cmd/gateway/main.go
           test -f /tmp/recovered/services/cmd/partners/main.go
           test -f /tmp/recovered/services/cmd/catalog/main.go
           test -f /tmp/recovered/services/cmd/billing/main.go
           test -f /tmp/recovered/frontend/lib/main.dart
-          test -f /tmp/recovered/frontend/lib/src/screens_part5.dart
           test -f /tmp/recovered/render.yaml
+          test -f /tmp/recovered/.github/workflows/ci.yml
       - name: Apply recovered final tree
         shell: bash
         run: |
