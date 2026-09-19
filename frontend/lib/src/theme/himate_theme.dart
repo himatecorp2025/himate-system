@@ -26,7 +26,7 @@ ThemeData buildHimateTheme() {
     colorScheme: scheme,
     scaffoldBackgroundColor: HimateColors.canvas,
     fontFamily: 'Arial',
-    cardTheme: const CardTheme(
+    cardTheme: const CardThemeData(
       color: Colors.white,
       elevation: 0,
       margin: EdgeInsets.zero,
