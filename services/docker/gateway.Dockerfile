@@ -3,7 +3,7 @@ WORKDIR /src/frontend
 COPY frontend/pubspec.yaml frontend/analysis_options.yaml ./
 RUN flutter pub get
 COPY frontend/ ./
-RUN flutter build web --release
+RUN flutter build web --release --no-web-resources-cdn
 
 FROM golang:1.23-bookworm AS go-build
 WORKDIR /src/services
