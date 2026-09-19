@@ -1373,6 +1373,7 @@ class _ActivityRow extends StatelessWidget {
 class PartnersPage extends StatefulWidget {
   const PartnersPage({required this.api, super.key});
   final Api api;
+
   @override
   State<PartnersPage> createState() => _PartnersPageState();
 }
@@ -1381,44 +1382,294 @@ class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
   bool loading = true;
+  String? error;
+  String query = '';
+  String categoryFilter = 'ALL';
+  String lifecycleFilter = 'ALL';
+
+  static const lifecycleOptions = [
+    'PROSPECT',
+    'LICENSE_PENDING',
+    'READY_TO_PROVISION',
+    'PROVISIONING',
+    'CONFIGURATION',
+    'TESTING',
+    'READY_FOR_LAUNCH',
+    'LIVE',
+    'SUSPENDED',
+    'ARCHIVED',
+  ];
 
   @override
-  void initState() { super.initState(); load(); }
+  void initState() {
+    super.initState();
+    load();
+  }
+
   Future<void> load() async {
-    final r = await Future.wait([widget.api.get('/api/v1/partners'), widget.api.get('/api/v1/partner-categories')]);
-    partners = items(r[0]); categories = items(r[1]);
-    if (mounted) setState(() => loading = false);
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final r = await Future.wait([
+        widget.api.get('/api/v1/partners'),
+        widget.api.get('/api/v1/partner-categories'),
+      ]);
+      partners = items(r[0]);
+      categories = items(r[1]);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  void success(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+    );
   }
 
   Future<void> addCategory() async {
-    final c = TextEditingController();
-    final ok = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('Add partner category'), content: TextField(controller: c, decoration: const InputDecoration(labelText: 'Category name')), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add'))]));
-    if (ok == true && c.text.trim().isNotEmpty) { await widget.api.post('/api/v1/partner-categories', {'name': c.text.trim()}); await load(); }
+    final controller = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => BrandDialog(
+        title: 'Add partner category',
+        subtitle: 'Create a category for partner organizations that do not fit the default structure.',
+        icon: Icons.category_outlined,
+        child: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Category name', hintText: 'e.g. Cultural Foundation'),
+        ),
+        primaryLabel: 'Add category',
+        onPrimary: () => Navigator.pop(context, true),
+      ),
+    );
+    if (ok == true && controller.text.trim().isNotEmpty) {
+      await widget.api.post('/api/v1/partner-categories', {'name': controller.text.trim()});
+      await load();
+      if (mounted) success('Partner category created.');
+    }
+    controller.dispose();
   }
 
   Future<void> addPartner() async {
-    if (categories.isEmpty) return;
-    final name = TextEditingController();
+    if (categories.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Create a partner category first.'), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+
+    final displayName = TextEditingController();
+    final legalName = TextEditingController();
+    final contactName = TextEditingController();
+    final contactEmail = TextEditingController();
+    final primaryDomain = TextEditingController();
+    final country = TextEditingController(text: 'United States');
     String category = '${categories.first['id']}';
-    final ok = await showDialog<bool>(context: context, builder: (context) => StatefulBuilder(builder: (context, setLocal) => AlertDialog(title: const Text('New Partner'), content: SizedBox(width: 500, child: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: name, decoration: const InputDecoration(labelText: 'Partner name *')), const SizedBox(height: 12), DropdownButtonFormField<String>(value: category, decoration: const InputDecoration(labelText: 'Category'), items: [for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: Text('${c['name']}'))], onChanged: (v) { if (v != null) setLocal(() => category = v); })])), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create'))])));
-    if (ok == true && name.text.trim().isNotEmpty) { await widget.api.post('/api/v1/partners', {'display_name': name.text.trim(), 'legal_name': name.text.trim(), 'category_id': category, 'lifecycle': 'PROSPECT', 'country': 'United States'}); await load(); }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'New Partner',
+          subtitle: 'Create the partner record now. Provisioning remains a separate controlled lifecycle step.',
+          icon: Icons.add_business_outlined,
+          width: 680,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name *'))),
+                  const SizedBox(width: 12),
+                  Expanded(child: TextField(controller: legalName, decoration: const InputDecoration(labelText: 'Legal name'))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: category,
+                decoration: const InputDecoration(labelText: 'Partner category'),
+                items: [
+                  for (final c in categories)
+                    DropdownMenuItem(value: '${c['id']}', child: Text('${c['name']}')),
+                ],
+                onChanged: (v) {
+                  if (v != null) setLocal(() => category = v);
+                },
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Primary contact'))),
+                  const SizedBox(width: 12),
+                  Expanded(child: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Contact email'))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country'))),
+                  const SizedBox(width: 12),
+                  Expanded(child: TextField(controller: primaryDomain, decoration: const InputDecoration(labelText: 'Primary domain', hintText: 'example.org'))),
+                ],
+              ),
+            ],
+          ),
+          primaryLabel: 'Create partner',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true && displayName.text.trim().isNotEmpty) {
+      final created = await widget.api.post('/api/v1/partners', {
+        'display_name': displayName.text.trim(),
+        'legal_name': legalName.text.trim().isEmpty ? displayName.text.trim() : legalName.text.trim(),
+        'category_id': category,
+        'lifecycle': 'PROSPECT',
+        'contact_name': contactName.text.trim(),
+        'contact_email': contactEmail.text.trim(),
+        'country': country.text.trim(),
+        'primary_domain': primaryDomain.text.trim(),
+      });
+      await load();
+      if (mounted) {
+        success('Partner created.');
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => PartnerWorkspace(api: widget.api, partner: created)),
+        );
+      }
+    }
+
+    displayName.dispose();
+    legalName.dispose();
+    contactName.dispose();
+    contactEmail.dispose();
+    primaryDomain.dispose();
+    country.dispose();
+  }
+
+  List<Map<String, dynamic>> get filtered {
+    final q = query.trim().toLowerCase();
+    return partners.where((p) {
+      final searchOk = q.isEmpty ||
+          '${p['display_name']}'.toLowerCase().contains(q) ||
+          '${p['legal_name']}'.toLowerCase().contains(q) ||
+          '${p['category_name']}'.toLowerCase().contains(q) ||
+          '${p['id']}'.toLowerCase().contains(q);
+      final categoryOk = categoryFilter == 'ALL' || '${p['category_id']}' == categoryFilter;
+      final lifecycleOk = lifecycleFilter == 'ALL' || '${p['lifecycle']}' == lifecycleFilter;
+      return searchOk && categoryOk && lifecycleOk;
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final live = partners.where((p) => p['lifecycle'] == 'LIVE').length;
+    final prospects = partners.where((p) => p['lifecycle'] == 'PROSPECT').length;
+    final reference = partners.where((p) => p['reference_partner'] == true).length;
+
     return Content(
+      eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
       title: 'Partners',
-      subtitle: 'Partner cards, lifecycle and extensible partner categories.',
-      actions: [OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const Text('Add category')), FilledButton.icon(onPressed: addPartner, icon: const Icon(Icons.add_business), label: const Text('New Partner'))],
-      child: loading ? const Center(child: CircularProgressIndicator()) : Wrap(spacing: 16, runSpacing: 16, children: [
-        for (final p in partners) SizedBox(width: 330, height: 190, child: Card(child: InkWell(borderRadius: BorderRadius.circular(18), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PartnerWorkspace(api: widget.api, partner: p))), child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text('${p['display_name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 20))), if (p['reference_partner'] == true) const Icon(Icons.workspace_premium, color: gold)]), const SizedBox(height: 6), Text('${p['category_name']}', style: const TextStyle(color: muted)), const Spacer(), Chip(label: Text('${p['lifecycle']}')), const SizedBox(height: 8), const Row(children: [Text('Open workspace', style: TextStyle(fontWeight: FontWeight.w700)), Spacer(), Icon(Icons.arrow_forward)])]))))),
-        SizedBox(width: 330, height: 190, child: Card(child: InkWell(borderRadius: BorderRadius.circular(18), onTap: addPartner, child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.add_circle_outline, size: 42, color: gold), SizedBox(height: 10), Text('NEW PARTNER', style: TextStyle(fontWeight: FontWeight.w700))]))))),
-      ]),
+      subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
+      actions: [
+        OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const Text('Add category')),
+        FilledButton.icon(onPressed: addPartner, icon: const Icon(Icons.add_business_outlined), label: const Text('New Partner')),
+      ],
+      child: loading
+          ? const _BrandLoading()
+          : error != null
+              ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        Kpi(label: 'Partner records', value: '${partners.length}', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
+                        Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess),
+                        Kpi(label: 'Prospects', value: '$prospects', note: 'Pre-license pipeline', icon: Icons.handshake_outlined, accent: brandSteel),
+                        Kpi(label: 'Reference partners', value: '$reference', note: 'Reference implementation', icon: Icons.workspace_premium_outlined, accent: brandGold),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _FilterSurface(
+                      child: LayoutBuilder(
+                        builder: (context, c) {
+                          final compact = c.maxWidth < 860;
+                          final search = TextField(
+                            onChanged: (v) => setState(() => query = v),
+                            decoration: const InputDecoration(
+                              hintText: 'Search partners...',
+                              prefixIcon: Icon(Icons.search_rounded),
+                            ),
+                          );
+                          final category = DropdownButtonFormField<String>(
+                            value: categoryFilter,
+                            decoration: const InputDecoration(labelText: 'Category'),
+                            items: [
+                              const DropdownMenuItem(value: 'ALL', child: Text('All categories')),
+                              for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: Text('${c['name']}')),
+                            ],
+                            onChanged: (v) => setState(() => categoryFilter = v ?? 'ALL'),
+                          );
+                          final lifecycle = DropdownButtonFormField<String>(
+                            value: lifecycleFilter,
+                            decoration: const InputDecoration(labelText: 'Lifecycle'),
+                            items: [
+                              const DropdownMenuItem(value: 'ALL', child: Text('All lifecycle states')),
+                              for (final state in lifecycleOptions) DropdownMenuItem(value: state, child: Text(_humanize(state))),
+                            ],
+                            onChanged: (v) => setState(() => lifecycleFilter = v ?? 'ALL'),
+                          );
+                          if (compact) {
+                            return Column(children: [search, const SizedBox(height: 10), category, const SizedBox(height: 10), lifecycle]);
+                          }
+                          return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: category), const SizedBox(width: 10), Expanded(child: lifecycle)]);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Text('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
+                        const SizedBox(width: 10),
+                        _MiniCounter(label: '${filtered.length} shown'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1040 ? (c.maxWidth - 14) / 2 : (c.maxWidth - 28) / 3;
+                        final cards = <Widget>[
+                          for (final p in filtered)
+                            SizedBox(
+                              width: width,
+                              child: PartnerCard(
+                                partner: p,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => PartnerWorkspace(api: widget.api, partner: p)),
+                                ),
+                              ),
+                            ),
+                          SizedBox(width: width, child: NewPartnerCard(onTap: addPartner)),
+                        ];
+                        return Wrap(spacing: 14, runSpacing: 14, children: cards);
+                      },
+                    ),
+                  ],
+                ),
     );
   }
 }
 
-class PartnerWorkspace extends StatefulWidget {
+class PartnerWorkspaceclass PartnerWorkspace extends StatefulWidget {
   const PartnerWorkspace({required this.api, required this.partner, super.key});
   final Api api;
   final Map<String, dynamic> partner;
