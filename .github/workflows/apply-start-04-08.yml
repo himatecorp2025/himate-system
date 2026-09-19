@@ -17,18 +17,29 @@ jobs:
         with:
           ref: develop
           fetch-depth: 0
-      - name: Apply package
+      - name: Reconstruct package
         shell: bash
         run: |
-          set -euxo pipefail
+          set -eu
           cat .himate-bootstrap/part-* > /tmp/final.b64
           base64 -d /tmp/final.b64 > /tmp/final.tar.gz
-          tar -tzf /tmp/final.tar.gz > /tmp/package-list.txt
-          test -s /tmp/package-list.txt
-          rm -rf backend frontend/lib/src .himate-bootstrap
+          gzip -t /tmp/final.tar.gz
+      - name: Extract package
+        shell: bash
+        run: |
+          set -eu
+          rm -rf backend frontend/lib/src
           rm -f Dockerfile HIMATE_START_01-03.zip
           rm -f docs/START-01-03_ACCEPTANCE.md docs/TEST_REPORT.md
           tar -xzf /tmp/final.tar.gz -C .
+          test -f services/cmd/gateway/main.go
+          test -f frontend/lib/main.dart
+          test -f render.yaml
+      - name: Commit final tree
+        shell: bash
+        run: |
+          set -eu
+          rm -rf .himate-bootstrap
           rm -f .github/workflows/apply-start-04-08.yml
           git config user.name "himatecorp2025"
           git config user.email "himatecorp2025@gmail.com"
