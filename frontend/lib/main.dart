@@ -1669,31 +1669,308 @@ class _PartnersPageState extends State<PartnersPage> {
   }
 }
 
-class PartnerWorkspaceclass PartnerWorkspace extends StatefulWidget {
+class PartnerWorkspace extends StatefulWidget {
   const PartnerWorkspace({required this.api, required this.partner, super.key});
   final Api api;
   final Map<String, dynamic> partner;
+
   @override
   State<PartnerWorkspace> createState() => _PartnerWorkspaceState();
 }
 
 class _PartnerWorkspaceState extends State<PartnerWorkspace> {
+  late Map<String, dynamic> partner;
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> documents = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
+  Map<String, dynamic>? terms;
   bool loading = true;
+  String? error;
+  String moduleQuery = '';
+  String moduleState = 'ALL';
 
-  static const workspaceCards = [
-    'Overview', 'Company Data', 'System & Environment', 'Modules', 'Pricing & Subscription', 'Finance & Documents',
-    'Statistics', 'Evidence', 'Branding & Website', 'Users & Contacts', 'Integrations', 'Audit History'
+  static const workspaceCards = <_WorkspaceSpec>[
+    _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
+    _WorkspaceSpec('Company Data', Icons.apartment_outlined, 'Legal identity, contacts and lifecycle', true),
+    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains and deployment environment', true),
+    _WorkspaceSpec('Modules', Icons.grid_view_outlined, 'Entitlements, visibility and pricing', true),
+    _WorkspaceSpec('Pricing & Subscription', Icons.payments_outlined, 'Activation fee and recurring terms', true),
+    _WorkspaceSpec('Finance & Documents', Icons.folder_copy_outlined, 'Invoices and commercial evidence', true),
+    _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics', false),
+    _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', false),
+    _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', false),
+    _WorkspaceSpec('Users & Contacts', Icons.group_outlined, 'Partner administrators and contacts', false),
+    _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Connector and provider registry', false),
+    _WorkspaceSpec('Audit History', Icons.history_rounded, 'Immutable administrative history', false),
   ];
 
   @override
-  void initState() { super.initState(); load(); }
+  void initState() {
+    super.initState();
+    partner = Map<String, dynamic>.from(widget.partner);
+    load();
+  }
+
   Future<void> load() async {
-    final id = '${widget.partner['id']}';
-    final r = await Future.wait([widget.api.get('/api/v1/partners/$id/modules'), widget.api.get('/api/v1/billing/partners/$id/summary')]);
-    modules = items(r[0]); billing = r[1];
-    if (mounted) setState(() => loading = false);
+    if (mounted) setState(() { loading = true; error = null; });
+    final id = '${partner['id']}';
+    try {
+      final r = await Future.wait([
+        widget.api.get('/api/v1/partners/$id'),
+        widget.api.get('/api/v1/partners/$id/modules'),
+        widget.api.get('/api/v1/billing/partners/$id/summary'),
+        widget.api.get('/api/v1/billing/partners/$id/terms'),
+        widget.api.get('/api/v1/billing/partners/$id/documents'),
+        widget.api.get('/api/v1/billing/partners/$id/invoices'),
+      ]);
+      partner = r[0];
+      modules = items(r[1]);
+      billing = r[2];
+      terms = r[3];
+      documents = items(r[4]);
+      invoices = items(r[5]);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  void success(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+    );
+  }
+
+  Future<void> editPartner() async {
+    final display = TextEditingController(text: '${partner['display_name'] ?? ''}');
+    final legal = TextEditingController(text: '${partner['legal_name'] ?? ''}');
+    final contact = TextEditingController(text: '${partner['contact_name'] ?? ''}');
+    final email = TextEditingController(text: '${partner['contact_email'] ?? ''}');
+    final country = TextEditingController(text: '${partner['country'] ?? ''}');
+    final primary = TextEditingController(text: '${partner['primary_domain'] ?? ''}');
+    final staging = TextEditingController(text: '${partner['staging_domain'] ?? ''}');
+    final notes = TextEditingController(text: '${partner['notes'] ?? ''}');
+    String lifecycle = '${partner['lifecycle'] ?? 'PROSPECT'}';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Company Data',
+          subtitle: 'Edit partner identity, lifecycle, contacts and environment references.',
+          icon: Icons.apartment_outlined,
+          width: 720,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(children: [
+                Expanded(child: TextField(controller: display, decoration: const InputDecoration(labelText: 'Display name'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name'))),
+              ]),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: lifecycle,
+                decoration: const InputDecoration(labelText: 'Lifecycle'),
+                items: [
+                  for (final value in _PartnersPageState.lifecycleOptions)
+                    DropdownMenuItem(value: value, child: Text(_humanize(value))),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => lifecycle = v); },
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: TextField(controller: contact, decoration: const InputDecoration(labelText: 'Primary contact'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: email, decoration: const InputDecoration(labelText: 'Contact email'))),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: primary, decoration: const InputDecoration(labelText: 'Primary domain'))),
+              ]),
+              const SizedBox(height: 12),
+              TextField(controller: staging, decoration: const InputDecoration(labelText: 'Staging domain')),
+              const SizedBox(height: 12),
+              TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Internal notes')),
+            ],
+          ),
+          primaryLabel: 'Save changes',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      await widget.api.patch('/api/v1/partners/${partner['id']}', {
+        'display_name': display.text.trim(),
+        'legal_name': legal.text.trim(),
+        'lifecycle': lifecycle,
+        'contact_name': contact.text.trim(),
+        'contact_email': email.text.trim(),
+        'country': country.text.trim(),
+        'primary_domain': primary.text.trim(),
+        'staging_domain': staging.text.trim(),
+        'notes': notes.text.trim(),
+      });
+      await load();
+      if (mounted) success('Partner data updated.');
+    }
+    for (final c in [display, legal, contact, email, country, primary, staging, notes]) {
+      c.dispose();
+    }
+  }
+
+  Future<void> editTerms() async {
+    final activation = TextEditingController(text: number(terms?['activation_fee']).toStringAsFixed(2));
+    final base = TextEditingController(text: number(terms?['base_monthly_fee']).toStringAsFixed(2));
+    final uplift = TextEditingController(text: number(terms?['annual_increase_percent']).toStringAsFixed(2));
+    final effective = TextEditingController(text: '${terms?['price_effective_from'] ?? ''}');
+    final reason = TextEditingController(text: '${terms?['activation_fee_reason'] ?? ''}');
+    bool waived = terms?['activation_fee_waived'] == true;
+    String currency = '${terms?['currency'] ?? 'USD'}';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Pricing & Subscription',
+          subtitle: 'Commercial terms remain partner-specific while invoice day and service-cycle rules stay standardized.',
+          icon: Icons.payments_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: currency,
+                    decoration: const InputDecoration(labelText: 'Currency'),
+                    items: const [
+                      DropdownMenuItem(value: 'USD', child: Text('USD')),
+                      DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                      DropdownMenuItem(value: 'GBP', child: Text('GBP')),
+                    ],
+                    onChanged: (v) { if (v != null) setLocal(() => currency = v); },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: activation, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Activation fee'))),
+              ]),
+              const SizedBox(height: 8),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: waived,
+                onChanged: (v) => setLocal(() => waived = v),
+                title: const Text('Activation fee waived'),
+                subtitle: const Text('Use for an existing/reference partner where no activation transaction applies.'),
+              ),
+              if (waived) ...[
+                const SizedBox(height: 8),
+                TextField(controller: reason, decoration: const InputDecoration(labelText: 'Waiver reason')),
+              ],
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: TextField(controller: base, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Base monthly fee'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: uplift, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Annual increase %'))),
+              ]),
+              const SizedBox(height: 12),
+              TextField(controller: effective, decoration: const InputDecoration(labelText: 'Price effective from', hintText: 'YYYY-MM-DD')),
+              const SizedBox(height: 12),
+              const _RuleStrip(
+                items: [
+                  _RuleItem(Icons.calendar_today_outlined, 'Invoice day', '1st of each month'),
+                  _RuleItem(Icons.timelapse_outlined, 'Service cycle', '30 days'),
+                  _RuleItem(Icons.trending_up_rounded, 'Annual uplift', 'January 1'),
+                ],
+              ),
+            ],
+          ),
+          primaryLabel: 'Save commercial terms',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      await widget.api.put('/api/v1/billing/partners/${partner['id']}/terms', {
+        'currency': currency,
+        'activation_fee': double.tryParse(activation.text) ?? 0,
+        'activation_fee_waived': waived,
+        'activation_fee_reason': reason.text.trim(),
+        'base_monthly_fee': double.tryParse(base.text) ?? 0,
+        'annual_increase_percent': double.tryParse(uplift.text) ?? 10,
+        'price_effective_from': effective.text.trim(),
+      });
+      await load();
+      if (mounted) success('Commercial terms updated.');
+    }
+
+    for (final c in [activation, base, uplift, effective, reason]) {
+      c.dispose();
+    }
+  }
+
+  Future<void> addDocument() async {
+    final name = TextEditingController();
+    final url = TextEditingController();
+    final note = TextEditingController();
+    String kind = 'CONTRACT';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Register document',
+          subtitle: 'Attach commercial metadata now; binary evidence storage will be connected in a later evidence cycle.',
+          icon: Icons.note_add_outlined,
+          width: 640,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: kind,
+                decoration: const InputDecoration(labelText: 'Document type'),
+                items: const [
+                  DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
+                  DropdownMenuItem(value: 'INVOICE', child: Text('Invoice')),
+                  DropdownMenuItem(value: 'PAYMENT_EVIDENCE', child: Text('Payment evidence')),
+                  DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => kind = v); },
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'Document name *')),
+              const SizedBox(height: 12),
+              TextField(controller: url, decoration: const InputDecoration(labelText: 'Storage URL / reference')),
+              const SizedBox(height: 12),
+              TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
+            ],
+          ),
+          primaryLabel: 'Register document',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true && name.text.trim().isNotEmpty) {
+      await widget.api.post('/api/v1/billing/partners/${partner['id']}/documents', {
+        'kind': kind,
+        'name': name.text.trim(),
+        'storage_url': url.text.trim(),
+        'note': note.text.trim(),
+      });
+      await load();
+      if (mounted) success('Document registered.');
+    }
+
+    for (final c in [name, url, note]) {
+      c.dispose();
+    }
   }
 
   Future<void> editModule(Map<String, dynamic> module) async {
@@ -1701,40 +1978,234 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     bool visible = module['visible'] == true;
     bool included = module['included_in_base'] == true;
     final price = TextEditingController(text: number(module['partner_price']).toStringAsFixed(2));
-    final ok = await showDialog<bool>(context: context, builder: (context) => StatefulBuilder(builder: (context, setLocal) => AlertDialog(title: Text('${module['label']}'), content: SizedBox(width: 520, child: Column(mainAxisSize: MainAxisSize.min, children: [DropdownButtonFormField<String>(value: state, decoration: const InputDecoration(labelText: 'State'), items: const [DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')), DropdownMenuItem(value: 'NOT_LICENSED', child: Text('NOT LICENSED')), DropdownMenuItem(value: 'MAINTENANCE', child: Text('MAINTENANCE'))], onChanged: (v) { if (v != null) setLocal(() => state = v); }), SwitchListTile(value: visible, onChanged: (v) => setLocal(() => visible = v), title: const Text('Visible for partner')), SwitchListTile(value: included, onChanged: (v) => setLocal(() => included = v), title: const Text('Included in base package')), TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Partner monthly price (USD)'))])), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save'))])));
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: '${module['label']}',
+          subtitle: 'Control entitlement, partner visibility and monthly pricing without removing the underlying module code or data.',
+          icon: Icons.grid_view_outlined,
+          width: 650,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: state,
+                decoration: const InputDecoration(labelText: 'Module state'),
+                items: const [
+                  DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                  DropdownMenuItem(value: 'NOT_LICENSED', child: Text('NOT LICENSED')),
+                  DropdownMenuItem(value: 'MAINTENANCE', child: Text('MAINTENANCE')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => state = v); },
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: visible,
+                onChanged: (v) => setLocal(() => visible = v),
+                title: const Text('Visible for partner'),
+                subtitle: const Text('Visibility is separate from module code existence.'),
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: included,
+                onChanged: (v) => setLocal(() => included = v),
+                title: const Text('Included in base package'),
+                subtitle: const Text('Modules outside the base package contribute to recurring fees.'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: price,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Partner monthly price (USD)'),
+              ),
+            ],
+          ),
+          primaryLabel: 'Save module',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
     if (ok == true) {
-      await widget.api.patch('/api/v1/partners/${widget.partner['id']}/modules/${module['key']}', {'status': state, 'visible': visible, 'included_in_base': included, 'partner_price': double.tryParse(price.text) ?? 0, 'reason': 'HIMATE admin update'});
+      await widget.api.patch(
+        '/api/v1/partners/${partner['id']}/modules/${module['key']}',
+        {
+          'status': state,
+          'visible': visible,
+          'included_in_base': included,
+          'partner_price': double.tryParse(price.text) ?? 0,
+          'reason': 'HIMATE admin update',
+        },
+      );
       await load();
+      if (mounted) success('Module configuration updated.');
     }
+    price.dispose();
+  }
+
+  List<Map<String, dynamic>> get filteredModules {
+    final q = moduleQuery.trim().toLowerCase();
+    return modules.where((m) {
+      final matchText = q.isEmpty ||
+          '${m['label']}'.toLowerCase().contains(q) ||
+          '${m['key']}'.toLowerCase().contains(q) ||
+          '${m['group_label']}'.toLowerCase().contains(q);
+      final matchState = moduleState == 'ALL' || '${m['status']}' == moduleState;
+      return matchText && matchState;
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final active = modules.where((m) => m['status'] == 'ACTIVE').length;
+    final maintenance = modules.where((m) => m['status'] == 'MAINTENANCE').length;
+    final baseIncluded = modules.where((m) => m['included_in_base'] == true).length;
+
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.partner['display_name']}')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${widget.partner['display_name']}', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text('${widget.partner['id']} · ${widget.partner['category_name']} · ${widget.partner['lifecycle']}', style: const TextStyle(color: muted)),
-          const SizedBox(height: 20),
-          Wrap(spacing: 12, runSpacing: 12, children: [for (final title in workspaceCards) SizedBox(width: 215, height: 105, child: Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(title == 'Modules' ? Icons.grid_view_outlined : Icons.dashboard_customize_outlined, color: gold), const Spacer(), Text(title, style: const TextStyle(fontWeight: FontWeight.w700))]))))]),
-          const SizedBox(height: 24),
-          if (loading) const Center(child: CircularProgressIndicator()) else ...[
-            Wrap(spacing: 16, runSpacing: 16, children: [Kpi(label: 'Base monthly', value: money(billing?['effective_base_fee']), note: 'January 1 annual uplift'), Kpi(label: 'Extra modules', value: money(billing?['extra_module_fee']), note: 'Same invoice day'), Kpi(label: 'Current total', value: money(billing?['current_total']), note: '30-day cycle · invoice day 1')]),
-            const SizedBox(height: 24),
-            Text('Modules (${modules.length})', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            Wrap(spacing: 12, runSpacing: 12, children: [for (final m in modules) SizedBox(width: 330, child: Card(child: InkWell(onTap: () => editModule(m), borderRadius: BorderRadius.circular(18), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text('${m['label']}', style: const TextStyle(fontWeight: FontWeight.w700))), const Icon(Icons.edit_outlined, size: 18)]), const SizedBox(height: 4), Text('${m['group_label']} · ${m['status']}', style: const TextStyle(color: muted, fontSize: 12)), const SizedBox(height: 10), Row(children: [Text(m['visible'] == true ? 'VISIBLE' : 'HIDDEN'), const Spacer(), Text(m['included_in_base'] == true ? 'BASE' : money(m['partner_price']), style: const TextStyle(fontWeight: FontWeight.w700))])])))))])
-          ]
-        ]),
+      backgroundColor: brandIvory,
+      appBar: AppBar(
+        leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
+        title: const HimateLogo(width: 170),
+        actions: [
+          _StatusPill(label: '${partner['lifecycle'] ?? 'PROSPECT'}'),
+          const SizedBox(width: 12),
+          IconButton(onPressed: editPartner, tooltip: 'Edit partner', icon: const Icon(Icons.edit_outlined)),
+          const SizedBox(width: 8),
+        ],
       ),
+      body: loading
+          ? const _BrandLoading()
+          : error != null
+              ? Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partner workspace unavailable', message: error!),
+                )
+              : Content(
+                  eyebrow: 'PARTNER WORKSPACE  |  ${partner['id']}',
+                  title: '${partner['display_name']}',
+                  subtitle: '${partner['category_name']} · ${partner['country']} · ${_humanize('${partner['lifecycle']}')}',
+                  actions: [
+                    OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const Text('Company data')),
+                    FilledButton.icon(onPressed: editTerms, icon: const Icon(Icons.payments_outlined), label: const Text('Commercial terms')),
+                  ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
+                          Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
+                          Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
+                          Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
+                        ],
+                      ),
+                      const SizedBox(height: 22),
+                      _SectionHeader(title: 'Workspace', subtitle: 'Current and scheduled control areas for this partner.'),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final width = c.maxWidth < 560 ? c.maxWidth : c.maxWidth < 900 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              for (final spec in workspaceCards)
+                                SizedBox(width: width, child: WorkspaceCard(spec: spec)),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final company = _PartnerDetailsCard(partner: partner);
+                          final termsCard = _CommercialSummaryCard(terms: terms ?? {}, billing: billing ?? {}, onEdit: editTerms);
+                          if (c.maxWidth < 930) {
+                            return Column(children: [company, const SizedBox(height: 14), termsCard]);
+                          }
+                          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Expanded(child: company),
+                            const SizedBox(width: 14),
+                            Expanded(child: termsCard),
+                          ]);
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      _SectionHeader(
+                        title: 'Partner Modules',
+                        subtitle: 'Entitlement, visibility, base-package inclusion and partner-specific pricing.',
+                        trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                      ),
+                      const SizedBox(height: 12),
+                      _FilterSurface(
+                        child: LayoutBuilder(
+                          builder: (context, c) {
+                            final search = TextField(
+                              onChanged: (v) => setState(() => moduleQuery = v),
+                              decoration: const InputDecoration(hintText: 'Search modules...', prefixIcon: Icon(Icons.search_rounded)),
+                            );
+                            final state = DropdownButtonFormField<String>(
+                              value: moduleState,
+                              decoration: const InputDecoration(labelText: 'State'),
+                              items: const [
+                                DropdownMenuItem(value: 'ALL', child: Text('All states')),
+                                DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
+                                DropdownMenuItem(value: 'NOT_LICENSED', child: Text('Not licensed')),
+                                DropdownMenuItem(value: 'MAINTENANCE', child: Text('Maintenance')),
+                              ],
+                              onChanged: (v) => setState(() => moduleState = v ?? 'ALL'),
+                            );
+                            if (c.maxWidth < 680) return Column(children: [search, const SizedBox(height: 10), state]);
+                            return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: state)]);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              for (final m in filteredModules)
+                                SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      _SectionHeader(
+                        title: 'Finance & Documents',
+                        subtitle: 'Commercial evidence and internal invoice records for this partner.',
+                        trailing: FilledButton.icon(onPressed: addDocument, icon: const Icon(Icons.note_add_outlined), label: const Text('Register document')),
+                      ),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final docs = _DocumentPanel(documents: documents, onAdd: addDocument);
+                          final inv = _InvoicePanel(invoices: invoices);
+                          if (c.maxWidth < 920) return Column(children: [docs, const SizedBox(height: 14), inv]);
+                          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Expanded(child: docs),
+                            const SizedBox(width: 14),
+                            Expanded(child: inv),
+                          ]);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
     );
   }
 }
 
-class FinancePage extends StatefulWidget {
+class FinancePageclass FinancePage extends StatefulWidget {
   const FinancePage({required this.api, super.key});
   final Api api;
   @override
