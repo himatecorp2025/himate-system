@@ -872,6 +872,8 @@ class HimateLogo extends StatelessWidget {
         asset,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
+        color: const Color(0xFFE0B568),
+        colorBlendMode: BlendMode.modulate,
         semanticLabel: compact ? 'HIMATE' : 'HIMATE System',
       ),
     );
@@ -890,6 +892,8 @@ class BrandMark extends StatelessWidget {
       'assets/himate_mark.webp',
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
+      color: const Color(0xFFE0B568),
+      colorBlendMode: BlendMode.modulate,
       semanticLabel: 'HIMATE',
     ),
   );

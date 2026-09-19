@@ -279,3 +279,162 @@ body{background:#F8F9FB}
   .cta{min-height:210px}.cta-inner{flex-direction:column;gap:20px}.cta h2{font-size:38px}.cta-copy{text-align:left}.cta p{font-size:13px}
   .footer-inner{grid-template-columns:1fr;gap:20px}.footer-logo{width:145px;height:92px}.footer-links{justify-content:flex-start;flex-wrap:wrap;gap:18px 24px}.footer-tagline{text-align:left}.footer-copy{margin-top:10px}
 }
+
+
+/* R9 final visual polish */
+/* Keep the approved logo geometry; only recolor it into the requested gold 3D palette. */
+.brand-logo img{
+  filter:grayscale(1) sepia(1) saturate(3.5) hue-rotate(350deg) brightness(1.18) contrast(1.12)
+    drop-shadow(0 1px 0 rgba(255,235,184,.55))
+    drop-shadow(0 3px 4px rgba(53,31,5,.50));
+}
+
+/* Navigation: +25% typography and approximately +25% horizontal spread. */
+.links{
+  margin-left:clamp(30px,4vw,70px);
+  gap:clamp(34px,2.65vw,48px);
+}
+.links a{
+  font-size:clamp(18.5px,1.25vw,21.25px);
+  line-height:1;
+}
+.nav-login-text{padding:9px 0}
+.login-pill{min-width:124px;min-height:52px}
+
+/* Landing hero: same horizontal inset as subpages, vertically centered. */
+.hero>.wrap{
+  align-items:center;
+  padding-top:138px;
+  padding-bottom:0;
+}
+.hero-content,
+.page-hero .inner{
+  padding-left:clamp(16px,1.15vw,22px);
+}
+
+/* The statue should visually "look" toward this larger, lower statement. */
+.hero-sideword{
+  top:37%;
+  font-size:42px;
+  letter-spacing:7px;
+  line-height:1.26;
+}
+.hero-sideword:after{width:76px;margin-top:18px}
+
+/* Guarantee the four brand icons remain visible and gold. */
+.metric-icon{
+  display:grid!important;
+  visibility:visible!important;
+  opacity:1!important;
+  color:#D7AE62!important;
+}
+.metric-icon svg{display:block!important;stroke:currentColor!important}
+
+/* Softer ivory backgrounds instead of bright white. */
+.editorial{background:#F8F4EC}
+.impact-story,
+.impact-copy,
+.numbers{background:#F8F4EC}
+
+/* A MORE VIBRANT TOMORROW: +25% height/type scale, tighter left inset, exact reference image. */
+.impact-story{
+  grid-template-columns:40.7% 36.1% 23.2%;
+  min-height:clamp(325px,20.25vw,415px);
+}
+.impact-story .image{
+  min-height:inherit;
+  background:#E9E1D5;
+}
+.impact-story .image img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center;
+}
+.impact-copy{
+  padding:42px 44px 42px 40px;
+}
+.impact-copy .caps{
+  font-size:15px;
+  letter-spacing:5.35px;
+}
+.impact-copy h2{
+  margin:12px 0 13px;
+  font-size:clamp(50px,3.5vw,60px);
+}
+.impact-copy p{
+  max-width:560px;
+  font-size:20px;
+  line-height:1.30;
+}
+.impact-copy a.caps{
+  margin-top:7px;
+  font-size:13.75px;
+  letter-spacing:4.75px;
+}
+.numbers{
+  padding:30px 42px;
+}
+.number{padding:14px 0}
+.number strong{
+  font-size:clamp(47.5px,3.31vw,57.5px);
+}
+.number span{
+  margin-top:5px;
+  font-size:13.75px;
+  letter-spacing:4px;
+}
+
+/* Align Platform + Modules imagery to the same statue composition as the landing hero. */
+.page-hero.platform-hero .page-art,
+.page-hero.modules-hero .page-art{
+  left:23%;
+  right:-23%;
+  top:0;
+  bottom:0;
+  background-image:url('/art/statue_hero_r5.png');
+  background-position:center center;
+  background-size:cover;
+}
+.page-hero.platform-hero .page-art:after,
+.page-hero.modules-hero .page-art:after{
+  background:linear-gradient(90deg,rgba(6,23,44,.64) 0%,rgba(6,23,44,.25) 29%,rgba(6,23,44,.035) 58%,rgba(6,23,44,0) 100%);
+}
+
+/* Contact gets a distinct composition instead of reusing the statue crop. */
+.page-hero.contact-hero .page-art{
+  left:18%;
+  right:-18%;
+  top:0;
+  bottom:0;
+  background-image:url('/art/landing_hero_r5.png');
+  background-position:62% center;
+  background-size:cover;
+}
+.page-hero.contact-hero .page-art:after{
+  background:linear-gradient(90deg,rgba(6,23,44,.86) 0%,rgba(6,23,44,.54) 34%,rgba(6,23,44,.18) 65%,rgba(6,23,44,.04) 100%);
+}
+
+/* All subpage hero copy uses the same horizontal content origin as the landing hero. */
+.page-hero .inner{
+  padding-right:0;
+}
+
+@media(max-width:1000px){
+  .links{gap:0;margin-left:0}
+  .links a{font-size:15px}
+  .hero-sideword{font-size:30px;top:31%}
+  .impact-copy p{font-size:17px}
+  .page-hero.platform-hero .page-art,
+  .page-hero.modules-hero .page-art,
+  .page-hero.contact-hero .page-art{left:0;right:0}
+}
+@media(max-width:620px){
+  .hero>.wrap{align-items:flex-start;padding-top:94px}
+  .hero-sideword{display:none}
+  .impact-story{min-height:auto}
+  .impact-copy{padding:34px 22px}
+  .impact-copy h2{font-size:42px}
+  .impact-copy p{font-size:15px}
+  .numbers{padding:26px 22px}
+}
