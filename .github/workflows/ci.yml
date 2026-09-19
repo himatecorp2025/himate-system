@@ -37,3 +37,12 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter build web --release
+      - name: Verify public frontend bundle
+        run: |
+          test -s build/web/landing.html
+          test -s build/web/himate-brand-r4.css
+          test -s build/web/art/hero_statue.jpg
+          test -s build/web/art/program_piano.jpg
+          test -s build/web/art/partners_hall.jpg
+          grep -q 'href="/himate-brand-r4.css"' build/web/landing.html
+          if grep -q 'href="/brand.css"' build/web/landing.html; then exit 1; fi
