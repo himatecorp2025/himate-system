@@ -41,6 +41,7 @@ jobs:
         run: |
           test -s build/web/landing.html
           test -s build/web/himate-brand-r4.css
+          test -s build/web/site.js
           test -s build/web/art/statue_hero_r5.png
           test -s build/web/art/program_piano_r5.png
           test -s build/web/art/gallery_hall_r5.png
@@ -49,4 +50,13 @@ jobs:
           grep -q "statue_hero_r5.png" build/web/himate-brand-r4.css
           grep -q "/api/v1/public/contact" build/web/contact.html
           grep -q 'href="/himate-brand-r4.css"' build/web/landing.html
+          grep -q 'src="/site.js"' build/web/landing.html
           if grep -q 'href="/brand.css"' build/web/landing.html; then exit 1; fi
+
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Docker Compose topology
+        run: docker compose config --quiet

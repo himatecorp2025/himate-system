@@ -273,7 +273,7 @@ class _HimateAppState extends State<HimateApp> {
     super.initState();
     final path = Uri.base.path;
     if (path == '/app') {
-      _restoreFallback = Timer(const Duration(seconds: 4), () {
+      _restoreFallback = Timer(const Duration(seconds: 3), () {
         if (mounted && loading) {
           setState(() => loading = false);
         }
@@ -296,7 +296,7 @@ class _HimateAppState extends State<HimateApp> {
     try {
       user = await api
           .get('/api/v1/auth/me', force: true)
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 3));
     } catch (_) {
       // Any auth/network failure falls back to the login screen instead of
       // trapping the user behind an endless loading indicator.
@@ -352,13 +352,14 @@ class _HimateAppState extends State<HimateApp> {
       theme: buildBrandTheme(),
       initialRoute: initial,
       routes: {
-        '/login': (_) => loading
-            ? loadingScreen()
-            : user == null
-                ? LoginPage(onLogin: login)
-                : _SignedInRedirect(onContinue: () {
-                    navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
-                  }),
+        // The public login route must never be gated by protected-route
+        // session restoration. This guarantees that a failed /auth/me request
+        // cannot strand visitors behind a global spinner.
+        '/login': (_) => user == null
+            ? LoginPage(onLogin: login)
+            : _SignedInRedirect(onContinue: () {
+                navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
+              }),
         '/app': (_) => loading
             ? loadingScreen()
             : user == null
@@ -367,11 +368,11 @@ class _HimateAppState extends State<HimateApp> {
       },
       onUnknownRoute: (_) => MaterialPageRoute(
         settings: const RouteSettings(name: '/login'),
-        builder: (_) => loading
-            ? loadingScreen()
-            : user == null
-                ? LoginPage(onLogin: login)
-                : Shell(api: api, user: user!, onLogout: logout),
+        builder: (_) => user == null
+            ? LoginPage(onLogin: login)
+            : _SignedInRedirect(onContinue: () {
+                navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
+              }),
       ),
     );
   }
@@ -549,8 +550,20 @@ class _DesktopLoginComposition extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final aspect = size.height == 0 ? 1.5 : size.width / size.height;
+    final macBookLike = size.width >= 1280 &&
+        size.width <= 1800 &&
+        aspect >= 1.45 &&
+        aspect <= 1.70;
+    final leftInset = macBookLike ? 94.0 : 82.0;
+    final rightInset = macBookLike ? 58.0 : 50.0;
+    final logoWidth = macBookLike ? 238.0 : 226.0;
+    final headlineSize = macBookLike ? 74.0 : 68.0;
+    final cardWidth = macBookLike ? 590.0 : 560.0;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(82, 38, 50, 42),
+      padding: EdgeInsets.fromLTRB(leftInset, 38, rightInset, 42),
       child: Row(
         children: [
           Expanded(
@@ -558,20 +571,20 @@ class _DesktopLoginComposition extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const HimateLogo(onDark: true, width: 226),
+                HimateLogo(onDark: true, width: logoWidth),
                 const Spacer(),
                 Text(
                   'Culture\nConnects\nPeople',
                   style: GoogleFonts.cormorantGaramond(
                     color: brandWhite,
-                    fontSize: 68,
+                    fontSize: headlineSize,
                     height: .88,
                     fontWeight: FontWeight.w500,
                     letterSpacing: -.8,
                   ),
                 ),
                 const SizedBox(height: 24),
-                const _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: Color(0xFFE8EDF3), fontSize: 12.4),
+                _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: const Color(0xFFE8EDF3), fontSize: macBookLike ? 13.2 : 12.4),
                 const SizedBox(height: 38),
                 const _HeroValue(icon: Icons.groups_2_outlined, label: 'STRONGER COMMUNITIES'),
                 const SizedBox(height: 15),
@@ -579,10 +592,14 @@ class _DesktopLoginComposition extends StatelessWidget {
                 const SizedBox(height: 15),
                 const _HeroValue(icon: Icons.shield_outlined, label: 'GREATER IMPACT'),
                 const Spacer(),
-                const Row(children: [
-                  SizedBox(width: 38, child: Divider(color: brandGold, thickness: 1.5)),
-                  SizedBox(width: 12),
-                  _LetterspacedLabel('HERITAGE MEETS INNOVATION', color: Color(0xFFE8EDF3), fontSize: 11.4),
+                Row(children: [
+                  const SizedBox(width: 38, child: Divider(color: brandGold, thickness: 1.5)),
+                  const SizedBox(width: 12),
+                  _LetterspacedLabel(
+                    'HERITAGE MEETS INNOVATION',
+                    color: const Color(0xFFE8EDF3),
+                    fontSize: macBookLike ? 12.6 : 11.4,
+                  ),
                 ]),
               ],
             ),
@@ -592,7 +609,7 @@ class _DesktopLoginComposition extends StatelessWidget {
             child: Align(
               alignment: Alignment.center,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
+                constraints: BoxConstraints(maxWidth: cardWidth),
                 child: _LoginCard(
                   email: email,
                   password: password,

@@ -5,7 +5,8 @@ services:
       POSTGRES_DB: himate
       POSTGRES_USER: himate
       POSTGRES_PASSWORD: himate-local
-    ports: ["5432:5432"]
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U himate"]
       interval: 5s
@@ -14,44 +15,66 @@ services:
 
   catalog:
     build:
-      context: ./services
-      dockerfile: docker/catalog.Dockerfile
+      context: .
+      dockerfile: services/docker/catalog.Dockerfile
     environment:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
     depends_on:
-      postgres: {condition: service_healthy}
+      postgres:
+        condition: service_healthy
 
   partners:
     build:
-      context: ./services
-      dockerfile: docker/partners.Dockerfile
+      context: .
+      dockerfile: services/docker/partners.Dockerfile
     environment:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
     depends_on:
-      postgres: {condition: service_healthy}
+      postgres:
+        condition: service_healthy
 
   billing:
     build:
-      context: ./services
-      dockerfile: docker/billing.Dockerfile
+      context: .
+      dockerfile: services/docker/billing.Dockerfile
     environment:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       CATALOG_HOSTPORT: catalog:10000
     depends_on:
-      postgres: {condition: service_healthy}
-      catalog: {condition: service_started}
+      postgres:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+
+  contact:
+    build:
+      context: .
+      dockerfile: services/docker/contact.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      HIMATE_CONTACT_NOTIFY_TO: ${HIMATE_CONTACT_NOTIFY_TO:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   gateway:
     build:
       context: .
       dockerfile: services/docker/gateway.Dockerfile
-    ports: ["8080:10000"]
+    ports:
+      - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.2.0-start-04-08
+      HIMATE_APP_VERSION: 0.2.2-brandbook-contact-performance
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456
@@ -63,8 +86,15 @@ services:
       PARTNERS_HOSTPORT: partners:10000
       CATALOG_HOSTPORT: catalog:10000
       BILLING_HOSTPORT: billing:10000
+      CONTACT_HOSTPORT: contact:10000
     depends_on:
-      postgres: {condition: service_healthy}
-      partners: {condition: service_started}
-      catalog: {condition: service_started}
-      billing: {condition: service_started}
+      postgres:
+        condition: service_healthy
+      partners:
+        condition: service_started
+      catalog:
+        condition: service_started
+      billing:
+        condition: service_started
+      contact:
+        condition: service_started
