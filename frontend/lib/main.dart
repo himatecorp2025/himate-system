@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_svg/flutter_svg.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -807,12 +808,26 @@ class _HeritagePanel extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
+        const ColoredBox(color: brandNavyDeep),
+        SvgPicture.asset(
+          'assets/himate_heritage.svg',
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+        ),
         const DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF061426), brandNavy, Color(0xFF123859)]),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                Color(0xE6061426),
+                Color(0x990B1F3B),
+                Color(0x33143B5E),
+              ],
+              stops: [0, .48, 1],
+            ),
           ),
         ),
-        CustomPaint(painter: _HeritagePainter()),
         if (child != null) child!,
       ],
     );
