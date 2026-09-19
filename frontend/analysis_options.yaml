@@ -1,0 +1,11 @@
+analyzer:
+  exclude:
+    - build/**
+  errors:
+    deprecated_member_use: ignore
+
+linter:
+  rules:
+    avoid_print: true
+    prefer_const_constructors: true
+    use_key_in_widget_constructors: true
