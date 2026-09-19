@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+<title id="title">HIMATE heritage and innovation</title>
+<desc id="desc">A premium deep navy cultural architecture composition with classical columns, a sculptural silhouette, steel blue arcs and royal gold light.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#061426"/>
+    <stop offset=".55" stop-color="#0B1F3B"/>
+    <stop offset="1" stop-color="#173F61"/>
+  </linearGradient>
+  <linearGradient id="stone" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#4E5966" stop-opacity=".22"/>
+    <stop offset=".45" stop-color="#E7D8B8" stop-opacity=".80"/>
+    <stop offset=".72" stop-color="#B9A989" stop-opacity=".55"/>
+    <stop offset="1" stop-color="#4B5662" stop-opacity=".18"/>
+  </linearGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#F2D799"/>
+    <stop offset=".55" stop-color="#D4AF6B"/>
+    <stop offset="1" stop-color="#9C6B23"/>
+  </linearGradient>
+  <radialGradient id="glow" cx=".72" cy=".56" r=".34">
+    <stop offset="0" stop-color="#F0D8A2" stop-opacity=".42"/>
+    <stop offset=".45" stop-color="#D4AF6B" stop-opacity=".10"/>
+    <stop offset="1" stop-color="#D4AF6B" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="18"/></filter>
+  <filter id="shadow"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity=".24"/></filter>
+</defs>
+
+<rect width="1200" height="900" fill="url(#bg)"/>
+<rect width="1200" height="900" fill="url(#glow)"/>
+
+<g opacity=".24" fill="none" stroke="#2E5B87" stroke-width="1.3">
+  <ellipse cx="980" cy="190" rx="500" ry="330"/>
+  <ellipse cx="980" cy="190" rx="455" ry="300"/>
+  <ellipse cx="980" cy="190" rx="410" ry="270"/>
+  <ellipse cx="980" cy="190" rx="365" ry="240"/>
+  <ellipse cx="980" cy="190" rx="320" ry="210"/>
+  <ellipse cx="980" cy="190" rx="275" ry="180"/>
+</g>
+
+<g filter="url(#shadow)">
+  <path d="M635 790V235c0-67 47-120 115-120h260c68 0 115 53 115 120v555" fill="none" stroke="#DAD2C3" stroke-opacity=".24" stroke-width="20"/>
+  <g fill="url(#stone)">
+    <rect x="674" y="304" width="72" height="500" rx="6"/>
+    <rect x="794" y="304" width="72" height="500" rx="6"/>
+    <rect x="914" y="304" width="72" height="500" rx="6"/>
+    <rect x="1034" y="304" width="72" height="500" rx="6"/>
+    <rect x="657" y="280" width="106" height="30" rx="4"/>
+    <rect x="777" y="280" width="106" height="30" rx="4"/>
+    <rect x="897" y="280" width="106" height="30" rx="4"/>
+    <rect x="1017" y="280" width="106" height="30" rx="4"/>
+    <rect x="650" y="795" width="120" height="36"/>
+    <rect x="770" y="795" width="120" height="36"/>
+    <rect x="890" y="795" width="120" height="36"/>
+    <rect x="1010" y="795" width="120" height="36"/>
+  </g>
+</g>
+
+<g transform="translate(790 470)" opacity=".70" filter="url(#soft)" fill="#E9DDC3">
+  <ellipse cx="90" cy="73" rx="73" ry="83"/>
+  <path d="M15 185c10-59 56-91 98-91 46 0 88 31 101 91v96H15z"/>
+  <path d="M60 5c15-30 66-39 91-3 10 15 12 33 6 49-12-17-28-25-48-24-20 0-36 8-49 25-7-16-7-31 0-47z"/>
+</g>
+
+<path d="M-80 790C246 694 342 424 608 350c162-45 314-20 672-140" fill="none" stroke="url(#gold)" stroke-width="2.8"/>
+<path d="M-80 -30c310 109 306 347 465 426 143 71 335 31 617-87" fill="none" stroke="#3B77B1" stroke-width="2" opacity=".78"/>
+<path d="M0 855h1200" stroke="#0A1625" stroke-opacity=".45"/>
+</svg>
