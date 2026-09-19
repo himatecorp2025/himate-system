@@ -29,8 +29,6 @@ const muted = brandTextSoft;
 const success = brandSuccess;
 
 ThemeData buildBrandTheme() {
-  const serif = 'Georgia';
-  const sans = 'Arial';
   final scheme = ColorScheme.fromSeed(
     seedColor: brandNavy,
     brightness: Brightness.light,
@@ -47,10 +45,10 @@ ThemeData buildBrandTheme() {
     visualDensity: VisualDensity.standard,
     splashFactory: InkSparkle.splashFactory,
     textTheme: const TextTheme(
-      displaySmall: TextStyle(fontFamily: serif, color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.9, height: 1.05),
-      headlineLarge: TextStyle(fontFamily: serif, color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.7, height: 1.08),
-      headlineMedium: TextStyle(fontFamily: serif, color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.45, height: 1.12),
-      headlineSmall: TextStyle(fontFamily: serif, color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.25, height: 1.15),
+      displaySmall: TextStyle(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.9, height: 1.05),
+      headlineLarge: TextStyle(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.7, height: 1.08),
+      headlineMedium: TextStyle(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.45, height: 1.12),
+      headlineSmall: TextStyle(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.25, height: 1.15),
       titleLarge: TextStyle(color: brandNavy, fontWeight: FontWeight.w700),
       titleMedium: TextStyle(color: brandNavy, fontWeight: FontWeight.w700),
       bodyLarge: TextStyle(color: brandCharcoal, height: 1.5),
@@ -191,32 +189,147 @@ String money(dynamic value) => '\$${number(value).toStringAsFixed(2)}';
 
 class HimateApp extends StatefulWidget {
   const HimateApp({super.key});
+
   @override
   State<HimateApp> createState() => _HimateAppState();
 }
 
 class _HimateAppState extends State<HimateApp> {
   final api = Api();
+  final navigatorKey = GlobalKey<NavigatorState>();
   Map<String, dynamic>? user;
   bool loading = true;
+
   @override
-  void initState() { super.initState(); restore(); }
-  Future<void> restore() async {
-    try { user = await api.get('/api/v1/auth/me'); }
-    on ApiError catch (e) { if (e.status != 401) rethrow; }
-    finally { if (mounted) setState(() => loading = false); }
+  void initState() {
+    super.initState();
+    restore();
   }
-  Future<void> login(String email, String password) async { user = await api.post('/api/v1/auth/login', {'email': email, 'password': password}); if (mounted) setState(() {}); }
-  Future<void> logout() async { await api.post('/api/v1/auth/logout'); user = null; if (mounted) setState(() {}); }
+
+  Future<void> restore() async {
+    try {
+      user = await api.get('/api/v1/auth/me');
+    } on ApiError catch (e) {
+      if (e.status != 401) rethrow;
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> login(String email, String password) async {
+    user = await api.post('/api/v1/auth/login', {'email': email, 'password': password});
+    if (!mounted) return;
+    setState(() {});
+    navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
+  }
+
+  Future<void> logout() async {
+    await api.post('/api/v1/auth/logout');
+    user = null;
+    if (!mounted) return;
+    setState(() {});
+    navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
+  }
+
+  Widget loadingScreen() => const Scaffold(
+        backgroundColor: brandNavyDeep,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              BrandMark(size: 42),
+              SizedBox(height: 16),
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2.2, color: brandGold),
+              ),
+            ],
+          ),
+        ),
+      );
+
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    debugShowCheckedModeBanner: false,
-    title: 'HIMATE System',
-    theme: buildBrandTheme(),
-    home: loading
-      ? const Scaffold(backgroundColor: brandNavyDeep, body: Center(child: SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 2.5, color: brandGold))))
-      : user == null ? LoginPage(onLogin: login) : Shell(api: api, user: user!, onLogout: logout),
-  );
+  Widget build(BuildContext context) {
+    final path = Uri.base.path;
+    final initial = path == '/app' ? '/app' : '/login';
+
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      debugShowCheckedModeBanner: false,
+      title: 'HIMATE System',
+      theme: buildBrandTheme(),
+      initialRoute: initial,
+      routes: {
+        '/login': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? LoginPage(onLogin: login)
+                : _SignedInRedirect(onContinue: () {
+                    navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
+                  }),
+        '/app': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? LoginPage(onLogin: login)
+                : Shell(api: api, user: user!, onLogout: logout),
+      },
+      onUnknownRoute: (_) => MaterialPageRoute(
+        settings: const RouteSettings(name: '/login'),
+        builder: (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? LoginPage(onLogin: login)
+                : Shell(api: api, user: user!, onLogout: logout),
+      ),
+    );
+  }
+}
+
+class _SignedInRedirect extends StatelessWidget {
+  const _SignedInRedirect({required this.onContinue});
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: brandIvory,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const HimateLogo(width: 210),
+                  const SizedBox(height: 22),
+                  const Text(
+                    'You are already signed in.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Continue to the HIMATE administration platform.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: brandTextSoft),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: onContinue,
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: const Text('Open admin platform'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class LoginPage extends StatefulWidget {
@@ -303,7 +416,7 @@ class _LoginPageState extends State<LoginPage> {
                           const Spacer(),
                           const Text(
                             'Culture\nConnects\nPeople',
-                            style: TextStyle(fontFamily: 'Georgia', color: brandWhite, fontSize: 48, height: .98, fontWeight: FontWeight.w500, letterSpacing: -1.4),
+                            style: TextStyle(color: brandWhite, fontSize: 48, height: .98, fontWeight: FontWeight.w500, letterSpacing: -1.4),
                           ),
                           const SizedBox(height: 20),
                           const _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: Color(0xFFD9E2EC)),
@@ -593,7 +706,7 @@ class HimateLogo extends StatelessWidget {
                   child: Text(
                     'HIMATE',
                     style: TextStyle(
-                      fontFamily: 'Georgia',
+                      
                       color: textColor,
                       fontWeight: FontWeight.w600,
                       fontSize: width * .175,
@@ -2781,7 +2894,7 @@ class _PartnerCardState extends State<PartnerCard> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Text('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
+                  Text('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text('${p['category_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
                   const SizedBox(height: 14),
@@ -2976,7 +3089,7 @@ class _PartnerModuleCardState extends State<PartnerModuleCard> {
                 Row(children: [
                   const Text('Monthly', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
                   const Spacer(),
-                  Text(included ? 'Included' : money(m['partner_price']), style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontSize: 16, fontWeight: FontWeight.w600)),
+                  Text(included ? 'Included' : money(m['partner_price']), style: const TextStyle(color: brandNavy, fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(width: 7),
                   const Icon(Icons.edit_outlined, color: brandGold, size: 16),
                 ]),
@@ -3207,7 +3320,7 @@ class _InvoiceRow extends StatelessWidget {
         Text('${invoice['invoice_date'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
       ])),
       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text(money(invoice['total']), style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontWeight: FontWeight.w600, fontSize: 14)),
+        Text(money(invoice['total']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 14)),
         const SizedBox(height: 2),
         _StatusPill(label: '${invoice['status'] ?? 'DRAFT'}'),
       ]),
@@ -3317,7 +3430,7 @@ class CatalogModuleCard extends StatelessWidget {
           Row(children: [
             Text('v${module['version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
             const Spacer(),
-            Text(money(module['default_monthly_price']), style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
+            Text(money(module['default_monthly_price']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
           ]),
         ]),
       ),
@@ -3345,7 +3458,7 @@ class _OperationsHero extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(healthy ? 'Platform operational' : 'Platform requires attention', style: const TextStyle(fontFamily: 'Georgia', color: brandWhite, fontSize: 24, fontWeight: FontWeight.w600)),
+              Text(healthy ? 'Platform operational' : 'Platform requires attention', style: const TextStyle(color: brandWhite, fontSize: 24, fontWeight: FontWeight.w600)),
               const SizedBox(height: 5),
               Text('Environment: $environment · Version: $version', style: const TextStyle(color: Color(0xFFB8C6D6), fontSize: 11)),
             ]),
@@ -3418,7 +3531,7 @@ class Content extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (eyebrow != null) ...[
-              Text(eyebrow!, style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontSize: 14)),
+              Text(eyebrow!, style: const TextStyle(color: brandNavy, fontSize: 14)),
               const SizedBox(height: 3),
             ],
             Text(title, style: Theme.of(context).textTheme.headlineMedium),
@@ -3482,7 +3595,7 @@ class _KpiState extends State<Kpi> {
           const Spacer(),
           Text(widget.label, style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(widget.value, style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
+          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(widget.value, style: const TextStyle(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
           Text(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.3)),
         ]),
       ),
