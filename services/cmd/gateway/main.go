@@ -417,7 +417,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		if r.URL.Path == "/" || r.URL.Path == "/login" || r.URL.Path == "/app" || r.URL.Path == "/platform" || r.URL.Path == "/technology" || r.URL.Path == "/security" || r.URL.Path == "/impact" || strings.HasSuffix(r.URL.Path, ".html") {
 			w.Header().Set("Cache-Control", "no-store, max-age=0")
 		}
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }
