@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -265,18 +266,43 @@ class _HimateAppState extends State<HimateApp> {
   Map<String, dynamic>? user;
   bool loading = true;
 
+  Timer? _restoreFallback;
+
   @override
   void initState() {
     super.initState();
-    restore();
+    final path = Uri.base.path;
+    if (path == '/app') {
+      _restoreFallback = Timer(const Duration(seconds: 4), () {
+        if (mounted && loading) {
+          setState(() => loading = false);
+        }
+      });
+      restore();
+    } else {
+      // The public login route must paint immediately. Session restoration is
+      // only required when opening the protected application route.
+      loading = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _restoreFallback?.cancel();
+    super.dispose();
   }
 
   Future<void> restore() async {
     try {
-      user = await api.get('/api/v1/auth/me');
-    } on ApiError catch (e) {
-      if (e.status != 401) rethrow;
+      user = await api
+          .get('/api/v1/auth/me', force: true)
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {
+      // Any auth/network failure falls back to the login screen instead of
+      // trapping the user behind an endless loading indicator.
+      user = null;
     } finally {
+      _restoreFallback?.cancel();
       if (mounted) setState(() => loading = false);
     }
   }
@@ -524,7 +550,7 @@ class _DesktopLoginComposition extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(92, 42, 54, 46),
+      padding: const EdgeInsets.fromLTRB(82, 38, 50, 42),
       child: Row(
         children: [
           Expanded(
@@ -538,14 +564,14 @@ class _DesktopLoginComposition extends StatelessWidget {
                   'Culture\nConnects\nPeople',
                   style: GoogleFonts.cormorantGaramond(
                     color: brandWhite,
-                    fontSize: 71,
+                    fontSize: 68,
                     height: .88,
                     fontWeight: FontWeight.w500,
                     letterSpacing: -.8,
                   ),
                 ),
                 const SizedBox(height: 24),
-                const _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: Color(0xFFE8EDF3), fontSize: 13.1),
+                const _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: Color(0xFFE8EDF3), fontSize: 12.4),
                 const SizedBox(height: 38),
                 const _HeroValue(icon: Icons.groups_2_outlined, label: 'STRONGER COMMUNITIES'),
                 const SizedBox(height: 15),
@@ -556,7 +582,7 @@ class _DesktopLoginComposition extends StatelessWidget {
                 const Row(children: [
                   SizedBox(width: 38, child: Divider(color: brandGold, thickness: 1.5)),
                   SizedBox(width: 12),
-                  _LetterspacedLabel('HERITAGE MEETS INNOVATION', color: Color(0xFFE8EDF3), fontSize: 11.0),
+                  _LetterspacedLabel('HERITAGE MEETS INNOVATION', color: Color(0xFFE8EDF3), fontSize: 11.4),
                 ]),
               ],
             ),
@@ -566,7 +592,7 @@ class _DesktopLoginComposition extends StatelessWidget {
             child: Align(
               alignment: Alignment.center,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 570),
+                constraints: const BoxConstraints(maxWidth: 560),
                 child: _LoginCard(
                   email: email,
                   password: password,
@@ -731,14 +757,14 @@ class _LoginCard extends StatelessWidget {
             obscureText: obscure,
             autofillHints: const [AutofillHints.password],
             onSubmitted: (_) => onSubmit(),
-            style: GoogleFonts.inter(color: brandCharcoal, fontSize: 13),
+            style: GoogleFonts.inter(color: brandCharcoal, fontSize: 16),
             decoration: InputDecoration(
               hintText: 'Password',
-              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 19),
+              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
               suffixIcon: IconButton(
                 onPressed: onTogglePassword,
                 tooltip: obscure ? 'Show password' : 'Hide password',
-                icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 19),
+                icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 22),
               ),
             ),
           ),
