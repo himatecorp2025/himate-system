@@ -41,7 +41,6 @@ ThemeData buildBrandTheme() {
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: brandIvory,
-    fontFamily: sans,
     visualDensity: VisualDensity.standard,
     splashFactory: InkSparkle.splashFactory,
     textTheme: const TextTheme(
