@@ -2205,22 +2205,51 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   }
 }
 
-class FinancePageclass FinancePage extends StatefulWidget {
+class FinancePage extends StatefulWidget {
   const FinancePage({required this.api, super.key});
   final Api api;
+
   @override
   State<FinancePage> createState() => _FinancePageState();
 }
 
 class _FinancePageState extends State<FinancePage> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> groups = <Map<String, dynamic>>[];
   Map<String, dynamic>? profile;
   bool loading = true;
+  String? error;
+  String query = '';
+  String groupFilter = 'ALL';
+
   @override
-  void initState() { super.initState(); load(); }
+  void initState() {
+    super.initState();
+    load();
+  }
+
   Future<void> load() async {
-    final r = await Future.wait([widget.api.get('/api/v1/modules'), widget.api.get('/api/v1/billing/profile')]);
-    modules = items(r[0]); profile = r[1]; if (mounted) setState(() => loading = false);
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final r = await Future.wait([
+        widget.api.get('/api/v1/modules'),
+        widget.api.get('/api/v1/module-groups'),
+        widget.api.get('/api/v1/billing/profile'),
+      ]);
+      modules = items(r[0]);
+      groups = items(r[1]);
+      profile = r[2];
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  void success(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+    );
   }
 
   Future<void> editProfile() async {
@@ -2229,30 +2258,245 @@ class _FinancePageState extends State<FinancePage> {
     final tax = TextEditingController(text: '${profile?['tax_id'] ?? ''}');
     final email = TextEditingController(text: '${profile?['email'] ?? ''}');
     final bank = TextEditingController(text: '${profile?['bank_name'] ?? ''}');
+    final bankAddress = TextEditingController(text: '${profile?['bank_address'] ?? ''}');
+    final account = TextEditingController(text: '${profile?['account_number'] ?? ''}');
     final iban = TextEditingController(text: '${profile?['iban'] ?? ''}');
     final swift = TextEditingController(text: '${profile?['swift'] ?? ''}');
-    final ok = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('HIMATE billing profile'), content: SizedBox(width: 600, child: SingleChildScrollView(child: Column(children: [TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name')), const SizedBox(height: 10), TextField(controller: address, decoration: const InputDecoration(labelText: 'Address')), const SizedBox(height: 10), TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')), const SizedBox(height: 10), TextField(controller: email, decoration: const InputDecoration(labelText: 'Billing email')), const SizedBox(height: 10), TextField(controller: bank, decoration: const InputDecoration(labelText: 'Bank name')), const SizedBox(height: 10), TextField(controller: iban, decoration: const InputDecoration(labelText: 'IBAN')), const SizedBox(height: 10), TextField(controller: swift, decoration: const InputDecoration(labelText: 'SWIFT / BIC'))]))), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save'))]));
-    if (ok == true) { await widget.api.put('/api/v1/billing/profile', {'legal_name': legal.text, 'address': address.text, 'tax_id': tax.text, 'email': email.text, 'bank_name': bank.text, 'bank_address': '', 'account_number': '', 'iban': iban.text, 'swift': swift.text}); await load(); }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => BrandDialog(
+        title: 'HIMATE billing profile',
+        subtitle: 'Issuer and international banking data used as the foundation for future invoice-provider integration.',
+        icon: Icons.account_balance_outlined,
+        width: 760,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              Expanded(child: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name'))),
+              const SizedBox(width: 12),
+              Expanded(child: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID'))),
+            ]),
+            const SizedBox(height: 12),
+            TextField(controller: address, decoration: const InputDecoration(labelText: 'Company address')),
+            const SizedBox(height: 12),
+            TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Billing email')),
+            const SizedBox(height: 18),
+            const _DialogSectionLabel('BANKING DETAILS'),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: TextField(controller: bank, decoration: const InputDecoration(labelText: 'Bank name'))),
+              const SizedBox(width: 12),
+              Expanded(child: TextField(controller: bankAddress, decoration: const InputDecoration(labelText: 'Bank address'))),
+            ]),
+            const SizedBox(height: 12),
+            TextField(controller: account, decoration: const InputDecoration(labelText: 'Account number')),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: TextField(controller: iban, decoration: const InputDecoration(labelText: 'IBAN'))),
+              const SizedBox(width: 12),
+              Expanded(child: TextField(controller: swift, decoration: const InputDecoration(labelText: 'SWIFT / BIC'))),
+            ]),
+          ],
+        ),
+        primaryLabel: 'Save billing profile',
+        onPrimary: () => Navigator.pop(context, true),
+      ),
+    );
+
+    if (ok == true) {
+      await widget.api.put('/api/v1/billing/profile', {
+        'legal_name': legal.text.trim(),
+        'address': address.text.trim(),
+        'tax_id': tax.text.trim(),
+        'email': email.text.trim(),
+        'bank_name': bank.text.trim(),
+        'bank_address': bankAddress.text.trim(),
+        'account_number': account.text.trim(),
+        'iban': iban.text.trim(),
+        'swift': swift.text.trim(),
+      });
+      await load();
+      if (mounted) success('Billing profile updated.');
+    }
+
+    for (final c in [legal, address, tax, email, bank, bankAddress, account, iban, swift]) {
+      c.dispose();
+    }
+  }
+
+  Future<void> addModule() async {
+    if (groups.isEmpty) return;
+    final label = TextEditingController();
+    final key = TextEditingController();
+    final description = TextEditingController();
+    final price = TextEditingController(text: '0.00');
+    String group = '${groups.first['group_key']}';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Add custom module',
+          subtitle: 'Create a stable module key and place the new capability inside an existing HIMATE menu group.',
+          icon: Icons.add_box_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(children: [
+                Expanded(child: TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name *'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: key, decoration: const InputDecoration(labelText: 'Stable key *', hintText: 'group.module_name'))),
+              ]),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: group,
+                decoration: const InputDecoration(labelText: 'Menu group'),
+                items: [
+                  for (final g in groups)
+                    DropdownMenuItem(value: '${g['group_key']}', child: Text('${g['label']}')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => group = v); },
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+              const SizedBox(height: 12),
+              TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Default monthly price (USD)')),
+            ],
+          ),
+          primaryLabel: 'Create module',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true && label.text.trim().isNotEmpty && key.text.trim().isNotEmpty) {
+      await widget.api.post('/api/v1/modules', {
+        'key': key.text.trim(),
+        'label': label.text.trim(),
+        'group_key': group,
+        'description': description.text.trim(),
+        'currency': 'USD',
+        'version': '1.0.0',
+        'latest_version': '1.0.0',
+        'default_monthly_price': double.tryParse(price.text) ?? 0,
+      });
+      await load();
+      if (mounted) success('Custom module created.');
+    }
+
+    for (final c in [label, key, description, price]) {
+      c.dispose();
+    }
+  }
+
+  List<Map<String, dynamic>> get filteredModules {
+    final q = query.trim().toLowerCase();
+    return modules.where((m) {
+      final textOk = q.isEmpty ||
+          '${m['label']}'.toLowerCase().contains(q) ||
+          '${m['key']}'.toLowerCase().contains(q) ||
+          '${m['group_label']}'.toLowerCase().contains(q);
+      final groupOk = groupFilter == 'ALL' || '${m['group_key']}' == groupFilter;
+      return textOk && groupOk;
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final custom = modules.where((m) => m['system'] != true).length;
+    final priced = modules.where((m) => number(m['default_monthly_price']) > 0).length;
+
     return Content(
+      eyebrow: 'COMMERCIAL CONTROL',
       title: 'Licensing & Finance',
-      subtitle: 'Module catalog, commercial rules and HIMATE issuer profile.',
-      actions: [FilledButton.icon(onPressed: editProfile, icon: const Icon(Icons.edit_outlined), label: const Text('Billing profile'))],
-      child: loading ? const Center(child: CircularProgressIndicator()) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Wrap(spacing: 16, runSpacing: 16, children: [Kpi(label: 'Module catalog', value: '${modules.length}', note: 'Reference + custom'), const Kpi(label: 'Annual uplift', value: 'JAN 1', note: 'Default +10%, admin-overridable'), const Kpi(label: 'Service cycle', value: '30 DAYS', note: 'Invoice issue day: 1')]),
-        const SizedBox(height: 24),
-        Text('Canonical module catalog', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 12),
-        Wrap(spacing: 12, runSpacing: 12, children: [for (final m in modules) SizedBox(width: 300, child: Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${m['label']}', style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 4), Text('${m['group_label']} · ${m['key']}', style: const TextStyle(color: muted, fontSize: 11)), const SizedBox(height: 10), Text(money(m['default_monthly_price']), style: const TextStyle(fontWeight: FontWeight.w700))]))))])
-      ]),
+      subtitle: 'Module catalog, pricing foundations and HIMATE issuer data — governed from one place.',
+      actions: [
+        OutlinedButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const Text('Billing profile')),
+        FilledButton.icon(onPressed: addModule, icon: const Icon(Icons.add_box_outlined), label: const Text('Add module')),
+      ],
+      child: loading
+          ? const _BrandLoading()
+          : error != null
+              ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        Kpi(label: 'Module catalog', value: '${modules.length}', note: 'Canonical + custom modules', icon: Icons.grid_view_outlined, accent: brandNavy),
+                        Kpi(label: 'Custom modules', value: '$custom', note: 'Created by HIMATE admins', icon: Icons.extension_outlined, accent: brandSteel),
+                        Kpi(label: 'Priced defaults', value: '$priced', note: 'Modules with catalog pricing', icon: Icons.sell_outlined, accent: brandGold),
+                        const Kpi(label: 'Annual uplift', value: 'JAN 1', note: 'Default +10%, admin-overridable', icon: Icons.trending_up_rounded, accent: brandSuccess),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final issuer = _IssuerProfileCard(profile: profile ?? {}, onEdit: editProfile);
+                        const rules = _BillingRulesCard();
+                        if (c.maxWidth < 920) return Column(children: [issuer, const SizedBox(height: 14), rules]);
+                        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Expanded(child: issuer),
+                          const SizedBox(width: 14),
+                          const Expanded(child: rules),
+                        ]);
+                      },
+                    ),
+                    const SizedBox(height: 26),
+                    _SectionHeader(
+                      title: 'Canonical Module Catalog',
+                      subtitle: 'The verified reference catalog stays centrally governed while custom modules can be added without changing the partner data model.',
+                      trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                    ),
+                    const SizedBox(height: 12),
+                    _FilterSurface(
+                      child: LayoutBuilder(
+                        builder: (context, c) {
+                          final search = TextField(
+                            onChanged: (v) => setState(() => query = v),
+                            decoration: const InputDecoration(hintText: 'Search module catalog...', prefixIcon: Icon(Icons.search_rounded)),
+                          );
+                          final group = DropdownButtonFormField<String>(
+                            value: groupFilter,
+                            decoration: const InputDecoration(labelText: 'Menu group'),
+                            items: [
+                              const DropdownMenuItem(value: 'ALL', child: Text('All groups')),
+                              for (final g in groups)
+                                DropdownMenuItem(value: '${g['group_key']}', child: Text('${g['label']}')),
+                            ],
+                            onChanged: (v) => setState(() => groupFilter = v ?? 'ALL'),
+                          );
+                          if (c.maxWidth < 680) return Column(children: [search, const SizedBox(height: 10), group]);
+                          return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: group)]);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            for (final m in filteredModules)
+                              SizedBox(width: width, child: CatalogModuleCard(module: m)),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
     );
   }
 }
 
-class SystemPage extends StatelessWidget {
+class SystemPageclass SystemPage extends StatelessWidget {
   const SystemPage({required this.api, super.key});
   final Api api;
   @override
