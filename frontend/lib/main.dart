@@ -1318,7 +1318,6 @@ class DashboardPage extends StatelessWidget {
         final d=snapshot.data??<String,dynamic>{};
         final p=Map<String,dynamic>.from(d['partners']??<String,dynamic>{});
         final m=Map<String,dynamic>.from(d['modules']??<String,dynamic>{});
-        final sys=Map<String,dynamic>.from(d['system']??<String,dynamic>{});
         final hour=DateTime.now().hour;
         final greeting=hour<12?'Good morning,':hour<18?'Good afternoon,':'Good evening,';
         return Content(
