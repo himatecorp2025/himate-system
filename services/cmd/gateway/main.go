@@ -367,9 +367,13 @@ func (a *app) web() http.Handler {
 
 		marketingPages := map[string]string{
 			"/platform":   "platform.html",
+			"/modules":    "modules.html",
+			"/programs":   "programs.html",
+			"/impact":     "impact.html",
+			"/partners":   "partners.html",
+			"/contact":    "contact.html",
 			"/technology": "technology.html",
 			"/security":   "security.html",
-			"/impact":     "impact.html",
 		}
 		if page, ok := marketingPages[r.URL.Path]; ok {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -414,7 +418,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		if r.URL.Path == "/" || r.URL.Path == "/login" || r.URL.Path == "/app" || r.URL.Path == "/platform" || r.URL.Path == "/technology" || r.URL.Path == "/security" || r.URL.Path == "/impact" || strings.HasSuffix(r.URL.Path, ".html") {
+		if r.URL.Path == "/" || r.URL.Path == "/login" || r.URL.Path == "/app" || r.URL.Path == "/platform" || r.URL.Path == "/modules" || r.URL.Path == "/programs" || r.URL.Path == "/impact" || r.URL.Path == "/partners" || r.URL.Path == "/contact" || r.URL.Path == "/technology" || r.URL.Path == "/security" || strings.HasSuffix(r.URL.Path, ".html") {
 			w.Header().Set("Cache-Control", "no-store, max-age=0")
 		}
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
