@@ -609,7 +609,7 @@ class _LoginArtwork extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = MediaQuery.of(context).size.width < 820;
     final source = Uri.base.resolve(
-      compact ? '/art/login_mobile_r5.webp' : '/art/login_desktop_r5.webp',
+      compact ? '/art/login_mobile_r5.png' : '/art/login_desktop_r5.png',
     ).toString();
 
     return Image.network(
