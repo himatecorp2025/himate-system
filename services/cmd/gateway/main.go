@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,17 +28,20 @@ const sessionCookie = "himate_session"
 const passwordIterations = 210000
 
 type app struct {
-	db            *sql.DB
-	secret        string
-	internalToken string
-	webDir        string
-	env           string
-	version       string
-	ttl           time.Duration
-	secureCookie  bool
-	client        *http.Client
-	proxies       map[string]*httputil.ReverseProxy
-	hosts         map[string]string
+	db               *sql.DB
+	secret           string
+	internalToken    string
+	webDir           string
+	env              string
+	version          string
+	ttl              time.Duration
+	secureCookie     bool
+	client           *http.Client
+	proxies          map[string]*httputil.ReverseProxy
+	hosts            map[string]string
+	dashboardMu      sync.RWMutex
+	dashboardPayload map[string]any
+	dashboardExpires time.Time
 }
 
 type user struct {
@@ -61,7 +65,24 @@ func main() {
 	defer db.Close()
 	ttlHours, _ := strconv.Atoi(common.Env("HIMATE_SESSION_TTL_HOURS", "8"))
 	secure, _ := strconv.ParseBool(common.Env("COOKIE_SECURE", "true"))
-	a := &app{db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"), webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"), version: common.Env("HIMATE_APP_VERSION", "0.2.0-start-04-08"), ttl: time.Duration(ttlHours) * time.Hour, secureCookie: secure, client: &http.Client{Timeout: 8 * time.Second}, proxies: map[string]*httputil.ReverseProxy{}, hosts: map[string]string{"partners": os.Getenv("PARTNERS_HOSTPORT"), "catalog": os.Getenv("CATALOG_HOSTPORT"), "billing": os.Getenv("BILLING_HOSTPORT")}}
+	transport := &http.Transport{
+		MaxIdleConns:        64,
+		MaxIdleConnsPerHost: 16,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	a := &app{
+		db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
+		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
+		version: common.Env("HIMATE_APP_VERSION", "0.2.0-start-04-08"), ttl: time.Duration(ttlHours) * time.Hour,
+		secureCookie: secure, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
+		proxies: map[string]*httputil.ReverseProxy{},
+		hosts: map[string]string{
+			"partners": os.Getenv("PARTNERS_HOSTPORT"),
+			"catalog":  os.Getenv("CATALOG_HOSTPORT"),
+			"billing":  os.Getenv("BILLING_HOSTPORT"),
+			"contact":  os.Getenv("CONTACT_HOSTPORT"),
+		},
+	}
 	if len(a.secret) < 32 || len(a.internalToken) < 24 {
 		log.Error("required secrets are missing")
 		os.Exit(1)
@@ -85,6 +106,7 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/login", a.login)
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
+	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
 	mux.HandleFunc("/api/", a.api)
 	mux.Handle("/", a.web())
 	common.Run(log, "gateway", common.Env("PORT", "10000"), securityHeaders(mux))
@@ -197,18 +219,83 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) dashboard(w http.ResponseWriter, r *http.Request) {
+	a.dashboardMu.RLock()
+	if a.dashboardPayload != nil && time.Now().Before(a.dashboardExpires) {
+		payload := a.dashboardPayload
+		a.dashboardMu.RUnlock()
+		w.Header().Set("X-Himate-Cache", "hit")
+		common.JSON(w, http.StatusOK, payload)
+		return
+	}
+	stale := a.dashboardPayload
+	a.dashboardMu.RUnlock()
+
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	var partnerResponse, moduleResponse struct {
 		Items []map[string]any `json:"items"`
 	}
-	_ = a.internalGET(r.Context(), a.hosts["partners"], "/api/v1/partners", &partnerResponse)
-	_ = a.internalGET(r.Context(), a.hosts["catalog"], "/api/v1/modules", &moduleResponse)
+	var partnerErr, moduleErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners", &partnerResponse)
+	}()
+	go func() {
+		defer wg.Done()
+		moduleErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/modules", &moduleResponse)
+	}()
+	wg.Wait()
+
+	if partnerErr != nil && moduleErr != nil && stale != nil {
+		w.Header().Set("X-Himate-Cache", "stale")
+		w.Header().Set("Server-Timing", fmt.Sprintf("dashboard;dur=%d", time.Since(started).Milliseconds()))
+		common.JSON(w, http.StatusOK, stale)
+		return
+	}
+
 	live := 0
 	for _, p := range partnerResponse.Items {
 		if p["lifecycle"] == "LIVE" {
 			live++
 		}
 	}
-	common.JSON(w, 200, map[string]any{"partners": map[string]any{"total": len(partnerResponse.Items), "live": live}, "modules": map[string]any{"catalog_total": len(moduleResponse.Items)}, "system": map[string]any{"status": "healthy", "environment": a.env, "version": a.version, "architecture": "microservices"}})
+	status := "healthy"
+	if partnerErr != nil || moduleErr != nil {
+		status = "degraded"
+	}
+	payload := map[string]any{
+		"partners": map[string]any{"total": len(partnerResponse.Items), "live": live},
+		"modules": map[string]any{"catalog_total": len(moduleResponse.Items)},
+		"system": map[string]any{
+			"status": status, "environment": a.env, "version": a.version, "architecture": "microservices",
+		},
+	}
+
+	a.dashboardMu.Lock()
+	a.dashboardPayload = payload
+	a.dashboardExpires = time.Now().Add(10 * time.Second)
+	a.dashboardMu.Unlock()
+
+	w.Header().Set("X-Himate-Cache", "miss")
+	w.Header().Set("Server-Timing", fmt.Sprintf("dashboard;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, http.StatusOK, payload)
+}
+
+func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+		return
+	}
+	proxy := a.proxies["contact"]
+	if proxy == nil {
+		common.APIError(w, http.StatusServiceUnavailable, "CONTACT_UNAVAILABLE", "Contact service is unavailable")
+		return
+	}
+	proxy.ServeHTTP(w, r)
 }
 func (a *app) internalGET(ctx context.Context, host, path string, dst any) error {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+path, nil)
