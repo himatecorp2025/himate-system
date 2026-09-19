@@ -152,28 +152,81 @@ class ApiError implements Exception {
   String toString() => message;
 }
 
+class _ApiCacheEntry {
+  const _ApiCacheEntry(this.data, this.expiresAt);
+  final Map<String, dynamic> data;
+  final DateTime expiresAt;
+}
+
 class Api {
   Api() : client = BrowserClient()..withCredentials = true;
   final BrowserClient client;
+  final Map<String, _ApiCacheEntry> _cache = <String, _ApiCacheEntry>{};
+  final Map<String, Future<Map<String, dynamic>>> _inflight = <String, Future<Map<String, dynamic>>>{};
 
-  Future<Map<String, dynamic>> get(String path) => request('GET', path);
-  Future<Map<String, dynamic>> post(String path, [Map<String, dynamic>? body]) => request('POST', path, body);
-  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) => request('PUT', path, body);
-  Future<Map<String, dynamic>> patch(String path, Map<String, dynamic> body) => request('PATCH', path, body);
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Duration maxAge = const Duration(seconds: 8),
+    bool force = false,
+  }) {
+    if (!force) {
+      final cached = _cache[path];
+      if (cached != null && DateTime.now().isBefore(cached.expiresAt)) {
+        return Future<Map<String, dynamic>>.value(cached.data);
+      }
+      final pending = _inflight[path];
+      if (pending != null) return pending;
+    }
+
+    final future = request('GET', path).then((data) {
+      _cache[path] = _ApiCacheEntry(data, DateTime.now().add(maxAge));
+      return data;
+    }).whenComplete(() => _inflight.remove(path));
+
+    _inflight[path] = future;
+    return future;
+  }
+
+  Future<Map<String, dynamic>> post(String path, [Map<String, dynamic>? body]) async {
+    final result = await request('POST', path, body);
+    clearCache();
+    return result;
+  }
+
+  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) async {
+    final result = await request('PUT', path, body);
+    clearCache();
+    return result;
+  }
+
+  Future<Map<String, dynamic>> patch(String path, Map<String, dynamic> body) async {
+    final result = await request('PATCH', path, body);
+    clearCache();
+    return result;
+  }
+
+  void clearCache([String? prefix]) {
+    if (prefix == null) {
+      _cache.clear();
+      return;
+    }
+    _cache.removeWhere((key, _) => key.startsWith(prefix));
+  }
 
   Future<Map<String, dynamic>> request(String method, String path, [Map<String, dynamic>? body]) async {
     final headers = <String, String>{'Accept': 'application/json'};
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;
     final uri = Uri.parse(path);
+    final timeout = const Duration(seconds: 8);
     if (method == 'POST') {
-      response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}));
+      response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(timeout);
     } else if (method == 'PUT') {
-      response = await client.put(uri, headers: headers, body: jsonEncode(body));
+      response = await client.put(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
     } else if (method == 'PATCH') {
-      response = await client.patch(uri, headers: headers, body: jsonEncode(body));
+      response = await client.patch(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
     } else {
-      response = await client.get(uri, headers: headers);
+      response = await client.get(uri, headers: headers).timeout(timeout);
     }
     if (response.statusCode == 204) return <String, dynamic>{};
     Map<String, dynamic> data = <String, dynamic>{};
@@ -471,11 +524,11 @@ class _DesktopLoginComposition extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(58, 42, 68, 46),
+      padding: const EdgeInsets.fromLTRB(92, 42, 54, 46),
       child: Row(
         children: [
           Expanded(
-            flex: 54,
+            flex: 50,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -485,14 +538,14 @@ class _DesktopLoginComposition extends StatelessWidget {
                   'Culture\nConnects\nPeople',
                   style: GoogleFonts.cormorantGaramond(
                     color: brandWhite,
-                    fontSize: 57,
+                    fontSize: 71,
                     height: .88,
                     fontWeight: FontWeight.w500,
                     letterSpacing: -.8,
                   ),
                 ),
                 const SizedBox(height: 24),
-                const _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: Color(0xFFE8EDF3), fontSize: 10.5),
+                const _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: Color(0xFFE8EDF3), fontSize: 13.1),
                 const SizedBox(height: 38),
                 const _HeroValue(icon: Icons.groups_2_outlined, label: 'STRONGER COMMUNITIES'),
                 const SizedBox(height: 15),
@@ -503,17 +556,17 @@ class _DesktopLoginComposition extends StatelessWidget {
                 const Row(children: [
                   SizedBox(width: 38, child: Divider(color: brandGold, thickness: 1.5)),
                   SizedBox(width: 12),
-                  _LetterspacedLabel('HERITAGE MEETS INNOVATION', color: Color(0xFFE8EDF3), fontSize: 8.8),
+                  _LetterspacedLabel('HERITAGE MEETS INNOVATION', color: Color(0xFFE8EDF3), fontSize: 11.0),
                 ]),
               ],
             ),
           ),
           Expanded(
-            flex: 46,
+            flex: 50,
             child: Align(
               alignment: Alignment.center,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 475),
+                constraints: const BoxConstraints(maxWidth: 570),
                 child: _LoginCard(
                   email: email,
                   password: password,
@@ -647,7 +700,7 @@ class _LoginCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(36, 38, 36, 31),
+      padding: const EdgeInsets.fromLTRB(42, 44, 42, 36),
       decoration: BoxDecoration(
         color: brandWhite.withOpacity(.975),
         borderRadius: BorderRadius.circular(12),
@@ -660,17 +713,17 @@ class _LoginCard extends StatelessWidget {
           Text(
             'Welcome back',
             textAlign: TextAlign.center,
-            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1),
+            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 39, fontWeight: FontWeight.w700, height: 1),
           ),
           const SizedBox(height: 8),
-          Text('Sign in to your HIMATE System account', textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 12.5)),
+          Text('Sign in to your HIMATE System account', textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 15.5)),
           const SizedBox(height: 28),
           TextField(
             controller: email,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
-            style: GoogleFonts.inter(color: brandCharcoal, fontSize: 13),
-            decoration: const InputDecoration(hintText: 'Email address', prefixIcon: Icon(Icons.mail_outline_rounded, size: 19)),
+            style: GoogleFonts.inter(color: brandCharcoal, fontSize: 16),
+            decoration: const InputDecoration(hintText: 'Email address', prefixIcon: Icon(Icons.mail_outline_rounded, size: 22)),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -696,14 +749,14 @@ class _LoginCard extends StatelessWidget {
                 height: 34,
                 child: Row(children: [
                   Checkbox(value: remember, onChanged: onRemember, visualDensity: VisualDensity.compact),
-                  Text('Remember me', style: GoogleFonts.inter(color: brandNavy, fontSize: 11.5)),
+                  Text('Remember me', style: GoogleFonts.inter(color: brandNavy, fontSize: 14.2)),
                 ]),
               ),
               const Spacer(),
               TextButton(
                 onPressed: onForgot,
                 style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 5)),
-                child: Text('Forgot password?', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600)),
+                child: Text('Forgot password?', style: GoogleFonts.inter(fontSize: 14.2, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -722,36 +775,36 @@ class _LoginCard extends StatelessWidget {
           const SizedBox(height: 15),
           FilledButton(
             onPressed: busy ? null : onSubmit,
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(60)),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               child: busy
                   ? const SizedBox(key: ValueKey('busy'), width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.1, color: brandWhite))
                   : Row(key: const ValueKey('ready'), mainAxisAlignment: MainAxisAlignment.center, children: [
                       Text('Sign in', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 14),
-                      const Icon(Icons.arrow_forward_rounded, size: 18),
+                      const SizedBox(width: 16),
+                      const Icon(Icons.arrow_forward_rounded, size: 21),
                     ]),
             ),
           ),
           const SizedBox(height: 18),
           Row(children: [
             const Expanded(child: Divider(color: brandMist)),
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('or continue with', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 10.5))),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('or continue with', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 13.0))),
             const Expanded(child: Divider(color: brandMist)),
           ]),
           const SizedBox(height: 18),
           OutlinedButton.icon(
             onPressed: onSso,
-            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-            icon: const Icon(Icons.account_balance_outlined, size: 18),
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+            icon: const Icon(Icons.account_balance_outlined, size: 21),
             label: Text('Sign in with SSO', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
           ),
           const SizedBox(height: 24),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.verified_user_outlined, color: brandGold, size: 17),
             const SizedBox(width: 7),
-            Text('Secure  •  Trusted  •  Built for a brighter tomorrow', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 9.5)),
+            Text('Secure  •  Trusted  •  Built for a brighter tomorrow', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 11.8)),
           ]),
         ],
       ),
@@ -857,7 +910,7 @@ class _HeroValue extends StatelessWidget {
         child: Icon(icon, color: brandGold, size: 18),
       ),
       const SizedBox(width: 13),
-      _LetterspacedLabel(label, color: const Color(0xFFE8EDF3), fontSize: 9.2),
+      _LetterspacedLabel(label, color: const Color(0xFFE8EDF3), fontSize: 11.5),
     ]);
   }
 }
