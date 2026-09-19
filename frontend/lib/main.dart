@@ -405,9 +405,9 @@ class _LoginPageState extends State<LoginPage> {
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                     colors: compact
-                        ? [const Color(0xE6071426), const Color(0xB30B1F3B)]
-                        : [const Color(0xE8071426), const Color(0x990B1F3B), const Color(0x29F8F9FB)],
-                    stops: compact ? const [0, 1] : const [0, .48, 1],
+                        ? [const Color(0xB8071426), const Color(0x70071426), const Color(0xB8071426)]
+                        : [const Color(0xE6071426), const Color(0x990B1F3B), const Color(0x30071426)],
+                    stops: compact ? const [0, .52, 1] : const [0, .50, 1],
                   ),
                 ),
               ),
@@ -471,7 +471,7 @@ class _DesktopLoginComposition extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(54, 38, 60, 42),
+      padding: const EdgeInsets.fromLTRB(58, 42, 68, 46),
       child: Row(
         children: [
           Expanded(
@@ -513,7 +513,7 @@ class _DesktopLoginComposition extends StatelessWidget {
             child: Align(
               alignment: Alignment.center,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 430),
+                constraints: const BoxConstraints(maxWidth: 475),
                 child: _LoginCard(
                   email: email,
                   password: password,
@@ -607,11 +607,18 @@ class _LoginArtwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      'assets/himate_login_heritage.jpg',
+    final compact = MediaQuery.of(context).size.width < 820;
+    final source = Uri.base.resolve(
+      compact ? '/art/login_mobile_r5.webp' : '/art/login_desktop_r5.webp',
+    ).toString();
+
+    return Image.network(
+      source,
       fit: BoxFit.cover,
-      alignment: MediaQuery.of(context).size.width < 820 ? Alignment.center : const Alignment(.05, 0),
+      alignment: compact ? Alignment.center : const Alignment(.08, 0),
       filterQuality: FilterQuality.high,
+      gaplessPlayback: true,
+      errorBuilder: (_, __, ___) => const ColoredBox(color: brandNavyDeep),
     );
   }
 }
@@ -640,12 +647,12 @@ class _LoginCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(32, 34, 32, 28),
+      padding: const EdgeInsets.fromLTRB(36, 38, 36, 31),
       decoration: BoxDecoration(
         color: brandWhite.withOpacity(.975),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFD8DFE7)),
-        boxShadow: [BoxShadow(color: brandNavy.withOpacity(.18), blurRadius: 46, offset: const Offset(0, 20))],
+        boxShadow: [BoxShadow(color: brandNavy.withOpacity(.22), blurRadius: 54, offset: const Offset(0, 22))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
