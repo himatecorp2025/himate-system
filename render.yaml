@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: himate
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/health
+    renderSubdomainPolicy: enabled
+    autoDeploy: false
+    envVars:
+      - key: HIMATE_ENV
+        value: production
+      - key: HIMATE_APP_VERSION
+        value: 0.1.0-start-01-03
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: HIMATE_SESSION_TTL_HOURS
+        value: "8"
+      - key: HIMATE_SESSION_SECRET
+        generateValue: true
+      - key: HIMATE_BOOTSTRAP_ADMIN_NAME
+        sync: false
+      - key: HIMATE_BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: HIMATE_BOOTSTRAP_ADMIN_PASSWORD
+        sync: false

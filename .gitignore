@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+.DS_Store
+**/.dart_tool/
+**/build/
+**/.packages
+**/coverage/
+backend/himate
