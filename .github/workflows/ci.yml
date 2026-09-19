@@ -21,7 +21,7 @@ jobs:
       - run: go mod tidy
       - run: go vet ./...
       - run: go test ./...
-      - run: go build ./cmd/gateway ./cmd/partners ./cmd/catalog ./cmd/billing
+      - run: go build ./cmd/gateway ./cmd/partners ./cmd/catalog ./cmd/billing ./cmd/contact
 
   flutter:
     runs-on: ubuntu-latest
@@ -41,8 +41,12 @@ jobs:
         run: |
           test -s build/web/landing.html
           test -s build/web/himate-brand-r4.css
-          test -s build/web/art/hero_statue.jpg
-          test -s build/web/art/program_piano.jpg
-          test -s build/web/art/partners_hall.jpg
+          test -s build/web/art/statue_hero_r5.png
+          test -s build/web/art/program_piano_r5.png
+          test -s build/web/art/gallery_hall_r5.png
+          test -s build/web/art/login_desktop_r5.png
+          test -s build/web/art/login_mobile_r5.png
+          grep -q "statue_hero_r5.png" build/web/himate-brand-r4.css
+          grep -q "/api/v1/public/contact" build/web/contact.html
           grep -q 'href="/himate-brand-r4.css"' build/web/landing.html
           if grep -q 'href="/brand.css"' build/web/landing.html; then exit 1; fi
