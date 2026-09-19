@@ -21,19 +21,18 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ls -la .himate-bootstrap
           cat .himate-bootstrap/part-* > /tmp/final.b64
           base64 -d /tmp/final.b64 > /tmp/final.tar.gz
-          tar -tzf /tmp/final.tar.gz | head -50
+          tar -tzf /tmp/final.tar.gz > /tmp/package-list.txt
+          test -s /tmp/package-list.txt
           rm -rf backend frontend/lib/src .himate-bootstrap
           rm -f Dockerfile HIMATE_START_01-03.zip
           rm -f docs/START-01-03_ACCEPTANCE.md docs/TEST_REPORT.md
-          rm -f .github/workflows/bootstrap-start-04-08.yml
           tar -xzf /tmp/final.tar.gz -C .
           rm -f .github/workflows/apply-start-04-08.yml
           git config user.name "himatecorp2025"
           git config user.email "himatecorp2025@gmail.com"
           git add -A
-          git status --short
+          git diff --cached --check
           git commit -m "Finalize HIMATE START-04-08"
           git push origin HEAD:develop
