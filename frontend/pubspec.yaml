@@ -12,6 +12,9 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
   http: ^1.2.2
+  flutter_svg: ^2.0.10+1
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/himate_heritage.svg
