@@ -4,6 +4,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,23 +41,25 @@ ThemeData buildBrandTheme() {
     surface: brandWhite,
     error: brandDanger,
   );
+  final base = GoogleFonts.interTextTheme();
+  final display = GoogleFonts.cormorantGaramondTextTheme();
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: brandIvory,
     visualDensity: VisualDensity.standard,
     splashFactory: InkSparkle.splashFactory,
-    textTheme: const TextTheme(
-      displaySmall: TextStyle(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.9, height: 1.05),
-      headlineLarge: TextStyle(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.7, height: 1.08),
-      headlineMedium: TextStyle(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.45, height: 1.12),
-      headlineSmall: TextStyle(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.25, height: 1.15),
-      titleLarge: TextStyle(color: brandNavy, fontWeight: FontWeight.w700),
-      titleMedium: TextStyle(color: brandNavy, fontWeight: FontWeight.w700),
-      bodyLarge: TextStyle(color: brandCharcoal, height: 1.5),
-      bodyMedium: TextStyle(color: brandCharcoal, height: 1.45),
-      bodySmall: TextStyle(color: brandTextSoft, height: 1.4),
-      labelLarge: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: .1),
+    textTheme: base.copyWith(
+      displaySmall: display.displaySmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.7, height: 1.02),
+      headlineLarge: display.headlineLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.45, height: 1.03),
+      headlineMedium: display.headlineMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.3, height: 1.05),
+      headlineSmall: display.headlineSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.15, height: 1.08),
+      titleLarge: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      titleMedium: base.titleMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      bodyLarge: base.bodyLarge?.copyWith(color: brandCharcoal, height: 1.5),
+      bodyMedium: base.bodyMedium?.copyWith(color: brandCharcoal, height: 1.45),
+      bodySmall: base.bodySmall?.copyWith(color: brandTextSoft, height: 1.4),
+      labelLarge: base.labelLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: .05),
     ),
     cardTheme: CardThemeData(
       color: brandWhite,
@@ -64,22 +67,28 @@ ThemeData buildBrandTheme() {
       margin: EdgeInsets.zero,
       shadowColor: brandNavy.withOpacity(.08),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         side: const BorderSide(color: brandMist),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: brandWhite,
-      labelStyle: const TextStyle(color: brandTextSoft),
-      hintStyle: const TextStyle(color: Color(0xFF98A2B3)),
+      labelStyle: base.bodyMedium?.copyWith(color: brandTextSoft),
+      hintStyle: base.bodyMedium?.copyWith(color: const Color(0xFF98A2B3)),
       prefixIconColor: brandSteel,
       suffixIconColor: brandSteel,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandMist)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandSteel, width: 1.5)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandDanger)),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandMist)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFD7DEE7))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: brandSteel, width: 1.4)),
+      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: brandDanger)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: brandMist)),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+      fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? brandNavy : brandWhite),
+      checkColor: WidgetStateProperty.all(brandWhite),
+      side: const BorderSide(color: brandNavy, width: 1.4),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: ButtonStyle(
@@ -91,26 +100,27 @@ ThemeData buildBrandTheme() {
         }),
         foregroundColor: WidgetStateProperty.all(brandWhite),
         overlayColor: WidgetStateProperty.all(brandGold.withOpacity(.08)),
-        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 20, vertical: 16)),
-        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(9))),
-        textStyle: WidgetStateProperty.all(const TextStyle(fontWeight: FontWeight.w700)),
+        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 21, vertical: 16)),
+        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(7))),
+        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
         elevation: WidgetStateProperty.all(0),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: ButtonStyle(
         foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandSteel : brandNavy),
-        side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.hovered) ? brandSteel : brandMist)),
-        overlayColor: WidgetStateProperty.all(brandSteel.withOpacity(.06)),
-        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 18, vertical: 15)),
-        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(9))),
-        textStyle: WidgetStateProperty.all(const TextStyle(fontWeight: FontWeight.w700)),
+        side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.hovered) ? brandSteel : const Color(0xFFB9C5D3))),
+        overlayColor: WidgetStateProperty.all(brandSteel.withOpacity(.05)),
+        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
+        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(7))),
+        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: ButtonStyle(
         foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandSteel : brandNavy),
         overlayColor: WidgetStateProperty.all(brandSteel.withOpacity(.05)),
+        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
       ),
     ),
     iconButtonTheme: IconButtonThemeData(
@@ -125,16 +135,17 @@ ThemeData buildBrandTheme() {
       radius: const Radius.circular(12),
       thickness: WidgetStateProperty.all(6),
     ),
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: brandWhite,
       foregroundColor: brandNavy,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
+      titleTextStyle: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w600),
     ),
   );
 }
 
-class ApiError implements Exception {
+class Apiclass ApiError implements Exception {
   ApiError(this.status, this.message);
   final int status;
   final String message;
@@ -362,10 +373,7 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => error = 'Enter your administrator email and password.');
       return;
     }
-    setState(() {
-      busy = true;
-      error = null;
-    });
+    setState(() { busy = true; error = null; });
     try {
       await widget.onLogin(email.text.trim(), password.text);
     } catch (e) {
@@ -384,90 +392,54 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: brandIvory,
+      backgroundColor: brandNavyDeep,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final desktop = constraints.maxWidth >= 980;
-          if (!desktop) {
-            return _MobileLogin(
-              email: email,
-              password: password,
-              busy: busy,
-              obscure: obscure,
-              remember: remember,
-              error: error,
-              onTogglePassword: () => setState(() => obscure = !obscure),
-              onRemember: (v) => setState(() => remember = v ?? true),
-              onSubmit: submit,
-              onForgot: () => info('Password recovery will be connected in the security phase.'),
-              onSso: () => info('SSO is not configured for this environment yet.'),
-            );
-          }
-          return Row(
+          final compact = constraints.maxWidth < 820;
+          return Stack(
+            fit: StackFit.expand,
             children: [
-              Expanded(
-                flex: 47,
-                child: _HeritagePanel(
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(54, 42, 54, 44),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const HimateLogo(onDark: true, width: 245),
-                          const Spacer(),
-                          const Text(
-                            'Culture\nConnects\nPeople',
-                            style: TextStyle(color: brandWhite, fontSize: 48, height: .98, fontWeight: FontWeight.w500, letterSpacing: -1.4),
-                          ),
-                          const SizedBox(height: 20),
-                          const _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: Color(0xFFD9E2EC)),
-                          const SizedBox(height: 34),
-                          const _HeroValue(icon: Icons.groups_2_outlined, label: 'STRONGER COMMUNITIES'),
-                          const SizedBox(height: 15),
-                          const _HeroValue(icon: Icons.bar_chart_rounded, label: 'MORE OPPORTUNITIES'),
-                          const SizedBox(height: 15),
-                          const _HeroValue(icon: Icons.shield_outlined, label: 'GREATER IMPACT'),
-                          const Spacer(),
-                          const Row(
-                            children: [
-                              SizedBox(width: 34, child: Divider(color: brandGold, thickness: 1.4)),
-                              SizedBox(width: 12),
-                              _LetterspacedLabel('HERITAGE MEETS INNOVATION', color: Color(0xFFD9E2EC), fontSize: 9),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+              const _LoginArtwork(),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: compact
+                        ? [const Color(0xE6071426), const Color(0xB30B1F3B)]
+                        : [const Color(0xE8071426), const Color(0x990B1F3B), const Color(0x29F8F9FB)],
+                    stops: compact ? const [0, 1] : const [0, .48, 1],
                   ),
                 ),
               ),
-              Expanded(
-                flex: 53,
-                child: Container(
-                  color: brandIvory,
-                  child: Center(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 430),
-                        child: _LoginCard(
-                          email: email,
-                          password: password,
-                          busy: busy,
-                          obscure: obscure,
-                          remember: remember,
-                          error: error,
-                          onTogglePassword: () => setState(() => obscure = !obscure),
-                          onRemember: (v) => setState(() => remember = v ?? true),
-                          onSubmit: submit,
-                          onForgot: () => info('Password recovery will be connected in the security phase.'),
-                          onSso: () => info('SSO is not configured for this environment yet.'),
-                        ),
+              SafeArea(
+                child: compact
+                    ? _CompactLoginComposition(
+                        email: email,
+                        password: password,
+                        busy: busy,
+                        obscure: obscure,
+                        remember: remember,
+                        error: error,
+                        onTogglePassword: () => setState(() => obscure = !obscure),
+                        onRemember: (v) => setState(() => remember = v ?? true),
+                        onSubmit: submit,
+                        onForgot: () => info('Password recovery will be connected in the security phase.'),
+                        onSso: () => info('SSO is not configured for this environment yet.'),
+                      )
+                    : _DesktopLoginComposition(
+                        email: email,
+                        password: password,
+                        busy: busy,
+                        obscure: obscure,
+                        remember: remember,
+                        error: error,
+                        onTogglePassword: () => setState(() => obscure = !obscure),
+                        onRemember: (v) => setState(() => remember = v ?? true),
+                        onSubmit: submit,
+                        onForgot: () => info('Password recovery will be connected in the security phase.'),
+                        onSso: () => info('SSO is not configured for this environment yet.'),
                       ),
-                    ),
-                  ),
-                ),
               ),
             ],
           );
@@ -477,8 +449,8 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-class _MobileLogin extends StatelessWidget {
-  const _MobileLogin({
+class _DesktopLoginComposition extends StatelessWidget {
+  const _DesktopLoginComposition({
     required this.email,
     required this.password,
     required this.busy,
@@ -491,9 +463,7 @@ class _MobileLogin extends StatelessWidget {
     required this.onForgot,
     required this.onSso,
   });
-
-  final TextEditingController email;
-  final TextEditingController password;
+  final TextEditingController email, password;
   final bool busy, obscure, remember;
   final String? error;
   final VoidCallback onTogglePassword, onSubmit, onForgot, onSso;
@@ -501,38 +471,148 @@ class _MobileLogin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        const Positioned.fill(child: _HeritagePanel()),
-        Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(color: brandNavyDeep.withOpacity(.35)))),
-        SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(54, 38, 60, 42),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 54,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Align(alignment: Alignment.centerLeft, child: HimateLogo(onDark: true, width: 210)),
-                const SizedBox(height: 46),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  child: _LoginCard(
-                    email: email,
-                    password: password,
-                    busy: busy,
-                    obscure: obscure,
-                    remember: remember,
-                    error: error,
-                    onTogglePassword: onTogglePassword,
-                    onRemember: onRemember,
-                    onSubmit: onSubmit,
-                    onForgot: onForgot,
-                    onSso: onSso,
+                const HimateLogo(onDark: true, width: 226),
+                const Spacer(),
+                Text(
+                  'Culture\nConnects\nPeople',
+                  style: GoogleFonts.cormorantGaramond(
+                    color: brandWhite,
+                    fontSize: 57,
+                    height: .88,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: -.8,
                   ),
                 ),
+                const SizedBox(height: 24),
+                const _LetterspacedLabel('BUILDING A BRIGHTER\nCULTURAL TOMORROW', color: Color(0xFFE8EDF3), fontSize: 10.5),
+                const SizedBox(height: 38),
+                const _HeroValue(icon: Icons.groups_2_outlined, label: 'STRONGER COMMUNITIES'),
+                const SizedBox(height: 15),
+                const _HeroValue(icon: Icons.bar_chart_rounded, label: 'MORE OPPORTUNITIES'),
+                const SizedBox(height: 15),
+                const _HeroValue(icon: Icons.shield_outlined, label: 'GREATER IMPACT'),
+                const Spacer(),
+                const Row(children: [
+                  SizedBox(width: 38, child: Divider(color: brandGold, thickness: 1.5)),
+                  SizedBox(width: 12),
+                  _LetterspacedLabel('HERITAGE MEETS INNOVATION', color: Color(0xFFE8EDF3), fontSize: 8.8),
+                ]),
               ],
             ),
           ),
-        ),
-      ],
+          Expanded(
+            flex: 46,
+            child: Align(
+              alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
+                child: _LoginCard(
+                  email: email,
+                  password: password,
+                  busy: busy,
+                  obscure: obscure,
+                  remember: remember,
+                  error: error,
+                  onTogglePassword: onTogglePassword,
+                  onRemember: onRemember,
+                  onSubmit: onSubmit,
+                  onForgot: onForgot,
+                  onSso: onSso,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactLoginComposition extends StatelessWidget {
+  const _CompactLoginComposition({
+    required this.email,
+    required this.password,
+    required this.busy,
+    required this.obscure,
+    required this.remember,
+    required this.error,
+    required this.onTogglePassword,
+    required this.onRemember,
+    required this.onSubmit,
+    required this.onForgot,
+    required this.onSso,
+  });
+  final TextEditingController email, password;
+  final bool busy, obscure, remember;
+  final String? error;
+  final VoidCallback onTogglePassword, onSubmit, onForgot, onSso;
+  final ValueChanged<bool?> onRemember;
+
+  @override
+  Widget build(BuildContext context) {
+    final narrow = MediaQuery.of(context).size.width < 520;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(narrow ? 18 : 30, 24, narrow ? 18 : 30, 34),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const HimateLogo(onDark: true, width: 188),
+          SizedBox(height: narrow ? 58 : 90),
+          Text(
+            'Culture Connects People',
+            style: GoogleFonts.cormorantGaramond(
+              color: brandWhite,
+              fontSize: narrow ? 38 : 47,
+              height: .95,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const _LetterspacedLabel('BUILDING A BRIGHTER CULTURAL TOMORROW', color: Color(0xFFE8EDF3), fontSize: 8.5),
+          SizedBox(height: narrow ? 36 : 48),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: _LoginCard(
+                email: email,
+                password: password,
+                busy: busy,
+                obscure: obscure,
+                remember: remember,
+                error: error,
+                onTogglePassword: onTogglePassword,
+                onRemember: onRemember,
+                onSubmit: onSubmit,
+                onForgot: onForgot,
+                onSso: onSso,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoginArtwork extends StatelessWidget {
+  const _LoginArtwork();
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      'assets/himate_login_heritage.jpg',
+      fit: BoxFit.cover,
+      alignment: MediaQuery.of(context).size.width < 820 ? Alignment.center : const Alignment(.05, 0),
+      filterQuality: FilterQuality.high,
     );
   }
 }
@@ -552,8 +632,7 @@ class _LoginCard extends StatelessWidget {
     required this.onSso,
   });
 
-  final TextEditingController email;
-  final TextEditingController password;
+  final TextEditingController email, password;
   final bool busy, obscure, remember;
   final String? error;
   final VoidCallback onTogglePassword, onSubmit, onForgot, onSso;
@@ -562,25 +641,29 @@ class _LoginCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(30, 32, 30, 26),
+      padding: const EdgeInsets.fromLTRB(32, 34, 32, 28),
       decoration: BoxDecoration(
-        color: brandWhite,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: brandMist),
-        boxShadow: [BoxShadow(color: brandNavy.withOpacity(.10), blurRadius: 40, offset: const Offset(0, 18))],
+        color: brandWhite.withOpacity(.975),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD8DFE7)),
+        boxShadow: [BoxShadow(color: brandNavy.withOpacity(.18), blurRadius: 46, offset: const Offset(0, 20))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Welcome back', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 27)),
-          const SizedBox(height: 7),
-          const Text('Sign in to your HIMATE System account', textAlign: TextAlign.center, style: TextStyle(color: brandTextSoft, fontSize: 13)),
+          Text(
+            'Welcome back',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1),
+          ),
+          const SizedBox(height: 8),
+          Text('Sign in to your HIMATE System account', textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 12.5)),
           const SizedBox(height: 28),
           TextField(
             controller: email,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
-            style: const TextStyle(color: brandCharcoal),
+            style: GoogleFonts.inter(color: brandCharcoal, fontSize: 13),
             decoration: const InputDecoration(hintText: 'Email address', prefixIcon: Icon(Icons.mail_outline_rounded, size: 19)),
           ),
           const SizedBox(height: 12),
@@ -589,7 +672,7 @@ class _LoginCard extends StatelessWidget {
             obscureText: obscure,
             autofillHints: const [AutofillHints.password],
             onSubmitted: (_) => onSubmit(),
-            style: const TextStyle(color: brandCharcoal),
+            style: GoogleFonts.inter(color: brandCharcoal, fontSize: 13),
             decoration: InputDecoration(
               hintText: 'Password',
               prefixIcon: const Icon(Icons.lock_outline_rounded, size: 19),
@@ -600,23 +683,21 @@ class _LoginCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 7),
           Row(
             children: [
               SizedBox(
                 height: 34,
-                child: Row(
-                  children: [
-                    Checkbox(value: remember, onChanged: onRemember, activeColor: brandNavy, visualDensity: VisualDensity.compact),
-                    const Text('Remember me', style: TextStyle(color: brandCharcoal, fontSize: 12)),
-                  ],
-                ),
+                child: Row(children: [
+                  Checkbox(value: remember, onChanged: onRemember, visualDensity: VisualDensity.compact),
+                  Text('Remember me', style: GoogleFonts.inter(color: brandNavy, fontSize: 11.5)),
+                ]),
               ),
               const Spacer(),
               TextButton(
                 onPressed: onForgot,
                 style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 5)),
-                child: const Text('Forgot password?', style: TextStyle(fontSize: 12)),
+                child: Text('Forgot password?', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -624,58 +705,48 @@ class _LoginCard extends StatelessWidget {
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: brandDanger.withOpacity(.06),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: brandDanger.withOpacity(.18)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline_rounded, color: brandDanger, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(error!, style: const TextStyle(color: brandDanger, fontSize: 12))),
-                ],
-              ),
+              decoration: BoxDecoration(color: brandDanger.withOpacity(.06), borderRadius: BorderRadius.circular(7), border: Border.all(color: brandDanger.withOpacity(.18))),
+              child: Row(children: [
+                const Icon(Icons.error_outline_rounded, color: brandDanger, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(error!, style: GoogleFonts.inter(color: brandDanger, fontSize: 11.5))),
+              ]),
             ),
           ],
           const SizedBox(height: 15),
           FilledButton(
             onPressed: busy ? null : onSubmit,
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               child: busy
                   ? const SizedBox(key: ValueKey('busy'), width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.1, color: brandWhite))
-                  : const Row(
-                      key: ValueKey('ready'),
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [Text('Sign in'), SizedBox(width: 12), Icon(Icons.arrow_forward_rounded, size: 18)],
-                    ),
+                  : Row(key: const ValueKey('ready'), mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Text('Sign in', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 14),
+                      const Icon(Icons.arrow_forward_rounded, size: 18),
+                    ]),
             ),
           ),
           const SizedBox(height: 18),
-          const Row(
-            children: [
-              Expanded(child: Divider(color: brandMist)),
-              Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('or continue with', style: TextStyle(color: brandTextSoft, fontSize: 11))),
-              Expanded(child: Divider(color: brandMist)),
-            ],
+          Row(children: [
+            const Expanded(child: Divider(color: brandMist)),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('or continue with', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 10.5))),
+            const Expanded(child: Divider(color: brandMist)),
+          ]),
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            onPressed: onSso,
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            icon: const Icon(Icons.account_balance_outlined, size: 18),
+            label: Text('Sign in with SSO', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
           ),
-          const SizedBox(height: 14),
-          OutlinedButton.icon(onPressed: onSso, icon: const Icon(Icons.account_balance_outlined, size: 18), label: const Text('Sign in with SSO')),
           const SizedBox(height: 24),
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.verified_user_outlined, color: brandGold, size: 17),
-              SizedBox(width: 7),
-              Text('Secure', style: TextStyle(color: brandTextSoft, fontSize: 10.5)),
-              Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Text('•', style: TextStyle(color: brandMist))),
-              Text('Trusted', style: TextStyle(color: brandTextSoft, fontSize: 10.5)),
-              Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Text('•', style: TextStyle(color: brandMist))),
-              Flexible(child: Text('Built for a brighter tomorrow', overflow: TextOverflow.ellipsis, style: TextStyle(color: brandTextSoft, fontSize: 10.5))),
-            ],
-          ),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(Icons.verified_user_outlined, color: brandGold, size: 17),
+            const SizedBox(width: 7),
+            Text('Secure  •  Trusted  •  Built for a brighter tomorrow', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 9.5)),
+          ]),
         ],
       ),
     );
@@ -707,23 +778,23 @@ class HimateLogo extends StatelessWidget {
                   fit: BoxFit.scaleDown,
                   child: Text(
                     'HIMATE',
-                    style: TextStyle(
-                      
+                    style: GoogleFonts.cormorantGaramond(
                       color: textColor,
-                      fontWeight: FontWeight.w600,
-                      fontSize: width * .175,
-                      letterSpacing: -1,
+                      fontWeight: FontWeight.w700,
+                      fontSize: width * .19,
+                      letterSpacing: -.8,
+                      height: .9,
                       shadows: onDark ? const [Shadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 2))] : const [],
                     ),
                   ),
                 ),
                 Text(
                   'S Y S T E M',
-                  style: TextStyle(
+                  style: GoogleFonts.inter(
                     color: onDark ? brandWhite : brandNavy,
-                    fontWeight: FontWeight.w600,
-                    fontSize: width * .053,
-                    letterSpacing: width * .017,
+                    fontWeight: FontWeight.w700,
+                    fontSize: width * .052,
+                    letterSpacing: width * .016,
                   ),
                 ),
               ],
@@ -772,18 +843,16 @@ class _HeroValue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(border: Border.all(color: brandGold.withOpacity(.9)), shape: BoxShape.circle, color: brandNavy.withOpacity(.38)),
-          child: Icon(icon, color: brandGold, size: 18),
-        ),
-        const SizedBox(width: 13),
-        _LetterspacedLabel(label, color: const Color(0xFFE8EDF3), fontSize: 9.5),
-      ],
-    );
+    return Row(children: [
+      Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(border: Border.all(color: brandGold.withOpacity(.95)), shape: BoxShape.circle, color: brandNavy.withOpacity(.42)),
+        child: Icon(icon, color: brandGold, size: 18),
+      ),
+      const SizedBox(width: 13),
+      _LetterspacedLabel(label, color: const Color(0xFFE8EDF3), fontSize: 9.2),
+    ]);
   }
 }
 
@@ -795,46 +864,14 @@ class _LetterspacedLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: TextStyle(color: color, fontSize: fontSize, fontWeight: FontWeight.w600, letterSpacing: 2.6, height: 1.65));
-  }
-}
-
-class _HeritagePanel extends StatelessWidget {
-  const _HeritagePanel({this.child});
-  final Widget? child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const ColoredBox(color: brandNavyDeep),
-        SvgPicture.asset(
-          'assets/himate_heritage.svg',
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-        ),
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [
-                Color(0xE6061426),
-                Color(0x990B1F3B),
-                Color(0x33143B5E),
-              ],
-              stops: [0, .48, 1],
-            ),
-          ),
-        ),
-        if (child != null) child!,
-      ],
+    return Text(
+      text,
+      style: GoogleFonts.inter(color: color, fontSize: fontSize, fontWeight: FontWeight.w700, letterSpacing: 2.4, height: 1.55),
     );
   }
 }
 
-class NavSpec {
+class NavSpecclass NavSpec {
   const NavSpec(this.label, this.icon, this.subtitle);
   final String label;
   final IconData icon;
