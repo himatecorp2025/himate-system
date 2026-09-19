@@ -2496,33 +2496,83 @@ class _FinancePageState extends State<FinancePage> {
   }
 }
 
-class SystemPageclass SystemPage extends StatelessWidget {
+class SystemPage extends StatelessWidget {
   const SystemPage({required this.api, super.key});
   final Api api;
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
       future: api.get('/api/v1/health'),
       builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
+        if (snapshot.hasError) {
+          return Content(
+            eyebrow: 'PLATFORM OPERATIONS',
+            title: 'System & Operations',
+            subtitle: 'Independent services behind one authenticated public gateway.',
+            child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Health data unavailable', message: '${snapshot.error}'),
+          );
+        }
+
         final serviceRaw = snapshot.data?['services'];
         final services = serviceRaw is Map ? Map<String, dynamic>.from(serviceRaw) : <String, dynamic>{};
+        final overall = '${snapshot.data?['status'] ?? 'unknown'}';
+        final environment = '${snapshot.data?['environment'] ?? 'unknown'}';
+        final version = '${snapshot.data?['version'] ?? ''}';
+
         return Content(
+          eyebrow: 'PLATFORM OPERATIONS',
           title: 'System & Operations',
-          subtitle: 'Independent Go services behind one authenticated public gateway.',
-          child: Wrap(spacing: 16, runSpacing: 16, children: [
-            ServiceCard(name: 'API Gateway', status: '${snapshot.data?['status'] ?? 'loading'}'),
-            ServiceCard(name: 'Identity', status: '${services['identity'] ?? 'loading'}'),
-            ServiceCard(name: 'Partner Service', status: '${services['partners'] ?? 'loading'}'),
-            ServiceCard(name: 'Catalog Service', status: '${services['catalog'] ?? 'loading'}'),
-            ServiceCard(name: 'Billing Service', status: '${services['billing'] ?? 'loading'}'),
-          ]),
+          subtitle: 'Containerized Go services, one public gateway and isolated control-plane responsibilities.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _OperationsHero(status: overall, environment: environment, version: version),
+              const SizedBox(height: 22),
+              _SectionHeader(
+                title: 'Service Health',
+                subtitle: 'Each domain service is independently deployable and designed for horizontal replication.',
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  ServiceCard(name: 'API Gateway', status: overall),
+                  ServiceCard(name: 'Identity', status: '${services['identity'] ?? 'unknown'}'),
+                  ServiceCard(name: 'Partner Service', status: '${services['partners'] ?? 'unknown'}'),
+                  ServiceCard(name: 'Catalog Service', status: '${services['catalog'] ?? 'unknown'}'),
+                  ServiceCard(name: 'Billing Service', status: '${services['billing'] ?? 'unknown'}'),
+                ],
+              ),
+              const SizedBox(height: 24),
+              LayoutBuilder(
+                builder: (context, c) {
+                  const architecture = _ArchitectureCard();
+                  const controls = _OperationsControlsCard();
+                  if (c.maxWidth < 900) {
+                    return const Column(children: [architecture, SizedBox(height: 14), controls]);
+                  }
+                  return const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: architecture),
+                      SizedBox(width: 14),
+                      Expanded(child: controls),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
         );
       },
     );
   }
 }
 
-class Content extends StatelessWidget {
+class Content extends StatelessWidgetclass Content extends StatelessWidget {
   const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, super.key});
   final String title, subtitle;
   final String? eyebrow;
