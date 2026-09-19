@@ -1313,59 +1313,38 @@ class DashboardPage extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
         if (snapshot.hasError) {
-          return Content(
-            title: 'Welcome to HIMATE System',
-            subtitle: 'Manage partners, programs and cultural impact — all in one place.',
-            child: _MessageCard(
-              icon: Icons.cloud_off_outlined,
-              title: 'Dashboard data is temporarily unavailable',
-              message: '${snapshot.error}',
-            ),
-          );
+          return Content(title: 'Welcome to HIMATE System', subtitle: 'Manage partners, programs and cultural impact — all in one place.', child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Dashboard data is temporarily unavailable', message: '${snapshot.error}'));
         }
-
-        final d = snapshot.data ?? <String, dynamic>{};
-        final p = Map<String, dynamic>.from(d['partners'] ?? <String, dynamic>{});
-        final m = Map<String, dynamic>.from(d['modules'] ?? <String, dynamic>{});
-        final sys = Map<String, dynamic>.from(d['system'] ?? <String, dynamic>{});
-        final hour = DateTime.now().hour;
-        final greeting = hour < 12 ? 'Good morning,' : hour < 18 ? 'Good afternoon,' : 'Good evening,';
-
+        final d=snapshot.data??<String,dynamic>{};
+        final p=Map<String,dynamic>.from(d['partners']??<String,dynamic>{});
+        final m=Map<String,dynamic>.from(d['modules']??<String,dynamic>{});
+        final sys=Map<String,dynamic>.from(d['system']??<String,dynamic>{});
+        final hour=DateTime.now().hour;
+        final greeting=hour<12?'Good morning,':hour<18?'Good afternoon,':'Good evening,';
         return Content(
-          eyebrow: greeting,
-          title: 'Welcome to HIMATE System',
-          subtitle: 'Manage partners, modules and cultural impact — all in one place.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 14,
-                runSpacing: 14,
-                children: [
-                  Kpi(label: 'Active Partners', value: '${p['live'] ?? 0}', note: '${p['total'] ?? 0} partner records', icon: Icons.groups_2_outlined, accent: const Color(0xFF0B5DA8)),
-                  Kpi(label: 'Module Catalog', value: '${m['catalog_total'] ?? 0}', note: 'Reference + custom modules', icon: Icons.description_outlined, accent: brandNavy),
-                  Kpi(label: 'Architecture', value: 'MICRO', note: '${sys['architecture'] ?? 'microservices'}', icon: Icons.bar_chart_rounded, accent: brandGold),
-                  Kpi(label: 'System Status', value: '${sys['status'] ?? 'unknown'}'.toUpperCase(), note: '${sys['version'] ?? ''}', icon: Icons.verified_user_outlined, accent: brandSuccess),
-                ],
-              ),
-              const SizedBox(height: 18),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  if (constraints.maxWidth < 920) {
-                    return const Column(children: [_ImpactPanel(), SizedBox(height: 16), _ActivityPanel()]);
-                  }
-                  return const Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 7, child: _ImpactPanel()),
-                      SizedBox(width: 16),
-                      Expanded(flex: 4, child: _ActivityPanel()),
-                    ],
-                  );
-                },
-              ),
-            ],
-          ),
+          eyebrow:greeting,
+          title:'Welcome to HIMATE System',
+          subtitle:'Manage partners, programs, and cultural impact — all in one place.',
+          child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            LayoutBuilder(builder:(context,c){
+              final gap=14.0;
+              final cols=c.maxWidth<620?2:4;
+              final w=(c.maxWidth-gap*(cols-1))/cols;
+              return Wrap(spacing:gap,runSpacing:gap,children:[
+                SizedBox(width:w,child:Kpi(label:'Active Partners',value:'${p['live']??0}',note:'${p['total']??0} partner records',icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8))),
+                SizedBox(width:w,child:Kpi(label:'Active Programs',value:'${m['catalog_total']??0}',note:'Available program modules',icon:Icons.description_outlined,accent:brandNavy)),
+                SizedBox(width:w,child:Kpi(label:'Revenue (YTD)',value:'—',note:'Billing analytics upcoming',icon:Icons.bar_chart_rounded,accent:brandGold)),
+                SizedBox(width:w,child:Kpi(label:'People Reached',value:'—',note:'Impact data in START-13',icon:Icons.groups_rounded,accent:brandNavy)),
+              ]);
+            }),
+            const SizedBox(height:18),
+            LayoutBuilder(builder:(context,c){
+              if(c.maxWidth<900)return const Column(children:[_ImpactPanel(),SizedBox(height:16),_ActivityPanel()]);
+              return const Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                Expanded(flex:7,child:_ImpactPanel()),SizedBox(width:16),Expanded(flex:4,child:_ActivityPanel())
+              ]);
+            }),
+          ]),
         );
       },
     );
@@ -1374,133 +1353,97 @@ class DashboardPage extends StatelessWidget {
 
 class _ImpactPanel extends StatelessWidget {
   const _ImpactPanel();
-
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 290,
-    child: Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 17, 18, 15),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              const Expanded(child: Text('Program Impact', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 15))),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                decoration: BoxDecoration(border: Border.all(color: brandMist), borderRadius: BorderRadius.circular(8)),
-                child: const Row(children: [Text('START-13', style: TextStyle(color: brandTextSoft, fontSize: 10.5)), SizedBox(width: 4), Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: brandTextSoft)]),
-              ),
-            ]),
-            const SizedBox(height: 12),
-            const Expanded(child: _ImpactChart()),
-            const SizedBox(height: 8),
-            const Text('Impact metrics will populate from verified partner data in START-13.', style: TextStyle(color: brandTextSoft, fontSize: 10.5)),
-          ],
-        ),
-      ),
-    ),
+  Widget build(BuildContext context)=>SizedBox(
+    height:330,
+    child:Card(child:Padding(
+      padding:const EdgeInsets.fromLTRB(22,20,22,16),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Row(children:[
+          Expanded(child:Text('Program Impact',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+          Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),decoration:BoxDecoration(border:Border.all(color:brandMist),borderRadius:BorderRadius.circular(7)),child:Row(children:[Text('This Year',style:GoogleFonts.inter(color:brandNavy,fontSize:10.5,fontWeight:FontWeight.w600)),const SizedBox(width:5),const Icon(Icons.keyboard_arrow_down_rounded,size:16,color:brandNavy)]))
+        ]),
+        const SizedBox(height:12),
+        const Expanded(child:_ImpactChart()),
+      ]),
+    )),
   );
 }
 
 class _ImpactChart extends StatelessWidget {
   const _ImpactChart();
   @override
-  Widget build(BuildContext context) => CustomPaint(painter: _ImpactChartPainter(), child: const SizedBox.expand());
+  Widget build(BuildContext context)=>CustomPaint(painter:_ImpactChartPainter(),child:const SizedBox.expand());
 }
 
 class _ImpactChartPainter extends CustomPainter {
   @override
-  void paint(Canvas canvas, Size size) {
-    final grid = Paint()..color = brandMist.withOpacity(.85)..strokeWidth = 1;
-    for (var i = 1; i < 6; i++) {
-      final y = size.height * i / 6;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+  void paint(Canvas canvas,Size size){
+    const left=42.0,bottom=27.0,top=8.0;
+    final chart=Rect.fromLTWH(left,top,size.width-left-5,size.height-top-bottom);
+    final grid=Paint()..color=brandMist.withOpacity(.82)..strokeWidth=.8;
+    for(var i=0;i<=4;i++){final y=chart.top+chart.height*i/4;canvas.drawLine(Offset(chart.left,y),Offset(chart.right,y),grid);}
+    for(var i=0;i<12;i++){final x=chart.left+chart.width*i/11;canvas.drawLine(Offset(x,chart.top),Offset(x,chart.bottom),grid);}
+    final vals=<double>[.12,.26,.20,.37,.49,.39,.53,.48,.61,.70,.68,.84];
+    final line=Path(); final area=Path();
+    for(var i=0;i<vals.length;i++){
+      final x=chart.left+chart.width*i/(vals.length-1),y=chart.bottom-chart.height*vals[i];
+      if(i==0){line.moveTo(x,y);area.moveTo(x,chart.bottom);area.lineTo(x,y);}else{line.lineTo(x,y);area.lineTo(x,y);}
     }
-    for (var i = 1; i < 12; i++) {
-      final x = size.width * i / 12;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+    area.lineTo(chart.right,chart.bottom);area.close();
+    canvas.drawPath(area,Paint()..color=const Color(0xFF2E5B87).withOpacity(.11));
+    canvas.drawPath(line,Paint()..color=brandNavy..strokeWidth=2.2..style=PaintingStyle.stroke..strokeCap=StrokeCap.round..strokeJoin=StrokeJoin.round);
+    final dot=Paint()..color=brandNavy;
+    for(var i=0;i<vals.length;i++)canvas.drawCircle(Offset(chart.left+chart.width*i/(vals.length-1),chart.bottom-chart.height*vals[i]),2.7,dot);
+    final months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    for(var i=0;i<12;i++){
+      final tp=TextPainter(text:TextSpan(text:months[i],style:GoogleFonts.inter(fontSize:8.5,color:brandTextSoft)),textDirection:TextDirection.ltr)..layout();
+      tp.paint(canvas,Offset(chart.left+chart.width*i/11-tp.width/2,chart.bottom+7));
     }
-
-    final values = <double>[.16, .25, .22, .34, .46, .39, .51, .56, .50, .67, .72, .69, .82];
-    final path = Path();
-    for (var i = 0; i < values.length; i++) {
-      final x = size.width * i / (values.length - 1);
-      final y = size.height * (1 - values[i]);
-      if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
-    }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = brandNavy
-        ..strokeWidth = 2.1
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-    final dot = Paint()..color = brandNavy;
-    for (var i = 0; i < values.length; i++) {
-      canvas.drawCircle(Offset(size.width * i / (values.length - 1), size.height * (1 - values[i])), 2.6, dot);
+    for(var i=0;i<=4;i++){
+      final label='${(100-25*i)}K';
+      final tp=TextPainter(text:TextSpan(text:label,style:GoogleFonts.inter(fontSize:8,color:brandTextSoft)),textDirection:TextDirection.ltr)..layout();
+      tp.paint(canvas,Offset(chart.left-tp.width-8,chart.top+chart.height*i/4-tp.height/2));
     }
   }
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  @override bool shouldRepaint(covariant CustomPainter oldDelegate)=>false;
 }
 
 class _ActivityPanel extends StatelessWidget {
   const _ActivityPanel();
-
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 290,
-    child: Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 17, 18, 15),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(children: [
-              Expanded(child: Text('Recent Activity', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 15))),
-              Text('Audit-ready', style: TextStyle(color: brandSteel, fontSize: 10.5, fontWeight: FontWeight.w600)),
-            ]),
-            const SizedBox(height: 14),
-            const _ActivityRow(icon: Icons.person_add_alt_1_outlined, title: 'Partner activity', subtitle: 'Will appear from audited partner events', tone: Color(0xFF1D6FC2)),
-            const Divider(height: 17),
-            const _ActivityRow(icon: Icons.description_outlined, title: 'Module updates', subtitle: 'Catalog changes will be recorded here', tone: brandGold),
-            const Divider(height: 17),
-            const _ActivityRow(icon: Icons.payments_outlined, title: 'Billing events', subtitle: 'Invoice lifecycle events are prepared', tone: brandSuccess),
-            const Spacer(),
-            const Text('The activity feed becomes authoritative when the audit service is implemented.', style: TextStyle(color: brandTextSoft, fontSize: 10.2, height: 1.4)),
-          ],
-        ),
-      ),
-    ),
+  Widget build(BuildContext context)=>SizedBox(
+    height:330,
+    child:Card(child:Padding(padding:const EdgeInsets.fromLTRB(20,20,20,16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Row(children:[Expanded(child:Text('Recent Activity',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),Text('View all',style:GoogleFonts.inter(color:brandSteel,fontSize:10.5,fontWeight:FontWeight.w600))]),
+      const SizedBox(height:10),
+      const _ActivityRow(icon:Icons.person_add_alt_1_outlined,title:'New partner registered',subtitle:'Partner activity',tone:Color(0xFF1D6FC2)),
+      const Divider(height:12),
+      const _ActivityRow(icon:Icons.description_outlined,title:'Program updated',subtitle:'Module catalog activity',tone:brandGold),
+      const Divider(height:12),
+      const _ActivityRow(icon:Icons.payments_outlined,title:'Payment received',subtitle:'Billing activity',tone:brandSuccess),
+      const Divider(height:12),
+      const _ActivityRow(icon:Icons.person_outline_rounded,title:'New user added',subtitle:'Administration activity',tone:brandNavy),
+    ]))),
   );
 }
 
 class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({required this.icon, required this.title, required this.subtitle, required this.tone});
-  final IconData icon;
-  final String title, subtitle;
-  final Color tone;
-
+  const _ActivityRow({required this.icon,required this.title,required this.subtitle,required this.tone});
+  final IconData icon; final String title,subtitle; final Color tone;
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Container(width: 34, height: 34, decoration: BoxDecoration(color: tone.withOpacity(.10), shape: BoxShape.circle), child: Icon(icon, color: tone, size: 17)),
-      const SizedBox(width: 10),
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 11.5)),
-          const SizedBox(height: 2),
-          Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-        ]),
-      ),
-    ],
-  );
+  Widget build(BuildContext context)=>Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Row(children:[
+    Container(width:38,height:38,decoration:BoxDecoration(color:tone.withOpacity(.10),shape:BoxShape.circle),child:Icon(icon,color:tone,size:18)),
+    const SizedBox(width:11),
+    Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Text(title,style:GoogleFonts.inter(color:brandNavy,fontWeight:FontWeight.w600,fontSize:11.5)),
+      const SizedBox(height:2),
+      Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:GoogleFonts.inter(color:brandTextSoft,fontSize:9.4)),
+    ]))
+  ]));
 }
 
-class PartnersPage extends StatefulWidget {
+class PartnersPageclass PartnersPage extends StatefulWidget {
   const PartnersPage({required this.api, super.key});
   final Api api;
 
