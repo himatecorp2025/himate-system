@@ -365,6 +365,18 @@ func (a *app) web() http.Handler {
 			return
 		}
 
+		marketingPages := map[string]string{
+			"/platform":   "platform.html",
+			"/technology": "technology.html",
+			"/security":   "security.html",
+			"/impact":     "impact.html",
+		}
+		if page, ok := marketingPages[r.URL.Path]; ok {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			http.ServeFile(w, r, filepath.Join(root, page))
+			return
+		}
+
 		clean := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
 		if clean == "." {
 			clean = "index.html"
@@ -402,7 +414,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		if r.URL.Path == "/" || r.URL.Path == "/login" || r.URL.Path == "/app" || strings.HasSuffix(r.URL.Path, ".html") {
+		if r.URL.Path == "/" || r.URL.Path == "/login" || r.URL.Path == "/app" || r.URL.Path == "/platform" || r.URL.Path == "/technology" || r.URL.Path == "/security" || r.URL.Path == "/impact" || strings.HasSuffix(r.URL.Path, ".html") {
 			w.Header().Set("Cache-Control", "no-store, max-age=0")
 		}
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
