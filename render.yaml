@@ -1,8 +1,67 @@
+databases:
+  - name: himate-db
+    databaseName: himate
+    user: himate
+
 services:
+  - type: pserv
+    name: himate-catalog
+    runtime: docker
+    dockerfilePath: ./services/docker/catalog.Dockerfile
+    dockerContext: ./services
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        generateValue: true
+
+  - type: pserv
+    name: himate-partners
+    runtime: docker
+    dockerfilePath: ./services/docker/partners.Dockerfile
+    dockerContext: ./services
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+
+  - type: pserv
+    name: himate-billing
+    runtime: docker
+    dockerfilePath: ./services/docker/billing.Dockerfile
+    dockerContext: ./services
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: CATALOG_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-catalog
+          property: hostport
+
   - type: web
     name: himate
     runtime: docker
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./services/docker/gateway.Dockerfile
+    dockerContext: .
     healthCheckPath: /api/v1/health
     renderSubdomainPolicy: enabled
     autoDeploy: false
@@ -10,7 +69,7 @@ services:
       - key: HIMATE_ENV
         value: production
       - key: HIMATE_APP_VERSION
-        value: 0.1.0-start-01-03
+        value: 0.2.0-start-04-08
       - key: COOKIE_SECURE
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS
@@ -23,3 +82,51 @@ services:
         sync: false
       - key: HIMATE_BOOTSTRAP_ADMIN_PASSWORD
         sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: PARTNERS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-partners
+          property: hostport
+      - key: CATALOG_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-catalog
+          property: hostport
+      - key: BILLING_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-billing
+          property: hostport
+
+  - type: cron
+    name: himate-monthly-invoice-cycle
+    runtime: docker
+    schedule: "0 6 1 * *"
+    dockerfilePath: ./services/docker/billing.Dockerfile
+    dockerContext: ./services
+    dockerCommand: /app/service --run-invoice-cycle
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: CATALOG_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-catalog
+          property: hostport

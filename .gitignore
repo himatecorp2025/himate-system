@@ -1,9 +1,9 @@
-.env
-.env.*
-!.env.example
 .DS_Store
-**/.dart_tool/
-**/build/
-**/.packages
-**/coverage/
-backend/himate
+.env
+*.log
+.dart_tool/
+frontend/build/
+frontend/.dart_tool/
+coverage/
+.idea/
+.vscode/
