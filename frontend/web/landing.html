@@ -1,74 +1,12 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="HIMATE System — technology for arts and culture organizations. People, programs and measurable impact in one secure platform.">
   <meta name="theme-color" content="#0B1F3B">
   <title>HIMATE System — Culture Fuels Tomorrow</title>
-  <style>
-    :root{
-      --navy:#0B1F3B;--navy-deep:#061426;--steel:#2E5B87;--gold:#D4AF6B;
-      --ivory:#F8F9FB;--mist:#E4E7EC;--charcoal:#1F2937;--white:#fff;
-      --soft:#667085;--shadow:0 24px 70px rgba(11,31,59,.12);
-    }
-    *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--ivory);color:var(--navy);font-family:Arial,Helvetica,sans-serif}
-    a{text-decoration:none;color:inherit}.serif{font-family:Georgia,'Times New Roman',serif}
-    .shell{max-width:1480px;margin:0 auto;padding:0 34px}
-    .topbar{height:112px;display:flex;align-items:center;border-bottom:1px solid var(--mist);gap:30px}
-    .brand{display:flex;align-items:center;gap:17px;min-width:330px}.brand-mark{display:flex;align-items:flex-end;gap:5px;height:54px}
-    .brand-mark i{display:block;width:9px;border-radius:2px;background:linear-gradient(135deg,#ffe6a8 0%,var(--gold) 52%,#94641e 100%);box-shadow:0 3px 8px rgba(11,31,59,.22)}
-    .brand-mark i:nth-child(1){height:23px}.brand-mark i:nth-child(2){height:31px}.brand-mark i:nth-child(3){height:40px}.brand-mark i:nth-child(4){height:53px}
-    .brand-name{line-height:.88}.brand-name strong{display:block;font:600 46px/1 Georgia,'Times New Roman',serif;letter-spacing:-2px}.brand-name span{display:block;text-align:center;margin-top:7px;font-size:15px;font-weight:700;letter-spacing:10px}
-    .brand-divider{width:1px;height:66px;background:var(--mist)} .headline{flex:1}
-    .eyebrow{font-size:10px;font-weight:700;letter-spacing:5px;color:var(--steel);text-transform:uppercase}
-    .headline h1{margin:9px 0 8px;font:500 29px/1.08 Georgia,'Times New Roman',serif;letter-spacing:2px}
-    .triplet{display:flex;align-items:center;gap:26px;font-size:9px;font-weight:700;letter-spacing:5px;color:var(--steel);text-transform:uppercase}
-    .triplet:before,.triplet:after{content:"";height:1px;width:82px;background:var(--gold)}
-    .top-claim{width:190px;padding-left:30px;border-left:1px solid var(--mist);font:500 12px/2 Georgia,'Times New Roman',serif;letter-spacing:4px;text-transform:uppercase}
-    .top-claim:after{content:"";display:block;width:44px;height:2px;background:var(--gold);margin-top:13px}
-    .hero{padding:34px 0 28px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(440px,.9fr);gap:18px;align-items:stretch}
-    .hero-art{position:relative;min-height:620px;border-radius:18px;overflow:hidden;background:
-      radial-gradient(circle at 72% 50%,rgba(212,175,107,.18),transparent 28%),
-      linear-gradient(135deg,#061426 0%,#08223e 55%,#123c5f 100%);box-shadow:var(--shadow)}
-    .hero-art:before{content:"";position:absolute;inset:0;background:
-      repeating-radial-gradient(ellipse at 88% 28%,transparent 0 22px,rgba(87,137,183,.11) 23px 25px,transparent 26px 34px);
-      opacity:.75}
-    .arch{position:absolute;right:4%;top:15%;width:49%;height:76%;border:12px solid rgba(225,214,190,.22);border-bottom:none;border-radius:48% 48% 0 0;filter:drop-shadow(0 10px 16px rgba(0,0,0,.18))}
-    .column{position:absolute;bottom:0;width:8.2%;height:72%;background:linear-gradient(90deg,rgba(49,70,91,.30),rgba(231,218,188,.46),rgba(106,100,88,.28));border-radius:4px 4px 0 0}
-    .column:before{content:"";position:absolute;left:-14%;right:-14%;top:-17px;height:19px;background:linear-gradient(90deg,rgba(44,61,80,.35),rgba(236,221,189,.55));border-radius:3px}
-    .column:after{content:"";position:absolute;left:-18%;right:-18%;bottom:0;height:22px;background:linear-gradient(90deg,rgba(40,56,73,.35),rgba(235,220,190,.50))}
-    .c1{right:35%}.c2{right:24%}.c3{right:13%}.c4{right:2%}
-    .gold-curve,.blue-curve{position:absolute;border:1.5px solid transparent;border-radius:50%;pointer-events:none}
-    .gold-curve{width:105%;height:90%;left:-25%;bottom:-35%;border-top-color:var(--gold);transform:rotate(-9deg)}
-    .blue-curve{width:92%;height:78%;left:-33%;top:-34%;border-bottom-color:#3c76ad;transform:rotate(13deg)}
-    .hero-copy{position:relative;z-index:2;padding:52px 48% 44px 48px;color:white;display:flex;flex-direction:column;height:100%}
-    .dark-logo{display:inline-flex;align-items:center;gap:12px}.dark-logo .brand-mark{height:44px}.dark-logo .brand-mark i{width:7px}.dark-logo .brand-mark i:nth-child(1){height:18px}.dark-logo .brand-mark i:nth-child(2){height:25px}.dark-logo .brand-mark i:nth-child(3){height:33px}.dark-logo .brand-mark i:nth-child(4){height:44px}
-    .dark-logo strong{font:600 39px/1 Georgia,'Times New Roman',serif;color:#f4dfb4}.dark-logo small{display:block;text-align:center;letter-spacing:8px;font-size:11px;margin-top:5px;color:#fff}
-    .hero-copy h2{margin:auto 0 18px;font:500 56px/.98 Georgia,'Times New Roman',serif;letter-spacing:-1px}.hero-copy .sub{font-size:11px;line-height:1.7;letter-spacing:4px;text-transform:uppercase;color:#e8edf3;font-weight:700}
-    .values{margin:34px 0 28px;display:grid;gap:14px}.value{display:flex;align-items:center;gap:13px;font-size:9px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#e8edf3}
-    .value b{width:38px;height:38px;border:1px solid var(--gold);border-radius:50%;display:grid;place-items:center;color:var(--gold);font-size:16px}
-    .heritage{display:flex;align-items:center;gap:12px;margin-top:auto;font-size:8px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#d9e2ec}.heritage:before{content:"";width:36px;height:2px;background:var(--gold)}
-    .hero-info{background:white;border:1px solid var(--mist);border-radius:18px;padding:54px 48px;box-shadow:var(--shadow);display:flex;flex-direction:column;justify-content:center}
-    .hero-info .eyebrow{color:var(--gold)}.hero-info h2{font:500 54px/1.04 Georgia,'Times New Roman',serif;margin:18px 0;color:var(--navy)}
-    .hero-info p{font-size:17px;line-height:1.7;color:var(--soft);max-width:580px}.cta-row{display:flex;gap:12px;margin-top:26px;flex-wrap:wrap}
-    .btn{height:50px;padding:0 23px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:13px;font-weight:700;transition:.18s ease}
-    .btn-primary{background:var(--navy);color:white}.btn-primary:hover{transform:translateY(-2px);background:#102b50;box-shadow:0 12px 28px rgba(11,31,59,.18)}
-    .btn-secondary{border:1px solid #b9c5d3;background:white}.btn-secondary:hover{border-color:var(--steel);color:var(--steel)}
-    .pillars{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--mist);border-bottom:1px solid var(--mist);margin:6px 0 70px}
-    .pillar{padding:28px 26px;display:flex;gap:16px;align-items:flex-start}.pillar+.pillar{border-left:1px solid var(--mist)}
-    .pillar-icon{font-size:27px;color:#b27b19;line-height:1}.pillar h3{margin:0 0 6px;font-size:10px;letter-spacing:2px;text-transform:uppercase}.pillar p{margin:0;color:var(--soft);font-size:13px;line-height:1.45}
-    .section{padding:74px 0}.section-head{display:flex;justify-content:space-between;gap:40px;align-items:end;margin-bottom:34px}.section-head h2{margin:7px 0 0;font:500 48px/1.05 Georgia,'Times New Roman',serif}.section-head p{max-width:520px;margin:0;color:var(--soft);line-height:1.7}
-    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:white;border:1px solid var(--mist);border-radius:14px;padding:26px;min-height:210px;transition:.18s ease}.card:hover{transform:translateY(-4px);box-shadow:var(--shadow);border-color:rgba(212,175,107,.45)}
-    .card .num{font:500 34px/1 Georgia,'Times New Roman',serif;color:var(--gold)}.card h3{margin:28px 0 9px;font-size:17px}.card p{margin:0;color:var(--soft);font-size:13px;line-height:1.6}
-    .impact-band{margin:40px 0 80px;background:linear-gradient(135deg,#061426,#0B1F3B 58%,#173c5c);border-radius:18px;color:white;overflow:hidden;position:relative}
-    .impact-band:after{content:"";position:absolute;right:-10%;top:-80%;width:60%;height:220%;border:1px solid var(--gold);border-radius:50%;opacity:.65}
-    .impact-inner{position:relative;z-index:2;padding:58px;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center}.impact-inner h2{font:500 46px/1.05 Georgia,'Times New Roman',serif;margin:12px 0}.impact-inner p{color:#cbd6e2;line-height:1.7}
-    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.stat{padding:20px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04)}.stat strong{display:block;color:#f2d79f;font:500 30px/1 Georgia,'Times New Roman',serif}.stat span{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#b9c8d7}
-    footer{border-top:1px solid var(--mist);padding:34px 0 44px;display:flex;align-items:center;justify-content:space-between;gap:30px;color:var(--soft);font-size:11px}footer .trip{letter-spacing:4px;text-transform:uppercase;color:var(--steel)}
-    @media(max-width:1050px){.shell{padding:0 22px}.topbar{height:auto;padding:24px 0;flex-wrap:wrap}.headline{order:3;flex-basis:100%}.top-claim{display:none}.hero{grid-template-columns:1fr}.hero-info{padding:40px}.hero-art{min-height:600px}.pillars{grid-template-columns:repeat(2,1fr)}.pillar:nth-child(3){border-left:0;border-top:1px solid var(--mist)}.pillar:nth-child(4){border-top:1px solid var(--mist)}.cards{grid-template-columns:1fr 1fr}.impact-inner{grid-template-columns:1fr}}
-    @media(max-width:680px){.shell{padding:0 16px}.brand{min-width:0}.brand-name strong{font-size:34px}.brand-name span{font-size:11px;letter-spacing:7px}.brand-divider{display:none}.hero{padding-top:18px}.hero-art{min-height:640px}.hero-copy{padding:34px 28px}.hero-copy h2{font-size:46px}.arch,.column{opacity:.45}.hero-info{padding:30px 24px}.hero-info h2{font-size:42px}.pillars{grid-template-columns:1fr}.pillar+.pillar{border-left:0;border-top:1px solid var(--mist)}.section{padding:54px 0}.section-head{display:block}.section-head h2{font-size:40px;margin-bottom:14px}.cards{grid-template-columns:1fr}.impact-inner{padding:36px 24px}.stats{grid-template-columns:1fr 1fr}footer{align-items:flex-start;flex-direction:column}}
-  </style>
+  <link rel="stylesheet" href="/brand.css">
 </head>
 <body>
   <main class="shell">
@@ -77,23 +15,32 @@
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
         <span class="brand-name"><strong>HIMATE</strong><span>SYSTEM</span></span>
       </a>
-      <div class="brand-divider"></div>
+      <div class="divider"></div>
       <div class="headline">
         <div class="eyebrow">Admin platform · arts & culture technology</div>
-        <h1 class="serif">EMPOWERING CULTURE. AMPLIFYING IMPACT.</h1>
+        <h1>EMPOWERING CULTURE. AMPLIFYING IMPACT.</h1>
         <div class="triplet"><span>People</span><span>Programs</span><span>Impact</span></div>
       </div>
-      <div class="top-claim">A smarter future for arts & culture</div>
+      <div class="claim">A smarter future for arts & culture</div>
     </header>
+
+    <nav class="nav" aria-label="Primary">
+      <div class="navlinks">
+        <a class="active" href="/">Home</a>
+        <a href="/platform">Platform</a>
+        <a href="/technology">Technology</a>
+        <a href="/security">Security</a>
+        <a href="/impact">Impact</a>
+      </div>
+      <a class="signin" href="/login">Partner & admin sign in →</a>
+    </nav>
 
     <section class="hero">
       <div class="hero-art">
-        <div class="blue-curve"></div><div class="gold-curve"></div><div class="arch"></div>
-        <div class="column c1"></div><div class="column c2"></div><div class="column c3"></div><div class="column c4"></div>
         <div class="hero-copy">
-          <div class="dark-logo">
-            <span class="brand-mark"><i></i><i></i><i></i><i></i></span>
-            <span><strong>HIMATE</strong><small>SYSTEM</small></span>
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span class="brand-name"><strong>HIMATE</strong><span>SYSTEM</span></span>
           </div>
           <h2>Culture<br>Connects<br>People</h2>
           <div class="sub">Building a brighter<br>cultural tomorrow</div>
@@ -107,24 +54,24 @@
       </div>
 
       <div class="hero-info">
-        <div class="eyebrow">HIMATE SYSTEM</div>
+        <div class="eyebrow" style="color:#D4AF6B">HIMATE SYSTEM</div>
         <h2>Technology built for a brighter cultural tomorrow.</h2>
         <p>HIMATE brings partner operations, programs, licensing, infrastructure and measurable cultural impact into one secure platform designed for arts organizations.</p>
-        <div class="cta-row">
-          <a class="btn btn-primary" href="/login">Partner & admin sign in <span>→</span></a>
-          <a class="btn btn-secondary" href="#platform">Explore the platform</a>
+        <div class="btnrow">
+          <a class="btn primary" href="/login">Partner & admin sign in →</a>
+          <a class="btn secondary" href="/technology">Explore the technology</a>
         </div>
       </div>
     </section>
 
     <section class="pillars" aria-label="Platform principles">
-      <article class="pillar"><div class="pillar-icon">♙</div><div><h3>People First</h3><p>Tools that empower cultural communities.</p></div></article>
-      <article class="pillar"><div class="pillar-icon">▤</div><div><h3>Streamlined Operations</h3><p>Everything you need in one secure platform.</p></div></article>
-      <article class="pillar"><div class="pillar-icon">▥</div><div><h3>Measurable Impact</h3><p>Data that tells a bigger cultural story.</p></div></article>
-      <article class="pillar"><div class="pillar-icon">◇</div><div><h3>Built for Tomorrow</h3><p>Secure. Scalable. Lasting change.</p></div></article>
+      <article class="pillar"><div class="ico">♙</div><div><h3>People First</h3><p>Tools that empower cultural communities.</p></div></article>
+      <article class="pillar"><div class="ico">▤</div><div><h3>Streamlined Operations</h3><p>Everything you need in one secure platform.</p></div></article>
+      <article class="pillar"><div class="ico">▥</div><div><h3>Measurable Impact</h3><p>Data that tells a bigger cultural story.</p></div></article>
+      <article class="pillar"><div class="ico">◇</div><div><h3>Built for Tomorrow</h3><p>Secure. Scalable. Lasting change.</p></div></article>
     </section>
 
-    <section class="section" id="platform">
+    <section class="section">
       <div class="section-head">
         <div><div class="eyebrow">ONE CULTURAL OPERATING LAYER</div><h2>People. Programs. Impact.</h2></div>
         <p>Designed to help cultural organizations operate with clarity while preserving the human, artistic and community value behind every program.</p>
@@ -136,10 +83,36 @@
       </div>
     </section>
 
-    <section class="impact-band">
-      <div class="impact-inner">
+    <section class="section">
+      <div class="section-head">
+        <div><div class="eyebrow">HOW THE TECHNOLOGY IS BUILT</div><h2>One secure entry point. Independent services behind it.</h2></div>
+        <p>HIMATE is structured for growth: the public application enters through one gateway, while operational domains remain independently deployable and horizontally scalable.</p>
+      </div>
+      <div class="tech-grid">
+        <div class="tech-panel dark">
+          <div class="eyebrow" style="color:#F2D79F">CONTROL PLANE ARCHITECTURE</div>
+          <h3>Microservices by design.</h3>
+          <p>Identity, partner operations, module catalog, billing and later impact/reporting services stay separated by responsibility while sharing one controlled user experience.</p>
+          <div class="flow">
+            <div><strong>01</strong><span>Gateway</span></div>
+            <div><strong>02</strong><span>Partner</span></div>
+            <div><strong>03</strong><span>Catalog</span></div>
+            <div><strong>04</strong><span>Billing</span></div>
+          </div>
+        </div>
+        <div class="tech-panel">
+          <div class="eyebrow">SEPARATION WITHOUT FRAGMENTATION</div>
+          <h3>Built to scale partner by partner.</h3>
+          <p>Each partner environment can remain isolated while the HIMATE control plane centrally governs modules, commercial rules, health and future impact evidence. That gives the system both operational consistency and partner-level separation.</p>
+          <div class="btnrow"><a class="btn secondary" href="/platform">See the platform model</a><a class="btn secondary" href="/security">See security principles</a></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="impactband">
+      <div class="impactinner">
         <div>
-          <div class="eyebrow" style="color:#f2d79f">CULTURE FUELS TOMORROW</div>
+          <div class="eyebrow" style="color:#F2D79F">CULTURE FUELS TOMORROW</div>
           <h2>Heritage meets innovation.</h2>
           <p>HIMATE is engineered for organizations whose work connects people through art, culture and shared experience — with technology that can scale alongside their mission.</p>
         </div>
@@ -153,11 +126,11 @@
     </section>
 
     <footer>
-      <a class="brand" href="/" style="transform:scale(.68);transform-origin:left center;min-width:240px">
+      <div class="brand" style="transform:scale(.68);transform-origin:left center">
         <span class="brand-mark"><i></i><i></i><i></i><i></i></span>
         <span class="brand-name"><strong>HIMATE</strong><span>SYSTEM</span></span>
-      </a>
-      <div class="trip">People &nbsp; | &nbsp; Programs &nbsp; | &nbsp; Impact</div>
+      </div>
+      <div class="footertrip">People &nbsp; | &nbsp; Programs &nbsp; | &nbsp; Impact</div>
       <div>© 2026 HIMATE System. Art drives a better tomorrow.</div>
     </footer>
   </main>
