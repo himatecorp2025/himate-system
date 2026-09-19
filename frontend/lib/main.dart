@@ -3401,7 +3401,7 @@ class _OperationsControlsCard extends StatelessWidget {
   );
 }
 
-class Content extends StatelessWidgetclass Content extends StatelessWidget {
+class Content extends StatelessWidget {
   const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, super.key});
   final String title, subtitle;
   final String? eyebrow;
