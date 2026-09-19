@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 void main() {
@@ -871,7 +870,7 @@ class _LetterspacedLabel extends StatelessWidget {
   }
 }
 
-class NavSpecclass NavSpec {
+class NavSpec {
   const NavSpec(this.label, this.icon, this.subtitle);
   final String label;
   final IconData icon;
@@ -961,7 +960,7 @@ class _ShellState extends State<Shell> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 230),
                 curve: Curves.easeOutCubic,
-                width: collapsed ? 82 : 248,
+                width: collapsed ? 82 : 258,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF061426), brandNavy, Color(0xFF0A2C4C)]),
                 ),
@@ -981,8 +980,8 @@ class _ShellState extends State<Shell> {
                 child: Column(
                   children: [
                     Container(
-                      height: 68,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      height: 74,
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
                       decoration: const BoxDecoration(color: brandWhite, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
                         children: [
@@ -990,7 +989,7 @@ class _ShellState extends State<Shell> {
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 370),
+                                constraints: const BoxConstraints(maxWidth: 420),
                                 child: TextField(
                                   readOnly: true,
                                   onTap: () => ScaffoldMessenger.of(context).showSnackBar(
@@ -1067,13 +1066,13 @@ class _SidebarContent extends StatelessWidget {
     return Column(
       children: [
         SizedBox(
-          height: 116,
+          height: 126,
           child: Stack(
             alignment: Alignment.center,
             children: [
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: collapsed ? 16 : 18),
-                child: HimateLogo(onDark: true, compact: collapsed, width: collapsed ? 38 : 180),
+                child: HimateLogo(onDark: true, compact: collapsed, width: collapsed ? 38 : 190),
               ),
               if (onToggle != null)
                 Positioned(
@@ -1124,9 +1123,9 @@ class _SidebarContent extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${user['name'] ?? 'Admin User'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 11.5)),
+                            Text('${user['name'] ?? 'Admin User'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 11.5)),
                             const SizedBox(height: 2),
-                            Text('${user['email'] ?? 'System Administrator'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF91A4B8), fontSize: 9.5)),
+                            Text('${user['email'] ?? 'System Administrator'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: const Color(0xFF91A4B8), fontSize: 9.5)),
                           ],
                         ),
                       ),
@@ -1174,7 +1173,7 @@ class _NavItemState extends State<_NavItem> {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 170),
                 curve: Curves.easeOut,
-                constraints: const BoxConstraints(minHeight: 48),
+                constraints: const BoxConstraints(minHeight: 52),
                 padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 12, vertical: 9),
                 decoration: BoxDecoration(
                   color: active ? brandGold.withOpacity(.09) : hover ? Colors.white.withOpacity(.055) : Colors.transparent,
@@ -1192,7 +1191,7 @@ class _NavItemState extends State<_NavItem> {
                               widget.spec.label,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: active ? const Color(0xFFF2D79F) : const Color(0xFFD9E2EC), fontWeight: active ? FontWeight.w700 : FontWeight.w500, fontSize: 12.2),
+                              style: TextStyle(color: active ? const Color(0xFFF2D79F) : const Color(0xFFD9E2EC), fontWeight: active ? FontWeight.w700 : FontWeight.w500, fontSize: 12.5),
                             ),
                           ),
                           if (active) Container(width: 3, height: 18, decoration: BoxDecoration(color: brandGold, borderRadius: BorderRadius.circular(99))),
