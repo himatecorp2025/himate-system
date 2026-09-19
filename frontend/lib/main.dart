@@ -144,7 +144,7 @@ ThemeData buildBrandTheme() {
   );
 }
 
-class Apiclass ApiError implements Exception {
+class ApiError implements Exception {
   ApiError(this.status, this.message);
   final int status;
   final String message;
@@ -1443,7 +1443,7 @@ class _ActivityRow extends StatelessWidget {
   ]));
 }
 
-class PartnersPageclass PartnersPage extends StatefulWidget {
+class PartnersPage extends StatefulWidget {
   const PartnersPage({required this.api, super.key});
   final Api api;
 
@@ -3491,10 +3491,10 @@ class Content extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (eyebrow != null) ...[
-              Text(eyebrow!, style: const TextStyle(color: brandNavy, fontSize: 14)),
-              const SizedBox(height: 3),
+              Text(eyebrow!, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
             ],
-            Text(title, style: Theme.of(context).textTheme.headlineMedium),
+            Text(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: narrow ? 36 : 42, fontWeight: FontWeight.w600, height: .98)),
             const SizedBox(height: 6),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12.5, height: 1.45))),
           ],
@@ -3539,8 +3539,8 @@ class _KpiState extends State<Kpi> {
     child: AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
-      width: 248,
-      height: 118,
+      width: double.infinity,
+      height: 132,
       transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
       decoration: BoxDecoration(
         color: brandWhite,
