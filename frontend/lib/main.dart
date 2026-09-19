@@ -414,7 +414,7 @@ class _ShellState extends State<Shell> {
                     child: InkWell(
                       onTap: () => setState(() => selected = i), borderRadius: BorderRadius.circular(14),
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 170), minHeight: 54,
+                        duration: const Duration(milliseconds: 170), constraints: const BoxConstraints(minHeight: 54),
                         padding: EdgeInsets.symmetric(horizontal: collapsed ? 0 : 14, vertical: 10),
                         decoration: BoxDecoration(
                           color: active ? Colors.white.withOpacity(.10) : Colors.transparent,
