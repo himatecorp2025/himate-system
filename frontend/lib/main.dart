@@ -2572,6 +2572,835 @@ class SystemPage extends StatelessWidget {
   }
 }
 
+
+String _humanize(String value) {
+  return value
+      .toLowerCase()
+      .split('_')
+      .where((e) => e.isNotEmpty)
+      .map((e) => e[0].toUpperCase() + e.substring(1))
+      .join(' ');
+}
+
+class BrandDialog extends StatelessWidget {
+  const BrandDialog({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.child,
+    required this.primaryLabel,
+    required this.onPrimary,
+    this.width = 620,
+    super.key,
+  });
+
+  final String title, subtitle, primaryLabel;
+  final IconData icon;
+  final Widget child;
+  final VoidCallback onPrimary;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: width, maxHeight: MediaQuery.of(context).size.height * .88),
+        child: Container(
+          decoration: BoxDecoration(
+            color: brandWhite,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: brandMist),
+            boxShadow: [BoxShadow(color: brandNavy.withOpacity(.16), blurRadius: 44, offset: const Offset(0, 20))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(22, 20, 18, 18),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: brandMist)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(11)),
+                      child: Icon(icon, color: brandGold, size: 21),
+                    ),
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title, style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 4),
+                          Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12, height: 1.4)),
+                        ],
+                      ),
+                    ),
+                    IconButton(onPressed: () => Navigator.pop(context, false), icon: const Icon(Icons.close_rounded)),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(22),
+                  child: child,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
+                decoration: const BoxDecoration(border: Border(top: BorderSide(color: brandMist))),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                    const SizedBox(width: 8),
+                    FilledButton(onPressed: onPrimary, child: Text(primaryLabel)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterSurface extends StatelessWidget {
+  const _FilterSurface({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: brandMist),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _MiniCounter extends StatelessWidget {
+  const _MiniCounter({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: brandNavy.withOpacity(.055),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: brandNavy.withOpacity(.07)),
+      ),
+      child: Text(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = label.toUpperCase();
+    final tone = value == 'LIVE' || value == 'ACTIVE' || value == 'OK' || value == 'HEALTHY'
+        ? brandSuccess
+        : value.contains('MAINTENANCE') || value.contains('PROVISION')
+            ? brandWarning
+            : value.contains('SUSPENDED') || value.contains('ARCHIVED')
+                ? brandDanger
+                : brandSteel;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99), border: Border.all(color: tone.withOpacity(.15))),
+      child: Text(_humanize(label), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .25)),
+    );
+  }
+}
+
+class PartnerCard extends StatefulWidget {
+  const PartnerCard({required this.partner, required this.onTap, super.key});
+  final Map<String, dynamic> partner;
+  final VoidCallback onTap;
+
+  @override
+  State<PartnerCard> createState() => _PartnerCardState();
+}
+
+class _PartnerCardState extends State<PartnerCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.partner;
+    return MouseRegion(
+      onEnter: (_) => setState(() => hover = true),
+      onExit: (_) => setState(() => hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+        decoration: BoxDecoration(
+          color: brandWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: hover ? brandGold.withOpacity(.42) : brandMist),
+          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .08 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.all(17),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(11)),
+                        child: const Icon(Icons.apartment_rounded, color: brandNavy, size: 21),
+                      ),
+                      const Spacer(),
+                      if (p['reference_partner'] == true)
+                        const Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text('${p['category_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
+                  const SizedBox(height: 14),
+                  Row(children: [
+                    _StatusPill(label: '${p['lifecycle']}'),
+                    const Spacer(),
+                    Text('${p['country'] ?? ''}', style: const TextStyle(color: brandTextSoft, fontSize: 10)),
+                  ]),
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(child: Text('${p['id']}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
+                    const Text('Open workspace', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 5),
+                    AnimatedSlide(offset: hover ? const Offset(.12, 0) : Offset.zero, duration: const Duration(milliseconds: 160), child: const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 16)),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class NewPartnerCard extends StatefulWidget {
+  const NewPartnerCard({required this.onTap, super.key});
+  final VoidCallback onTap;
+
+  @override
+  State<NewPartnerCard> createState() => _NewPartnerCardState();
+}
+
+class _NewPartnerCardState extends State<NewPartnerCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => hover = true),
+      onExit: (_) => setState(() => hover = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            constraints: const BoxConstraints(minHeight: 224),
+            decoration: BoxDecoration(
+              color: hover ? brandGold.withOpacity(.055) : brandWhite,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: brandGold.withOpacity(hover ? .75 : .35), width: 1.1),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 46, height: 46, decoration: BoxDecoration(color: brandGold.withOpacity(.12), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, color: brandGold, size: 26)),
+                  const SizedBox(height: 11),
+                  const Text('NEW PARTNER', style: TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.3)),
+                  const SizedBox(height: 5),
+                  const Text('Create a new partner workspace', style: TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkspaceSpec {
+  const _WorkspaceSpec(this.title, this.icon, this.subtitle, this.active);
+  final String title, subtitle;
+  final IconData icon;
+  final bool active;
+}
+
+class WorkspaceCard extends StatelessWidget {
+  const WorkspaceCard({required this.spec, super.key});
+  final _WorkspaceSpec spec;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 112),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: brandMist),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(width: 34, height: 34, decoration: BoxDecoration(color: (spec.active ? brandGold : brandSteel).withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(spec.icon, color: spec.active ? brandGold : brandSteel, size: 18)),
+            const Spacer(),
+            _MiniCounter(label: spec.active ? 'AVAILABLE' : 'PLANNED'),
+          ]),
+          const SizedBox(height: 11),
+          Text(spec.title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12.5)),
+          const SizedBox(height: 3),
+          Text(spec.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.6, height: 1.35)),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, required this.subtitle, this.trailing});
+  final String title, subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11.5, height: 1.4)),
+            ],
+          ),
+        ),
+        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+      ],
+    );
+  }
+}
+
+class PartnerModuleCard extends StatefulWidget {
+  const PartnerModuleCard({required this.module, required this.onTap, super.key});
+  final Map<String, dynamic> module;
+  final VoidCallback onTap;
+
+  @override
+  State<PartnerModuleCard> createState() => _PartnerModuleCardState();
+}
+
+class _PartnerModuleCardState extends State<PartnerModuleCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.module;
+    final included = m['included_in_base'] == true;
+    final visible = m['visible'] == true;
+    return MouseRegion(
+      onEnter: (_) => setState(() => hover = true),
+      onExit: (_) => setState(() => hover = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 170),
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: brandWhite,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: hover ? brandGold.withOpacity(.42) : brandMist),
+              boxShadow: hover ? [BoxShadow(color: brandNavy.withOpacity(.06), blurRadius: 18, offset: const Offset(0, 7))] : const [],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(child: Text('${m['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13))),
+                  const SizedBox(width: 8),
+                  _StatusPill(label: '${m['status']}'),
+                ]),
+                const SizedBox(height: 5),
+                Text('${m['group_label']} · ${m['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                const SizedBox(height: 13),
+                Row(children: [
+                  _TinyFlag(icon: visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, label: visible ? 'VISIBLE' : 'HIDDEN', active: visible),
+                  const SizedBox(width: 7),
+                  _TinyFlag(icon: included ? Icons.inventory_2_outlined : Icons.add_card_outlined, label: included ? 'BASE' : 'EXTRA', active: included),
+                ]),
+                const SizedBox(height: 13),
+                Row(children: [
+                  const Text('Monthly', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const Spacer(),
+                  Text(included ? 'Included' : money(m['partner_price']), style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 7),
+                  const Icon(Icons.edit_outlined, color: brandGold, size: 16),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TinyFlag extends StatelessWidget {
+  const _TinyFlag({required this.icon, required this.label, required this.active});
+  final IconData icon;
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+    decoration: BoxDecoration(color: (active ? brandSuccess : brandSteel).withOpacity(.07), borderRadius: BorderRadius.circular(7)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: active ? brandSuccess : brandSteel),
+      const SizedBox(width: 4),
+      Text(label, style: TextStyle(fontSize: 8.5, color: active ? brandSuccess : brandSteel, fontWeight: FontWeight.w700)),
+    ]),
+  );
+}
+
+class _PartnerDetailsCard extends StatelessWidget {
+  const _PartnerDetailsCard({required this.partner});
+  final Map<String, dynamic> partner;
+
+  @override
+  Widget build(BuildContext context) => _InfoCard(
+    title: 'Company Data',
+    icon: Icons.apartment_outlined,
+    children: [
+      _DefinitionRow(label: 'Legal name', value: '${partner['legal_name'] ?? '—'}'),
+      _DefinitionRow(label: 'Category', value: '${partner['category_name'] ?? '—'}'),
+      _DefinitionRow(label: 'Primary contact', value: '${partner['contact_name'] ?? '—'}'),
+      _DefinitionRow(label: 'Contact email', value: '${partner['contact_email'] ?? '—'}'),
+      _DefinitionRow(label: 'Primary domain', value: '${partner['primary_domain'] ?? '—'}'),
+      _DefinitionRow(label: 'Staging domain', value: '${partner['staging_domain'] ?? '—'}'),
+    ],
+  );
+}
+
+class _CommercialSummaryCard extends StatelessWidget {
+  const _CommercialSummaryCard({required this.terms, required this.billing, required this.onEdit});
+  final Map<String, dynamic> terms, billing;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) => _InfoCard(
+    title: 'Pricing & Subscription',
+    icon: Icons.payments_outlined,
+    action: IconButton(onPressed: onEdit, tooltip: 'Edit commercial terms', icon: const Icon(Icons.edit_outlined, size: 18)),
+    children: [
+      _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
+      _DefinitionRow(label: 'Base monthly fee', value: money(billing['effective_base_fee'])),
+      _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
+      _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
+      _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),
+      const _DefinitionRow(label: 'Billing rule', value: '30-day service cycle · invoice day 1'),
+    ],
+  );
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.title, required this.icon, required this.children, this.action});
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(icon, color: brandGold, size: 19)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+          if (action != null) action!,
+        ]),
+        const SizedBox(height: 14),
+        ...children,
+      ]),
+    ),
+  );
+}
+
+class _DefinitionRow extends StatelessWidget {
+  const _DefinitionRow({required this.label, required this.value, this.emphasis = false});
+  final String label, value;
+  final bool emphasis;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: Row(children: [
+      Expanded(child: Text(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5))),
+      const SizedBox(width: 12),
+      Flexible(child: Text(value, textAlign: TextAlign.right, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: brandNavy, fontSize: emphasis ? 13 : 11, fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600))),
+    ]),
+  );
+}
+
+class _RuleItem {
+  const _RuleItem(this.icon, this.label, this.value);
+  final IconData icon;
+  final String label, value;
+}
+
+class _RuleStrip extends StatelessWidget {
+  const _RuleStrip({required this.items});
+  final List<_RuleItem> items;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      for (final item in items)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(color: brandNavy.withOpacity(.04), borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(item.icon, color: brandGold, size: 15),
+            const SizedBox(width: 7),
+            Text('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+            Text(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+    ],
+  );
+}
+
+class _DocumentPanel extends StatelessWidget {
+  const _DocumentPanel({required this.documents, required this.onAdd});
+  final List<Map<String, dynamic>> documents;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: Text('Documents', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+          _MiniCounter(label: '${documents.length} RECORDS'),
+        ]),
+        const SizedBox(height: 12),
+        if (documents.isEmpty)
+          _EmptyInline(icon: Icons.folder_open_outlined, title: 'No documents registered', actionLabel: 'Register document', onTap: onAdd)
+        else
+          for (var i = 0; i < documents.length && i < 5; i++) ...[
+            _DocumentRow(document: documents[i]),
+            if (i < documents.length - 1 && i < 4) const Divider(height: 1),
+          ],
+      ]),
+    ),
+  );
+}
+
+class _DocumentRow extends StatelessWidget {
+  const _DocumentRow({required this.document});
+  final Map<String, dynamic> document;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Row(children: [
+      Container(width: 34, height: 34, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.description_outlined, color: brandGold, size: 17)),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${document['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(_humanize('${document['kind']}'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+      ])),
+      if ('${document['storage_url'] ?? ''}'.isNotEmpty) const Icon(Icons.link_rounded, color: brandSteel, size: 16),
+    ]),
+  );
+}
+
+class _InvoicePanel extends StatelessWidget {
+  const _InvoicePanel({required this.invoices});
+  final List<Map<String, dynamic>> invoices;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: Text('Invoices', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+          _MiniCounter(label: '${invoices.length} RECORDS'),
+        ]),
+        const SizedBox(height: 12),
+        if (invoices.isEmpty)
+          const _EmptyInline(icon: Icons.receipt_long_outlined, title: 'No invoice records yet')
+        else
+          for (var i = 0; i < invoices.length && i < 5; i++) ...[
+            _InvoiceRow(invoice: invoices[i]),
+            if (i < invoices.length - 1 && i < 4) const Divider(height: 1),
+          ],
+      ]),
+    ),
+  );
+}
+
+class _InvoiceRow extends StatelessWidget {
+  const _InvoiceRow({required this.invoice});
+  final Map<String, dynamic> invoice;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Row(children: [
+      Container(width: 34, height: 34, decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.receipt_long_outlined, color: brandNavy, size: 17)),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${invoice['id']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text('${invoice['invoice_date'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+      ])),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text(money(invoice['total']), style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontWeight: FontWeight.w600, fontSize: 14)),
+        const SizedBox(height: 2),
+        _StatusPill(label: '${invoice['status'] ?? 'DRAFT'}'),
+      ]),
+    ]),
+  );
+}
+
+class _EmptyInline extends StatelessWidget {
+  const _EmptyInline({required this.icon, required this.title, this.actionLabel, this.onTap});
+  final IconData icon;
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 14),
+    decoration: BoxDecoration(color: brandIvory, borderRadius: BorderRadius.circular(10), border: Border.all(color: brandMist)),
+    child: Column(children: [
+      Icon(icon, color: brandSteel, size: 24),
+      const SizedBox(height: 8),
+      Text(title, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+      if (actionLabel != null && onTap != null) ...[
+        const SizedBox(height: 8),
+        TextButton(onPressed: onTap, child: Text(actionLabel!)),
+      ],
+    ]),
+  );
+}
+
+class _DialogSectionLabel extends StatelessWidget {
+  const _DialogSectionLabel(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: Text(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+  );
+}
+
+class _IssuerProfileCard extends StatelessWidget {
+  const _IssuerProfileCard({required this.profile, required this.onEdit});
+  final Map<String, dynamic> profile;
+  final VoidCallback onEdit;
+
+  String clean(dynamic value) => '${value ?? ''}'.trim().isEmpty ? 'Not configured' : '${value ?? ''}';
+
+  @override
+  Widget build(BuildContext context) => _InfoCard(
+    title: 'HIMATE Issuer Profile',
+    icon: Icons.account_balance_outlined,
+    action: IconButton(onPressed: onEdit, tooltip: 'Edit billing profile', icon: const Icon(Icons.edit_outlined, size: 18)),
+    children: [
+      _DefinitionRow(label: 'Legal name', value: clean(profile['legal_name'])),
+      _DefinitionRow(label: 'Billing email', value: clean(profile['email'])),
+      _DefinitionRow(label: 'Tax ID', value: clean(profile['tax_id'])),
+      _DefinitionRow(label: 'Bank', value: clean(profile['bank_name'])),
+      _DefinitionRow(label: 'IBAN', value: clean(profile['iban'])),
+      _DefinitionRow(label: 'SWIFT / BIC', value: clean(profile['swift'])),
+    ],
+  );
+}
+
+class _BillingRulesCard extends StatelessWidget {
+  const _BillingRulesCard();
+
+  @override
+  Widget build(BuildContext context) => const _InfoCard(
+    title: 'Commercial Rules',
+    icon: Icons.rule_folder_outlined,
+    children: [
+      _DefinitionRow(label: 'Invoice issue day', value: '1st of each month'),
+      _DefinitionRow(label: 'Service period', value: 'Preceding 30 days'),
+      _DefinitionRow(label: 'Annual base-fee uplift', value: 'January 1'),
+      _DefinitionRow(label: 'Default uplift', value: '10% · admin-overridable'),
+      _DefinitionRow(label: 'Extra modules', value: 'Consolidated into main invoice'),
+      _DefinitionRow(label: 'External invoice provider', value: 'Not configured'),
+    ],
+  );
+}
+
+class CatalogModuleCard extends StatelessWidget {
+  const CatalogModuleCard({required this.module, super.key});
+  final Map<String, dynamic> module;
+
+  @override
+  Widget build(BuildContext context) {
+    final system = module['system'] == true;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(width: 36, height: 36, decoration: BoxDecoration(color: (system ? brandNavy : brandGold).withOpacity(.08), borderRadius: BorderRadius.circular(9)), child: Icon(system ? Icons.verified_outlined : Icons.extension_outlined, color: system ? brandNavy : brandGold, size: 18)),
+            const Spacer(),
+            _MiniCounter(label: system ? 'REFERENCE' : 'CUSTOM'),
+          ]),
+          const SizedBox(height: 12),
+          Text('${module['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 4),
+          Text('${module['group_label']}', style: const TextStyle(color: brandSteel, fontSize: 10, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 3),
+          Text('${module['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Text('v${module['version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+            const Spacer(),
+            Text(money(module['default_monthly_price']), style: const TextStyle(fontFamily: 'Georgia', color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+class _OperationsHero extends StatelessWidget {
+  const _OperationsHero({required this.status, required this.environment, required this.version});
+  final String status, environment, version;
+
+  @override
+  Widget build(BuildContext context) {
+    final healthy = status.toLowerCase() == 'ok' || status.toLowerCase() == 'healthy';
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [brandNavyDeep, brandNavy, brandNavySoft]),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: brandGold.withOpacity(.18)),
+      ),
+      child: LayoutBuilder(builder: (context, c) {
+        final content = [
+          BrandMark(size: 46),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(healthy ? 'Platform operational' : 'Platform requires attention', style: const TextStyle(fontFamily: 'Georgia', color: brandWhite, fontSize: 24, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 5),
+              Text('Environment: $environment · Version: $version', style: const TextStyle(color: Color(0xFFB8C6D6), fontSize: 11)),
+            ]),
+          ),
+          _StatusPill(label: status),
+        ];
+        if (c.maxWidth < 620) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [content[0], content[1], content[2]]),
+            const SizedBox(height: 14),
+            content[3],
+          ]);
+        }
+        return Row(children: content);
+      }),
+    );
+  }
+}
+
+class _ArchitectureCard extends StatelessWidget {
+  const _ArchitectureCard();
+
+  @override
+  Widget build(BuildContext context) => const _InfoCard(
+    title: 'Architecture',
+    icon: Icons.account_tree_outlined,
+    children: [
+      _DefinitionRow(label: 'Public ingress', value: 'HIMATE API Gateway'),
+      _DefinitionRow(label: 'Identity boundary', value: 'Gateway session service'),
+      _DefinitionRow(label: 'Partner domain', value: 'Independent Go service'),
+      _DefinitionRow(label: 'Catalog domain', value: 'Independent Go service'),
+      _DefinitionRow(label: 'Billing domain', value: 'Independent Go service'),
+      _DefinitionRow(label: 'Persistence', value: 'PostgreSQL · service-owned schemas'),
+    ],
+  );
+}
+
+class _OperationsControlsCard extends StatelessWidget {
+  const _OperationsControlsCard();
+
+  @override
+  Widget build(BuildContext context) => const _InfoCard(
+    title: 'Operational Controls',
+    icon: Icons.shield_outlined,
+    children: [
+      _DefinitionRow(label: 'Containerization', value: 'Enabled'),
+      _DefinitionRow(label: 'Horizontal scaling', value: 'Stateless service design'),
+      _DefinitionRow(label: 'Private services', value: 'Internal network only'),
+      _DefinitionRow(label: 'Partner databases', value: 'Separate from HIMATE control plane'),
+      _DefinitionRow(label: 'Connector model', value: 'Pre-defined API exchange'),
+      _DefinitionRow(label: 'Backups / restore', value: 'Scheduled for START-21'),
+    ],
+  );
+}
+
 class Content extends StatelessWidgetclass Content extends StatelessWidget {
   const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, super.key});
   final String title, subtitle;
