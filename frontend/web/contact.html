@@ -1,1 +1,61 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0B1F3B"><title>Contact HIMATE</title><link rel="stylesheet" href="/himate-brand-r4.css"></head><body><header class="site-nav"><div class="wrap nav-inner"><a class="logo" href="/"><span class="bars"><i></i><i></i><i></i><i></i></span><span class="logo-text"><strong>HIMATE</strong><small>SYSTEM</small></span></a><nav class="links"><a class="" href="/platform">Platform</a><a class="" href="/modules">Modules</a><a class="" href="/programs">Programs</a><a class="" href="/impact">Impact</a><a class="" href="/partners">Partners</a><a class="active" href="/contact">Contact</a><a href="/login">Login</a></nav><div class="menu">☰</div></div></header><section class="page-hero statue"><div class="page-art"></div><div class="wrap inner"><div class="caps gold">Culture connects people</div><h1>LET’S BUILD<br>WHAT’S NEXT.</h1><p>Start a conversation about how HIMATE can support your organization, programs, people and long-term cultural impact.</p></div></section><section class="content-section"><div class="wrap split"><div><div class="caps">Partner with HIMATE</div><h2>A CONVERSATION<br>WORTH HAVING.</h2><p>Tell us about your organization and what you want technology to make possible. Commercial terms and platform configuration are tailored partner by partner.</p><div class="feature-row"><div class="feature"><strong>Arts</strong><p>Organizations</p></div><div class="feature"><strong>Culture</strong><p>Institutions</p></div></div></div><form class="contact-box"><div class="caps">Start a conversation</div><input aria-label="Name" placeholder="Your name"><input aria-label="Organization" placeholder="Organization"><input aria-label="Email" type="email" placeholder="Email address"><textarea aria-label="Message" placeholder="Tell us what you are building"></textarea><div class="hero-actions"><button class="btn btn-gold" type="button">Send inquiry →</button></div></form></div></section><footer class="footer"><div class="wrap footer-inner"><a class="logo" href="/"><span class="bars"><i></i><i></i><i></i><i></i></span><span class="logo-text"><strong>HIMATE</strong><small>SYSTEM</small></span></a><div class="links"><a href="/platform">Platform</a><a href="/modules">Modules</a><a href="/programs">Programs</a><a href="/impact">Impact</a><a href="/partners">Partners</a><a href="/contact">Contact</a></div><small>© 2026 HIMATE System · Culture Fuels Tomorrow.</small></div></footer></body></html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0B1F3B"><title>Contact HIMATE</title><link rel="preload" as="image" href="/art/statue_hero_r5.png" fetchpriority="high"><link rel="stylesheet" href="/himate-brand-r4.css"></head><body><header class="site-nav"><div class="wrap nav-inner"><a class="logo" href="/"><span class="bars"><i></i><i></i><i></i><i></i></span><span class="logo-text"><strong>HIMATE</strong><small>SYSTEM</small></span></a><nav class="links"><a class="" href="/platform">Platform</a><a class="" href="/modules">Modules</a><a class="" href="/programs">Programs</a><a class="" href="/impact">Impact</a><a class="" href="/partners">Partners</a><a class="active" href="/contact">Contact</a><a href="/login">Login</a></nav><div class="menu">☰</div></div></header><section class="page-hero statue"><div class="page-art"></div><div class="wrap inner"><div class="caps gold">Culture connects people</div><h1>LET’S BUILD<br>WHAT’S NEXT.</h1><p>Start a conversation about how HIMATE can support your organization, programs, people and long-term cultural impact.</p></div></section><section class="content-section"><div class="wrap split"><div><div class="caps">Partner with HIMATE</div><h2>A CONVERSATION<br>WORTH HAVING.</h2><p>Tell us about your organization and what you want technology to make possible. Commercial terms and platform configuration are tailored partner by partner.</p><div class="feature-row"><div class="feature"><strong>Arts</strong><p>Organizations</p></div><div class="feature"><strong>Culture</strong><p>Institutions</p></div></div></div><form class="contact-box" id="contact-form" novalidate>
+<div class="caps">Start a conversation</div>
+<input aria-label="Name" name="name" autocomplete="name" maxlength="120" required placeholder="Your name">
+<input aria-label="Organization" name="organization" autocomplete="organization" maxlength="180" placeholder="Organization">
+<input aria-label="Email" name="email" autocomplete="email" maxlength="254" required type="email" placeholder="Email address">
+<textarea aria-label="Message" name="message" maxlength="5000" minlength="10" required placeholder="Tell us what you are building"></textarea>
+<input class="contact-hp" tabindex="-1" autocomplete="off" aria-hidden="true" name="website" placeholder="Website">
+<div class="hero-actions"><button class="btn btn-gold" id="contact-submit" type="submit">Send inquiry →</button></div>
+<div class="contact-status" id="contact-status" role="status" aria-live="polite"></div>
+</form></div></section><script>
+(() => {
+  const form = document.getElementById('contact-form');
+  const button = document.getElementById('contact-submit');
+  const status = document.getElementById('contact-status');
+  if (!form || !button || !status) return;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    status.className = 'contact-status';
+
+    if (!form.reportValidity()) return;
+
+    const data = new FormData(form);
+    const payload = {
+      name: String(data.get('name') || '').trim(),
+      organization: String(data.get('organization') || '').trim(),
+      email: String(data.get('email') || '').trim(),
+      message: String(data.get('message') || '').trim(),
+      website: String(data.get('website') || '').trim()
+    };
+
+    button.disabled = true;
+    button.textContent = 'Sending…';
+    status.textContent = 'Sending your inquiry…';
+
+    try {
+      const response = await fetch('/api/v1/public/contact', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = result && result.error && result.error.message
+          ? result.error.message
+          : 'We could not send your inquiry. Please try again.';
+        throw new Error(message);
+      }
+      form.reset();
+      status.className = 'contact-status success';
+      status.textContent = 'Thank you. Your inquiry has been received.';
+    } catch (error) {
+      status.className = 'contact-status error';
+      status.textContent = error && error.message ? error.message : 'We could not send your inquiry. Please try again.';
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Send inquiry →';
+    }
+  });
+})();
+</script><footer class="footer"><div class="wrap footer-inner"><a class="logo" href="/"><span class="bars"><i></i><i></i><i></i><i></i></span><span class="logo-text"><strong>HIMATE</strong><small>SYSTEM</small></span></a><div class="links"><a href="/platform">Platform</a><a href="/modules">Modules</a><a href="/programs">Programs</a><a href="/impact">Impact</a><a href="/partners">Partners</a><a href="/contact">Contact</a></div><small>© 2026 HIMATE System · Culture Fuels Tomorrow.</small></div></footer></body></html>
