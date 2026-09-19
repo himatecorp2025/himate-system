@@ -134,7 +134,7 @@ ThemeData buildBrandTheme() {
   );
 }
 
-class ApiErrorclass ApiError implements Exception {
+class ApiError implements Exception {
   ApiError(this.status, this.message);
   final int status;
   final String message;
@@ -214,7 +214,7 @@ class _HimateAppState extends State<HimateApp> {
     title: 'HIMATE System',
     theme: buildBrandTheme(),
     home: loading
-      ? const Scaffold(backgroundColor: brandInk, body: Center(child: SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 2.5, color: brandGold))))
+      ? const Scaffold(backgroundColor: brandNavyDeep, body: Center(child: SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 2.5, color: brandGold))))
       : user == null ? LoginPage(onLogin: login) : Shell(api: api, user: user!, onLogout: logout),
   );
 }
@@ -1370,7 +1370,7 @@ class _ActivityRow extends StatelessWidget {
   );
 }
 
-class PartnersPageclass PartnersPage extends StatefulWidget {
+class PartnersPage extends StatefulWidget {
   const PartnersPage({required this.api, super.key});
   final Api api;
   @override
