@@ -863,46 +863,16 @@ class HimateLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = onDark ? const Color(0xFFF3E3BD) : brandNavy;
-    if (compact) return SizedBox(width: width, child: const BrandMark(size: 38));
+    final asset = compact ? 'assets/himate_mark.webp' : 'assets/himate_logo_master.webp';
+    final ratio = compact ? (120 / 129) : (180 / 118);
     return SizedBox(
       width: width,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          BrandMark(size: width * .22),
-          SizedBox(width: width * .055),
-          Flexible(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'HIMATE',
-                    style: GoogleFonts.cormorantGaramond(
-                      color: textColor,
-                      fontWeight: FontWeight.w700,
-                      fontSize: width * .19,
-                      letterSpacing: -.8,
-                      height: .9,
-                      shadows: onDark ? const [Shadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 2))] : const [],
-                    ),
-                  ),
-                ),
-                Text(
-                  'S Y S T E M',
-                  style: GoogleFonts.inter(
-                    color: onDark ? brandWhite : brandNavy,
-                    fontWeight: FontWeight.w700,
-                    fontSize: width * .052,
-                    letterSpacing: width * .016,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      height: width / ratio,
+      child: Image.asset(
+        asset,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        semanticLabel: compact ? 'HIMATE' : 'HIMATE System',
       ),
     );
   }
@@ -913,29 +883,16 @@ class BrandMark extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          for (final factor in const [.42, .58, .76, 1.0])
-            Container(
-              width: size * .17,
-              height: size * factor,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFFE3A7), brandGold, Color(0xFF9A6C25)]),
-                borderRadius: BorderRadius.circular(size * .055),
-                border: Border.all(color: const Color(0xFFB6812E), width: size * .02),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(.20), blurRadius: size * .07, offset: Offset(0, size * .035))],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    width: size,
+    height: size,
+    child: Image.asset(
+      'assets/himate_mark.webp',
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      semanticLabel: 'HIMATE',
+    ),
+  );
 }
 
 class _HeroValue extends StatelessWidget {
