@@ -60,7 +60,7 @@ ThemeData buildBrandTheme() {
   );
 }
 
-class ApiErrorclass ApiError implements Exception {
+class ApiError implements Exception {
   ApiError(this.status, this.message);
   final int status;
   final String message;
@@ -145,7 +145,7 @@ class _HimateAppState extends State<HimateApp> {
   );
 }
 
-class LoginPage extends StatefulWidgetclass LoginPage extends StatefulWidget {
+class LoginPage extends StatefulWidget {
   const LoginPage({required this.onLogin, super.key});
   final Future<void> Function(String email, String password) onLogin;
   @override
@@ -160,78 +160,161 @@ class _LoginPageState extends State<LoginPage> {
   String? error;
 
   @override
-  void dispose() {
-    email.dispose();
-    password.dispose();
-    super.dispose();
-  }
+  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
 
   Future<void> submit() async {
     if (email.text.trim().isEmpty || password.text.isEmpty) return;
     setState(() { busy = true; error = null; });
-    try {
-      await widget.onLogin(email.text.trim(), password.text);
-    } catch (e) {
-      if (mounted) setState(() => error = e.toString());
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
+    try { await widget.onLogin(email.text.trim(), password.text); }
+    catch (e) { if (mounted) setState(() => error = e.toString()); }
+    finally { if (mounted) setState(() => busy = false); }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Row(
-        children: [
-          if (MediaQuery.sizeOf(context).width >= 900)
-            Expanded(
-              child: Container(
-                color: navy,
-                padding: const EdgeInsets.all(56),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('HIMATE', style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 3)),
-                    Text('SYSTEM', style: TextStyle(color: gold, letterSpacing: 5, fontWeight: FontWeight.w700)),
-                    Spacer(),
-                    Text('Art Drives a Better Tomorrow', style: TextStyle(color: Colors.white, fontSize: 42, height: 1.08, fontWeight: FontWeight.w700)),
-                    SizedBox(height: 20),
-                    Text('Central partner, module and commercial control for the HIMATE platform.', style: TextStyle(color: Color(0xFFD5DEEA), fontSize: 17, height: 1.5)),
-                    SizedBox(height: 36),
-                    Text('START 04–08 · MICROSERVICE CONTROL PLANE', style: TextStyle(color: gold, letterSpacing: 1.8, fontWeight: FontWeight.w700)),
-                  ],
-                ),
+      backgroundColor: brandInk,
+      body: LayoutBuilder(builder: (context, constraints) {
+        final desktop = constraints.maxWidth >= 980;
+        final form = _LoginForm(
+          email: email, password: password, obscure: obscure, busy: busy, error: error,
+          onToggle: () => setState(() => obscure = !obscure), onSubmit: submit,
+        );
+        if (!desktop) {
+          return Container(
+            decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [brandInk, brandNavy, brandNavy2])),
+            child: SafeArea(child: Center(child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: Column(children: [const BrandLogo(width: 290), const SizedBox(height: 24), form])),
+            ))),
+          );
+        }
+        return Row(children: [
+          Expanded(flex: 11, child: Container(
+            padding: const EdgeInsets.all(56),
+            decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF020B14), brandNavy, Color(0xFF0A3156)])),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const BrandLogo(width: 350),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(999), border: Border.all(color: brandGold.withOpacity(.34))),
+                child: const Text('HIMATE CONTROL PLANE', style: TextStyle(color: brandGold2, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
               ),
-            ),
-          Expanded(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(28),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 430),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text('Administrator sign in', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 8),
-                      const Text('Use the HIMATE administrator credentials configured in Render.', style: TextStyle(color: muted)),
-                      const SizedBox(height: 28),
-                      TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.alternate_email))),
-                      const SizedBox(height: 14),
-                      TextField(controller: password, obscureText: obscure, onSubmitted: (_) => submit(), decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
-                      if (error != null) ...[const SizedBox(height: 12), Text(error!, style: const TextStyle(color: Colors.red))],
-                      const SizedBox(height: 20),
-                      FilledButton(onPressed: busy ? null : submit, style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18)), child: busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sign in')),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+              const SizedBox(height: 22),
+              const Text('Art Drives a\nBetter Tomorrow', style: TextStyle(color: Colors.white, fontSize: 46, height: 1.02, fontWeight: FontWeight.w800, letterSpacing: -1.6)),
+              const SizedBox(height: 18),
+              const SizedBox(width: 560, child: Text('One secure operating layer for partners, modules, licensing and the systems that power cultural organizations.', style: TextStyle(color: Color(0xFFC8D5E5), fontSize: 17, height: 1.55))),
+              const SizedBox(height: 30),
+              const Wrap(spacing: 10, runSpacing: 10, children: [
+                _FeaturePill(icon: Icons.shield_outlined, text: 'Secure'),
+                _FeaturePill(icon: Icons.hub_outlined, text: 'Scalable'),
+                _FeaturePill(icon: Icons.auto_graph_outlined, text: 'Impact-led'),
+              ]),
+            ]),
+          )),
+          Expanded(flex: 9, child: Container(
+            color: brandCanvas,
+            child: Center(child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 36),
+              child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 500), child: form),
+            )),
+          )),
+        ]);
+      }),
     );
   }
+}
+
+class _LoginForm extends StatelessWidget {
+  const _LoginForm({required this.email, required this.password, required this.obscure, required this.busy, required this.error, required this.onToggle, required this.onSubmit});
+  final TextEditingController email, password;
+  final bool obscure, busy;
+  final String? error;
+  final VoidCallback onToggle, onSubmit;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(30),
+    decoration: BoxDecoration(
+      color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: brandBorder),
+      boxShadow: [BoxShadow(color: brandNavy.withOpacity(.08), blurRadius: 38, offset: const Offset(0, 18))],
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Row(children: [BrandMark(size: 34), SizedBox(width: 12), Expanded(child: Text('HIMATE SYSTEM', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w800, letterSpacing: 1.5)))]),
+      const SizedBox(height: 28),
+      Text('Administrator sign in', style: Theme.of(context).textTheme.headlineSmall),
+      const SizedBox(height: 8),
+      const Text('Use the administrator credentials configured for this environment.', style: TextStyle(color: brandMuted, height: 1.45)),
+      const SizedBox(height: 26),
+      TextField(controller: email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.email], style: const TextStyle(color: brandText), decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.alternate_email))),
+      const SizedBox(height: 14),
+      TextField(controller: password, obscureText: obscure, autofillHints: const [AutofillHints.password], onSubmitted: (_) => onSubmit(), style: const TextStyle(color: brandText),
+        decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: onToggle, icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
+      if (error != null) ...[
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: brandDanger.withOpacity(.07), borderRadius: BorderRadius.circular(12), border: Border.all(color: brandDanger.withOpacity(.18))),
+          child: Row(children: [const Icon(Icons.error_outline, color: brandDanger, size: 19), const SizedBox(width: 9), Expanded(child: Text(error!, style: const TextStyle(color: brandDanger)))]),
+        ),
+      ],
+      const SizedBox(height: 20),
+      FilledButton(
+        onPressed: busy ? null : onSubmit, style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+        child: busy ? const SizedBox(width: 21, height: 21, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+          : const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text('Sign in securely'), SizedBox(width: 10), Icon(Icons.arrow_forward_rounded, size: 18)]),
+      ),
+      const SizedBox(height: 15),
+      const Text('Private HIMATE administration environment', textAlign: TextAlign.center, style: TextStyle(color: brandMuted, fontSize: 12)),
+    ]),
+  );
+}
+
+class _FeaturePill extends StatelessWidget {
+  const _FeaturePill({required this.icon, required this.text});
+  final IconData icon; final String text;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+    decoration: BoxDecoration(color: Colors.white.withOpacity(.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(.10))),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: brandGold2, size: 17), const SizedBox(width: 7), Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12))]),
+  );
+}
+
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({required this.width, super.key});
+  final double width;
+  @override
+  Widget build(BuildContext context) => Container(
+    width: width, padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(.16), blurRadius: 20, offset: const Offset(0, 8))]),
+    child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(_logoBytes, fit: BoxFit.contain, filterQuality: FilterQuality.high)),
+  );
+}
+
+class BrandMark extends StatelessWidget {
+  const BrandMark({this.size = 34, super.key});
+  final double size;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: size, height: size,
+    child: Row(crossAxisAlignment: CrossAxisAlignment.end, mainAxisAlignment: MainAxisAlignment.center, children: [
+      for (final factor in const [.46, .62, .78, 1.0])
+        Container(
+          width: size * .13, height: size * factor, margin: EdgeInsets.symmetric(horizontal: size * .025),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [brandBlue, brandNavy]),
+            borderRadius: BorderRadius.circular(size * .08), border: Border.all(color: brandGold, width: size * .035),
+          ),
+        ),
+    ]),
+  );
+}
+
+class NavSpec {
+  const NavSpec(this.label, this.icon, this.subtitle);
+  final String label; final IconData icon; final String subtitle;
 }
 
 class Shell extends StatefulWidget {
@@ -245,56 +328,183 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   int selected = 0;
-  static const labels = ['Dashboard', 'Partners', 'Licensing & Finance', 'System & Operations'];
-  static const icons = [Icons.dashboard_outlined, Icons.business_outlined, Icons.account_balance_wallet_outlined, Icons.settings_suggest_outlined];
+  bool collapsed = false;
+  static const nav = <NavSpec>[
+    NavSpec('Dashboard', Icons.dashboard_outlined, 'Platform overview'),
+    NavSpec('Partners', Icons.apartment_outlined, 'Partner control'),
+    NavSpec('Licensing & Finance', Icons.account_balance_wallet_outlined, 'Commercial management'),
+    NavSpec('Impact & Reports', Icons.insights_outlined, 'Metrics and reporting'),
+    NavSpec('Website & Marketing', Icons.campaign_outlined, 'Public brand & growth'),
+    NavSpec('System & Operations', Icons.dns_outlined, 'Infrastructure health'),
+    NavSpec('Administration', Icons.admin_panel_settings_outlined, 'Roles and control'),
+  ];
 
   Widget page() {
-    if (selected == 0) return DashboardPage(api: widget.api);
-    if (selected == 1) return PartnersPage(api: widget.api);
-    if (selected == 2) return FinancePage(api: widget.api);
-    return SystemPage(api: widget.api);
+    switch (selected) {
+      case 0: return DashboardPage(api: widget.api);
+      case 1: return PartnersPage(api: widget.api);
+      case 2: return FinancePage(api: widget.api);
+      case 3: return const PlannedPage(title: 'Impact & Reports', subtitle: 'Metrics and partner impact become functional in START-13–15.', icon: Icons.insights_outlined);
+      case 4: return const PlannedPage(title: 'Website & Marketing', subtitle: 'HIMATE CMS and public marketing tools are planned for START-16–17.', icon: Icons.campaign_outlined);
+      case 5: return SystemPage(api: widget.api);
+      default: return const PlannedPage(title: 'Administration', subtitle: 'Roles, permissions and advanced audit controls are planned for START-18–19.', icon: Icons.admin_panel_settings_outlined);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 950;
-    if (!wide) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final desktop = constraints.maxWidth >= 1020;
+      if (!desktop) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Row(children: [const BrandMark(size: 28), const SizedBox(width: 10), Expanded(child: Text(nav[selected].label, style: const TextStyle(fontWeight: FontWeight.w700)))]),
+            actions: [IconButton(onPressed: widget.onLogout, tooltip: 'Sign out', icon: const Icon(Icons.logout_rounded))],
+          ),
+          drawer: Drawer(
+            backgroundColor: brandInk,
+            child: SafeArea(child: Column(children: [
+              const Padding(padding: EdgeInsets.fromLTRB(18, 18, 18, 12), child: BrandLogo(width: 230)),
+              const Divider(color: Color(0xFF19344F), height: 20),
+              Expanded(child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                itemCount: nav.length,
+                itemBuilder: (context, i) => ListTile(
+                  onTap: () { setState(() => selected = i); Navigator.pop(context); },
+                  selected: selected == i, selectedTileColor: Colors.white.withOpacity(.09),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  leading: Icon(nav[i].icon, color: selected == i ? brandGold2 : const Color(0xFF9FB0C2)),
+                  title: Text(nav[i].label, style: TextStyle(color: selected == i ? Colors.white : const Color(0xFFD2DCE8), fontWeight: FontWeight.w700)),
+                  subtitle: Text(nav[i].subtitle, style: const TextStyle(color: Color(0xFF7E93A8), fontSize: 11)),
+                ),
+              )),
+            ])),
+          ),
+          body: page(),
+        );
+      }
       return Scaffold(
-        appBar: AppBar(title: Text(labels[selected]), actions: [IconButton(onPressed: widget.onLogout, icon: const Icon(Icons.logout))]),
-        drawer: Drawer(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              const DrawerHeader(decoration: BoxDecoration(color: navy), child: Align(alignment: Alignment.bottomLeft, child: Text('HIMATE SYSTEM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 20)))),
-              for (var i = 0; i < labels.length; i++) ListTile(leading: Icon(icons[i]), title: Text(labels[i]), selected: i == selected, onTap: () { setState(() => selected = i); Navigator.pop(context); }),
-            ],
+        body: Row(children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220), curve: Curves.easeOutCubic, width: collapsed ? 88 : 286,
+            decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF020B14), brandNavy, Color(0xFF0B2948)])),
+            child: SafeArea(child: Column(children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(collapsed ? 15 : 18, 18, collapsed ? 15 : 18, 8),
+                child: Row(children: [
+                  if (!collapsed) const Expanded(child: BrandLogo(width: 205)) else const Expanded(child: Center(child: BrandMark(size: 38))),
+                  if (!collapsed) const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () => setState(() => collapsed = !collapsed),
+                    tooltip: collapsed ? 'Show menu' : 'Hide menu',
+                    style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(.07), foregroundColor: Colors.white),
+                    icon: Icon(collapsed ? Icons.keyboard_double_arrow_right_rounded : Icons.keyboard_double_arrow_left_rounded),
+                  ),
+                ]),
+              ),
+              Padding(padding: EdgeInsets.fromLTRB(collapsed ? 12 : 14, 12, collapsed ? 12 : 14, 8), child: Container(height: 1, color: Colors.white.withOpacity(.08))),
+              Expanded(child: ListView.separated(
+                padding: EdgeInsets.symmetric(horizontal: collapsed ? 11 : 14, vertical: 8),
+                itemCount: nav.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 7),
+                itemBuilder: (context, i) {
+                  final active = selected == i;
+                  final tile = Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => setState(() => selected = i), borderRadius: BorderRadius.circular(14),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 170), minHeight: 54,
+                        padding: EdgeInsets.symmetric(horizontal: collapsed ? 0 : 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: active ? Colors.white.withOpacity(.10) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: active ? brandGold.withOpacity(.42) : Colors.transparent),
+                        ),
+                        child: collapsed
+                          ? Center(child: Icon(nav[i].icon, color: active ? brandGold2 : const Color(0xFF9FB0C2), size: 23))
+                          : Row(children: [
+                              Icon(nav[i].icon, color: active ? brandGold2 : const Color(0xFF9FB0C2), size: 22),
+                              const SizedBox(width: 13),
+                              Expanded(child: Text(nav[i].label, style: TextStyle(color: active ? Colors.white : const Color(0xFFD2DCE8), fontWeight: active ? FontWeight.w700 : FontWeight.w600, fontSize: 13.5))),
+                              if (active) Container(width: 4, height: 22, decoration: BoxDecoration(color: brandGold, borderRadius: BorderRadius.circular(99))),
+                            ]),
+                      ),
+                    ),
+                  );
+                  return collapsed ? Tooltip(message: nav[i].label, child: tile) : tile;
+                },
+              )),
+              Padding(
+                padding: EdgeInsets.all(collapsed ? 10 : 14),
+                child: collapsed
+                  ? Tooltip(message: 'Sign out', child: IconButton(onPressed: widget.onLogout, style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(.07), foregroundColor: Colors.white70), icon: const Icon(Icons.logout_rounded)))
+                  : Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(.06), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white.withOpacity(.08))),
+                      child: Row(children: [
+                        Container(width: 34, height: 34, decoration: BoxDecoration(gradient: const LinearGradient(colors: [brandGold2, brandGold]), borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.person_outline, color: brandNavy, size: 20)),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text('${widget.user['name'] ?? widget.user['email'] ?? 'Administrator'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12))),
+                        IconButton(onPressed: widget.onLogout, tooltip: 'Sign out', icon: const Icon(Icons.logout_rounded, size: 19), color: Colors.white70),
+                      ]),
+                    ),
+              ),
+            ])),
           ),
-        ),
-        body: page(),
+          Expanded(child: Container(
+            color: brandCanvas,
+            child: Column(children: [
+              Container(
+                height: 76, padding: const EdgeInsets.symmetric(horizontal: 30),
+                decoration: const BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: brandBorder))),
+                child: Row(children: [
+                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(nav[selected].label, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(nav[selected].subtitle, style: const TextStyle(color: brandMuted, fontSize: 12)),
+                  ])),
+                  const _SecurePill(),
+                ]),
+              ),
+              Expanded(child: page()),
+            ]),
+          )),
+        ]),
       );
-    }
-    return Scaffold(
-      body: Row(
-        children: [
-          NavigationRail(
-            extended: MediaQuery.sizeOf(context).width >= 1220,
-            minExtendedWidth: 260,
-            backgroundColor: navy,
-            selectedIndex: selected,
-            onDestinationSelected: (i) => setState(() => selected = i),
-            selectedIconTheme: const IconThemeData(color: gold),
-            unselectedIconTheme: const IconThemeData(color: Colors.white60),
-            selectedLabelTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-            unselectedLabelTextStyle: const TextStyle(color: Colors.white70),
-            leading: const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Text('HIMATE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 2))),
-            trailing: Expanded(child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.only(bottom: 20), child: IconButton(onPressed: widget.onLogout, icon: const Icon(Icons.logout), color: Colors.white70)))),
-            destinations: [for (var i = 0; i < labels.length; i++) NavigationRailDestination(icon: Icon(icons[i]), label: Text(labels[i]))],
-          ),
-          Expanded(child: page()),
-        ],
-      ),
-    );
+    });
   }
+}
+
+class _SecurePill extends StatelessWidget {
+  const _SecurePill();
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(999), border: Border.all(color: brandGold.withOpacity(.24))),
+    child: const Row(children: [Icon(Icons.lock_outline, color: brandNavy, size: 13), SizedBox(width: 6), Text('SECURE ADMIN', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 9.5, letterSpacing: .7))]),
+  );
+}
+
+class PlannedPage extends StatelessWidget {
+  const PlannedPage({required this.title, required this.subtitle, required this.icon, super.key});
+  final String title, subtitle; final IconData icon;
+  @override
+  Widget build(BuildContext context) => Content(
+    title: title, subtitle: subtitle,
+    child: Card(child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(width: 54, height: 54, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: brandNavy, size: 28)),
+        const SizedBox(width: 16),
+        const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Workspace prepared', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 18)),
+          SizedBox(height: 7),
+          Text('The responsive navigation and visual system are already in place. Functional implementation will be added in its scheduled START cycle.', style: TextStyle(color: brandMuted, height: 1.5)),
+        ])),
+      ]),
+    )),
+  );
 }
 
 class DashboardPage extends StatelessWidget {
