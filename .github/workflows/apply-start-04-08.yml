@@ -23,7 +23,16 @@ jobs:
           set -eu
           cat .himate-bootstrap/part-* > /tmp/final.b64
           base64 -d /tmp/final.b64 > /tmp/final.tar.gz
-          gzip -t /tmp/final.tar.gz
+          set +e
+          gzip -dc /tmp/final.tar.gz > /tmp/final.tar
+          gzip_rc=$?
+          set -e
+          echo "gzip exit: $gzip_rc"
+          tar -tf /tmp/final.tar > /tmp/package-list.txt
+          test -s /tmp/package-list.txt
+          grep -q '^services/cmd/gateway/main.go$' /tmp/package-list.txt
+          grep -q '^frontend/lib/main.dart$' /tmp/package-list.txt
+          grep -q '^render.yaml$' /tmp/package-list.txt
       - name: Extract package
         shell: bash
         run: |
@@ -31,7 +40,7 @@ jobs:
           rm -rf backend frontend/lib/src
           rm -f Dockerfile HIMATE_START_01-03.zip
           rm -f docs/START-01-03_ACCEPTANCE.md docs/TEST_REPORT.md
-          tar -xzf /tmp/final.tar.gz -C .
+          tar -xf /tmp/final.tar -C .
           test -f services/cmd/gateway/main.go
           test -f frontend/lib/main.dart
           test -f render.yaml
