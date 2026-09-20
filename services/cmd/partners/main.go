@@ -242,10 +242,9 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			where = append(where, fmt.Sprintf(clause, len(args)))
 		}
 		if q != "" {
-			add(`(p.display_name ILIKE $%d OR p.legal_name ILIKE $%d OR p.id ILIKE $%d OR p.primary_domain ILIKE $%d)`, "%"+q+"%")
-			// The clause above uses the same placeholder four times.
+			args = append(args, "%"+q+"%")
 			n := len(args)
-			where[len(where)-1] = fmt.Sprintf(`(p.display_name ILIKE $%d OR p.legal_name ILIKE $%d OR p.id ILIKE $%d OR p.primary_domain ILIKE $%d)`, n, n, n, n)
+			where = append(where, fmt.Sprintf(`(p.display_name ILIKE $%d OR p.legal_name ILIKE $%d OR p.id ILIKE $%d OR p.primary_domain ILIKE $%d)`, n, n, n, n))
 		}
 		if category != "" && category != "ALL" {
 			add(`p.category_id=$%d`, category)
@@ -282,9 +281,19 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 				items = append(items, partnerMap(p))
 			}
 		}
+		lifecycleCounts := map[string]int{}
+		countRows, countErr := a.db.Query(`SELECT lifecycle,COUNT(*) FROM partners.partners GROUP BY lifecycle`)
+		if countErr == nil {
+			defer countRows.Close()
+			for countRows.Next() {
+				var state string
+				var count int
+				if countRows.Scan(&state, &count) == nil { lifecycleCounts[state] = count }
+			}
+		}
 		common.JSON(w, 200, map[string]any{
 			"items": items, "count": len(items), "total": total, "limit": limit, "offset": offset,
-			"has_more": offset+len(items) < total,
+			"has_more": offset+len(items) < total, "lifecycle_counts": lifecycleCounts,
 		})
 	case http.MethodPost:
 		var in struct {
