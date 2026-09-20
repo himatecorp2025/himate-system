@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 part 'cms_page.dart';
 part 'administration_rbac.dart';
+part 'brand_assets.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1156,8 +1157,6 @@ class HimateLogo extends StatelessWidget {
   final bool compact;
   final double width;
 
-  static const String source = '/art/himate_logo_master_v4.webp';
-
   Widget _fallback(BuildContext context, {required double height}) {
     return Container(
       width: width,
@@ -1184,8 +1183,8 @@ class HimateLogo extends StatelessWidget {
     return SizedBox(
       width: width,
       height: height,
-      child: Image.network(
-        source,
+      child: Image.memory(
+        himateLogoBytes,
         fit: compact ? BoxFit.cover : BoxFit.contain,
         alignment: compact ? Alignment.centerLeft : Alignment.center,
         filterQuality: FilterQuality.high,
@@ -1204,8 +1203,8 @@ class BrandMark extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
     width: size,
     height: size,
-    child: Image.network(
-      HimateLogo.source,
+    child: Image.memory(
+      himateLogoBytes,
       fit: BoxFit.cover,
       alignment: Alignment.centerLeft,
       filterQuality: FilterQuality.high,
