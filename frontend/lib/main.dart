@@ -1645,7 +1645,6 @@ class _PartnersPageState extends State<PartnersPage> {
     final params = <String, String>{
       'limit': '$pageSize',
       'offset': '$offset',
-      'include_archived': 'true',
     };
     if (query.trim().isNotEmpty) params['q'] = query.trim();
     if (categoryFilter != 'ALL') params['category'] = categoryFilter;
@@ -1831,6 +1830,7 @@ class _PartnersPageState extends State<PartnersPage> {
     final live = lifecycleCounts['LIVE'] ?? 0;
     final prospects = lifecycleCounts['PROSPECT'] ?? 0;
     final reference = referenceCount;
+    final allRecords = lifecycleCounts.values.fold<int>(0, (sum, value) => sum + value);
 
     return Content(
       eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
@@ -1851,7 +1851,7 @@ class _PartnersPageState extends State<PartnersPage> {
                       spacing: 12,
                       runSpacing: 12,
                       children: [
-                        Kpi(label: 'Partner records', value: '$total', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
+                        Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
                         Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess),
                         Kpi(label: 'Prospects', value: '$prospects', note: 'Pre-license pipeline', icon: Icons.handshake_outlined, accent: brandSteel),
                         Kpi(label: 'Reference partners', value: '$reference', note: 'Reference implementation', icon: Icons.workspace_premium_outlined, accent: brandGold),
