@@ -2784,6 +2784,91 @@ class _FinancePageState extends State<FinancePage> {
     }
   }
 
+  Future<void> editCatalogModule(Map<String, dynamic> module) async {
+    final label = TextEditingController(text: '${module['label'] ?? ''}');
+    final description = TextEditingController(text: '${module['description'] ?? ''}');
+    final price = TextEditingController(text: number(module['default_monthly_price']).toStringAsFixed(2));
+    final latestVersion = TextEditingController(text: '${module['latest_version'] ?? module['version'] ?? '1.0.0'}');
+    String group = '${module['group_key'] ?? (groups.isNotEmpty ? groups.first['group_key'] : '')}';
+    String availability = '${module['availability'] ?? 'ACTIVE'}';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: '${module['label']}',
+          subtitle: 'Manage catalog metadata and availability without changing the stable technical key.',
+          icon: Icons.grid_view_outlined,
+          width: 720,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name')),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: DropdownButtonFormField<String>(
+                  value: group,
+                  decoration: const InputDecoration(labelText: 'Menu group'),
+                  items: [
+                    for (final g in groups)
+                      DropdownMenuItem(value: '${g['group_key']}', child: Text('${g['label']}')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => group = v); },
+                ),
+                second: DropdownButtonFormField<String>(
+                  value: availability,
+                  decoration: const InputDecoration(labelText: 'Availability'),
+                  items: const [
+                    DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                    DropdownMenuItem(value: 'UNAVAILABLE', child: Text('UNAVAILABLE')),
+                    DropdownMenuItem(value: 'DEPRECATED', child: Text('DEPRECATED')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => availability = v); },
+                ),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: price,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Default 30-day price'),
+                ),
+                second: TextField(controller: latestVersion, decoration: const InputDecoration(labelText: 'Latest version')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+              const SizedBox(height: 12),
+              TextField(
+                readOnly: true,
+                controller: TextEditingController(text: '${module['key']}'),
+                decoration: const InputDecoration(labelText: 'Stable technical key'),
+              ),
+            ],
+          ),
+          primaryLabel: 'Save module',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true && label.text.trim().isNotEmpty) {
+      await widget.api.patch('/api/v1/modules/${module['key']}', {
+        'label': label.text.trim(),
+        'description': description.text.trim(),
+        'group_key': group,
+        'default_monthly_price': double.tryParse(price.text) ?? 0,
+        'availability': availability,
+        'latest_version': latestVersion.text.trim(),
+      });
+      await load();
+      if (mounted) success('Module catalog entry updated.');
+    }
+
+    for (final controller in [label, description, price, latestVersion]) {
+      controller.dispose();
+    }
+  }
+
   List<Map<String, dynamic>> get filteredModules {
     final q = query.trim().toLowerCase();
     return modules.where((m) {
@@ -2877,7 +2962,7 @@ class _FinancePageState extends State<FinancePage> {
                           runSpacing: 12,
                           children: [
                             for (final m in filteredModules)
-                              SizedBox(width: width, child: CatalogModuleCard(module: m)),
+                              SizedBox(width: width, child: CatalogModuleCard(module: m, onTap: () => editCatalogModule(m))),
                           ],
                         );
                       },
@@ -3798,34 +3883,42 @@ class _BillingRulesCard extends StatelessWidget {
 }
 
 class CatalogModuleCard extends StatelessWidget {
-  const CatalogModuleCard({required this.module, super.key});
+  const CatalogModuleCard({required this.module, required this.onTap, super.key});
   final Map<String, dynamic> module;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final system = module['system'] == true;
+    final availability = '${module['availability'] ?? 'ACTIVE'}';
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 36, height: 36, decoration: BoxDecoration(color: (system ? brandNavy : brandGold).withOpacity(.08), borderRadius: BorderRadius.circular(9)), child: Icon(system ? Icons.verified_outlined : Icons.extension_outlined, color: system ? brandNavy : brandGold, size: 18)),
-            const Spacer(),
-            _MiniCounter(label: system ? 'REFERENCE' : 'CUSTOM'),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 36, height: 36, decoration: BoxDecoration(color: (system ? brandNavy : brandGold).withOpacity(.08), borderRadius: BorderRadius.circular(9)), child: Icon(system ? Icons.verified_outlined : Icons.extension_outlined, color: system ? brandNavy : brandGold, size: 18)),
+              const Spacer(),
+              _StatusPill(label: availability),
+            ]),
+            const SizedBox(height: 12),
+            Text('${module['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 4),
+            Text('${module['group_label']}', style: const TextStyle(color: brandSteel, fontSize: 10, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 3),
+            Text('${module['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+            const SizedBox(height: 12),
+            Row(children: [
+              Text('v${module['version'] ?? '1.0.0'} → ${module['latest_version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+              const Spacer(),
+              Text(money(module['default_monthly_price']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
+              const SizedBox(width: 7),
+              const Icon(Icons.edit_outlined, color: brandGold, size: 15),
+            ]),
           ]),
-          const SizedBox(height: 12),
-          Text('${module['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
-          const SizedBox(height: 4),
-          Text('${module['group_label']}', style: const TextStyle(color: brandSteel, fontSize: 10, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 3),
-          Text('${module['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
-          const SizedBox(height: 12),
-          Row(children: [
-            Text('v${module['version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            const Spacer(),
-            Text(money(module['default_monthly_price']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
-          ]),
-        ]),
+        ),
       ),
     );
   }
