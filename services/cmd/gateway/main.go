@@ -513,7 +513,7 @@ func permissionResource(r *http.Request) string {
 		return "environments"
 	case strings.HasPrefix(path, "/api/v1/connectors/"):
 		return "connectors"
-	case path == "/api/v1/system-health":
+	case strings.HasPrefix(path, "/api/v1/system-health"):
 		return "health"
 	case strings.HasPrefix(path, "/api/v1/impact/"):
 		return "impact"
@@ -628,7 +628,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "environments")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/connectors/"):
 		a.serveProxy(w, r, "connector")
-	case r.URL.Path == "/api/v1/system-health":
+	case strings.HasPrefix(r.URL.Path, "/api/v1/system-health"):
 		a.serveProxy(w, r, "health")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/impact/"):
 		a.serveProxy(w, r, "impact")
