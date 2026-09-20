@@ -94,7 +94,14 @@ curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: applicat
 desired="$(curl -fsS -H "Authorization: Bearer $connector_token" "$BASE_URL/connector/v1/desired-state")"
 printf '%s' "$desired" | grep -q '"campaigns_utm":"ACTIVE"'
 printf '%s' "$desired" | grep -q '"status":"ACTIVE"'
-printf '%s' "$desired" | grep -q '"revision":'
+revision1="$(printf '%s' "$desired" | json_field revision)"
+curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d '{"environment":"STAGING","entitlements":{"campaigns_utm":"MAINTENANCE"},"maintenance":{"status":"MAINTENANCE","reason":"CI downstream sync"},"config":{"feature_flag":"ci-enabled"}}' "$BASE_URL/api/v1/connectors/$partner_id/desired-state" >/dev/null
+desired2="$(curl -fsS -H "Authorization: Bearer $connector_token" "$BASE_URL/connector/v1/desired-state")"
+printf '%s' "$desired2" | grep -q '"campaigns_utm":"MAINTENANCE"'
+printf '%s' "$desired2" | grep -q '"status":"MAINTENANCE"'
+printf '%s' "$desired2" | grep -q '"feature_flag":"ci-enabled"'
+revision2="$(printf '%s' "$desired2" | json_field revision)"
+test "$revision2" -gt "$revision1"
 echo ok
 
 printf 'START-13 metric definition and connector sync... '
