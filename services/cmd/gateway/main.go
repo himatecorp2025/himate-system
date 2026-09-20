@@ -360,29 +360,32 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 	type portfolioPage struct { Items []map[string]any `json:"items"` }
 
 	var partners partnerPage
-	var catalogPortfolio, billingPortfolio portfolioPage
-	var partnerErr, catalogErr, billingErr error
-	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() {
-		defer wg.Done()
-		path := "/api/v1/partners"
-		if r.URL.RawQuery != "" { path += "?" + r.URL.RawQuery }
-		partnerErr = a.internalGET(ctx, a.hosts["partners"], path, &partners)
-	}()
-	go func() {
-		defer wg.Done()
-		catalogErr = a.internalGET(ctx, a.hosts["catalog"], "/internal/v1/portfolio", &catalogPortfolio)
-	}()
-	go func() {
-		defer wg.Done()
-		billingErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/portfolio", &billingPortfolio)
-	}()
-	wg.Wait()
-
-	if partnerErr != nil {
+	path := "/api/v1/partners"
+	if r.URL.RawQuery != "" { path += "?" + r.URL.RawQuery }
+	if err := a.internalGET(ctx, a.hosts["partners"], path, &partners); err != nil {
 		common.APIError(w, 502, "PARTNERS_UNAVAILABLE", "Partner portfolio is temporarily unavailable")
 		return
+	}
+
+	var catalogPortfolio, billingPortfolio portfolioPage
+	var catalogErr, billingErr error
+	if len(partners.Items) > 0 {
+		ids := make([]string, 0, len(partners.Items))
+		for _, item := range partners.Items {
+			if id := strings.TrimSpace(fmt.Sprint(item["id"])); id != "" { ids = append(ids, id) }
+		}
+		filter := url.QueryEscape(strings.Join(ids, ","))
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			catalogErr = a.internalGET(ctx, a.hosts["catalog"], "/internal/v1/portfolio?ids="+filter, &catalogPortfolio)
+		}()
+		go func() {
+			defer wg.Done()
+			billingErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/portfolio?ids="+filter, &billingPortfolio)
+		}()
+		wg.Wait()
 	}
 
 	catalogByID := map[string]map[string]any{}
