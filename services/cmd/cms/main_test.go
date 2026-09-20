@@ -65,14 +65,14 @@ func TestNormalizeVersionSortsSections(t *testing.T) {
 }
 
 func TestCMSMediaMimePolicy(t *testing.T) {
-	for _, value := range []string{"image/png", "image/jpeg", "image/webp"} {
+	for _, value := range []string{"image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm"} {
 		if !cmsMimeAllowed(value) {
 			t.Fatalf("allowed media rejected: %s", value)
 		}
 	}
 	for _, value := range []string{"image/svg+xml", "text/html", "application/pdf"} {
 		if cmsMimeAllowed(value) {
-			t.Fatalf("unsafe/non-image CMS media accepted: %s", value)
+			t.Fatalf("unsafe CMS media accepted: %s", value)
 		}
 	}
 }
