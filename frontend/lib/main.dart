@@ -222,7 +222,7 @@ class Api {
     request.headers['Accept'] = 'application/json';
     request.fields.addAll(fields);
     request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
-    final streamed = await client.send(request).timeout(const Duration(seconds: 35));
+    final streamed = await client.send(request).timeout(const Duration(seconds: 90));
     final response = await http.Response.fromStream(streamed);
     Map<String, dynamic> data = <String, dynamic>{};
     if (response.body.trim().isNotEmpty) {
