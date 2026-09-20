@@ -183,6 +183,11 @@ func (a *app)migrate(ctx context.Context)error{
 			)`,
 			`CREATE INDEX IF NOT EXISTS cms_audit_page_idx ON cms.audit_events(page_id,created_at DESC)`,
 		}},
+		{Version:2,Name:"cms-read-path-indexes",Statements:[]string{
+			`CREATE UNIQUE INDEX IF NOT EXISTS cms_preview_token_hash_idx ON cms.pages(preview_token_hash) WHERE preview_token_hash<>''`,
+			`CREATE INDEX IF NOT EXISTS cms_versions_preview_slug_idx ON cms.versions(lower(slug)) WHERE state='PREVIEW'`,
+			`CREATE INDEX IF NOT EXISTS cms_versions_published_slug_idx ON cms.versions(lower(slug)) WHERE state='PUBLISHED'`,
+		}},
 	})
 }
 
