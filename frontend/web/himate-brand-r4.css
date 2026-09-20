@@ -680,3 +680,70 @@ body{background:#F8F9FB}
   }
   .impact-story .image.impact-reference-grid{height:250px}
 }
+
+
+/* START-17: published HIMATE story video modal */
+html.story-video-open,
+html.story-video-open body{overflow:hidden}
+.story-video-modal{
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  display:grid;
+  place-items:center;
+  padding:clamp(18px,4vw,56px);
+}
+.story-video-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(3,13,27,.88);
+  backdrop-filter:blur(10px);
+}
+.story-video-dialog{
+  position:relative;
+  z-index:1;
+  width:min(1080px,94vw);
+  max-height:90vh;
+  background:#071426;
+  border:1px solid rgba(212,175,107,.42);
+  border-radius:18px;
+  overflow:hidden;
+  box-shadow:0 32px 100px rgba(0,0,0,.48);
+}
+.story-video-player{
+  display:block;
+  width:100%;
+  max-height:82vh;
+  aspect-ratio:16/9;
+  background:#020813;
+  object-fit:contain;
+}
+.story-video-close{
+  position:absolute;
+  top:12px;
+  right:12px;
+  z-index:2;
+  width:42px;
+  height:42px;
+  border:1px solid rgba(255,255,255,.34);
+  border-radius:999px;
+  background:rgba(7,20,38,.76);
+  color:#fff;
+  font-size:28px;
+  line-height:1;
+  cursor:pointer;
+  backdrop-filter:blur(6px);
+}
+.story-video-close:hover,
+.story-video-close:focus-visible{
+  border-color:#D4AF6B;
+  color:#F2D79F;
+  outline:none;
+}
+.watch-story.is-loading{opacity:.72;cursor:progress}
+.watch-story.is-unavailable{border-color:rgba(212,175,107,.6)}
+@media(max-width:620px){
+  .story-video-modal{padding:12px}
+  .story-video-dialog{width:100%;border-radius:12px}
+  .story-video-close{top:8px;right:8px;width:38px;height:38px}
+}
