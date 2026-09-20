@@ -409,9 +409,13 @@ class _HimateAppState extends State<HimateApp> {
         }
       });
       restore();
+    } else if (path == '/login') {
+      // Paint the login form immediately, then reuse any valid HttpOnly
+      // session in the background. A remembered user never needs to retype
+      // the password simply because the login URL was opened again.
+      loading = false;
+      unawaited(_restoreLoginSession());
     } else {
-      // The public login route must paint immediately. Session restoration is
-      // only required when opening a protected application route.
       loading = false;
     }
   }
@@ -479,6 +483,25 @@ class _HimateAppState extends State<HimateApp> {
       paths.add('/api/v1/admin/users');
     }
     api.prefetch(paths);
+  }
+
+  Future<void> _restoreLoginSession() async {
+    try {
+      final restored = await api
+          .get('/api/v1/auth/me', force: true)
+          .timeout(const Duration(seconds: 2));
+      if (!mounted) return;
+      user = restored;
+      _warmControlPlane();
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
+      });
+    } catch (_) {
+      // No valid session is normal on the public login route; keep the form
+      // visible and do not surface an error.
+    }
   }
 
   Future<void> restore() async {
