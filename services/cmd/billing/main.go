@@ -180,6 +180,11 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS billing_subscription_history_lookup
 				ON billing.subscription_history(partner_id,module_key,effective_at DESC)`,
 		}},
+		{Version: 4, Name: "billing-profile-contact-details", Statements: []string{
+			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS registration_number TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS contact_name TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -200,32 +205,42 @@ func (a *app) migrate(ctx context.Context) error {
 func (a *app) profile(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		var legal, address, taxID, email, bank, bankAddr, account, iban, swift string
-		err := a.db.QueryRow(`SELECT legal_name,address,tax_id,email,bank_name,bank_address,account_number,iban,swift FROM billing.company_profile WHERE id=1`).
-			Scan(&legal, &address, &taxID, &email, &bank, &bankAddr, &account, &iban, &swift)
+		var legal, registration, address, taxID, contactName, email, phone, bank, bankAddr, account, iban, swift string
+		err := a.db.QueryRow(`SELECT legal_name,registration_number,address,tax_id,contact_name,email,phone,bank_name,bank_address,account_number,iban,swift FROM billing.company_profile WHERE id=1`).
+			Scan(&legal, &registration, &address, &taxID, &contactName, &email, &phone, &bank, &bankAddr, &account, &iban, &swift)
 		if err != nil {
 			common.APIError(w, 500, "DB", "Could not load billing profile")
 			return
 		}
-		common.JSON(w, 200, map[string]any{"legal_name": legal, "address": address, "tax_id": taxID, "email": email, "bank_name": bank, "bank_address": bankAddr, "account_number": account, "iban": iban, "swift": swift})
+		common.JSON(w, 200, map[string]any{
+			"legal_name": legal, "registration_number": registration, "address": address, "tax_id": taxID,
+			"contact_name": contactName, "email": email, "phone": phone,
+			"bank_name": bank, "bank_address": bankAddr, "account_number": account, "iban": iban, "swift": swift,
+		})
 	case http.MethodPut:
 		var in struct {
-			LegalName     string `json:"legal_name"`
-			Address       string `json:"address"`
-			TaxID         string `json:"tax_id"`
-			Email         string `json:"email"`
-			BankName      string `json:"bank_name"`
-			BankAddress   string `json:"bank_address"`
-			AccountNumber string `json:"account_number"`
-			IBAN          string `json:"iban"`
-			SWIFT         string `json:"swift"`
+			LegalName          string `json:"legal_name"`
+			RegistrationNumber string `json:"registration_number"`
+			Address            string `json:"address"`
+			TaxID              string `json:"tax_id"`
+			ContactName        string `json:"contact_name"`
+			Email              string `json:"email"`
+			Phone              string `json:"phone"`
+			BankName           string `json:"bank_name"`
+			BankAddress        string `json:"bank_address"`
+			AccountNumber      string `json:"account_number"`
+			IBAN               string `json:"iban"`
+			SWIFT              string `json:"swift"`
 		}
 		if common.Decode(r, &in) != nil {
 			common.APIError(w, 400, "JSON", "Invalid request")
 			return
 		}
-		_, err := a.db.Exec(`UPDATE billing.company_profile SET legal_name=$1,address=$2,tax_id=$3,email=$4,bank_name=$5,bank_address=$6,account_number=$7,iban=$8,swift=$9,updated_at=NOW() WHERE id=1`,
-			strings.TrimSpace(in.LegalName), strings.TrimSpace(in.Address), strings.TrimSpace(in.TaxID), strings.ToLower(strings.TrimSpace(in.Email)),
+		_, err := a.db.Exec(`UPDATE billing.company_profile SET
+			legal_name=$1,registration_number=$2,address=$3,tax_id=$4,contact_name=$5,email=$6,phone=$7,
+			bank_name=$8,bank_address=$9,account_number=$10,iban=$11,swift=$12,updated_at=NOW() WHERE id=1`,
+			strings.TrimSpace(in.LegalName), strings.TrimSpace(in.RegistrationNumber), strings.TrimSpace(in.Address), strings.TrimSpace(in.TaxID),
+			strings.TrimSpace(in.ContactName), strings.ToLower(strings.TrimSpace(in.Email)), strings.TrimSpace(in.Phone),
 			strings.TrimSpace(in.BankName), strings.TrimSpace(in.BankAddress), strings.TrimSpace(in.AccountNumber), strings.TrimSpace(in.IBAN), strings.TrimSpace(in.SWIFT))
 		if err != nil {
 			common.APIError(w, 500, "DB", "Could not update billing profile")
