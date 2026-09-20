@@ -2295,7 +2295,14 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               : Content(
                   eyebrow: 'PARTNER WORKSPACE  |  ${partner['id']}',
                   title: '${partner['display_name']}',
-                  subtitle: '${partner['category_name']} · ${partner['country']} · ${_humanize('${partner['lifecycle']}')}',
+                  subtitle: [
+                    '${partner['category_name']}',
+                    '${partner['country']}',
+                    _humanize('${partner['lifecycle']}'),
+                    if ('${partner['primary_domain'] ?? ''}'.isNotEmpty) '${partner['primary_domain']}',
+                    'Health: ${_humanize('${partner['system_health'] ?? 'UNKNOWN'}')}',
+                    'Version: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
+                  ].join(' · '),
                   actions: [
                     OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const Text('Company data')),
                     FilledButton.icon(onPressed: editTerms, icon: const Icon(Icons.payments_outlined), label: const Text('Commercial terms')),
