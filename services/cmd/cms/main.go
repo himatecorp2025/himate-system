@@ -729,8 +729,11 @@ func versionReferencesMedia(v versionRow,mediaID string)bool{
 func (a *app)previewMedia(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet&&r.Method!=http.MethodHead{common.APIError(w,405,"METHOD","Use GET or HEAD");return}
 	id:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/preview/v1/cms/media/"),"/")
-	pageID:=strings.TrimSpace(r.URL.Query().Get("page_id"));rawToken:=strings.TrimSpace(r.URL.Query().Get("token"))
-	p,err:=a.getPage(pageID);if err!=nil||!tokenMatches(rawToken,p.PreviewTokenHash){common.APIError(w,404,"NOT_FOUND","Preview media not found");return}
+	slug:=strings.ToLower(strings.TrimSpace(r.URL.Query().Get("slug")));rawToken:=strings.TrimSpace(r.URL.Query().Get("token"))
+	var p pageRow
+	err:=a.db.QueryRow(pageSelect()+` WHERE preview_token_hash=$2 AND preview_version_id IN (SELECT id FROM cms.versions WHERE lower(slug)=lower($1) AND state='PREVIEW')`,slug,tokenHash(rawToken)).
+		Scan(&p.ID,&p.PageKey,&p.Name,&p.DraftVersionID,&p.PreviewVersionID,&p.PublishedVersionID,&p.PreviewTokenHash,&p.PreviewTokenIssuedAt,&p.CreatedAt,&p.UpdatedAt)
+	if err!=nil||!tokenMatches(rawToken,p.PreviewTokenHash){common.APIError(w,404,"NOT_FOUND","Preview media not found");return}
 	v,err:=a.getVersion(p.PreviewVersionID);if err!=nil||!versionReferencesMedia(v,id){common.APIError(w,404,"NOT_FOUND","Preview media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Preview media not found");return}
 	w.Header().Set("Cache-Control","private, no-store");w.Header().Set("X-Robots-Tag","noindex, nofollow");a.serveMedia(w,r,m,true)

@@ -838,12 +838,12 @@ paths:
   /preview/v1/cms/media/{mediaId}:
     parameters:
       - {name: mediaId, in: path, required: true, schema: {type: string}}
-      - {name: page_id, in: query, required: true, schema: {type: string}}
+      - {name: slug, in: query, required: true, schema: {type: string}}
       - {name: token, in: query, required: true, schema: {type: string}}
     get:
       tags: [CMS Preview]
       security: []
-      summary: Serve media only when referenced by the token-scoped PREVIEW page
+      summary: Serve media only when referenced by the slug/token-scoped PREVIEW page
       responses:
         "200": {description: Preview media}
         "404": {description: Media/token/page relationship not found}

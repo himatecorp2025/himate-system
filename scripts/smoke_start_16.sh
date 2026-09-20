@@ -69,6 +69,10 @@ bad_preview="$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE_URL/preview/v1/cms/p
 test "$bad_preview" = "404"
 preview_body="$(curl -fsS "$BASE_URL/preview/v1/cms/pages/ci-cms?token=$token")"
 printf '%s' "$preview_body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["content_model_version"]==1; assert d["state"]=="PREVIEW"; assert len(d["sections"])==1; assert d["sections"][0]["heading"]=="First Published Heading"; forbidden={"created_by","published_by","page_id","source_version_id","rollback_of_version_id","id"}; assert not forbidden.intersection(d), (forbidden.intersection(d),d)'
+curl -fsS "$BASE_URL/preview/v1/cms/media/$media_id?slug=ci-cms&token=$token" -o "$DOWNLOADED"
+cmp "$PNG" "$DOWNLOADED"
+bad_preview_media="$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE_URL/preview/v1/cms/media/$media_id?slug=ci-cms&token=wrong")"
+test "$bad_preview_media" = "404"
 still_private="$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE_URL/public/v1/cms/pages/ci-cms")"
 test "$still_private" = "404"
 echo ok

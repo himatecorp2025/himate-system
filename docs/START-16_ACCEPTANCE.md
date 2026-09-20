@@ -23,6 +23,7 @@ This document is the release gate for START-16. START-17 public landing-page CMS
 - [x] Publishing requires a fresh preview of the current draft; stale previews cannot be published.
 - [x] Preview tokens are cryptographically random, persisted only as SHA-256 and returned raw only on issue/rotation.
 - [x] Preview content is no-store/noindex and available only through the scoped token.
+- [x] Preview media uses the public slug plus scoped preview token, so visual preview requires no internal page identifier.
 - [x] Public CMS page APIs expose only the active PUBLISHED version.
 - [x] Public/preview CMS payloads expose only allowlisted content fields and do not leak internal actor, page, source-version or rollback metadata.
 - [x] Draft or preview content cannot leak through public page APIs.
