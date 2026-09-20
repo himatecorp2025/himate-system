@@ -1117,7 +1117,8 @@ class _ShellState extends State<Shell> {
       case 3: return ImpactPage(api: widget.api);
       case 4: return WebsiteMarketingPage(api: widget.api);
       case 5: return SystemPage(api: widget.api);
-      default: return const PlannedPage(title: 'Administration', subtitle: 'Roles, permissions and advanced audit controls are planned for START-18–19.', icon: Icons.admin_panel_settings_outlined);
+      case 6: return AdministrationPage(api: widget.api, user: widget.user);
+      default: return DashboardPage(api: widget.api);
     }
   }
 
@@ -5122,6 +5123,376 @@ class SystemPage extends StatelessWidget {
   }
 }
 
+
+
+class AdministrationPage extends StatefulWidget {
+  const AdministrationPage({required this.api, required this.user, super.key});
+  final Api api;
+  final Map<String, dynamic> user;
+
+  @override
+  State<AdministrationPage> createState() => _AdministrationPageState();
+}
+
+class _AdministrationPageState extends State<AdministrationPage> {
+  final searchController = TextEditingController();
+  Timer? _searchTimer;
+  List<Map<String, dynamic>> events = <Map<String, dynamic>>[];
+  bool loading = true;
+  String? error;
+  String resource = 'ALL';
+  String method = 'ALL';
+  String outcome = 'ALL';
+  int total = 0;
+  int offset = 0;
+  final int pageSize = 50;
+  int _generation = 0;
+
+  static const resources = <String>[
+    'ALL',
+    'partners',
+    'billing',
+    'catalog',
+    'provisioning',
+    'environments',
+    'connectors',
+    'impact',
+    'evidence',
+    'reports',
+    'cms',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    load(reset: true);
+  }
+
+  @override
+  void dispose() {
+    _searchTimer?.cancel();
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Uri _uri() {
+    final params = <String, String>{
+      'limit': '$pageSize',
+      'offset': '$offset',
+    };
+    final q = searchController.text.trim();
+    if (q.isNotEmpty) params['q'] = q;
+    if (resource != 'ALL') params['resource'] = resource;
+    if (method != 'ALL') params['method'] = method;
+    if (outcome != 'ALL') params['outcome'] = outcome;
+    return Uri(path: '/api/v1/audit/events', queryParameters: params);
+  }
+
+  Future<void> load({bool reset = false}) async {
+    if (reset) offset = 0;
+    final generation = ++_generation;
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final response = await widget.api.get(_uri().toString(), force: true);
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        events = items(response);
+        total = (response['total'] as num?)?.toInt() ?? events.length;
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        error = e.toString();
+        loading = false;
+      });
+    }
+  }
+
+  void searchChanged(String _) {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 280), () => load(reset: true));
+  }
+
+  void setFilter(VoidCallback update) {
+    setState(update);
+    load(reset: true);
+  }
+
+  String _timestamp(dynamic value) {
+    final raw = value?.toString() ?? '';
+    final parsed = DateTime.tryParse(raw)?.toLocal();
+    if (parsed == null) return raw.isEmpty ? '—' : raw;
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${parsed.year}-${two(parsed.month)}-${two(parsed.day)} ${two(parsed.hour)}:${two(parsed.minute)}:${two(parsed.second)}';
+  }
+
+  Color _outcomeColor(String value) {
+    switch (value.toUpperCase()) {
+      case 'SUCCESS':
+        return brandSuccess;
+      case 'FAILED':
+        return brandDanger;
+      default:
+        return brandSteel;
+    }
+  }
+
+  Widget _auditEventCard(Map<String, dynamic> event) {
+    final eventOutcome = '${event['outcome'] ?? 'UNKNOWN'}';
+    final tone = _outcomeColor(eventOutcome);
+    final actorName = '${event['actor_name'] ?? ''}'.trim();
+    final actorId = '${event['actor_id'] ?? ''}'.trim();
+    final partnerId = '${event['partner_id'] ?? ''}'.trim();
+    final requestId = '${event['request_id'] ?? ''}'.trim();
+    final path = '${event['path'] ?? ''}'.trim();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(17),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(color: tone.withOpacity(.09), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(eventOutcome == 'SUCCESS' ? Icons.check_circle_outline_rounded : Icons.error_outline_rounded, color: tone, size: 20),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 7,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _StatusPill(label: '${event['method'] ?? 'UNKNOWN'}'),
+                          _StatusPill(label: eventOutcome),
+                          Text(
+                            _humanize('${event['resource'] ?? 'api'}'),
+                            style: const TextStyle(color: brandNavy, fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      SelectableText(
+                        path.isEmpty ? '—' : path,
+                        style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(_timestamp(event['created_at']), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 7),
+            _DefinitionRow(label: 'Actor', value: actorName.isNotEmpty ? '$actorName · $actorId' : (actorId.isEmpty ? '—' : actorId)),
+            if (partnerId.isNotEmpty) _DefinitionRow(label: 'Partner', value: partnerId),
+            _DefinitionRow(label: 'HTTP status', value: '${event['status'] ?? '—'}'),
+            _DefinitionRow(label: 'Duration', value: '${event['duration_ms'] ?? 0} ms'),
+            if (requestId.isNotEmpty) _DefinitionRow(label: 'Request ID', value: requestId),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentPage = offset ~/ pageSize + 1;
+    final pageCount = total == 0 ? 1 : (total + pageSize - 1) ~/ pageSize;
+    final roles = widget.user['roles'] is List
+        ? (widget.user['roles'] as List).map((e) => e.toString()).join(', ')
+        : '${widget.user['roles'] ?? 'platform_admin'}';
+
+    return Content(
+      eyebrow: 'ADMINISTRATION',
+      title: 'Audit History',
+      subtitle: 'Central append-only administrative activity across the HIMATE control plane. Detailed domain histories remain preserved inside Billing, Catalog, Partners and CMS.',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: loading ? null : () => load(),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Refresh'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _RuleStrip(items: [
+            const _RuleItem(Icons.lock_clock_outlined, 'Capture', 'Mutating admin API calls'),
+            const _RuleItem(Icons.speed_outlined, 'Write path', 'Asynchronous queue'),
+            _RuleItem(Icons.person_outline_rounded, 'Current actor', '${widget.user['name'] ?? 'Administrator'}'),
+            _RuleItem(Icons.admin_panel_settings_outlined, 'Role', roles),
+          ]),
+          const SizedBox(height: 22),
+          _SectionHeader(
+            title: 'Administrative Event Stream',
+            subtitle: 'Search by actor, path, request ID, resource or partner. Filters are server-side and pagination keeps the audit page fast as history grows.',
+            trailing: _MiniCounter(label: '$total matched'),
+          ),
+          const SizedBox(height: 12),
+          _FilterSurface(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final search = TextField(
+                  controller: searchController,
+                  onChanged: searchChanged,
+                  decoration: const InputDecoration(
+                    labelText: 'Search audit history',
+                    hintText: 'Actor, request ID, resource, path or partner',
+                    prefixIcon: Icon(Icons.search_rounded),
+                  ),
+                );
+                final resourceFilter = DropdownButtonFormField<String>(
+                  value: resource,
+                  decoration: const InputDecoration(labelText: 'Resource'),
+                  items: [
+                    for (final value in resources)
+                      DropdownMenuItem(value: value, child: Text(value == 'ALL' ? 'All resources' : _humanize(value))),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setFilter(() => resource = value);
+                  },
+                );
+                final methodFilter = DropdownButtonFormField<String>(
+                  value: method,
+                  decoration: const InputDecoration(labelText: 'Method'),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: Text('All methods')),
+                    DropdownMenuItem(value: 'POST', child: Text('POST')),
+                    DropdownMenuItem(value: 'PATCH', child: Text('PATCH')),
+                    DropdownMenuItem(value: 'PUT', child: Text('PUT')),
+                    DropdownMenuItem(value: 'DELETE', child: Text('DELETE')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setFilter(() => method = value);
+                  },
+                );
+                final outcomeFilter = DropdownButtonFormField<String>(
+                  value: outcome,
+                  decoration: const InputDecoration(labelText: 'Outcome'),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: Text('All outcomes')),
+                    DropdownMenuItem(value: 'SUCCESS', child: Text('Success')),
+                    DropdownMenuItem(value: 'FAILED', child: Text('Failed')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setFilter(() => outcome = value);
+                  },
+                );
+
+                if (constraints.maxWidth < 720) {
+                  return Column(
+                    children: [
+                      search,
+                      const SizedBox(height: 10),
+                      resourceFilter,
+                      const SizedBox(height: 10),
+                      ResponsiveFieldPair(first: methodFilter, second: outcomeFilter),
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: resourceFilter)]),
+                    const SizedBox(height: 10),
+                    Row(children: [Expanded(child: methodFilter), const SizedBox(width: 10), Expanded(child: outcomeFilter)]),
+                  ],
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (loading && events.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 36),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (error != null)
+            _MessageCard(
+              icon: Icons.error_outline_rounded,
+              title: 'Audit history could not be loaded',
+              message: error!,
+            )
+          else if (events.isEmpty)
+            const _MessageCard(
+              icon: Icons.history_toggle_off_rounded,
+              title: 'No matching audit events',
+              message: 'Mutating administration actions will appear here automatically. Adjust the filters if you are looking for earlier activity.',
+            )
+          else ...[
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 780
+                    ? constraints.maxWidth
+                    : constraints.maxWidth < 1240
+                        ? (constraints.maxWidth - 12) / 2
+                        : (constraints.maxWidth - 24) / 3;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final event in events)
+                      SizedBox(width: width, child: _auditEventCard(event)),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            _FilterSurface(
+              child: Row(
+                children: [
+                  _MiniCounter(label: 'Page $currentPage of $pageCount'),
+                  const Spacer(),
+                  OutlinedButton.icon(
+                    onPressed: offset > 0 && !loading
+                        ? () {
+                            offset = (offset - pageSize).clamp(0, total);
+                            load();
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    label: const Text('Previous'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: offset + events.length < total && !loading
+                        ? () {
+                            offset += pageSize;
+                            load();
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    label: const Text('Next'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (loading && events.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+          ],
+          const SizedBox(height: 24),
+          const _MessageCard(
+            icon: Icons.manage_accounts_outlined,
+            title: 'Roles & Permissions',
+            message: 'START-19 will activate user lifecycle, role assignment and permission enforcement here after the audit layer passes the full Go, Flutter and Compose CI gate.',
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 String _humanize(String value) {
   return value
