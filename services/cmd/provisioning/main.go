@@ -47,9 +47,13 @@ var stepOrder=[]string{
 	"CREATE_DATABASE",
 	"SEED_REFERENCE_TEMPLATE",
 	"APPLY_MODULE_PRESET",
+	"CREATE_STORAGE",
 	"CREATE_STAGING_ENVIRONMENT",
 	"CREATE_CONNECTOR_CREDENTIAL",
+	"DEPLOY_STAGING",
+	"STORAGE_HEALTH",
 	"PARTNER_DATABASE_HEALTH",
+	"STAGING_RUNTIME_HEALTH",
 	"COMPLETE",
 }
 
@@ -69,6 +73,7 @@ func main(){
 			"catalog":os.Getenv("CATALOG_HOSTPORT"),
 			"environments":os.Getenv("ENVIRONMENTS_HOSTPORT"),
 			"connector":os.Getenv("CONNECTOR_HOSTPORT"),
+			"storage":os.Getenv("STORAGE_HOSTPORT"),
 		},
 	}
 	if len(a.token)<24 || len(a.dbMasterSecret)<32 { log.Error("required provisioning secrets are missing");os.Exit(1) }
@@ -82,6 +87,7 @@ func main(){
 	mux.HandleFunc("/api/v1/provisioning/jobs",a.jobs)
 	mux.HandleFunc("/api/v1/provisioning/jobs/",a.jobByID)
 	mux.HandleFunc("/internal/v1/provisioning/summary",a.summary)
+	mux.HandleFunc("/internal/v1/provisioning/database-health",a.databaseHealth)
 	common.Run(log,"provisioning",common.Env("PORT","10000"),common.InternalAuth(a.token,mux))
 }
 
@@ -248,6 +254,9 @@ func (a *app)executeStep(ctx context.Context,j job,step,actor string)error{
 		if err:=a.seedPartnerTemplate(ctx,j);err!=nil{return err}
 	case "APPLY_MODULE_PRESET":
 		if err:=a.applyModulePreset(ctx,j,actor);err!=nil{return err}
+	case "CREATE_STORAGE":
+		var out map[string]any
+		if err:=a.internalJSON(ctx,http.MethodPost,a.hosts["storage"],"/internal/v1/storage/partners/"+j.PartnerID+"/ensure",map[string]any{},&out,actor);err!=nil{return fmt.Errorf("partner storage: %w",err)}
 	case "CREATE_STAGING_ENVIRONMENT":
 		payload:=map[string]any{"partner_id":j.PartnerID,"system_name":j.SystemName,"platform_version":j.PlatformVersion,"desired_release":j.DesiredRelease,"config":map[string]any{"partner_id":j.PartnerID,"database":a.partnerDatabaseName(j.PartnerID)}}
 		var out map[string]any
@@ -256,8 +265,18 @@ func (a *app)executeStep(ctx context.Context,j job,step,actor string)error{
 		payload:=map[string]any{"PartnerID":j.PartnerID,"Environment":"STAGING"}
 		var out map[string]any
 		if err:=a.internalJSON(ctx,http.MethodPost,a.hosts["connector"],"/internal/v1/connectors/ensure",payload,&out,actor);err!=nil{return fmt.Errorf("connector credential: %w",err)}
+	case "DEPLOY_STAGING":
+		payload:=map[string]any{"partner_id":j.PartnerID,"release":j.DesiredRelease}
+		var out map[string]any
+		if err:=a.internalJSON(ctx,http.MethodPost,a.hosts["environments"],"/internal/v1/environments/deploy-staging",payload,&out,actor);err!=nil{return fmt.Errorf("staging deployment: %w",err)}
+	case "STORAGE_HEALTH":
+		var out map[string]any
+		if err:=a.internalJSON(ctx,http.MethodGet,a.hosts["storage"],"/internal/v1/storage/partners/"+j.PartnerID+"/health",nil,&out,actor);err!=nil{return fmt.Errorf("partner storage health: %w",err)}
 	case "PARTNER_DATABASE_HEALTH":
 		if err:=a.checkPartnerDatabase(ctx,j.PartnerID);err!=nil{return err}
+	case "STAGING_RUNTIME_HEALTH":
+		var out map[string]any
+		if err:=a.internalJSON(ctx,http.MethodGet,a.hosts["environments"],"/internal/v1/environments/runtime-health?partner_id="+url.QueryEscape(j.PartnerID)+"&environment=STAGING",nil,&out,actor);err!=nil{return fmt.Errorf("staging runtime health: %w",err)}
 	case "COMPLETE":
 		var p map[string]any
 		if err:=a.internalJSON(ctx,http.MethodGet,a.hosts["partners"],"/api/v1/partners/"+j.PartnerID,nil,&p,actor);err!=nil{return err}
@@ -360,6 +379,8 @@ func (a *app)ensurePartnerDatabase(ctx context.Context,partnerID string)error{
 	if !exists{
 		if _,err=admin.ExecContext(ctx,"CREATE DATABASE "+quoteIdent(dbName)+" OWNER "+quoteIdent(roleName));err!=nil{return fmt.Errorf("create isolated partner database: %w",err)}
 	}
+	if _,err=admin.ExecContext(ctx,"REVOKE ALL ON DATABASE "+quoteIdent(dbName)+" FROM PUBLIC");err!=nil{return fmt.Errorf("revoke public database access: %w",err)}
+	if _,err=admin.ExecContext(ctx,"GRANT CONNECT,TEMPORARY ON DATABASE "+quoteIdent(dbName)+" TO "+quoteIdent(roleName));err!=nil{return fmt.Errorf("grant partner database access: %w",err)}
 	return nil
 }
 
@@ -416,8 +437,9 @@ func (a *app)steps(id string)[]map[string]any{
 		ORDER BY CASE step_key
 			WHEN 'VALIDATE_PARTNER' THEN 1 WHEN 'VALIDATE_LICENSE' THEN 2 WHEN 'MARK_PROVISIONING' THEN 3
 			WHEN 'CREATE_DATABASE' THEN 4 WHEN 'SEED_REFERENCE_TEMPLATE' THEN 5 WHEN 'APPLY_MODULE_PRESET' THEN 6
-			WHEN 'CREATE_STAGING_ENVIRONMENT' THEN 7 WHEN 'CREATE_CONNECTOR_CREDENTIAL' THEN 8
-			WHEN 'PARTNER_DATABASE_HEALTH' THEN 9 WHEN 'COMPLETE' THEN 10 ELSE 99 END`,id)
+			WHEN 'CREATE_STORAGE' THEN 7 WHEN 'CREATE_STAGING_ENVIRONMENT' THEN 8 WHEN 'CREATE_CONNECTOR_CREDENTIAL' THEN 9
+			WHEN 'DEPLOY_STAGING' THEN 10 WHEN 'STORAGE_HEALTH' THEN 11 WHEN 'PARTNER_DATABASE_HEALTH' THEN 12
+			WHEN 'STAGING_RUNTIME_HEALTH' THEN 13 WHEN 'COMPLETE' THEN 14 ELSE 99 END`,id)
 	if err!=nil{return []map[string]any{}}
 	defer rows.Close()
 	items:=[]map[string]any{}
@@ -430,6 +452,24 @@ func (a *app)summary(w http.ResponseWriter,r *http.Request){
 	if err!=nil{common.APIError(w,500,"DB","Could not load provisioning summary");return}
 	defer rows.Close();items:=[]map[string]any{}
 	for rows.Next(){if j,err:=scanJob(rows);err==nil{items=append(items,mapJob(j))}}
+	common.JSON(w,200,map[string]any{"items":items})
+}
+
+func (a *app)databaseHealth(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+	rows,err:=a.db.Query(`SELECT partner_id FROM provisioning.jobs WHERE status IN ('CONFIGURATION_REQUIRED','COMPLETED') ORDER BY partner_id`)
+	if err!=nil{common.APIError(w,500,"DB","Could not load provisioned partners");return}
+	defer rows.Close()
+	items:=[]map[string]any{}
+	for rows.Next(){
+		var partnerID string
+		if rows.Scan(&partnerID)!=nil{continue}
+		started:=time.Now()
+		err:=a.checkPartnerDatabase(r.Context(),partnerID)
+		status:="OK";message:=""
+		if err!=nil{status="ERROR";message=err.Error()}
+		items=append(items,map[string]any{"partner_id":partnerID,"status":status,"latency_ms":time.Since(started).Milliseconds(),"error":message,"checked_at":time.Now().UTC()})
+	}
 	common.JSON(w,200,map[string]any{"items":items})
 }
 
