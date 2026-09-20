@@ -95,6 +95,78 @@ func TestMarketingFrontendServesFreshAssets(t *testing.T) {
 }
 
 
+func TestSTART19RolePermissionMatrix(t *testing.T) {
+	tests := []struct {
+		role       string
+		permission string
+		want       bool
+	}{
+		{"platform_admin", "billing.approve", true},
+		{"platform_admin", "provisioning.approve", true},
+		{"operations_admin", "partners.write", true},
+		{"operations_admin", "provisioning.approve", true},
+		{"operations_admin", "billing.write", false},
+		{"finance_admin", "billing.approve", true},
+		{"finance_admin", "catalog.read", true},
+		{"finance_admin", "environments.write", false},
+		{"reporting_admin", "impact.write", true},
+		{"reporting_admin", "evidence.approve", true},
+		{"reporting_admin", "billing.read", false},
+		{"reporting_admin", "administration.read", false},
+	}
+	for _, tc := range tests {
+		u := user{Roles: []string{tc.role}}
+		if got := hasPermission(u, tc.permission); got != tc.want {
+			t.Fatalf("%s permission %s = %v, want %v", tc.role, tc.permission, got, tc.want)
+		}
+	}
+}
+
+func TestSTART19RequiredPermissionClassification(t *testing.T) {
+	tests := []struct {
+		method string
+		path   string
+		want   string
+	}{
+		{http.MethodGet, "/api/v1/dashboard/summary", "dashboard.read"},
+		{http.MethodGet, "/api/v1/partners", "partners.read"},
+		{http.MethodPatch, "/api/v1/partners/ptr_1", "partners.write"},
+		{http.MethodGet, "/api/v1/partners/ptr_1/modules", "catalog.read"},
+		{http.MethodPatch, "/api/v1/partners/ptr_1/modules/mod_1", "catalog.write"},
+		{http.MethodPut, "/api/v1/billing/partners/ptr_1/terms", "billing.write"},
+		{http.MethodPut, "/api/v1/billing/partners/ptr_1/license", "billing.approve"},
+		{http.MethodPost, "/api/v1/provisioning/jobs/job_1/run", "provisioning.approve"},
+		{http.MethodPatch, "/api/v1/evidence/ev_1", "evidence.approve"},
+		{http.MethodPost, "/api/v1/cms/pages/page_1/publish", "cms.approve"},
+		{http.MethodPost, "/api/v1/cms/pages/page_1/rollback", "cms.approve"},
+		{http.MethodGet, "/api/v1/admin/users", "administration.read"},
+		{http.MethodPost, "/api/v1/admin/users", "administration.write"},
+		{http.MethodPatch, "/api/v1/admin/users/usr_1", "administration.approve"},
+	}
+	for _, tc := range tests {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		if got := requiredPermission(req); got != tc.want {
+			t.Fatalf("%s %s => %s, want %s", tc.method, tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestSTART19NormalizeRoles(t *testing.T) {
+	roles, err := normalizeRoles([]string{"finance_admin", "finance_admin", "reporting_admin"})
+	if err != nil {
+		t.Fatalf("unexpected normalize error: %v", err)
+	}
+	if len(roles) != 2 || roles[0] != "finance_admin" || roles[1] != "reporting_admin" {
+		t.Fatalf("unexpected normalized roles: %#v", roles)
+	}
+	if _, err := normalizeRoles([]string{"root"}); err == nil {
+		t.Fatal("unknown role must be rejected")
+	}
+	if _, err := normalizeRoles(nil); err == nil {
+		t.Fatal("empty roles must be rejected")
+	}
+}
+
 func TestAuditResourceClassification(t *testing.T) {
 	tests := []struct {
 		path string
