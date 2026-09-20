@@ -1894,6 +1894,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
   Map<String, dynamic>? terms;
+  Map<String, dynamic>? license;
   bool loading = true;
   String? error;
   String moduleQuery = '';
@@ -1930,6 +1931,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         widget.api.get('/api/v1/partners/$id/modules'),
         widget.api.get('/api/v1/billing/partners/$id/summary'),
         widget.api.get('/api/v1/billing/partners/$id/terms'),
+        widget.api.get('/api/v1/billing/partners/$id/license'),
         widget.api.get('/api/v1/billing/partners/$id/documents'),
         widget.api.get('/api/v1/billing/partners/$id/invoices'),
       ]);
@@ -1937,8 +1939,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       modules = items(r[1]);
       billing = r[2];
       terms = r[3];
-      documents = items(r[4]);
-      invoices = items(r[5]);
+      license = r[4];
+      documents = items(r[5]);
+      invoices = items(r[6]);
     } catch (e) {
       error = e.toString();
     } finally {
@@ -2351,7 +2354,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       LayoutBuilder(
                         builder: (context, c) {
                           final company = _PartnerDetailsCard(partner: partner);
-                          final termsCard = _CommercialSummaryCard(terms: terms ?? {}, billing: billing ?? {}, onEdit: editTerms);
+                          final termsCard = _CommercialSummaryCard(terms: terms ?? {}, billing: billing ?? {}, license: license ?? {}, onEdit: editTerms);
                           if (c.maxWidth < 930) {
                             return Column(children: [company, const SizedBox(height: 14), termsCard]);
                           }
@@ -3303,8 +3306,8 @@ class _PartnerDetailsCard extends StatelessWidget {
 }
 
 class _CommercialSummaryCard extends StatelessWidget {
-  const _CommercialSummaryCard({required this.terms, required this.billing, required this.onEdit});
-  final Map<String, dynamic> terms, billing;
+  const _CommercialSummaryCard({required this.terms, required this.billing, required this.license, required this.onEdit});
+  final Map<String, dynamic> terms, billing, license;
   final VoidCallback onEdit;
 
   @override
@@ -3314,11 +3317,14 @@ class _CommercialSummaryCard extends StatelessWidget {
     action: IconButton(onPressed: onEdit, tooltip: 'Edit commercial terms', icon: const Icon(Icons.edit_outlined, size: 18)),
     children: [
       _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
+      _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
+      _DefinitionRow(label: 'License paid', value: '${money(license['paid_amount'])} / ${money(license['required_amount'])}'),
       _DefinitionRow(label: 'Base monthly fee', value: money(billing['effective_base_fee'])),
       _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
       _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
       _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),
-      const _DefinitionRow(label: 'Billing rule', value: '30-day service cycle · invoice day 1'),
+      _DefinitionRow(label: 'Next cycle', value: '${billing['next_billing_date'] ?? '—'}'),
+      const _DefinitionRow(label: 'Billing rule', value: 'Activation-date anchored · 30 days'),
     ],
   );
 }
