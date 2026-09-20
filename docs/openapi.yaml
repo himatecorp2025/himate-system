@@ -687,6 +687,174 @@ paths:
       summary: Re-render the PDF from the already frozen snapshot
       responses:
         "200": {description: PDF regenerated without reading live metric data}
+  /api/v1/cms/pages:
+    get:
+      tags: [CMS]
+      summary: List CMS pages and workflow pointers
+      responses:
+        "200": {description: CMS pages}
+    post:
+      tags: [CMS]
+      summary: Create a CMS page with its first immutable DRAFT version
+      description: >
+        The stable page key is separate from the versioned slug. Draft content
+        is never exposed through public CMS routes.
+      responses:
+        "201": {description: CMS page and initial draft created}
+        "400": {description: Content validation failed}
+        "409": {description: Page key conflict}
+  /api/v1/cms/pages/{pageId}:
+    parameters:
+      - {name: pageId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [CMS]
+      summary: Read admin CMS page including current draft, preview and published snapshots
+      responses:
+        "200": {description: CMS page detail}
+  /api/v1/cms/pages/{pageId}/draft:
+    parameters:
+      - {name: pageId, in: path, required: true, schema: {type: string}}
+    put:
+      tags: [CMS]
+      summary: Save a new immutable DRAFT version
+      description: Every content modification creates a new version and CMS audit event.
+      responses:
+        "200": {description: New draft version}
+        "400": {description: Draft content validation failed}
+  /api/v1/cms/pages/{pageId}/preview:
+    parameters:
+      - {name: pageId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [CMS]
+      summary: Promote the current draft to PREVIEW and issue a one-time raw preview token
+      description: The preview token is stored only as SHA-256 and is returned raw only by this operation.
+      responses:
+        "201": {description: Preview snapshot and one-time token}
+  /api/v1/cms/pages/{pageId}/preview-token:
+    parameters:
+      - {name: pageId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [CMS]
+      summary: Rotate the current preview token
+      responses:
+        "200": {description: New one-time raw preview token}
+        "409": {description: No preview exists}
+  /api/v1/cms/pages/{pageId}/publish:
+    parameters:
+      - {name: pageId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [CMS]
+      summary: Publish the current fresh PREVIEW snapshot
+      description: >
+        Publishing fails if the draft changed after preview, if required SEO or
+        visible-section content is incomplete, if referenced media is missing,
+        or if the published slug/canonical conflicts with another page.
+      responses:
+        "201": {description: New immutable PUBLISHED version}
+        "400": {description: Publish validation failed}
+        "409": {description: Preview is stale/missing or SEO conflicts}
+  /api/v1/cms/pages/{pageId}/rollback:
+    parameters:
+      - {name: pageId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [CMS]
+      summary: Restore a prior PUBLISHED snapshot as a new PUBLISHED version
+      responses:
+        "201": {description: Rollback version activated with rollback_of_version_id}
+        "409": {description: Invalid rollback target}
+  /api/v1/cms/pages/{pageId}/versions:
+    parameters:
+      - {name: pageId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [CMS]
+      summary: List immutable CMS version history
+      responses:
+        "200": {description: DRAFT, PREVIEW and PUBLISHED versions}
+  /api/v1/cms/pages/{pageId}/audit:
+    parameters:
+      - {name: pageId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [CMS]
+      summary: List CMS-local content and publishing audit events
+      description: START-18 later provides the global cross-system audit layer.
+      responses:
+        "200": {description: CMS audit events}
+  /api/v1/cms/media:
+    get:
+      tags: [CMS]
+      summary: List CMS media assets
+      responses:
+        "200": {description: CMS media assets}
+    post:
+      tags: [CMS]
+      summary: Upload a CMS image asset
+      description: >
+        Media is limited to PNG/JPEG/WebP, content-sniffed, max 10 MiB,
+        checksum-backed and persisted through the central Storage service.
+      responses:
+        "201": {description: Stable CMS media asset}
+        "413": {description: Media request or file exceeds the size limit}
+        "415": {description: Media content type is not allowed}
+  /api/v1/cms/media/{mediaId}/preview:
+    parameters:
+      - {name: mediaId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [CMS]
+      summary: Preview an authenticated CMS media asset
+      responses:
+        "200": {description: Inline media bytes}
+  /public/v1/cms/pages/{slug}:
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [CMS Public]
+      security: []
+      summary: Read only the active PUBLISHED CMS page
+      description: Hidden sections and all draft/preview snapshots are excluded.
+      responses:
+        "200": {description: Published content model and structured SEO}
+        "404": {description: No published page exists for this slug}
+  /preview/v1/cms/pages/{slug}:
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string}}
+      - {name: token, in: query, required: true, schema: {type: string}}
+    get:
+      tags: [CMS Preview]
+      security: []
+      summary: Read the active PREVIEW snapshot using its scoped preview token
+      responses:
+        "200": {description: Preview content using the same public content model}
+        "404": {description: Preview/token not found}
+  /public/v1/cms/media/{mediaId}:
+    parameters:
+      - {name: mediaId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [CMS Public]
+      security: []
+      summary: Serve media only when referenced by an active PUBLISHED page
+      responses:
+        "200": {description: Published media}
+        "404": {description: Media is not referenced by published content}
+  /preview/v1/cms/media/{mediaId}:
+    parameters:
+      - {name: mediaId, in: path, required: true, schema: {type: string}}
+      - {name: page_id, in: query, required: true, schema: {type: string}}
+      - {name: token, in: query, required: true, schema: {type: string}}
+    get:
+      tags: [CMS Preview]
+      security: []
+      summary: Serve media only when referenced by the token-scoped PREVIEW page
+      responses:
+        "200": {description: Preview media}
+        "404": {description: Media/token/page relationship not found}
+  /public/v1/cms/manifest:
+    get:
+      tags: [CMS Public]
+      security: []
+      summary: Published SEO manifest for sitemap/robots preparation
+      responses:
+        "200": {description: Published slug, canonical, title, noindex and version metadata}
+
 components:
   securitySchemes:
     sessionCookie:
