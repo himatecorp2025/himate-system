@@ -73,6 +73,14 @@ echo ok
 printf 'URL and partner declaration evidence... '
 url_ev="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner1\",\"metric_key\":\"$metric_key\",\"evidence_type\":\"URL\",\"title\":\"Source URL\",\"period_start\":\"2026-09-01\",\"period_end\":\"2026-09-20\",\"source_url\":\"https://example.org/evidence\"}"   "$BASE_URL/api/v1/evidence")"
 printf '%s' "$url_ev" | grep -q '"evidence_type":"URL"'
+url_evidence_id="$(printf '%s' "$url_ev" | json_field id)"
+curl -fsS -b "$COOKIE_JAR" -X PATCH -H 'Content-Type: application/json' \
+  -d '{"verification_status":"VERIFIED"}' \
+  "$BASE_URL/api/v1/evidence/$url_evidence_id" >/dev/null
+url_verified_code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$COOKIE_JAR" -H 'Content-Type: application/json' \
+  -d "{\"partner_id\":\"$partner1\",\"metric_key\":\"$metric_key\",\"period_start\":\"2026-09-01\",\"period_end\":\"2026-09-20\",\"numeric_value\":11,\"provenance\":\"VERIFIED_DOCUMENT\",\"evidence_id\":\"$url_evidence_id\"}" \
+  "$BASE_URL/api/v1/impact/values")"
+test "$url_verified_code" = "409"
 decl_ev="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner1\",\"metric_key\":\"$metric_key\",\"evidence_type\":\"PARTNER_DECLARATION\",\"title\":\"Partner declaration\",\"period_start\":\"2026-09-01\",\"period_end\":\"2026-09-20\",\"declaration_text\":\"Partner confirms the reported result for the period.\"}"   "$BASE_URL/api/v1/evidence")"
 printf '%s' "$decl_ev" | grep -q '"evidence_type":"PARTNER_DECLARATION"'
 bad_url_code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner1\",\"evidence_type\":\"URL\",\"title\":\"Bad URL\",\"source_url\":\"file:///etc/passwd\"}"   "$BASE_URL/api/v1/evidence")"

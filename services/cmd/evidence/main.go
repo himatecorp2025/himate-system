@@ -280,6 +280,7 @@ func (a *app)createFileEvidence(w http.ResponseWriter,r *http.Request){
 		if strings.Contains(strings.ToLower(err.Error()),"too large"){common.APIError(w,413,"REQUEST_TOO_LARGE","Evidence upload request exceeds 21 MiB");return}
 		common.APIError(w,400,"MULTIPART","Invalid multipart evidence upload");return
 	}
+	if r.MultipartForm!=nil { defer r.MultipartForm.RemoveAll() }
 	partnerID:=strings.TrimSpace(r.FormValue("partner_id"))
 	metricKey:=strings.TrimSpace(r.FormValue("metric_key"))
 	kind:=normalizeType(r.FormValue("evidence_type"))
