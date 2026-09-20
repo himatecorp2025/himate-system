@@ -28,7 +28,7 @@ func TestRenderPDFProducesSelfContainedPDF(t *testing.T) {
 	if !bytes.HasPrefix(raw, []byte("%PDF-1.4")) {
 		t.Fatal("generated report is not a PDF")
 	}
-	if !bytes.Contains(raw, []byte("rpt_test")) || !bytes.Contains(raw, []byte("Evidence")) {
+	if !bytes.Contains(raw, []byte("rpt_test")) || !bytes.Contains(raw, []byte("EVIDENCE")) {
 		t.Fatal("generated PDF is missing report content")
 	}
 	if !bytes.HasSuffix(raw, []byte("%%EOF\n")) {
