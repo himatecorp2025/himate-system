@@ -22,5 +22,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/himate_login_heritage.jpg
-    - assets/himate_logo_master.webp
-    - assets/himate_mark.webp
+    - assets/himate_logo_master_v2.webp

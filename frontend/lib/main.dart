@@ -989,7 +989,7 @@ class HimateLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const asset = 'assets/himate_logo_master.webp';
+    const asset = 'assets/himate_logo_master_v2.webp';
     if (compact) {
       return SizedBox(
         width: width,
@@ -1026,7 +1026,7 @@ class BrandMark extends StatelessWidget {
     width: size,
     height: size,
     child: Image.asset(
-      'assets/himate_logo_master.webp',
+      'assets/himate_logo_master_v2.webp',
       fit: BoxFit.cover,
       alignment: Alignment.centerLeft,
       filterQuality: FilterQuality.high,
