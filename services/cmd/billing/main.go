@@ -495,7 +495,10 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	now := time.Now().UTC()
 	base := effectiveBaseFee(t, now)
 	start, end := cycleWindow(t.ServiceAnchorDate, now)
-	a.syncSubscriptions(r.Context(), id, t.Currency, mods, now)
+	if err := a.syncSubscriptions(r.Context(), id, t.Currency, mods, now); err != nil {
+		common.APIError(w, 500, "DB", "Could not synchronize module subscriptions")
+		return
+	}
 	common.JSON(w, 200, map[string]any{
 		"partner_id": id, "currency": t.Currency, "effective_base_fee": base, "extra_module_fee": extra,
 		"current_total": math.Round((base+extra)*100) / 100, "annual_increase_percent": t.AnnualIncreasePercent,
@@ -522,18 +525,57 @@ func (a *app) catalogFees(ctx context.Context, id string) (float64, []map[string
 	return out.Extra, out.Items, nil
 }
 
-func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods []map[string]any, now time.Time) {
+func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods []map[string]any, now time.Time) error {
+	today := dateOnly(now)
+	activeKeys := make([]string, 0, len(mods))
 	for _, mod := range mods {
 		key := fmt.Sprint(mod["key"])
 		if key == "" { continue }
+		activeKeys = append(activeKeys, key)
 		price := 0.0
-		if v, ok := mod["partner_price"].(float64); ok { price = v } else if v, ok := mod["partner_price"].(json.Number); ok { price, _ = v.Float64() }
-		today := dateOnly(now)
-		_, end := cycleWindow(today, today)
-		_, _ = a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(partner_id,module_key,currency,activation_date,period_start,period_end,price)
-			VALUES($1,$2,$3,$4,$4,$5,$6) ON CONFLICT(partner_id,module_key) DO UPDATE SET price=EXCLUDED.price,currency=EXCLUDED.currency,updated_at=NOW()`,
-			id, key, currency, today, end, price)
+		if v, ok := mod["partner_price"].(float64); ok {
+			price = v
+		} else if v, ok := mod["partner_price"].(json.Number); ok {
+			price, _ = v.Float64()
+		}
+
+		activation := today
+		var existing time.Time
+		err := a.db.QueryRowContext(ctx, `SELECT activation_date FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2`, id, key).Scan(&existing)
+		if err == nil {
+			activation = dateOnly(existing)
+		} else if err != sql.ErrNoRows {
+			return err
+		}
+		start, end := cycleWindow(activation, today)
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(
+				partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
+			) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING')
+			ON CONFLICT(partner_id,module_key) DO UPDATE SET
+				currency=EXCLUDED.currency,period_start=EXCLUDED.period_start,period_end=EXCLUDED.period_end,
+				price=EXCLUDED.price,auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()`,
+			id, key, currency, activation, start, end, price); err != nil {
+			return err
+		}
 	}
+
+	if len(activeKeys) == 0 {
+		_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
+			SET auto_renew=FALSE,cancel_at_period_end=TRUE,payment_status='INACTIVE',updated_at=NOW()
+			WHERE partner_id=$1 AND payment_status<>'INACTIVE'`, id)
+		return err
+	}
+	args := make([]any, 0, len(activeKeys)+1)
+	args = append(args, id)
+	placeholders := make([]string, len(activeKeys))
+	for i, key := range activeKeys {
+		args = append(args, key)
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+	}
+	_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
+		SET auto_renew=FALSE,cancel_at_period_end=TRUE,payment_status='INACTIVE',updated_at=NOW()
+		WHERE partner_id=$1 AND module_key NOT IN (`+strings.Join(placeholders, ",")+`) AND payment_status<>'INACTIVE'`, args...)
+	return err
 }
 
 func (a *app) subscriptions(w http.ResponseWriter, r *http.Request, id string) {
