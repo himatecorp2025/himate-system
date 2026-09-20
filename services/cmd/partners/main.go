@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,17 +16,35 @@ import (
 type app struct{ db *sql.DB }
 
 type partner struct {
-	ID, Slug, DisplayName, LegalName, CategoryID, CategoryName string
-	Lifecycle, PrimaryDomain, StagingDomain                    string
-	ContactName, ContactEmail, Country, Notes                  string
-	ExistingPartner, ReferencePartner                          bool
-	CreatedAt, UpdatedAt                                       time.Time
+	ID, Slug, DisplayName, LegalName, BrandName, CategoryID, CategoryName string
+	Lifecycle, PrimaryDomain, StagingDomain, LogoURL, PlatformVersion       string
+	SystemHealth, ContactName, ContactEmail, FinanceContactName             string
+	FinanceContactEmail, TechnicalContactName, TechnicalContactEmail        string
+	MarketingContactName, MarketingContactEmail, RegistrationNumber         string
+	TaxID, Country, StateRegion, City, PostalCode, AddressLine1              string
+	AddressLine2, Website, Phone, Notes                                      string
+	ExistingPartner, ReferencePartner                                       bool
+	HealthCheckedAt, LastSyncAt                                              sql.NullTime
+	CreatedAt, UpdatedAt                                                     time.Time
 }
 
 var lifecycleValues = map[string]bool{
 	"PROSPECT": true, "LICENSE_PENDING": true, "READY_TO_PROVISION": true,
 	"PROVISIONING": true, "CONFIGURATION": true, "TESTING": true,
 	"READY_FOR_LAUNCH": true, "LIVE": true, "SUSPENDED": true, "ARCHIVED": true,
+}
+
+var lifecycleTransitions = map[string]map[string]bool{
+	"PROSPECT":            {"LICENSE_PENDING": true, "ARCHIVED": true},
+	"LICENSE_PENDING":     {"PROSPECT": true, "READY_TO_PROVISION": true, "ARCHIVED": true},
+	"READY_TO_PROVISION":  {"LICENSE_PENDING": true, "PROVISIONING": true, "ARCHIVED": true},
+	"PROVISIONING":        {"READY_TO_PROVISION": true, "CONFIGURATION": true, "SUSPENDED": true},
+	"CONFIGURATION":       {"PROVISIONING": true, "TESTING": true, "SUSPENDED": true},
+	"TESTING":             {"CONFIGURATION": true, "READY_FOR_LAUNCH": true, "SUSPENDED": true},
+	"READY_FOR_LAUNCH":    {"TESTING": true, "LIVE": true, "SUSPENDED": true},
+	"LIVE":                {"SUSPENDED": true, "ARCHIVED": true},
+	"SUSPENDED":           {"CONFIGURATION": true, "TESTING": true, "READY_FOR_LAUNCH": true, "LIVE": true, "ARCHIVED": true},
+	"ARCHIVED":            {},
 }
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
@@ -40,7 +59,7 @@ func main() {
 	defer db.Close()
 
 	a := &app{db: db}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := a.migrate(ctx); err != nil {
 		log.Error("migration", "error", err)
@@ -49,7 +68,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		common.JSON(w, 200, map[string]any{"status": "ok", "service": "partners"})
+		common.JSON(w, 200, map[string]any{"status": "ok", "service": "partners", "time": time.Now().UTC()})
 	})
 	mux.HandleFunc("/api/v1/partner-categories", a.categories)
 	mux.HandleFunc("/api/v1/partners", a.partners)
@@ -58,34 +77,73 @@ func main() {
 }
 
 func (a *app) migrate(ctx context.Context) error {
-	if err := common.ExecStatements(ctx, a.db,
-		`CREATE SCHEMA IF NOT EXISTS partners`,
-		`CREATE TABLE IF NOT EXISTS partners.categories(
-            id TEXT PRIMARY KEY,
-            name TEXT UNIQUE NOT NULL,
-            slug TEXT UNIQUE NOT NULL,
-            system BOOLEAN NOT NULL DEFAULT FALSE
-        )`,
-		`CREATE TABLE IF NOT EXISTS partners.partners(
-            id TEXT PRIMARY KEY,
-            slug TEXT UNIQUE NOT NULL,
-            display_name TEXT NOT NULL,
-            legal_name TEXT NOT NULL,
-            category_id TEXT REFERENCES partners.categories(id),
-            lifecycle TEXT NOT NULL,
-            existing_partner BOOLEAN NOT NULL DEFAULT FALSE,
-            reference_partner BOOLEAN NOT NULL DEFAULT FALSE,
-            primary_domain TEXT NOT NULL DEFAULT '',
-            staging_domain TEXT NOT NULL DEFAULT '',
-            contact_name TEXT NOT NULL DEFAULT '',
-            contact_email TEXT NOT NULL DEFAULT '',
-            country TEXT NOT NULL DEFAULT '',
-            notes TEXT NOT NULL DEFAULT '',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )`,
-		`CREATE SEQUENCE IF NOT EXISTS partners.partner_seq START 2`,
-	); err != nil {
+	if err := common.ApplyMigrations(ctx, a.db, "partners", []common.Migration{
+		{Version: 1, Name: "partners-base", Statements: []string{
+			`CREATE SCHEMA IF NOT EXISTS partners`,
+			`CREATE TABLE IF NOT EXISTS partners.categories(
+				id TEXT PRIMARY KEY,
+				name TEXT UNIQUE NOT NULL,
+				slug TEXT UNIQUE NOT NULL,
+				system BOOLEAN NOT NULL DEFAULT FALSE
+			)`,
+			`CREATE TABLE IF NOT EXISTS partners.partners(
+				id TEXT PRIMARY KEY,
+				slug TEXT UNIQUE NOT NULL,
+				display_name TEXT NOT NULL,
+				legal_name TEXT NOT NULL,
+				category_id TEXT REFERENCES partners.categories(id),
+				lifecycle TEXT NOT NULL,
+				existing_partner BOOLEAN NOT NULL DEFAULT FALSE,
+				reference_partner BOOLEAN NOT NULL DEFAULT FALSE,
+				primary_domain TEXT NOT NULL DEFAULT '',
+				staging_domain TEXT NOT NULL DEFAULT '',
+				contact_name TEXT NOT NULL DEFAULT '',
+				contact_email TEXT NOT NULL DEFAULT '',
+				country TEXT NOT NULL DEFAULT '',
+				notes TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)`,
+			`CREATE SEQUENCE IF NOT EXISTS partners.partner_seq START 2`,
+		}},
+		{Version: 2, Name: "partner-company-and-portfolio-metadata", Statements: []string{
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS brand_name TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS registration_number TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS tax_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS state_region TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS city TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS postal_code TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS address_line1 TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS address_line2 TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS website TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS finance_contact_name TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS finance_contact_email TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS technical_contact_name TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS technical_contact_email TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS marketing_contact_name TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS marketing_contact_email TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS logo_url TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS platform_version TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS system_health TEXT NOT NULL DEFAULT 'UNKNOWN'`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS health_checked_at TIMESTAMPTZ`,
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ`,
+			`CREATE TABLE IF NOT EXISTS partners.lifecycle_history(
+				id BIGSERIAL PRIMARY KEY,
+				partner_id TEXT NOT NULL REFERENCES partners.partners(id),
+				from_state TEXT NOT NULL,
+				to_state TEXT NOT NULL,
+				changed_by TEXT NOT NULL DEFAULT '',
+				reason TEXT NOT NULL DEFAULT '',
+				changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)`,
+			`CREATE INDEX IF NOT EXISTS partners_lifecycle_idx ON partners.partners(lifecycle)`,
+			`CREATE INDEX IF NOT EXISTS partners_category_idx ON partners.partners(category_id)`,
+			`CREATE INDEX IF NOT EXISTS partners_display_name_idx ON partners.partners(display_name)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS partners_primary_domain_unique ON partners.partners((lower(primary_domain))) WHERE primary_domain<>''`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS partners_staging_domain_unique ON partners.partners((lower(staging_domain))) WHERE staging_domain<>''`,
+		}},
+	}); err != nil {
 		return err
 	}
 
@@ -93,15 +151,19 @@ func (a *app) migrate(ctx context.Context) error {
 	for i, name := range defaults {
 		if _, err := a.db.ExecContext(ctx,
 			`INSERT INTO partners.categories(id,name,slug,system) VALUES($1,$2,$3,TRUE)
-             ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,slug=EXCLUDED.slug,system=TRUE`,
+			 ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,slug=EXCLUDED.slug,system=TRUE`,
 			fmt.Sprintf("cat_%03d", i+1), name, slugify(name)); err != nil {
 			return err
 		}
 	}
 	_, err := a.db.ExecContext(ctx,
-		`INSERT INTO partners.partners(id,slug,display_name,legal_name,category_id,lifecycle,existing_partner,reference_partner,primary_domain,country,notes)
-         VALUES('ptr_000001','klavierhaus','Klavierhaus','Klavierhaus','cat_001','LIVE',TRUE,TRUE,'klavierhaus.com','United States','Reference partner; activation fee not applicable.')
-         ON CONFLICT(id) DO UPDATE SET reference_partner=TRUE,existing_partner=TRUE`)
+		`INSERT INTO partners.partners(
+			id,slug,display_name,legal_name,brand_name,category_id,lifecycle,existing_partner,reference_partner,
+			primary_domain,country,platform_version,system_health,notes
+		)
+		VALUES('ptr_000001','klavierhaus','Klavierhaus','Klavierhaus','Klavierhaus','cat_001','LIVE',TRUE,TRUE,
+			'klavierhaus.com','United States','reference','UNKNOWN','Reference partner; activation fee not applicable.')
+		ON CONFLICT(id) DO UPDATE SET reference_partner=TRUE,existing_partner=TRUE`)
 	return err
 }
 
@@ -134,9 +196,13 @@ func (a *app) categories(w http.ResponseWriter, r *http.Request) {
 		}
 		name := strings.TrimSpace(in.Name)
 		id := "cat_custom_" + slugify(name)
-		_, err := a.db.Exec(`INSERT INTO partners.categories(id,name,slug,system) VALUES($1,$2,$3,FALSE) ON CONFLICT(name) DO NOTHING`, id, name, slugify(name))
+		res, err := a.db.Exec(`INSERT INTO partners.categories(id,name,slug,system) VALUES($1,$2,$3,FALSE) ON CONFLICT(name) DO NOTHING`, id, name, slugify(name))
 		if err != nil {
 			common.APIError(w, 409, "CONFLICT", "Category could not be created")
+			return
+		}
+		if rows, _ := res.RowsAffected(); rows == 0 {
+			common.APIError(w, 409, "CONFLICT", "Category already exists")
 			return
 		}
 		common.JSON(w, 201, map[string]any{"id": id, "name": name, "slug": slugify(name), "system": false})
@@ -145,10 +211,66 @@ func (a *app) categories(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func boundedInt(raw string, fallback, min, max int) int {
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
 func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(selectPartner + ` ORDER BY p.reference_partner DESC,p.display_name`)
+		limit := boundedInt(r.URL.Query().Get("limit"), 100, 1, 200)
+		offset := boundedInt(r.URL.Query().Get("offset"), 0, 0, 1_000_000)
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		category := strings.TrimSpace(r.URL.Query().Get("category"))
+		lifecycle := strings.TrimSpace(r.URL.Query().Get("lifecycle"))
+		includeArchived, _ := strconv.ParseBool(r.URL.Query().Get("include_archived"))
+
+		where := []string{"1=1"}
+		args := []any{}
+		add := func(clause string, value any) {
+			args = append(args, value)
+			where = append(where, fmt.Sprintf(clause, len(args)))
+		}
+		if q != "" {
+			add(`(p.display_name ILIKE $%d OR p.legal_name ILIKE $%d OR p.id ILIKE $%d OR p.primary_domain ILIKE $%d)`, "%"+q+"%")
+			// The clause above uses the same placeholder four times.
+			n := len(args)
+			where[len(where)-1] = fmt.Sprintf(`(p.display_name ILIKE $%d OR p.legal_name ILIKE $%d OR p.id ILIKE $%d OR p.primary_domain ILIKE $%d)`, n, n, n, n)
+		}
+		if category != "" && category != "ALL" {
+			add(`p.category_id=$%d`, category)
+		}
+		if lifecycle != "" && lifecycle != "ALL" {
+			if !lifecycleValues[lifecycle] {
+				common.APIError(w, 400, "VALIDATION", "Invalid lifecycle filter")
+				return
+			}
+			add(`p.lifecycle=$%d`, lifecycle)
+		} else if !includeArchived {
+			where = append(where, `p.lifecycle<>'ARCHIVED'`)
+		}
+
+		whereSQL := strings.Join(where, " AND ")
+		var total int
+		if err := a.db.QueryRow(`SELECT COUNT(*) FROM partners.partners p WHERE `+whereSQL, args...).Scan(&total); err != nil {
+			common.APIError(w, 500, "DB", "Could not count partners")
+			return
+		}
+		queryArgs := append(append([]any{}, args...), limit, offset)
+		rows, err := a.db.Query(
+			selectPartner+` WHERE `+whereSQL+` ORDER BY p.reference_partner DESC,p.display_name LIMIT $`+strconv.Itoa(len(args)+1)+` OFFSET $`+strconv.Itoa(len(args)+2),
+			queryArgs...,
+		)
 		if err != nil {
 			common.APIError(w, 500, "DB", "Could not load partners")
 			return
@@ -160,11 +282,15 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 				items = append(items, partnerMap(p))
 			}
 		}
-		common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
+		common.JSON(w, 200, map[string]any{
+			"items": items, "count": len(items), "total": total, "limit": limit, "offset": offset,
+			"has_more": offset+len(items) < total,
+		})
 	case http.MethodPost:
 		var in struct {
 			DisplayName   string `json:"display_name"`
 			LegalName     string `json:"legal_name"`
+			BrandName     string `json:"brand_name"`
 			CategoryID    string `json:"category_id"`
 			Lifecycle     string `json:"lifecycle"`
 			PrimaryDomain string `json:"primary_domain"`
@@ -176,8 +302,12 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 400, "VALIDATION", "Display name is required")
 			return
 		}
-		if in.LegalName == "" {
+		in.DisplayName = strings.TrimSpace(in.DisplayName)
+		if strings.TrimSpace(in.LegalName) == "" {
 			in.LegalName = in.DisplayName
+		}
+		if strings.TrimSpace(in.BrandName) == "" {
+			in.BrandName = in.DisplayName
 		}
 		if in.CategoryID == "" {
 			in.CategoryID = "cat_006"
@@ -185,8 +315,8 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 		if in.Lifecycle == "" {
 			in.Lifecycle = "PROSPECT"
 		}
-		if !lifecycleValues[in.Lifecycle] {
-			common.APIError(w, 400, "VALIDATION", "Invalid lifecycle")
+		if !lifecycleValues[in.Lifecycle] || in.Lifecycle != "PROSPECT" {
+			common.APIError(w, 400, "VALIDATION", "New partners must begin in PROSPECT")
 			return
 		}
 		var seq int64
@@ -195,10 +325,14 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		id := fmt.Sprintf("ptr_%06d", seq)
-		_, err := a.db.Exec(`INSERT INTO partners.partners(id,slug,display_name,legal_name,category_id,lifecycle,primary_domain,contact_name,contact_email,country)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, id, slugify(in.DisplayName), in.DisplayName, in.LegalName, in.CategoryID, in.Lifecycle, in.PrimaryDomain, in.ContactName, in.ContactEmail, in.Country)
+		_, err := a.db.Exec(`INSERT INTO partners.partners(
+				id,slug,display_name,legal_name,brand_name,category_id,lifecycle,primary_domain,contact_name,contact_email,country
+			) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			id, slugify(in.DisplayName), in.DisplayName, strings.TrimSpace(in.LegalName), strings.TrimSpace(in.BrandName),
+			in.CategoryID, in.Lifecycle, strings.TrimSpace(in.PrimaryDomain), strings.TrimSpace(in.ContactName),
+			strings.ToLower(strings.TrimSpace(in.ContactEmail)), strings.TrimSpace(in.Country))
 		if err != nil {
-			common.APIError(w, 409, "CONFLICT", "Partner could not be created")
+			common.APIError(w, 409, "CONFLICT", "Partner, slug, or domain already exists")
 			return
 		}
 		p, _ := a.get(id)
@@ -208,9 +342,16 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func canTransition(from, to string) bool {
+	if from == to {
+		return true
+	}
+	return lifecycleTransitions[from][to]
+}
+
 func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/partners/"), "/")
-	if id == "" {
+	if id == "" || strings.Contains(id, "/") {
 		common.APIError(w, 404, "NOT_FOUND", "Partner not found")
 		return
 	}
@@ -228,33 +369,123 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 404, "NOT_FOUND", "Partner not found")
 			return
 		}
-		var in map[string]any
+		var in struct {
+			DisplayName           *string `json:"display_name"`
+			LegalName             *string `json:"legal_name"`
+			BrandName             *string `json:"brand_name"`
+			CategoryID            *string `json:"category_id"`
+			Lifecycle             *string `json:"lifecycle"`
+			PrimaryDomain         *string `json:"primary_domain"`
+			StagingDomain         *string `json:"staging_domain"`
+			ContactName           *string `json:"contact_name"`
+			ContactEmail          *string `json:"contact_email"`
+			FinanceContactName    *string `json:"finance_contact_name"`
+			FinanceContactEmail   *string `json:"finance_contact_email"`
+			TechnicalContactName  *string `json:"technical_contact_name"`
+			TechnicalContactEmail *string `json:"technical_contact_email"`
+			MarketingContactName  *string `json:"marketing_contact_name"`
+			MarketingContactEmail *string `json:"marketing_contact_email"`
+			RegistrationNumber    *string `json:"registration_number"`
+			TaxID                 *string `json:"tax_id"`
+			Country               *string `json:"country"`
+			StateRegion           *string `json:"state_region"`
+			City                  *string `json:"city"`
+			PostalCode            *string `json:"postal_code"`
+			AddressLine1          *string `json:"address_line1"`
+			AddressLine2          *string `json:"address_line2"`
+			Website               *string `json:"website"`
+			Phone                 *string `json:"phone"`
+			LogoURL               *string `json:"logo_url"`
+			Notes                 *string `json:"notes"`
+			Reason                string  `json:"reason"`
+		}
 		if common.Decode(r, &in) != nil {
 			common.APIError(w, 400, "JSON", "Invalid request")
 			return
 		}
-		set := func(key string, dst *string) {
-			if v, ok := in[key].(string); ok {
-				*dst = strings.TrimSpace(v)
+		set := func(src *string, dst *string) {
+			if src != nil {
+				*dst = strings.TrimSpace(*src)
 			}
 		}
-		set("display_name", &p.DisplayName)
-		set("legal_name", &p.LegalName)
-		set("category_id", &p.CategoryID)
-		set("lifecycle", &p.Lifecycle)
-		set("primary_domain", &p.PrimaryDomain)
-		set("staging_domain", &p.StagingDomain)
-		set("contact_name", &p.ContactName)
-		set("contact_email", &p.ContactEmail)
-		set("country", &p.Country)
-		set("notes", &p.Notes)
+		oldLifecycle := p.Lifecycle
+		set(in.DisplayName, &p.DisplayName)
+		set(in.LegalName, &p.LegalName)
+		set(in.BrandName, &p.BrandName)
+		set(in.CategoryID, &p.CategoryID)
+		set(in.Lifecycle, &p.Lifecycle)
+		set(in.PrimaryDomain, &p.PrimaryDomain)
+		set(in.StagingDomain, &p.StagingDomain)
+		set(in.ContactName, &p.ContactName)
+		set(in.ContactEmail, &p.ContactEmail)
+		set(in.FinanceContactName, &p.FinanceContactName)
+		set(in.FinanceContactEmail, &p.FinanceContactEmail)
+		set(in.TechnicalContactName, &p.TechnicalContactName)
+		set(in.TechnicalContactEmail, &p.TechnicalContactEmail)
+		set(in.MarketingContactName, &p.MarketingContactName)
+		set(in.MarketingContactEmail, &p.MarketingContactEmail)
+		set(in.RegistrationNumber, &p.RegistrationNumber)
+		set(in.TaxID, &p.TaxID)
+		set(in.Country, &p.Country)
+		set(in.StateRegion, &p.StateRegion)
+		set(in.City, &p.City)
+		set(in.PostalCode, &p.PostalCode)
+		set(in.AddressLine1, &p.AddressLine1)
+		set(in.AddressLine2, &p.AddressLine2)
+		set(in.Website, &p.Website)
+		set(in.Phone, &p.Phone)
+		set(in.LogoURL, &p.LogoURL)
+		set(in.Notes, &p.Notes)
+		p.ContactEmail = strings.ToLower(p.ContactEmail)
+		p.FinanceContactEmail = strings.ToLower(p.FinanceContactEmail)
+		p.TechnicalContactEmail = strings.ToLower(p.TechnicalContactEmail)
+		p.MarketingContactEmail = strings.ToLower(p.MarketingContactEmail)
+
 		if !lifecycleValues[p.Lifecycle] {
 			common.APIError(w, 400, "VALIDATION", "Invalid lifecycle")
 			return
 		}
-		_, err = a.db.Exec(`UPDATE partners.partners SET display_name=$2,legal_name=$3,category_id=$4,lifecycle=$5,primary_domain=$6,staging_domain=$7,contact_name=$8,contact_email=$9,country=$10,notes=$11,updated_at=NOW() WHERE id=$1`, id, p.DisplayName, p.LegalName, p.CategoryID, p.Lifecycle, p.PrimaryDomain, p.StagingDomain, p.ContactName, p.ContactEmail, p.Country, p.Notes)
+		if !canTransition(oldLifecycle, p.Lifecycle) {
+			common.APIError(w, 409, "INVALID_LIFECYCLE_TRANSITION", "Lifecycle transition is not allowed")
+			return
+		}
+
+		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
 		if err != nil {
-			common.APIError(w, 500, "DB", "Partner could not be updated")
+			common.APIError(w, 500, "DB", "Could not start partner update")
+			return
+		}
+		defer tx.Rollback()
+		_, err = tx.Exec(`UPDATE partners.partners SET
+			display_name=$2,legal_name=$3,brand_name=$4,category_id=$5,lifecycle=$6,primary_domain=$7,staging_domain=$8,
+			contact_name=$9,contact_email=$10,finance_contact_name=$11,finance_contact_email=$12,
+			technical_contact_name=$13,technical_contact_email=$14,marketing_contact_name=$15,marketing_contact_email=$16,
+			registration_number=$17,tax_id=$18,country=$19,state_region=$20,city=$21,postal_code=$22,address_line1=$23,address_line2=$24,
+			website=$25,phone=$26,logo_url=$27,notes=$28,updated_at=NOW()
+			WHERE id=$1`,
+			id, p.DisplayName, p.LegalName, p.BrandName, p.CategoryID, p.Lifecycle, p.PrimaryDomain, p.StagingDomain,
+			p.ContactName, p.ContactEmail, p.FinanceContactName, p.FinanceContactEmail,
+			p.TechnicalContactName, p.TechnicalContactEmail, p.MarketingContactName, p.MarketingContactEmail,
+			p.RegistrationNumber, p.TaxID, p.Country, p.StateRegion, p.City, p.PostalCode, p.AddressLine1, p.AddressLine2,
+			p.Website, p.Phone, p.LogoURL, p.Notes)
+		if err != nil {
+			common.APIError(w, 409, "CONFLICT", "Partner could not be updated; verify domain and category uniqueness")
+			return
+		}
+		if oldLifecycle != p.Lifecycle {
+			actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+			reason := strings.TrimSpace(in.Reason)
+			if reason == "" {
+				reason = "HIMATE administrator lifecycle update"
+			}
+			if _, err = tx.Exec(`INSERT INTO partners.lifecycle_history(partner_id,from_state,to_state,changed_by,reason) VALUES($1,$2,$3,$4,$5)`,
+				id, oldLifecycle, p.Lifecycle, actor, reason); err != nil {
+				common.APIError(w, 500, "DB", "Could not record lifecycle transition")
+				return
+			}
+		}
+		if err = tx.Commit(); err != nil {
+			common.APIError(w, 500, "DB", "Could not commit partner update")
 			return
 		}
 		p, _ = a.get(id)
@@ -264,21 +495,57 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-const selectPartner = `SELECT p.id,p.slug,p.display_name,p.legal_name,p.category_id,COALESCE(c.name,''),p.lifecycle,p.existing_partner,p.reference_partner,p.primary_domain,p.staging_domain,p.contact_name,p.contact_email,p.country,p.notes,p.created_at,p.updated_at FROM partners.partners p LEFT JOIN partners.categories c ON c.id=p.category_id`
+const selectPartner = `SELECT
+	p.id,p.slug,p.display_name,p.legal_name,p.brand_name,p.category_id,COALESCE(c.name,''),p.lifecycle,
+	p.existing_partner,p.reference_partner,p.primary_domain,p.staging_domain,p.logo_url,p.platform_version,p.system_health,
+	p.contact_name,p.contact_email,p.finance_contact_name,p.finance_contact_email,p.technical_contact_name,p.technical_contact_email,
+	p.marketing_contact_name,p.marketing_contact_email,p.registration_number,p.tax_id,p.country,p.state_region,p.city,p.postal_code,
+	p.address_line1,p.address_line2,p.website,p.phone,p.notes,p.health_checked_at,p.last_sync_at,p.created_at,p.updated_at
+	FROM partners.partners p LEFT JOIN partners.categories c ON c.id=p.category_id`
 
 type scanner interface{ Scan(...any) error }
 
 func scanPartner(s scanner) (partner, error) {
 	var p partner
-	err := s.Scan(&p.ID, &p.Slug, &p.DisplayName, &p.LegalName, &p.CategoryID, &p.CategoryName, &p.Lifecycle, &p.ExistingPartner, &p.ReferencePartner, &p.PrimaryDomain, &p.StagingDomain, &p.ContactName, &p.ContactEmail, &p.Country, &p.Notes, &p.CreatedAt, &p.UpdatedAt)
+	err := s.Scan(
+		&p.ID, &p.Slug, &p.DisplayName, &p.LegalName, &p.BrandName, &p.CategoryID, &p.CategoryName, &p.Lifecycle,
+		&p.ExistingPartner, &p.ReferencePartner, &p.PrimaryDomain, &p.StagingDomain, &p.LogoURL, &p.PlatformVersion, &p.SystemHealth,
+		&p.ContactName, &p.ContactEmail, &p.FinanceContactName, &p.FinanceContactEmail, &p.TechnicalContactName, &p.TechnicalContactEmail,
+		&p.MarketingContactName, &p.MarketingContactEmail, &p.RegistrationNumber, &p.TaxID, &p.Country, &p.StateRegion, &p.City, &p.PostalCode,
+		&p.AddressLine1, &p.AddressLine2, &p.Website, &p.Phone, &p.Notes, &p.HealthCheckedAt, &p.LastSyncAt, &p.CreatedAt, &p.UpdatedAt,
+	)
 	return p, err
 }
+
 func (a *app) get(id string) (partner, error) {
 	return scanPartner(a.db.QueryRow(selectPartner+` WHERE p.id=$1`, id))
 }
-func partnerMap(p partner) map[string]any {
-	return map[string]any{"id": p.ID, "slug": p.Slug, "display_name": p.DisplayName, "legal_name": p.LegalName, "category_id": p.CategoryID, "category_name": p.CategoryName, "lifecycle": p.Lifecycle, "existing_partner": p.ExistingPartner, "reference_partner": p.ReferencePartner, "primary_domain": p.PrimaryDomain, "staging_domain": p.StagingDomain, "contact_name": p.ContactName, "contact_email": p.ContactEmail, "country": p.Country, "notes": p.Notes, "created_at": p.CreatedAt, "updated_at": p.UpdatedAt}
+
+func nullableTime(v sql.NullTime) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.Time.UTC()
 }
+
+func partnerMap(p partner) map[string]any {
+	return map[string]any{
+		"id": p.ID, "slug": p.Slug, "display_name": p.DisplayName, "legal_name": p.LegalName, "brand_name": p.BrandName,
+		"category_id": p.CategoryID, "category_name": p.CategoryName, "lifecycle": p.Lifecycle,
+		"existing_partner": p.ExistingPartner, "reference_partner": p.ReferencePartner,
+		"primary_domain": p.PrimaryDomain, "staging_domain": p.StagingDomain, "logo_url": p.LogoURL,
+		"platform_version": p.PlatformVersion, "system_health": p.SystemHealth,
+		"health_checked_at": nullableTime(p.HealthCheckedAt), "last_sync_at": nullableTime(p.LastSyncAt),
+		"contact_name": p.ContactName, "contact_email": p.ContactEmail,
+		"finance_contact_name": p.FinanceContactName, "finance_contact_email": p.FinanceContactEmail,
+		"technical_contact_name": p.TechnicalContactName, "technical_contact_email": p.TechnicalContactEmail,
+		"marketing_contact_name": p.MarketingContactName, "marketing_contact_email": p.MarketingContactEmail,
+		"registration_number": p.RegistrationNumber, "tax_id": p.TaxID, "country": p.Country, "state_region": p.StateRegion,
+		"city": p.City, "postal_code": p.PostalCode, "address_line1": p.AddressLine1, "address_line2": p.AddressLine2,
+		"website": p.Website, "phone": p.Phone, "notes": p.Notes, "created_at": p.CreatedAt, "updated_at": p.UpdatedAt,
+	}
+}
+
 func slugify(v string) string {
 	s := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(strings.TrimSpace(v)), "-"), "-")
 	if s == "" {
