@@ -3,7 +3,7 @@
 This file is the source acceptance checklist for the correction pass. It does not authorize START-09 work.
 
 1. Klavierhaus exists as Partner #1 and LIVE reference partner.
-2. Partner categories are extensible and the canonical Klavierhaus module taxonomy remains unchanged: Finance & Invoicing, Technical Operations, Marketing, Website & Events.
+2. Partner categories are extensible. The HIMATE Module Catalog exposes six categories: Workshop, Finance & Invoicing, Technical Operations, Marketing, Website & Events, and Communication; the 38 verified Klavierhaus reference cards retain stable module identities.
 3. Lifecycle supports PROSPECT -> LICENSE_PENDING -> READY_TO_PROVISION -> PROVISIONING -> CONFIGURATION -> TESTING -> READY_FOR_LAUNCH -> LIVE plus SUSPENDED / ARCHIVED, with invalid jumps rejected by the backend and transitions historized.
 4. Partner Portfolio supports server-side search/filter/pagination and page-bounded Catalog/Billing aggregation.
 5. Partner Workspace exposes 12 control cards, stable deep links and responsive forms while preserving the approved UI design.
