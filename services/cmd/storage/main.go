@@ -208,7 +208,10 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	if err != nil { common.APIError(w, 500, "DB", "Could not load storage summary"); return }
 	defer rows.Close()
 	partnerIDs := []string{}
-	for rows.Next() { var id string; if rows.Scan(&id)==nil { partnerIDs=append(partnerIDs,id) } }
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id)==nil && !strings.HasPrefix(id,"_") { partnerIDs=append(partnerIDs,id) }
+	}
 	items := []map[string]any{}
 	for _,partnerID := range partnerIDs {
 		out,checkErr := a.check(r.Context(),partnerID)
