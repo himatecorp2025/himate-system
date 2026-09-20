@@ -59,6 +59,11 @@ echo ok
 printf 'VERIFIED_DOCUMENT requires a real verified evidence record... '
 verified="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner1\",\"metric_key\":\"$metric_key\",\"period_start\":\"2026-09-01\",\"period_end\":\"2026-09-20\",\"numeric_value\":9,\"provenance\":\"VERIFIED_DOCUMENT\",\"evidence_id\":\"$evidence_id\"}"   "$BASE_URL/api/v1/impact/values")"
 printf '%s' "$verified" | grep -q '"provenance":"VERIFIED_DOCUMENT"'
+curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' \
+  -d "{\"partner_id\":\"$partner1\",\"metric_key\":\"$metric_key\",\"period_start\":\"2025-01-01\",\"period_end\":\"2025-01-31\",\"numeric_value\":100,\"provenance\":\"MANUAL\",\"source_ref\":\"outside-report-period\"}" \
+  "$BASE_URL/api/v1/impact/values" >/dev/null
+period_summary="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/impact/summary?partner_id=$partner1&period_start=2026-09-01&period_end=2026-09-20")"
+printf '%s' "$period_summary" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=next(x for x in d["items"] if x["metric_key"]=="ci.evidence"); assert m["numeric_value"]==9, m'
 fake_code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner1\",\"metric_key\":\"$metric_key\",\"period_start\":\"2026-09-01\",\"period_end\":\"2026-09-20\",\"numeric_value\":10,\"provenance\":\"VERIFIED_DOCUMENT\",\"evidence_id\":\"evd_missing\"}"   "$BASE_URL/api/v1/impact/values")"
 test "$fake_code" = "409"
 tenant_code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner2\",\"metric_key\":\"$metric_key\",\"period_start\":\"2026-09-01\",\"period_end\":\"2026-09-20\",\"numeric_value\":10,\"provenance\":\"VERIFIED_DOCUMENT\",\"evidence_id\":\"$evidence_id\"}"   "$BASE_URL/api/v1/impact/values")"
