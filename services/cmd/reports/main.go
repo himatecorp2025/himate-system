@@ -239,10 +239,10 @@ func (a *app)buildSnapshot(ctx context.Context,rec reportRecord)(map[string]any,
 
 	if rec.ReportType=="HIMATE_GLOBAL"{
 		var summary itemsResponse
-		if err:=a.internalGET(ctx,a.impactHost,"/internal/v1/impact/summary",&summary);err!=nil{return nil,nil,fmt.Errorf("global impact summary: %w",err)}
+		if err:=a.internalGET(ctx,a.impactHost,"/internal/v1/impact/summary?period_start="+url.QueryEscape(rec.PeriodStart.Format("2006-01-02"))+"&period_end="+url.QueryEscape(rec.PeriodEnd.Format("2006-01-02")),&summary);err!=nil{return nil,nil,fmt.Errorf("global impact summary: %w",err)}
 		metricSections=append(metricSections,map[string]any{"scope":"GLOBAL","partner_id":"","metrics":summary.Items})
 		var values itemsResponse
-		if err:=a.internalGET(ctx,a.impactHost,"/api/v1/impact/values?limit=500",&values);err==nil{
+		if err:=a.internalGET(ctx,a.impactHost,"/api/v1/impact/values?limit=500&period_start="+url.QueryEscape(rec.PeriodStart.Format("2006-01-02"))+"&period_end="+url.QueryEscape(rec.PeriodEnd.Format("2006-01-02")),&values);err==nil{
 			for _,v:=range values.Items{dataSources=append(dataSources,v);if id:=strings.TrimSpace(fmt.Sprint(v["partner_id"]));id!=""&&!contains(partnerIDs,id){partnerIDs=append(partnerIDs,id)}}
 		}
 		sort.Strings(partnerIDs)
@@ -255,10 +255,10 @@ func (a *app)buildSnapshot(ctx context.Context,rec reportRecord)(map[string]any,
 		}
 		partnerData=append(partnerData,partner)
 		var summary itemsResponse
-		if err:=a.internalGET(ctx,a.impactHost,"/internal/v1/impact/summary?partner_id="+url.QueryEscape(partnerID),&summary);err!=nil{return nil,nil,fmt.Errorf("impact summary for %s: %w",partnerID,err)}
+		if err:=a.internalGET(ctx,a.impactHost,"/internal/v1/impact/summary?partner_id="+url.QueryEscape(partnerID)+"&period_start="+url.QueryEscape(rec.PeriodStart.Format("2006-01-02"))+"&period_end="+url.QueryEscape(rec.PeriodEnd.Format("2006-01-02")),&summary);err!=nil{return nil,nil,fmt.Errorf("impact summary for %s: %w",partnerID,err)}
 		metricSections=append(metricSections,map[string]any{"scope":"PARTNER","partner_id":partnerID,"metrics":summary.Items})
 		var values itemsResponse
-		if err:=a.internalGET(ctx,a.impactHost,"/api/v1/impact/values?partner_id="+url.QueryEscape(partnerID)+"&limit=500",&values);err==nil{
+		if err:=a.internalGET(ctx,a.impactHost,"/api/v1/impact/values?partner_id="+url.QueryEscape(partnerID)+"&limit=500&period_start="+url.QueryEscape(rec.PeriodStart.Format("2006-01-02"))+"&period_end="+url.QueryEscape(rec.PeriodEnd.Format("2006-01-02")),&values);err==nil{
 			for _,v:=range values.Items{
 				ps,_:=time.Parse("2006-01-02",fmt.Sprint(v["period_start"]));pe,_:=time.Parse("2006-01-02",fmt.Sprint(v["period_end"]))
 				if !pe.Before(rec.PeriodStart)&&!ps.After(rec.PeriodEnd){dataSources=append(dataSources,v)}
