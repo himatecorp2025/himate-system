@@ -505,7 +505,7 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 405, "METHOD", "Use GET")
 		return
 	}
-	rows, err := a.db.Query(`
+	query := `
 		SELECT pm.partner_id,
 			COUNT(*) FILTER (WHERE pm.status='ACTIVE' AND m.availability='ACTIVE'),
 			COALESCE(SUM(CASE WHEN pm.status='ACTIVE' AND m.availability='ACTIVE' AND pm.included_in_base=FALSE
@@ -519,9 +519,14 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 			WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
 			ORDER BY ph.effective_at DESC,ph.id DESC
 			LIMIT 1
-		) ep ON TRUE
-		GROUP BY pm.partner_id
-		ORDER BY pm.partner_id`)
+		) ep ON TRUE`
+	args := []any{}
+	if ids := strings.TrimSpace(r.URL.Query().Get("ids")); ids != "" {
+		query += ` WHERE pm.partner_id = ANY(string_to_array($1, ','))`
+		args = append(args, ids)
+	}
+	query += ` GROUP BY pm.partner_id ORDER BY pm.partner_id`
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		common.APIError(w, 500, "DB", "Could not load partner module portfolio")
 		return
