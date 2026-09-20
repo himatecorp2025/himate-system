@@ -443,6 +443,16 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 			}
 			if next.VerifiedBy == "" { next.VerifiedBy = strings.TrimSpace(r.Header.Get("X-Himate-User-ID")) }
 			if next.VerifiedBy == "" { common.APIError(w, 400, "VALIDATION", "Paid license requires verification"); return }
+			var evidenceCount int
+			if err := a.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM billing.documents
+				WHERE partner_id=$1 AND kind IN ('PAYMENT_EVIDENCE','INVOICE','RECEIPT','CONTRACT')`, id).Scan(&evidenceCount); err != nil {
+				common.APIError(w, 500, "DB", "Could not verify license evidence")
+				return
+			}
+			if evidenceCount == 0 {
+				common.APIError(w, 409, "LICENSE_EVIDENCE_REQUIRED", "Register an invoice, receipt, contract, or payment evidence before marking the initial license paid")
+				return
+			}
 		}
 		var payment any
 		if next.PaymentDate.Valid { payment = next.PaymentDate.Time }
