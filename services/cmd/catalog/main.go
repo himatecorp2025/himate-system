@@ -34,7 +34,7 @@ var seedModules = []seedModule{
 	{"settings", "Settings", "technical"},
 	{"system_integrations", "System Activation & Integrations", "technical"},
 	{"users", "Users", "technical"},
-	{"workshop_workflow", "Workshop Workflow", "workshop"},
+	{"workshop_workflow", "Workshop Workflow", "technical"},
 	{"marketing_overview", "Campaign Overview", "marketing"},
 	{"customer_inbox", "Customer Inbox", "marketing"},
 	{"website_reviews", "Reviews", "marketing"},
@@ -135,8 +135,8 @@ func (a *app) migrate(ctx context.Context) error {
 		Key, Label string
 		Order      int
 	}{
-		{"workshop", "Workshop", 1}, {"finance_invoicing", "Finance & Invoicing", 2}, {"technical", "Technical Operations", 3},
-		{"marketing", "Marketing", 4}, {"website_events", "Website & Events", 5}, {"communication", "Communication", 6},
+		{"finance_invoicing", "Finance & Invoicing", 1}, {"technical", "Technical Operations", 2},
+		{"marketing", "Marketing", 3}, {"website_events", "Website & Events", 4}, {"communication", "Communication", 5},
 	}
 	for _, g := range groups {
 		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups(group_key,label,sort_order) VALUES($1,$2,$3) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,sort_order=EXCLUDED.sort_order`, g.Key, g.Label, g.Order); err != nil {
