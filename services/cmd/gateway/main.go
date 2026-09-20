@@ -110,20 +110,27 @@ func main() {
 		os.Exit(1)
 	}
 	for name, host := range a.hosts {
+		if strings.TrimSpace(host) == "" {
+			log.Warn("private service host is not configured", "service", name)
+			continue
+		}
 		p, err := newProxy(host, a.internalToken)
 		if err != nil {
-			log.Error("proxy", "service", name, "error", err)
-			os.Exit(1)
+			log.Warn("private service proxy is unavailable", "service", name, "error", err)
+			continue
 		}
 		a.proxies[name] = p
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
 	mux.HandleFunc("/api/v1/auth/login", a.login)
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
-	mux.Handle("/connector/v1/", a.proxies["connector"])
+	mux.HandleFunc("/connector/v1/", func(w http.ResponseWriter, r *http.Request) {
+		a.serveProxy(w, r, "connector")
+	})
 	mux.HandleFunc("/api/", a.api)
 	mux.Handle("/", a.web())
 	common.Run(log, "gateway", common.Env("PORT", "10000"), securityHeaders(mux))
@@ -318,28 +325,42 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
 		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
-		a.proxies["partners"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "partners")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/modules"):
-		a.proxies["catalog"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/"):
-		a.proxies["partners"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "partners")
 	case r.URL.Path == "/api/v1/modules", r.URL.Path == "/api/v1/module-groups", strings.HasPrefix(r.URL.Path, "/api/v1/modules/"):
-		a.proxies["catalog"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/billing/"):
-		a.proxies["billing"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "billing")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/provisioning/"):
-		a.proxies["provisioning"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "provisioning")
 	case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, "/api/v1/environments/"):
-		a.proxies["environments"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "environments")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/connectors/"):
-		a.proxies["connector"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "connector")
 	case r.URL.Path == "/api/v1/system-health":
-		a.proxies["health"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "health")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/impact/"):
-		a.proxies["impact"].ServeHTTP(w, r)
+		a.serveProxy(w, r, "impact")
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
 	}
+}
+
+func (a *app) live(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	common.JSON(w, http.StatusOK, map[string]any{
+		"status": "ok",
+		"service": "himate-gateway",
+		"environment": a.env,
+		"version": a.version,
+		"time": time.Now().UTC(),
+	})
 }
 
 func (a *app) health(w http.ResponseWriter, r *http.Request) {
@@ -347,8 +368,19 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 	overall := "ok"
 	checkedAt := time.Now().UTC()
 	for name, host := range a.hosts {
+		if strings.TrimSpace(host) == "" {
+			services[name] = "unconfigured"
+			overall = "degraded"
+			continue
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/health", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/health", nil)
+		if err != nil {
+			cancel()
+			services[name] = "unavailable"
+			overall = "degraded"
+			continue
+		}
 		resp, err := a.client.Do(req)
 		cancel()
 		if err != nil || resp.StatusCode >= 300 {
@@ -541,7 +573,13 @@ func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 func (a *app) internalGET(ctx context.Context, host, path string, dst any) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+path, nil)
+	if strings.TrimSpace(host) == "" {
+		return errors.New("private service host is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+path, nil)
+	if err != nil {
+		return err
+	}
 	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
 	resp, err := a.client.Do(req)
 	if err != nil {
@@ -552,6 +590,15 @@ func (a *app) internalGET(ctx context.Context, host, path string, dst any) error
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(dst)
+}
+
+func (a *app) serveProxy(w http.ResponseWriter, r *http.Request, service string) {
+	proxy := a.proxies[service]
+	if proxy == nil {
+		common.APIError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", service+" service is temporarily unavailable")
+		return
+	}
+	proxy.ServeHTTP(w, r)
 }
 
 func newProxy(host, token string) (*httputil.ReverseProxy, error) {
