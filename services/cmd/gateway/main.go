@@ -86,10 +86,15 @@ func main() {
 		proxies: map[string]*httputil.ReverseProxy{},
 		loginAttempts: map[string]loginState{},
 		hosts: map[string]string{
-			"partners": os.Getenv("PARTNERS_HOSTPORT"),
-			"catalog":  os.Getenv("CATALOG_HOSTPORT"),
-			"billing":  os.Getenv("BILLING_HOSTPORT"),
-			"contact":  os.Getenv("CONTACT_HOSTPORT"),
+			"partners":     os.Getenv("PARTNERS_HOSTPORT"),
+			"catalog":      os.Getenv("CATALOG_HOSTPORT"),
+			"billing":      os.Getenv("BILLING_HOSTPORT"),
+			"contact":      os.Getenv("CONTACT_HOSTPORT"),
+			"provisioning": os.Getenv("PROVISIONING_HOSTPORT"),
+			"environments": os.Getenv("ENVIRONMENTS_HOSTPORT"),
+			"connector":    os.Getenv("CONNECTOR_HOSTPORT"),
+			"health":       os.Getenv("HEALTH_HOSTPORT"),
+			"impact":       os.Getenv("IMPACT_HOSTPORT"),
 		},
 	}
 	if len(a.secret) < 32 || len(a.internalToken) < 24 {
@@ -116,6 +121,7 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
+	mux.Handle("/connector/v1/", a.proxies["connector"])
 	mux.HandleFunc("/api/", a.api)
 	mux.Handle("/", a.web())
 	common.Run(log, "gateway", common.Env("PORT", "10000"), securityHeaders(mux))
@@ -319,6 +325,16 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.proxies["catalog"].ServeHTTP(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/billing/"):
 		a.proxies["billing"].ServeHTTP(w, r)
+	case strings.HasPrefix(r.URL.Path, "/api/v1/provisioning/"):
+		a.proxies["provisioning"].ServeHTTP(w, r)
+	case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, "/api/v1/environments/"):
+		a.proxies["environments"].ServeHTTP(w, r)
+	case strings.HasPrefix(r.URL.Path, "/api/v1/connectors/"):
+		a.proxies["connector"].ServeHTTP(w, r)
+	case r.URL.Path == "/api/v1/system-health":
+		a.proxies["health"].ServeHTTP(w, r)
+	case strings.HasPrefix(r.URL.Path, "/api/v1/impact/"):
+		a.proxies["impact"].ServeHTTP(w, r)
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
 	}
@@ -343,7 +359,7 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 			resp.Body.Close()
 		}
 	}
-	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "containerized-microservices", "checked_at": checkedAt, "services": services})
+	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "containerized-microservices-start-09-13", "checked_at": checkedAt, "services": services})
 }
 
 func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
@@ -371,8 +387,8 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var catalogPortfolio, billingPortfolio portfolioPage
-	var catalogErr, billingErr error
+	var catalogPortfolio, billingPortfolio, healthPortfolio portfolioPage
+	var catalogErr, billingErr, healthErr error
 	if len(partners.Items) > 0 {
 		ids := make([]string, 0, len(partners.Items))
 		for _, item := range partners.Items {
@@ -380,7 +396,7 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 		}
 		filter := url.QueryEscape(strings.Join(ids, ","))
 		var wg sync.WaitGroup
-		wg.Add(2)
+		wg.Add(3)
 		go func() {
 			defer wg.Done()
 			catalogErr = a.internalGET(ctx, a.hosts["catalog"], "/internal/v1/portfolio?ids="+filter, &catalogPortfolio)
@@ -389,6 +405,10 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 			defer wg.Done()
 			billingErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/portfolio?ids="+filter, &billingPortfolio)
 		}()
+		go func() {
+			defer wg.Done()
+			healthErr = a.internalGET(ctx, a.hosts["health"], "/internal/v1/system-health/partner-snapshots?ids="+filter, &healthPortfolio)
+		}()
 		wg.Wait()
 	}
 
@@ -396,11 +416,14 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 	for _, item := range catalogPortfolio.Items { catalogByID[fmt.Sprint(item["partner_id"])] = item }
 	billingByID := map[string]map[string]any{}
 	for _, item := range billingPortfolio.Items { billingByID[fmt.Sprint(item["partner_id"])] = item }
+	healthByID := map[string]map[string]any{}
+	for _, item := range healthPortfolio.Items { healthByID[fmt.Sprint(item["partner_id"])] = item }
 
 	for _, p := range partners.Items {
 		id := fmt.Sprint(p["id"])
 		cat := catalogByID[id]
 		bill := billingByID[id]
+		hlt := healthByID[id]
 		active := 0
 		extra, base := 0.0, 0.0
 		if v, ok := cat["active_modules"].(float64); ok { active = int(v) }
@@ -411,8 +434,15 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 		p["extra_module_fee"] = extra
 		p["service_value_30d"] = mathRound2(base + extra)
 		if currency := fmt.Sprint(bill["currency"]); currency != "<nil>" { p["currency"] = currency }
+		if hlt != nil {
+			if v := strings.TrimSpace(fmt.Sprint(hlt["overall_status"])); v != "" && v != "<nil>" { p["system_health"] = v }
+			if v := strings.TrimSpace(fmt.Sprint(hlt["platform_version"])); v != "" && v != "<nil>" { p["platform_version"] = v }
+			p["connector_health"] = hlt["connector_health"]
+			p["environment_status"] = hlt["environment_status"]
+			p["provisioning_status"] = hlt["provisioning_status"]
+		}
 	}
-	if catalogErr != nil || billingErr != nil {
+	if catalogErr != nil || billingErr != nil || healthErr != nil {
 		w.Header().Set("X-Himate-Portfolio", "partial")
 	}
 	w.Header().Set("Server-Timing", fmt.Sprintf("partner-portfolio;dur=%d", time.Since(started).Milliseconds()))
@@ -482,7 +512,7 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request) {
 		"partners": map[string]any{"total": partnerResponse.Total, "live": live, "lifecycle_counts": partnerResponse.LifecycleCounts},
 		"modules": map[string]any{"catalog_total": moduleResponse.Count},
 		"system": map[string]any{
-			"status": status, "environment": a.env, "version": a.version, "architecture": "containerized-microservices",
+			"status": status, "environment": a.env, "version": a.version, "architecture": "containerized-microservices-start-09-13",
 		},
 	}
 
