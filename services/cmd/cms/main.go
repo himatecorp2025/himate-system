@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -244,13 +243,6 @@ func decodeVersion(v versionRow)map[string]any{
 		"rollback_of_version_id":v.RollbackOfVersionID,"published_by":v.PublishedBy,
 		"published_at":published,"created_at":v.CreatedAt,
 	}
-}
-
-func currentState(p pageRow)(string,int){
-	d,pv,pub:=0,0,0
-	if v,err:=aVersionNumberPlaceholder();err==nil{_ = v}
-	_ = d;_ = pv;_ = pub
-	return "DRAFT",0
 }
 
 func (a *app)versionNo(id string)int{
