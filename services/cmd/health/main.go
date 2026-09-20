@@ -135,7 +135,15 @@ func (a *app)partnerHealth(ctx context.Context)[]map[string]any{
 	ensure:=func(id string)map[string]any{if byID[id]==nil{byID[id]=map[string]any{"partner_id":id,"connector_health":"UNKNOWN","environment_status":"UNKNOWN","provisioning_status":"UNKNOWN","platform_version":"","last_seen_at":nil}};return byID[id]}
 	for _,x:=range connectors.Items{
 		id:=stringValue(x["partner_id"]);if id==""{continue};p:=ensure(id)
-		p["connector_health"]=stringValue(x["health"]);p["platform_version"]=stringValue(x["reported_version"]);p["last_seen_at"]=x["last_seen_at"]
+		environment:=stringValue(x["environment"])
+		selected:=stringValue(p["_connector_environment"])
+		// Prefer production telemetry when both staging and production report.
+		if selected=="" || environment=="PRODUCTION" || selected!="PRODUCTION" {
+			p["connector_health"]=stringValue(x["health"])
+			p["platform_version"]=stringValue(x["reported_version"])
+			p["last_seen_at"]=x["last_seen_at"]
+			p["_connector_environment"]=environment
+		}
 	}
 	for _,x:=range environments.Items{
 		id:=stringValue(x["partner_id"]);if id==""{continue};p:=ensure(id)
@@ -154,6 +162,7 @@ func (a *app)partnerHealth(ctx context.Context)[]map[string]any{
 		if conn=="ERROR"||conn=="OFFLINE"||env=="FAILED"||prov=="FAILED"{overall="ERROR"}else if conn=="DEGRADED"||conn=="UNKNOWN"||env=="UNKNOWN"||prov=="BLOCKED_LICENSE"{overall="DEGRADED"}
 		if seen:=timeValue(p["last_seen_at"]);seen!=nil && now.Sub(*seen)>15*time.Minute && conn!="UNKNOWN"{overall="DEGRADED"}
 		p["overall_status"]=overall;p["checked_at"]=now
+		delete(p,"_connector_environment")
 		var last any=p["last_seen_at"]
 		_,_ = a.db.ExecContext(ctx,`INSERT INTO health.partner_snapshots(partner_id,overall_status,platform_version,connector_health,environment_status,provisioning_status,last_seen_at,checked_at)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8)
