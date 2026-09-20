@@ -3928,6 +3928,14 @@ class _ImpactPageState extends State<ImpactPage> {
   List<Map<String, dynamic>> summary = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> evidence = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> reports = <Map<String, dynamic>>[];
+  int evidenceTotal = 0;
+  int evidenceOffset = 0;
+  static const int evidenceLimit = 12;
+  String evidenceQuery = '';
+  String evidenceTypeFilter = '';
+  String evidenceStatusFilter = '';
+  String evidencePeriodStart = '';
+  String evidencePeriodEnd = '';
   bool loading = true;
   String? error;
 
@@ -3937,18 +3945,32 @@ class _ImpactPageState extends State<ImpactPage> {
     load();
   }
 
+  String evidencePath() {
+    final query = <String, String>{
+      'limit': '$evidenceLimit',
+      'offset': '$evidenceOffset',
+    };
+    if (evidenceQuery.trim().isNotEmpty) query['q'] = evidenceQuery.trim();
+    if (evidenceTypeFilter.isNotEmpty) query['evidence_type'] = evidenceTypeFilter;
+    if (evidenceStatusFilter.isNotEmpty) query['verification_status'] = evidenceStatusFilter;
+    if (evidencePeriodStart.trim().isNotEmpty) query['period_start'] = evidencePeriodStart.trim();
+    if (evidencePeriodEnd.trim().isNotEmpty) query['period_end'] = evidencePeriodEnd.trim();
+    return Uri(path: '/api/v1/evidence', queryParameters: query).toString();
+  }
+
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
     try {
       final r = await Future.wait([
         widget.api.get('/api/v1/impact/definitions', force: true),
         widget.api.get('/api/v1/impact/summary', force: true),
-        widget.api.get('/api/v1/evidence', force: true),
+        widget.api.get(evidencePath(), force: true),
         widget.api.get('/api/v1/reports', force: true),
       ]);
       definitions = items(r[0]);
       summary = items(r[1]);
       evidence = items(r[2]);
+      evidenceTotal = (r[2]['total'] as num?)?.toInt() ?? evidence.length;
       reports = items(r[3]);
     } catch (e) {
       error = e.toString();
@@ -4431,6 +4453,28 @@ class _ImpactPageState extends State<ImpactPage> {
     await load();
   }
 
+  Future<void> checkEvidenceIntegrity(Map<String, dynamic> item) async {
+    try {
+      final result = await widget.api.get('/api/v1/evidence/${item['id']}/integrity', force: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Evidence integrity: ${result['status']} · ${shortHash(result['sha256'])}'), behavior: SnackBarBehavior.floating),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Evidence integrity check failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+        );
+      }
+    }
+  }
+
+  Future<void> applyEvidenceFilters() async {
+    evidenceOffset = 0;
+    await load();
+  }
+
   String shortHash(dynamic value) {
     final raw = '${value ?? ''}';
     return raw.length > 14 ? '${raw.substring(0, 14)}…' : raw;
@@ -4501,7 +4545,65 @@ class _ImpactPageState extends State<ImpactPage> {
             },
           ),
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: '${evidence.length} records')),
+          _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: '$evidenceTotal records')),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final fieldWidth = constraints.maxWidth < 700 ? constraints.maxWidth : 210.0;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: constraints.maxWidth < 700 ? constraints.maxWidth : 280,
+                    child: TextField(
+                      onChanged: (value) => evidenceQuery = value,
+                      onSubmitted: (_) => applyEvidenceFilters(),
+                      decoration: const InputDecoration(labelText: 'Search Evidence', hintText: 'Title, file, partner, metric, URL…', prefixIcon: Icon(Icons.search_rounded)),
+                    ),
+                  ),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<String>(
+                      value: evidenceTypeFilter,
+                      decoration: const InputDecoration(labelText: 'Type'),
+                      items: const [
+                        DropdownMenuItem(value: '', child: Text('All types')),
+                        DropdownMenuItem(value: 'PDF', child: Text('PDF')),
+                        DropdownMenuItem(value: 'IMAGE', child: Text('Image')),
+                        DropdownMenuItem(value: 'INVOICE', child: Text('Invoice')),
+                        DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
+                        DropdownMenuItem(value: 'SCREENSHOT', child: Text('Screenshot')),
+                        DropdownMenuItem(value: 'REPORT', child: Text('Report')),
+                        DropdownMenuItem(value: 'URL', child: Text('URL')),
+                        DropdownMenuItem(value: 'PARTNER_DECLARATION', child: Text('Partner declaration')),
+                        DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+                      ],
+                      onChanged: (v) { if (v != null) setState(() => evidenceTypeFilter = v); },
+                    ),
+                  ),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<String>(
+                      value: evidenceStatusFilter,
+                      decoration: const InputDecoration(labelText: 'Verification'),
+                      items: const [
+                        DropdownMenuItem(value: '', child: Text('All statuses')),
+                        DropdownMenuItem(value: 'UNVERIFIED', child: Text('Unverified')),
+                        DropdownMenuItem(value: 'VERIFIED', child: Text('Verified')),
+                        DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+                      ],
+                      onChanged: (v) { if (v != null) setState(() => evidenceStatusFilter = v); },
+                    ),
+                  ),
+                  SizedBox(width: fieldWidth, child: TextField(onChanged: (v) => evidencePeriodStart = v, decoration: const InputDecoration(labelText: 'Period from', hintText: 'YYYY-MM-DD'))),
+                  SizedBox(width: fieldWidth, child: TextField(onChanged: (v) => evidencePeriodEnd = v, decoration: const InputDecoration(labelText: 'Period to', hintText: 'YYYY-MM-DD'))),
+                  FilledButton.icon(onPressed: applyEvidenceFilters, icon: const Icon(Icons.filter_alt_outlined), label: const Text('Apply')),
+                ],
+              );
+            },
+          ),
           const SizedBox(height: 12),
           if (evidence.isEmpty)
             const _MessageCard(icon: Icons.verified_outlined, title: 'No Evidence yet', message: 'Upload a PDF, image, invoice, contract, screenshot, URL or partner declaration.')
@@ -4533,6 +4635,9 @@ class _ImpactPageState extends State<ImpactPage> {
                                 _DefinitionRow(label: 'Metric', value: '${item['metric_key'] == '' ? '—' : item['metric_key']}'),
                                 _DefinitionRow(label: 'Period', value: '${item['period_start'] ?? '—'} → ${item['period_end'] ?? '—'}'),
                                 _DefinitionRow(label: 'Verification', value: '${item['verification_status']}'),
+                                _DefinitionRow(label: 'Uploaded by', value: '${item['uploaded_by'] == '' ? '—' : item['uploaded_by']}'),
+                                _DefinitionRow(label: 'Uploaded', value: '${item['created_at'] ?? '—'}'),
+                                _DefinitionRow(label: 'Reports', value: (item['report_ids'] is List && (item['report_ids'] as List).isNotEmpty) ? (item['report_ids'] as List).join(', ') : '—'),
                                 _DefinitionRow(label: 'SHA-256', value: shortHash(item['sha256'])),
                                 const SizedBox(height: 12),
                                 Wrap(
@@ -4541,9 +4646,21 @@ class _ImpactPageState extends State<ImpactPage> {
                                   children: [
                                     if (item['has_file'] == true)
                                       OutlinedButton.icon(
+                                        onPressed: () => openBrowserDownload('/api/v1/evidence/${item['id']}/preview'),
+                                        icon: const Icon(Icons.visibility_outlined),
+                                        label: const Text('Preview'),
+                                      ),
+                                    if (item['has_file'] == true)
+                                      OutlinedButton.icon(
                                         onPressed: () => openBrowserDownload('/api/v1/evidence/${item['id']}/download'),
                                         icon: const Icon(Icons.download_outlined),
                                         label: const Text('Download'),
+                                      ),
+                                    if (item['has_file'] == true)
+                                      OutlinedButton.icon(
+                                        onPressed: () => checkEvidenceIntegrity(item),
+                                        icon: const Icon(Icons.security_outlined),
+                                        label: const Text('Integrity'),
                                       ),
                                     if ('${item['source_url'] ?? ''}'.isNotEmpty)
                                       OutlinedButton.icon(
@@ -4574,6 +4691,28 @@ class _ImpactPageState extends State<ImpactPage> {
                 );
               },
             ),
+          if (evidenceTotal > 0) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Showing ${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} of $evidenceTotal',
+                    style: const TextStyle(color: brandTextSoft, fontSize: 11.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                OutlinedButton(
+                  onPressed: evidenceOffset > 0 ? () async { evidenceOffset = (evidenceOffset - evidenceLimit).clamp(0, evidenceTotal); await load(); } : null,
+                  child: const Text('Previous'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: evidenceOffset + evidence.length < evidenceTotal ? () async { evidenceOffset += evidenceLimit; await load(); } : null,
+                  child: const Text('Next'),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 24),
           _SectionHeader(title: 'Reports', subtitle: 'Partner, multi-partner and HIMATE Global PDFs generated from frozen, auditable snapshots.', trailing: _MiniCounter(label: '${reports.length} reports')),
           const SizedBox(height: 12),
@@ -4606,6 +4745,8 @@ class _ImpactPageState extends State<ImpactPage> {
                                 _DefinitionRow(label: 'Type', value: '${item['report_type']}'),
                                 _DefinitionRow(label: 'Period', value: '${item['period_start']} → ${item['period_end']}'),
                                 _DefinitionRow(label: 'Status', value: '${item['status']}'),
+                                _DefinitionRow(label: 'Template', value: '${item['template_version'] ?? '—'}'),
+                                _DefinitionRow(label: 'Snapshot', value: shortHash(item['snapshot_sha256'])),
                                 _DefinitionRow(label: 'Evidence', value: '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} linked'),
                                 _DefinitionRow(label: 'PDF SHA-256', value: shortHash(item['pdf_sha256'])),
                                 if ('${item['last_error'] ?? ''}'.isNotEmpty)
