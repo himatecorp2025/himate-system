@@ -8,8 +8,8 @@ OPS_COOKIE="$TMP_ROOT/himate-start-18-19-ops-v2.txt"
 FIN_COOKIE="$TMP_ROOT/himate-start-18-19-fin-v2.txt"
 REPORT_COOKIE="$TMP_ROOT/himate-start-18-19-report-v2.txt"
 BODY="$TMP_ROOT/himate-start-18-19-body-v2.json"
-LOGO="$TMP_ROOT/himate-start-18-19-logo-v3.webp"
-LOGO_HEADERS="$TMP_ROOT/himate-start-18-19-logo-v3.headers"
+LOGO="$TMP_ROOT/himate-start-18-19-logo-v4.webp"
+LOGO_HEADERS="$TMP_ROOT/himate-start-18-19-logo-v4.headers"
 rm -f "$PLATFORM_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$REPORT_COOKIE" "$BODY" "$LOGO" "$LOGO_HEADERS"
 trap 'rm -f "$PLATFORM_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$REPORT_COOKIE" "$BODY" "$LOGO" "$LOGO_HEADERS"' EXIT
 
@@ -55,10 +55,9 @@ test -n "$BOOTSTRAP_EMAIL"
 test "${#BOOTSTRAP_PASSWORD}" -ge 12
 echo ok
 
-printf 'brand v3 endpoint serves a real WebP... '
-curl -fsS -D "$LOGO_HEADERS" -o "$LOGO" "$BASE_URL/brand/himate-logo-v3.webp"
+printf 'static v4 logo asset serves a real WebP... '
+curl -fsS -D "$LOGO_HEADERS" -o "$LOGO" "$BASE_URL/art/himate_logo_master_v4.webp"
 grep -qi '^Content-Type: image/webp' "$LOGO_HEADERS"
-grep -qi '^Cache-Control:.*no-store' "$LOGO_HEADERS"
 python3 - "$LOGO" <<'PY'
 import pathlib,sys
 data=pathlib.Path(sys.argv[1]).read_bytes()
