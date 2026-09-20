@@ -270,8 +270,31 @@ paths:
     post:
       tags: [Billing]
       summary: Register commercial document metadata
+      description: >
+        Commercial evidence types (CONTRACT, INVOICE, RECEIPT and
+        PAYMENT_EVIDENCE) require a non-empty persistent storage URL or
+        document reference before they can satisfy the initial-license gate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, name]
+              properties:
+                kind:
+                  type: string
+                  enum: [CONTRACT, INVOICE, RECEIPT, PAYMENT_EVIDENCE, OTHER]
+                name: {type: string}
+                storage_url: {type: string, maxLength: 2048}
+                note: {type: string}
+                verified_by: {type: string}
+                mime_type: {type: string}
+                sha256: {type: string}
+                size_bytes: {type: integer, minimum: 0}
       responses:
         "201": {description: Document registered}
+        "400": {description: Validation failed or evidence reference missing}
   /api/v1/billing/partners/{partnerId}/invoices:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
