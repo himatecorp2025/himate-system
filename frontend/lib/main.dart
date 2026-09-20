@@ -3004,13 +3004,30 @@ class _PartnerCardState extends State<PartnerCard> {
                   Text('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text('${p['category_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 7),
+                  Text(
+                    '${p['primary_domain'] ?? ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+                  ),
+                  const SizedBox(height: 11),
                   Row(children: [
                     _StatusPill(label: '${p['lifecycle']}'),
                     const Spacer(),
-                    Text('${p['country'] ?? ''}', style: const TextStyle(color: brandTextSoft, fontSize: 10)),
+                    _StatusPill(label: '${p['system_health'] ?? 'UNKNOWN'}'),
                   ]),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 11),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _PartnerMetric(label: 'MODULES', value: '${p['active_modules'] ?? 0}'),
+                      _PartnerMetric(label: '30 DAYS', value: '${p['currency'] ?? 'USD'} ${number(p['service_value_30d']).toStringAsFixed(0)}'),
+                      _PartnerMetric(label: 'VERSION', value: '${p['platform_version']?.toString().isNotEmpty == true ? p['platform_version'] : '—'}'),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   const Divider(height: 1),
                   const SizedBox(height: 12),
                   Row(children: [
@@ -3028,6 +3045,28 @@ class _PartnerCardState extends State<PartnerCard> {
     );
   }
 }
+
+class _PartnerMetric extends StatelessWidget {
+  const _PartnerMetric({required this.label, required this.value});
+  final String label, value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+        decoration: BoxDecoration(
+          color: brandNavy.withOpacity(.035),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: brandMist),
+        ),
+        child: Text(
+          '$label  $value',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: brandTextSoft, fontSize: 8.3, fontWeight: FontWeight.w600),
+        ),
+      );
+}
+
 
 class NewPartnerCard extends StatefulWidget {
   const NewPartnerCard({required this.onTap, super.key});
