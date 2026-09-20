@@ -167,7 +167,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Future<void> uploadMedia() async {
-    final file = await pickBrowserFile('image/png,image/jpeg,image/webp');
+    final file = await pickBrowserFile('image/png,image/jpeg,image/webp,video/mp4,video/webm');
     if (file == null) return;
 
     final alt = TextEditingController();
@@ -175,8 +175,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       context: context,
       builder: (dialogContext) => BrandDialog(
         title: 'Upload CMS media',
-        subtitle: 'PNG, JPEG or WebP · max 10 MiB · content-sniffed · SHA-256 verified.',
-        icon: Icons.image_outlined,
+        subtitle: 'PNG, JPEG, WebP, MP4 or WebM · max 64 MiB · content-sniffed · SHA-256 verified.',
+        icon: Icons.perm_media_outlined,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -184,7 +184,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             const SizedBox(height: 12),
             TextField(
               controller: alt,
-              decoration: const InputDecoration(labelText: 'Alt text', hintText: 'Describe the image for accessibility'),
+              decoration: const InputDecoration(labelText: 'Alt / media description', hintText: 'Describe the image or video for accessibility'),
             ),
           ],
         ),
@@ -496,9 +496,9 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     return Content(
       eyebrow: 'WEBSITE & MARKETING',
       title: 'HIMATE CMS',
-      subtitle: 'Manage versioned content, media and SEO without editing source code. Existing public pages stay unchanged until START-17.',
+      subtitle: 'Manage published website content, story video, media and SEO without editing source code.',
       actions: [
-        OutlinedButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.image_outlined), label: const Text('Upload media')),
+        OutlinedButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const Text('Upload media')),
         FilledButton.icon(onPressed: createPage, icon: const Icon(Icons.add_rounded), label: const Text('New CMS page')),
       ],
       child: Column(
@@ -521,7 +521,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             const _MessageCard(
               icon: Icons.web_outlined,
               title: 'No CMS pages yet',
-              message: 'Create the first page draft. Existing public HTML remains untouched until START-17.',
+              message: 'Create a page draft, preview it, then publish it to activate CMS content on the public website.',
             )
           else
             LayoutBuilder(
@@ -541,15 +541,15 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           const SizedBox(height: 24),
           _SectionHeader(
             title: 'Media Assets',
-            subtitle: 'CMS images are content-sniffed, checksum-backed and referenced by stable asset ID.',
+            subtitle: 'CMS images and story videos are content-sniffed, checksum-backed and referenced by stable asset ID.',
             trailing: _MiniCounter(label: media.length.toString() + ' assets'),
           ),
           const SizedBox(height: 12),
           if (media.isEmpty)
             const _MessageCard(
-              icon: Icons.image_outlined,
+              icon: Icons.perm_media_outlined,
               title: 'No CMS media yet',
-              message: 'Upload PNG, JPEG or WebP images before linking them to page sections.',
+              message: 'Upload an image or MP4/WebM story video before linking media to page sections.',
             )
           else
             LayoutBuilder(
@@ -636,6 +636,7 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
     'CONTACT',
     'FEATURE',
     'CTA',
+    'STORY_VIDEO',
     'TEXT',
   ];
 
