@@ -1303,8 +1303,8 @@ class _ShellState extends State<Shell> {
     return indexes;
   }
 
-  Widget page() {
-    switch (selected) {
+  Widget _pageForIndex(int index) {
+    switch (index) {
       case 0: return DashboardPage(api: widget.api);
       case 1: return PartnersPage(api: widget.api);
       case 2: return FinancePage(api: widget.api);
@@ -1312,8 +1312,20 @@ class _ShellState extends State<Shell> {
       case 4: return WebsiteMarketingPage(api: widget.api);
       case 5: return SystemPage(api: widget.api);
       case 6: return AdministrationPage(api: widget.api, user: widget.user);
-      default: return DashboardPage(api: widget.api);
+      default: return const SizedBox.shrink();
     }
+  }
+
+  Widget pageStack() {
+    final visible = visibleNavIndexes().toSet();
+    return IndexedStack(
+      index: selected,
+      sizing: StackFit.expand,
+      children: [
+        for (var index = 0; index < nav.length; index++)
+          visible.contains(index) ? _pageForIndex(index) : const SizedBox.shrink(),
+      ],
+    );
   }
 
   @override
@@ -1358,7 +1370,7 @@ class _ShellState extends State<Shell> {
                 ),
               ),
             ),
-            body: page(),
+            body: pageStack(),
           );
         }
 
@@ -1446,7 +1458,7 @@ class _ShellState extends State<Shell> {
                         ],
                       ),
                     ),
-                    Expanded(child: ColoredBox(color: brandIvory, child: page())),
+                    Expanded(child: ColoredBox(color: brandIvory, child: pageStack())),
                   ],
                 ),
               ),
