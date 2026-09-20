@@ -2854,9 +2854,9 @@ class _FinancePageState extends State<FinancePage> {
               const SizedBox(height: 12),
               TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
               const SizedBox(height: 12),
-              TextField(
+              TextFormField(
+                initialValue: '${module['key']}',
                 readOnly: true,
-                controller: TextEditingController(text: '${module['key']}'),
                 decoration: const InputDecoration(labelText: 'Stable technical key'),
               ),
             ],
@@ -3615,17 +3615,23 @@ class _PartnerDetailsCard extends StatelessWidget {
   const _PartnerDetailsCard({required this.partner});
   final Map<String, dynamic> partner;
 
+  String value(dynamic input) => '${input ?? ''}'.trim().isEmpty ? '—' : '${input ?? ''}';
+
   @override
   Widget build(BuildContext context) => _InfoCard(
     title: 'Company Data',
     icon: Icons.apartment_outlined,
     children: [
-      _DefinitionRow(label: 'Legal name', value: '${partner['legal_name'] ?? '—'}'),
-      _DefinitionRow(label: 'Category', value: '${partner['category_name'] ?? '—'}'),
-      _DefinitionRow(label: 'Primary contact', value: '${partner['contact_name'] ?? '—'}'),
-      _DefinitionRow(label: 'Contact email', value: '${partner['contact_email'] ?? '—'}'),
-      _DefinitionRow(label: 'Primary domain', value: '${partner['primary_domain'] ?? '—'}'),
-      _DefinitionRow(label: 'Staging domain', value: '${partner['staging_domain'] ?? '—'}'),
+      _DefinitionRow(label: 'Legal name', value: value(partner['legal_name'])),
+      _DefinitionRow(label: 'Brand / DBA', value: value(partner['brand_name'])),
+      _DefinitionRow(label: 'Category', value: value(partner['category_name'])),
+      _DefinitionRow(label: 'Registration', value: value(partner['registration_number'])),
+      _DefinitionRow(label: 'Tax ID', value: value(partner['tax_id'])),
+      _DefinitionRow(label: 'Primary contact', value: value(partner['contact_name'])),
+      _DefinitionRow(label: 'Contact email', value: value(partner['contact_email'])),
+      _DefinitionRow(label: 'Primary domain', value: value(partner['primary_domain'])),
+      _DefinitionRow(label: 'Staging domain', value: value(partner['staging_domain'])),
+      _DefinitionRow(label: 'Website', value: value(partner['website'])),
     ],
   );
 }
@@ -3888,12 +3894,13 @@ class _BillingRulesCard extends StatelessWidget {
     title: 'Commercial Rules',
     icon: Icons.rule_folder_outlined,
     children: [
-      _DefinitionRow(label: 'Invoice issue day', value: '1st of each month'),
-      _DefinitionRow(label: 'Service period', value: 'Preceding 30 days'),
+      _DefinitionRow(label: 'Service period', value: '30 days from activation'),
+      _DefinitionRow(label: 'Renewal', value: 'Every 30 days'),
+      _DefinitionRow(label: 'Invoice trigger', value: 'Partner cycle boundary'),
       _DefinitionRow(label: 'Annual base-fee uplift', value: 'January 1'),
       _DefinitionRow(label: 'Default uplift', value: '10% · admin-overridable'),
       _DefinitionRow(label: 'Extra modules', value: 'Consolidated into main invoice'),
-      _DefinitionRow(label: 'External invoice provider', value: 'Not configured'),
+      _DefinitionRow(label: 'External payment provider', value: 'Not configured'),
     ],
   );
 }
