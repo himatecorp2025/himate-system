@@ -61,6 +61,11 @@ services:
           type: pserv
           name: himate-catalog
           property: hostport
+      - key: PARTNERS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-partners
+          property: hostport
 
   - type: pserv
     name: himate-contact
@@ -244,31 +249,6 @@ services:
           type: pserv
           name: himate-connector
           property: hostport
-      - key: HEALTH_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-health
-          property: hostport
-      - key: IMPACT_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-impact
-          property: hostport
-      - key: PROVISIONING_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-provisioning
-          property: hostport
-      - key: ENVIRONMENTS_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-environments
-          property: hostport
-      - key: CONNECTOR_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-connector
-          property: hostport
       - key: IMPACT_HOSTPORT
         fromService:
           type: pserv
@@ -328,6 +308,31 @@ services:
         fromService:
           type: pserv
           name: himate-contact
+          property: hostport
+      - key: PROVISIONING_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-provisioning
+          property: hostport
+      - key: ENVIRONMENTS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-environments
+          property: hostport
+      - key: CONNECTOR_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-connector
+          property: hostport
+      - key: HEALTH_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-health
+          property: hostport
+      - key: IMPACT_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-impact
           property: hostport
 
   - type: cron
