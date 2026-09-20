@@ -394,6 +394,16 @@ services:
           type: pserv
           name: himate-impact
           property: hostport
+      - key: STORAGE_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-storage
+          property: hostport
+      - key: PARTNER_RUNTIME_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-runtime
+          property: hostport
 
   - type: cron
     name: himate-30day-invoice-cycle
