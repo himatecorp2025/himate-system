@@ -1,18 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 )
 
-type app struct{ db *sql.DB }
+type app struct {
+	db          *sql.DB
+	token       string
+	runtimeHost string
+	client      *http.Client
+}
 
 var kindValues = map[string]bool{"STAGING": true, "PRODUCTION": true}
 var deploymentValues = map[string]bool{"NOT_DEPLOYED": true, "QUEUED": true, "DEPLOYING": true, "DEPLOYED": true, "FAILED": true}
@@ -24,24 +32,26 @@ type environment struct {
 	DeploymentStatus, EnvironmentStatus            string
 	DesiredRelease, ActiveRelease                  string
 	ConfigJSON                                     []byte
+	RuntimeStatus                                  string
+	RuntimeLatencyMS                               int64
+	LastHealthCheck                                sql.NullTime
 	CreatedAt, UpdatedAt                           time.Time
 }
 
 func main() {
 	log := common.Logger()
 	db, err := common.OpenDB()
-	if err != nil {
-		log.Error("database", "error", err)
-		os.Exit(1)
-	}
+	if err != nil { log.Error("database", "error", err); os.Exit(1) }
 	defer db.Close()
-	a := &app{db: db}
+	a := &app{
+		db: db,
+		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
+		runtimeHost: os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
+		client: &http.Client{Timeout: 5 * time.Second},
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := a.migrate(ctx); err != nil {
-		log.Error("migration", "error", err)
-		os.Exit(1)
-	}
+	if err := a.migrate(ctx); err != nil { log.Error("migration", "error", err); os.Exit(1) }
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -50,8 +60,10 @@ func main() {
 	mux.HandleFunc("/api/v1/environments", a.environments)
 	mux.HandleFunc("/api/v1/environments/", a.environmentByID)
 	mux.HandleFunc("/internal/v1/environments/ensure-staging", a.ensureStaging)
+	mux.HandleFunc("/internal/v1/environments/deploy-staging", a.deployStaging)
+	mux.HandleFunc("/internal/v1/environments/runtime-health", a.runtimeHealth)
 	mux.HandleFunc("/internal/v1/environments/summary", a.summary)
-	common.Run(log, "environments", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
+	common.Run(log, "environments", common.Env("PORT", "10000"), common.InternalAuth(a.token, mux))
 }
 
 func (a *app) migrate(ctx context.Context) error {
@@ -77,6 +89,11 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS environments_partner_idx ON environments.partner_environments(partner_id)`,
 			`CREATE INDEX IF NOT EXISTS environments_status_idx ON environments.partner_environments(environment_status,deployment_status)`,
 		}},
+		{Version: 2, Name: "runtime-health-state", Statements: []string{
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS runtime_status TEXT NOT NULL DEFAULT 'UNKNOWN'`,
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS runtime_latency_ms BIGINT NOT NULL DEFAULT 0`,
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS last_health_check TIMESTAMPTZ`,
+		}},
 	})
 }
 
@@ -90,23 +107,30 @@ func envID(partnerID, kind string) string {
 	return "env_" + strings.ToLower(kind) + "_" + strings.TrimPrefix(strings.ToLower(partnerID), "ptr_")
 }
 
+func nullableTime(v sql.NullTime) any {
+	if !v.Valid { return nil }
+	return v.Time.UTC()
+}
+
 func mapEnvironment(e environment) map[string]any {
 	return map[string]any{
 		"id": e.ID, "partner_id": e.PartnerID, "kind": e.Kind, "hostname": e.Hostname,
 		"platform_version": e.PlatformVersion, "config": common.JSONRawOrEmpty(e.ConfigJSON),
 		"deployment_status": e.DeploymentStatus, "environment_status": e.EnvironmentStatus,
 		"desired_release": e.DesiredRelease, "active_release": e.ActiveRelease,
+		"runtime_status": e.RuntimeStatus, "runtime_latency_ms": e.RuntimeLatencyMS,
+		"last_health_check": nullableTime(e.LastHealthCheck),
 		"created_at": e.CreatedAt, "updated_at": e.UpdatedAt,
 	}
 }
 
 type scanner interface{ Scan(...any) error }
 
-const envSelect = `SELECT id,partner_id,kind,hostname,platform_version,config,deployment_status,environment_status,desired_release,active_release,created_at,updated_at FROM environments.partner_environments`
+const envSelect = `SELECT id,partner_id,kind,hostname,platform_version,config,deployment_status,environment_status,desired_release,active_release,runtime_status,runtime_latency_ms,last_health_check,created_at,updated_at FROM environments.partner_environments`
 
 func scanEnvironment(s scanner) (environment, error) {
 	var e environment
-	err := s.Scan(&e.ID,&e.PartnerID,&e.Kind,&e.Hostname,&e.PlatformVersion,&e.ConfigJSON,&e.DeploymentStatus,&e.EnvironmentStatus,&e.DesiredRelease,&e.ActiveRelease,&e.CreatedAt,&e.UpdatedAt)
+	err := s.Scan(&e.ID,&e.PartnerID,&e.Kind,&e.Hostname,&e.PlatformVersion,&e.ConfigJSON,&e.DeploymentStatus,&e.EnvironmentStatus,&e.DesiredRelease,&e.ActiveRelease,&e.RuntimeStatus,&e.RuntimeLatencyMS,&e.LastHealthCheck,&e.CreatedAt,&e.UpdatedAt)
 	return e, err
 }
 
@@ -116,18 +140,13 @@ func (a *app) environments(w http.ResponseWriter, r *http.Request) {
 		partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
 		q := envSelect
 		args := []any{}
-		if partnerID != "" {
-			q += " WHERE partner_id=$1"
-			args = append(args, partnerID)
-		}
+		if partnerID != "" { q += " WHERE partner_id=$1"; args = append(args, partnerID) }
 		q += " ORDER BY partner_id,kind"
 		rows, err := a.db.Query(q,args...)
 		if err != nil { common.APIError(w,500,"DB","Could not load environments"); return }
 		defer rows.Close()
 		items := []map[string]any{}
-		for rows.Next() {
-			if e, err := scanEnvironment(rows); err == nil { items = append(items,mapEnvironment(e)) }
-		}
+		for rows.Next() { if e, err := scanEnvironment(rows); err == nil { items = append(items,mapEnvironment(e)) } }
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 	case http.MethodPost:
 		var in struct {
@@ -142,15 +161,12 @@ func (a *app) environments(w http.ResponseWriter, r *http.Request) {
 		in.Kind = strings.ToUpper(strings.TrimSpace(in.Kind))
 		if in.Kind=="" { in.Kind="STAGING" }
 		if !kindValues[in.Kind] { common.APIError(w,400,"VALIDATION","Invalid environment kind"); return }
-		if strings.TrimSpace(in.Hostname)=="" {
-			in.Hostname = slug(in.PartnerID)+"-"+strings.ToLower(in.Kind)+".himate.local"
-		}
+		if strings.TrimSpace(in.Hostname)=="" { in.Hostname = slug(in.PartnerID)+"-"+strings.ToLower(in.Kind)+".himate.local" }
 		raw, err := common.MarshalJSON(in.Config)
 		if err != nil { common.APIError(w,400,"VALIDATION","Invalid config"); return }
 		e := environment{ID:envID(in.PartnerID,in.Kind),PartnerID:in.PartnerID,Kind:in.Kind,Hostname:strings.ToLower(strings.TrimSpace(in.Hostname)),PlatformVersion:strings.TrimSpace(in.PlatformVersion),DesiredRelease:strings.TrimSpace(in.DesiredRelease),ConfigJSON:raw}
 		_, err = a.db.Exec(`INSERT INTO environments.partner_environments(id,partner_id,kind,hostname,platform_version,config,desired_release)
-			VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)`,
-			e.ID,e.PartnerID,e.Kind,e.Hostname,e.PlatformVersion,string(e.ConfigJSON),e.DesiredRelease)
+			VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)`, e.ID,e.PartnerID,e.Kind,e.Hostname,e.PlatformVersion,string(e.ConfigJSON),e.DesiredRelease)
 		if err != nil { common.APIError(w,409,"CONFLICT","Environment already exists or hostname is in use"); return }
 		stored,_:=a.get(e.ID)
 		common.JSON(w,201,mapEnvironment(stored))
@@ -214,9 +230,7 @@ func (a *app) ensureStaging(w http.ResponseWriter, r *http.Request) {
 	host := slug(in.SystemName)
 	if host=="partner" { host=slug(in.PartnerID) }
 	partnerSuffix := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(in.PartnerID)), "ptr_")
-	if partnerSuffix != "" && !strings.HasSuffix(host, "-"+partnerSuffix) {
-		host += "-" + partnerSuffix
-	}
+	if partnerSuffix != "" && !strings.HasSuffix(host, "-"+partnerSuffix) { host += "-" + partnerSuffix }
 	host += ".himate-staging.local"
 	raw,_:=common.MarshalJSON(in.Config)
 	id:=envID(in.PartnerID,"STAGING")
@@ -233,6 +247,72 @@ func (a *app) ensureStaging(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w,200,mapEnvironment(e))
 }
 
+func (a *app) runtimeRequest(ctx context.Context, method, path string, payload any, dst any) (int64,error) {
+	if strings.TrimSpace(a.runtimeHost)=="" { return 0,fmt.Errorf("partner runtime is not configured") }
+	var body *bytes.Reader
+	if payload==nil { body=bytes.NewReader(nil) } else {
+		raw,err:=json.Marshal(payload); if err!=nil{return 0,err}; body=bytes.NewReader(raw)
+	}
+	req,err:=http.NewRequestWithContext(ctx,method,"http://"+a.runtimeHost+path,body)
+	if err!=nil{return 0,err}
+	req.Header.Set("X-Himate-Internal-Token",a.token)
+	if payload!=nil{req.Header.Set("Content-Type","application/json")}
+	started:=time.Now()
+	resp,err:=a.client.Do(req)
+	latency:=time.Since(started).Milliseconds()
+	if err!=nil{return latency,err}
+	defer resp.Body.Close()
+	if resp.StatusCode<200||resp.StatusCode>=300{return latency,fmt.Errorf("runtime status %d",resp.StatusCode)}
+	if dst!=nil{return latency,json.NewDecoder(resp.Body).Decode(dst)}
+	return latency,nil
+}
+
+func (a *app) deployStaging(w http.ResponseWriter, r *http.Request) {
+	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST"); return }
+	var in struct{ PartnerID, Release string }
+	if common.Decode(r,&in)!=nil || strings.TrimSpace(in.PartnerID)=="" { common.APIError(w,400,"VALIDATION","partner_id is required"); return }
+	id:=envID(in.PartnerID,"STAGING")
+	e,err:=a.get(id)
+	if err!=nil { common.APIError(w,404,"NOT_FOUND","Staging environment not found"); return }
+	release:=strings.TrimSpace(in.Release)
+	if release==""{release=e.DesiredRelease}
+	if release==""{release=e.PlatformVersion}
+	if release==""{release="current"}
+	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYING',environment_status='TESTING',runtime_status='CHECKING',updated_at=NOW() WHERE id=$1`,id)
+	var out map[string]any
+	latency,err:=a.runtimeRequest(r.Context(),http.MethodPost,"/internal/v1/runtime/deploy",map[string]any{
+		"partner_id":e.PartnerID,"environment":"STAGING","hostname":e.Hostname,"release":release,"config":common.JSONRawOrEmpty(e.ConfigJSON),
+	},&out)
+	if err!=nil {
+		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='FAILED',environment_status='FAILED',runtime_status='ERROR',runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,id,latency)
+		common.APIError(w,502,"RUNTIME_DEPLOY",err.Error());return
+	}
+	_,err=a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYED',environment_status='READY',active_release=$2,runtime_status='OK',runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,id,release,latency)
+	if err!=nil{common.APIError(w,500,"DB","Could not finalize staging deployment");return}
+	e,_=a.get(id)
+	common.JSON(w,200,mapEnvironment(e))
+}
+
+func (a *app) runtimeHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }
+	partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
+	kind:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("environment")))
+	if !kindValues[kind] { common.APIError(w,400,"VALIDATION","environment must be STAGING or PRODUCTION");return }
+	id:=envID(partnerID,kind)
+	e,err:=a.get(id)
+	if err!=nil{common.APIError(w,404,"NOT_FOUND","Environment not found");return}
+	path:="/internal/v1/runtime/health?partner_id="+url.QueryEscape(partnerID)+"&environment="+url.QueryEscape(kind)
+	var out map[string]any
+	latency,probeErr:=a.runtimeRequest(r.Context(),http.MethodGet,path,nil,&out)
+	status:="OK"
+	if probeErr!=nil{status="ERROR"}
+	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET runtime_status=$2,runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,id,status,latency)
+	if probeErr!=nil{common.JSON(w,503,map[string]any{"partner_id":partnerID,"environment":kind,"hostname":e.Hostname,"status":"ERROR","latency_ms":latency,"error":probeErr.Error()});return}
+	out["latency_ms"]=latency
+	out["hostname_status"]="REACHABLE"
+	common.JSON(w,200,out)
+}
+
 func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }
 	rows,err:=a.db.Query(envSelect+" ORDER BY partner_id,kind")
@@ -244,7 +324,9 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 			items=append(items,map[string]any{
 				"id":e.ID,"partner_id":e.PartnerID,"kind":e.Kind,"hostname":e.Hostname,
 				"platform_version":e.PlatformVersion,"deployment_status":e.DeploymentStatus,
-				"environment_status":e.EnvironmentStatus,"active_release":e.ActiveRelease,"updated_at":e.UpdatedAt,
+				"environment_status":e.EnvironmentStatus,"active_release":e.ActiveRelease,
+				"runtime_status":e.RuntimeStatus,"runtime_latency_ms":e.RuntimeLatencyMS,
+				"last_health_check":nullableTime(e.LastHealthCheck),"updated_at":e.UpdatedAt,
 			})
 		}
 	}
@@ -254,5 +336,3 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 func (a *app) get(id string)(environment,error){
 	return scanEnvironment(a.db.QueryRow(envSelect+" WHERE id=$1",id))
 }
-
-var _ = fmt.Sprintf
