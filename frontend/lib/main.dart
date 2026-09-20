@@ -214,6 +214,8 @@ class Api {
     }
   }
 
+  Map<String, dynamic>? peek(String path) => _cache[path]?.data;
+
   void _invalidateMutation(String path) {
     final prefixes = <String>{};
     void add(String prefix) => prefixes.add(prefix);
@@ -420,6 +422,65 @@ class _HimateAppState extends State<HimateApp> {
     super.dispose();
   }
 
+
+  bool _can(String permission) {
+    final current = user;
+    if (current == null) return false;
+    final roles = current['roles'];
+    if (roles is List && roles.map((e) => e.toString()).contains('platform_admin')) return true;
+    final permissions = current['permissions'];
+    if (permissions is! List) return false;
+    final values = permissions.map((e) => e.toString()).toSet();
+    return values.contains('*') || values.contains(permission);
+  }
+
+  void _warmControlPlane() {
+    if (user == null) return;
+    final paths = <String>[];
+    if (_can('dashboard.read')) {
+      paths.add('/api/v1/dashboard/summary');
+    }
+    if (_can('partners.read')) {
+      paths.add('/api/v1/partner-categories');
+      paths.add(Uri(path: '/api/v1/partners', queryParameters: const {
+        'limit': '24',
+        'offset': '0',
+        'core_only': 'true',
+        'include_stats': 'false',
+      }).toString());
+    }
+    if (_can('billing.read') || _can('catalog.read')) {
+      paths.add('/api/v1/modules');
+      paths.add('/api/v1/module-groups');
+    }
+    if (_can('billing.read')) {
+      paths.add('/api/v1/billing/profile');
+    }
+    if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
+      paths.add('/api/v1/impact/definitions');
+      paths.add('/api/v1/impact/summary');
+      paths.add(Uri(path: '/api/v1/evidence', queryParameters: const {'limit': '12', 'offset': '0'}).toString());
+      paths.add('/api/v1/reports');
+    }
+    if (_can('cms.read')) {
+      paths.add('/api/v1/cms/pages');
+      paths.add('/api/v1/cms/media');
+    }
+    if (_can('health.read') || _can('provisioning.read') || _can('environments.read')) {
+      if (_can('health.read')) paths.add('/api/v1/system-health');
+      if (_can('provisioning.read')) paths.add('/api/v1/provisioning/jobs');
+      if (_can('environments.read')) paths.add('/api/v1/environments');
+    }
+    if (_can('administration.read') || _can('audit.read')) {
+      paths.add(Uri(path: '/api/v1/audit/events', queryParameters: const {'limit': '50', 'offset': '0'}).toString());
+    }
+    if (_can('administration.read')) {
+      paths.add('/api/v1/admin/roles');
+      paths.add('/api/v1/admin/users');
+    }
+    api.prefetch(paths);
+  }
+
   Future<void> restore() async {
     try {
       user = await api
@@ -430,6 +491,7 @@ class _HimateAppState extends State<HimateApp> {
       // trapping the user behind an endless loading indicator.
       user = null;
     } finally {
+      if (user != null) _warmControlPlane();
       _restoreFallback?.cancel();
       if (mounted) {
         setState(() => loading = false);
@@ -452,6 +514,7 @@ class _HimateAppState extends State<HimateApp> {
     });
     if (!mounted) return;
     setState(() {});
+    _warmControlPlane();
     final target = _pendingDeepLink;
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
     if (target != null && !_deepLinkHandled) {
