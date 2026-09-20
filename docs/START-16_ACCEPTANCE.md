@@ -42,20 +42,24 @@ This document is the release gate for START-16. START-17 public landing-page CMS
 
 ## Cross-cutting release gates
 
-- [ ] `go vet ./...`
-- [ ] `go test ./...`
-- [ ] `go test -race ./...`
-- [ ] `go build ./cmd/...`
-- [ ] `flutter analyze`
-- [ ] `flutter test --platform chrome`
-- [ ] `flutter build web --release`
-- [ ] Render Blueprint validation includes `himate-cms` and `CMS_HOSTPORT`.
-- [ ] Docker Compose topology validates.
-- [ ] All microservice containers build and start.
-- [ ] Gateway/private-service health includes CMS.
-- [ ] START-01–08 regression smoke passes.
-- [ ] START-09–13 integration smoke passes.
-- [ ] START-14–15 integration smoke passes.
-- [ ] START-16 CMS integration smoke passes.
+Final code evidence: HIMATE CI #315 completed successfully on code candidate `75cd01a5bcfeda2aef7cfd18106af396edfd2733`.
+
+- [x] `go vet ./...`
+- [x] `go test ./...`
+- [x] `go test -race ./...`
+- [x] `go build ./cmd/...`
+- [x] `flutter analyze`
+- [x] `flutter test --platform chrome`
+- [x] `flutter build web --release`
+- [x] Render Blueprint validation includes `himate-cms` and `CMS_HOSTPORT`.
+- [x] Docker Compose topology validates.
+- [x] All microservice containers build and start.
+- [x] Gateway/private-service health includes CMS.
+- [x] START-01–08 regression smoke passes.
+- [x] START-09–13 integration smoke passes.
+- [x] START-14–15 integration smoke passes.
+- [x] START-16 CMS integration smoke passes.
+
+Release-gate result: **15/15 green** on HIMATE CI #315.
 
 Merge policy: PR #8 may merge to `develop` only after every release gate above is green. A full post-merge `develop` run is mandatory before START-17 begins.
