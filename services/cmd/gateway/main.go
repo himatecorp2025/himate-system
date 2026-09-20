@@ -44,6 +44,7 @@ type app struct {
 	dashboardExpires time.Time
 	loginMu          sync.Mutex
 	loginAttempts    map[string]loginState
+	auditQueue       chan auditEvent
 }
 
 type loginState struct {
@@ -51,6 +52,38 @@ type loginState struct {
 	WindowStart  time.Time
 	BlockedUntil time.Time
 }
+
+type auditEvent struct {
+	ActorID    string
+	ActorName  string
+	ActorRoles []string
+	RequestID  string
+	Method     string
+	Path       string
+	Resource   string
+	PartnerID  string
+	Status     int
+	Outcome    string
+	DurationMS int64
+	CreatedAt  time.Time
+}
+
+type auditResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *auditResponseWriter) WriteHeader(status int) {
+	if w.status == 0 { w.status = status }
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *auditResponseWriter) Write(p []byte) (int, error) {
+	if w.status == 0 { w.status = http.StatusOK }
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *auditResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 type user struct {
 	ID, Name, Email, PasswordHash string
@@ -85,6 +118,7 @@ func main() {
 		secureCookie: secure, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
 		proxies: map[string]*httputil.ReverseProxy{},
 		loginAttempts: map[string]loginState{},
+		auditQueue: make(chan auditEvent, 4096),
 		hosts: map[string]string{
 			"partners":     os.Getenv("PARTNERS_HOSTPORT"),
 			"catalog":      os.Getenv("CATALOG_HOSTPORT"),
@@ -112,6 +146,7 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	go a.auditWriter()
 	for name, host := range a.hosts {
 		if strings.TrimSpace(host) == "" {
 			log.Warn("private service host is not configured", "service", name)
@@ -159,6 +194,28 @@ func (a *app) migrate(ctx context.Context) error {
 				active BOOLEAN NOT NULL DEFAULT TRUE
 			)`,
 			`CREATE INDEX IF NOT EXISTS identity_users_active_idx ON identity.users(active)`,
+		}},
+		{Version: 2, Name: "central-audit-log", Statements: []string{
+			`CREATE TABLE IF NOT EXISTS identity.audit_events(
+				id BIGSERIAL PRIMARY KEY,
+				actor_id TEXT NOT NULL DEFAULT '',
+				actor_name TEXT NOT NULL DEFAULT '',
+				actor_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+				request_id TEXT NOT NULL DEFAULT '',
+				method TEXT NOT NULL,
+				path TEXT NOT NULL,
+				resource TEXT NOT NULL DEFAULT '',
+				partner_id TEXT NOT NULL DEFAULT '',
+				status INTEGER NOT NULL,
+				outcome TEXT NOT NULL,
+				duration_ms BIGINT NOT NULL DEFAULT 0,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_created_idx ON identity.audit_events(created_at DESC,id DESC)`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_actor_idx ON identity.audit_events(actor_id,created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_resource_idx ON identity.audit_events(resource,created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_partner_idx ON identity.audit_events(partner_id,created_at DESC) WHERE partner_id<>''`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_request_idx ON identity.audit_events(request_id) WHERE request_id<>''`,
 		}},
 	}); err != nil {
 		return err
@@ -322,7 +379,28 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 403, "CSRF", "Cross-site request rejected")
 		return
 	}
-	if r.Method != http.MethodGet && r.Method != http.MethodHead && !hasRole(u, "platform_admin") {
+
+	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
+	if mutating {
+		started := time.Now()
+		recorder := &auditResponseWriter{ResponseWriter: w}
+		w = recorder
+		defer func() {
+			status := recorder.status
+			if status == 0 { status = http.StatusOK }
+			resource, partnerID := auditResource(r)
+			outcome := "SUCCESS"
+			if status >= 400 { outcome = "FAILED" }
+			a.enqueueAudit(auditEvent{
+				ActorID: u.ID, ActorName: u.Name, ActorRoles: append([]string(nil), u.Roles...),
+				RequestID: strings.TrimSpace(r.Header.Get("X-Request-ID")),
+				Method: r.Method, Path: r.URL.Path, Resource: resource, PartnerID: partnerID,
+				Status: status, Outcome: outcome, DurationMS: time.Since(started).Milliseconds(),
+				CreatedAt: time.Now().UTC(),
+			})
+		}()
+	}
+	if mutating && !hasRole(u, "platform_admin") {
 		common.APIError(w, 403, "FORBIDDEN", "Platform administrator permission is required")
 		return
 	}
@@ -332,6 +410,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/v1/audit/events" && r.Method == http.MethodGet:
+		a.auditEvents(w, r)
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
 		a.partnerPortfolioMetrics(w, r)
 	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
@@ -366,6 +446,134 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
 	}
+}
+
+func auditResource(r *http.Request) (string, string) {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" { return "api", "" }
+	resource := parts[0]
+	partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
+	switch parts[0] {
+	case "partners":
+		resource = "partners"
+		if len(parts) > 1 && parts[1] != "portfolio" { partnerID = parts[1] }
+	case "billing":
+		resource = "billing"
+		if len(parts) > 2 && parts[1] == "partners" { partnerID = parts[2] }
+	case "connectors":
+		resource = "connectors"
+		if len(parts) > 1 { partnerID = parts[1] }
+	case "cms":
+		resource = "cms"
+	case "impact":
+		resource = "impact"
+	case "evidence":
+		resource = "evidence"
+	case "reports":
+		resource = "reports"
+	case "provisioning":
+		resource = "provisioning"
+	case "environments":
+		resource = "environments"
+	case "modules", "module-groups":
+		resource = "catalog"
+	case "partner-categories":
+		resource = "partners"
+	}
+	return resource, partnerID
+}
+
+func (a *app) enqueueAudit(event auditEvent) {
+	if a == nil || a.db == nil || a.auditQueue == nil { return }
+	select {
+	case a.auditQueue <- event:
+	default:
+		go a.persistAudit(event)
+	}
+}
+
+func (a *app) auditWriter() {
+	for event := range a.auditQueue {
+		a.persistAudit(event)
+	}
+}
+
+func (a *app) persistAudit(event auditEvent) {
+	if a == nil || a.db == nil { return }
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	roles, _ := json.Marshal(event.ActorRoles)
+	_, _ = a.db.ExecContext(ctx, `INSERT INTO identity.audit_events(
+		actor_id,actor_name,actor_roles,request_id,method,path,resource,partner_id,status,outcome,duration_ms,created_at
+	) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		event.ActorID,event.ActorName,string(roles),event.RequestID,event.Method,event.Path,event.Resource,event.PartnerID,
+		event.Status,event.Outcome,event.DurationMS,event.CreatedAt)
+}
+
+func auditLimit(value string, fallback, max int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || n < 1 { return fallback }
+	if n > max { return max }
+	return n
+}
+
+func (a *app) auditEvents(w http.ResponseWriter, r *http.Request) {
+	limit := auditLimit(r.URL.Query().Get("limit"), 50, 200)
+	offset, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("offset")))
+	if offset < 0 { offset = 0 }
+
+	where := []string{"1=1"}
+	args := []any{}
+	add := func(clause string, value any) {
+		args = append(args, value)
+		where = append(where, fmt.Sprintf(clause, len(args)))
+	}
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		args = append(args, "%"+q+"%")
+		n := len(args)
+		where = append(where, fmt.Sprintf("(actor_name ILIKE $%d OR actor_id ILIKE $%d OR path ILIKE $%d OR resource ILIKE $%d OR request_id ILIKE $%d OR partner_id ILIKE $%d)", n,n,n,n,n,n))
+	}
+	if actorID := strings.TrimSpace(r.URL.Query().Get("actor_id")); actorID != "" { add("actor_id=$%d", actorID) }
+	if resource := strings.TrimSpace(r.URL.Query().Get("resource")); resource != "" { add("resource=$%d", resource) }
+	if method := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("method"))); method != "" { add("method=$%d", method) }
+	if outcome := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("outcome"))); outcome != "" { add("outcome=$%d", outcome) }
+	if partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id")); partnerID != "" { add("partner_id=$%d", partnerID) }
+
+	whereSQL := strings.Join(where, " AND ")
+	var total int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM identity.audit_events WHERE "+whereSQL, args...).Scan(&total); err != nil {
+		common.APIError(w,500,"DB","Could not load audit count")
+		return
+	}
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := a.db.Query(`SELECT id,actor_id,actor_name,actor_roles,request_id,method,path,resource,partner_id,status,outcome,duration_ms,created_at
+		FROM identity.audit_events WHERE `+whereSQL+` ORDER BY created_at DESC,id DESC LIMIT $`+strconv.Itoa(len(args)+1)+` OFFSET $`+strconv.Itoa(len(args)+2), queryArgs...)
+	if err != nil {
+		common.APIError(w,500,"DB","Could not load audit events")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var id int64
+		var actorID,actorName,requestID,method,path,resource,partnerID,outcome string
+		var rolesRaw []byte
+		var status int
+		var duration int64
+		var created time.Time
+		if rows.Scan(&id,&actorID,&actorName,&rolesRaw,&requestID,&method,&path,&resource,&partnerID,&status,&outcome,&duration,&created) != nil { continue }
+		var roles []string
+		_ = json.Unmarshal(rolesRaw,&roles)
+		items = append(items,map[string]any{
+			"id":id,"actor_id":actorID,"actor_name":actorName,"actor_roles":roles,"request_id":requestID,
+			"method":method,"path":path,"resource":resource,"partner_id":partnerID,"status":status,
+			"outcome":outcome,"duration_ms":duration,"created_at":created.UTC(),
+		})
+	}
+	common.JSON(w,200,map[string]any{
+		"items":items,"count":len(items),"total":total,"limit":limit,"offset":offset,"has_more":offset+len(items)<total,
+	})
 }
 
 func (a *app) live(w http.ResponseWriter, r *http.Request) {
