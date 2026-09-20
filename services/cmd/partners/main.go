@@ -244,6 +244,7 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		category := strings.TrimSpace(r.URL.Query().Get("category"))
 		lifecycle := strings.TrimSpace(r.URL.Query().Get("lifecycle"))
+		health := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("health")))
 		includeArchived, _ := strconv.ParseBool(r.URL.Query().Get("include_archived"))
 
 		where := []string{"1=1"}
@@ -268,6 +269,15 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			add(`p.lifecycle=$%d`, lifecycle)
 		} else if !includeArchived {
 			where = append(where, `p.lifecycle<>'ARCHIVED'`)
+		}
+		if health != "" && health != "ALL" {
+			switch health {
+			case "HEALTHY", "WARNING", "OFFLINE", "UNKNOWN":
+				add(`p.system_health=$%d`, health)
+			default:
+				common.APIError(w, 400, "VALIDATION", "Invalid health filter")
+				return
+			}
 		}
 
 		whereSQL := strings.Join(where, " AND ")
