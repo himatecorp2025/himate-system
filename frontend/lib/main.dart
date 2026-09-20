@@ -2129,6 +2129,237 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
   }
 
+  Map<String, dynamic>? get provisioningJob =>
+      provisioningJobs.isEmpty ? null : provisioningJobs.first;
+
+  Future<void> startProvisioning() async {
+    final lifecycle = '${partner['lifecycle'] ?? ''}';
+    if (!const {'READY_TO_PROVISION', 'PROVISIONING', 'CONFIGURATION'}.contains(lifecycle)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Move the partner to READY TO PROVISION before starting provisioning.'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: brandWarning,
+        ),
+      );
+      return;
+    }
+    final preset = [
+      for (final m in modules)
+        if (m['status'] == 'ACTIVE') '${m['key']}',
+    ];
+    try {
+      await widget.api.post('/api/v1/provisioning/jobs', {
+        'partner_id': '${partner['id']}',
+        'system_name': '${partner['brand_name'] ?? partner['display_name'] ?? partner['id']}',
+        'platform_version': '${partner['platform_version'] ?? ''}',
+        'desired_release': '${partner['platform_version'] ?? ''}',
+        'module_preset': preset,
+      });
+      await load();
+      if (mounted) success('Provisioning completed or resumed successfully.');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Provisioning could not complete: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: brandDanger,
+        ),
+      );
+    }
+  }
+
+  Future<void> rotateConnectorCredential() async {
+    String environment = environments.any((e) => e['kind'] == 'PRODUCTION') ? 'PRODUCTION' : 'STAGING';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Connector credential',
+          subtitle: 'Generate or rotate a partner-scoped credential. The raw secret is displayed exactly once.',
+          icon: Icons.key_outlined,
+          width: 620,
+          child: DropdownButtonFormField<String>(
+            value: environment,
+            decoration: const InputDecoration(labelText: 'Environment'),
+            items: const [
+              DropdownMenuItem(value: 'STAGING', child: Text('STAGING')),
+              DropdownMenuItem(value: 'PRODUCTION', child: Text('PRODUCTION')),
+            ],
+            onChanged: (v) { if (v != null) setLocal(() => environment = v); },
+          ),
+          primaryLabel: 'Generate credential',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final result = await widget.api.post('/api/v1/connectors/${partner['id']}/credential', {'environment': environment});
+      final token = '${result['token'] ?? ''}';
+      await load();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Store this credential now'),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('For security, HIMATE stores only the token hash. This raw credential will not be shown again.'),
+                const SizedBox(height: 14),
+                SelectableText(token, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: token.isEmpty ? null : () async {
+                await Clipboard.setData(ClipboardData(text: token));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Credential copied.'), behavior: SnackBarBehavior.floating),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('Copy'),
+            ),
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('I stored it securely')),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Credential operation failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+      );
+    }
+  }
+
+  Future<void> editEnvironment(Map<String, dynamic> env) async {
+    final hostname = TextEditingController(text: '${env['hostname'] ?? ''}');
+    final version = TextEditingController(text: '${env['platform_version'] ?? ''}');
+    final desiredRelease = TextEditingController(text: '${env['desired_release'] ?? ''}');
+    final activeRelease = TextEditingController(text: '${env['active_release'] ?? ''}');
+    String deployment = '${env['deployment_status'] ?? 'NOT_DEPLOYED'}';
+    String environmentStatus = '${env['environment_status'] ?? 'CREATING'}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: '${env['kind']} environment',
+          subtitle: 'Manage hostname, platform release and deployment/environment state.',
+          icon: Icons.dns_outlined,
+          width: 720,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: hostname, decoration: const InputDecoration(labelText: 'Hostname')),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: version, decoration: const InputDecoration(labelText: 'Platform version')),
+                second: TextField(controller: desiredRelease, decoration: const InputDecoration(labelText: 'Desired release')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: activeRelease, decoration: const InputDecoration(labelText: 'Active release')),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: DropdownButtonFormField<String>(
+                  value: deployment,
+                  decoration: const InputDecoration(labelText: 'Deployment status'),
+                  items: const [
+                    DropdownMenuItem(value: 'NOT_DEPLOYED', child: Text('NOT DEPLOYED')),
+                    DropdownMenuItem(value: 'QUEUED', child: Text('QUEUED')),
+                    DropdownMenuItem(value: 'DEPLOYING', child: Text('DEPLOYING')),
+                    DropdownMenuItem(value: 'DEPLOYED', child: Text('DEPLOYED')),
+                    DropdownMenuItem(value: 'FAILED', child: Text('FAILED')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => deployment = v); },
+                ),
+                second: DropdownButtonFormField<String>(
+                  value: environmentStatus,
+                  decoration: const InputDecoration(labelText: 'Environment status'),
+                  items: const [
+                    DropdownMenuItem(value: 'CREATING', child: Text('CREATING')),
+                    DropdownMenuItem(value: 'CONFIGURATION_REQUIRED', child: Text('CONFIGURATION REQUIRED')),
+                    DropdownMenuItem(value: 'TESTING', child: Text('TESTING')),
+                    DropdownMenuItem(value: 'READY', child: Text('READY')),
+                    DropdownMenuItem(value: 'LIVE', child: Text('LIVE')),
+                    DropdownMenuItem(value: 'SUSPENDED', child: Text('SUSPENDED')),
+                    DropdownMenuItem(value: 'FAILED', child: Text('FAILED')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => environmentStatus = v); },
+                ),
+              ),
+            ],
+          ),
+          primaryLabel: 'Save environment',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.patch('/api/v1/environments/${env['id']}', {
+        'hostname': hostname.text.trim(),
+        'platform_version': version.text.trim(),
+        'desired_release': desiredRelease.text.trim(),
+        'active_release': activeRelease.text.trim(),
+        'deployment_status': deployment,
+        'environment_status': environmentStatus,
+      });
+      await load();
+      if (mounted) success('Environment updated.');
+    }
+    for (final controller in [hostname, version, desiredRelease, activeRelease]) { controller.dispose(); }
+  }
+
+  Future<void> createProductionEnvironment() async {
+    final existing = environments.where((e) => e['kind'] == 'PRODUCTION').toList();
+    if (existing.isNotEmpty) {
+      await editEnvironment(existing.first);
+      return;
+    }
+    final hostname = TextEditingController(text: '${partner['primary_domain'] ?? ''}');
+    final version = TextEditingController(text: '${partner['platform_version'] ?? ''}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => BrandDialog(
+        title: 'Production environment',
+        subtitle: 'Register the production environment after staging validation and before launch.',
+        icon: Icons.public_outlined,
+        width: 620,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: hostname, decoration: const InputDecoration(labelText: 'Production hostname')),
+            const SizedBox(height: 12),
+            TextField(controller: version, decoration: const InputDecoration(labelText: 'Platform version')),
+          ],
+        ),
+        primaryLabel: 'Create production environment',
+        onPrimary: () => Navigator.pop(context, true),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/environments', {
+        'partner_id': '${partner['id']}',
+        'kind': 'PRODUCTION',
+        'hostname': hostname.text.trim(),
+        'platform_version': version.text.trim(),
+      });
+      await load();
+      if (mounted) success('Production environment registered.');
+    }
+    hostname.dispose();
+    version.dispose();
+  }
+
   Future<void> editPartner() async {
     final display = TextEditingController(text: '${partner['display_name'] ?? ''}');
     final legal = TextEditingController(text: '${partner['legal_name'] ?? ''}');
