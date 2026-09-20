@@ -55,7 +55,13 @@ curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"l
 echo ok
 
 printf 'START-09 provisioning engine... '
-provisioned="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner_id\",\"system_name\":\"START 09 CI\",\"admin_email\":\"ci-admin@example.com\",\"platform_version\":\"0.3.0-start-09-13\",\"desired_release\":\"0.3.0-start-09-13\",\"module_preset\":[\"campaigns_utm\"]}"   "$BASE_URL/api/v1/provisioning/jobs")"
+provision_code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner_id\",\"system_name\":\"START 09 CI\",\"admin_email\":\"ci-admin@example.com\",\"platform_version\":\"0.3.0-start-09-13\",\"desired_release\":\"0.3.0-start-09-13\",\"module_preset\":[\"campaigns_utm\"]}"   "$BASE_URL/api/v1/provisioning/jobs")"
+provisioned="$(cat "$BODY")"
+if [ "$provision_code" != "202" ]; then
+  echo "FAILED (HTTP $provision_code)"
+  printf '%s\n' "$provisioned"
+  exit 1
+fi
 printf '%s' "$provisioned" | grep -q '"status":"CONFIGURATION_REQUIRED"'
 job_id="$(printf '%s' "$provisioned" | json_field id)"
 curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"lifecycle":"CONFIGURATION"'
