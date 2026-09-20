@@ -107,7 +107,7 @@ The 2026-09-20 post-merge re-audit reconciles the original START specification w
 
 ## Synchronized status
 
-Remediation implementation branch: `start-09-13-postmerge-audit` (PR #4). Functional gates remain unchecked until the expanded CI/smoke suite passes on this branch.
+Final acceptance implementation branch: `start-09-13-acceptance-final` (PR #5). Functional gates remain unchecked until the expanded CI/smoke suite passes on this branch.
 
 The previous checklist overstated specification completeness because it did not include several original START requirements. After reconciliation, 65 of 74 explicit acceptance gates are currently satisfied.
 
