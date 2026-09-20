@@ -964,7 +964,7 @@ class _CMSSectionEditor extends StatelessWidget {
             ResponsiveFieldPair(
               first: TextFormField(
                 initialValue: section.id,
-                decoration: const InputDecoration(labelText: 'Section ID *'),
+                decoration: const InputDecoration(labelText: 'Section ID *', hintText: 'hero, primary, secondary, modules, programs, impact, contact, story-video'),
                 onChanged: (value) => section.id = value,
               ),
               second: DropdownButtonFormField<String>(
