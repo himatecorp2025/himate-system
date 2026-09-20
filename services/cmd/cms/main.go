@@ -653,10 +653,12 @@ func (a *app)putMedia(ctx context.Context,key string,data io.Reader,size int64)(
 	var out map[string]any;if err:=json.NewDecoder(resp.Body).Decode(&out);err!=nil{return nil,err};return out,nil
 }
 
-func (a *app)getMediaObject(ctx context.Context,m mediaRow)(*http.Response,error){
+func (a *app)getMediaObject(ctx context.Context,m mediaRow,rangeHeader string)(*http.Response,error){
 	path:="http://"+a.storageHost+"/internal/v1/storage/objects/"+url.PathEscape(m.ObjectNamespace)+"/"+m.ObjectKey+"?content_type="+url.QueryEscape(m.MimeType)
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,path,nil);if err!=nil{return nil,err}
-	req.Header.Set("X-Himate-Internal-Token",a.token);return a.client.Do(req)
+	req.Header.Set("X-Himate-Internal-Token",a.token)
+	if strings.TrimSpace(rangeHeader)!=""{req.Header.Set("Range",rangeHeader)}
+	return a.client.Do(req)
 }
 
 func mediaSelect()string{return `SELECT id,original_filename,mime_type,object_namespace,object_key,size_bytes,sha256,alt_text,created_by,created_at FROM cms.media_assets`}
@@ -699,13 +701,17 @@ func (a *app)mediaCollection(w http.ResponseWriter,r *http.Request){
 }
 
 func (a *app)serveMedia(w http.ResponseWriter,r *http.Request,m mediaRow,inline bool){
-	resp,err:=a.getMediaObject(r.Context(),m);if err!=nil{common.APIError(w,502,"STORAGE","Could not load CMS media");return};defer resp.Body.Close()
+	resp,err:=a.getMediaObject(r.Context(),m,r.Header.Get("Range"));if err!=nil{common.APIError(w,502,"STORAGE","Could not load CMS media");return};defer resp.Body.Close()
 	if resp.StatusCode==404{common.APIError(w,410,"BROKEN_MEDIA_REFERENCE","CMS media metadata exists but object is missing");return}
-	if resp.StatusCode<200||resp.StatusCode>=300{common.APIError(w,502,"STORAGE","CMS media unavailable");return}
+	if resp.StatusCode!=http.StatusOK&&resp.StatusCode!=http.StatusPartialContent{common.APIError(w,502,"STORAGE","CMS media unavailable");return}
 	w.Header().Set("Content-Type",m.MimeType)
+	for _,key:=range []string{"Accept-Ranges","Content-Range","Content-Length","Last-Modified"}{
+		if value:=resp.Header.Get(key);value!=""{w.Header().Set(key,value)}
+	}
 	disposition:="attachment";if inline{disposition="inline"}
 	w.Header().Set("Content-Disposition",disposition+`; filename="`+safeFilename(m.OriginalFilename)+`"`)
-	_,_=io.Copy(w,resp.Body)
+	if resp.StatusCode==http.StatusPartialContent{w.WriteHeader(http.StatusPartialContent)}
+	if r.Method!=http.MethodHead{_,_=io.Copy(w,resp.Body)}
 }
 
 func (a *app)mediaItem(w http.ResponseWriter,r *http.Request){
