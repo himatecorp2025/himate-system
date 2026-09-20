@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
@@ -77,6 +80,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE TABLE IF NOT EXISTS impact.metric_values(
 				id BIGSERIAL PRIMARY KEY,
 				idempotency_key TEXT UNIQUE,
+				payload_hash TEXT NOT NULL DEFAULT '',
 				partner_id TEXT NOT NULL DEFAULT '',
 				metric_key TEXT NOT NULL REFERENCES impact.metric_definitions(metric_key),
 				period_start DATE NOT NULL,
@@ -232,6 +236,28 @@ func (a *app) ingest(w http.ResponseWriter, r *http.Request) {
 	a.recordValue(w,r,in)
 }
 
+func metricPayloadHash(in metricInput,start,end time.Time) string {
+	payload:=struct{
+		PartnerID string `json:"partner_id"`
+		MetricKey string `json:"metric_key"`
+		PeriodStart string `json:"period_start"`
+		PeriodEnd string `json:"period_end"`
+		NumericValue *float64 `json:"numeric_value"`
+		TextValue string `json:"text_value"`
+		Provenance string `json:"provenance"`
+		SourceRef string `json:"source_ref"`
+		Metadata map[string]any `json:"metadata"`
+	}{
+		PartnerID:strings.TrimSpace(in.PartnerID),MetricKey:in.MetricKey,
+		PeriodStart:start.Format("2006-01-02"),PeriodEnd:end.Format("2006-01-02"),
+		NumericValue:in.NumericValue,TextValue:strings.TrimSpace(in.TextValue),
+		Provenance:in.Provenance,SourceRef:strings.TrimSpace(in.SourceRef),Metadata:in.Metadata,
+	}
+	raw,_:=json.Marshal(payload)
+	sum:=sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
 func (a *app) recordValue(w http.ResponseWriter,r *http.Request,in metricInput){
 	in,start,end,err:=parseMetricInput(in)
 	if err!=nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
@@ -243,12 +269,28 @@ func (a *app) recordValue(w http.ResponseWriter,r *http.Request,in metricInput){
 	meta,_:=common.MarshalJSON(in.Metadata)
 	recordedBy:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 	if recordedBy=="" { recordedBy="connector" }
+	idempotencyKey:=strings.TrimSpace(in.IdempotencyKey)
+	payloadHash:=metricPayloadHash(in,start,end)
 	var id int64
-	err=a.db.QueryRow(`INSERT INTO impact.metric_values(idempotency_key,partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,recorded_by,metadata)
-		VALUES(NULLIF($1,''),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
-		ON CONFLICT(idempotency_key) DO UPDATE SET idempotency_key=EXCLUDED.idempotency_key
+	err=a.db.QueryRow(`INSERT INTO impact.metric_values(idempotency_key,payload_hash,partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,recorded_by,metadata)
+		VALUES(NULLIF($1,''),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+		ON CONFLICT(idempotency_key) DO NOTHING
 		RETURNING id`,
-		strings.TrimSpace(in.IdempotencyKey),strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),recordedBy,string(meta)).Scan(&id)
+		idempotencyKey,payloadHash,strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),recordedBy,string(meta)).Scan(&id)
+	if err==sql.ErrNoRows && idempotencyKey!="" {
+		var existingID int64
+		var existingHash string
+		if lookupErr:=a.db.QueryRow(`SELECT id,payload_hash FROM impact.metric_values WHERE idempotency_key=$1`,idempotencyKey).Scan(&existingID,&existingHash);lookupErr!=nil {
+			common.APIError(w,500,"DB","Could not resolve idempotent metric")
+			return
+		}
+		if existingHash!=payloadHash {
+			common.APIError(w,409,"IDEMPOTENCY_CONFLICT","idempotency_key was already used for different metric data")
+			return
+		}
+		common.JSON(w,200,map[string]any{"id":existingID,"partner_id":strings.TrimSpace(in.PartnerID),"metric_key":in.MetricKey,"duplicate":true,"provenance":in.Provenance})
+		return
+	}
 	if err!=nil { common.APIError(w,500,"DB","Could not record metric"); return }
 	common.JSON(w,201,map[string]any{"id":id,"partner_id":strings.TrimSpace(in.PartnerID),"metric_key":in.MetricKey,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"provenance":in.Provenance})
 }
