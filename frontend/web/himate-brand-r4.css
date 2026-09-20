@@ -563,3 +563,120 @@ body{background:#F8F9FB}
     white-space:normal;
   }
 }
+
+
+/* R11 subpage hero alignment and rail restoration */
+/* Exact shared horizontal origin: subpage hero copy starts where landing hero copy starts. */
+.page-hero{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  min-height:100svh;
+}
+.page-hero .inner{
+  width:min(1510px,calc(100% - (var(--public-inset)*2)))!important;
+  margin-inline:auto!important;
+  min-height:0!important;
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding-top:138px!important;
+  padding-bottom:42px!important;
+  padding-left:clamp(16px,1.15vw,22px)!important;
+  padding-right:0!important;
+}
+
+/* Restore the four equal hero cells on every public subpage, anchored to the hero bottom. */
+.page-hero > .hero-metrics{
+  position:relative;
+  z-index:4;
+  width:100%;
+  flex:0 0 auto;
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  min-height:clamp(100px,6.3vw,130px);
+  padding:0 52px;
+  border-top:2px solid rgba(215,174,98,.82);
+  background:rgba(5,20,37,.50);
+  backdrop-filter:blur(1.5px);
+}
+.page-hero > .hero-metrics .metric{
+  display:flex!important;
+  align-items:center;
+  justify-content:center;
+  gap:24px;
+  min-width:0;
+  padding:20px 28px;
+}
+.page-hero > .hero-metrics .metric-icon{
+  display:grid!important;
+  visibility:visible!important;
+  opacity:1!important;
+  color:#D7AE62!important;
+}
+.page-hero > .hero-metrics .metric strong{
+  display:block;
+  color:#F1DEB9;
+}
+
+/* The supplied Real Culture / Real Change artwork is four lossless-position slices of one image.
+   Grid composition makes them visually a single continuous left-side artwork. */
+.impact-story .image.impact-reference-grid{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-rows:1fr;
+  gap:0!important;
+  overflow:hidden;
+  min-height:inherit;
+  background:#E9E1D5;
+}
+.impact-story .impact-reference-grid img{
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  object-fit:cover!important;
+  object-position:center!important;
+}
+
+/* Approved reversed-color HIMATE asset supplies its own metallic treatment. */
+.brand-logo img{filter:none!important}
+
+@media(max-width:1000px){
+  .page-hero .inner{
+    width:min(100% - 40px,1510px)!important;
+    margin-inline:auto!important;
+    min-height:0!important;
+    padding-top:112px!important;
+    padding-bottom:32px!important;
+    padding-left:0!important;
+    padding-right:0!important;
+  }
+  .page-hero > .hero-metrics{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    padding:0;
+  }
+}
+@media(max-width:620px){
+  .page-hero .inner{
+    width:min(100% - 36px,1510px)!important;
+    min-height:0!important;
+    flex:1 1 auto;
+    justify-content:flex-start!important;
+    padding-top:94px!important;
+    padding-bottom:28px!important;
+  }
+  .page-hero > .hero-metrics{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    min-height:100px;
+  }
+  .page-hero > .hero-metrics .metric{
+    justify-content:flex-start;
+    gap:12px;
+    padding:16px 12px;
+  }
+  .impact-story .image.impact-reference-grid{height:250px}
+}
