@@ -361,13 +361,15 @@ paths:
         "200": {description: Provisioning jobs}
     post:
       tags: [Provisioning]
-      summary: Start or resume idempotent partner provisioning
+      summary: Prepare, start or resume idempotent partner provisioning
       description: >
-        Requires a partner in READY_TO_PROVISION/PROVISIONING/CONFIGURATION
-        and a satisfied initial-license gate. The workflow creates an isolated
-        partner database/role, structure-only reference template, module preset,
-        staging environment and connector identity. Successful steps are not
-        repeated on retry.
+        With prepare_only=true the complete provisioning plan is persisted before
+        the commercial gate without allocating partner infrastructure. Execution
+        requires READY_TO_PROVISION/PROVISIONING/CONFIGURATION and a satisfied
+        initial-license gate. The workflow creates isolated database/role and
+        storage, applies the structure-only template and module preset, publishes
+        connector desired state, deploys staging and verifies database, storage and
+        runtime health. Successful steps are not repeated on retry.
       requestBody:
         required: true
         content:
@@ -381,6 +383,8 @@ paths:
                 admin_email: {type: string, format: email}
                 platform_version: {type: string}
                 desired_release: {type: string}
+                environment: {type: string, enum: [STAGING], default: STAGING}
+                prepare_only: {type: boolean, default: false}
                 module_preset:
                   type: array
                   items: {type: string}
