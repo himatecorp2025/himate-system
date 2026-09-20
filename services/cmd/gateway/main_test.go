@@ -95,6 +95,24 @@ func TestMarketingFrontendServesFreshAssets(t *testing.T) {
 }
 
 
+func TestBrandLogoRouteServesVersionedAsset(t *testing.T) {
+	root := t.TempDir()
+	art := filepath.Join(root, "art")
+	if err := os.MkdirAll(art, 0o700); err != nil { t.Fatal(err) }
+	body := []byte("RIFF-test-webp")
+	if err := os.WriteFile(filepath.Join(art, "himate_logo_master_v2.webp"), body, 0o600); err != nil { t.Fatal(err) }
+
+	a := &app{webDir: root}
+	req := httptest.NewRequest(http.MethodGet, "/art/himate_logo_master_v2.webp", nil)
+	rec := httptest.NewRecorder()
+	a.brandLogo(rec, req)
+
+	if rec.Code != http.StatusOK { t.Fatalf("expected logo 200, got %d", rec.Code) }
+	if got := rec.Header().Get("Content-Type"); got != "image/webp" { t.Fatalf("expected image/webp, got %q", got) }
+	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") { t.Fatalf("expected no-store, got %q", got) }
+	if rec.Body.String() != string(body) { t.Fatalf("unexpected logo body %q", rec.Body.String()) }
+}
+
 func TestGatewayLivenessDoesNotDependOnPrivateServices(t *testing.T) {
 	a := &app{env: "production", version: "test"}
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/live", nil)
