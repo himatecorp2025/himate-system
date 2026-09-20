@@ -199,6 +199,10 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 		var in metricInput
 		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
 		if in.Provenance=="" { in.Provenance="MANUAL" }
+		if strings.ToUpper(strings.TrimSpace(in.Provenance))!="MANUAL" {
+			common.APIError(w,400,"PROVENANCE_BOUNDARY","Administrator-entered values must use MANUAL provenance")
+			return
+		}
 		a.recordValue(w,r,in)
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
@@ -210,7 +214,12 @@ func (a *app) ingest(w http.ResponseWriter, r *http.Request) {
 	var in metricInput
 	if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
 	if in.Provenance=="" { in.Provenance="PARTNER_DECLARED" }
-	if strings.ToUpper(in.Provenance)=="MANUAL" { common.APIError(w,400,"VALIDATION","Connector ingestion cannot use MANUAL provenance"); return }
+	provenance:=strings.ToUpper(strings.TrimSpace(in.Provenance))
+	if provenance!="SYSTEM" && provenance!="PARTNER_DECLARED" {
+		common.APIError(w,400,"PROVENANCE_BOUNDARY","Connector ingestion may use only SYSTEM or PARTNER_DECLARED provenance")
+		return
+	}
+	in.Provenance=provenance
 	a.recordValue(w,r,in)
 }
 
