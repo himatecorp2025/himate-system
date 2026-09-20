@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,5 +91,60 @@ func TestMarketingFrontendServesFreshAssets(t *testing.T) {
 	}
 	if got := rec.Header().Get("Location"); got != "/platform" {
 		t.Fatalf("legacy route: expected /platform, got %q", got)
+	}
+}
+
+
+func TestGatewayLivenessDoesNotDependOnPrivateServices(t *testing.T) {
+	a := &app{env: "production", version: "test"}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/live", nil)
+	rec := httptest.NewRecorder()
+
+	a.live(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected liveness 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"ok"`) {
+		t.Fatalf("expected liveness ok payload, got %s", rec.Body.String())
+	}
+}
+
+func TestGatewayHealthReportsMissingBindingAsDegraded(t *testing.T) {
+	a := &app{
+		env: "production",
+		version: "test",
+		client: &http.Client{Timeout: time.Second},
+		hosts: map[string]string{"health": ""},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	rec := httptest.NewRecorder()
+
+	a.health(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected health endpoint 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"status":"degraded"`) {
+		t.Fatalf("expected degraded status, got %s", body)
+	}
+	if !strings.Contains(body, `"health":"unconfigured"`) {
+		t.Fatalf("expected unconfigured health binding, got %s", body)
+	}
+}
+
+func TestMissingProxyReturnsServiceUnavailable(t *testing.T) {
+	a := &app{proxies: map[string]*httputil.ReverseProxy{}}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/system-health", nil)
+	rec := httptest.NewRecorder()
+
+	a.serveProxy(rec, req, "health")
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for missing proxy, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "SERVICE_UNAVAILABLE") {
+		t.Fatalf("expected structured service unavailable error, got %s", rec.Body.String())
 	}
 }
