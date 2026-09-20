@@ -78,23 +78,25 @@ func main() {
 }
 
 func (a *app) migrate(ctx context.Context) error {
-	return common.ExecStatements(ctx, a.db,
-		`CREATE SCHEMA IF NOT EXISTS contact`,
-		`CREATE TABLE IF NOT EXISTS contact.inquiries(
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			organization TEXT NOT NULL DEFAULT '',
-			email TEXT NOT NULL,
-			message TEXT NOT NULL,
-			source_ip TEXT NOT NULL DEFAULT '',
-			user_agent TEXT NOT NULL DEFAULT '',
-			notification_status TEXT NOT NULL DEFAULT 'pending',
-			notification_error TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_contact_inquiries_created_at ON contact.inquiries(created_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_contact_inquiries_email ON contact.inquiries(email)`,
-	)
+	return common.ApplyMigrations(ctx, a.db, "contact", []common.Migration{
+		{Version: 1, Name: "contact-base", Statements: []string{
+			`CREATE SCHEMA IF NOT EXISTS contact`,
+			`CREATE TABLE IF NOT EXISTS contact.inquiries(
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				organization TEXT NOT NULL DEFAULT '',
+				email TEXT NOT NULL,
+				message TEXT NOT NULL,
+				source_ip TEXT NOT NULL DEFAULT '',
+				user_agent TEXT NOT NULL DEFAULT '',
+				notification_status TEXT NOT NULL DEFAULT 'pending',
+				notification_error TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_contact_inquiries_created_at ON contact.inquiries(created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS idx_contact_inquiries_email ON contact.inquiries(email)`,
+		}},
+	})
 }
 
 func (a *app) handleContact(w http.ResponseWriter, r *http.Request) {
