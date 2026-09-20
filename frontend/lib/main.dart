@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 
 part 'cms_page.dart';
+part 'administration_rbac.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -5315,8 +5316,8 @@ class _AdministrationPageState extends State<AdministrationPage> {
 
     return Content(
       eyebrow: 'ADMINISTRATION',
-      title: 'Audit History',
-      subtitle: 'Central append-only administrative activity across the HIMATE control plane. Detailed domain histories remain preserved inside Billing, Catalog, Partners and CMS.',
+      title: 'Administration',
+      subtitle: 'Central audit history, administrator lifecycle, roles and backend-enforced permissions across the HIMATE control plane.',
       actions: [
         OutlinedButton.icon(
           onPressed: loading ? null : () => load(),
@@ -5482,12 +5483,8 @@ class _AdministrationPageState extends State<AdministrationPage> {
             const SizedBox(height: 12),
             const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
           ],
-          const SizedBox(height: 24),
-          const _MessageCard(
-            icon: Icons.manage_accounts_outlined,
-            title: 'Roles & Permissions',
-            message: 'START-19 will activate user lifecycle, role assignment and permission enforcement here after the audit layer passes the full Go, Flutter and Compose CI gate.',
-          ),
+          const SizedBox(height: 28),
+          AccessControlPanel(api: widget.api, currentUser: widget.user),
         ],
       ),
     );
