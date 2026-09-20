@@ -54,6 +54,7 @@ func main(){
 	mux:=http.NewServeMux()
 	mux.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){common.JSON(w,200,map[string]any{"status":"ok","service":"health","time":time.Now().UTC()})})
 	mux.HandleFunc("/api/v1/system-health",a.systemHealth)
+	mux.HandleFunc("/api/v1/system-health/snapshot",a.systemHealthSnapshot)
 	mux.HandleFunc("/internal/v1/system-health/summary",a.systemHealth)
 	mux.HandleFunc("/internal/v1/system-health/partner-snapshots",a.partnerSnapshots)
 	go a.monitorLoop()
@@ -314,6 +315,37 @@ func (a *app)partnerSnapshotRows()([]map[string]any,error){
 }
 
 func (a *app)systemHealth(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+	started:=time.Now()
+	ctx,cancel:=context.WithTimeout(r.Context(),6*time.Second)
+	defer cancel()
+	services:=a.checkServices(ctx)
+	partners:=a.partnerHealth(ctx)
+	overall:="OK"
+	for _,s:=range services{
+		if s.Status!="OK"{overall="DEGRADED";break}
+	}
+	errorPartners:=0
+	degradedPartners:=0
+	for _,p:=range partners{
+		switch stringValue(p["overall_status"]){
+		case"ERROR":
+			errorPartners++
+			overall="DEGRADED"
+		case"DEGRADED":
+			degradedPartners++
+			if overall=="OK"{overall="DEGRADED"}
+		}
+	}
+	w.Header().Set("X-Himate-Health-Source","live")
+	w.Header().Set("Server-Timing",fmt.Sprintf("health-live;dur=%d",time.Since(started).Milliseconds()))
+	common.JSON(w,200,map[string]any{
+		"status":overall,"checked_at":time.Now().UTC(),"services":services,"partners":partners,
+		"summary":map[string]any{"services":len(services),"partners":len(partners),"partner_errors":errorPartners,"partner_degraded":degradedPartners},
+	})
+}
+
+func (a *app)systemHealthSnapshot(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
 	started:=time.Now()
 	services,serviceErr:=a.serviceSnapshotRows()
