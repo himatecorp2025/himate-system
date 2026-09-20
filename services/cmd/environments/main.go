@@ -269,7 +269,10 @@ func (a *app) runtimeRequest(ctx context.Context, method, path string, payload a
 
 func (a *app) deployStaging(w http.ResponseWriter, r *http.Request) {
 	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST"); return }
-	var in struct{ PartnerID, Release string }
+	var in struct {
+		PartnerID string `json:"partner_id"`
+		Release string `json:"release"`
+	}
 	if common.Decode(r,&in)!=nil || strings.TrimSpace(in.PartnerID)=="" { common.APIError(w,400,"VALIDATION","partner_id is required"); return }
 	id:=envID(in.PartnerID,"STAGING")
 	e,err:=a.get(id)
