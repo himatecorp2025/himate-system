@@ -23,10 +23,13 @@ func TestMetricProvenanceTrustBoundaries(t *testing.T) {
 	if !adminProvenanceAllowed("manual") {
 		t.Fatal("admin MANUAL provenance must be accepted")
 	}
-	for _, value := range []string{"SYSTEM", "PARTNER_DECLARED", "VERIFIED_DOCUMENT"} {
+	for _, value := range []string{"SYSTEM", "PARTNER_DECLARED"} {
 		if adminProvenanceAllowed(value) {
 			t.Fatalf("admin must not be able to self-assert %s provenance", value)
 		}
+	}
+	if !adminProvenanceAllowed("VERIFIED_DOCUMENT") {
+		t.Fatal("admin VERIFIED_DOCUMENT must be admitted to the evidence-validation gate")
 	}
 	for _, value := range []string{"SYSTEM", "PARTNER_DECLARED"} {
 		if !connectorProvenanceAllowed(value) {
