@@ -15,7 +15,7 @@ func TestSeedModules(t *testing.T) {
 		seen[m.Key] = true
 		groups[m.Group]++
 	}
-	want := map[string]int{"workshop": 1, "finance_invoicing": 3, "technical": 15, "marketing": 8, "website_events": 11}
+	want := map[string]int{"finance_invoicing": 3, "technical": 16, "marketing": 8, "website_events": 11}
 	for k, n := range want {
 		if groups[k] != n {
 			t.Fatalf("%s expected %d got %d", k, n, groups[k])
