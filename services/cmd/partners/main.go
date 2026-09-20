@@ -154,6 +154,14 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS partners_primary_domain_unique ON partners.partners((lower(primary_domain))) WHERE primary_domain<>''`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS partners_staging_domain_unique ON partners.partners((lower(staging_domain))) WHERE staging_domain<>''`,
 		}},
+		{Version: 3, Name: "partner-fast-read-indexes", Statements: []string{
+			`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+			`CREATE INDEX IF NOT EXISTS partners_health_idx ON partners.partners(system_health)`,
+			`CREATE INDEX IF NOT EXISTS partners_active_list_idx ON partners.partners(reference_partner DESC,display_name,id) WHERE lifecycle<>'ARCHIVED'`,
+			`CREATE INDEX IF NOT EXISTS partners_display_name_trgm_idx ON partners.partners USING gin(display_name gin_trgm_ops)`,
+			`CREATE INDEX IF NOT EXISTS partners_legal_name_trgm_idx ON partners.partners USING gin(legal_name gin_trgm_ops)`,
+			`CREATE INDEX IF NOT EXISTS partners_primary_domain_trgm_idx ON partners.partners USING gin(primary_domain gin_trgm_ops)`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -236,6 +244,26 @@ func boundedInt(raw string, fallback, min, max int) int {
 	return v
 }
 
+func (a *app) loadPartnerStats(whereSQL string, args []any) (int, map[string]int, int, error) {
+	var total, referenceCount int
+	var lifecycleJSON []byte
+	query := `SELECT
+		(SELECT COUNT(*) FROM partners.partners p WHERE ` + whereSQL + `) AS filtered_total,
+		(SELECT COUNT(*) FROM partners.partners WHERE reference_partner=TRUE) AS reference_count,
+		COALESCE((
+			SELECT jsonb_object_agg(s.lifecycle,s.cnt)
+			FROM (SELECT lifecycle,COUNT(*) AS cnt FROM partners.partners GROUP BY lifecycle) s
+		),'{}'::jsonb) AS lifecycle_counts`
+	if err := a.db.QueryRow(query, args...).Scan(&total, &referenceCount, &lifecycleJSON); err != nil {
+		return 0, nil, 0, err
+	}
+	lifecycleCounts := map[string]int{}
+	if len(lifecycleJSON) > 0 {
+		_ = json.Unmarshal(lifecycleJSON, &lifecycleCounts)
+	}
+	return total, lifecycleCounts, referenceCount, nil
+}
+
 func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -246,6 +274,11 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 		lifecycle := strings.TrimSpace(r.URL.Query().Get("lifecycle"))
 		health := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("health")))
 		includeArchived, _ := strconv.ParseBool(r.URL.Query().Get("include_archived"))
+		includeStats := true
+		if raw := strings.TrimSpace(r.URL.Query().Get("include_stats")); raw != "" {
+			if parsed, err := strconv.ParseBool(raw); err == nil { includeStats = parsed }
+		}
+		statsOnly, _ := strconv.ParseBool(r.URL.Query().Get("stats_only"))
 
 		where := []string{"1=1"}
 		args := []any{}
@@ -258,9 +291,7 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			n := len(args)
 			where = append(where, fmt.Sprintf(`(p.display_name ILIKE $%d OR p.legal_name ILIKE $%d OR p.id ILIKE $%d OR p.primary_domain ILIKE $%d)`, n, n, n, n))
 		}
-		if category != "" && category != "ALL" {
-			add(`p.category_id=$%d`, category)
-		}
+		if category != "" && category != "ALL" { add(`p.category_id=$%d`, category) }
 		if lifecycle != "" && lifecycle != "ALL" {
 			if !lifecycleValues[lifecycle] {
 				common.APIError(w, 400, "VALIDATION", "Invalid lifecycle filter")
@@ -281,14 +312,24 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 		}
 
 		whereSQL := strings.Join(where, " AND ")
-		var total int
-		if err := a.db.QueryRow(`SELECT COUNT(*) FROM partners.partners p WHERE `+whereSQL, args...).Scan(&total); err != nil {
-			common.APIError(w, 500, "DB", "Could not count partners")
+		if statsOnly {
+			total, lifecycleCounts, referenceCount, err := a.loadPartnerStats(whereSQL, args)
+			if err != nil {
+				common.APIError(w, 500, "DB", "Could not load partner statistics")
+				return
+			}
+			common.JSON(w, 200, map[string]any{
+				"items": []map[string]any{}, "count": 0, "total": total, "limit": limit, "offset": offset,
+				"has_more": false, "lifecycle_counts": lifecycleCounts, "reference_count": referenceCount,
+			})
 			return
 		}
-		queryArgs := append(append([]any{}, args...), limit, offset)
+
+		fetchLimit := limit
+		if !includeStats { fetchLimit = limit + 1 }
+		queryArgs := append(append([]any{}, args...), fetchLimit, offset)
 		rows, err := a.db.Query(
-			selectPartner+` WHERE `+whereSQL+` ORDER BY p.reference_partner DESC,p.display_name LIMIT $`+strconv.Itoa(len(args)+1)+` OFFSET $`+strconv.Itoa(len(args)+2),
+			selectPartner+` WHERE `+whereSQL+` ORDER BY p.reference_partner DESC,p.display_name,p.id LIMIT $`+strconv.Itoa(len(args)+1)+` OFFSET $`+strconv.Itoa(len(args)+2),
 			queryArgs...,
 		)
 		if err != nil {
@@ -298,25 +339,30 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			if p, err := scanPartner(rows); err == nil {
-				items = append(items, partnerMap(p))
-			}
+			if p, err := scanPartner(rows); err == nil { items = append(items, partnerMap(p)) }
 		}
+		hasMore := false
+		if !includeStats && len(items) > limit {
+			hasMore = true
+			items = items[:limit]
+		}
+		total := offset + len(items)
 		lifecycleCounts := map[string]int{}
-		countRows, countErr := a.db.Query(`SELECT lifecycle,COUNT(*) FROM partners.partners GROUP BY lifecycle`)
-		if countErr == nil {
-			defer countRows.Close()
-			for countRows.Next() {
-				var state string
-				var count int
-				if countRows.Scan(&state, &count) == nil { lifecycleCounts[state] = count }
-			}
-		}
 		referenceCount := 0
-		_ = a.db.QueryRow(`SELECT COUNT(*) FROM partners.partners WHERE reference_partner=TRUE`).Scan(&referenceCount)
+		if includeStats {
+			var statsErr error
+			total, lifecycleCounts, referenceCount, statsErr = a.loadPartnerStats(whereSQL, args)
+			if statsErr != nil {
+				common.APIError(w, 500, "DB", "Could not load partner statistics")
+				return
+			}
+			hasMore = offset+len(items) < total
+		} else if hasMore {
+			total++
+		}
 		common.JSON(w, 200, map[string]any{
 			"items": items, "count": len(items), "total": total, "limit": limit, "offset": offset,
-			"has_more": offset+len(items) < total, "lifecycle_counts": lifecycleCounts, "reference_count": referenceCount,
+			"has_more": hasMore, "lifecycle_counts": lifecycleCounts, "reference_count": referenceCount,
 		})
 	case http.MethodPost:
 		var in struct {
