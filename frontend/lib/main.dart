@@ -377,8 +377,12 @@ class _HimateAppState extends State<HimateApp> {
     }
   }
 
-  Future<void> login(String email, String password) async {
-    user = await api.post('/api/v1/auth/login', {'email': email, 'password': password});
+  Future<void> login(String email, String password, bool remember) async {
+    user = await api.post('/api/v1/auth/login', {
+      'email': email,
+      'password': password,
+      'remember': remember,
+    });
     if (!mounted) return;
     setState(() {});
     final target = _pendingDeepLink;
@@ -553,7 +557,7 @@ class _SignedInRedirect extends StatelessWidget {
 
 class LoginPage extends StatefulWidget {
   const LoginPage({required this.onLogin, super.key});
-  final Future<void> Function(String email, String password) onLogin;
+  final Future<void> Function(String email, String password, bool remember) onLogin;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -581,7 +585,7 @@ class _LoginPageState extends State<LoginPage> {
     }
     setState(() { busy = true; error = null; });
     try {
-      await widget.onLogin(email.text.trim(), password.text);
+      await widget.onLogin(email.text.trim(), password.text, remember);
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -988,31 +992,41 @@ class HimateLogo extends StatelessWidget {
   final bool compact;
   final double width;
 
+  static const String source = '/art/himate_logo_master_v2.webp';
+
+  Widget _fallback(BuildContext context, {required double height}) {
+    return Container(
+      width: width,
+      height: height,
+      alignment: Alignment.centerLeft,
+      child: Text(
+        'HIMATE SYSTEM',
+        maxLines: 1,
+        overflow: TextOverflow.clip,
+        style: GoogleFonts.cormorantGaramond(
+          color: onDark ? const Color(0xFFF2D79F) : brandNavy,
+          fontSize: compact ? 12 : (width / 7.2).clamp(16, 31),
+          fontWeight: FontWeight.w700,
+          letterSpacing: compact ? .2 : 1.1,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    const asset = 'assets/himate_logo_master_v2.webp';
-    if (compact) {
-      return SizedBox(
-        width: width,
-        height: width,
-        child: Image.asset(
-          asset,
-          fit: BoxFit.cover,
-          alignment: Alignment.centerLeft,
-          filterQuality: FilterQuality.high,
-          semanticLabel: 'HIMATE',
-        ),
-      );
-    }
     const ratio = 300 / 80;
+    final height = compact ? width : width / ratio;
     return SizedBox(
       width: width,
-      height: width / ratio,
-      child: Image.asset(
-        asset,
-        fit: BoxFit.contain,
+      height: height,
+      child: Image.network(
+        source,
+        fit: compact ? BoxFit.cover : BoxFit.contain,
+        alignment: compact ? Alignment.centerLeft : Alignment.center,
         filterQuality: FilterQuality.high,
-        semanticLabel: 'HIMATE System',
+        semanticLabel: compact ? 'HIMATE' : 'HIMATE System',
+        errorBuilder: (context, error, stackTrace) => _fallback(context, height: height),
       ),
     );
   }
@@ -1026,12 +1040,28 @@ class BrandMark extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
     width: size,
     height: size,
-    child: Image.asset(
-      'assets/himate_logo_master_v2.webp',
+    child: Image.network(
+      HimateLogo.source,
       fit: BoxFit.cover,
       alignment: Alignment.centerLeft,
       filterQuality: FilterQuality.high,
       semanticLabel: 'HIMATE',
+      errorBuilder: (context, error, stackTrace) => Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: brandGold.withOpacity(.12),
+          borderRadius: BorderRadius.circular(size * .22),
+          border: Border.all(color: brandGold.withOpacity(.36)),
+        ),
+        child: Text(
+          'H',
+          style: GoogleFonts.cormorantGaramond(
+            color: brandGold,
+            fontWeight: FontWeight.w800,
+            fontSize: size * .58,
+          ),
+        ),
+      ),
     ),
   );
 }
