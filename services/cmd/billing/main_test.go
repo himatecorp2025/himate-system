@@ -94,3 +94,16 @@ func TestModuleActivationDateUsesCatalogTimestamp(t *testing.T) {
 		t.Fatalf("expected fallback activation date got %s", value)
 	}
 }
+
+func TestCommercialEvidenceKinds(t *testing.T) {
+	for _, kind := range []string{"PAYMENT_EVIDENCE", "INVOICE", "RECEIPT", "CONTRACT", " receipt "} {
+		if !isCommercialEvidenceKind(kind) {
+			t.Fatalf("expected commercial evidence kind %q", kind)
+		}
+	}
+	for _, kind := range []string{"OTHER", "NOTE", ""} {
+		if isCommercialEvidenceKind(kind) {
+			t.Fatalf("unexpected commercial evidence kind %q", kind)
+		}
+	}
+}
