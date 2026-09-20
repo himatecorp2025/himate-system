@@ -1609,6 +1609,7 @@ class _PartnersPageState extends State<PartnersPage> {
   String query = '';
   String categoryFilter = 'ALL';
   String lifecycleFilter = 'ALL';
+  String healthFilter = 'ALL';
   static const int pageSize = 24;
   int offset = 0;
   int total = 0;
@@ -1649,6 +1650,7 @@ class _PartnersPageState extends State<PartnersPage> {
     if (query.trim().isNotEmpty) params['q'] = query.trim();
     if (categoryFilter != 'ALL') params['category'] = categoryFilter;
     if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
+    if (healthFilter != 'ALL') params['health'] = healthFilter;
     return Uri(path: '/api/v1/partners', queryParameters: params);
   }
 
@@ -1893,10 +1895,41 @@ class _PartnersPageState extends State<PartnersPage> {
                               load(reset: true);
                             },
                           );
+                          final health = DropdownButtonFormField<String>(
+                            value: healthFilter,
+                            decoration: const InputDecoration(labelText: 'Health'),
+                            items: const [
+                              DropdownMenuItem(value: 'ALL', child: Text('All health states')),
+                              DropdownMenuItem(value: 'HEALTHY', child: Text('Healthy')),
+                              DropdownMenuItem(value: 'WARNING', child: Text('Warning')),
+                              DropdownMenuItem(value: 'OFFLINE', child: Text('Offline')),
+                              DropdownMenuItem(value: 'UNKNOWN', child: Text('Unknown')),
+                            ],
+                            onChanged: (v) {
+                              setState(() => healthFilter = v ?? 'ALL');
+                              load(reset: true);
+                            },
+                          );
                           if (compact) {
-                            return Column(children: [search, const SizedBox(height: 10), category, const SizedBox(height: 10), lifecycle]);
+                            return Column(children: [
+                              search,
+                              const SizedBox(height: 10),
+                              category,
+                              const SizedBox(height: 10),
+                              lifecycle,
+                              const SizedBox(height: 10),
+                              health,
+                            ]);
                           }
-                          return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: category), const SizedBox(width: 10), Expanded(child: lifecycle)]);
+                          return Row(children: [
+                            Expanded(flex: 2, child: search),
+                            const SizedBox(width: 10),
+                            Expanded(child: category),
+                            const SizedBox(width: 10),
+                            Expanded(child: lifecycle),
+                            const SizedBox(width: 10),
+                            Expanded(child: health),
+                          ]);
                         },
                       ),
                     ),
