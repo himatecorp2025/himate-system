@@ -11,9 +11,6 @@ func TestConnectorTokenHashIsStableAndOneWay(t *testing.T) {
 }
 
 func TestConnectorTokenLookupTreatsBase64URLTokenAsOpaque(t *testing.T) {
-	// '_' is part of the Base64URL alphabet and may legitimately occur in
-	// either random segment. Authentication must therefore hash the complete
-	// token instead of splitting it on underscores.
 	token := "hmc_crd_ab_cd_ef_secret_with_many_under_scores"
 	got, err := connectorTokenLookupHash(token)
 	if err != nil {
@@ -22,7 +19,6 @@ func TestConnectorTokenLookupTreatsBase64URLTokenAsOpaque(t *testing.T) {
 	if got != tokenHash(token) {
 		t.Fatal("connector lookup must use the hash of the complete token")
 	}
-
 	if _, err := connectorTokenLookupHash("invalid_token"); err == nil {
 		t.Fatal("invalid connector token prefix must be rejected")
 	}

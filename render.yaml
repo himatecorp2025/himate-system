@@ -97,6 +97,46 @@ services:
         sync: false
 
   - type: pserv
+    name: himate-storage
+    runtime: docker
+    dockerfilePath: ./services/docker/storage.Dockerfile
+    dockerContext: .
+    autoDeploy: false
+    disk:
+      name: himate-partner-storage
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: HIMATE_STORAGE_ROOT
+        value: /data/partners
+
+  - type: pserv
+    name: himate-runtime
+    runtime: docker
+    dockerfilePath: ./services/docker/runtime.Dockerfile
+    dockerContext: .
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+
+  - type: pserv
     name: himate-impact
     runtime: docker
     dockerfilePath: ./services/docker/impact.Dockerfile
@@ -129,6 +169,11 @@ services:
           type: pserv
           name: himate-catalog
           envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: PARTNER_RUNTIME_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-runtime
+          property: hostport
 
   - type: pserv
     name: himate-connector
@@ -197,6 +242,11 @@ services:
           type: pserv
           name: himate-connector
           property: hostport
+      - key: STORAGE_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-storage
+          property: hostport
 
   - type: pserv
     name: himate-health
@@ -253,6 +303,16 @@ services:
         fromService:
           type: pserv
           name: himate-impact
+          property: hostport
+      - key: STORAGE_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-storage
+          property: hostport
+      - key: PARTNER_RUNTIME_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-runtime
           property: hostport
 
   - type: web
@@ -333,6 +393,16 @@ services:
         fromService:
           type: pserv
           name: himate-impact
+          property: hostport
+      - key: STORAGE_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-storage
+          property: hostport
+      - key: PARTNER_RUNTIME_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-runtime
           property: hostport
 
   - type: cron

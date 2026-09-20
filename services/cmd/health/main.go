@@ -14,17 +14,17 @@ import (
 )
 
 type app struct {
-	db *sql.DB
-	token string
+	db     *sql.DB
+	token  string
 	client *http.Client
-	hosts map[string]string
+	hosts  map[string]string
 }
 
 type serviceResult struct {
-	Name string `json:"name"`
-	Status string `json:"status"`
-	LatencyMS int64 `json:"latency_ms"`
-	Error string `json:"error,omitempty"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	LatencyMS int64     `json:"latency_ms"`
+	Error     string    `json:"error,omitempty"`
 	CheckedAt time.Time `json:"checked_at"`
 }
 
@@ -42,6 +42,8 @@ func main(){
 			"environments":os.Getenv("ENVIRONMENTS_HOSTPORT"),
 			"connector":os.Getenv("CONNECTOR_HOSTPORT"),
 			"impact":os.Getenv("IMPACT_HOSTPORT"),
+			"storage":os.Getenv("STORAGE_HOSTPORT"),
+			"partner-runtime":os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 		},
 	}
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
@@ -67,6 +69,13 @@ func (a *app)migrate(ctx context.Context)error{
 				connector_health TEXT NOT NULL DEFAULT 'UNKNOWN',environment_status TEXT NOT NULL DEFAULT 'UNKNOWN',
 				provisioning_status TEXT NOT NULL DEFAULT 'UNKNOWN',last_seen_at TIMESTAMPTZ,checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 			)`,
+		}},
+		{Version:2,Name:"partner-health-signals",Statements:[]string{
+			`ALTER TABLE health.partner_snapshots ADD COLUMN IF NOT EXISTS database_health TEXT NOT NULL DEFAULT 'UNKNOWN'`,
+			`ALTER TABLE health.partner_snapshots ADD COLUMN IF NOT EXISTS storage_health TEXT NOT NULL DEFAULT 'UNKNOWN'`,
+			`ALTER TABLE health.partner_snapshots ADD COLUMN IF NOT EXISTS hostname_status TEXT NOT NULL DEFAULT 'UNKNOWN'`,
+			`ALTER TABLE health.partner_snapshots ADD COLUMN IF NOT EXISTS sync_status TEXT NOT NULL DEFAULT 'NEVER'`,
+			`ALTER TABLE health.partner_snapshots ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ`,
 		}},
 	})
 }
@@ -123,52 +132,93 @@ func timeValue(v any)*time.Time{
 
 func (a *app)partnerHealth(ctx context.Context)[]map[string]any{
 	type itemsResponse struct{Items []map[string]any `json:"items"`}
-	var connectors,environments,provisioning itemsResponse
+	var connectors,environments,provisioning,databases,storage itemsResponse
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(5)
 	go func(){defer wg.Done();_ = a.internalGET(ctx,a.hosts["connector"],"/internal/v1/connectors/summary",&connectors)}()
 	go func(){defer wg.Done();_ = a.internalGET(ctx,a.hosts["environments"],"/internal/v1/environments/summary",&environments)}()
 	go func(){defer wg.Done();_ = a.internalGET(ctx,a.hosts["provisioning"],"/internal/v1/provisioning/summary",&provisioning)}()
+	go func(){defer wg.Done();_ = a.internalGET(ctx,a.hosts["provisioning"],"/internal/v1/provisioning/database-health",&databases)}()
+	go func(){defer wg.Done();_ = a.internalGET(ctx,a.hosts["storage"],"/internal/v1/storage/summary",&storage)}()
 	wg.Wait()
 
 	byID:=map[string]map[string]any{}
-	ensure:=func(id string)map[string]any{if byID[id]==nil{byID[id]=map[string]any{"partner_id":id,"connector_health":"UNKNOWN","environment_status":"UNKNOWN","provisioning_status":"UNKNOWN","platform_version":"","last_seen_at":nil}};return byID[id]}
+	ensure:=func(id string)map[string]any{
+		if byID[id]==nil{
+			byID[id]=map[string]any{
+				"partner_id":id,"connector_health":"UNKNOWN","environment_status":"UNKNOWN","provisioning_status":"UNKNOWN",
+				"platform_version":"","last_seen_at":nil,"database_health":"UNKNOWN","storage_health":"UNKNOWN",
+				"hostname_status":"UNKNOWN","sync_status":"NEVER","last_sync_at":nil,
+			}
+		}
+		return byID[id]
+	}
 	for _,x:=range connectors.Items{
 		id:=stringValue(x["partner_id"]);if id==""{continue};p:=ensure(id)
 		environment:=stringValue(x["environment"])
 		selected:=stringValue(p["_connector_environment"])
-		// Prefer production telemetry when both staging and production report.
 		if selected=="" || environment=="PRODUCTION" || selected!="PRODUCTION" {
 			p["connector_health"]=stringValue(x["health"])
 			p["platform_version"]=stringValue(x["reported_version"])
 			p["last_seen_at"]=x["last_seen_at"]
+			p["last_sync_at"]=x["last_metric_sync_at"]
 			p["_connector_environment"]=environment
 		}
 	}
 	for _,x:=range environments.Items{
 		id:=stringValue(x["partner_id"]);if id==""{continue};p:=ensure(id)
 		kind:=stringValue(x["kind"])
-		if kind=="PRODUCTION" || p["environment_status"]=="UNKNOWN"{p["environment_status"]=stringValue(x["environment_status"])}
-		if p["platform_version"]==""{p["platform_version"]=stringValue(x["platform_version"])}
+		selected:=stringValue(p["_environment_kind"])
+		if selected=="" || kind=="PRODUCTION" || selected!="PRODUCTION"{
+			p["environment_status"]=stringValue(x["environment_status"])
+			if p["platform_version"]==""{p["platform_version"]=stringValue(x["platform_version"])}
+			switch stringValue(x["runtime_status"]){
+			case "OK": p["hostname_status"]="REACHABLE"
+			case "ERROR": p["hostname_status"]="ERROR"
+			default: p["hostname_status"]="UNKNOWN"
+			}
+			p["_environment_kind"]=kind
+		}
 	}
 	for _,x:=range provisioning.Items{
 		id:=stringValue(x["partner_id"]);if id==""{continue};p:=ensure(id);p["provisioning_status"]=stringValue(x["status"])
 	}
+	for _,x:=range databases.Items{
+		id:=stringValue(x["partner_id"]);if id==""{continue};p:=ensure(id);p["database_health"]=stringValue(x["status"])
+	}
+	for _,x:=range storage.Items{
+		id:=stringValue(x["partner_id"]);if id==""{continue};p:=ensure(id);p["storage_health"]=stringValue(x["status"])
+	}
+
 	items:=make([]map[string]any,0,len(byID))
 	now:=time.Now().UTC()
 	for id,p:=range byID{
 		conn:=stringValue(p["connector_health"]);env:=stringValue(p["environment_status"]);prov:=stringValue(p["provisioning_status"])
+		dbHealth:=stringValue(p["database_health"]);storageHealth:=stringValue(p["storage_health"]);hostname:=stringValue(p["hostname_status"])
+		syncStatus:="NEVER"
+		if synced:=timeValue(p["last_sync_at"]);synced!=nil{
+			if now.Sub(*synced)>15*time.Minute{syncStatus="STALE"}else{syncStatus="CURRENT"}
+		}
+		p["sync_status"]=syncStatus
 		overall:="OK"
-		if conn=="ERROR"||conn=="OFFLINE"||env=="FAILED"||prov=="FAILED"{overall="ERROR"}else if conn=="DEGRADED"||conn=="UNKNOWN"||env=="UNKNOWN"||prov=="BLOCKED_LICENSE"{overall="DEGRADED"}
+		if conn=="ERROR"||conn=="OFFLINE"||env=="FAILED"||prov=="FAILED"||dbHealth=="ERROR"||storageHealth=="ERROR"||hostname=="ERROR"{
+			overall="ERROR"
+		}else if conn=="DEGRADED"||conn=="UNKNOWN"||env=="UNKNOWN"||prov=="BLOCKED_LICENSE"||dbHealth=="UNKNOWN"||storageHealth=="UNKNOWN"||hostname=="UNKNOWN"||syncStatus=="STALE"||syncStatus=="NEVER"{
+			overall="DEGRADED"
+		}
 		if seen:=timeValue(p["last_seen_at"]);seen!=nil && now.Sub(*seen)>15*time.Minute && conn!="UNKNOWN"{overall="DEGRADED"}
 		p["overall_status"]=overall;p["checked_at"]=now
-		delete(p,"_connector_environment")
-		var last any=p["last_seen_at"]
-		_,_ = a.db.ExecContext(ctx,`INSERT INTO health.partner_snapshots(partner_id,overall_status,platform_version,connector_health,environment_status,provisioning_status,last_seen_at,checked_at)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+		delete(p,"_connector_environment");delete(p,"_environment_kind")
+		var lastSeen any=p["last_seen_at"];var lastSync any=p["last_sync_at"]
+		_,_ = a.db.ExecContext(ctx,`INSERT INTO health.partner_snapshots(
+				partner_id,overall_status,platform_version,connector_health,environment_status,provisioning_status,last_seen_at,checked_at,
+				database_health,storage_health,hostname_status,sync_status,last_sync_at)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 			ON CONFLICT(partner_id) DO UPDATE SET overall_status=EXCLUDED.overall_status,platform_version=EXCLUDED.platform_version,
-				connector_health=EXCLUDED.connector_health,environment_status=EXCLUDED.environment_status,provisioning_status=EXCLUDED.provisioning_status,last_seen_at=EXCLUDED.last_seen_at,checked_at=EXCLUDED.checked_at`,
-			id,overall,stringValue(p["platform_version"]),conn,env,prov,last,now)
+				connector_health=EXCLUDED.connector_health,environment_status=EXCLUDED.environment_status,provisioning_status=EXCLUDED.provisioning_status,
+				last_seen_at=EXCLUDED.last_seen_at,checked_at=EXCLUDED.checked_at,database_health=EXCLUDED.database_health,
+				storage_health=EXCLUDED.storage_health,hostname_status=EXCLUDED.hostname_status,sync_status=EXCLUDED.sync_status,last_sync_at=EXCLUDED.last_sync_at`,
+			id,overall,stringValue(p["platform_version"]),conn,env,prov,lastSeen,now,dbHealth,storageHealth,hostname,syncStatus,lastSync)
 		items=append(items,p)
 	}
 	return items
@@ -178,7 +228,7 @@ func (a *app)monitorLoop(){
 	ticker:=time.NewTicker(60*time.Second)
 	defer ticker.Stop()
 	run:=func(){
-		ctx,cancel:=context.WithTimeout(context.Background(),8*time.Second)
+		ctx,cancel:=context.WithTimeout(context.Background(),12*time.Second)
 		defer cancel()
 		_ = a.checkServices(ctx)
 		_ = a.partnerHealth(ctx)
@@ -190,10 +240,9 @@ func (a *app)monitorLoop(){
 func (a *app)partnerSnapshots(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
 	ids:=[]string{}
-	for _,raw:=range strings.Split(r.URL.Query().Get("ids"),","){
-		if v:=strings.TrimSpace(raw);v!=""{ids=append(ids,v)}
-	}
-	q:=`SELECT partner_id,overall_status,platform_version,connector_health,environment_status,provisioning_status,last_seen_at,checked_at FROM health.partner_snapshots`
+	for _,raw:=range strings.Split(r.URL.Query().Get("ids"),","){if v:=strings.TrimSpace(raw);v!=""{ids=append(ids,v)}}
+	q:=`SELECT partner_id,overall_status,platform_version,connector_health,environment_status,provisioning_status,last_seen_at,checked_at,
+		database_health,storage_health,hostname_status,sync_status,last_sync_at FROM health.partner_snapshots`
 	args:=[]any{}
 	if len(ids)>0{q+=" WHERE partner_id = ANY($1)";args=append(args,ids)}
 	q+=" ORDER BY partner_id"
@@ -202,21 +251,26 @@ func (a *app)partnerSnapshots(w http.ResponseWriter,r *http.Request){
 	defer rows.Close()
 	items:=[]map[string]any{}
 	for rows.Next(){
-		var id,overall,version,connector,environment,provisioning string
-		var last sql.NullTime
+		var id,overall,version,connector,environment,provisioning,databaseHealth,storageHealth,hostnameStatus,syncStatus string
+		var last,lastSync sql.NullTime
 		var checked time.Time
-		if rows.Scan(&id,&overall,&version,&connector,&environment,&provisioning,&last,&checked)==nil{
+		if rows.Scan(&id,&overall,&version,&connector,&environment,&provisioning,&last,&checked,&databaseHealth,&storageHealth,&hostnameStatus,&syncStatus,&lastSync)==nil{
 			var lastSeen any;if last.Valid{lastSeen=last.Time.UTC()}
-			items=append(items,map[string]any{"partner_id":id,"overall_status":overall,"platform_version":version,"connector_health":connector,"environment_status":environment,"provisioning_status":provisioning,"last_seen_at":lastSeen,"checked_at":checked})
+			var synced any;if lastSync.Valid{synced=lastSync.Time.UTC()}
+			items=append(items,map[string]any{
+				"partner_id":id,"overall_status":overall,"platform_version":version,"connector_health":connector,
+				"environment_status":environment,"provisioning_status":provisioning,"database_health":databaseHealth,
+				"storage_health":storageHealth,"hostname_status":hostnameStatus,"sync_status":syncStatus,
+				"last_seen_at":lastSeen,"last_sync_at":synced,"checked_at":checked,
+			})
 		}
 	}
 	common.JSON(w,200,map[string]any{"items":items})
 }
 
-
 func (a *app)systemHealth(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
-	ctx,cancel:=context.WithTimeout(r.Context(),5*time.Second);defer cancel()
+	ctx,cancel:=context.WithTimeout(r.Context(),12*time.Second);defer cancel()
 	services:=a.checkServices(ctx)
 	partners:=a.partnerHealth(ctx)
 	overall:="OK"
