@@ -514,13 +514,18 @@ func dateOnly(v time.Time) time.Time { return time.Date(v.UTC().Year(), v.UTC().
 func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	t, err := a.ensureTerms(id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load terms"); return }
-	extra, mods, err := a.catalogFees(r.Context(), id)
+	_, rawMods, err := a.catalogFees(r.Context(), id)
 	if err != nil { common.APIError(w, 502, "CATALOG", "Could not load billable modules"); return }
 	now := time.Now().UTC()
 	base := effectiveBaseFee(t, now)
 	start, end := cycleWindow(t.ServiceAnchorDate, now)
-	if err := a.syncSubscriptions(r.Context(), id, t.Currency, mods, now); err != nil {
+	if err := a.syncSubscriptions(r.Context(), id, t.Currency, rawMods, now); err != nil {
 		common.APIError(w, 500, "DB", "Could not synchronize module subscriptions")
+		return
+	}
+	extra, mods, err := a.effectiveModuleFees(r.Context(), id, rawMods, now)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not calculate effective module fees")
 		return
 	}
 	common.JSON(w, 200, map[string]any{
@@ -549,6 +554,57 @@ func (a *app) catalogFees(ctx context.Context, id string) (float64, []map[string
 	return out.Extra, out.Items, nil
 }
 
+func (a *app) effectiveModuleFees(ctx context.Context, id string, mods []map[string]any, at time.Time) (float64, []map[string]any, error) {
+	type subState struct {
+		Cancel    bool
+		PeriodEnd time.Time
+		Status    string
+	}
+	states := map[string]subState{}
+	rows, err := a.db.QueryContext(ctx, `SELECT module_key,cancel_at_period_end,period_end,payment_status
+		FROM billing.module_subscriptions WHERE partner_id=$1`, id)
+	if err != nil { return 0, nil, err }
+	for rows.Next() {
+		var key, status string
+		var cancel bool
+		var periodEnd time.Time
+		if err := rows.Scan(&key, &cancel, &periodEnd, &status); err != nil {
+			rows.Close()
+			return 0, nil, err
+		}
+		states[key] = subState{Cancel: cancel, PeriodEnd: dateOnly(periodEnd), Status: status}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, nil, err
+	}
+	rows.Close()
+
+	today := dateOnly(at)
+	effective := make([]map[string]any, 0, len(mods))
+	total := 0.0
+	for _, mod := range mods {
+		key := fmt.Sprint(mod["key"])
+		if state, ok := states[key]; ok {
+			if state.Cancel && !today.Before(state.PeriodEnd) {
+				continue
+			}
+			if state.Status == "INACTIVE" && state.Cancel {
+				continue
+			}
+		}
+		effective = append(effective, mod)
+		if mod["included_in_base"] == true { continue }
+		if value, ok := mod["partner_price"].(float64); ok {
+			total += value
+		} else if value, ok := mod["partner_price"].(json.Number); ok {
+			v, _ := value.Float64()
+			total += v
+		}
+	}
+	return math.Round(total*100) / 100, effective, nil
+}
+
 func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods []map[string]any, now time.Time) error {
 	today := dateOnly(now)
 	activeKeys := make([]string, 0, len(mods))
@@ -556,6 +612,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		key := fmt.Sprint(mod["key"])
 		if key == "" { continue }
 		activeKeys = append(activeKeys, key)
+
 		price := 0.0
 		if v, ok := mod["partner_price"].(float64); ok {
 			price = v
@@ -563,21 +620,55 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 			price, _ = v.Float64()
 		}
 
-		activation := today
-		var existing time.Time
-		err := a.db.QueryRowContext(ctx, `SELECT activation_date FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2`, id, key).Scan(&existing)
-		if err == nil {
-			activation = dateOnly(existing)
-		} else if err != sql.ErrNoRows {
-			return err
+		var activation, existingStart, existingEnd time.Time
+		var autoRenew, cancelAtEnd bool
+		var paymentStatus string
+		err := a.db.QueryRowContext(ctx, `SELECT activation_date,period_start,period_end,auto_renew,cancel_at_period_end,payment_status
+			FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2`, id, key).
+			Scan(&activation, &existingStart, &existingEnd, &autoRenew, &cancelAtEnd, &paymentStatus)
+		if err == sql.ErrNoRows {
+			start, end := cycleWindow(today, today)
+			if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(
+					partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
+				) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING')`,
+				id, key, currency, today, start, end, price); err != nil {
+				return err
+			}
+			continue
+		}
+		if err != nil { return err }
+
+		activation = dateOnly(activation)
+		existingEnd = dateOnly(existingEnd)
+		if cancelAtEnd {
+			if !today.Before(existingEnd) {
+				if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
+					SET auto_renew=FALSE,payment_status='INACTIVE',updated_at=NOW()
+					WHERE partner_id=$1 AND module_key=$2`, id, key); err != nil {
+					return err
+				}
+				continue
+			}
+			// A scheduled cancellation keeps the already-paid current period
+			// intact and never gets silently reset by a catalog refresh.
+			if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
+				SET currency=$3,price=$4,auto_renew=FALSE,cancel_at_period_end=TRUE,updated_at=NOW()
+				WHERE partner_id=$1 AND module_key=$2`, id, key, currency, price); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// A module that was deactivated (not cancelled by the subscriber) begins
+		// a fresh 30-day subscription when it is explicitly activated again.
+		if paymentStatus == "INACTIVE" {
+			activation = today
 		}
 		start, end := cycleWindow(activation, today)
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(
-				partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
-			) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING')
-			ON CONFLICT(partner_id,module_key) DO UPDATE SET
-				currency=EXCLUDED.currency,period_start=EXCLUDED.period_start,period_end=EXCLUDED.period_end,
-				price=EXCLUDED.price,auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()`,
+		if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
+				currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
+				auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()
+			WHERE partner_id=$1 AND module_key=$2`,
 			id, key, currency, activation, start, end, price); err != nil {
 			return err
 		}
@@ -585,7 +676,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 
 	if len(activeKeys) == 0 {
 		_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-			SET auto_renew=FALSE,cancel_at_period_end=TRUE,payment_status='INACTIVE',updated_at=NOW()
+			SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',updated_at=NOW()
 			WHERE partner_id=$1 AND payment_status<>'INACTIVE'`, id)
 		return err
 	}
@@ -596,8 +687,8 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		args = append(args, key)
 		placeholders[i] = fmt.Sprintf("$%d", i+2)
 	}
-	_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-		SET auto_renew=FALSE,cancel_at_period_end=TRUE,payment_status='INACTIVE',updated_at=NOW()
+	_, err = a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
+		SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',updated_at=NOW()
 		WHERE partner_id=$1 AND module_key NOT IN (`+strings.Join(placeholders, ",")+`) AND payment_status<>'INACTIVE'`, args...)
 	return err
 }
@@ -806,7 +897,10 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		t, err := a.ensureTerms(id)
 		if err != nil { return err }
 		if !isCycleBoundary(t.ServiceAnchorDate, at) { continue }
-		extra, _, err := a.catalogFees(ctx, id)
+		_, rawMods, err := a.catalogFees(ctx, id)
+		if err != nil { return err }
+		if err := a.syncSubscriptions(ctx, id, t.Currency, rawMods, at); err != nil { return err }
+		extra, _, err := a.effectiveModuleFees(ctx, id, rawMods, at)
 		if err != nil { return err }
 		start := at.AddDate(0, 0, -30)
 		base := effectiveBaseFee(t, start)
