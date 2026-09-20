@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+)
 
 func TestPreviewTokenHashBoundary(t *testing.T) {
 	raw := randomToken()
@@ -84,5 +88,34 @@ func TestMediaIDsAreUniqueAndSorted(t *testing.T) {
 	ids := mediaIDs(in)
 	if len(ids) != 2 || ids[0] != "cms_media_a" || ids[1] != "cms_media_b" {
 		t.Fatalf("unexpected media IDs: %#v", ids)
+	}
+}
+
+
+func TestCMSContentBounds(t *testing.T) {
+	a := &app{}
+	tooLongBody := versionInput{
+		Slug: "bounded-page",
+		Sections: []sectionInput{
+			{ID: "hero", ComponentType: "HERO", Heading: "Heading", Body: strings.Repeat("x", 20001), Visible: true, SortOrder: 10, Settings: map[string]any{}},
+		},
+	}
+	if err := a.validateContent(context.Background(), "", tooLongBody, false); err == nil {
+		t.Fatal("oversized section body must be rejected")
+	}
+
+	tooMany := versionInput{Slug: "many-sections"}
+	for i := 0; i < 101; i++ {
+		tooMany.Sections = append(tooMany.Sections, sectionInput{
+			ID: "section-" + strings.Repeat("a", i%5+1),
+			ComponentType: "TEXT",
+			Heading: "Heading",
+			Visible: true,
+			SortOrder: i,
+			Settings: map[string]any{},
+		})
+	}
+	if err := a.validateContent(context.Background(), "", tooMany, false); err == nil {
+		t.Fatal("more than 100 sections must be rejected")
 	}
 }
