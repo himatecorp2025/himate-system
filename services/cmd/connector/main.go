@@ -203,18 +203,24 @@ func bearer(r *http.Request) string {
 	return ""
 }
 
+func connectorTokenLookupHash(token string)(string,error){
+	token=strings.TrimSpace(token)
+	if token=="" { return "",fmt.Errorf("missing connector credential") }
+	if !strings.HasPrefix(token,"hmc_crd_") { return "",fmt.Errorf("invalid connector credential") }
+	// The token is intentionally opaque. Base64URL may contain '_' characters,
+	// so the credential identity must never be reconstructed by splitting it.
+	return tokenHash(token),nil
+}
+
 func (a *app) authenticate(r *http.Request)(credential,error){
 	token:=bearer(r)
-	if token=="" { return credential{},fmt.Errorf("missing connector credential") }
-	if !strings.HasPrefix(token,"hmc_crd_") { return credential{},fmt.Errorf("invalid connector credential") }
+	got,err:=connectorTokenLookupHash(token)
+	if err!=nil { return credential{},err }
 
-	// Never parse credential IDs out of the opaque bearer token. Base64URL
-	// legitimately contains '_' characters, so delimiter-based parsing makes
-	// authentication nondeterministic. Resolve the credential by the hash of
-	// the complete bearer secret instead.
-	got:=tokenHash(token)
+	// Resolve by the hash of the complete bearer secret. This is deterministic
+	// for every valid Base64URL token and does not expose or parse secret parts.
 	var c credential
-	err:=a.db.QueryRow(`SELECT partner_id,environment,credential_id,token_hash,active,created_at,rotated_at,last_used_at
+	err=a.db.QueryRow(`SELECT partner_id,environment,credential_id,token_hash,active,created_at,rotated_at,last_used_at
 		FROM connector.credentials WHERE token_hash=$1`,got).
 		Scan(&c.PartnerID,&c.Environment,&c.CredentialID,&c.TokenHash,&c.Active,&c.CreatedAt,&c.RotatedAt,&c.LastUsedAt)
 	if err!=nil || !c.Active { return credential{},fmt.Errorf("invalid connector credential") }
