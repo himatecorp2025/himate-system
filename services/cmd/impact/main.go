@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -16,7 +17,12 @@ import (
 	"time"
 )
 
-type app struct{ db *sql.DB }
+type app struct {
+	db *sql.DB
+	token string
+	evidenceHost string
+	client *http.Client
+}
 
 var metricKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.]{2,127}$`)
 var provenanceValues = map[string]bool{
@@ -26,7 +32,8 @@ var aggregationValues = map[string]bool{"SUM": true, "LATEST": true, "AVERAGE": 
 var scopeValues = map[string]bool{"GLOBAL": true, "PARTNER": true, "BOTH": true}
 
 func adminProvenanceAllowed(v string) bool {
-	return strings.ToUpper(strings.TrimSpace(v)) == "MANUAL"
+	v = strings.ToUpper(strings.TrimSpace(v))
+	return v == "MANUAL" || v == "VERIFIED_DOCUMENT"
 }
 
 func connectorProvenanceAllowed(v string) bool {
@@ -42,7 +49,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	a := &app{db: db}
+	a := &app{
+		db: db,
+		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
+		evidenceHost: os.Getenv("EVIDENCE_HOSTPORT"),
+		client: &http.Client{Timeout: 5 * time.Second},
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := a.migrate(ctx); err != nil {
@@ -114,6 +126,11 @@ func (a *app) migrate(ctx context.Context) error {
 				CHECK(period_end >= period_start)
 			)`,
 		}},
+		{Version: 3, Name: "verified-evidence-links", Statements: []string{
+			`ALTER TABLE impact.metric_values ADD COLUMN IF NOT EXISTS evidence_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE impact.metric_baselines ADD COLUMN IF NOT EXISTS evidence_id TEXT NOT NULL DEFAULT ''`,
+			`CREATE INDEX IF NOT EXISTS impact_values_evidence_idx ON impact.metric_values(evidence_id) WHERE evidence_id<>''`,
+		}},
 	})
 }
 
@@ -174,6 +191,7 @@ type metricInput struct {
 	Provenance string `json:"provenance"`
 	SourceRef string `json:"source_ref"`
 	Metadata map[string]any `json:"metadata"`
+	EvidenceID string `json:"evidence_id"`
 }
 
 func parseMetricInput(in metricInput)(metricInput,time.Time,time.Time,error){
@@ -196,6 +214,8 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
 		metricKey:=strings.TrimSpace(r.URL.Query().Get("metric_key"))
+		periodStart:=strings.TrimSpace(r.URL.Query().Get("period_start"))
+		periodEnd:=strings.TrimSpace(r.URL.Query().Get("period_end"))
 		limit:=100
 		if raw:=r.URL.Query().Get("limit");raw!="" {
 			if v,err:=strconv.Atoi(raw);err==nil && v>0 && v<=500 { limit=v }
@@ -204,8 +224,20 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 		args:=[]any{}
 		if partnerID!="" { args=append(args,partnerID); where=append(where,fmt.Sprintf("v.partner_id=$%d",len(args))) }
 		if metricKey!="" { args=append(args,metricKey); where=append(where,fmt.Sprintf("v.metric_key=$%d",len(args))) }
+		if periodStart!="" {
+			start,err:=time.Parse("2006-01-02",periodStart)
+			if err!=nil { common.APIError(w,400,"VALIDATION","period_start must be YYYY-MM-DD"); return }
+			args=append(args,start)
+			where=append(where,fmt.Sprintf("v.period_end >= $%d",len(args)))
+		}
+		if periodEnd!="" {
+			end,err:=time.Parse("2006-01-02",periodEnd)
+			if err!=nil { common.APIError(w,400,"VALIDATION","period_end must be YYYY-MM-DD"); return }
+			args=append(args,end)
+			where=append(where,fmt.Sprintf("v.period_start <= $%d",len(args)))
+		}
 		args=append(args,limit)
-		q:=`SELECT v.id,v.partner_id,v.metric_key,d.label,d.unit,v.period_start,v.period_end,v.numeric_value,v.text_value,v.provenance,v.source_ref,v.recorded_by,v.recorded_at,v.metadata
+		q:=`SELECT v.id,v.partner_id,v.metric_key,d.label,d.unit,v.period_start,v.period_end,v.numeric_value,v.text_value,v.provenance,v.source_ref,v.evidence_id,v.recorded_by,v.recorded_at,v.metadata
 			FROM impact.metric_values v JOIN impact.metric_definitions d ON d.metric_key=v.metric_key WHERE `+strings.Join(where," AND ")+`
 			ORDER BY v.period_end DESC,v.id DESC LIMIT $`+strconv.Itoa(len(args))
 		rows,err:=a.db.Query(q,args...)
@@ -214,14 +246,14 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 		items:=[]map[string]any{}
 		for rows.Next() {
 			var id int64
-			var partner,key,label,unit,textValue,prov,source,recordedBy string
+			var partner,key,label,unit,textValue,prov,source,evidenceID,recordedBy string
 			var start,end,recorded time.Time
 			var numeric sql.NullFloat64
 			var meta []byte
-			if rows.Scan(&id,&partner,&key,&label,&unit,&start,&end,&numeric,&textValue,&prov,&source,&recordedBy,&recorded,&meta)==nil {
+			if rows.Scan(&id,&partner,&key,&label,&unit,&start,&end,&numeric,&textValue,&prov,&source,&evidenceID,&recordedBy,&recorded,&meta)==nil {
 				var num any
 				if numeric.Valid { num=numeric.Float64 }
-				items=append(items,map[string]any{"id":id,"partner_id":partner,"metric_key":key,"label":label,"unit":unit,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":num,"text_value":textValue,"provenance":prov,"source_ref":source,"recorded_by":recordedBy,"recorded_at":recorded,"metadata":common.JSONRawOrEmpty(meta)})
+				items=append(items,map[string]any{"id":id,"partner_id":partner,"metric_key":key,"label":label,"unit":unit,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":num,"text_value":textValue,"provenance":prov,"source_ref":source,"evidence_id":evidenceID,"recorded_by":recordedBy,"recorded_at":recorded,"metadata":common.JSONRawOrEmpty(meta)})
 			}
 		}
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
@@ -230,7 +262,7 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
 		if in.Provenance=="" { in.Provenance="MANUAL" }
 		if !adminProvenanceAllowed(in.Provenance) {
-			common.APIError(w,400,"PROVENANCE_BOUNDARY","Administrator-entered values must use MANUAL provenance")
+			common.APIError(w,400,"PROVENANCE_BOUNDARY","Administrator-entered values may use only MANUAL or VERIFIED_DOCUMENT provenance")
 			return
 		}
 		a.recordValue(w,r,in)
@@ -264,11 +296,12 @@ func metricPayloadHash(in metricInput,start,end time.Time) string {
 		Provenance string `json:"provenance"`
 		SourceRef string `json:"source_ref"`
 		Metadata map[string]any `json:"metadata"`
+		EvidenceID string `json:"evidence_id"`
 	}{
 		PartnerID:strings.TrimSpace(in.PartnerID),MetricKey:in.MetricKey,
 		PeriodStart:start.Format("2006-01-02"),PeriodEnd:end.Format("2006-01-02"),
 		NumericValue:in.NumericValue,TextValue:strings.TrimSpace(in.TextValue),
-		Provenance:in.Provenance,SourceRef:strings.TrimSpace(in.SourceRef),Metadata:in.Metadata,
+		Provenance:in.Provenance,SourceRef:strings.TrimSpace(in.SourceRef),Metadata:in.Metadata,EvidenceID:strings.TrimSpace(in.EvidenceID),
 	}
 	raw,_:=json.Marshal(payload)
 	sum:=sha256.Sum256(raw)
@@ -278,6 +311,18 @@ func metricPayloadHash(in metricInput,start,end time.Time) string {
 func (a *app) recordValue(w http.ResponseWriter,r *http.Request,in metricInput){
 	in,start,end,err:=parseMetricInput(in)
 	if err!=nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
+	if in.Provenance=="VERIFIED_DOCUMENT" {
+		in.EvidenceID=strings.TrimSpace(in.EvidenceID)
+		if in.EvidenceID=="" { common.APIError(w,400,"EVIDENCE_REQUIRED","VERIFIED_DOCUMENT provenance requires evidence_id"); return }
+		if err:=a.validateEvidence(r.Context(),in.EvidenceID,strings.TrimSpace(in.PartnerID),in.MetricKey);err!=nil {
+			common.APIError(w,409,"EVIDENCE_INVALID",err.Error())
+			return
+		}
+		in.SourceRef=in.EvidenceID
+	} else if strings.TrimSpace(in.EvidenceID)!="" {
+		common.APIError(w,400,"EVIDENCE_BOUNDARY","evidence_id may only be supplied with VERIFIED_DOCUMENT provenance")
+		return
+	}
 	var exists bool
 	if err=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM impact.metric_definitions WHERE metric_key=$1 AND active=TRUE)`,in.MetricKey).Scan(&exists);err!=nil || !exists {
 		common.APIError(w,409,"UNKNOWN_METRIC","Metric definition is not active")
@@ -289,11 +334,11 @@ func (a *app) recordValue(w http.ResponseWriter,r *http.Request,in metricInput){
 	idempotencyKey:=strings.TrimSpace(in.IdempotencyKey)
 	payloadHash:=metricPayloadHash(in,start,end)
 	var id int64
-	err=a.db.QueryRow(`INSERT INTO impact.metric_values(idempotency_key,payload_hash,partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,recorded_by,metadata)
-		VALUES(NULLIF($1,''),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+	err=a.db.QueryRow(`INSERT INTO impact.metric_values(idempotency_key,payload_hash,partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,evidence_id,recorded_by,metadata)
+		VALUES(NULLIF($1,''),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
 		ON CONFLICT(idempotency_key) DO NOTHING
 		RETURNING id`,
-		idempotencyKey,payloadHash,strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),recordedBy,string(meta)).Scan(&id)
+		idempotencyKey,payloadHash,strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.EvidenceID),recordedBy,string(meta)).Scan(&id)
 	if err==sql.ErrNoRows && idempotencyKey!="" {
 		var existingID int64
 		var existingHash string
@@ -312,6 +357,22 @@ func (a *app) recordValue(w http.ResponseWriter,r *http.Request,in metricInput){
 	common.JSON(w,201,map[string]any{"id":id,"partner_id":strings.TrimSpace(in.PartnerID),"metric_key":in.MetricKey,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"provenance":in.Provenance})
 }
 
+func (a *app) validateEvidence(ctx context.Context,evidenceID,partnerID,metricKey string)error{
+	if strings.TrimSpace(a.evidenceHost)=="" { return fmt.Errorf("evidence service is not configured") }
+	q:=url.Values{}
+	q.Set("evidence_id",evidenceID)
+	q.Set("partner_id",partnerID)
+	q.Set("metric_key",metricKey)
+	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+a.evidenceHost+"/internal/v1/evidence/validate?"+q.Encode(),nil)
+	if err!=nil{return err}
+	req.Header.Set("X-Himate-Internal-Token",a.token)
+	resp,err:=a.client.Do(req)
+	if err!=nil{return fmt.Errorf("evidence validation: %w",err)}
+	defer resp.Body.Close()
+	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("evidence is not a verified document for this partner and metric")}
+	return nil
+}
+
 func (a *app) baselines(w http.ResponseWriter,r *http.Request){
 	switch r.Method{
 	case http.MethodGet:
@@ -320,16 +381,16 @@ func (a *app) baselines(w http.ResponseWriter,r *http.Request){
 		where:=[]string{"1=1"};args:=[]any{}
 		if partnerID!=""{args=append(args,partnerID);where=append(where,fmt.Sprintf("b.partner_id=$%d",len(args)))}
 		if metricKey!=""{args=append(args,metricKey);where=append(where,fmt.Sprintf("b.metric_key=$%d",len(args)))}
-		rows,err:=a.db.Query(`SELECT b.partner_id,b.metric_key,d.label,d.unit,b.period_start,b.period_end,b.numeric_value,b.text_value,b.provenance,b.source_ref,b.recorded_by,b.updated_at
+		rows,err:=a.db.Query(`SELECT b.partner_id,b.metric_key,d.label,d.unit,b.period_start,b.period_end,b.numeric_value,b.text_value,b.provenance,b.source_ref,b.evidence_id,b.recorded_by,b.updated_at
 			FROM impact.metric_baselines b JOIN impact.metric_definitions d ON d.metric_key=b.metric_key WHERE `+strings.Join(where," AND ")+` ORDER BY d.label`,args...)
 		if err!=nil{common.APIError(w,500,"DB","Could not load metric baselines");return}
 		defer rows.Close();items:=[]map[string]any{}
 		for rows.Next(){
-			var partner,key,label,unit,textValue,prov,source,recordedBy string
+			var partner,key,label,unit,textValue,prov,source,evidenceID,recordedBy string
 			var start,end,updated time.Time;var numeric sql.NullFloat64
-			if rows.Scan(&partner,&key,&label,&unit,&start,&end,&numeric,&textValue,&prov,&source,&recordedBy,&updated)==nil{
+			if rows.Scan(&partner,&key,&label,&unit,&start,&end,&numeric,&textValue,&prov,&source,&evidenceID,&recordedBy,&updated)==nil{
 				var num any;if numeric.Valid{num=numeric.Float64}
-				items=append(items,map[string]any{"partner_id":partner,"metric_key":key,"label":label,"unit":unit,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":num,"text_value":textValue,"provenance":prov,"source_ref":source,"recorded_by":recordedBy,"updated_at":updated})
+				items=append(items,map[string]any{"partner_id":partner,"metric_key":key,"label":label,"unit":unit,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":num,"text_value":textValue,"provenance":prov,"source_ref":source,"evidence_id":evidenceID,"recorded_by":recordedBy,"updated_at":updated})
 			}
 		}
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
@@ -337,19 +398,27 @@ func (a *app) baselines(w http.ResponseWriter,r *http.Request){
 		var in metricInput
 		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
 		if in.Provenance==""{in.Provenance="MANUAL"}
-		if !adminProvenanceAllowed(in.Provenance){common.APIError(w,400,"PROVENANCE_BOUNDARY","Administrator-entered baselines must use MANUAL provenance");return}
+		if !adminProvenanceAllowed(in.Provenance){common.APIError(w,400,"PROVENANCE_BOUNDARY","Administrator-entered baselines may use only MANUAL or VERIFIED_DOCUMENT provenance");return}
 		in,start,end,err:=parseMetricInput(in)
 		if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
+		if in.Provenance=="VERIFIED_DOCUMENT" {
+			in.EvidenceID=strings.TrimSpace(in.EvidenceID)
+			if in.EvidenceID==""{common.APIError(w,400,"EVIDENCE_REQUIRED","VERIFIED_DOCUMENT provenance requires evidence_id");return}
+			if err:=a.validateEvidence(r.Context(),in.EvidenceID,strings.TrimSpace(in.PartnerID),in.MetricKey);err!=nil{common.APIError(w,409,"EVIDENCE_INVALID",err.Error());return}
+			in.SourceRef=in.EvidenceID
+		} else if strings.TrimSpace(in.EvidenceID)!="" {
+			common.APIError(w,400,"EVIDENCE_BOUNDARY","evidence_id may only be supplied with VERIFIED_DOCUMENT provenance");return
+		}
 		var exists bool
 		if err=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM impact.metric_definitions WHERE metric_key=$1 AND active=TRUE)`,in.MetricKey).Scan(&exists);err!=nil||!exists{
 			common.APIError(w,409,"UNKNOWN_METRIC","Metric definition is not active");return
 		}
 		recordedBy:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
-		_,err=a.db.Exec(`INSERT INTO impact.metric_baselines(partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,recorded_by)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		_,err=a.db.Exec(`INSERT INTO impact.metric_baselines(partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,evidence_id,recorded_by)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 			ON CONFLICT(partner_id,metric_key) DO UPDATE SET period_start=EXCLUDED.period_start,period_end=EXCLUDED.period_end,
-				numeric_value=EXCLUDED.numeric_value,text_value=EXCLUDED.text_value,provenance=EXCLUDED.provenance,source_ref=EXCLUDED.source_ref,recorded_by=EXCLUDED.recorded_by,updated_at=NOW()`,
-			strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),recordedBy)
+				numeric_value=EXCLUDED.numeric_value,text_value=EXCLUDED.text_value,provenance=EXCLUDED.provenance,source_ref=EXCLUDED.source_ref,evidence_id=EXCLUDED.evidence_id,recorded_by=EXCLUDED.recorded_by,updated_at=NOW()`,
+			strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.EvidenceID),recordedBy)
 		if err!=nil{common.APIError(w,500,"DB","Could not save metric baseline");return}
 		common.JSON(w,200,map[string]any{"partner_id":strings.TrimSpace(in.PartnerID),"metric_key":in.MetricKey,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":in.NumericValue,"text_value":strings.TrimSpace(in.TextValue),"provenance":in.Provenance})
 	default:
@@ -376,9 +445,23 @@ func stringValue(v any)string{if v==nil{return ""};return fmt.Sprint(v)}
 func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }
 	partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
+	periodStart:=strings.TrimSpace(r.URL.Query().Get("period_start"))
+	periodEnd:=strings.TrimSpace(r.URL.Query().Get("period_end"))
 	args:=[]any{}
+	whereParts:=[]string{}
+	if partnerID!="" { args=append(args,partnerID); whereParts=append(whereParts,fmt.Sprintf("v.partner_id=$%d",len(args))) }
+	if periodStart!="" {
+		start,err:=time.Parse("2006-01-02",periodStart)
+		if err!=nil { common.APIError(w,400,"VALIDATION","period_start must be YYYY-MM-DD"); return }
+		args=append(args,start);whereParts=append(whereParts,fmt.Sprintf("v.period_end >= $%d",len(args)))
+	}
+	if periodEnd!="" {
+		end,err:=time.Parse("2006-01-02",periodEnd)
+		if err!=nil { common.APIError(w,400,"VALIDATION","period_end must be YYYY-MM-DD"); return }
+		args=append(args,end);whereParts=append(whereParts,fmt.Sprintf("v.period_start <= $%d",len(args)))
+	}
 	where:=""
-	if partnerID!="" { where="WHERE v.partner_id=$1"; args=append(args,partnerID) }
+	if len(whereParts)>0 { where="WHERE "+strings.Join(whereParts," AND ") }
 	rows,err:=a.db.Query(`SELECT v.metric_key,d.label,d.unit,d.aggregation,
 		CASE d.aggregation
 			WHEN 'LATEST' THEN (ARRAY_AGG(v.numeric_value ORDER BY v.period_end DESC,v.id DESC))[1]

@@ -67,10 +67,10 @@ jobs:
       - name: Validate Render Blueprint bindings
         run: |
           grep -q 'healthCheckPath: /api/v1/live' render.yaml
-          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT STORAGE_HOSTPORT PARTNER_RUNTIME_HOSTPORT; do
+          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT EVIDENCE_HOSTPORT REPORTS_HOSTPORT STORAGE_HOSTPORT PARTNER_RUNTIME_HOSTPORT; do
             grep -q "key: $key" render.yaml || { echo "Missing Render binding: $key"; exit 1; }
           done
-          for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-storage himate-runtime; do
+          for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-storage himate-runtime; do
             grep -q "name: $service" render.yaml || { echo "Missing Render service: $service"; exit 1; }
           done
       - name: Validate Docker Compose topology
@@ -93,6 +93,8 @@ jobs:
         run: sh scripts/smoke_backend.sh http://127.0.0.1:8080
       - name: Run START-09-13 integration smoke
         run: sh scripts/smoke_start_09_13.sh http://127.0.0.1:8080
+      - name: Run START-14-15 integration smoke
+        run: sh scripts/smoke_start_14_15.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

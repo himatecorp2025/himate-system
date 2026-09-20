@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–13
+# HIMATE control-plane architecture — START-01–15
 
 ```text
 Browser / Admin
@@ -15,6 +15,9 @@ HIMATE Gateway / Identity / Flutter + Public Website
   +-- private Connector Control API
   +-- private System Health Service
   +-- private Impact & Metrics Service
+  +-- private Evidence Service
+  +-- private PDF Reports Service
+  +-- private Storage Service
   |
   +-- HIMATE PostgreSQL control-plane database
   |    +-- identity
@@ -27,6 +30,9 @@ HIMATE Gateway / Identity / Flutter + Public Website
   |    +-- connector
   |    +-- health
   |    +-- impact
+  |    +-- evidence
+  |    +-- reports
+  |    +-- storage
   |
   +-- isolated partner PostgreSQL databases
        +-- Partner A DB + partner-scoped DB role
@@ -75,9 +81,13 @@ System Health probes the individual microservices and PostgreSQL, records latenc
 
 Partner Portfolio remains server-paginated and performs bounded parallel aggregation for only the visible page of partner IDs.
 
-## Impact & Metrics
+## Impact, Evidence & Reports
 
-Impact definitions are stable and centrally governed. Observations retain period and provenance. Allowed provenance values are `SYSTEM`, `MANUAL`, `PARTNER_DECLARED`, and `VERIFIED_DOCUMENT`. START-13 stores source references but intentionally does not implement the START-14 evidence-file library.
+Impact definitions are stable and centrally governed. Observations retain period and provenance. Allowed provenance values are `SYSTEM`, `MANUAL`, `PARTNER_DECLARED`, and `VERIFIED_DOCUMENT`.
+
+START-14 adds a dedicated Evidence service. File-backed evidence is content-sniffed, size-limited and SHA-256 verified before its bytes are persisted through the Storage service. URL evidence is reference-only and is never fetched. `VERIFIED_DOCUMENT` observations must reference a real, VERIFIED, file-backed Evidence record with matching partner/metric boundaries.
+
+START-15 adds a dedicated Reports service. Report jobs freeze partner scope, period, metric summaries, data sources and Evidence references into an immutable snapshot before PDF rendering. Partner, multi-partner and HIMATE Global reports can therefore be regenerated from the same snapshot without rereading live metric state. Generated PDFs are stored through the same Storage abstraction and retain SHA-256 integrity metadata.
 
 ## Billing continuity
 

@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"himate.local/services/internal/common"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,12 +18,15 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+const maxObjectBytes = 25 << 20
+
 type app struct {
 	db   *sql.DB
 	root string
 }
 
 var safePartnerID = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var safeObjectKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,239}$`)
 
 func main() {
 	log := common.Logger()
@@ -40,6 +46,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", a.health)
 	mux.HandleFunc("/internal/v1/storage/partners/", a.partnerRoute)
+	mux.HandleFunc("/internal/v1/storage/objects/", a.objectRoute)
 	mux.HandleFunc("/internal/v1/storage/summary", a.summary)
 	common.Run(log, "storage", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
 }
@@ -61,10 +68,25 @@ func (a *app) migrate(ctx context.Context) error {
 	})
 }
 
-func (a *app) pathFor(partnerID string) (string, error) {
-	partnerID = strings.TrimSpace(partnerID)
-	if !safePartnerID.MatchString(partnerID) { return "", fmt.Errorf("invalid partner id") }
-	return filepath.Join(a.root, partnerID), nil
+func (a *app) pathFor(namespace string) (string, error) {
+	namespace = strings.TrimSpace(namespace)
+	if !safePartnerID.MatchString(namespace) { return "", fmt.Errorf("invalid storage namespace") }
+	return filepath.Join(a.root, namespace), nil
+}
+
+func (a *app) objectPath(namespace, key string) (string, error) {
+	root, err := a.pathFor(namespace)
+	if err != nil { return "", err }
+	key = strings.TrimSpace(strings.TrimPrefix(key, "/"))
+	if !safeObjectKey.MatchString(key) || strings.Contains(key, "..") || strings.HasSuffix(key, "/") {
+		return "", fmt.Errorf("invalid object key")
+	}
+	target := filepath.Clean(filepath.Join(root, filepath.FromSlash(key)))
+	prefix := filepath.Clean(root) + string(os.PathSeparator)
+	if target != filepath.Clean(root) && !strings.HasPrefix(target, prefix) {
+		return "", fmt.Errorf("object key escapes namespace")
+	}
+	return target, nil
 }
 
 func (a *app) ensure(ctx context.Context, partnerID string) (map[string]any, error) {
@@ -119,6 +141,57 @@ func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *app) objectRoute(w http.ResponseWriter, r *http.Request) {
+	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/storage/objects/"), "/")
+	parts := strings.SplitN(raw, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		common.APIError(w, 404, "NOT_FOUND", "Storage object route not found")
+		return
+	}
+	namespace, key := parts[0], parts[1]
+	target, err := a.objectPath(namespace, key)
+	if err != nil { common.APIError(w, 400, "VALIDATION", err.Error()); return }
+
+	switch r.Method {
+	case http.MethodPut:
+		if _, err := a.ensure(r.Context(), namespace); err != nil { common.APIError(w,500,"STORAGE",err.Error());return }
+		if err := os.MkdirAll(filepath.Dir(target),0700); err != nil { common.APIError(w,500,"STORAGE","Could not prepare object directory");return }
+		tmp, err := os.CreateTemp(filepath.Dir(target), ".upload-*")
+		if err != nil { common.APIError(w,500,"STORAGE","Could not prepare object");return }
+		tmpName := tmp.Name()
+		defer os.Remove(tmpName)
+		h := sha256.New()
+		n, copyErr := io.Copy(io.MultiWriter(tmp,h), io.LimitReader(r.Body,maxObjectBytes+1))
+		closeErr := tmp.Close()
+		if copyErr != nil || closeErr != nil { common.APIError(w,500,"STORAGE","Could not persist object");return }
+		if n > maxObjectBytes { common.APIError(w,413,"OBJECT_TOO_LARGE","Object exceeds 25 MiB");return }
+		if err := os.Chmod(tmpName,0600); err != nil { common.APIError(w,500,"STORAGE","Could not secure object");return }
+		if err := os.Rename(tmpName,target); err != nil { common.APIError(w,500,"STORAGE","Could not finalize object");return }
+		sum := hex.EncodeToString(h.Sum(nil))
+		common.JSON(w,200,map[string]any{"namespace":namespace,"object_key":key,"size_bytes":n,"sha256":sum})
+	case http.MethodGet:
+		file, err := os.Open(target)
+		if os.IsNotExist(err) { common.APIError(w,404,"NOT_FOUND","Object not found");return }
+		if err != nil { common.APIError(w,500,"STORAGE","Could not open object");return }
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil { common.APIError(w,500,"STORAGE","Could not stat object");return }
+		if contentType := strings.TrimSpace(r.URL.Query().Get("content_type")); contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		} else {
+			w.Header().Set("Content-Type","application/octet-stream")
+		}
+		w.Header().Set("Content-Length",fmt.Sprint(info.Size()))
+		w.Header().Set("Cache-Control","private, no-store")
+		_, _ = io.Copy(w,file)
+	case http.MethodDelete:
+		if err := os.Remove(target); err != nil && !os.IsNotExist(err) { common.APIError(w,500,"STORAGE","Could not delete object");return }
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		common.APIError(w,405,"METHOD","Use PUT, GET or DELETE")
+	}
+}
+
 func (a *app) health(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
 	probe := filepath.Join(a.root, ".service-health")
@@ -135,7 +208,10 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	if err != nil { common.APIError(w, 500, "DB", "Could not load storage summary"); return }
 	defer rows.Close()
 	partnerIDs := []string{}
-	for rows.Next() { var id string; if rows.Scan(&id)==nil { partnerIDs=append(partnerIDs,id) } }
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id)==nil && !strings.HasPrefix(id,"_") { partnerIDs=append(partnerIDs,id) }
+	}
 	items := []map[string]any{}
 	for _,partnerID := range partnerIDs {
 		out,checkErr := a.check(r.Context(),partnerID)

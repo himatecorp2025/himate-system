@@ -95,6 +95,8 @@ func main() {
 			"connector":    os.Getenv("CONNECTOR_HOSTPORT"),
 			"health":       os.Getenv("HEALTH_HOSTPORT"),
 			"impact":       os.Getenv("IMPACT_HOSTPORT"),
+			"evidence":     os.Getenv("EVIDENCE_HOSTPORT"),
+			"reports":      os.Getenv("REPORTS_HOSTPORT"),
 			"storage":      os.Getenv("STORAGE_HOSTPORT"),
 			"partner-runtime": os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 		},
@@ -344,6 +346,10 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "health")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/impact/"):
 		a.serveProxy(w, r, "impact")
+	case r.URL.Path == "/api/v1/evidence", strings.HasPrefix(r.URL.Path, "/api/v1/evidence/"):
+		a.serveProxy(w, r, "evidence")
+	case r.URL.Path == "/api/v1/reports", strings.HasPrefix(r.URL.Path, "/api/v1/reports/"):
+		a.serveProxy(w, r, "reports")
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
 	}
