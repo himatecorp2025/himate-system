@@ -95,6 +95,8 @@ func main() {
 			"connector":    os.Getenv("CONNECTOR_HOSTPORT"),
 			"health":       os.Getenv("HEALTH_HOSTPORT"),
 			"impact":       os.Getenv("IMPACT_HOSTPORT"),
+			"storage":      os.Getenv("STORAGE_HOSTPORT"),
+			"partner-runtime": os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 		},
 	}
 	if len(a.secret) < 32 || len(a.internalToken) < 24 {
