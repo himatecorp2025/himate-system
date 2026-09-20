@@ -50,6 +50,8 @@ func main(){
 	mux.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){common.JSON(w,200,map[string]any{"status":"ok","service":"health","time":time.Now().UTC()})})
 	mux.HandleFunc("/api/v1/system-health",a.systemHealth)
 	mux.HandleFunc("/internal/v1/system-health/summary",a.systemHealth)
+	mux.HandleFunc("/internal/v1/system-health/partner-snapshots",a.partnerSnapshots)
+	go a.monitorLoop()
 	common.Run(log,"health",common.Env("PORT","10000"),common.InternalAuth(a.token,mux))
 }
 
@@ -162,6 +164,46 @@ func (a *app)partnerHealth(ctx context.Context)[]map[string]any{
 	}
 	return items
 }
+
+func (a *app)monitorLoop(){
+	ticker:=time.NewTicker(60*time.Second)
+	defer ticker.Stop()
+	run:=func(){
+		ctx,cancel:=context.WithTimeout(context.Background(),8*time.Second)
+		defer cancel()
+		_ = a.checkServices(ctx)
+		_ = a.partnerHealth(ctx)
+	}
+	run()
+	for range ticker.C{run()}
+}
+
+func (a *app)partnerSnapshots(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+	ids:=[]string{}
+	for _,raw:=range strings.Split(r.URL.Query().Get("ids"),","){
+		if v:=strings.TrimSpace(raw);v!=""{ids=append(ids,v)}
+	}
+	q:=`SELECT partner_id,overall_status,platform_version,connector_health,environment_status,provisioning_status,last_seen_at,checked_at FROM health.partner_snapshots`
+	args:=[]any{}
+	if len(ids)>0{q+=" WHERE partner_id = ANY($1)";args=append(args,ids)}
+	q+=" ORDER BY partner_id"
+	rows,err:=a.db.Query(q,args...)
+	if err!=nil{common.APIError(w,500,"DB","Could not load partner health snapshots");return}
+	defer rows.Close()
+	items:=[]map[string]any{}
+	for rows.Next(){
+		var id,overall,version,connector,environment,provisioning string
+		var last sql.NullTime
+		var checked time.Time
+		if rows.Scan(&id,&overall,&version,&connector,&environment,&provisioning,&last,&checked)==nil{
+			var lastSeen any;if last.Valid{lastSeen=last.Time.UTC()}
+			items=append(items,map[string]any{"partner_id":id,"overall_status":overall,"platform_version":version,"connector_health":connector,"environment_status":environment,"provisioning_status":provisioning,"last_seen_at":lastSeen,"checked_at":checked})
+		}
+	}
+	common.JSON(w,200,map[string]any{"items":items})
+}
+
 
 func (a *app)systemHealth(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
