@@ -158,8 +158,12 @@ func (a *app) migrate(ctx context.Context) error {
 
 func clientKey(r *http.Request) string {
 	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
-		if i := strings.IndexByte(forwarded, ','); i >= 0 { forwarded = forwarded[:i] }
-		return strings.TrimSpace(forwarded)
+		parts := strings.Split(forwarded, ",")
+		// Use the proxy-appended hop rather than the client-controlled leftmost
+		// value so a forged X-Forwarded-For cannot trivially bypass throttling.
+		if candidate := strings.TrimSpace(parts[len(parts)-1]); candidate != "" {
+			return candidate
+		}
 	}
 	host := r.RemoteAddr
 	if i := strings.LastIndex(host, ":"); i > 0 { host = host[:i] }
