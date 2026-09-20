@@ -22,6 +22,15 @@ var provenanceValues = map[string]bool{
 var aggregationValues = map[string]bool{"SUM": true, "LATEST": true, "AVERAGE": true}
 var scopeValues = map[string]bool{"GLOBAL": true, "PARTNER": true, "BOTH": true}
 
+func adminProvenanceAllowed(v string) bool {
+	return strings.ToUpper(strings.TrimSpace(v)) == "MANUAL"
+}
+
+func connectorProvenanceAllowed(v string) bool {
+	v = strings.ToUpper(strings.TrimSpace(v))
+	return v == "SYSTEM" || v == "PARTNER_DECLARED"
+}
+
 func main() {
 	log := common.Logger()
 	db, err := common.OpenDB()
@@ -199,7 +208,7 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 		var in metricInput
 		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
 		if in.Provenance=="" { in.Provenance="MANUAL" }
-		if strings.ToUpper(strings.TrimSpace(in.Provenance))!="MANUAL" {
+		if !adminProvenanceAllowed(in.Provenance) {
 			common.APIError(w,400,"PROVENANCE_BOUNDARY","Administrator-entered values must use MANUAL provenance")
 			return
 		}
@@ -215,7 +224,7 @@ func (a *app) ingest(w http.ResponseWriter, r *http.Request) {
 	if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
 	if in.Provenance=="" { in.Provenance="PARTNER_DECLARED" }
 	provenance:=strings.ToUpper(strings.TrimSpace(in.Provenance))
-	if provenance!="SYSTEM" && provenance!="PARTNER_DECLARED" {
+	if !connectorProvenanceAllowed(provenance) {
 		common.APIError(w,400,"PROVENANCE_BOUNDARY","Connector ingestion may use only SYSTEM or PARTNER_DECLARED provenance")
 		return
 	}
