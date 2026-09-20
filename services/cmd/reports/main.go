@@ -428,7 +428,7 @@ func renderPDF(snapshot map[string]any)[]byte{
 	current=append(current,"","DATA SOURCES")
 	for _,raw:=range sources{
 		if m,ok:=raw.(map[string]any);ok{
-			current=append(current,fmt.Sprintf("%v · %v · %v",m["metric_key"],m["provenance"],m["source_ref"]))
+			current=append(current,fmt.Sprintf("%v · %v=%v · %v to %v · %v · %v",m["id"],m["metric_key"],m["numeric_value"],m["period_start"],m["period_end"],m["provenance"],m["source_ref"]))
 			if len(current)>42{pages=append(pages,current);current=[]string{"HIMATE · IMPACT REPORT (continued)",""}}
 		}
 	}
