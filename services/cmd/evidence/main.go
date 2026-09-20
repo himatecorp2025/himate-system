@@ -275,7 +275,11 @@ func validateCommon(partnerID,metricKey,kind,title,periodStart,periodEnd string)
 }
 
 func (a *app)createFileEvidence(w http.ResponseWriter,r *http.Request){
-	if err:=r.ParseMultipartForm(maxEvidenceBytes+1<<20);err!=nil{common.APIError(w,400,"MULTIPART","Invalid multipart evidence upload");return}
+	r.Body=http.MaxBytesReader(w,r.Body,maxEvidenceBytes+(1<<20))
+	if err:=r.ParseMultipartForm(maxEvidenceBytes+(1<<20));err!=nil{
+		if strings.Contains(strings.ToLower(err.Error()),"too large"){common.APIError(w,413,"REQUEST_TOO_LARGE","Evidence upload request exceeds 21 MiB");return}
+		common.APIError(w,400,"MULTIPART","Invalid multipart evidence upload");return
+	}
 	partnerID:=strings.TrimSpace(r.FormValue("partner_id"))
 	metricKey:=strings.TrimSpace(r.FormValue("metric_key"))
 	kind:=normalizeType(r.FormValue("evidence_type"))
