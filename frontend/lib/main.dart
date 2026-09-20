@@ -1736,11 +1736,12 @@ class DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const path = '/api/v1/dashboard/summary';
     return FutureBuilder<Map<String, dynamic>>(
-      future: api.get('/api/v1/dashboard/summary'),
+      future: api.get(path),
+      initialData: api.peek(path),
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
-        if (snapshot.hasError) {
+        if (snapshot.hasError && snapshot.data == null) {
           return Content(title: 'Welcome to HIMATE System', subtitle: 'Manage partners, programs and cultural impact — all in one place.', child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Dashboard data is temporarily unavailable', message: '${snapshot.error}'));
         }
         final d=snapshot.data??<String,dynamic>{};
