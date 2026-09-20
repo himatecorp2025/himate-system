@@ -511,6 +511,10 @@ func cycleWindow(anchor, at time.Time) (time.Time, time.Time) {
 
 func dateOnly(v time.Time) time.Time { return time.Date(v.UTC().Year(), v.UTC().Month(), v.UTC().Day(), 0, 0, 0, 0, time.UTC) }
 
+func cancellationExpired(cancelAtPeriodEnd bool, periodEnd, at time.Time) bool {
+	return cancelAtPeriodEnd && !dateOnly(at).Before(dateOnly(periodEnd))
+}
+
 func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	t, err := a.ensureTerms(id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load terms"); return }
@@ -586,7 +590,7 @@ func (a *app) effectiveModuleFees(ctx context.Context, id string, mods []map[str
 	for _, mod := range mods {
 		key := fmt.Sprint(mod["key"])
 		if state, ok := states[key]; ok {
-			if state.Cancel && !today.Before(state.PeriodEnd) {
+			if cancellationExpired(state.Cancel, state.PeriodEnd, today) {
 				continue
 			}
 			if state.Status == "INACTIVE" && state.Cancel {
@@ -641,7 +645,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		activation = dateOnly(activation)
 		existingEnd = dateOnly(existingEnd)
 		if cancelAtEnd {
-			if !today.Before(existingEnd) {
+			if cancellationExpired(true, existingEnd, today) {
 				if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
 					SET auto_renew=FALSE,payment_status='INACTIVE',updated_at=NOW()
 					WHERE partner_id=$1 AND module_key=$2`, id, key); err != nil {
