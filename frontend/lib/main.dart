@@ -1047,7 +1047,7 @@ class _ShellState extends State<Shell> {
       case 0: return DashboardPage(api: widget.api);
       case 1: return PartnersPage(api: widget.api);
       case 2: return FinancePage(api: widget.api);
-      case 3: return const PlannedPage(title: 'Impact & Reports', subtitle: 'Metrics and partner impact become functional in START-13–15.', icon: Icons.show_chart_rounded);
+      case 3: return ImpactPage(api: widget.api);
       case 4: return const PlannedPage(title: 'Website & Marketing', subtitle: 'HIMATE CMS and public marketing tools are planned for START-16–17.', icon: Icons.campaign_outlined);
       case 5: return SystemPage(api: widget.api);
       default: return const PlannedPage(title: 'Administration', subtitle: 'Roles, permissions and advanced audit controls are planned for START-18–19.', icon: Icons.admin_panel_settings_outlined);
@@ -3249,55 +3249,438 @@ class _FinancePageState extends State<FinancePage> {
   }
 }
 
+class ImpactPage extends StatefulWidget {
+  const ImpactPage({required this.api, super.key});
+  final Api api;
+
+  @override
+  State<ImpactPage> createState() => _ImpactPageState();
+}
+
+class _ImpactPageState extends State<ImpactPage> {
+  List<Map<String, dynamic>> definitions = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> summary = <Map<String, dynamic>>[];
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final r = await Future.wait([
+        widget.api.get('/api/v1/impact/definitions', force: true),
+        widget.api.get('/api/v1/impact/summary', force: true),
+      ]);
+      definitions = items(r[0]);
+      summary = items(r[1]);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> addDefinition() async {
+    final key = TextEditingController();
+    final label = TextEditingController();
+    final description = TextEditingController();
+    final unit = TextEditingController(text: 'count');
+    String aggregation = 'SUM';
+    String scope = 'PARTNER';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'New metric definition',
+          subtitle: 'Create a stable impact metric used consistently across partners and reporting periods.',
+          icon: Icons.add_chart_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ResponsiveFieldPair(
+                first: TextField(controller: key, decoration: const InputDecoration(labelText: 'Metric key', hintText: 'culture.events')),
+                second: TextField(controller: label, decoration: const InputDecoration(labelText: 'Display label')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: unit, decoration: const InputDecoration(labelText: 'Unit')),
+                second: DropdownButtonFormField<String>(
+                  value: aggregation,
+                  decoration: const InputDecoration(labelText: 'Aggregation'),
+                  items: const [
+                    DropdownMenuItem(value: 'SUM', child: Text('SUM')),
+                    DropdownMenuItem(value: 'LATEST', child: Text('LATEST')),
+                    DropdownMenuItem(value: 'AVERAGE', child: Text('AVERAGE')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => aggregation = v); },
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: scope,
+                decoration: const InputDecoration(labelText: 'Scope'),
+                items: const [
+                  DropdownMenuItem(value: 'PARTNER', child: Text('PARTNER')),
+                  DropdownMenuItem(value: 'GLOBAL', child: Text('GLOBAL')),
+                  DropdownMenuItem(value: 'BOTH', child: Text('BOTH')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => scope = v); },
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+            ],
+          ),
+          primaryLabel: 'Create metric',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/impact/definitions', {
+        'metric_key': key.text.trim(),
+        'label': label.text.trim(),
+        'description': description.text.trim(),
+        'unit': unit.text.trim(),
+        'aggregation': aggregation,
+        'scope': scope,
+      });
+      await load();
+    }
+    for (final controller in [key, label, description, unit]) { controller.dispose(); }
+  }
+
+  Future<void> addValue() async {
+    if (definitions.isEmpty) return;
+    String metricKey = '${definitions.first['metric_key']}';
+    String provenance = 'MANUAL';
+    final partner = TextEditingController();
+    final start = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final numeric = TextEditingController();
+    final source = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Record impact value',
+          subtitle: 'Every value keeps period, provenance and source metadata for later evidence and reporting.',
+          icon: Icons.insights_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: metricKey,
+                decoration: const InputDecoration(labelText: 'Metric'),
+                items: [
+                  for (final d in definitions)
+                    DropdownMenuItem(value: '${d['metric_key']}', child: Text('${d['label']} · ${d['metric_key']}')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: partner, decoration: const InputDecoration(labelText: 'Partner ID', hintText: 'Leave empty for global metric')),
+                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Numeric value')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start', hintText: 'YYYY-MM-DD')),
+                second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end', hintText: 'YYYY-MM-DD')),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: provenance,
+                decoration: const InputDecoration(labelText: 'Provenance'),
+                items: const [
+                  DropdownMenuItem(value: 'MANUAL', child: Text('MANUAL')),
+                  DropdownMenuItem(value: 'SYSTEM', child: Text('SYSTEM')),
+                  DropdownMenuItem(value: 'PARTNER_DECLARED', child: Text('PARTNER DECLARED')),
+                  DropdownMenuItem(value: 'VERIFIED_DOCUMENT', child: Text('VERIFIED DOCUMENT')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => provenance = v); },
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: source, decoration: const InputDecoration(labelText: 'Source reference', hintText: 'Document, URL or source identifier')),
+            ],
+          ),
+          primaryLabel: 'Record value',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/impact/values', {
+        'partner_id': partner.text.trim(),
+        'metric_key': metricKey,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+        'numeric_value': double.tryParse(numeric.text),
+        'provenance': provenance,
+        'source_ref': source.text.trim(),
+      });
+      await load();
+    }
+    for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const _BrandLoading();
+    if (error != null) {
+      return Content(
+        eyebrow: 'IMPACT CONTROL',
+        title: 'Impact & Reports',
+        subtitle: 'Metric definitions, provenance and partner/global impact values.',
+        child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
+      );
+    }
+    return Content(
+      eyebrow: 'IMPACT CONTROL',
+      title: 'Impact & Reports',
+      subtitle: 'Global and partner impact metrics with explicit source provenance. Evidence files and PDF reports remain START-14–15.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, c) {
+              final actions = [
+                OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const Text('New metric')),
+                FilledButton.icon(onPressed: definitions.isEmpty ? null : addValue, icon: const Icon(Icons.add_rounded), label: const Text('Record value')),
+              ];
+              if (c.maxWidth < 620) {
+                return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  SizedBox(width: double.infinity, child: actions[1]),
+                  const SizedBox(height: 8),
+                  SizedBox(width: double.infinity, child: actions[0]),
+                ]);
+              }
+              return Row(mainAxisAlignment: MainAxisAlignment.end, children: [actions[0], const SizedBox(width: 10), actions[1]]);
+            },
+          ),
+          const SizedBox(height: 18),
+          _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: '${summary.length} metrics')),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, c) {
+              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final m in summary)
+                    SizedBox(
+                      width: width,
+                      child: _InfoCard(
+                        title: '${m['label'] ?? m['metric_key']}',
+                        icon: Icons.insights_outlined,
+                        children: [
+                          _DefinitionRow(label: 'Value', value: '${m['numeric_value'] ?? '—'} ${m['unit'] ?? ''}'),
+                          _DefinitionRow(label: 'Aggregation', value: '${m['aggregation'] ?? ''}'),
+                          _DefinitionRow(label: 'Latest period', value: '${m['latest_period_end'] ?? '—'}'),
+                          _DefinitionRow(label: 'Observations', value: '${m['observations'] ?? 0}'),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions are reused by manual entry, partner connectors and future verified-document workflows.', trailing: _MiniCounter(label: '${definitions.length} definitions')),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, c) {
+              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final d in definitions)
+                    SizedBox(
+                      width: width,
+                      child: _InfoCard(
+                        title: '${d['label']}',
+                        icon: Icons.stacked_line_chart_rounded,
+                        children: [
+                          _DefinitionRow(label: 'Key', value: '${d['metric_key']}'),
+                          _DefinitionRow(label: 'Unit', value: '${d['unit']}'),
+                          _DefinitionRow(label: 'Aggregation', value: '${d['aggregation']}'),
+                          _DefinitionRow(label: 'Scope', value: '${d['scope']}'),
+                          _DefinitionRow(label: 'Status', value: d['active'] == true ? 'Active' : 'Inactive'),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class SystemPage extends StatelessWidget {
   const SystemPage({required this.api, super.key});
   final Api api;
 
+  Future<List<Map<String, dynamic>>> _load() async {
+    final r = await Future.wait([
+      api.get('/api/v1/system-health', force: true),
+      api.get('/api/v1/provisioning/jobs', force: true),
+      api.get('/api/v1/environments', force: true),
+    ]);
+    return r;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: api.get('/api/v1/health'),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _load(),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
-        if (snapshot.hasError) {
+        if (snapshot.hasError || snapshot.data == null) {
           return Content(
             eyebrow: 'PLATFORM OPERATIONS',
             title: 'System & Operations',
             subtitle: 'Independent services behind one authenticated public gateway.',
-            child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Health data unavailable', message: '${snapshot.error}'),
+            child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Operations data unavailable', message: '${snapshot.error}'),
           );
         }
 
-        final serviceRaw = snapshot.data?['services'];
-        final services = serviceRaw is Map ? Map<String, dynamic>.from(serviceRaw) : <String, dynamic>{};
-        final overall = '${snapshot.data?['status'] ?? 'unknown'}';
-        final environment = '${snapshot.data?['environment'] ?? 'unknown'}';
-        final version = '${snapshot.data?['version'] ?? ''}';
+        final health = snapshot.data![0];
+        final provisioning = items(snapshot.data![1]);
+        final environments = items(snapshot.data![2]);
+        final services = items({'items': health['services']});
+        final partners = items({'items': health['partners']});
+        final overall = '${health['status'] ?? 'UNKNOWN'}';
 
         return Content(
           eyebrow: 'PLATFORM OPERATIONS',
           title: 'System & Operations',
-          subtitle: 'Containerized Go services, one public gateway and isolated control-plane responsibilities.',
+          subtitle: 'Provisioning, partner environments, connectors and central health across the containerized HIMATE control plane.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _OperationsHero(status: overall, environment: environment, version: version),
+              _OperationsHero(status: overall, environment: 'control plane', version: 'START-09–13'),
               const SizedBox(height: 22),
               _SectionHeader(
                 title: 'Service Health',
-                subtitle: 'Each domain service is independently deployable and designed for horizontal replication.',
+                subtitle: 'Readiness and liveness are monitored independently for each microservice.',
+                trailing: _MiniCounter(label: '${services.length} services'),
               ),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  ServiceCard(name: 'API Gateway', status: overall),
-                  ServiceCard(name: 'Identity', status: '${services['identity'] ?? 'unknown'}'),
-                  ServiceCard(name: 'Partner Service', status: '${services['partners'] ?? 'unknown'}'),
-                  ServiceCard(name: 'Catalog Service', status: '${services['catalog'] ?? 'unknown'}'),
-                  ServiceCard(name: 'Billing Service', status: '${services['billing'] ?? 'unknown'}'),
+                  for (final s in services)
+                    ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
                 ],
+              ),
+              const SizedBox(height: 24),
+              _SectionHeader(
+                title: 'Partner Health',
+                subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
+                trailing: _MiniCounter(label: '${partners.length} partners'),
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final p in partners)
+                        SizedBox(
+                          width: width,
+                          child: _InfoCard(
+                            title: '${p['partner_id']}',
+                            icon: Icons.monitor_heart_outlined,
+                            children: [
+                              _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              _SectionHeader(
+                title: 'Provisioning Engine',
+                subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
+                trailing: _MiniCounter(label: '${provisioning.length} jobs'),
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final j in provisioning)
+                        SizedBox(
+                          width: width,
+                          child: _InfoCard(
+                            title: '${j['partner_id']}',
+                            icon: Icons.precision_manufacturing_outlined,
+                            children: [
+                              _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
+                              _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
+                              _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              _SectionHeader(
+                title: 'Partner Environments',
+                subtitle: 'Staging and production records retain hostname, version, deployment and environment state.',
+                trailing: _MiniCounter(label: '${environments.length} environments'),
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final e in environments)
+                        SizedBox(
+                          width: width,
+                          child: _InfoCard(
+                            title: '${e['partner_id']} · ${e['kind']}',
+                            icon: Icons.dns_outlined,
+                            children: [
+                              _DefinitionRow(label: 'Hostname', value: '${e['hostname'] ?? '—'}'),
+                              _DefinitionRow(label: 'Environment', value: '${e['environment_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Deployment', value: '${e['deployment_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Version', value: '${e['platform_version'] ?? '—'}'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 24),
               LayoutBuilder(
