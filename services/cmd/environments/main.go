@@ -213,6 +213,10 @@ func (a *app) ensureStaging(w http.ResponseWriter, r *http.Request) {
 	if common.Decode(r,&in)!=nil || strings.TrimSpace(in.PartnerID)=="" { common.APIError(w,400,"VALIDATION","partner_id is required"); return }
 	host := slug(in.SystemName)
 	if host=="partner" { host=slug(in.PartnerID) }
+	partnerSuffix := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(in.PartnerID)), "ptr_")
+	if partnerSuffix != "" && !strings.HasSuffix(host, "-"+partnerSuffix) {
+		host += "-" + partnerSuffix
+	}
 	host += ".himate-staging.local"
 	raw,_:=common.MarshalJSON(in.Config)
 	id:=envID(in.PartnerID,"STAGING")
