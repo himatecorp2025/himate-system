@@ -101,6 +101,7 @@ paths:
         - {name: q, in: query, schema: {type: string}}
         - {name: category, in: query, schema: {type: string}}
         - {name: lifecycle, in: query, schema: {type: string}}
+        - {name: health, in: query, schema: {type: string, enum: [ALL, HEALTHY, WARNING, OFFLINE, UNKNOWN]}}
         - {name: include_archived, in: query, schema: {type: boolean}}
       responses:
         "200":
