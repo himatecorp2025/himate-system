@@ -384,7 +384,8 @@ func renderPDF(snapshot map[string]any)[]byte{
 	sources:=[]any{};if v,ok:=snapshot["data_sources"].([]any);ok{sources=v}
 
 	pages:=[][]string{}
-	current:=[]string{"HIMATE","IMPACT REPORT",title,"Report ID: "+reportID,"Period: "+period,""}
+	generated:=fmt.Sprint(snapshot["snapshot_created_at"])
+	current:=[]string{"HIMATE","IMPACT REPORT",title,"Report ID: "+reportID,"Period: "+period,"Generated: "+generated,""}
 	for _,s:=range sections{
 		if len(current)>35{pages=append(pages,current);current=[]string{"HIMATE · IMPACT REPORT (continued)",""}}
 		current=append(current,s.Title)
