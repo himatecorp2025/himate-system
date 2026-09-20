@@ -350,9 +350,7 @@ func (a *app) verifyDomain(w http.ResponseWriter,r *http.Request,id string){
 	if e.Kind=="PRODUCTION" && len(launchReadiness(e))==0 { e.EnvironmentStatus="READY_FOR_LAUNCH" }
 	if err:=a.persistDomainState(e);err!=nil { common.APIError(w,500,"DB","Could not persist domain verification");return }
 	e,_=a.get(id)
-	code:=http.StatusOK
-	if e.DomainStatus=="FAILED" { code=http.StatusUnprocessableEntity }
-	common.JSON(w,code,mapEnvironment(e))
+	common.JSON(w,http.StatusOK,mapEnvironment(e))
 }
 
 func (a *app) deployRecord(ctx context.Context,e environment,release string)(environment,error){
