@@ -691,7 +691,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		args = append(args, key)
 		placeholders[i] = fmt.Sprintf("$%d", i+2)
 	}
-	_, err = a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
+	_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
 		SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',updated_at=NOW()
 		WHERE partner_id=$1 AND module_key NOT IN (`+strings.Join(placeholders, ",")+`) AND payment_status<>'INACTIVE'`, args...)
 	return err
