@@ -42,6 +42,8 @@ func main(){
 			"environments":os.Getenv("ENVIRONMENTS_HOSTPORT"),
 			"connector":os.Getenv("CONNECTOR_HOSTPORT"),
 			"impact":os.Getenv("IMPACT_HOSTPORT"),
+			"evidence":os.Getenv("EVIDENCE_HOSTPORT"),
+			"reports":os.Getenv("REPORTS_HOSTPORT"),
 			"storage":os.Getenv("STORAGE_HOSTPORT"),
 			"partner-runtime":os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 		},
