@@ -1935,16 +1935,17 @@ class _PartnersPageState extends State<PartnersPage> {
                             Wrap(spacing: 14, runSpacing: 14, children: cards),
                             if (total > pageSize) ...[
                               const SizedBox(height: 18),
-                              Row(
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
                                   OutlinedButton.icon(
                                     onPressed: offset > 0 && !loading ? previousPage : null,
                                     icon: const Icon(Icons.chevron_left_rounded),
                                     label: const Text('Previous'),
                                   ),
-                                  const SizedBox(width: 10),
                                   _MiniCounter(label: 'Page ${offset ~/ pageSize + 1} of ${(total + pageSize - 1) ~/ pageSize}'),
-                                  const SizedBox(width: 10),
                                   OutlinedButton.icon(
                                     onPressed: offset + partners.length < total && !loading ? nextPage : null,
                                     icon: const Icon(Icons.chevron_right_rounded),
@@ -2638,7 +2639,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       backgroundColor: brandIvory,
       appBar: AppBar(
         leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
-        title: const HimateLogo(width: 170),
+        title: MediaQuery.sizeOf(context).width < 520
+            ? const HimateLogo(compact: true, width: 34)
+            : const HimateLogo(width: 170),
         actions: [
           _StatusPill(label: '${partner['lifecycle'] ?? 'PROSPECT'}'),
           const SizedBox(width: 12),
