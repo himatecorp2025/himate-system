@@ -4,6 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:himate_frontend/main.dart';
 
 void main() {
+  test('shell navigation uses explicit desktop, tablet and mobile modes', () {
+    expect(shellLayoutForWidth(1280), ShellLayoutMode.desktop);
+    expect(shellLayoutForWidth(980), ShellLayoutMode.desktop);
+    expect(shellLayoutForWidth(768), ShellLayoutMode.tablet);
+    expect(shellLayoutForWidth(720), ShellLayoutMode.tablet);
+    expect(shellLayoutForWidth(719), ShellLayoutMode.mobile);
+    expect(shellLayoutForWidth(390), ShellLayoutMode.mobile);
+  });
+
   test('workspace route slugs are stable', () {
     expect(workspaceRouteSlug('Pricing & Subscription'), 'pricing-and-subscription');
     expect(workspaceRouteSlug('Finance & Documents'), 'finance-and-documents');
