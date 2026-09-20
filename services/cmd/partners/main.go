@@ -291,9 +291,11 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 				if countRows.Scan(&state, &count) == nil { lifecycleCounts[state] = count }
 			}
 		}
+		referenceCount := 0
+		_ = a.db.QueryRow(`SELECT COUNT(*) FROM partners.partners WHERE reference_partner=TRUE`).Scan(&referenceCount)
 		common.JSON(w, 200, map[string]any{
 			"items": items, "count": len(items), "total": total, "limit": limit, "offset": offset,
-			"has_more": offset+len(items) < total, "lifecycle_counts": lifecycleCounts,
+			"has_more": offset+len(items) < total, "lifecycle_counts": lifecycleCounts, "reference_count": referenceCount,
 		})
 	case http.MethodPost:
 		var in struct {
