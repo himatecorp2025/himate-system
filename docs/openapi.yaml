@@ -531,6 +531,8 @@ paths:
       parameters:
         - {name: partner_id, in: query, schema: {type: string}}
         - {name: metric_key, in: query, schema: {type: string}}
+        - {name: period_start, in: query, schema: {type: string, format: date}}
+        - {name: period_end, in: query, schema: {type: string, format: date}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500}}
       responses:
         "200": {description: Impact observations}
@@ -567,8 +569,10 @@ paths:
       summary: Aggregate global or partner impact metrics
       parameters:
         - {name: partner_id, in: query, schema: {type: string}}
+        - {name: period_start, in: query, schema: {type: string, format: date}}
+        - {name: period_end, in: query, schema: {type: string, format: date}}
       responses:
-        "200": {description: Aggregated impact metrics}
+        "200": {description: Aggregated impact metrics for the optional overlap period}
   /api/v1/evidence:
     get:
       tags: [Evidence]
