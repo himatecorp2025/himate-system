@@ -550,6 +550,8 @@ func requiredPermission(r *http.Request) string {
 		action = "approve"
 	case resource == "provisioning" && strings.HasSuffix(path, "/run"):
 		action = "approve"
+	case resource == "environments" && (strings.HasSuffix(path, "/deploy") || strings.HasSuffix(path, "/launch")):
+		action = "approve"
 	case resource == "evidence" && r.Method == http.MethodPatch:
 		action = "approve"
 	case resource == "billing" && strings.Contains(path, "/license") && r.Method == http.MethodPut:
