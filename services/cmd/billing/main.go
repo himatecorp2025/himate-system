@@ -192,7 +192,15 @@ func (a *app) profile(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{"legal_name": legal, "address": address, "tax_id": taxID, "email": email, "bank_name": bank, "bank_address": bankAddr, "account_number": account, "iban": iban, "swift": swift})
 	case http.MethodPut:
 		var in struct {
-			LegalName, Address, TaxID, Email, BankName, BankAddress, AccountNumber, IBAN, SWIFT string
+			LegalName     string `json:"legal_name"`
+			Address       string `json:"address"`
+			TaxID         string `json:"tax_id"`
+			Email         string `json:"email"`
+			BankName      string `json:"bank_name"`
+			BankAddress   string `json:"bank_address"`
+			AccountNumber string `json:"account_number"`
+			IBAN          string `json:"iban"`
+			SWIFT         string `json:"swift"`
 		}
 		if common.Decode(r, &in) != nil {
 			common.APIError(w, 400, "JSON", "Invalid request")
@@ -511,7 +519,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		price := 0.0
 		if v, ok := mod["partner_price"].(float64); ok { price = v } else if v, ok := mod["partner_price"].(json.Number); ok { price, _ = v.Float64() }
 		today := dateOnly(now)
-		start, end := cycleWindow(today, today)
+		_, end := cycleWindow(today, today)
 		_, _ = a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(partner_id,module_key,currency,activation_date,period_start,period_end,price)
 			VALUES($1,$2,$3,$4,$4,$5,$6) ON CONFLICT(partner_id,module_key) DO UPDATE SET price=EXCLUDED.price,currency=EXCLUDED.currency,updated_at=NOW()`,
 			id, key, currency, today, end, price)
@@ -561,8 +569,14 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 		common.JSON(w, 200, map[string]any{"items": items})
 	case http.MethodPost:
 		var in struct {
-			Kind, Name, StorageURL, Note, VerifiedBy, MIMEType, SHA256 string
-			SizeBytes int64 `json:"size_bytes"`
+			Kind       string `json:"kind"`
+			Name       string `json:"name"`
+			StorageURL string `json:"storage_url"`
+			Note       string `json:"note"`
+			VerifiedBy string `json:"verified_by"`
+			MIMEType   string `json:"mime_type"`
+			SHA256     string `json:"sha256"`
+			SizeBytes  int64  `json:"size_bytes"`
 		}
 		if common.Decode(r, &in) != nil || strings.TrimSpace(in.Kind) == "" || strings.TrimSpace(in.Name) == "" {
 			common.APIError(w, 400, "VALIDATION", "Document kind and name are required")
