@@ -114,6 +114,9 @@ func (a *app) migrate(ctx context.Context) error {
 				PRIMARY KEY(partner_id,environment)
 			)`,
 		}},
+		{Version:3,Name:"connector-token-hash-lookup",Statements:[]string{
+			`CREATE UNIQUE INDEX IF NOT EXISTS connector_credentials_token_hash_idx ON connector.credentials(token_hash)`,
+		}},
 	})
 }
 
@@ -242,53 +245,27 @@ func bearer(r *http.Request) string {
 	return ""
 }
 
+func connectorTokenLookupHash(token string)(string,error){
+	token=strings.TrimSpace(token)
+	if token=="" { return "",fmt.Errorf("missing connector credential") }
+	if !strings.HasPrefix(token,"hmc_crd_") { return "",fmt.Errorf("invalid connector credential") }
+	// Connector credentials are opaque. Base64URL secrets can contain '_',
+	// therefore the identity must never be reconstructed by splitting the token.
+	return tokenHash(token),nil
+}
+
 func (a *app) authenticate(r *http.Request)(credential,error){
 	token:=bearer(r)
-	if token=="" { return credential{},fmt.Errorf("missing connector credential") }
-	parts:=strings.Split(token,"_")
-	if len(parts)<4 || parts[0]!="hmc" || parts[1]!="crd" { return credential{},fmt.Errorf("invalid connector credential") }
-	credentialID:="crd_"+parts[2]
+	got,err:=connectorTokenLookupHash(token)
+	if err!=nil { return credential{},err }
 	var c credential
-	err:=a.db.QueryRow(`SELECT partner_id,environment,credential_id,token_hash,active,created_at,rotated_at,last_used_at FROM connector.credentials WHERE credential_id=$1`,credentialID).
+	err=a.db.QueryRow(`SELECT partner_id,environment,credential_id,token_hash,active,created_at,rotated_at,last_used_at
+		FROM connector.credentials WHERE token_hash=$1`,got).
 		Scan(&c.PartnerID,&c.Environment,&c.CredentialID,&c.TokenHash,&c.Active,&c.CreatedAt,&c.RotatedAt,&c.LastUsedAt)
 	if err!=nil || !c.Active { return credential{},fmt.Errorf("invalid connector credential") }
-	got:=tokenHash(token)
 	if len(got)!=len(c.TokenHash) || subtle.ConstantTimeCompare([]byte(got),[]byte(c.TokenHash))!=1 { return credential{},fmt.Errorf("invalid connector credential") }
-	_,_ = a.db.Exec(`UPDATE connector.credentials SET last_used_at=NOW() WHERE credential_id=$1`,credentialID)
+	_,_ = a.db.Exec(`UPDATE connector.credentials SET last_used_at=NOW() WHERE credential_id=$1`,c.CredentialID)
 	return c,nil
-}
-
-func (a *app)upsertDesiredState(ctx context.Context,partnerID,environment string,entitlements,maintenance,config map[string]any,actor string)(map[string]any,error){
-	entitlementsRaw,_:=common.MarshalJSON(entitlements)
-	maintenanceRaw,_:=common.MarshalJSON(maintenance)
-	configRaw,_:=common.MarshalJSON(config)
-	var revision int64
-	var updated time.Time
-	err:=a.db.QueryRowContext(ctx,`INSERT INTO connector.desired_state(partner_id,environment,revision,entitlements,maintenance,config,updated_by)
-		VALUES($1,$2,1,$3::jsonb,$4::jsonb,$5::jsonb,$6)
-		ON CONFLICT(partner_id,environment) DO UPDATE SET revision=connector.desired_state.revision+1,
-			entitlements=EXCLUDED.entitlements,maintenance=EXCLUDED.maintenance,config=EXCLUDED.config,updated_by=EXCLUDED.updated_by,updated_at=NOW()
-		RETURNING revision,updated_at`,partnerID,environment,string(entitlementsRaw),string(maintenanceRaw),string(configRaw),actor).Scan(&revision,&updated)
-	if err!=nil{return nil,err}
-	return map[string]any{"partner_id":partnerID,"environment":environment,"revision":revision,"entitlements":common.JSONRawOrEmpty(entitlementsRaw),"maintenance":common.JSONRawOrEmpty(maintenanceRaw),"config":common.JSONRawOrEmpty(configRaw),"updated_at":updated},nil
-}
-
-func (a *app)writeDesiredState(w http.ResponseWriter,partnerID,environment string){
-	var revision int64
-	var entitlements,maintenance,config []byte
-	var updatedBy string
-	var updated time.Time
-	err:=a.db.QueryRow(`SELECT revision,entitlements,maintenance,config,updated_by,updated_at FROM connector.desired_state WHERE partner_id=$1 AND environment=$2`,partnerID,environment).
-		Scan(&revision,&entitlements,&maintenance,&config,&updatedBy,&updated)
-	if err!=nil{common.APIError(w,404,"NOT_FOUND","Desired state not found");return}
-	common.JSON(w,200,map[string]any{"partner_id":partnerID,"environment":environment,"revision":revision,"entitlements":common.JSONRawOrEmpty(entitlements),"maintenance":common.JSONRawOrEmpty(maintenance),"config":common.JSONRawOrEmpty(config),"updated_by":updatedBy,"updated_at":updated})
-}
-
-func (a *app)desiredState(w http.ResponseWriter,r *http.Request){
-	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET");return }
-	cred,err:=a.authenticate(r)
-	if err!=nil { common.APIError(w,401,"CONNECTOR_UNAUTHORIZED",err.Error());return }
-	a.writeDesiredState(w,cred.PartnerID,cred.Environment)
 }
 
 func (a *app) heartbeat(w http.ResponseWriter,r *http.Request){
