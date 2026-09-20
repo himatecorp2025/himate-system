@@ -232,6 +232,8 @@ services:
       CONNECTOR_HOSTPORT: connector:10000
       HEALTH_HOSTPORT: health:10000
       IMPACT_HOSTPORT: impact:10000
+      STORAGE_HOSTPORT: storage:10000
+      PARTNER_RUNTIME_HOSTPORT: runtime:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -252,6 +254,10 @@ services:
       health:
         condition: service_started
       impact:
+        condition: service_started
+      storage:
+        condition: service_started
+      runtime:
         condition: service_started
 
 volumes:
