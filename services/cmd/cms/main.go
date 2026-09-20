@@ -309,7 +309,8 @@ func (a *app)mediaExists(ctx context.Context,id string)bool{
 
 func (a *app)validateContent(ctx context.Context,pageID string,in versionInput,forPublish bool)error{
 	in=normalizedInput(in)
-	if !slugPattern.MatchString(in.Slug){return fmt.Errorf("slug must contain lowercase letters, numbers and single hyphens only")}
+	if !slugPattern.MatchString(in.Slug)||len(in.Slug)>80{return fmt.Errorf("slug must be at most 80 characters and contain lowercase letters, numbers and single hyphens only")}
+	if len(in.Sections)>100{return fmt.Errorf("a CMS page may contain at most 100 sections")}
 	if len(in.Sections)==0&&forPublish{return fmt.Errorf("at least one section is required for publishing")}
 	seenID:=map[string]bool{};seenOrder:=map[int]bool{}
 	visible:=0
@@ -317,6 +318,12 @@ func (a *app)validateContent(ctx context.Context,pageID string,in versionInput,f
 		if !sectionIDPattern.MatchString(s.ID){return fmt.Errorf("invalid section id %q",s.ID)}
 		if seenID[s.ID]{return fmt.Errorf("duplicate section id %q",s.ID)};seenID[s.ID]=true
 		if !componentTypes[s.ComponentType]{return fmt.Errorf("unsupported component type %q",s.ComponentType)}
+		if len(s.Heading)>240{return fmt.Errorf("section %q heading is too long",s.ID)}
+		if len(s.Body)>20000{return fmt.Errorf("section %q body is too long",s.ID)}
+		if len(s.CTALabel)>100{return fmt.Errorf("section %q CTA label is too long",s.ID)}
+		if len(s.CTAURL)>2048{return fmt.Errorf("section %q CTA URL is too long",s.ID)}
+		settingsRaw,_:=json.Marshal(s.Settings)
+		if len(settingsRaw)>16384{return fmt.Errorf("section %q settings exceed 16 KiB",s.ID)}
 		if s.SortOrder<0{return fmt.Errorf("sort_order cannot be negative")}
 		if seenOrder[s.SortOrder]{return fmt.Errorf("duplicate sort_order %d",s.SortOrder)};seenOrder[s.SortOrder]=true
 		if (s.CTALabel=="")!=(s.CTAURL==""){return fmt.Errorf("CTA label and URL must be provided together")}
@@ -392,7 +399,7 @@ func (a *app)pages(w http.ResponseWriter,r *http.Request){
 		}
 		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
 		in.PageKey=strings.ToLower(strings.TrimSpace(in.PageKey));in.Name=strings.TrimSpace(in.Name);in.Version=normalizedInput(in.Version)
-		if !pageKeyPattern.MatchString(in.PageKey)||in.Name==""{common.APIError(w,400,"VALIDATION","page_key and name are required");return}
+		if !pageKeyPattern.MatchString(in.PageKey)||in.Name==""||len(in.Name)>120{common.APIError(w,400,"VALIDATION","page_key and a name up to 120 characters are required");return}
 		if err:=a.validateContent(r.Context(),"",in.Version,false);err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
 		tx,err:=a.db.BeginTx(r.Context(),&sql.TxOptions{});if err!=nil{common.APIError(w,500,"DB","Could not start CMS transaction");return};defer tx.Rollback()
 		pageID:=newID("cms_page_")
