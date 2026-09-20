@@ -293,24 +293,27 @@ func (a *app) deployStaging(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w,200,mapEnvironment(e))
 }
 
+func (a *app) probeRuntime(ctx context.Context,e environment)(environment,error){
+	path:="/internal/v1/runtime/health?partner_id="+url.QueryEscape(e.PartnerID)+"&environment="+url.QueryEscape(e.Kind)
+	var out map[string]any
+	latency,probeErr:=a.runtimeRequest(ctx,http.MethodGet,path,nil,&out)
+	status:="OK"
+	if probeErr!=nil{status="ERROR"}
+	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET runtime_status=$2,runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,status,latency)
+	e.RuntimeStatus=status;e.RuntimeLatencyMS=latency;e.LastHealthCheck=sql.NullTime{Time:time.Now().UTC(),Valid:true}
+	return e,probeErr
+}
+
 func (a *app) runtimeHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }
 	partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
 	kind:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("environment")))
 	if !kindValues[kind] { common.APIError(w,400,"VALIDATION","environment must be STAGING or PRODUCTION");return }
-	id:=envID(partnerID,kind)
-	e,err:=a.get(id)
+	e,err:=a.get(envID(partnerID,kind))
 	if err!=nil{common.APIError(w,404,"NOT_FOUND","Environment not found");return}
-	path:="/internal/v1/runtime/health?partner_id="+url.QueryEscape(partnerID)+"&environment="+url.QueryEscape(kind)
-	var out map[string]any
-	latency,probeErr:=a.runtimeRequest(r.Context(),http.MethodGet,path,nil,&out)
-	status:="OK"
-	if probeErr!=nil{status="ERROR"}
-	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET runtime_status=$2,runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,id,status,latency)
-	if probeErr!=nil{common.JSON(w,503,map[string]any{"partner_id":partnerID,"environment":kind,"hostname":e.Hostname,"status":"ERROR","latency_ms":latency,"error":probeErr.Error()});return}
-	out["latency_ms"]=latency
-	out["hostname_status"]="REACHABLE"
-	common.JSON(w,200,out)
+	e,probeErr:=a.probeRuntime(r.Context(),e)
+	if probeErr!=nil{common.JSON(w,503,map[string]any{"partner_id":partnerID,"environment":kind,"hostname":e.Hostname,"status":"ERROR","latency_ms":e.RuntimeLatencyMS,"error":probeErr.Error()});return}
+	common.JSON(w,200,map[string]any{"partner_id":partnerID,"environment":kind,"hostname":e.Hostname,"status":"OK","hostname_status":"REACHABLE","latency_ms":e.RuntimeLatencyMS,"active_release":e.ActiveRelease,"checked_at":time.Now().UTC()})
 }
 
 func (a *app) summary(w http.ResponseWriter, r *http.Request) {
@@ -321,6 +324,7 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	items:=[]map[string]any{}
 	for rows.Next() {
 		if e,err:=scanEnvironment(rows);err==nil {
+			if e.DeploymentStatus=="DEPLOYED" { e,_=a.probeRuntime(r.Context(),e) }
 			items=append(items,map[string]any{
 				"id":e.ID,"partner_id":e.PartnerID,"kind":e.Kind,"hostname":e.Hostname,
 				"platform_version":e.PlatformVersion,"deployment_status":e.DeploymentStatus,
