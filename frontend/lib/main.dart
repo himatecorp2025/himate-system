@@ -3039,6 +3039,86 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       ),
                       const SizedBox(height: 26),
                       KeyedSubtree(
+                        key: _environmentKey,
+                        child: _SectionHeader(
+                          title: 'System & Environment',
+                          subtitle: 'Provisioning state, isolated partner infrastructure, staging/production and release metadata.',
+                          trailing: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: createProductionEnvironment,
+                                icon: const Icon(Icons.public_outlined),
+                                label: Text(environments.any((e) => e['kind'] == 'PRODUCTION') ? 'Production settings' : 'Add production'),
+                              ),
+                              FilledButton.icon(
+                                onPressed: startProvisioning,
+                                icon: const Icon(Icons.precision_manufacturing_outlined),
+                                label: Text(provisioningJob == null ? 'Start provisioning' : 'Resume provisioning'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final cards = <Widget>[];
+                          final job = provisioningJob;
+                          if (job != null) {
+                            cards.add(
+                              _InfoCard(
+                                title: 'Provisioning Engine',
+                                icon: Icons.precision_manufacturing_outlined,
+                                children: [
+                                  _DefinitionRow(label: 'Status', value: '${job['status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Current step', value: '${job['current_step'] ?? '—'}'),
+                                  _DefinitionRow(label: 'System name', value: '${job['system_name'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Release', value: '${job['desired_release'] ?? '—'}'),
+                                  if ('${job['last_error'] ?? ''}'.isNotEmpty)
+                                    _DefinitionRow(label: 'Last error', value: '${job['last_error']}'),
+                                ],
+                              ),
+                            );
+                          }
+                          for (final env in environments) {
+                            cards.add(
+                              _InfoCard(
+                                title: '${env['kind']}',
+                                icon: env['kind'] == 'PRODUCTION' ? Icons.public_outlined : Icons.science_outlined,
+                                action: IconButton(
+                                  tooltip: 'Edit environment',
+                                  onPressed: () => editEnvironment(env),
+                                  icon: const Icon(Icons.edit_outlined, size: 18),
+                                ),
+                                children: [
+                                  _DefinitionRow(label: 'Hostname', value: '${env['hostname'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Environment', value: _humanize('${env['environment_status'] ?? 'UNKNOWN'}')),
+                                  _DefinitionRow(label: 'Deployment', value: _humanize('${env['deployment_status'] ?? 'UNKNOWN'}')),
+                                  _DefinitionRow(label: 'Platform version', value: '${env['platform_version'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Active release', value: '${env['active_release'] ?? '—'}'),
+                                ],
+                              ),
+                            );
+                          }
+                          if (cards.isEmpty) {
+                            return const _MessageCard(
+                              icon: Icons.dns_outlined,
+                              title: 'No environment yet',
+                              message: 'Provisioning will create the isolated partner database, base configuration and staging environment.',
+                            );
+                          }
+                          final width = c.maxWidth < 680 ? c.maxWidth : c.maxWidth < 1080 ? (c.maxWidth - 14) / 2 : (c.maxWidth - 28) / 3;
+                          return Wrap(
+                            spacing: 14,
+                            runSpacing: 14,
+                            children: [for (final card in cards) SizedBox(width: width, child: card)],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
                         key: _modulesKey,
                         child: _SectionHeader(
                           title: 'Partner Modules',
@@ -3106,6 +3186,92 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           ]);
                         },
                       ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
+                        key: _statisticsKey,
+                        child: _SectionHeader(
+                          title: 'Statistics',
+                          subtitle: 'Partner-scoped impact metrics retain period, aggregation and provenance for auditable reporting.',
+                          trailing: _MiniCounter(label: '${impactSummary.length} metrics'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      impactSummary.isEmpty
+                          ? const _MessageCard(
+                              icon: Icons.insights_outlined,
+                              title: 'No impact observations yet',
+                              message: 'Create metric definitions under Impact & Reports, then record partner values manually or through the Connector Protocol.',
+                            )
+                          : LayoutBuilder(
+                              builder: (context, c) {
+                                final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                                return Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    for (final metric in impactSummary)
+                                      SizedBox(
+                                        width: width,
+                                        child: _InfoCard(
+                                          title: '${metric['label'] ?? metric['metric_key']}',
+                                          icon: Icons.insights_outlined,
+                                          children: [
+                                            _DefinitionRow(label: 'Value', value: '${metric['numeric_value'] ?? '—'} ${metric['unit'] ?? ''}'),
+                                            _DefinitionRow(label: 'Aggregation', value: '${metric['aggregation'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Latest period', value: '${metric['latest_period_end'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Observations', value: '${metric['observations'] ?? 0}'),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
+                        key: _integrationsKey,
+                        child: _SectionHeader(
+                          title: 'Integrations',
+                          subtitle: 'Partner-scoped Connector Protocol credentials. Raw secrets are never stored by HIMATE.',
+                          trailing: FilledButton.icon(
+                            onPressed: rotateConnectorCredential,
+                            icon: const Icon(Icons.key_outlined),
+                            label: const Text('Generate / rotate credential'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      connectorCredentials.isEmpty
+                          ? const _MessageCard(
+                              icon: Icons.hub_outlined,
+                              title: 'No connector credential yet',
+                              message: 'Provisioning creates the staging connector identity automatically. You can also generate or rotate it here.',
+                            )
+                          : LayoutBuilder(
+                              builder: (context, c) {
+                                final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 980 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                                return Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    for (final credential in connectorCredentials)
+                                      SizedBox(
+                                        width: width,
+                                        child: _InfoCard(
+                                          title: '${credential['environment']} Connector',
+                                          icon: Icons.hub_outlined,
+                                          children: [
+                                            _DefinitionRow(label: 'Credential ID', value: '${credential['credential_id'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Active', value: credential['active'] == true ? 'Yes' : 'No'),
+                                            _DefinitionRow(label: 'Rotated', value: '${credential['rotated_at'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Last used', value: '${credential['last_used_at'] ?? 'Never'}'),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
                     ],
                   ),
                 ),
