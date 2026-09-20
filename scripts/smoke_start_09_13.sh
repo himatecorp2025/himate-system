@@ -84,14 +84,21 @@ credential="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -
 connector_token="$(printf '%s' "$credential" | json_field token)"
 test -n "$connector_token"
 curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: application/json'   -d '{"version":"0.3.0-start-09-13","health":"OK","modules":{"campaigns_utm":"ACTIVE"}}'   "$BASE_URL/connector/v1/heartbeat" | grep -q '"status":"accepted"'
+desired="$(curl -fsS -H "Authorization: Bearer $connector_token" "$BASE_URL/connector/v1/desired-state")"
+printf '%s' "$desired" | grep -q '"campaigns_utm":"ACTIVE"'
+printf '%s' "$desired" | grep -q '"status":"ACTIVE"'
+printf '%s' "$desired" | grep -q '"revision":'
 echo ok
 
 printf 'START-13 metric definition and connector sync... '
 curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"metric_key":"ci.events","label":"CI Events","description":"START-13 smoke metric","unit":"count","aggregation":"SUM","scope":"PARTNER"}'   "$BASE_URL/api/v1/impact/definitions" | grep -q '"metric_key":"ci.events"'
+curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner_id\",\"metric_key\":\"ci.events\",\"period_start\":\"2026-08-01\",\"period_end\":\"2026-08-31\",\"numeric_value\":5,\"provenance\":\"MANUAL\",\"source_ref\":\"ci-baseline\"}"   "$BASE_URL/api/v1/impact/baselines" | grep -q '"numeric_value":5'
 curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: application/json'   -d '{"items":[{"idempotency_key":"start09-13-ci-event-1","metric_key":"ci.events","period_start":"2026-09-01","period_end":"2026-09-20","numeric_value":7,"provenance":"PARTNER_DECLARED","source_ref":"ci-connector"}]}'   "$BASE_URL/connector/v1/metrics" | grep -q '"accepted":1'
 summary="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/impact/summary?partner_id=$partner_id")"
 printf '%s' "$summary" | grep -q '"metric_key":"ci.events"'
 printf '%s' "$summary" | grep -q '"numeric_value":7'
+printf '%s' "$summary" | grep -q '"baseline_numeric_value":5'
+printf '%s' "$summary" | grep -q '"delta_from_baseline":2'
 echo ok
 
 printf 'START-12 system health... '
@@ -101,6 +108,7 @@ printf '%s' "$health" | grep -q '"name":"connector"'
 printf '%s' "$health" | grep -q '"name":"impact"'
 printf '%s' "$health" | grep -q "\"partner_id\":\"$partner_id\""
 printf '%s' "$health" | grep -q '"connector_health":"OK"'
+printf '%s' "$health" | python3 -c 'import json,sys; p=json.load(sys.stdin); pid=sys.argv[1]; item=next(x for x in p["partners"] if x["partner_id"]==pid); assert item["database_health"]=="OK", item; assert item["storage_health"]=="READY", item; assert item["hostname_status"]=="REACHABLE", item; assert item["sync_status"]=="CURRENT", item' "$partner_id"
 echo ok
 
 echo "HIMATE START-09–13 integration smoke passed"
