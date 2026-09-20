@@ -81,11 +81,10 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 	}
 	defer conn.Close()
 
-	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext($1))`, "himate-migration:"+service); err != nil {
-		return fmt.Errorf("migration lock: %w", err)
+	const registryLock = "himate-migration-registry"
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext($1))`, registryLock); err != nil {
+		return fmt.Errorf("migration registry lock: %w", err)
 	}
-	defer conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, "himate-migration:"+service)
-
 	if _, err := conn.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS public.himate_schema_migrations(
 			service TEXT NOT NULL,
@@ -94,8 +93,18 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			PRIMARY KEY(service, version)
 		)`); err != nil {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, registryLock)
 		return fmt.Errorf("migration registry: %w", err)
 	}
+	if _, err := conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, registryLock); err != nil {
+		return fmt.Errorf("migration registry unlock: %w", err)
+	}
+
+	serviceLock := "himate-migration:" + service
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext($1))`, serviceLock); err != nil {
+		return fmt.Errorf("migration lock: %w", err)
+	}
+	defer conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, serviceLock)
 
 	current := 0
 	if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version),0) FROM public.himate_schema_migrations WHERE service=$1`, service).Scan(&current); err != nil {
@@ -116,7 +125,6 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 		if err != nil {
 			return fmt.Errorf("migration %d begin: %w", migration.Version, err)
 		}
-		ok := false
 		for _, stmt := range migration.Statements {
 			if strings.TrimSpace(stmt) == "" {
 				continue
@@ -132,10 +140,6 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 		}
 		if err = tx.Commit(); err != nil {
 			return fmt.Errorf("migration %s/%d commit: %w", service, migration.Version, err)
-		}
-		ok = true
-		if !ok {
-			return fmt.Errorf("migration %s/%d did not commit", service, migration.Version)
 		}
 		current = migration.Version
 	}
