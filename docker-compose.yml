@@ -44,10 +44,13 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       CATALOG_HOSTPORT: catalog:10000
+      PARTNERS_HOSTPORT: partners:10000
     depends_on:
       postgres:
         condition: service_healthy
       catalog:
+        condition: service_started
+      partners:
         condition: service_started
 
   contact:
@@ -67,6 +70,105 @@ services:
       postgres:
         condition: service_healthy
 
+  impact:
+    build:
+      context: .
+      dockerfile: services/docker/impact.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  environments:
+    build:
+      context: .
+      dockerfile: services/docker/environments.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  connector:
+    build:
+      context: .
+      dockerfile: services/docker/connector.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      IMPACT_HOSTPORT: impact:10000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      impact:
+        condition: service_started
+
+  provisioning:
+    build:
+      context: .
+      dockerfile: services/docker/provisioning.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      PARTNER_DATABASE_ADMIN_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      PARTNER_DATABASE_MASTER_SECRET: local-partner-database-master-secret-12345678901234567890
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      PARTNERS_HOSTPORT: partners:10000
+      BILLING_HOSTPORT: billing:10000
+      CATALOG_HOSTPORT: catalog:10000
+      ENVIRONMENTS_HOSTPORT: environments:10000
+      CONNECTOR_HOSTPORT: connector:10000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      partners:
+        condition: service_started
+      billing:
+        condition: service_started
+      catalog:
+        condition: service_started
+      environments:
+        condition: service_started
+      connector:
+        condition: service_started
+
+  health:
+    build:
+      context: .
+      dockerfile: services/docker/health.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      PARTNERS_HOSTPORT: partners:10000
+      CATALOG_HOSTPORT: catalog:10000
+      BILLING_HOSTPORT: billing:10000
+      CONTACT_HOSTPORT: contact:10000
+      PROVISIONING_HOSTPORT: provisioning:10000
+      ENVIRONMENTS_HOSTPORT: environments:10000
+      CONNECTOR_HOSTPORT: connector:10000
+      IMPACT_HOSTPORT: impact:10000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      partners:
+        condition: service_started
+      catalog:
+        condition: service_started
+      billing:
+        condition: service_started
+      contact:
+        condition: service_started
+      provisioning:
+        condition: service_started
+      environments:
+        condition: service_started
+      connector:
+        condition: service_started
+      impact:
+        condition: service_started
+
   gateway:
     build:
       context: .
@@ -75,7 +177,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.2.2-brandbook-contact-performance
+      HIMATE_APP_VERSION: 0.3.0-start-09-13
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456
@@ -88,6 +190,11 @@ services:
       CATALOG_HOSTPORT: catalog:10000
       BILLING_HOSTPORT: billing:10000
       CONTACT_HOSTPORT: contact:10000
+      PROVISIONING_HOSTPORT: provisioning:10000
+      ENVIRONMENTS_HOSTPORT: environments:10000
+      CONNECTOR_HOSTPORT: connector:10000
+      HEALTH_HOSTPORT: health:10000
+      IMPACT_HOSTPORT: impact:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,4 +205,14 @@ services:
       billing:
         condition: service_started
       contact:
+        condition: service_started
+      provisioning:
+        condition: service_started
+      environments:
+        condition: service_started
+      connector:
+        condition: service_started
+      health:
+        condition: service_started
+      impact:
         condition: service_started

@@ -1,0 +1,94 @@
+#!/usr/bin/env sh
+set -eu
+
+BASE_URL="${1:-http://127.0.0.1:8080}"
+COOKIE_JAR="${TMPDIR:-/tmp}/himate-start-09-13-cookies.txt"
+BODY="${TMPDIR:-/tmp}/himate-start-09-13-body.json"
+rm -f "$COOKIE_JAR" "$BODY"
+trap 'rm -f "$COOKIE_JAR" "$BODY"' EXIT
+
+json_field() {
+  python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
+}
+
+printf 'login... '
+curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"email":"admin@example.com","password":"local-development-password"}'   "$BASE_URL/api/v1/auth/login" >/dev/null
+echo ok
+
+printf 'create START-09 partner... '
+created="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"display_name":"START 09 CI Partner","legal_name":"START 09 CI Partner LLC","brand_name":"START 09 CI","category_id":"cat_006","lifecycle":"PROSPECT","contact_name":"CI Admin","contact_email":"ci-admin@example.com","country":"United States"}'   "$BASE_URL/api/v1/partners")"
+partner_id="$(printf '%s' "$created" | json_field id)"
+test -n "$partner_id"
+echo "$partner_id"
+
+printf 'license gate blocks provisioning before payment... '
+curl -fsS -b "$COOKIE_JAR" -X PATCH -H 'Content-Type: application/json'   -d '{"lifecycle":"LICENSE_PENDING","reason":"START-09 CI"}'   "$BASE_URL/api/v1/partners/$partner_id" >/dev/null
+curl -fsS -b "$COOKIE_JAR" -X PATCH -H 'Content-Type: application/json'   -d '{"lifecycle":"READY_TO_PROVISION","reason":"START-09 unpaid provisioning gate"}'   "$BASE_URL/api/v1/partners/$partner_id" >/dev/null
+blocked_code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$COOKIE_JAR"   -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner_id\",\"system_name\":\"START 09 CI\",\"admin_email\":\"ci-admin@example.com\",\"platform_version\":\"0.3.0-start-09-13\",\"desired_release\":\"0.3.0-start-09-13\",\"module_preset\":[\"campaigns_utm\"]}"   "$BASE_URL/api/v1/provisioning/jobs")"
+test "$blocked_code" = "409"
+grep -q 'BLOCKED_LICENSE' "$BODY"
+curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"lifecycle":"READY_TO_PROVISION"'
+echo ok
+
+printf 'prepare paid license gate... '
+curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json'   -d '{"currency":"USD","activation_fee":13000,"activation_fee_waived":false,"activation_fee_reason":"","base_monthly_fee":250,"annual_increase_percent":10,"price_effective_from":"2026-09-20","service_anchor_date":"2026-09-20","reason":"START-09 CI commercial setup"}'   "$BASE_URL/api/v1/billing/partners/$partner_id/terms" >/dev/null
+
+curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"kind":"PAYMENT_EVIDENCE","name":"START-09 CI receipt","storage_url":"ci://start09/receipt.pdf","note":"Ephemeral CI evidence","mime_type":"application/pdf","sha256":"ci-start09","size_bytes":1}'   "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
+
+curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json'   -d '{"currency":"USD","required_amount":13000,"paid_amount":13000,"payment_date":"2026-09-20","payment_reference":"START09-CI-PAID","verified_by":"ci-smoke","note":"CI verified","waived":false,"waiver_reason":""}'   "$BASE_URL/api/v1/billing/partners/$partner_id/license" | grep -q '"status":"PAID"'
+curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"lifecycle":"READY_TO_PROVISION"'
+echo ok
+
+printf 'START-09 provisioning engine... '
+provisioned="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner_id\",\"system_name\":\"START 09 CI\",\"admin_email\":\"ci-admin@example.com\",\"platform_version\":\"0.3.0-start-09-13\",\"desired_release\":\"0.3.0-start-09-13\",\"module_preset\":[\"campaigns_utm\"]}"   "$BASE_URL/api/v1/provisioning/jobs")"
+printf '%s' "$provisioned" | grep -q '"status":"CONFIGURATION_REQUIRED"'
+job_id="$(printf '%s' "$provisioned" | json_field id)"
+curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"lifecycle":"CONFIGURATION"'
+echo ok
+
+printf 'idempotent provisioning retry... '
+curl -fsS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/v1/provisioning/jobs/$job_id/run" | grep -q '"status":"CONFIGURATION_REQUIRED"'
+db_name="himate_$partner_id"
+db_count="$(docker compose exec -T postgres psql -U himate -d postgres -Atc "SELECT COUNT(*) FROM pg_database WHERE datname='$db_name'")"
+test "$db_count" = "1"
+identity="$(docker compose exec -T postgres psql -U himate -d "$db_name" -Atc "SELECT value FROM partner_core.system_meta WHERE key='partner_id'")"
+test "$identity" = "$partner_id"
+policy="$(docker compose exec -T postgres psql -U himate -d "$db_name" -Atc "SELECT value FROM partner_core.system_meta WHERE key='template_data_policy'")"
+test "$policy" = "STRUCTURE_ONLY_NO_KLAVIERHAUS_BUSINESS_DATA"
+admin_invite="$(docker compose exec -T postgres psql -U himate -d "$db_name" -Atc "SELECT COUNT(*) FROM partner_core.admin_invites WHERE email='ci-admin@example.com'")"
+test "$admin_invite" = "1"
+echo ok
+
+printf 'START-10 isolated staging environment... '
+envs="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/environments?partner_id=$partner_id")"
+printf '%s' "$envs" | grep -q '"kind":"STAGING"'
+printf '%s' "$envs" | grep -q '"environment_status":"CONFIGURATION_REQUIRED"'
+env_count="$(printf '%s' "$envs" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')"
+test "$env_count" = "1"
+echo ok
+
+printf 'START-11 connector protocol... '
+credential="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"environment":"STAGING"}'   "$BASE_URL/api/v1/connectors/$partner_id/credential")"
+connector_token="$(printf '%s' "$credential" | json_field token)"
+test -n "$connector_token"
+curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: application/json'   -d '{"version":"0.3.0-start-09-13","health":"OK","modules":{"campaigns_utm":"ACTIVE"}}'   "$BASE_URL/connector/v1/heartbeat" | grep -q '"status":"accepted"'
+echo ok
+
+printf 'START-13 metric definition and connector sync... '
+curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"metric_key":"ci.events","label":"CI Events","description":"START-13 smoke metric","unit":"count","aggregation":"SUM","scope":"PARTNER"}'   "$BASE_URL/api/v1/impact/definitions" | grep -q '"metric_key":"ci.events"'
+curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: application/json'   -d '{"items":[{"idempotency_key":"start09-13-ci-event-1","metric_key":"ci.events","period_start":"2026-09-01","period_end":"2026-09-20","numeric_value":7,"provenance":"PARTNER_DECLARED","source_ref":"ci-connector"}]}'   "$BASE_URL/connector/v1/metrics" | grep -q '"accepted":1'
+summary="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/impact/summary?partner_id=$partner_id")"
+printf '%s' "$summary" | grep -q '"metric_key":"ci.events"'
+printf '%s' "$summary" | grep -q '"numeric_value":7'
+echo ok
+
+printf 'START-12 system health... '
+health="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/system-health")"
+printf '%s' "$health" | grep -q '"name":"provisioning"'
+printf '%s' "$health" | grep -q '"name":"connector"'
+printf '%s' "$health" | grep -q '"name":"impact"'
+printf '%s' "$health" | grep -q "\"partner_id\":\"$partner_id\""
+printf '%s' "$health" | grep -q '"connector_health":"OK"'
+echo ok
+
+echo "HIMATE START-09–13 integration smoke passed"

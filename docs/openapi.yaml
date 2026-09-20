@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.3.0-start-01-08
+  version: 0.4.0-start-09-13
   description: >
-    Authenticated REST contract for the START-01 through START-08 HIMATE
-    control-plane surface. Partner business databases remain outside this API.
+    Authenticated REST contract for the START-01 through START-13 HIMATE
+    control-plane surface. Partner business databases remain isolated behind
+    connector/API contracts; provisioning never copies partner business data.
 servers:
   - url: /
 tags:
@@ -13,6 +14,11 @@ tags:
   - name: Partners
   - name: Modules
   - name: Billing
+  - name: Provisioning
+  - name: Environments
+  - name: Connector
+  - name: System Health
+  - name: Impact
   - name: Public
 paths:
   /api/v1/health:
@@ -345,12 +351,186 @@ paths:
       responses:
         "201": {description: Inquiry accepted}
         "429": {description: Rate limited}
+  /api/v1/provisioning/jobs:
+    get:
+      tags: [Provisioning]
+      summary: List provisioning jobs
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Provisioning jobs}
+    post:
+      tags: [Provisioning]
+      summary: Start or resume idempotent partner provisioning
+      description: >
+        Requires a partner in READY_TO_PROVISION/PROVISIONING/CONFIGURATION
+        and a satisfied initial-license gate. The workflow creates an isolated
+        partner database/role, structure-only reference template, module preset,
+        staging environment and connector identity. Successful steps are not
+        repeated on retry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [partner_id]
+              properties:
+                partner_id: {type: string}
+                system_name: {type: string}
+                admin_email: {type: string, format: email}
+                platform_version: {type: string}
+                desired_release: {type: string}
+                module_preset:
+                  type: array
+                  items: {type: string}
+      responses:
+        "202": {description: Provisioning completed to configuration-required state}
+        "409": {description: License/lifecycle/dependency gate blocked or workflow incomplete}
+  /api/v1/provisioning/jobs/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Provisioning]
+      summary: Provisioning job and step history
+      responses:
+        "200": {description: Provisioning job}
+  /api/v1/provisioning/jobs/{jobId}/run:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      tags: [Provisioning]
+      summary: Resume an incomplete provisioning job
+      responses:
+        "200": {description: Job resumed/completed}
+        "409": {description: Job still blocked or failed}
+  /api/v1/environments:
+    get:
+      tags: [Environments]
+      summary: List partner staging/production environments
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Partner environments}
+    post:
+      tags: [Environments]
+      summary: Register a staging or production environment
+      responses:
+        "201": {description: Environment created}
+        "409": {description: Duplicate environment or hostname}
+  /api/v1/environments/{environmentId}:
+    parameters:
+      - name: environmentId
+        in: path
+        required: true
+        schema: {type: string}
+    patch:
+      tags: [Environments]
+      summary: Update environment hostname, release and deployment state
+      responses:
+        "200": {description: Updated environment}
+  /api/v1/connectors/{partnerId}/credential:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Connector]
+      summary: Connector credential metadata
+      description: Raw credentials are never returned by GET.
+      responses:
+        "200": {description: Credential metadata}
+    post:
+      tags: [Connector]
+      summary: Create or rotate a partner/environment connector credential
+      description: The raw bearer token is returned once; HIMATE stores only its hash.
+      responses:
+        "201": {description: One-time raw token and credential metadata}
+  /connector/v1/heartbeat:
+    post:
+      tags: [Connector]
+      security:
+        - connectorBearer: []
+      summary: Partner connector heartbeat and version/module state
+      responses:
+        "200": {description: Heartbeat accepted}
+        "401": {description: Invalid connector credential}
+  /connector/v1/state:
+    get:
+      tags: [Connector]
+      security:
+        - connectorBearer: []
+      summary: Read connector state for the authenticated partner/environment
+      responses:
+        "200": {description: Connector state}
+  /connector/v1/metrics:
+    post:
+      tags: [Connector]
+      security:
+        - connectorBearer: []
+      summary: Synchronize approved partner metrics
+      description: No partner database access is exposed; metrics cross the explicit Connector Protocol only.
+      responses:
+        "202": {description: Metric batch accepted}
+        "401": {description: Invalid connector credential}
+        "409": {description: Metric rejected by the Impact service}
+  /api/v1/system-health:
+    get:
+      tags: [System Health]
+      summary: Central microservice and partner health snapshot
+      responses:
+        "200": {description: Readiness/liveness, latency, connector, environment and provisioning status}
+  /api/v1/impact/definitions:
+    get:
+      tags: [Impact]
+      summary: List metric definitions
+      responses:
+        "200": {description: Metric definitions}
+    post:
+      tags: [Impact]
+      summary: Create a metric definition
+      responses:
+        "201": {description: Metric definition created}
+  /api/v1/impact/values:
+    get:
+      tags: [Impact]
+      summary: List impact observations
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+        - {name: metric_key, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500}}
+      responses:
+        "200": {description: Impact observations}
+    post:
+      tags: [Impact]
+      summary: Record an impact observation
+      description: >
+        Provenance is explicitly SYSTEM, MANUAL, PARTNER_DECLARED or
+        VERIFIED_DOCUMENT. Evidence file management begins in START-14.
+      responses:
+        "201": {description: Impact observation recorded}
+  /api/v1/impact/summary:
+    get:
+      tags: [Impact]
+      summary: Aggregate global or partner impact metrics
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Aggregated impact metrics}
 components:
   securitySchemes:
     sessionCookie:
       type: apiKey
       in: cookie
       name: himate_session
+    connectorBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: HIMATE Connector Credential
   parameters:
     PartnerId:
       name: partnerId

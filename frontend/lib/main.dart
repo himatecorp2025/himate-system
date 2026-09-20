@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
@@ -1047,7 +1048,7 @@ class _ShellState extends State<Shell> {
       case 0: return DashboardPage(api: widget.api);
       case 1: return PartnersPage(api: widget.api);
       case 2: return FinancePage(api: widget.api);
-      case 3: return const PlannedPage(title: 'Impact & Reports', subtitle: 'Metrics and partner impact become functional in START-13–15.', icon: Icons.show_chart_rounded);
+      case 3: return ImpactPage(api: widget.api);
       case 4: return const PlannedPage(title: 'Website & Marketing', subtitle: 'HIMATE CMS and public marketing tools are planned for START-16–17.', icon: Icons.campaign_outlined);
       case 5: return SystemPage(api: widget.api);
       default: return const PlannedPage(title: 'Administration', subtitle: 'Roles, permissions and advanced audit controls are planned for START-18–19.', icon: Icons.admin_panel_settings_outlined);
@@ -2013,6 +2014,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> documents = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptions = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> provisioningJobs = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> connectorCredentials = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
   Map<String, dynamic>? terms;
   Map<String, dynamic>? license;
@@ -2022,23 +2027,26 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   String moduleState = 'ALL';
   final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _companyKey = GlobalKey();
+  final GlobalKey _environmentKey = GlobalKey();
   final GlobalKey _pricingKey = GlobalKey();
   final GlobalKey _modulesKey = GlobalKey();
   final GlobalKey _financeKey = GlobalKey();
+  final GlobalKey _statisticsKey = GlobalKey();
+  final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
 
   static const workspaceCards = <_WorkspaceSpec>[
     _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
     _WorkspaceSpec('Company Data', Icons.apartment_outlined, 'Legal identity, contacts and lifecycle', true),
-    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains and deployment environment · START-10', false),
+    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains, staging, deployment and provisioning', true),
     _WorkspaceSpec('Modules', Icons.grid_view_outlined, 'Entitlements, visibility and pricing', true),
     _WorkspaceSpec('Pricing & Subscription', Icons.payments_outlined, 'Activation fee and recurring terms', true),
     _WorkspaceSpec('Finance & Documents', Icons.folder_copy_outlined, 'Invoices and commercial evidence', true),
-    _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics', false),
+    _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics and provenance', true),
     _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', false),
     _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', false),
     _WorkspaceSpec('Users & Contacts', Icons.group_outlined, 'Partner administrators and contacts', false),
-    _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Connector and provider registry', false),
+    _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Secure connector identities and credentials', true),
     _WorkspaceSpec('Audit History', Icons.history_rounded, 'Immutable administrative history', false),
   ];
 
@@ -2062,6 +2070,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         widget.api.get('/api/v1/billing/partners/$id/documents'),
         widget.api.get('/api/v1/billing/partners/$id/invoices'),
         widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true),
+        widget.api.get('/api/v1/environments?partner_id=$id', force: true),
+        widget.api.get('/api/v1/provisioning/jobs?partner_id=$id', force: true),
+        widget.api.get('/api/v1/impact/summary?partner_id=$id', force: true),
+        widget.api.get('/api/v1/connectors/$id/credential', force: true),
       ]);
       partner = r[0];
       modules = items(r[1]);
@@ -2071,6 +2083,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       documents = items(r[5]);
       invoices = items(r[6]);
       subscriptions = items(r[7]);
+      environments = items(r[8]);
+      provisioningJobs = items(r[9]);
+      impactSummary = items(r[10]);
+      connectorCredentials = items(r[11]);
       if (subscriptions.isEmpty && modules.any((m) => m['status'] == 'ACTIVE')) {
         subscriptions = items(await widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true));
       }
@@ -2090,10 +2106,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final slug = widget.initialSection!;
     final key = switch (slug) {
       'overview' => _overviewKey,
-      'company-data' || 'system-and-environment' => _companyKey,
+      'company-data' => _companyKey,
+      'system-and-environment' => _environmentKey,
       'pricing-and-subscription' => _pricingKey,
       'modules' => _modulesKey,
       'finance-and-documents' => _financeKey,
+      'statistics' => _statisticsKey,
+      'integrations' => _integrationsKey,
       _ => _overviewKey,
     };
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2108,6 +2127,238 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
     );
+  }
+
+  Map<String, dynamic>? get provisioningJob =>
+      provisioningJobs.isEmpty ? null : provisioningJobs.first;
+
+  Future<void> startProvisioning() async {
+    final lifecycle = '${partner['lifecycle'] ?? ''}';
+    if (!const {'READY_TO_PROVISION', 'PROVISIONING', 'CONFIGURATION'}.contains(lifecycle)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Move the partner to READY TO PROVISION before starting provisioning.'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: brandWarning,
+        ),
+      );
+      return;
+    }
+    final preset = [
+      for (final m in modules)
+        if (m['status'] == 'ACTIVE') '${m['key']}',
+    ];
+    try {
+      await widget.api.post('/api/v1/provisioning/jobs', {
+        'partner_id': '${partner['id']}',
+        'system_name': '${partner['brand_name'] ?? partner['display_name'] ?? partner['id']}',
+        'admin_email': '${partner['contact_email'] ?? ''}',
+        'platform_version': '${partner['platform_version'] ?? ''}',
+        'desired_release': '${partner['platform_version'] ?? ''}',
+        'module_preset': preset,
+      });
+      await load();
+      if (mounted) success('Provisioning completed or resumed successfully.');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Provisioning could not complete: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: brandDanger,
+        ),
+      );
+    }
+  }
+
+  Future<void> rotateConnectorCredential() async {
+    String environment = environments.any((e) => e['kind'] == 'PRODUCTION') ? 'PRODUCTION' : 'STAGING';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Connector credential',
+          subtitle: 'Generate or rotate a partner-scoped credential. The raw secret is displayed exactly once.',
+          icon: Icons.key_outlined,
+          width: 620,
+          child: DropdownButtonFormField<String>(
+            value: environment,
+            decoration: const InputDecoration(labelText: 'Environment'),
+            items: const [
+              DropdownMenuItem(value: 'STAGING', child: Text('STAGING')),
+              DropdownMenuItem(value: 'PRODUCTION', child: Text('PRODUCTION')),
+            ],
+            onChanged: (v) { if (v != null) setLocal(() => environment = v); },
+          ),
+          primaryLabel: 'Generate credential',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final result = await widget.api.post('/api/v1/connectors/${partner['id']}/credential', {'environment': environment});
+      final token = '${result['token'] ?? ''}';
+      await load();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Store this credential now'),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('For security, HIMATE stores only the token hash. This raw credential will not be shown again.'),
+                const SizedBox(height: 14),
+                SelectableText(token, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: token.isEmpty ? null : () async {
+                await Clipboard.setData(ClipboardData(text: token));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Credential copied.'), behavior: SnackBarBehavior.floating),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('Copy'),
+            ),
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('I stored it securely')),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Credential operation failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+      );
+    }
+  }
+
+  Future<void> editEnvironment(Map<String, dynamic> env) async {
+    final hostname = TextEditingController(text: '${env['hostname'] ?? ''}');
+    final version = TextEditingController(text: '${env['platform_version'] ?? ''}');
+    final desiredRelease = TextEditingController(text: '${env['desired_release'] ?? ''}');
+    final activeRelease = TextEditingController(text: '${env['active_release'] ?? ''}');
+    String deployment = '${env['deployment_status'] ?? 'NOT_DEPLOYED'}';
+    String environmentStatus = '${env['environment_status'] ?? 'CREATING'}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: '${env['kind']} environment',
+          subtitle: 'Manage hostname, platform release and deployment/environment state.',
+          icon: Icons.dns_outlined,
+          width: 720,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: hostname, decoration: const InputDecoration(labelText: 'Hostname')),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: version, decoration: const InputDecoration(labelText: 'Platform version')),
+                second: TextField(controller: desiredRelease, decoration: const InputDecoration(labelText: 'Desired release')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: activeRelease, decoration: const InputDecoration(labelText: 'Active release')),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: DropdownButtonFormField<String>(
+                  value: deployment,
+                  decoration: const InputDecoration(labelText: 'Deployment status'),
+                  items: const [
+                    DropdownMenuItem(value: 'NOT_DEPLOYED', child: Text('NOT DEPLOYED')),
+                    DropdownMenuItem(value: 'QUEUED', child: Text('QUEUED')),
+                    DropdownMenuItem(value: 'DEPLOYING', child: Text('DEPLOYING')),
+                    DropdownMenuItem(value: 'DEPLOYED', child: Text('DEPLOYED')),
+                    DropdownMenuItem(value: 'FAILED', child: Text('FAILED')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => deployment = v); },
+                ),
+                second: DropdownButtonFormField<String>(
+                  value: environmentStatus,
+                  decoration: const InputDecoration(labelText: 'Environment status'),
+                  items: const [
+                    DropdownMenuItem(value: 'CREATING', child: Text('CREATING')),
+                    DropdownMenuItem(value: 'CONFIGURATION_REQUIRED', child: Text('CONFIGURATION REQUIRED')),
+                    DropdownMenuItem(value: 'TESTING', child: Text('TESTING')),
+                    DropdownMenuItem(value: 'READY', child: Text('READY')),
+                    DropdownMenuItem(value: 'LIVE', child: Text('LIVE')),
+                    DropdownMenuItem(value: 'SUSPENDED', child: Text('SUSPENDED')),
+                    DropdownMenuItem(value: 'FAILED', child: Text('FAILED')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => environmentStatus = v); },
+                ),
+              ),
+            ],
+          ),
+          primaryLabel: 'Save environment',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.patch('/api/v1/environments/${env['id']}', {
+        'hostname': hostname.text.trim(),
+        'platform_version': version.text.trim(),
+        'desired_release': desiredRelease.text.trim(),
+        'active_release': activeRelease.text.trim(),
+        'deployment_status': deployment,
+        'environment_status': environmentStatus,
+      });
+      await load();
+      if (mounted) success('Environment updated.');
+    }
+    for (final controller in [hostname, version, desiredRelease, activeRelease]) { controller.dispose(); }
+  }
+
+  Future<void> createProductionEnvironment() async {
+    final existing = environments.where((e) => e['kind'] == 'PRODUCTION').toList();
+    if (existing.isNotEmpty) {
+      await editEnvironment(existing.first);
+      return;
+    }
+    final hostname = TextEditingController(text: '${partner['primary_domain'] ?? ''}');
+    final version = TextEditingController(text: '${partner['platform_version'] ?? ''}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => BrandDialog(
+        title: 'Production environment',
+        subtitle: 'Register the production environment after staging validation and before launch.',
+        icon: Icons.public_outlined,
+        width: 620,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: hostname, decoration: const InputDecoration(labelText: 'Production hostname')),
+            const SizedBox(height: 12),
+            TextField(controller: version, decoration: const InputDecoration(labelText: 'Platform version')),
+          ],
+        ),
+        primaryLabel: 'Create production environment',
+        onPrimary: () => Navigator.pop(context, true),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/environments', {
+        'partner_id': '${partner['id']}',
+        'kind': 'PRODUCTION',
+        'hostname': hostname.text.trim(),
+        'platform_version': version.text.trim(),
+      });
+      await load();
+      if (mounted) success('Production environment registered.');
+    }
+    hostname.dispose();
+    version.dispose();
   }
 
   Future<void> editPartner() async {
@@ -2789,6 +3040,86 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       ),
                       const SizedBox(height: 26),
                       KeyedSubtree(
+                        key: _environmentKey,
+                        child: _SectionHeader(
+                          title: 'System & Environment',
+                          subtitle: 'Provisioning state, isolated partner infrastructure, staging/production and release metadata.',
+                          trailing: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: createProductionEnvironment,
+                                icon: const Icon(Icons.public_outlined),
+                                label: Text(environments.any((e) => e['kind'] == 'PRODUCTION') ? 'Production settings' : 'Add production'),
+                              ),
+                              FilledButton.icon(
+                                onPressed: startProvisioning,
+                                icon: const Icon(Icons.precision_manufacturing_outlined),
+                                label: Text(provisioningJob == null ? 'Start provisioning' : 'Resume provisioning'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final cards = <Widget>[];
+                          final job = provisioningJob;
+                          if (job != null) {
+                            cards.add(
+                              _InfoCard(
+                                title: 'Provisioning Engine',
+                                icon: Icons.precision_manufacturing_outlined,
+                                children: [
+                                  _DefinitionRow(label: 'Status', value: '${job['status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Current step', value: '${job['current_step'] ?? '—'}'),
+                                  _DefinitionRow(label: 'System name', value: '${job['system_name'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Release', value: '${job['desired_release'] ?? '—'}'),
+                                  if ('${job['last_error'] ?? ''}'.isNotEmpty)
+                                    _DefinitionRow(label: 'Last error', value: '${job['last_error']}'),
+                                ],
+                              ),
+                            );
+                          }
+                          for (final env in environments) {
+                            cards.add(
+                              _InfoCard(
+                                title: '${env['kind']}',
+                                icon: env['kind'] == 'PRODUCTION' ? Icons.public_outlined : Icons.science_outlined,
+                                action: IconButton(
+                                  tooltip: 'Edit environment',
+                                  onPressed: () => editEnvironment(env),
+                                  icon: const Icon(Icons.edit_outlined, size: 18),
+                                ),
+                                children: [
+                                  _DefinitionRow(label: 'Hostname', value: '${env['hostname'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Environment', value: _humanize('${env['environment_status'] ?? 'UNKNOWN'}')),
+                                  _DefinitionRow(label: 'Deployment', value: _humanize('${env['deployment_status'] ?? 'UNKNOWN'}')),
+                                  _DefinitionRow(label: 'Platform version', value: '${env['platform_version'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Active release', value: '${env['active_release'] ?? '—'}'),
+                                ],
+                              ),
+                            );
+                          }
+                          if (cards.isEmpty) {
+                            return const _MessageCard(
+                              icon: Icons.dns_outlined,
+                              title: 'No environment yet',
+                              message: 'Provisioning will create the isolated partner database, base configuration and staging environment.',
+                            );
+                          }
+                          final width = c.maxWidth < 680 ? c.maxWidth : c.maxWidth < 1080 ? (c.maxWidth - 14) / 2 : (c.maxWidth - 28) / 3;
+                          return Wrap(
+                            spacing: 14,
+                            runSpacing: 14,
+                            children: [for (final card in cards) SizedBox(width: width, child: card)],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
                         key: _modulesKey,
                         child: _SectionHeader(
                           title: 'Partner Modules',
@@ -2856,6 +3187,92 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           ]);
                         },
                       ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
+                        key: _statisticsKey,
+                        child: _SectionHeader(
+                          title: 'Statistics',
+                          subtitle: 'Partner-scoped impact metrics retain period, aggregation and provenance for auditable reporting.',
+                          trailing: _MiniCounter(label: '${impactSummary.length} metrics'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      impactSummary.isEmpty
+                          ? const _MessageCard(
+                              icon: Icons.insights_outlined,
+                              title: 'No impact observations yet',
+                              message: 'Create metric definitions under Impact & Reports, then record partner values manually or through the Connector Protocol.',
+                            )
+                          : LayoutBuilder(
+                              builder: (context, c) {
+                                final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                                return Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    for (final metric in impactSummary)
+                                      SizedBox(
+                                        width: width,
+                                        child: _InfoCard(
+                                          title: '${metric['label'] ?? metric['metric_key']}',
+                                          icon: Icons.insights_outlined,
+                                          children: [
+                                            _DefinitionRow(label: 'Value', value: '${metric['numeric_value'] ?? '—'} ${metric['unit'] ?? ''}'),
+                                            _DefinitionRow(label: 'Aggregation', value: '${metric['aggregation'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Latest period', value: '${metric['latest_period_end'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Observations', value: '${metric['observations'] ?? 0}'),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
+                        key: _integrationsKey,
+                        child: _SectionHeader(
+                          title: 'Integrations',
+                          subtitle: 'Partner-scoped Connector Protocol credentials. Raw secrets are never stored by HIMATE.',
+                          trailing: FilledButton.icon(
+                            onPressed: rotateConnectorCredential,
+                            icon: const Icon(Icons.key_outlined),
+                            label: const Text('Generate / rotate credential'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      connectorCredentials.isEmpty
+                          ? const _MessageCard(
+                              icon: Icons.hub_outlined,
+                              title: 'No connector credential yet',
+                              message: 'Provisioning creates the staging connector identity automatically. You can also generate or rotate it here.',
+                            )
+                          : LayoutBuilder(
+                              builder: (context, c) {
+                                final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 980 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                                return Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    for (final credential in connectorCredentials)
+                                      SizedBox(
+                                        width: width,
+                                        child: _InfoCard(
+                                          title: '${credential['environment']} Connector',
+                                          icon: Icons.hub_outlined,
+                                          children: [
+                                            _DefinitionRow(label: 'Credential ID', value: '${credential['credential_id'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Active', value: credential['active'] == true ? 'Yes' : 'No'),
+                                            _DefinitionRow(label: 'Rotated', value: '${credential['rotated_at'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Last used', value: '${credential['last_used_at'] ?? 'Never'}'),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
                     ],
                   ),
                 ),
@@ -3249,55 +3666,432 @@ class _FinancePageState extends State<FinancePage> {
   }
 }
 
+class ImpactPage extends StatefulWidget {
+  const ImpactPage({required this.api, super.key});
+  final Api api;
+
+  @override
+  State<ImpactPage> createState() => _ImpactPageState();
+}
+
+class _ImpactPageState extends State<ImpactPage> {
+  List<Map<String, dynamic>> definitions = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> summary = <Map<String, dynamic>>[];
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final r = await Future.wait([
+        widget.api.get('/api/v1/impact/definitions', force: true),
+        widget.api.get('/api/v1/impact/summary', force: true),
+      ]);
+      definitions = items(r[0]);
+      summary = items(r[1]);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> addDefinition() async {
+    final key = TextEditingController();
+    final label = TextEditingController();
+    final description = TextEditingController();
+    final unit = TextEditingController(text: 'count');
+    String aggregation = 'SUM';
+    String scope = 'PARTNER';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'New metric definition',
+          subtitle: 'Create a stable impact metric used consistently across partners and reporting periods.',
+          icon: Icons.add_chart_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ResponsiveFieldPair(
+                first: TextField(controller: key, decoration: const InputDecoration(labelText: 'Metric key', hintText: 'culture.events')),
+                second: TextField(controller: label, decoration: const InputDecoration(labelText: 'Display label')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: unit, decoration: const InputDecoration(labelText: 'Unit')),
+                second: DropdownButtonFormField<String>(
+                  value: aggregation,
+                  decoration: const InputDecoration(labelText: 'Aggregation'),
+                  items: const [
+                    DropdownMenuItem(value: 'SUM', child: Text('SUM')),
+                    DropdownMenuItem(value: 'LATEST', child: Text('LATEST')),
+                    DropdownMenuItem(value: 'AVERAGE', child: Text('AVERAGE')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => aggregation = v); },
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: scope,
+                decoration: const InputDecoration(labelText: 'Scope'),
+                items: const [
+                  DropdownMenuItem(value: 'PARTNER', child: Text('PARTNER')),
+                  DropdownMenuItem(value: 'GLOBAL', child: Text('GLOBAL')),
+                  DropdownMenuItem(value: 'BOTH', child: Text('BOTH')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => scope = v); },
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+            ],
+          ),
+          primaryLabel: 'Create metric',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/impact/definitions', {
+        'metric_key': key.text.trim(),
+        'label': label.text.trim(),
+        'description': description.text.trim(),
+        'unit': unit.text.trim(),
+        'aggregation': aggregation,
+        'scope': scope,
+      });
+      await load();
+    }
+    for (final controller in [key, label, description, unit]) { controller.dispose(); }
+  }
+
+  Future<void> addValue() async {
+    if (definitions.isEmpty) return;
+    String metricKey = '${definitions.first['metric_key']}';
+    final partner = TextEditingController();
+    final start = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final numeric = TextEditingController();
+    final source = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Record impact value',
+          subtitle: 'Every value keeps period, provenance and source metadata for later evidence and reporting.',
+          icon: Icons.insights_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: metricKey,
+                decoration: const InputDecoration(labelText: 'Metric'),
+                items: [
+                  for (final d in definitions)
+                    DropdownMenuItem(value: '${d['metric_key']}', child: Text('${d['label']} · ${d['metric_key']}')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: partner, decoration: const InputDecoration(labelText: 'Partner ID', hintText: 'Leave empty for global metric')),
+                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Numeric value')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start', hintText: 'YYYY-MM-DD')),
+                second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end', hintText: 'YYYY-MM-DD')),
+              ),
+              const SizedBox(height: 12),
+              const _RuleStrip(
+                items: [
+                  _RuleItem(Icons.edit_note_outlined, 'Provenance', 'MANUAL'),
+                  _RuleItem(Icons.shield_outlined, 'Trust boundary', 'SYSTEM and PARTNER DECLARED arrive through connectors'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: source, decoration: const InputDecoration(labelText: 'Source reference', hintText: 'Document, URL or source identifier')),
+            ],
+          ),
+          primaryLabel: 'Record value',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/impact/values', {
+        'partner_id': partner.text.trim(),
+        'metric_key': metricKey,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+        'numeric_value': double.tryParse(numeric.text),
+        'provenance': 'MANUAL',
+        'source_ref': source.text.trim(),
+      });
+      await load();
+    }
+    for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const _BrandLoading();
+    if (error != null) {
+      return Content(
+        eyebrow: 'IMPACT CONTROL',
+        title: 'Impact & Reports',
+        subtitle: 'Metric definitions, provenance and partner/global impact values.',
+        child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
+      );
+    }
+    return Content(
+      eyebrow: 'IMPACT CONTROL',
+      title: 'Impact & Reports',
+      subtitle: 'Global and partner impact metrics with explicit source provenance. Evidence files and PDF reports remain START-14–15.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, c) {
+              final actions = [
+                OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const Text('New metric')),
+                FilledButton.icon(onPressed: definitions.isEmpty ? null : addValue, icon: const Icon(Icons.add_rounded), label: const Text('Record value')),
+              ];
+              if (c.maxWidth < 620) {
+                return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  SizedBox(width: double.infinity, child: actions[1]),
+                  const SizedBox(height: 8),
+                  SizedBox(width: double.infinity, child: actions[0]),
+                ]);
+              }
+              return Row(mainAxisAlignment: MainAxisAlignment.end, children: [actions[0], const SizedBox(width: 10), actions[1]]);
+            },
+          ),
+          const SizedBox(height: 18),
+          _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: '${summary.length} metrics')),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, c) {
+              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final m in summary)
+                    SizedBox(
+                      width: width,
+                      child: _InfoCard(
+                        title: '${m['label'] ?? m['metric_key']}',
+                        icon: Icons.insights_outlined,
+                        children: [
+                          _DefinitionRow(label: 'Value', value: '${m['numeric_value'] ?? '—'} ${m['unit'] ?? ''}'),
+                          _DefinitionRow(label: 'Aggregation', value: '${m['aggregation'] ?? ''}'),
+                          _DefinitionRow(label: 'Latest period', value: '${m['latest_period_end'] ?? '—'}'),
+                          _DefinitionRow(label: 'Observations', value: '${m['observations'] ?? 0}'),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions are reused by manual entry, partner connectors and future verified-document workflows.', trailing: _MiniCounter(label: '${definitions.length} definitions')),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, c) {
+              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final d in definitions)
+                    SizedBox(
+                      width: width,
+                      child: _InfoCard(
+                        title: '${d['label']}',
+                        icon: Icons.stacked_line_chart_rounded,
+                        children: [
+                          _DefinitionRow(label: 'Key', value: '${d['metric_key']}'),
+                          _DefinitionRow(label: 'Unit', value: '${d['unit']}'),
+                          _DefinitionRow(label: 'Aggregation', value: '${d['aggregation']}'),
+                          _DefinitionRow(label: 'Scope', value: '${d['scope']}'),
+                          _DefinitionRow(label: 'Status', value: d['active'] == true ? 'Active' : 'Inactive'),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class SystemPage extends StatelessWidget {
   const SystemPage({required this.api, super.key});
   final Api api;
 
+  Future<List<Map<String, dynamic>>> _load() async {
+    final r = await Future.wait([
+      api.get('/api/v1/system-health', force: true),
+      api.get('/api/v1/provisioning/jobs', force: true),
+      api.get('/api/v1/environments', force: true),
+    ]);
+    return r;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: api.get('/api/v1/health'),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _load(),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
-        if (snapshot.hasError) {
+        if (snapshot.hasError || snapshot.data == null) {
           return Content(
             eyebrow: 'PLATFORM OPERATIONS',
             title: 'System & Operations',
             subtitle: 'Independent services behind one authenticated public gateway.',
-            child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Health data unavailable', message: '${snapshot.error}'),
+            child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Operations data unavailable', message: '${snapshot.error}'),
           );
         }
 
-        final serviceRaw = snapshot.data?['services'];
-        final services = serviceRaw is Map ? Map<String, dynamic>.from(serviceRaw) : <String, dynamic>{};
-        final overall = '${snapshot.data?['status'] ?? 'unknown'}';
-        final environment = '${snapshot.data?['environment'] ?? 'unknown'}';
-        final version = '${snapshot.data?['version'] ?? ''}';
+        final health = snapshot.data![0];
+        final provisioning = items(snapshot.data![1]);
+        final environments = items(snapshot.data![2]);
+        final services = items({'items': health['services']});
+        final partners = items({'items': health['partners']});
+        final overall = '${health['status'] ?? 'UNKNOWN'}';
 
         return Content(
           eyebrow: 'PLATFORM OPERATIONS',
           title: 'System & Operations',
-          subtitle: 'Containerized Go services, one public gateway and isolated control-plane responsibilities.',
+          subtitle: 'Provisioning, partner environments, connectors and central health across the containerized HIMATE control plane.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _OperationsHero(status: overall, environment: environment, version: version),
+              _OperationsHero(status: overall, environment: 'control plane', version: 'START-09–13'),
               const SizedBox(height: 22),
               _SectionHeader(
                 title: 'Service Health',
-                subtitle: 'Each domain service is independently deployable and designed for horizontal replication.',
+                subtitle: 'Readiness and liveness are monitored independently for each microservice.',
+                trailing: _MiniCounter(label: '${services.length} services'),
               ),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  ServiceCard(name: 'API Gateway', status: overall),
-                  ServiceCard(name: 'Identity', status: '${services['identity'] ?? 'unknown'}'),
-                  ServiceCard(name: 'Partner Service', status: '${services['partners'] ?? 'unknown'}'),
-                  ServiceCard(name: 'Catalog Service', status: '${services['catalog'] ?? 'unknown'}'),
-                  ServiceCard(name: 'Billing Service', status: '${services['billing'] ?? 'unknown'}'),
+                  for (final s in services)
+                    ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
                 ],
+              ),
+              const SizedBox(height: 24),
+              _SectionHeader(
+                title: 'Partner Health',
+                subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
+                trailing: _MiniCounter(label: '${partners.length} partners'),
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final p in partners)
+                        SizedBox(
+                          width: width,
+                          child: _InfoCard(
+                            title: '${p['partner_id']}',
+                            icon: Icons.monitor_heart_outlined,
+                            children: [
+                              _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              _SectionHeader(
+                title: 'Provisioning Engine',
+                subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
+                trailing: _MiniCounter(label: '${provisioning.length} jobs'),
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final j in provisioning)
+                        SizedBox(
+                          width: width,
+                          child: _InfoCard(
+                            title: '${j['partner_id']}',
+                            icon: Icons.precision_manufacturing_outlined,
+                            children: [
+                              _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
+                              _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
+                              _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              _SectionHeader(
+                title: 'Partner Environments',
+                subtitle: 'Staging and production records retain hostname, version, deployment and environment state.',
+                trailing: _MiniCounter(label: '${environments.length} environments'),
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final e in environments)
+                        SizedBox(
+                          width: width,
+                          child: _InfoCard(
+                            title: '${e['partner_id']} · ${e['kind']}',
+                            icon: Icons.dns_outlined,
+                            children: [
+                              _DefinitionRow(label: 'Hostname', value: '${e['hostname'] ?? '—'}'),
+                              _DefinitionRow(label: 'Environment', value: '${e['environment_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Deployment', value: '${e['deployment_status'] ?? 'UNKNOWN'}'),
+                              _DefinitionRow(label: 'Version', value: '${e['platform_version'] ?? '—'}'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 24),
               LayoutBuilder(
