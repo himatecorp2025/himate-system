@@ -1756,7 +1756,7 @@ class _PartnersPageState extends State<PartnersPage> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            settings: RouteSettings(name: '/app/partners/${Uri.encodeComponent('${created['id']}')}'),
+            settings: RouteSettings(name: "/app/partners/${created['id']}"),
             builder: (_) => PartnerWorkspace(api: widget.api, partner: created),
           ),
         );
@@ -1874,7 +1874,7 @@ class _PartnersPageState extends State<PartnersPage> {
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    settings: RouteSettings(name: '/app/partners/${Uri.encodeComponent('${p['id']}')}'),
+                                    settings: RouteSettings(name: "/app/partners/${p['id']}"),
                                     builder: (_) => PartnerWorkspace(api: widget.api, partner: p),
                                   ),
                                 ),
@@ -1972,12 +1972,30 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Future<void> editPartner() async {
     final display = TextEditingController(text: '${partner['display_name'] ?? ''}');
     final legal = TextEditingController(text: '${partner['legal_name'] ?? ''}');
+    final brand = TextEditingController(text: '${partner['brand_name'] ?? ''}');
+    final registration = TextEditingController(text: '${partner['registration_number'] ?? ''}');
+    final tax = TextEditingController(text: '${partner['tax_id'] ?? ''}');
     final contact = TextEditingController(text: '${partner['contact_name'] ?? ''}');
     final email = TextEditingController(text: '${partner['contact_email'] ?? ''}');
+    final financeName = TextEditingController(text: '${partner['finance_contact_name'] ?? ''}');
+    final financeEmail = TextEditingController(text: '${partner['finance_contact_email'] ?? ''}');
+    final technicalName = TextEditingController(text: '${partner['technical_contact_name'] ?? ''}');
+    final technicalEmail = TextEditingController(text: '${partner['technical_contact_email'] ?? ''}');
+    final marketingName = TextEditingController(text: '${partner['marketing_contact_name'] ?? ''}');
+    final marketingEmail = TextEditingController(text: '${partner['marketing_contact_email'] ?? ''}');
     final country = TextEditingController(text: '${partner['country'] ?? ''}');
+    final stateRegion = TextEditingController(text: '${partner['state_region'] ?? ''}');
+    final city = TextEditingController(text: '${partner['city'] ?? ''}');
+    final postal = TextEditingController(text: '${partner['postal_code'] ?? ''}');
+    final address1 = TextEditingController(text: '${partner['address_line1'] ?? ''}');
+    final address2 = TextEditingController(text: '${partner['address_line2'] ?? ''}');
+    final website = TextEditingController(text: '${partner['website'] ?? ''}');
+    final phone = TextEditingController(text: '${partner['phone'] ?? ''}');
     final primary = TextEditingController(text: '${partner['primary_domain'] ?? ''}');
     final staging = TextEditingController(text: '${partner['staging_domain'] ?? ''}');
+    final logo = TextEditingController(text: '${partner['logo_url'] ?? ''}');
     final notes = TextEditingController(text: '${partner['notes'] ?? ''}');
+    final lifecycleReason = TextEditingController();
     String lifecycle = '${partner['lifecycle'] ?? 'PROSPECT'}';
 
     final ok = await showDialog<bool>(
@@ -1985,41 +2003,91 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Company Data',
-          subtitle: 'Edit partner identity, lifecycle, contacts and environment references.',
+          subtitle: 'Edit legal identity, contacts, lifecycle and partner references.',
           icon: Icons.apartment_outlined,
-          width: 720,
+          width: 780,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(children: [
-                Expanded(child: TextField(controller: display, decoration: const InputDecoration(labelText: 'Display name'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name'))),
-              ]),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: lifecycle,
-                decoration: const InputDecoration(labelText: 'Lifecycle'),
-                items: [
-                  for (final value in _PartnersPageState.lifecycleOptions)
-                    DropdownMenuItem(value: value, child: Text(_humanize(value))),
-                ],
-                onChanged: (v) { if (v != null) setLocal(() => lifecycle = v); },
+              ResponsiveFieldPair(
+                first: TextField(controller: display, decoration: const InputDecoration(labelText: 'Display name')),
+                second: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name')),
               ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: contact, decoration: const InputDecoration(labelText: 'Primary contact'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: email, decoration: const InputDecoration(labelText: 'Contact email'))),
-              ]),
+              ResponsiveFieldPair(
+                first: TextField(controller: brand, decoration: const InputDecoration(labelText: 'Brand / DBA')),
+                second: DropdownButtonFormField<String>(
+                  value: lifecycle,
+                  decoration: const InputDecoration(labelText: 'Lifecycle'),
+                  items: [
+                    for (final value in _PartnersPageState.lifecycleOptions)
+                      DropdownMenuItem(value: value, child: Text(_humanize(value))),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => lifecycle = v); },
+                ),
+              ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: primary, decoration: const InputDecoration(labelText: 'Primary domain'))),
-              ]),
+              TextField(
+                controller: lifecycleReason,
+                decoration: const InputDecoration(labelText: 'Lifecycle change reason', hintText: 'Required for traceability when status changes'),
+              ),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('REGISTRATION & ADDRESS'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(controller: registration, decoration: const InputDecoration(labelText: 'Registration number')),
+                second: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
+              ),
               const SizedBox(height: 12),
-              TextField(controller: staging, decoration: const InputDecoration(labelText: 'Staging domain')),
+              ResponsiveFieldPair(
+                first: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country')),
+                second: TextField(controller: stateRegion, decoration: const InputDecoration(labelText: 'State / region')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: city, decoration: const InputDecoration(labelText: 'City')),
+                second: TextField(controller: postal, decoration: const InputDecoration(labelText: 'Postal code')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: address1, decoration: const InputDecoration(labelText: 'Address line 1')),
+              const SizedBox(height: 12),
+              TextField(controller: address2, decoration: const InputDecoration(labelText: 'Address line 2')),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('CONTACTS'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(controller: contact, decoration: const InputDecoration(labelText: 'Primary contact')),
+                second: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Primary email')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: financeName, decoration: const InputDecoration(labelText: 'Finance contact')),
+                second: TextField(controller: financeEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Finance email')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: technicalName, decoration: const InputDecoration(labelText: 'Technical contact')),
+                second: TextField(controller: technicalEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Technical email')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: marketingName, decoration: const InputDecoration(labelText: 'Marketing contact')),
+                second: TextField(controller: marketingEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Marketing email')),
+              ),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('WEB & ENVIRONMENT REFERENCES'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(controller: website, decoration: const InputDecoration(labelText: 'Website')),
+                second: TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: primary, decoration: const InputDecoration(labelText: 'Primary domain')),
+                second: TextField(controller: staging, decoration: const InputDecoration(labelText: 'Staging domain')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: logo, decoration: const InputDecoration(labelText: 'Logo URL / asset reference')),
               const SizedBox(height: 12),
               TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Internal notes')),
             ],
@@ -2034,19 +2102,43 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       await widget.api.patch('/api/v1/partners/${partner['id']}', {
         'display_name': display.text.trim(),
         'legal_name': legal.text.trim(),
+        'brand_name': brand.text.trim(),
+        'registration_number': registration.text.trim(),
+        'tax_id': tax.text.trim(),
         'lifecycle': lifecycle,
+        'reason': lifecycleReason.text.trim(),
         'contact_name': contact.text.trim(),
         'contact_email': email.text.trim(),
+        'finance_contact_name': financeName.text.trim(),
+        'finance_contact_email': financeEmail.text.trim(),
+        'technical_contact_name': technicalName.text.trim(),
+        'technical_contact_email': technicalEmail.text.trim(),
+        'marketing_contact_name': marketingName.text.trim(),
+        'marketing_contact_email': marketingEmail.text.trim(),
         'country': country.text.trim(),
+        'state_region': stateRegion.text.trim(),
+        'city': city.text.trim(),
+        'postal_code': postal.text.trim(),
+        'address_line1': address1.text.trim(),
+        'address_line2': address2.text.trim(),
+        'website': website.text.trim(),
+        'phone': phone.text.trim(),
         'primary_domain': primary.text.trim(),
         'staging_domain': staging.text.trim(),
+        'logo_url': logo.text.trim(),
         'notes': notes.text.trim(),
       });
       await load();
       if (mounted) success('Partner data updated.');
     }
-    for (final c in [display, legal, contact, email, country, primary, staging, notes]) {
-      c.dispose();
+
+    for (final controller in [
+      display, legal, brand, registration, tax, contact, email, financeName, financeEmail,
+      technicalName, technicalEmail, marketingName, marketingEmail, country, stateRegion,
+      city, postal, address1, address2, website, phone, primary, staging, logo, notes,
+      lifecycleReason,
+    ]) {
+      controller.dispose();
     }
   }
 
@@ -2424,7 +2516,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                     onTap: spec.active
                                         ? () => Navigator.pushNamed(
                                               context,
-                                              '/app/partners/${Uri.encodeComponent('${partner['id']}')}/${workspaceRouteSlug(spec.title)}',
+                                              "/app/partners/${partner['id']}/${workspaceRouteSlug(spec.title)}",
                                             )
                                         : null,
                                   ),
