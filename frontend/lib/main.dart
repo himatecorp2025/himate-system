@@ -2549,7 +2549,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 subtitle: Text(
                   subscription == null
                       ? 'A 30-day subscription record is created when the active module is synchronized.'
-                      : 'Current period ends ${subscription?['period_end_exclusive'] ?? '—'}. Cancellation keeps access through that date.',
+                      : 'Current period ends ${subscription['period_end_exclusive'] ?? '—'}. Cancellation keeps access through that date.',
                 ),
               ),
               const SizedBox(height: 8),
