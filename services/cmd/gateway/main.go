@@ -348,12 +348,13 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	type partnerPage struct {
-		Items   []map[string]any `json:"items"`
-		Count   int              `json:"count"`
-		Total   int              `json:"total"`
-		Limit   int              `json:"limit"`
-		Offset  int              `json:"offset"`
-		HasMore bool             `json:"has_more"`
+		Items           []map[string]any `json:"items"`
+		Count           int              `json:"count"`
+		Total           int              `json:"total"`
+		Limit           int              `json:"limit"`
+		Offset          int              `json:"offset"`
+		HasMore         bool             `json:"has_more"`
+		LifecycleCounts map[string]int   `json:"lifecycle_counts"`
 	}
 	type portfolioPage struct { Items []map[string]any `json:"items"` }
 
@@ -410,6 +411,7 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w, 200, map[string]any{
 		"items": partners.Items, "count": partners.Count, "total": partners.Total,
 		"limit": partners.Limit, "offset": partners.Offset, "has_more": partners.HasMore,
+		"lifecycle_counts": partners.LifecycleCounts,
 	})
 }
 
@@ -434,15 +436,21 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	var partnerResponse, moduleResponse struct {
+	var partnerResponse struct {
+		Items           []map[string]any `json:"items"`
+		Total           int              `json:"total"`
+		LifecycleCounts map[string]int   `json:"lifecycle_counts"`
+	}
+	var moduleResponse struct {
 		Items []map[string]any `json:"items"`
+		Count int              `json:"count"`
 	}
 	var partnerErr, moduleErr error
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners", &partnerResponse)
+		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners?limit=1&offset=0&include_archived=true", &partnerResponse)
 	}()
 	go func() {
 		defer wg.Done()
@@ -457,21 +465,16 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	live := 0
-	for _, p := range partnerResponse.Items {
-		if p["lifecycle"] == "LIVE" {
-			live++
-		}
-	}
+	live := partnerResponse.LifecycleCounts["LIVE"]
 	status := "healthy"
 	if partnerErr != nil || moduleErr != nil {
 		status = "degraded"
 	}
 	payload := map[string]any{
-		"partners": map[string]any{"total": len(partnerResponse.Items), "live": live},
-		"modules": map[string]any{"catalog_total": len(moduleResponse.Items)},
+		"partners": map[string]any{"total": partnerResponse.Total, "live": live, "lifecycle_counts": partnerResponse.LifecycleCounts},
+		"modules": map[string]any{"catalog_total": moduleResponse.Count},
 		"system": map[string]any{
-			"status": status, "environment": a.env, "version": a.version, "architecture": "microservices",
+			"status": status, "environment": a.env, "version": a.version, "architecture": "containerized-microservices",
 		},
 	}
 
@@ -730,14 +733,14 @@ func securityHeaders(next http.Handler) http.Handler {
 			w.Header().Set("Cache-Control", "no-store")
 		} else if strings.HasPrefix(path, "/art/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else if path == "/" || path == "/login" || path == "/app" || path == "/platform" || path == "/modules" || path == "/programs" || path == "/impact" || path == "/partners" || path == "/contact" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".css") {
+		} else if path == "/" || path == "/login" || path == "/app" || strings.HasPrefix(path, "/app/") || path == "/platform" || path == "/modules" || path == "/programs" || path == "/impact" || path == "/partners" || path == "/contact" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".css") {
 			w.Header().Set("Cache-Control", "no-store, max-age=0, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
 		} else if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".json") || strings.HasSuffix(path, ".wasm") {
 			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		}
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }
