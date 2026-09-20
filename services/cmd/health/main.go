@@ -271,17 +271,84 @@ func (a *app)partnerSnapshots(w http.ResponseWriter,r *http.Request){
 	common.JSON(w,200,map[string]any{"items":items})
 }
 
+func (a *app)serviceSnapshotRows()([]serviceResult,error){
+	rows,err:=a.db.Query(`SELECT service_name,status,latency_ms,last_error,checked_at
+		FROM health.service_snapshots ORDER BY service_name`)
+	if err!=nil{return nil,err}
+	defer rows.Close()
+	items:=[]serviceResult{}
+	for rows.Next(){
+		var item serviceResult
+		if err:=rows.Scan(&item.Name,&item.Status,&item.LatencyMS,&item.Error,&item.CheckedAt);err==nil{
+			items=append(items,item)
+		}
+	}
+	items=append(items,serviceResult{Name:"postgres",Status:"OK",CheckedAt:time.Now().UTC()})
+	return items,rows.Err()
+}
+
+func (a *app)partnerSnapshotRows()([]map[string]any,error){
+	rows,err:=a.db.Query(`SELECT partner_id,overall_status,platform_version,connector_health,environment_status,provisioning_status,
+		last_seen_at,checked_at,database_health,storage_health,hostname_status,sync_status,last_sync_at
+		FROM health.partner_snapshots ORDER BY partner_id`)
+	if err!=nil{return nil,err}
+	defer rows.Close()
+	items:=[]map[string]any{}
+	for rows.Next(){
+		var id,overall,version,connector,environment,provisioning,databaseHealth,storageHealth,hostnameStatus,syncStatus string
+		var last,lastSync sql.NullTime
+		var checked time.Time
+		if err:=rows.Scan(&id,&overall,&version,&connector,&environment,&provisioning,&last,&checked,&databaseHealth,&storageHealth,&hostnameStatus,&syncStatus,&lastSync);err!=nil{continue}
+		var lastSeen any
+		if last.Valid{lastSeen=last.Time.UTC()}
+		var synced any
+		if lastSync.Valid{synced=lastSync.Time.UTC()}
+		items=append(items,map[string]any{
+			"partner_id":id,"overall_status":overall,"platform_version":version,"connector_health":connector,
+			"environment_status":environment,"provisioning_status":provisioning,"database_health":databaseHealth,
+			"storage_health":storageHealth,"hostname_status":hostnameStatus,"sync_status":syncStatus,
+			"last_seen_at":lastSeen,"last_sync_at":synced,"checked_at":checked.UTC(),
+		})
+	}
+	return items,rows.Err()
+}
+
 func (a *app)systemHealth(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
-	ctx,cancel:=context.WithTimeout(r.Context(),12*time.Second);defer cancel()
-	services:=a.checkServices(ctx)
-	partners:=a.partnerHealth(ctx)
+	started:=time.Now()
+	services,serviceErr:=a.serviceSnapshotRows()
+	partners,partnerErr:=a.partnerSnapshotRows()
+	if serviceErr!=nil||partnerErr!=nil{
+		common.APIError(w,500,"DB","Could not load system health snapshots")
+		return
+	}
+
 	overall:="OK"
-	for _,s:=range services{if s.Status!="OK"{overall="DEGRADED";break}}
-	errorPartners:=0;degradedPartners:=0
-	for _,p:=range partners{switch stringValue(p["overall_status"]){case"ERROR":errorPartners++;overall="DEGRADED";case"DEGRADED":degradedPartners++;if overall=="OK"{overall="DEGRADED"}}}
+	for _,s:=range services{
+		if s.Status!="OK"{overall="DEGRADED";break}
+	}
+	errorPartners:=0
+	degradedPartners:=0
+	var checkedAt time.Time
+	for _,s:=range services{
+		if s.CheckedAt.After(checkedAt){checkedAt=s.CheckedAt}
+	}
+	for _,p:=range partners{
+		if checked,ok:=p["checked_at"].(time.Time);ok&&checked.After(checkedAt){checkedAt=checked}
+		switch stringValue(p["overall_status"]){
+		case"ERROR":
+			errorPartners++
+			overall="DEGRADED"
+		case"DEGRADED":
+			degradedPartners++
+			if overall=="OK"{overall="DEGRADED"}
+		}
+	}
+	if checkedAt.IsZero(){checkedAt=time.Now().UTC()}
+	w.Header().Set("X-Himate-Health-Source","snapshot")
+	w.Header().Set("Server-Timing",fmt.Sprintf("health-snapshot;dur=%d",time.Since(started).Milliseconds()))
 	common.JSON(w,200,map[string]any{
-		"status":overall,"checked_at":time.Now().UTC(),"services":services,"partners":partners,
+		"status":overall,"checked_at":checkedAt.UTC(),"services":services,"partners":partners,
 		"summary":map[string]any{"services":len(services),"partners":len(partners),"partner_errors":errorPartners,"partner_degraded":degradedPartners},
 	})
 }
