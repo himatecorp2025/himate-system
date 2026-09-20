@@ -285,6 +285,31 @@ paths:
       summary: Module subscription snapshots
       responses:
         "200": {description: Subscription records}
+  /api/v1/billing/partners/{partnerId}/subscriptions/{moduleKey}:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+      - name: moduleKey
+        in: path
+        required: true
+        schema: {type: string}
+    patch:
+      tags: [Billing]
+      summary: Schedule or withdraw end-of-period cancellation
+      description: Cancellation preserves the current 30-day period and prevents the next renewal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cancel_at_period_end]
+              properties:
+                cancel_at_period_end: {type: boolean}
+                reason: {type: string}
+      responses:
+        "200": {description: Subscription updated}
+        "404": {description: Subscription not found}
+        "409": {description: Inactive subscription must be reactivated at module level}
   /api/v1/public/contact:
     post:
       tags: [Public]
