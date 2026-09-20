@@ -168,10 +168,13 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
+      PARTNERS_HOSTPORT: partners:10000
     depends_on:
       postgres:
         condition: service_healthy
       runtime:
+        condition: service_started
+      partners:
         condition: service_started
 
   connector:
