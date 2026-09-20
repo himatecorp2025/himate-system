@@ -67,3 +67,18 @@ func TestDateOnlyUsesUTC(t *testing.T) {
 		t.Fatalf("expected UTC midnight got %v", got)
 	}
 }
+
+func TestCancelAtPeriodEndBoundary(t *testing.T) {
+	end, _ := time.Parse("2006-01-02", "2026-10-10")
+	before, _ := time.Parse("2006-01-02", "2026-10-09")
+	atEnd, _ := time.Parse("2006-01-02", "2026-10-10")
+	if cancellationExpired(true, end, before) {
+		t.Fatal("cancellation must not truncate the paid period")
+	}
+	if !cancellationExpired(true, end, atEnd) {
+		t.Fatal("cancellation must stop renewal at the period boundary")
+	}
+	if cancellationExpired(false, end, atEnd) {
+		t.Fatal("auto-renewing subscription must not expire at boundary")
+	}
+}
