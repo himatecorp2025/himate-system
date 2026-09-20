@@ -2152,6 +2152,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       await widget.api.post('/api/v1/provisioning/jobs', {
         'partner_id': '${partner['id']}',
         'system_name': '${partner['brand_name'] ?? partner['display_name'] ?? partner['id']}',
+        'admin_email': '${partner['contact_email'] ?? ''}',
         'platform_version': '${partner['platform_version'] ?? ''}',
         'desired_release': '${partner['platform_version'] ?? ''}',
         'module_preset': preset,
