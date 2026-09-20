@@ -90,6 +90,7 @@ func main() {
 	mux.HandleFunc("/api/v1/billing/partners/", a.partnerRoutes)
 	mux.HandleFunc("/internal/v1/invoices/run", a.runEndpoint)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
+	mux.HandleFunc("/internal/v1/partners/", a.internalPartnerRoutes)
 	common.Run(log, "billing", common.Env("PORT", "10000"), common.InternalAuth(a.token, mux))
 }
 
@@ -262,6 +263,52 @@ func (a *app) ensureLicense(id string) (initialLicense, error) {
 		Scan(&x.PartnerID, &x.Currency, &x.Required, &x.Paid, &x.Status, &x.PaymentDate, &x.Reference, &x.VerifiedBy, &x.Note, &x.Waived, &x.WaiverReason, &x.UpdatedAt)
 	return x, err
 }
+
+func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, 405, "METHOD", "Use GET")
+		return
+	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/partners/"), "/"), "/")
+	if len(parts) != 2 || parts[1] != "provisioning-gate" {
+		common.APIError(w, 404, "NOT_FOUND", "Route not found")
+		return
+	}
+	id := parts[0]
+	x, err := a.ensureLicense(id)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not load initial license")
+		return
+	}
+	var evidenceCount int
+	if err := a.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM billing.documents
+		WHERE partner_id=$1 AND kind IN ('PAYMENT_EVIDENCE','INVOICE','RECEIPT','CONTRACT')`, id).Scan(&evidenceCount); err != nil {
+		common.APIError(w, 500, "DB", "Could not verify license evidence")
+		return
+	}
+	paid := x.Status == "PAID" && evidenceCount > 0
+	waived := x.Status == "WAIVED" && x.Waived && strings.TrimSpace(x.WaiverReason) != ""
+	allowed := paid || waived
+	reason := ""
+	if !allowed {
+		if x.Status != "PAID" && !x.Waived {
+			reason = "Initial license payment is not verified"
+		} else if x.Status == "PAID" && evidenceCount == 0 {
+			reason = "Commercial payment evidence is missing"
+		} else {
+			reason = "Initial license gate is incomplete"
+		}
+	}
+	common.JSON(w, 200, map[string]any{
+		"partner_id": id,
+		"allowed": allowed,
+		"payment_status": x.Status,
+		"evidence_count": evidenceCount,
+		"waived": x.Waived,
+		"reason": reason,
+	})
+}
+
 
 func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/billing/partners/"), "/"), "/")
