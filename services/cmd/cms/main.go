@@ -568,14 +568,26 @@ func (a *app)auditLog(w http.ResponseWriter,r *http.Request,p pageRow){
 }
 
 func publicVersion(v versionRow,visibleOnly bool)map[string]any{
-	out:=decodeVersion(v)
+	var seo any=map[string]any{}
+	_ = json.Unmarshal(v.SEO,&seo)
+	var sections []sectionInput
+	_ = json.Unmarshal(v.Sections,&sections)
 	if visibleOnly{
-		var sections []sectionInput;_ = json.Unmarshal(v.Sections,&sections)
-		filtered:=[]sectionInput{};for _,s:=range sections{if s.Visible{filtered=append(filtered,s)}}
-		out["sections"]=filtered
+		filtered:=[]sectionInput{}
+		for _,s:=range sections{if s.Visible{filtered=append(filtered,s)}}
+		sections=filtered
 	}
-	out["content_model_version"]=1
-	return out
+	var publishedAt any
+	if v.PublishedAt.Valid{publishedAt=v.PublishedAt.Time.UTC()}
+	return map[string]any{
+		"content_model_version":1,
+		"state":v.State,
+		"version_no":v.VersionNo,
+		"slug":v.Slug,
+		"seo":seo,
+		"sections":sections,
+		"published_at":publishedAt,
+	}
 }
 
 func (a *app)publicPage(w http.ResponseWriter,r *http.Request){
@@ -733,7 +745,8 @@ func (a *app)publicManifest(w http.ResponseWriter,r *http.Request){
 	for rows.Next(){
 		var pID,key,name string;v,err:=scanVersionWithPrefix(rows,&pID,&key,&name);if err!=nil{continue}
 		var seo seoInput;_ = json.Unmarshal(v.SEO,&seo)
-		items=append(items,map[string]any{"page_id":pID,"page_key":key,"name":name,"slug":v.Slug,"canonical":seo.Canonical,"title":seo.Title,"noindex":seo.NoIndex,"published_version":v.VersionNo,"published_at":timeValue(v.PublishedAt)})
+		_ = pID; _ = key; _ = name
+		items=append(items,map[string]any{"slug":v.Slug,"canonical":seo.Canonical,"title":seo.Title,"noindex":seo.NoIndex,"published_version":v.VersionNo,"published_at":timeValue(v.PublishedAt)})
 	}
 	w.Header().Set("Cache-Control","public, max-age=60");common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 }
