@@ -34,6 +34,11 @@ services:
           type: pserv
           name: himate-catalog
           envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: BILLING_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-billing
+          property: hostport
 
   - type: pserv
     name: himate-billing
@@ -142,9 +147,9 @@ services:
           property: hostport
 
   - type: cron
-    name: himate-monthly-invoice-cycle
+    name: himate-30day-invoice-cycle
     runtime: docker
-    schedule: "0 6 1 * *"
+    schedule: "0 6 * * *"
     dockerfilePath: ./services/docker/billing.Dockerfile
     dockerContext: .
     dockerCommand: /app/service --run-invoice-cycle

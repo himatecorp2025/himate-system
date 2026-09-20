@@ -267,12 +267,15 @@ class _HimateAppState extends State<HimateApp> {
   bool loading = true;
 
   Timer? _restoreFallback;
+  String? _pendingDeepLink;
+  bool _deepLinkHandled = false;
 
   @override
   void initState() {
     super.initState();
     final path = Uri.base.path;
-    if (path == '/app') {
+    if (path == '/app' || path.startsWith('/app/')) {
+      if (path != '/app') _pendingDeepLink = path;
       _restoreFallback = Timer(const Duration(seconds: 3), () {
         if (mounted && loading) {
           setState(() => loading = false);
@@ -281,7 +284,7 @@ class _HimateAppState extends State<HimateApp> {
       restore();
     } else {
       // The public login route must paint immediately. Session restoration is
-      // only required when opening the protected application route.
+      // only required when opening a protected application route.
       loading = false;
     }
   }
@@ -303,7 +306,16 @@ class _HimateAppState extends State<HimateApp> {
       user = null;
     } finally {
       _restoreFallback?.cancel();
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+        if (user != null && _pendingDeepLink != null && !_deepLinkHandled) {
+          _deepLinkHandled = true;
+          final target = _pendingDeepLink!;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            navigatorKey.currentState?.pushNamed(target);
+          });
+        }
+      }
     }
   }
 
@@ -311,7 +323,14 @@ class _HimateAppState extends State<HimateApp> {
     user = await api.post('/api/v1/auth/login', {'email': email, 'password': password});
     if (!mounted) return;
     setState(() {});
+    final target = _pendingDeepLink;
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
+    if (target != null && !_deepLinkHandled) {
+      _deepLinkHandled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navigatorKey.currentState?.pushNamed(target);
+      });
+    }
   }
 
   Future<void> logout() async {
@@ -343,7 +362,7 @@ class _HimateAppState extends State<HimateApp> {
   @override
   Widget build(BuildContext context) {
     final path = Uri.base.path;
-    final initial = path == '/app' ? '/app' : '/login';
+    final initial = path == '/app' || path.startsWith('/app/') ? '/app' : '/login';
 
     return MaterialApp(
       navigatorKey: navigatorKey,
@@ -366,6 +385,21 @@ class _HimateAppState extends State<HimateApp> {
                 ? LoginPage(onLogin: login)
                 : Shell(api: api, user: user!, onLogout: logout),
       },
+      onGenerateRoute: (settings) {
+        final name = settings.name ?? '';
+        final match = RegExp(r'^/app/partners/([^/]+)(?:/([^/]+))?$').firstMatch(name);
+        if (match == null) return null;
+        final partnerId = Uri.decodeComponent(match.group(1)!);
+        final section = match.group(2);
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => loading
+              ? loadingScreen()
+              : user == null
+                  ? LoginPage(onLogin: login)
+                  : PartnerRouteLoader(api: api, partnerId: partnerId, initialSection: section),
+        );
+      },
       onUnknownRoute: (_) => MaterialPageRoute(
         settings: const RouteSettings(name: '/login'),
         builder: (_) => user == null
@@ -377,6 +411,41 @@ class _HimateAppState extends State<HimateApp> {
     );
   }
 }
+
+class PartnerRouteLoader extends StatelessWidget {
+  const PartnerRouteLoader({required this.api, required this.partnerId, this.initialSection, super.key});
+  final Api api;
+  final String partnerId;
+  final String? initialSection;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: api.get('/api/v1/partners/$partnerId', force: true),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
+        if (snapshot.hasError || snapshot.data == null) {
+          return Scaffold(
+            backgroundColor: brandIvory,
+            appBar: AppBar(leading: IconButton(onPressed: () => Navigator.maybePop(context), icon: const Icon(Icons.arrow_back_rounded))),
+            body: Padding(
+              padding: const EdgeInsets.all(24),
+              child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Partner could not be opened', message: '${snapshot.error ?? 'Partner not found'}'),
+            ),
+          );
+        }
+        return PartnerWorkspace(api: api, partner: snapshot.data!, initialSection: initialSection);
+      },
+    );
+  }
+}
+
+String workspaceRouteSlug(String title) => title
+    .toLowerCase()
+    .replaceAll('&', 'and')
+    .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+    .replaceAll(RegExp(r'^-+|-+$'), '');
+
 
 class _SignedInRedirect extends StatelessWidget {
   const _SignedInRedirect({required this.onContinue});
@@ -941,6 +1010,14 @@ class NavSpec {
   final String subtitle;
 }
 
+enum ShellLayoutMode { mobile, tablet, desktop }
+
+ShellLayoutMode shellLayoutForWidth(double width) {
+  if (width < 720) return ShellLayoutMode.mobile;
+  if (width < 980) return ShellLayoutMode.tablet;
+  return ShellLayoutMode.desktop;
+}
+
 class Shell extends StatefulWidget {
   const Shell({required this.api, required this.user, required this.onLogout, super.key});
   final Api api;
@@ -981,8 +1058,10 @@ class _ShellState extends State<Shell> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final desktop = constraints.maxWidth >= 980;
-        if (!desktop) {
+        final layoutMode = shellLayoutForWidth(constraints.maxWidth);
+        final mobile = layoutMode == ShellLayoutMode.mobile;
+        final tablet = layoutMode == ShellLayoutMode.tablet;
+        if (mobile) {
           return Scaffold(
             appBar: AppBar(
               toolbarHeight: 64,
@@ -1024,7 +1103,7 @@ class _ShellState extends State<Shell> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 230),
                 curve: Curves.easeOutCubic,
-                width: collapsed ? 82 : 258,
+                width: tablet || collapsed ? 82 : 258,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF061426), brandNavy, Color(0xFF0A2C4C)]),
                 ),
@@ -1032,10 +1111,10 @@ class _ShellState extends State<Shell> {
                   child: _SidebarContent(
                     nav: nav,
                     selected: selected,
-                    collapsed: collapsed,
+                    collapsed: tablet || collapsed,
                     user: widget.user,
                     onSelect: (i) => setState(() => selected = i),
-                    onToggle: () => setState(() => collapsed = !collapsed),
+                    onToggle: tablet ? null : () => setState(() => collapsed = !collapsed),
                     onLogout: widget.onLogout,
                   ),
                 ),
@@ -1049,21 +1128,24 @@ class _ShellState extends State<Shell> {
                       decoration: const BoxDecoration(color: brandWhite, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
                         children: [
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 420),
-                                child: TextField(
-                                  readOnly: true,
-                                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Global search will be activated in a later functional cycle.'), behavior: SnackBarBehavior.floating),
+                          if (!tablet)
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 420),
+                                  child: TextField(
+                                    readOnly: true,
+                                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Global search will be activated in a later functional cycle.'), behavior: SnackBarBehavior.floating),
+                                    ),
+                                    decoration: const InputDecoration(isDense: true, hintText: 'Search anywhere...', prefixIcon: Icon(Icons.search_rounded, size: 19)),
                                   ),
-                                  decoration: const InputDecoration(isDense: true, hintText: 'Search anywhere...', prefixIcon: Icon(Icons.search_rounded, size: 19)),
                                 ),
                               ),
-                            ),
-                          ),
+                            )
+                          else
+                            const Spacer(),
                           const SizedBox(width: 18),
                           _TopIconButton(icon: Icons.notifications_none_rounded, hasDot: true, onTap: () {}),
                           const SizedBox(width: 8),
@@ -1073,23 +1155,28 @@ class _ShellState extends State<Shell> {
                             itemBuilder: (_) => const [
                               PopupMenuItem(value: 'logout', child: Row(children: [Icon(Icons.logout_rounded, size: 18), SizedBox(width: 10), Text('Sign out')])),
                             ],
-                            child: Row(
-                              children: [
-                                _Avatar(name: '${widget.user['name'] ?? 'Admin User'}'),
-                                const SizedBox(width: 9),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 130),
-                                  child: Text(
-                                    '${widget.user['name'] ?? 'Admin User'}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12),
+                            child: tablet
+                                ? Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: _Avatar(name: '${widget.user['name'] ?? 'Admin User'}'),
+                                  )
+                                : Row(
+                                    children: [
+                                      _Avatar(name: '${widget.user['name'] ?? 'Admin User'}'),
+                                      const SizedBox(width: 9),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 130),
+                                        child: Text(
+                                          '${widget.user['name'] ?? 'Admin User'}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.keyboard_arrow_down_rounded, color: brandTextSoft, size: 19),
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.keyboard_arrow_down_rounded, color: brandTextSoft, size: 19),
-                              ],
-                            ),
                           ),
                         ],
                       ),
@@ -1522,6 +1609,13 @@ class _PartnersPageState extends State<PartnersPage> {
   String query = '';
   String categoryFilter = 'ALL';
   String lifecycleFilter = 'ALL';
+  String healthFilter = 'ALL';
+  static const int pageSize = 24;
+  int offset = 0;
+  int total = 0;
+  int referenceCount = 0;
+  Map<String, int> lifecycleCounts = <String, int>{};
+  Timer? _searchDebounce;
 
   static const lifecycleOptions = [
     'PROSPECT',
@@ -1539,23 +1633,72 @@ class _PartnersPageState extends State<PartnersPage> {
   @override
   void initState() {
     super.initState();
-    load();
+    load(loadCategories: true);
   }
 
-  Future<void> load() async {
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  Uri _partnerUri() {
+    final params = <String, String>{
+      'limit': '$pageSize',
+      'offset': '$offset',
+    };
+    if (query.trim().isNotEmpty) params['q'] = query.trim();
+    if (categoryFilter != 'ALL') params['category'] = categoryFilter;
+    if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
+    if (healthFilter != 'ALL') params['health'] = healthFilter;
+    return Uri(path: '/api/v1/partners', queryParameters: params);
+  }
+
+  Future<void> load({bool reset = false, bool loadCategories = false}) async {
+    if (reset) offset = 0;
     if (mounted) setState(() { loading = true; error = null; });
     try {
-      final r = await Future.wait([
-        widget.api.get('/api/v1/partners'),
-        widget.api.get('/api/v1/partner-categories'),
-      ]);
-      partners = items(r[0]);
-      categories = items(r[1]);
+      final futures = <Future<Map<String, dynamic>>>[
+        widget.api.get(_partnerUri().toString(), force: true),
+        if (loadCategories || categories.isEmpty) widget.api.get('/api/v1/partner-categories', force: true),
+      ];
+      final r = await Future.wait(futures);
+      final page = r[0];
+      partners = items(page);
+      total = (page['total'] as num?)?.toInt() ?? partners.length;
+      referenceCount = (page['reference_count'] as num?)?.toInt() ?? 0;
+      final counts = page['lifecycle_counts'];
+      lifecycleCounts = counts is Map
+          ? <String, int>{
+              for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
+            }
+          : <String, int>{};
+      if (r.length > 1) categories = items(r[1]);
     } catch (e) {
       error = e.toString();
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  void updateSearch(String value) {
+    query = value;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
+      if (mounted) load(reset: true);
+    });
+  }
+
+  void previousPage() {
+    if (offset <= 0) return;
+    offset = offset >= pageSize ? offset - pageSize : 0;
+    load();
+  }
+
+  void nextPage() {
+    if (offset + partners.length >= total) return;
+    offset += pageSize;
+    load();
   }
 
   void success(String message) {
@@ -1616,12 +1759,9 @@ class _PartnersPageState extends State<PartnersPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name *'))),
-                  const SizedBox(width: 12),
-                  Expanded(child: TextField(controller: legalName, decoration: const InputDecoration(labelText: 'Legal name'))),
-                ],
+              ResponsiveFieldPair(
+                first: TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name *')),
+                second: TextField(controller: legalName, decoration: const InputDecoration(labelText: 'Legal name')),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -1636,20 +1776,14 @@ class _PartnersPageState extends State<PartnersPage> {
                 },
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Primary contact'))),
-                  const SizedBox(width: 12),
-                  Expanded(child: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Contact email'))),
-                ],
+              ResponsiveFieldPair(
+                first: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Primary contact')),
+                second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Contact email')),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country'))),
-                  const SizedBox(width: 12),
-                  Expanded(child: TextField(controller: primaryDomain, decoration: const InputDecoration(labelText: 'Primary domain', hintText: 'example.org'))),
-                ],
+              ResponsiveFieldPair(
+                first: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country')),
+                second: TextField(controller: primaryDomain, decoration: const InputDecoration(labelText: 'Primary domain', hintText: 'example.org')),
               ),
             ],
           ),
@@ -1675,7 +1809,10 @@ class _PartnersPageState extends State<PartnersPage> {
         success('Partner created.');
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => PartnerWorkspace(api: widget.api, partner: created)),
+          MaterialPageRoute(
+            settings: RouteSettings(name: "/app/partners/${created['id']}"),
+            builder: (_) => PartnerWorkspace(api: widget.api, partner: created),
+          ),
         );
       }
     }
@@ -1688,25 +1825,14 @@ class _PartnersPageState extends State<PartnersPage> {
     country.dispose();
   }
 
-  List<Map<String, dynamic>> get filtered {
-    final q = query.trim().toLowerCase();
-    return partners.where((p) {
-      final searchOk = q.isEmpty ||
-          '${p['display_name']}'.toLowerCase().contains(q) ||
-          '${p['legal_name']}'.toLowerCase().contains(q) ||
-          '${p['category_name']}'.toLowerCase().contains(q) ||
-          '${p['id']}'.toLowerCase().contains(q);
-      final categoryOk = categoryFilter == 'ALL' || '${p['category_id']}' == categoryFilter;
-      final lifecycleOk = lifecycleFilter == 'ALL' || '${p['lifecycle']}' == lifecycleFilter;
-      return searchOk && categoryOk && lifecycleOk;
-    }).toList();
-  }
+  List<Map<String, dynamic>> get filtered => partners;
 
   @override
   Widget build(BuildContext context) {
-    final live = partners.where((p) => p['lifecycle'] == 'LIVE').length;
-    final prospects = partners.where((p) => p['lifecycle'] == 'PROSPECT').length;
-    final reference = partners.where((p) => p['reference_partner'] == true).length;
+    final live = lifecycleCounts['LIVE'] ?? 0;
+    final prospects = lifecycleCounts['PROSPECT'] ?? 0;
+    final reference = referenceCount;
+    final allRecords = lifecycleCounts.values.fold<int>(0, (sum, value) => sum + value);
 
     return Content(
       eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
@@ -1727,7 +1853,7 @@ class _PartnersPageState extends State<PartnersPage> {
                       spacing: 12,
                       runSpacing: 12,
                       children: [
-                        Kpi(label: 'Partner records', value: '${partners.length}', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
+                        Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
                         Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess),
                         Kpi(label: 'Prospects', value: '$prospects', note: 'Pre-license pipeline', icon: Icons.handshake_outlined, accent: brandSteel),
                         Kpi(label: 'Reference partners', value: '$reference', note: 'Reference implementation', icon: Icons.workspace_premium_outlined, accent: brandGold),
@@ -1739,7 +1865,7 @@ class _PartnersPageState extends State<PartnersPage> {
                         builder: (context, c) {
                           final compact = c.maxWidth < 860;
                           final search = TextField(
-                            onChanged: (v) => setState(() => query = v),
+                            onChanged: updateSearch,
                             decoration: const InputDecoration(
                               hintText: 'Search partners...',
                               prefixIcon: Icon(Icons.search_rounded),
@@ -1752,7 +1878,10 @@ class _PartnersPageState extends State<PartnersPage> {
                               const DropdownMenuItem(value: 'ALL', child: Text('All categories')),
                               for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: Text('${c['name']}')),
                             ],
-                            onChanged: (v) => setState(() => categoryFilter = v ?? 'ALL'),
+                            onChanged: (v) {
+                              setState(() => categoryFilter = v ?? 'ALL');
+                              load(reset: true);
+                            },
                           );
                           final lifecycle = DropdownButtonFormField<String>(
                             value: lifecycleFilter,
@@ -1761,12 +1890,46 @@ class _PartnersPageState extends State<PartnersPage> {
                               const DropdownMenuItem(value: 'ALL', child: Text('All lifecycle states')),
                               for (final state in lifecycleOptions) DropdownMenuItem(value: state, child: Text(_humanize(state))),
                             ],
-                            onChanged: (v) => setState(() => lifecycleFilter = v ?? 'ALL'),
+                            onChanged: (v) {
+                              setState(() => lifecycleFilter = v ?? 'ALL');
+                              load(reset: true);
+                            },
+                          );
+                          final health = DropdownButtonFormField<String>(
+                            value: healthFilter,
+                            decoration: const InputDecoration(labelText: 'Health'),
+                            items: const [
+                              DropdownMenuItem(value: 'ALL', child: Text('All health states')),
+                              DropdownMenuItem(value: 'HEALTHY', child: Text('Healthy')),
+                              DropdownMenuItem(value: 'WARNING', child: Text('Warning')),
+                              DropdownMenuItem(value: 'OFFLINE', child: Text('Offline')),
+                              DropdownMenuItem(value: 'UNKNOWN', child: Text('Unknown')),
+                            ],
+                            onChanged: (v) {
+                              setState(() => healthFilter = v ?? 'ALL');
+                              load(reset: true);
+                            },
                           );
                           if (compact) {
-                            return Column(children: [search, const SizedBox(height: 10), category, const SizedBox(height: 10), lifecycle]);
+                            return Column(children: [
+                              search,
+                              const SizedBox(height: 10),
+                              category,
+                              const SizedBox(height: 10),
+                              lifecycle,
+                              const SizedBox(height: 10),
+                              health,
+                            ]);
                           }
-                          return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: category), const SizedBox(width: 10), Expanded(child: lifecycle)]);
+                          return Row(children: [
+                            Expanded(flex: 2, child: search),
+                            const SizedBox(width: 10),
+                            Expanded(child: category),
+                            const SizedBox(width: 10),
+                            Expanded(child: lifecycle),
+                            const SizedBox(width: 10),
+                            Expanded(child: health),
+                          ]);
                         },
                       ),
                     ),
@@ -1775,7 +1938,7 @@ class _PartnersPageState extends State<PartnersPage> {
                       children: [
                         Text('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(width: 10),
-                        _MiniCounter(label: '${filtered.length} shown'),
+                        _MiniCounter(label: '${partners.length} shown · $total matched'),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -1790,13 +1953,42 @@ class _PartnersPageState extends State<PartnersPage> {
                                 partner: p,
                                 onTap: () => Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => PartnerWorkspace(api: widget.api, partner: p)),
+                                  MaterialPageRoute(
+                                    settings: RouteSettings(name: "/app/partners/${p['id']}"),
+                                    builder: (_) => PartnerWorkspace(api: widget.api, partner: p),
+                                  ),
                                 ),
                               ),
                             ),
                           SizedBox(width: width, child: NewPartnerCard(onTap: addPartner)),
                         ];
-                        return Wrap(spacing: 14, runSpacing: 14, children: cards);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(spacing: 14, runSpacing: 14, children: cards),
+                            if (total > pageSize) ...[
+                              const SizedBox(height: 18),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: offset > 0 && !loading ? previousPage : null,
+                                    icon: const Icon(Icons.chevron_left_rounded),
+                                    label: const Text('Previous'),
+                                  ),
+                                  _MiniCounter(label: 'Page ${offset ~/ pageSize + 1} of ${(total + pageSize - 1) ~/ pageSize}'),
+                                  OutlinedButton.icon(
+                                    onPressed: offset + partners.length < total && !loading ? nextPage : null,
+                                    icon: const Icon(Icons.chevron_right_rounded),
+                                    label: const Text('Next'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        );
                       },
                     ),
                   ],
@@ -1806,9 +1998,10 @@ class _PartnersPageState extends State<PartnersPage> {
 }
 
 class PartnerWorkspace extends StatefulWidget {
-  const PartnerWorkspace({required this.api, required this.partner, super.key});
+  const PartnerWorkspace({required this.api, required this.partner, this.initialSection, super.key});
   final Api api;
   final Map<String, dynamic> partner;
+  final String? initialSection;
 
   @override
   State<PartnerWorkspace> createState() => _PartnerWorkspaceState();
@@ -1819,17 +2012,25 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> documents = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> subscriptions = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
   Map<String, dynamic>? terms;
+  Map<String, dynamic>? license;
   bool loading = true;
   String? error;
   String moduleQuery = '';
   String moduleState = 'ALL';
+  final GlobalKey _overviewKey = GlobalKey();
+  final GlobalKey _companyKey = GlobalKey();
+  final GlobalKey _pricingKey = GlobalKey();
+  final GlobalKey _modulesKey = GlobalKey();
+  final GlobalKey _financeKey = GlobalKey();
+  bool _initialSectionHandled = false;
 
   static const workspaceCards = <_WorkspaceSpec>[
     _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
     _WorkspaceSpec('Company Data', Icons.apartment_outlined, 'Legal identity, contacts and lifecycle', true),
-    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains and deployment environment', true),
+    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains and deployment environment · START-10', false),
     _WorkspaceSpec('Modules', Icons.grid_view_outlined, 'Entitlements, visibility and pricing', true),
     _WorkspaceSpec('Pricing & Subscription', Icons.payments_outlined, 'Activation fee and recurring terms', true),
     _WorkspaceSpec('Finance & Documents', Icons.folder_copy_outlined, 'Invoices and commercial evidence', true),
@@ -1857,20 +2058,50 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         widget.api.get('/api/v1/partners/$id/modules'),
         widget.api.get('/api/v1/billing/partners/$id/summary'),
         widget.api.get('/api/v1/billing/partners/$id/terms'),
+        widget.api.get('/api/v1/billing/partners/$id/license'),
         widget.api.get('/api/v1/billing/partners/$id/documents'),
         widget.api.get('/api/v1/billing/partners/$id/invoices'),
+        widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true),
       ]);
       partner = r[0];
       modules = items(r[1]);
       billing = r[2];
       terms = r[3];
-      documents = items(r[4]);
-      invoices = items(r[5]);
+      license = r[4];
+      documents = items(r[5]);
+      invoices = items(r[6]);
+      subscriptions = items(r[7]);
+      if (subscriptions.isEmpty && modules.any((m) => m['status'] == 'ACTIVE')) {
+        subscriptions = items(await widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true));
+      }
     } catch (e) {
       error = e.toString();
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+        _scrollToInitialSection();
+      }
     }
+  }
+
+  void _scrollToInitialSection() {
+    if (_initialSectionHandled || widget.initialSection == null) return;
+    _initialSectionHandled = true;
+    final slug = widget.initialSection!;
+    final key = switch (slug) {
+      'overview' => _overviewKey,
+      'company-data' || 'system-and-environment' => _companyKey,
+      'pricing-and-subscription' => _pricingKey,
+      'modules' => _modulesKey,
+      'finance-and-documents' => _financeKey,
+      _ => _overviewKey,
+    };
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = key.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic, alignment: .04);
+      }
+    });
   }
 
   void success(String message) {
@@ -1882,12 +2113,30 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Future<void> editPartner() async {
     final display = TextEditingController(text: '${partner['display_name'] ?? ''}');
     final legal = TextEditingController(text: '${partner['legal_name'] ?? ''}');
+    final brand = TextEditingController(text: '${partner['brand_name'] ?? ''}');
+    final registration = TextEditingController(text: '${partner['registration_number'] ?? ''}');
+    final tax = TextEditingController(text: '${partner['tax_id'] ?? ''}');
     final contact = TextEditingController(text: '${partner['contact_name'] ?? ''}');
     final email = TextEditingController(text: '${partner['contact_email'] ?? ''}');
+    final financeName = TextEditingController(text: '${partner['finance_contact_name'] ?? ''}');
+    final financeEmail = TextEditingController(text: '${partner['finance_contact_email'] ?? ''}');
+    final technicalName = TextEditingController(text: '${partner['technical_contact_name'] ?? ''}');
+    final technicalEmail = TextEditingController(text: '${partner['technical_contact_email'] ?? ''}');
+    final marketingName = TextEditingController(text: '${partner['marketing_contact_name'] ?? ''}');
+    final marketingEmail = TextEditingController(text: '${partner['marketing_contact_email'] ?? ''}');
     final country = TextEditingController(text: '${partner['country'] ?? ''}');
+    final stateRegion = TextEditingController(text: '${partner['state_region'] ?? ''}');
+    final city = TextEditingController(text: '${partner['city'] ?? ''}');
+    final postal = TextEditingController(text: '${partner['postal_code'] ?? ''}');
+    final address1 = TextEditingController(text: '${partner['address_line1'] ?? ''}');
+    final address2 = TextEditingController(text: '${partner['address_line2'] ?? ''}');
+    final website = TextEditingController(text: '${partner['website'] ?? ''}');
+    final phone = TextEditingController(text: '${partner['phone'] ?? ''}');
     final primary = TextEditingController(text: '${partner['primary_domain'] ?? ''}');
     final staging = TextEditingController(text: '${partner['staging_domain'] ?? ''}');
+    final logo = TextEditingController(text: '${partner['logo_url'] ?? ''}');
     final notes = TextEditingController(text: '${partner['notes'] ?? ''}');
+    final lifecycleReason = TextEditingController();
     String lifecycle = '${partner['lifecycle'] ?? 'PROSPECT'}';
 
     final ok = await showDialog<bool>(
@@ -1895,41 +2144,91 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Company Data',
-          subtitle: 'Edit partner identity, lifecycle, contacts and environment references.',
+          subtitle: 'Edit legal identity, contacts, lifecycle and partner references.',
           icon: Icons.apartment_outlined,
-          width: 720,
+          width: 780,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(children: [
-                Expanded(child: TextField(controller: display, decoration: const InputDecoration(labelText: 'Display name'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name'))),
-              ]),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: lifecycle,
-                decoration: const InputDecoration(labelText: 'Lifecycle'),
-                items: [
-                  for (final value in _PartnersPageState.lifecycleOptions)
-                    DropdownMenuItem(value: value, child: Text(_humanize(value))),
-                ],
-                onChanged: (v) { if (v != null) setLocal(() => lifecycle = v); },
+              ResponsiveFieldPair(
+                first: TextField(controller: display, decoration: const InputDecoration(labelText: 'Display name')),
+                second: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name')),
               ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: contact, decoration: const InputDecoration(labelText: 'Primary contact'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: email, decoration: const InputDecoration(labelText: 'Contact email'))),
-              ]),
+              ResponsiveFieldPair(
+                first: TextField(controller: brand, decoration: const InputDecoration(labelText: 'Brand / DBA')),
+                second: DropdownButtonFormField<String>(
+                  value: lifecycle,
+                  decoration: const InputDecoration(labelText: 'Lifecycle'),
+                  items: [
+                    for (final value in _PartnersPageState.lifecycleOptions)
+                      DropdownMenuItem(value: value, child: Text(_humanize(value))),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => lifecycle = v); },
+                ),
+              ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: primary, decoration: const InputDecoration(labelText: 'Primary domain'))),
-              ]),
+              TextField(
+                controller: lifecycleReason,
+                decoration: const InputDecoration(labelText: 'Lifecycle change reason', hintText: 'Required for traceability when status changes'),
+              ),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('REGISTRATION & ADDRESS'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(controller: registration, decoration: const InputDecoration(labelText: 'Registration number')),
+                second: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
+              ),
               const SizedBox(height: 12),
-              TextField(controller: staging, decoration: const InputDecoration(labelText: 'Staging domain')),
+              ResponsiveFieldPair(
+                first: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country')),
+                second: TextField(controller: stateRegion, decoration: const InputDecoration(labelText: 'State / region')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: city, decoration: const InputDecoration(labelText: 'City')),
+                second: TextField(controller: postal, decoration: const InputDecoration(labelText: 'Postal code')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: address1, decoration: const InputDecoration(labelText: 'Address line 1')),
+              const SizedBox(height: 12),
+              TextField(controller: address2, decoration: const InputDecoration(labelText: 'Address line 2')),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('CONTACTS'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(controller: contact, decoration: const InputDecoration(labelText: 'Primary contact')),
+                second: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Primary email')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: financeName, decoration: const InputDecoration(labelText: 'Finance contact')),
+                second: TextField(controller: financeEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Finance email')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: technicalName, decoration: const InputDecoration(labelText: 'Technical contact')),
+                second: TextField(controller: technicalEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Technical email')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: marketingName, decoration: const InputDecoration(labelText: 'Marketing contact')),
+                second: TextField(controller: marketingEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Marketing email')),
+              ),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('WEB & ENVIRONMENT REFERENCES'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(controller: website, decoration: const InputDecoration(labelText: 'Website')),
+                second: TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: primary, decoration: const InputDecoration(labelText: 'Primary domain')),
+                second: TextField(controller: staging, decoration: const InputDecoration(labelText: 'Staging domain')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: logo, decoration: const InputDecoration(labelText: 'Logo URL / asset reference')),
               const SizedBox(height: 12),
               TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Internal notes')),
             ],
@@ -1944,28 +2243,59 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       await widget.api.patch('/api/v1/partners/${partner['id']}', {
         'display_name': display.text.trim(),
         'legal_name': legal.text.trim(),
+        'brand_name': brand.text.trim(),
+        'registration_number': registration.text.trim(),
+        'tax_id': tax.text.trim(),
         'lifecycle': lifecycle,
+        'reason': lifecycleReason.text.trim(),
         'contact_name': contact.text.trim(),
         'contact_email': email.text.trim(),
+        'finance_contact_name': financeName.text.trim(),
+        'finance_contact_email': financeEmail.text.trim(),
+        'technical_contact_name': technicalName.text.trim(),
+        'technical_contact_email': technicalEmail.text.trim(),
+        'marketing_contact_name': marketingName.text.trim(),
+        'marketing_contact_email': marketingEmail.text.trim(),
         'country': country.text.trim(),
+        'state_region': stateRegion.text.trim(),
+        'city': city.text.trim(),
+        'postal_code': postal.text.trim(),
+        'address_line1': address1.text.trim(),
+        'address_line2': address2.text.trim(),
+        'website': website.text.trim(),
+        'phone': phone.text.trim(),
         'primary_domain': primary.text.trim(),
         'staging_domain': staging.text.trim(),
+        'logo_url': logo.text.trim(),
         'notes': notes.text.trim(),
       });
       await load();
       if (mounted) success('Partner data updated.');
     }
-    for (final c in [display, legal, contact, email, country, primary, staging, notes]) {
-      c.dispose();
+
+    for (final controller in [
+      display, legal, brand, registration, tax, contact, email, financeName, financeEmail,
+      technicalName, technicalEmail, marketingName, marketingEmail, country, stateRegion,
+      city, postal, address1, address2, website, phone, primary, staging, logo, notes,
+      lifecycleReason,
+    ]) {
+      controller.dispose();
     }
   }
 
   Future<void> editTerms() async {
     final activation = TextEditingController(text: number(terms?['activation_fee']).toStringAsFixed(2));
+    final paid = TextEditingController(text: number(license?['paid_amount']).toStringAsFixed(2));
+    final paymentDate = TextEditingController(text: '${license?['payment_date'] ?? ''}');
+    final paymentReference = TextEditingController(text: '${license?['payment_reference'] ?? ''}');
+    final verifiedBy = TextEditingController(text: '${license?['verified_by'] ?? ''}');
+    final licenseNote = TextEditingController(text: '${license?['note'] ?? ''}');
     final base = TextEditingController(text: number(terms?['base_monthly_fee']).toStringAsFixed(2));
     final uplift = TextEditingController(text: number(terms?['annual_increase_percent']).toStringAsFixed(2));
     final effective = TextEditingController(text: '${terms?['price_effective_from'] ?? ''}');
-    final reason = TextEditingController(text: '${terms?['activation_fee_reason'] ?? ''}');
+    final anchor = TextEditingController(text: '${terms?['service_anchor_date'] ?? ''}');
+    final waiverReason = TextEditingController(text: '${terms?['activation_fee_reason'] ?? ''}');
+    final commercialReason = TextEditingController();
     bool waived = terms?['activation_fee_waived'] == true;
     String currency = '${terms?['currency'] ?? 'USD'}';
 
@@ -1974,53 +2304,89 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Pricing & Subscription',
-          subtitle: 'Commercial terms remain partner-specific while invoice day and service-cycle rules stay standardized.',
+          subtitle: 'Partner-specific license and recurring terms with an activation-date anchored 30-day service cycle.',
           icon: Icons.payments_outlined,
-          width: 700,
+          width: 760,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: currency,
-                    decoration: const InputDecoration(labelText: 'Currency'),
-                    items: const [
-                      DropdownMenuItem(value: 'USD', child: Text('USD')),
-                      DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-                      DropdownMenuItem(value: 'GBP', child: Text('GBP')),
-                    ],
-                    onChanged: (v) { if (v != null) setLocal(() => currency = v); },
-                  ),
+              ResponsiveFieldPair(
+                first: DropdownButtonFormField<String>(
+                  value: currency,
+                  decoration: const InputDecoration(labelText: 'Currency'),
+                  items: const [
+                    DropdownMenuItem(value: 'USD', child: Text('USD')),
+                    DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                    DropdownMenuItem(value: 'GBP', child: Text('GBP')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => currency = v); },
                 ),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: activation, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Activation fee'))),
-              ]),
+                second: TextField(
+                  controller: activation,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Initial license / activation fee'),
+                ),
+              ),
               const SizedBox(height: 8),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: waived,
                 onChanged: (v) => setLocal(() => waived = v),
                 title: const Text('Activation fee waived'),
-                subtitle: const Text('Use for an existing/reference partner where no activation transaction applies.'),
+                subtitle: const Text('Use only for an existing/reference partner where no activation transaction applies.'),
               ),
               if (waived) ...[
                 const SizedBox(height: 8),
-                TextField(controller: reason, decoration: const InputDecoration(labelText: 'Waiver reason')),
+                TextField(controller: waiverReason, decoration: const InputDecoration(labelText: 'Waiver reason')),
               ],
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('INITIAL LICENSE PAYMENT'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: paid,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Paid amount'),
+                ),
+                second: TextField(
+                  controller: paymentDate,
+                  decoration: const InputDecoration(labelText: 'Payment date', hintText: 'YYYY-MM-DD'),
+                ),
+              ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: base, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Base monthly fee'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: uplift, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Annual increase %'))),
-              ]),
+              ResponsiveFieldPair(
+                first: TextField(controller: paymentReference, decoration: const InputDecoration(labelText: 'Payment reference')),
+                second: TextField(controller: verifiedBy, decoration: const InputDecoration(labelText: 'Verified by', hintText: 'Optional — current admin is used automatically')),
+              ),
               const SizedBox(height: 12),
-              TextField(controller: effective, decoration: const InputDecoration(labelText: 'Price effective from', hintText: 'YYYY-MM-DD')),
+              TextField(controller: licenseNote, maxLines: 2, decoration: const InputDecoration(labelText: 'License note')),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('RECURRING SERVICE'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: base,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Base 30-day service fee'),
+                ),
+                second: TextField(
+                  controller: uplift,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Annual increase %'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: effective, decoration: const InputDecoration(labelText: 'Price effective from', hintText: 'YYYY-MM-DD')),
+                second: TextField(controller: anchor, decoration: const InputDecoration(labelText: 'Service activation / anchor date', hintText: 'YYYY-MM-DD')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: commercialReason, decoration: const InputDecoration(labelText: 'Change reason', hintText: 'Recorded in commercial price history')),
               const SizedBox(height: 12),
               const _RuleStrip(
                 items: [
-                  _RuleItem(Icons.calendar_today_outlined, 'Invoice day', '1st of each month'),
-                  _RuleItem(Icons.timelapse_outlined, 'Service cycle', '30 days'),
+                  _RuleItem(Icons.timelapse_outlined, 'Service cycle', '30 days from activation date'),
+                  _RuleItem(Icons.event_repeat_outlined, 'Renewal', 'Every 30 days'),
                   _RuleItem(Icons.trending_up_rounded, 'Annual uplift', 'January 1'),
                 ],
               ),
@@ -2033,21 +2399,68 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
 
     if (ok == true) {
+      final requiredAmount = double.tryParse(activation.text) ?? 0;
+      final paidAmount = double.tryParse(paid.text) ?? 0;
+      final hasLicenseEvidence = documents.any((d) {
+        final kind = '${d['kind'] ?? ''}'.toUpperCase();
+        final storageReference = '${d['storage_url'] ?? ''}'.trim();
+        final evidenceKind = kind == 'PAYMENT_EVIDENCE' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'CONTRACT';
+        return evidenceKind && storageReference.isNotEmpty;
+      });
+      if (!waived && requiredAmount > 0 && paidAmount >= requiredAmount && !hasLicenseEvidence) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Register the license invoice, receipt, contract, or payment evidence before marking the license paid.'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: brandWarning,
+            ),
+          );
+        }
+        return;
+      }
+
       await widget.api.put('/api/v1/billing/partners/${partner['id']}/terms', {
         'currency': currency,
         'activation_fee': double.tryParse(activation.text) ?? 0,
         'activation_fee_waived': waived,
-        'activation_fee_reason': reason.text.trim(),
+        'activation_fee_reason': waiverReason.text.trim(),
         'base_monthly_fee': double.tryParse(base.text) ?? 0,
         'annual_increase_percent': double.tryParse(uplift.text) ?? 10,
         'price_effective_from': effective.text.trim(),
+        'service_anchor_date': anchor.text.trim(),
+        'reason': commercialReason.text.trim(),
+      });
+      await widget.api.put('/api/v1/billing/partners/${partner['id']}/license', {
+        'currency': currency,
+        'required_amount': double.tryParse(activation.text) ?? 0,
+        'paid_amount': double.tryParse(paid.text) ?? 0,
+        'payment_date': paymentDate.text.trim(),
+        'payment_reference': paymentReference.text.trim(),
+        'verified_by': verifiedBy.text.trim(),
+        'note': licenseNote.text.trim(),
+        'waived': waived,
+        'waiver_reason': waiverReason.text.trim(),
       });
       await load();
-      if (mounted) success('Commercial terms updated.');
+      if (mounted) success('Commercial terms and initial license updated.');
     }
 
-    for (final c in [activation, base, uplift, effective, reason]) {
-      c.dispose();
+    for (final controller in [
+      activation,
+      paid,
+      paymentDate,
+      paymentReference,
+      verifiedBy,
+      licenseNote,
+      base,
+      uplift,
+      effective,
+      anchor,
+      waiverReason,
+      commercialReason,
+    ]) {
+      controller.dispose();
     }
   }
 
@@ -2062,7 +2475,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Register document',
-          subtitle: 'Attach commercial metadata now; binary evidence storage will be connected in a later evidence cycle.',
+          subtitle: 'Register commercial document metadata with a persistent storage URL or document reference.',
           icon: Icons.note_add_outlined,
           width: 640,
           child: Column(
@@ -2074,6 +2487,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 items: const [
                   DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
                   DropdownMenuItem(value: 'INVOICE', child: Text('Invoice')),
+                  DropdownMenuItem(value: 'RECEIPT', child: Text('Receipt')),
                   DropdownMenuItem(value: 'PAYMENT_EVIDENCE', child: Text('Payment evidence')),
                   DropdownMenuItem(value: 'OTHER', child: Text('Other')),
                 ],
@@ -2082,7 +2496,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               const SizedBox(height: 12),
               TextField(controller: name, decoration: const InputDecoration(labelText: 'Document name *')),
               const SizedBox(height: 12),
-              TextField(controller: url, decoration: const InputDecoration(labelText: 'Storage URL / reference')),
+              TextField(
+                controller: url,
+                decoration: const InputDecoration(
+                  labelText: 'Storage URL / reference',
+                  hintText: 'Required for contracts, invoices, receipts and payment evidence',
+                ),
+              ),
               const SizedBox(height: 12),
               TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
             ],
@@ -2094,6 +2514,22 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
 
     if (ok == true && name.text.trim().isNotEmpty) {
+      final evidenceKind = kind == 'CONTRACT' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'PAYMENT_EVIDENCE';
+      if (evidenceKind && url.text.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Commercial evidence requires an attached storage URL or persistent document reference.'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: brandWarning,
+            ),
+          );
+        }
+        for (final controller in [name, url, note]) {
+          controller.dispose();
+        }
+        return;
+      }
       await widget.api.post('/api/v1/billing/partners/${partner['id']}/documents', {
         'kind': kind,
         'name': name.text.trim(),
@@ -2109,20 +2545,33 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     }
   }
 
+  Map<String, dynamic>? subscriptionFor(String moduleKey) {
+    for (final item in subscriptions) {
+      if ('${item['module_key']}' == moduleKey) return item;
+    }
+    return null;
+  }
+
   Future<void> editModule(Map<String, dynamic> module) async {
     String state = '${module['status']}';
     bool visible = module['visible'] == true;
     bool included = module['included_in_base'] == true;
+    final moduleKey = '${module['key']}';
+    var subscription = subscriptionFor(moduleKey);
+    bool cancelAtPeriodEnd = subscription?['cancel_at_period_end'] == true;
+    final initialCancel = cancelAtPeriodEnd;
     final price = TextEditingController(text: number(module['partner_price']).toStringAsFixed(2));
+    final effectiveAt = TextEditingController();
+    final reason = TextEditingController();
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: '${module['label']}',
-          subtitle: 'Control entitlement, partner visibility and monthly pricing without removing the underlying module code or data.',
+          subtitle: 'Control entitlement, partner visibility and 30-day pricing without removing the underlying module code or data.',
           icon: Icons.grid_view_outlined,
-          width: 650,
+          width: 680,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2151,11 +2600,33 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 title: const Text('Included in base package'),
                 subtitle: const Text('Modules outside the base package contribute to recurring fees.'),
               ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: cancelAtPeriodEnd,
+                onChanged: state == 'ACTIVE' ? (v) => setLocal(() => cancelAtPeriodEnd = v) : null,
+                title: const Text('Cancel at period end'),
+                subtitle: Text(
+                  subscription == null
+                      ? 'A 30-day subscription record is created when the active module is synchronized.'
+                      : 'Current period ends ${subscription['period_end_exclusive'] ?? '—'}. Cancellation keeps access through that date.',
+                ),
+              ),
               const SizedBox(height: 8),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: price,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Partner 30-day price'),
+                ),
+                second: TextField(
+                  controller: effectiveAt,
+                  decoration: const InputDecoration(labelText: 'Price effective at', hintText: 'Optional RFC3339 timestamp'),
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
-                controller: price,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Partner monthly price (USD)'),
+                controller: reason,
+                decoration: const InputDecoration(labelText: 'Change reason', hintText: 'Recorded in module, price and subscription history'),
               ),
             ],
           ),
@@ -2167,19 +2638,41 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
     if (ok == true) {
       await widget.api.patch(
-        '/api/v1/partners/${partner['id']}/modules/${module['key']}',
+        '/api/v1/partners/${partner['id']}/modules/$moduleKey',
         {
           'status': state,
           'visible': visible,
           'included_in_base': included,
           'partner_price': double.tryParse(price.text) ?? 0,
-          'reason': 'HIMATE admin update',
+          'price_effective_at': effectiveAt.text.trim(),
+          'reason': reason.text.trim(),
         },
       );
+
+      if (state == 'ACTIVE' && cancelAtPeriodEnd != initialCancel) {
+        if (subscription == null) {
+          await widget.api.get('/api/v1/billing/partners/${partner['id']}/summary', force: true);
+          final refreshed = await widget.api.get('/api/v1/billing/partners/${partner['id']}/subscriptions', force: true);
+          subscriptions = items(refreshed);
+          subscription = subscriptionFor(moduleKey);
+        }
+        if (subscription != null) {
+          await widget.api.patch(
+            '/api/v1/billing/partners/${partner['id']}/subscriptions/$moduleKey',
+            {
+              'cancel_at_period_end': cancelAtPeriodEnd,
+              'reason': reason.text.trim(),
+            },
+          );
+        }
+      }
+
       await load();
       if (mounted) success('Module configuration updated.');
     }
     price.dispose();
+    effectiveAt.dispose();
+    reason.dispose();
   }
 
   List<Map<String, dynamic>> get filteredModules {
@@ -2204,7 +2697,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       backgroundColor: brandIvory,
       appBar: AppBar(
         leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
-        title: const HimateLogo(width: 170),
+        title: MediaQuery.sizeOf(context).width < 520
+            ? const HimateLogo(compact: true, width: 34)
+            : const HimateLogo(width: 170),
         actions: [
           _StatusPill(label: '${partner['lifecycle'] ?? 'PROSPECT'}'),
           const SizedBox(width: 12),
@@ -2222,7 +2717,14 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               : Content(
                   eyebrow: 'PARTNER WORKSPACE  |  ${partner['id']}',
                   title: '${partner['display_name']}',
-                  subtitle: '${partner['category_name']} · ${partner['country']} · ${_humanize('${partner['lifecycle']}')}',
+                  subtitle: [
+                    '${partner['category_name']}',
+                    '${partner['country']}',
+                    _humanize('${partner['lifecycle']}'),
+                    if ('${partner['primary_domain'] ?? ''}'.isNotEmpty) '${partner['primary_domain']}',
+                    'Health: ${_humanize('${partner['system_health'] ?? 'UNKNOWN'}')}',
+                    'Version: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
+                  ].join(' · '),
                   actions: [
                     OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const Text('Company data')),
                     FilledButton.icon(onPressed: editTerms, icon: const Icon(Icons.payments_outlined), label: const Text('Commercial terms')),
@@ -2230,15 +2732,18 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
+                      KeyedSubtree(
+                        key: _overviewKey,
+                        child: Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
                           Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
                           Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
-                          Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
-                        ],
+                            Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 22),
                       _SectionHeader(title: 'Workspace', subtitle: 'Current and scheduled control areas for this partner.'),
@@ -2251,7 +2756,18 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                             runSpacing: 12,
                             children: [
                               for (final spec in workspaceCards)
-                                SizedBox(width: width, child: WorkspaceCard(spec: spec)),
+                                SizedBox(
+                                  width: width,
+                                  child: WorkspaceCard(
+                                    spec: spec,
+                                    onTap: spec.active
+                                        ? () => Navigator.pushNamed(
+                                              context,
+                                              "/app/partners/${partner['id']}/${workspaceRouteSlug(spec.title)}",
+                                            )
+                                        : null,
+                                  ),
+                                ),
                             ],
                           );
                         },
@@ -2259,8 +2775,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       const SizedBox(height: 26),
                       LayoutBuilder(
                         builder: (context, c) {
-                          final company = _PartnerDetailsCard(partner: partner);
-                          final termsCard = _CommercialSummaryCard(terms: terms ?? {}, billing: billing ?? {}, onEdit: editTerms);
+                          final company = KeyedSubtree(key: _companyKey, child: _PartnerDetailsCard(partner: partner));
+                          final termsCard = KeyedSubtree(key: _pricingKey, child: _CommercialSummaryCard(terms: terms ?? {}, billing: billing ?? {}, license: license ?? {}, onEdit: editTerms));
                           if (c.maxWidth < 930) {
                             return Column(children: [company, const SizedBox(height: 14), termsCard]);
                           }
@@ -2272,10 +2788,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         },
                       ),
                       const SizedBox(height: 26),
-                      _SectionHeader(
-                        title: 'Partner Modules',
-                        subtitle: 'Entitlement, visibility, base-package inclusion and partner-specific pricing.',
-                        trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                      KeyedSubtree(
+                        key: _modulesKey,
+                        child: _SectionHeader(
+                          title: 'Partner Modules',
+                          subtitle: 'Entitlement, visibility, base-package inclusion and partner-specific pricing.',
+                          trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       _FilterSurface(
@@ -2316,10 +2835,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         },
                       ),
                       const SizedBox(height: 26),
-                      _SectionHeader(
-                        title: 'Finance & Documents',
-                        subtitle: 'Commercial evidence and internal invoice records for this partner.',
-                        trailing: FilledButton.icon(onPressed: addDocument, icon: const Icon(Icons.note_add_outlined), label: const Text('Register document')),
+                      KeyedSubtree(
+                        key: _financeKey,
+                        child: _SectionHeader(
+                          title: 'Finance & Documents',
+                          subtitle: 'Commercial evidence and internal invoice records for this partner.',
+                          trailing: FilledButton.icon(onPressed: addDocument, icon: const Icon(Icons.note_add_outlined), label: const Text('Register document')),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       LayoutBuilder(
@@ -2390,9 +2912,12 @@ class _FinancePageState extends State<FinancePage> {
 
   Future<void> editProfile() async {
     final legal = TextEditingController(text: '${profile?['legal_name'] ?? ''}');
+    final registration = TextEditingController(text: '${profile?['registration_number'] ?? ''}');
     final address = TextEditingController(text: '${profile?['address'] ?? ''}');
     final tax = TextEditingController(text: '${profile?['tax_id'] ?? ''}');
+    final contactName = TextEditingController(text: '${profile?['contact_name'] ?? ''}');
     final email = TextEditingController(text: '${profile?['email'] ?? ''}');
+    final phone = TextEditingController(text: '${profile?['phone'] ?? ''}');
     final bank = TextEditingController(text: '${profile?['bank_name'] ?? ''}');
     final bankAddress = TextEditingController(text: '${profile?['bank_address'] ?? ''}');
     final account = TextEditingController(text: '${profile?['account_number'] ?? ''}');
@@ -2409,31 +2934,36 @@ class _FinancePageState extends State<FinancePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(children: [
-              Expanded(child: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name'))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID'))),
-            ]),
+            ResponsiveFieldPair(
+              first: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name')),
+              second: TextField(controller: registration, decoration: const InputDecoration(labelText: 'Registration number')),
+            ),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
+              second: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Billing contact')),
+            ),
             const SizedBox(height: 12),
             TextField(controller: address, decoration: const InputDecoration(labelText: 'Company address')),
             const SizedBox(height: 12),
-            TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Billing email')),
+            ResponsiveFieldPair(
+              first: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Billing email')),
+              second: TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Billing phone')),
+            ),
             const SizedBox(height: 18),
             const _DialogSectionLabel('BANKING DETAILS'),
             const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: TextField(controller: bank, decoration: const InputDecoration(labelText: 'Bank name'))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: bankAddress, decoration: const InputDecoration(labelText: 'Bank address'))),
-            ]),
+            ResponsiveFieldPair(
+              first: TextField(controller: bank, decoration: const InputDecoration(labelText: 'Bank name')),
+              second: TextField(controller: bankAddress, decoration: const InputDecoration(labelText: 'Bank address')),
+            ),
             const SizedBox(height: 12),
             TextField(controller: account, decoration: const InputDecoration(labelText: 'Account number')),
             const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: TextField(controller: iban, decoration: const InputDecoration(labelText: 'IBAN'))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: swift, decoration: const InputDecoration(labelText: 'SWIFT / BIC'))),
-            ]),
+            ResponsiveFieldPair(
+              first: TextField(controller: iban, decoration: const InputDecoration(labelText: 'IBAN')),
+              second: TextField(controller: swift, decoration: const InputDecoration(labelText: 'SWIFT / BIC')),
+            ),
           ],
         ),
         primaryLabel: 'Save billing profile',
@@ -2444,9 +2974,12 @@ class _FinancePageState extends State<FinancePage> {
     if (ok == true) {
       await widget.api.put('/api/v1/billing/profile', {
         'legal_name': legal.text.trim(),
+        'registration_number': registration.text.trim(),
         'address': address.text.trim(),
         'tax_id': tax.text.trim(),
+        'contact_name': contactName.text.trim(),
         'email': email.text.trim(),
+        'phone': phone.text.trim(),
         'bank_name': bank.text.trim(),
         'bank_address': bankAddress.text.trim(),
         'account_number': account.text.trim(),
@@ -2457,7 +2990,7 @@ class _FinancePageState extends State<FinancePage> {
       if (mounted) success('Billing profile updated.');
     }
 
-    for (final c in [legal, address, tax, email, bank, bankAddress, account, iban, swift]) {
+    for (final c in [legal, registration, address, tax, contactName, email, phone, bank, bankAddress, account, iban, swift]) {
       c.dispose();
     }
   }
@@ -2481,11 +3014,10 @@ class _FinancePageState extends State<FinancePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(children: [
-                Expanded(child: TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name *'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: key, decoration: const InputDecoration(labelText: 'Stable key *', hintText: 'group.module_name'))),
-              ]),
+              ResponsiveFieldPair(
+                first: TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name *')),
+                second: TextField(controller: key, decoration: const InputDecoration(labelText: 'Stable key *', hintText: 'group.module_name')),
+              ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: group,
@@ -2525,6 +3057,91 @@ class _FinancePageState extends State<FinancePage> {
 
     for (final c in [label, key, description, price]) {
       c.dispose();
+    }
+  }
+
+  Future<void> editCatalogModule(Map<String, dynamic> module) async {
+    final label = TextEditingController(text: '${module['label'] ?? ''}');
+    final description = TextEditingController(text: '${module['description'] ?? ''}');
+    final price = TextEditingController(text: number(module['default_monthly_price']).toStringAsFixed(2));
+    final latestVersion = TextEditingController(text: '${module['latest_version'] ?? module['version'] ?? '1.0.0'}');
+    String group = '${module['group_key'] ?? (groups.isNotEmpty ? groups.first['group_key'] : '')}';
+    String availability = '${module['availability'] ?? 'ACTIVE'}';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: '${module['label']}',
+          subtitle: 'Manage catalog metadata and availability without changing the stable technical key.',
+          icon: Icons.grid_view_outlined,
+          width: 720,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name')),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: DropdownButtonFormField<String>(
+                  value: group,
+                  decoration: const InputDecoration(labelText: 'Menu group'),
+                  items: [
+                    for (final g in groups)
+                      DropdownMenuItem(value: '${g['group_key']}', child: Text('${g['label']}')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => group = v); },
+                ),
+                second: DropdownButtonFormField<String>(
+                  value: availability,
+                  decoration: const InputDecoration(labelText: 'Availability'),
+                  items: const [
+                    DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                    DropdownMenuItem(value: 'UNAVAILABLE', child: Text('UNAVAILABLE')),
+                    DropdownMenuItem(value: 'DEPRECATED', child: Text('DEPRECATED')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => availability = v); },
+                ),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: price,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Default 30-day price'),
+                ),
+                second: TextField(controller: latestVersion, decoration: const InputDecoration(labelText: 'Latest version')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: '${module['key']}',
+                readOnly: true,
+                decoration: const InputDecoration(labelText: 'Stable technical key'),
+              ),
+            ],
+          ),
+          primaryLabel: 'Save module',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true && label.text.trim().isNotEmpty) {
+      await widget.api.patch('/api/v1/modules/${module['key']}', {
+        'label': label.text.trim(),
+        'description': description.text.trim(),
+        'group_key': group,
+        'default_monthly_price': double.tryParse(price.text) ?? 0,
+        'availability': availability,
+        'latest_version': latestVersion.text.trim(),
+      });
+      await load();
+      if (mounted) success('Module catalog entry updated.');
+    }
+
+    for (final controller in [label, description, price, latestVersion]) {
+      controller.dispose();
     }
   }
 
@@ -2621,7 +3238,7 @@ class _FinancePageState extends State<FinancePage> {
                           runSpacing: 12,
                           children: [
                             for (final m in filteredModules)
-                              SizedBox(width: width, child: CatalogModuleCard(module: m)),
+                              SizedBox(width: width, child: CatalogModuleCard(module: m, onTap: () => editCatalogModule(m))),
                           ],
                         );
                       },
@@ -2718,6 +3335,47 @@ String _humanize(String value) {
       .join(' ');
 }
 
+class ResponsiveFieldPair extends StatelessWidget {
+  const ResponsiveFieldPair({
+    required this.first,
+    required this.second,
+    this.breakpoint = 620,
+    this.gap = 12,
+    super.key,
+  });
+
+  final Widget first;
+  final Widget second;
+  final double breakpoint;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            children: [
+              SizedBox(width: double.infinity, child: first),
+              SizedBox(height: gap),
+              SizedBox(width: double.infinity, child: second),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: first),
+            SizedBox(width: gap),
+            Expanded(child: second),
+          ],
+        );
+      },
+    );
+  }
+}
+
+
 class BrandDialog extends StatelessWidget {
   const BrandDialog({
     required this.title,
@@ -2791,13 +3449,27 @@ class BrandDialog extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
                 decoration: const BoxDecoration(border: Border(top: BorderSide(color: brandMist))),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                    const SizedBox(width: 8),
-                    FilledButton(onPressed: onPrimary, child: Text(primaryLabel)),
-                  ],
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final actions = [
+                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                      FilledButton(onPressed: onPrimary, child: Text(primaryLabel)),
+                    ];
+                    if (constraints.maxWidth < 420) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(width: double.infinity, child: actions[1]),
+                          const SizedBox(height: 8),
+                          SizedBox(width: double.infinity, child: actions[0]),
+                        ],
+                      );
+                    }
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [actions[0], const SizedBox(width: 8), actions[1]],
+                    );
+                  },
                 ),
               ),
             ],
@@ -2905,12 +3577,7 @@ class _PartnerCardState extends State<PartnerCard> {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(11)),
-                        child: const Icon(Icons.apartment_rounded, color: brandNavy, size: 21),
-                      ),
+                      _PartnerLogo(url: '${p['logo_url'] ?? ''}'),
                       const Spacer(),
                       if (p['reference_partner'] == true)
                         const Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
@@ -2920,13 +3587,30 @@ class _PartnerCardState extends State<PartnerCard> {
                   Text('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text('${p['category_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 7),
+                  Text(
+                    '${p['primary_domain'] ?? ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+                  ),
+                  const SizedBox(height: 11),
                   Row(children: [
                     _StatusPill(label: '${p['lifecycle']}'),
                     const Spacer(),
-                    Text('${p['country'] ?? ''}', style: const TextStyle(color: brandTextSoft, fontSize: 10)),
+                    _StatusPill(label: '${p['system_health'] ?? 'UNKNOWN'}'),
                   ]),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 11),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _PartnerMetric(label: 'MODULES', value: '${p['active_modules'] ?? 0}'),
+                      _PartnerMetric(label: '30 DAYS', value: '${p['currency'] ?? 'USD'} ${number(p['service_value_30d']).toStringAsFixed(0)}'),
+                      _PartnerMetric(label: 'VERSION', value: '${p['platform_version']?.toString().isNotEmpty == true ? p['platform_version'] : '—'}'),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   const Divider(height: 1),
                   const SizedBox(height: 12),
                   Row(children: [
@@ -2944,6 +3628,71 @@ class _PartnerCardState extends State<PartnerCard> {
     );
   }
 }
+
+class _PartnerLogo extends StatelessWidget {
+  const _PartnerLogo({required this.url});
+  final String url;
+
+  bool get _safeToLoad {
+    final value = url.trim();
+    if (value.isEmpty) return false;
+    if (value.startsWith('/')) return true;
+    final parsed = Uri.tryParse(value);
+    if (parsed == null) return false;
+    if (!parsed.hasScheme) return true;
+    return parsed.scheme == Uri.base.scheme && parsed.host == Uri.base.host && parsed.port == Uri.base.port;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(11)),
+      child: const Icon(Icons.apartment_rounded, color: brandNavy, size: 21),
+    );
+    if (!_safeToLoad) return fallback;
+    return Container(
+      width: 42,
+      height: 42,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: brandMist),
+      ),
+      child: Image.network(
+        url.trim(),
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => fallback,
+        semanticLabel: 'Partner logo',
+      ),
+    );
+  }
+}
+
+
+class _PartnerMetric extends StatelessWidget {
+  const _PartnerMetric({required this.label, required this.value});
+  final String label, value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+        decoration: BoxDecoration(
+          color: brandNavy.withOpacity(.035),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: brandMist),
+        ),
+        child: Text(
+          '$label  $value',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: brandTextSoft, fontSize: 8.3, fontWeight: FontWeight.w600),
+        ),
+      );
+}
+
 
 class NewPartnerCard extends StatefulWidget {
   const NewPartnerCard({required this.onTap, super.key});
@@ -3001,12 +3750,13 @@ class _WorkspaceSpec {
 }
 
 class WorkspaceCard extends StatelessWidget {
-  const WorkspaceCard({required this.spec, super.key});
+  const WorkspaceCard({required this.spec, this.onTap, super.key});
   final _WorkspaceSpec spec;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       constraints: const BoxConstraints(minHeight: 112),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -3029,6 +3779,15 @@ class WorkspaceCard extends StatelessWidget {
         ],
       ),
     );
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: card,
+      ),
+    );
   }
 }
 
@@ -3039,21 +3798,28 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final copy = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11.5, height: 1.4)),
-            ],
-          ),
-        ),
-        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11.5, height: 1.4)),
       ],
+    );
+    if (trailing == null) return copy;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 620) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [copy, const SizedBox(height: 10), trailing!],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [Expanded(child: copy), const SizedBox(width: 12), trailing!],
+        );
+      },
     );
   }
 }
@@ -3103,11 +3869,14 @@ class _PartnerModuleCardState extends State<PartnerModuleCard> {
                 const SizedBox(height: 5),
                 Text('${m['group_label']} · ${m['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
                 const SizedBox(height: 13),
-                Row(children: [
-                  _TinyFlag(icon: visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, label: visible ? 'VISIBLE' : 'HIDDEN', active: visible),
-                  const SizedBox(width: 7),
-                  _TinyFlag(icon: included ? Icons.inventory_2_outlined : Icons.add_card_outlined, label: included ? 'BASE' : 'EXTRA', active: included),
-                ]),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    _TinyFlag(icon: visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, label: visible ? 'VISIBLE' : 'HIDDEN', active: visible),
+                    _TinyFlag(icon: included ? Icons.inventory_2_outlined : Icons.add_card_outlined, label: included ? 'BASE' : 'EXTRA', active: included),
+                  ],
+                ),
                 const SizedBox(height: 13),
                 Row(children: [
                   const Text('Monthly', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
@@ -3147,24 +3916,30 @@ class _PartnerDetailsCard extends StatelessWidget {
   const _PartnerDetailsCard({required this.partner});
   final Map<String, dynamic> partner;
 
+  String value(dynamic input) => '${input ?? ''}'.trim().isEmpty ? '—' : '${input ?? ''}';
+
   @override
   Widget build(BuildContext context) => _InfoCard(
     title: 'Company Data',
     icon: Icons.apartment_outlined,
     children: [
-      _DefinitionRow(label: 'Legal name', value: '${partner['legal_name'] ?? '—'}'),
-      _DefinitionRow(label: 'Category', value: '${partner['category_name'] ?? '—'}'),
-      _DefinitionRow(label: 'Primary contact', value: '${partner['contact_name'] ?? '—'}'),
-      _DefinitionRow(label: 'Contact email', value: '${partner['contact_email'] ?? '—'}'),
-      _DefinitionRow(label: 'Primary domain', value: '${partner['primary_domain'] ?? '—'}'),
-      _DefinitionRow(label: 'Staging domain', value: '${partner['staging_domain'] ?? '—'}'),
+      _DefinitionRow(label: 'Legal name', value: value(partner['legal_name'])),
+      _DefinitionRow(label: 'Brand / DBA', value: value(partner['brand_name'])),
+      _DefinitionRow(label: 'Category', value: value(partner['category_name'])),
+      _DefinitionRow(label: 'Registration', value: value(partner['registration_number'])),
+      _DefinitionRow(label: 'Tax ID', value: value(partner['tax_id'])),
+      _DefinitionRow(label: 'Primary contact', value: value(partner['contact_name'])),
+      _DefinitionRow(label: 'Contact email', value: value(partner['contact_email'])),
+      _DefinitionRow(label: 'Primary domain', value: value(partner['primary_domain'])),
+      _DefinitionRow(label: 'Staging domain', value: value(partner['staging_domain'])),
+      _DefinitionRow(label: 'Website', value: value(partner['website'])),
     ],
   );
 }
 
 class _CommercialSummaryCard extends StatelessWidget {
-  const _CommercialSummaryCard({required this.terms, required this.billing, required this.onEdit});
-  final Map<String, dynamic> terms, billing;
+  const _CommercialSummaryCard({required this.terms, required this.billing, required this.license, required this.onEdit});
+  final Map<String, dynamic> terms, billing, license;
   final VoidCallback onEdit;
 
   @override
@@ -3174,11 +3949,14 @@ class _CommercialSummaryCard extends StatelessWidget {
     action: IconButton(onPressed: onEdit, tooltip: 'Edit commercial terms', icon: const Icon(Icons.edit_outlined, size: 18)),
     children: [
       _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
+      _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
+      _DefinitionRow(label: 'License paid', value: '${money(license['paid_amount'])} / ${money(license['required_amount'])}'),
       _DefinitionRow(label: 'Base monthly fee', value: money(billing['effective_base_fee'])),
       _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
       _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
       _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),
-      const _DefinitionRow(label: 'Billing rule', value: '30-day service cycle · invoice day 1'),
+      _DefinitionRow(label: 'Next cycle', value: '${billing['next_billing_date'] ?? '—'}'),
+      const _DefinitionRow(label: 'Billing rule', value: 'Activation-date anchored · 30 days'),
     ],
   );
 }
@@ -3417,45 +4195,54 @@ class _BillingRulesCard extends StatelessWidget {
     title: 'Commercial Rules',
     icon: Icons.rule_folder_outlined,
     children: [
-      _DefinitionRow(label: 'Invoice issue day', value: '1st of each month'),
-      _DefinitionRow(label: 'Service period', value: 'Preceding 30 days'),
+      _DefinitionRow(label: 'Service period', value: '30 days from activation'),
+      _DefinitionRow(label: 'Renewal', value: 'Every 30 days'),
+      _DefinitionRow(label: 'Invoice trigger', value: 'Partner cycle boundary'),
       _DefinitionRow(label: 'Annual base-fee uplift', value: 'January 1'),
       _DefinitionRow(label: 'Default uplift', value: '10% · admin-overridable'),
       _DefinitionRow(label: 'Extra modules', value: 'Consolidated into main invoice'),
-      _DefinitionRow(label: 'External invoice provider', value: 'Not configured'),
+      _DefinitionRow(label: 'External payment provider', value: 'Not configured'),
     ],
   );
 }
 
 class CatalogModuleCard extends StatelessWidget {
-  const CatalogModuleCard({required this.module, super.key});
+  const CatalogModuleCard({required this.module, required this.onTap, super.key});
   final Map<String, dynamic> module;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final system = module['system'] == true;
+    final availability = '${module['availability'] ?? 'ACTIVE'}';
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 36, height: 36, decoration: BoxDecoration(color: (system ? brandNavy : brandGold).withOpacity(.08), borderRadius: BorderRadius.circular(9)), child: Icon(system ? Icons.verified_outlined : Icons.extension_outlined, color: system ? brandNavy : brandGold, size: 18)),
-            const Spacer(),
-            _MiniCounter(label: system ? 'REFERENCE' : 'CUSTOM'),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 36, height: 36, decoration: BoxDecoration(color: (system ? brandNavy : brandGold).withOpacity(.08), borderRadius: BorderRadius.circular(9)), child: Icon(system ? Icons.verified_outlined : Icons.extension_outlined, color: system ? brandNavy : brandGold, size: 18)),
+              const Spacer(),
+              _StatusPill(label: availability),
+            ]),
+            const SizedBox(height: 12),
+            Text('${module['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 4),
+            Text('${module['group_label']}', style: const TextStyle(color: brandSteel, fontSize: 10, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 3),
+            Text('${module['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+            const SizedBox(height: 12),
+            Row(children: [
+              Text('v${module['version'] ?? '1.0.0'} → ${module['latest_version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+              const Spacer(),
+              Text(money(module['default_monthly_price']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
+              const SizedBox(width: 7),
+              const Icon(Icons.edit_outlined, color: brandGold, size: 15),
+            ]),
           ]),
-          const SizedBox(height: 12),
-          Text('${module['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
-          const SizedBox(height: 4),
-          Text('${module['group_label']}', style: const TextStyle(color: brandSteel, fontSize: 10, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 3),
-          Text('${module['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
-          const SizedBox(height: 12),
-          Row(children: [
-            Text('v${module['version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            const Spacer(),
-            Text(money(module['default_monthly_price']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
-          ]),
-        ]),
+        ),
       ),
     );
   }

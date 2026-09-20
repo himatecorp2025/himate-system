@@ -2,34 +2,39 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-04–08 completed scope
-- partner registry, cards, custom categories and lifecycle
-- Partner Workspace with 12 visible control cards
+## START-01–08 corrected scope
+- authenticated administrator control plane with explicit REST contract
+- versioned, service-scoped PostgreSQL migrations with serialized bootstrap
+- partner registry, extensible categories and backend-enforced lifecycle transitions
+- paginated Partner Portfolio with bounded cross-service aggregation
+- Partner Workspace with stable deep links and responsive admin forms
 - canonical 38-card Klavierhaus Module Catalog + custom module creation
-- ACTIVE / NOT_LICENSED / MAINTENANCE module state, visibility, base-package inclusion and partner-specific module pricing
-- price history foundation
-- individually configurable activation/license fee
-- Klavierhaus activation fee waived; base monthly fee USD 2,000
+- catalog availability plus partner ACTIVE / NOT_LICENSED / MAINTENANCE state
+- independent partner visibility, base-package inclusion and effective-dated module pricing
+- auditable module/configuration and price history with actor/reason metadata
+- individually configurable initial activation/license fee and auditable payment state
+- Klavierhaus activation fee waived; base service fee USD 2,000
 - default 10% base-fee uplift every January 1, admin-overridable
-- 30-day service cycle with one consolidated invoice issued on day 1
-- HIMATE billing/issuer profile
-- finance/document registry and internal invoice records
-- authenticated administrator login backed by Render environment credentials
+- activation-date anchored 30-day service cycles and consolidated module charges
+- HIMATE billing/issuer profile, commercial evidence registry and internal invoice records
+- responsive Flutter administration UI without redesigning the approved visual system
 
-## Current stabilization layer
-- brandbook-aligned public website and Flutter login experience
-- cached/deduplicated admin data loading and parallel dashboard aggregation
-- source-controlled high-resolution public artwork with cache/preload strategy
-- public Contact flow backed by a dedicated Contact microservice and PostgreSQL schema
-- optional SMTP notification delivery for contact inquiries
+## Security and performance baseline
+- HttpOnly SameSite=Strict administrator session cookie; Secure in production
+- same-origin mutation protection, platform-admin mutation authorization and login throttling
+- authenticated private service-to-service traffic
+- bounded JSON request bodies and strict JSON decoding
+- hardened response headers and no-store policy for API data
+- paginated partner reads, short-lived dashboard cache and page-bounded catalog/billing aggregation
+- Go race tests, Flutter responsive widget tests and full container topology health test in CI
 
 ## Architecture
 Go + Flutter + PostgreSQL with containerized microservices:
-- public gateway + identity boundary + Flutter SPA + public marketing frontend
-- private partner service
-- private module catalog service
-- private billing service
-- private contact service
-- monthly billing cron
+- public Gateway / Identity boundary + Flutter SPA + public marketing frontend
+- private Partner service
+- private Module Catalog service
+- private Billing service
+- private Contact service
+- daily billing-cycle checker that emits invoices only on each partner's 30-day boundary
 
-The local Docker Compose topology mirrors the Render service boundaries. Partner business databases remain separate from the HIMATE database boundary.
+Each service is built into its own non-root container. Local Docker Compose mirrors the Render service boundaries. Partner business databases remain separate from the HIMATE database boundary.

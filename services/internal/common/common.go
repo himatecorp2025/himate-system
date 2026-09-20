@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -57,6 +59,93 @@ func ExecStatements(ctx context.Context, db *sql.DB, statements ...string) error
 	return nil
 }
 
+type Migration struct {
+	Version    int
+	Name       string
+	Statements []string
+}
+
+// ApplyMigrations runs ordered, service-scoped PostgreSQL migrations under an
+// advisory lock. Each migration is transactional and recorded exactly once.
+// This keeps independently deployed microservices safe during rolling deploys
+// while preserving the containerized service boundaries.
+func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations []Migration) error {
+	service = strings.TrimSpace(service)
+	if service == "" {
+		return errors.New("migration service name is required")
+	}
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	const registryLock = "himate-migration-registry"
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext($1))`, registryLock); err != nil {
+		return fmt.Errorf("migration registry lock: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS public.himate_schema_migrations(
+			service TEXT NOT NULL,
+			version INT NOT NULL,
+			name TEXT NOT NULL,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY(service, version)
+		)`); err != nil {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, registryLock)
+		return fmt.Errorf("migration registry: %w", err)
+	}
+	if _, err := conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, registryLock); err != nil {
+		return fmt.Errorf("migration registry unlock: %w", err)
+	}
+
+	serviceLock := "himate-migration:" + service
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext($1))`, serviceLock); err != nil {
+		return fmt.Errorf("migration lock: %w", err)
+	}
+	defer conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, serviceLock)
+
+	current := 0
+	if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version),0) FROM public.himate_schema_migrations WHERE service=$1`, service).Scan(&current); err != nil {
+		return fmt.Errorf("migration current version: %w", err)
+	}
+
+	lastDeclared := 0
+	for _, migration := range migrations {
+		if migration.Version <= lastDeclared {
+			return fmt.Errorf("migrations for %s must be strictly increasing", service)
+		}
+		lastDeclared = migration.Version
+		if migration.Version <= current {
+			continue
+		}
+
+		tx, err := conn.BeginTx(ctx, &sql.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("migration %d begin: %w", migration.Version, err)
+		}
+		for _, stmt := range migration.Statements {
+			if strings.TrimSpace(stmt) == "" {
+				continue
+			}
+			if _, err = tx.ExecContext(ctx, stmt); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migration %s/%d %s: %w", service, migration.Version, migration.Name, err)
+			}
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO public.himate_schema_migrations(service,version,name) VALUES($1,$2,$3)`, service, migration.Version, migration.Name); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("migration %s/%d registry: %w", service, migration.Version, err)
+		}
+		if err = tx.Commit(); err != nil {
+			return fmt.Errorf("migration %s/%d commit: %w", service, migration.Version, err)
+		}
+		current = migration.Version
+	}
+	return nil
+}
+
 func JSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -68,15 +157,26 @@ func APIError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func Decode(r *http.Request, dst any) error {
-	decoder := json.NewDecoder(r.Body)
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(dst)
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return errors.New("request body must contain exactly one JSON value")
+	}
+	return nil
 }
 
 func InternalAuth(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if len(token) < 24 {
+			APIError(w, http.StatusServiceUnavailable, "SERVICE_CREDENTIAL_UNAVAILABLE", "Internal service authentication is not configured")
 			return
 		}
 		got := r.Header.Get("X-Himate-Internal-Token")

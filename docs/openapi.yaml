@@ -1,0 +1,429 @@
+openapi: 3.1.0
+info:
+  title: HIMATE Control Plane API
+  version: 0.3.0-start-01-08
+  description: >
+    Authenticated REST contract for the START-01 through START-08 HIMATE
+    control-plane surface. Partner business databases remain outside this API.
+servers:
+  - url: /
+tags:
+  - name: Health
+  - name: Authentication
+  - name: Partners
+  - name: Modules
+  - name: Billing
+  - name: Public
+paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: Gateway and microservice health
+      responses:
+        "200":
+          description: Health snapshot with checked_at timestamp
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string}
+                  architecture: {type: string}
+                  checked_at: {type: string, format: date-time}
+                  services:
+                    type: object
+                    additionalProperties: {type: string}
+  /api/v1/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Administrator sign in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string, format: password}
+      responses:
+        "200": {description: Authenticated administrator}
+        "401": {description: Invalid credentials}
+        "429": {description: Sign-in rate limit exceeded}
+  /api/v1/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: End administrator session
+      responses:
+        "204": {description: Session ended}
+  /api/v1/auth/me:
+    get:
+      tags: [Authentication]
+      summary: Current administrator
+      responses:
+        "200": {description: Current administrator}
+        "401": {description: Authentication required}
+  /api/v1/dashboard/summary:
+    get:
+      tags: [Health]
+      summary: Cached executive summary
+      responses:
+        "200": {description: Dashboard KPI snapshot}
+  /api/v1/partner-categories:
+    get:
+      tags: [Partners]
+      summary: List partner categories
+      responses:
+        "200": {description: Partner categories}
+    post:
+      tags: [Partners]
+      summary: Create a partner category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string}
+      responses:
+        "201": {description: Category created}
+        "409": {description: Category already exists}
+  /api/v1/partners:
+    get:
+      tags: [Partners]
+      summary: Paginated partner portfolio
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: lifecycle, in: query, schema: {type: string}}
+        - {name: health, in: query, schema: {type: string, enum: [ALL, HEALTHY, WARNING, OFFLINE, UNKNOWN]}}
+        - {name: include_archived, in: query, schema: {type: boolean}}
+      responses:
+        "200":
+          description: Partner portfolio with aggregate card data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Partner"}
+                  total: {type: integer}
+                  limit: {type: integer}
+                  offset: {type: integer}
+                  has_more: {type: boolean}
+                  lifecycle_counts:
+                    type: object
+                    additionalProperties: {type: integer}
+    post:
+      tags: [Partners]
+      summary: Create a PROSPECT partner record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/NewPartner"}
+      responses:
+        "201": {description: Partner created}
+        "409": {description: Duplicate slug or domain}
+  /api/v1/partners/{partnerId}:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Partners]
+      summary: Partner record
+      responses:
+        "200": {description: Partner}
+        "404": {description: Partner not found}
+    patch:
+      tags: [Partners]
+      summary: Update partner company data or lifecycle
+      description: >
+        Lifecycle transitions are backend-enforced and historized. Entering
+        PROVISIONING fails closed unless Billing confirms the authoritative
+        initial-license payment/evidence gate (or an explicit valid waiver).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PartnerUpdate"}
+      responses:
+        "200": {description: Updated partner}
+        "409": {description: Invalid lifecycle transition or uniqueness conflict}
+  /api/v1/module-groups:
+    get:
+      tags: [Modules]
+      summary: Module categories
+      responses:
+        "200": {description: Module categories}
+  /api/v1/modules:
+    get:
+      tags: [Modules]
+      summary: Module catalog
+      responses:
+        "200": {description: Canonical and custom modules}
+    post:
+      tags: [Modules]
+      summary: Create custom module
+      responses:
+        "201": {description: Module created}
+        "409": {description: Stable key conflict}
+  /api/v1/modules/{moduleKey}:
+    parameters:
+      - name: moduleKey
+        in: path
+        required: true
+        schema: {type: string}
+    patch:
+      tags: [Modules]
+      summary: Update catalog metadata or availability
+      responses:
+        "200": {description: Updated catalog module}
+  /api/v1/partners/{partnerId}/modules:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Modules]
+      summary: Partner module entitlements and effective prices
+      responses:
+        "200": {description: Partner modules}
+  /api/v1/partners/{partnerId}/modules/{moduleKey}:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+      - name: moduleKey
+        in: path
+        required: true
+        schema: {type: string}
+    patch:
+      tags: [Modules]
+      summary: Update partner module state, visibility, package inclusion or price
+      description: >
+        Pricing accepts an optional RFC3339 price_effective_at. Historical
+        changes retain actor, reason, old value and new value.
+      responses:
+        "200": {description: Updated partner module}
+  /api/v1/billing/profile:
+    get:
+      tags: [Billing]
+      summary: HIMATE issuer and banking profile
+      responses:
+        "200": {description: Billing profile}
+    put:
+      tags: [Billing]
+      summary: Update HIMATE issuer and banking profile
+      responses:
+        "200": {description: Updated billing profile}
+  /api/v1/billing/partners/{partnerId}/terms:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Partner commercial terms
+      responses:
+        "200": {description: Commercial terms}
+    put:
+      tags: [Billing]
+      summary: Update partner commercial terms
+      description: >
+        Records base-fee history and the activation-date anchor for the 30-day
+        service cycle.
+      responses:
+        "200": {description: Updated terms}
+  /api/v1/billing/partners/{partnerId}/license:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Initial license state
+      responses:
+        "200": {description: Initial license}
+    put:
+      tags: [Billing]
+      summary: Update initial license payment state
+      description: >
+        PAID requires payment date, reference, verifier and registered
+        commercial evidence.
+      responses:
+        "200": {description: Updated initial license}
+        "409": {description: License evidence required}
+  /api/v1/billing/partners/{partnerId}/summary:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Current 30-day commercial summary
+      responses:
+        "200": {description: Effective fee and cycle window}
+  /api/v1/billing/partners/{partnerId}/documents:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Commercial document metadata
+      responses:
+        "200": {description: Documents}
+    post:
+      tags: [Billing]
+      summary: Register commercial document metadata
+      description: >
+        Commercial evidence types (CONTRACT, INVOICE, RECEIPT and
+        PAYMENT_EVIDENCE) require a non-empty persistent storage URL or
+        document reference before they can satisfy the initial-license gate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, name]
+              properties:
+                kind:
+                  type: string
+                  enum: [CONTRACT, INVOICE, RECEIPT, PAYMENT_EVIDENCE, OTHER]
+                name: {type: string}
+                storage_url: {type: string, maxLength: 2048}
+                note: {type: string}
+                verified_by: {type: string}
+                mime_type: {type: string}
+                sha256: {type: string}
+                size_bytes: {type: integer, minimum: 0}
+      responses:
+        "201": {description: Document registered}
+        "400": {description: Validation failed or evidence reference missing}
+  /api/v1/billing/partners/{partnerId}/invoices:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Internal invoice records
+      responses:
+        "200": {description: Invoices}
+  /api/v1/billing/partners/{partnerId}/subscriptions:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Module subscription snapshots
+      responses:
+        "200": {description: Subscription records}
+  /api/v1/billing/partners/{partnerId}/subscriptions/{moduleKey}:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+      - name: moduleKey
+        in: path
+        required: true
+        schema: {type: string}
+    patch:
+      tags: [Billing]
+      summary: Schedule or withdraw end-of-period cancellation
+      description: Cancellation preserves the current 30-day period and prevents the next renewal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cancel_at_period_end]
+              properties:
+                cancel_at_period_end: {type: boolean}
+                reason: {type: string}
+      responses:
+        "200": {description: Subscription updated}
+        "404": {description: Subscription not found}
+        "409": {description: Inactive subscription must be reactivated at module level}
+  /api/v1/public/contact:
+    post:
+      tags: [Public]
+      security: []
+      summary: Public contact inquiry
+      responses:
+        "201": {description: Inquiry accepted}
+        "429": {description: Rate limited}
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: himate_session
+  parameters:
+    PartnerId:
+      name: partnerId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^ptr_[0-9]{6}$"
+  schemas:
+    NewPartner:
+      type: object
+      required: [display_name]
+      properties:
+        display_name: {type: string}
+        legal_name: {type: string}
+        brand_name: {type: string}
+        category_id: {type: string}
+        lifecycle:
+          type: string
+          const: PROSPECT
+        primary_domain: {type: string}
+        contact_name: {type: string}
+        contact_email: {type: string, format: email}
+        country: {type: string}
+    Partner:
+      type: object
+      properties:
+        id: {type: string}
+        display_name: {type: string}
+        legal_name: {type: string}
+        brand_name: {type: string}
+        lifecycle:
+          type: string
+          enum: [PROSPECT, LICENSE_PENDING, READY_TO_PROVISION, PROVISIONING, CONFIGURATION, TESTING, READY_FOR_LAUNCH, LIVE, SUSPENDED, ARCHIVED]
+        primary_domain: {type: string}
+        staging_domain: {type: string}
+        platform_version: {type: string}
+        system_health: {type: string}
+        health_checked_at: {type: [string, "null"], format: date-time}
+        last_sync_at: {type: [string, "null"], format: date-time}
+        active_modules: {type: integer}
+        service_value_30d: {type: number}
+    PartnerUpdate:
+      type: object
+      properties:
+        display_name: {type: string}
+        legal_name: {type: string}
+        brand_name: {type: string}
+        registration_number: {type: string}
+        tax_id: {type: string}
+        lifecycle:
+          type: string
+          enum: [PROSPECT, LICENSE_PENDING, READY_TO_PROVISION, PROVISIONING, CONFIGURATION, TESTING, READY_FOR_LAUNCH, LIVE, SUSPENDED, ARCHIVED]
+        reason: {type: string}
+        primary_domain: {type: string}
+        staging_domain: {type: string}
+        contact_name: {type: string}
+        contact_email: {type: string}
+        finance_contact_name: {type: string}
+        finance_contact_email: {type: string}
+        technical_contact_name: {type: string}
+        technical_contact_email: {type: string}
+        marketing_contact_name: {type: string}
+        marketing_contact_email: {type: string}
+        country: {type: string}
+        state_region: {type: string}
+        city: {type: string}
+        postal_code: {type: string}
+        address_line1: {type: string}
+        address_line2: {type: string}
+        website: {type: string}
+        phone: {type: string}
+        logo_url: {type: string}
+        notes: {type: string}
+security:
+  - sessionCookie: []
