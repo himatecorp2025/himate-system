@@ -1672,6 +1672,10 @@ class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
   bool loading = true;
+  bool categoriesLoading = true;
+  bool statsReady = false;
+  bool hasMore = false;
+  int _loadGeneration = 0;
   String? error;
   String query = '';
   String categoryFilter = 'ALL';
@@ -1709,7 +1713,7 @@ class _PartnersPageState extends State<PartnersPage> {
     super.dispose();
   }
 
-  Uri _partnerUri() {
+  Map<String, String> _partnerQueryParameters() {
     final params = <String, String>{
       'limit': '$pageSize',
       'offset': '$offset',
@@ -1718,33 +1722,98 @@ class _PartnersPageState extends State<PartnersPage> {
     if (categoryFilter != 'ALL') params['category'] = categoryFilter;
     if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
     if (healthFilter != 'ALL') params['health'] = healthFilter;
+    return params;
+  }
+
+  Uri _partnerUri() {
+    final params = _partnerQueryParameters()
+      ..['core_only'] = 'true'
+      ..['include_stats'] = 'false';
     return Uri(path: '/api/v1/partners', queryParameters: params);
+  }
+
+  Uri _partnerStatsUri() {
+    final params = _partnerQueryParameters()
+      ..['core_only'] = 'true'
+      ..['stats_only'] = 'true';
+    return Uri(path: '/api/v1/partners', queryParameters: params);
+  }
+
+  Future<void> _loadCategories() async {
+    if (mounted) setState(() => categoriesLoading = true);
+    try {
+      final response = await widget.api.get('/api/v1/partner-categories');
+      categories = items(response);
+    } catch (_) {
+      // Core partner rows remain usable if category metadata is temporarily unavailable.
+    } finally {
+      if (mounted) setState(() => categoriesLoading = false);
+    }
+  }
+
+  Future<void> _loadPartnerStats(int generation) async {
+    if (mounted && generation == _loadGeneration) setState(() => statsReady = false);
+    try {
+      final page = await widget.api.get(_partnerStatsUri().toString(), force: true);
+      if (!mounted || generation != _loadGeneration) return;
+      final counts = page['lifecycle_counts'];
+      setState(() {
+        total = (page['total'] as num?)?.toInt() ?? total;
+        referenceCount = (page['reference_count'] as num?)?.toInt() ?? 0;
+        lifecycleCounts = counts is Map
+            ? <String, int>{
+                for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
+              }
+            : <String, int>{};
+        statsReady = true;
+      });
+    } catch (_) {
+      // Exact counts are supplementary and must never block partner rows.
+    }
+  }
+
+  Future<void> _loadPortfolioEnrichment(int generation, List<Map<String, dynamic>> baseRows) async {
+    final ids = baseRows.map((p) => '${p['id'] ?? ''}').where((id) => id.isNotEmpty).toList();
+    if (ids.isEmpty) return;
+    try {
+      final uri = Uri(path: '/api/v1/partners/portfolio', queryParameters: {'ids': ids.join(',')});
+      final response = await widget.api.get(uri.toString(), force: true);
+      if (!mounted || generation != _loadGeneration) return;
+      final byId = <String, Map<String, dynamic>>{
+        for (final row in items(response)) '${row['partner_id']}': row,
+      };
+      setState(() {
+        partners = partners.map((row) {
+          final extra = byId['${row['id']}'];
+          return extra == null ? row : <String, dynamic>{...row, ...extra};
+        }).toList();
+      });
+    } catch (_) {
+      // Enrichment is optional: never block core partner data.
+    }
   }
 
   Future<void> load({bool reset = false, bool loadCategories = false}) async {
     if (reset) offset = 0;
-    if (mounted) setState(() { loading = true; error = null; });
+    final generation = ++_loadGeneration;
+    if (mounted) setState(() { loading = true; error = null; statsReady = false; });
+    if (loadCategories || categories.isEmpty) unawaited(_loadCategories());
+
     try {
-      final futures = <Future<Map<String, dynamic>>>[
-        widget.api.get(_partnerUri().toString(), force: true),
-        if (loadCategories || categories.isEmpty) widget.api.get('/api/v1/partner-categories', force: true),
-      ];
-      final r = await Future.wait(futures);
-      final page = r[0];
-      partners = items(page);
-      total = (page['total'] as num?)?.toInt() ?? partners.length;
-      referenceCount = (page['reference_count'] as num?)?.toInt() ?? 0;
-      final counts = page['lifecycle_counts'];
-      lifecycleCounts = counts is Map
-          ? <String, int>{
-              for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
-            }
-          : <String, int>{};
-      if (r.length > 1) categories = items(r[1]);
+      final page = await widget.api.get(_partnerUri().toString(), force: true);
+      if (!mounted || generation != _loadGeneration) return;
+      final coreRows = items(page);
+      setState(() {
+        partners = coreRows;
+        hasMore = page['has_more'] == true;
+        loading = false;
+      });
+      unawaited(_loadPartnerStats(generation));
+      unawaited(_loadPortfolioEnrichment(generation, List<Map<String, dynamic>>.from(coreRows)));
     } catch (e) {
-      error = e.toString();
-    } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() { error = e.toString(); loading = false; });
+      }
     }
   }
 
@@ -1763,7 +1832,7 @@ class _PartnersPageState extends State<PartnersPage> {
   }
 
   void nextPage() {
-    if (offset + partners.length >= total) return;
+    if (!hasMore) return;
     offset += pageSize;
     load();
   }
@@ -1792,14 +1861,22 @@ class _PartnersPageState extends State<PartnersPage> {
       ),
     );
     if (ok == true && controller.text.trim().isNotEmpty) {
-      await widget.api.post('/api/v1/partner-categories', {'name': controller.text.trim()});
-      await load();
-      if (mounted) success('Partner category created.');
+      final created = await widget.api.post('/api/v1/partner-categories', {'name': controller.text.trim()});
+      if (mounted) {
+        setState(() {
+          categories = <Map<String, dynamic>>[...categories, created]
+            ..sort((a, b) => '${a['name']}'.compareTo('${b['name']}'));
+        });
+        success('Partner category created.');
+      }
     }
     controller.dispose();
   }
 
   Future<void> addPartner() async {
+    if (categories.isEmpty && categoriesLoading) {
+      await _loadCategories();
+    }
     if (categories.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Create a partner category first.'), behavior: SnackBarBehavior.floating),
@@ -2056,8 +2133,8 @@ class _PartnersPageState extends State<PartnersPage> {
           await widget.api.post('/api/v1/provisioning/jobs', provisioningPlan);
         }
 
-        await load();
         if (mounted) {
+          unawaited(load(reset: true));
           success(readyForProvisioning
               ? 'Partner created and staging provisioning completed.'
               : 'Partner created in LICENSE_PENDING. Provisioning was not started because payment/evidence is incomplete.');
@@ -2200,7 +2277,7 @@ class _PartnersPageState extends State<PartnersPage> {
                       children: [
                         Text('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(width: 10),
-                        _MiniCounter(label: '${partners.length} shown · $total matched'),
+                        _MiniCounter(label: statsReady ? '${partners.length} shown · $total matched' : '${partners.length} shown'),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -2228,7 +2305,7 @@ class _PartnersPageState extends State<PartnersPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Wrap(spacing: 14, runSpacing: 14, children: cards),
-                            if (total > pageSize) ...[
+                            if (offset > 0 || hasMore || (statsReady && total > pageSize)) ...[
                               const SizedBox(height: 18),
                               Wrap(
                                 spacing: 10,
@@ -2240,9 +2317,9 @@ class _PartnersPageState extends State<PartnersPage> {
                                     icon: const Icon(Icons.chevron_left_rounded),
                                     label: const Text('Previous'),
                                   ),
-                                  _MiniCounter(label: 'Page ${offset ~/ pageSize + 1} of ${(total + pageSize - 1) ~/ pageSize}'),
+                                  _MiniCounter(label: statsReady ? 'Page ${offset ~/ pageSize + 1} of ${(total + pageSize - 1) ~/ pageSize}' : 'Page ${offset ~/ pageSize + 1}'),
                                   OutlinedButton.icon(
-                                    onPressed: offset + partners.length < total && !loading ? nextPage : null,
+                                    onPressed: hasMore && !loading ? nextPage : null,
                                     icon: const Icon(Icons.chevron_right_rounded),
                                     label: const Text('Next'),
                                   ),
@@ -2283,7 +2360,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? terms;
   Map<String, dynamic>? license;
   bool loading = true;
+  bool supplementalLoading = true;
   String? error;
+  String? supplementalError;
   String moduleQuery = '';
   String moduleState = 'ALL';
   final GlobalKey _overviewKey = GlobalKey();
@@ -2318,46 +2397,61 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     load();
   }
 
+  Future<Map<String, dynamic>?> _safeWorkspaceGet(String path, List<String> errors) async {
+    try {
+      return await widget.api.get(path);
+    } catch (e) {
+      errors.add('$path: $e');
+      return null;
+    }
+  }
+
+  Future<void> _loadSupplementary() async {
+    final id = '${partner['id']}';
+    if (mounted) setState(() { supplementalLoading = true; supplementalError = null; });
+    final errors = <String>[];
+    final r = await Future.wait<Map<String, dynamic>?>([
+      _safeWorkspaceGet('/api/v1/partners/$id/modules', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/summary', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/terms', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/license', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/documents', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/invoices', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/subscriptions', errors),
+      _safeWorkspaceGet('/api/v1/environments?partner_id=$id', errors),
+      _safeWorkspaceGet('/api/v1/provisioning/jobs?partner_id=$id', errors),
+      _safeWorkspaceGet('/api/v1/impact/summary?partner_id=$id', errors),
+      _safeWorkspaceGet('/api/v1/connectors/$id/credential', errors),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      if (r[0] != null) modules = items(r[0]!);
+      if (r[1] != null) billing = r[1];
+      if (r[2] != null) terms = r[2];
+      if (r[3] != null) license = r[3];
+      if (r[4] != null) documents = items(r[4]!);
+      if (r[5] != null) invoices = items(r[5]!);
+      if (r[6] != null) subscriptions = items(r[6]!);
+      if (r[7] != null) environments = items(r[7]!);
+      if (r[8] != null) provisioningJobs = items(r[8]!);
+      if (r[9] != null) impactSummary = items(r[9]!);
+      if (r[10] != null) connectorCredentials = items(r[10]!);
+      supplementalLoading = false;
+      supplementalError = errors.isEmpty ? null : 'Some secondary services are still loading or temporarily unavailable.';
+    });
+  }
+
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
     final id = '${partner['id']}';
     try {
-      final r = await Future.wait([
-        widget.api.get('/api/v1/partners/$id'),
-        widget.api.get('/api/v1/partners/$id/modules'),
-        widget.api.get('/api/v1/billing/partners/$id/summary'),
-        widget.api.get('/api/v1/billing/partners/$id/terms'),
-        widget.api.get('/api/v1/billing/partners/$id/license'),
-        widget.api.get('/api/v1/billing/partners/$id/documents'),
-        widget.api.get('/api/v1/billing/partners/$id/invoices'),
-        widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true),
-        widget.api.get('/api/v1/environments?partner_id=$id', force: true),
-        widget.api.get('/api/v1/provisioning/jobs?partner_id=$id', force: true),
-        widget.api.get('/api/v1/impact/summary?partner_id=$id', force: true),
-        widget.api.get('/api/v1/connectors/$id/credential', force: true),
-      ]);
-      partner = r[0];
-      modules = items(r[1]);
-      billing = r[2];
-      terms = r[3];
-      license = r[4];
-      documents = items(r[5]);
-      invoices = items(r[6]);
-      subscriptions = items(r[7]);
-      environments = items(r[8]);
-      provisioningJobs = items(r[9]);
-      impactSummary = items(r[10]);
-      connectorCredentials = items(r[11]);
-      if (subscriptions.isEmpty && modules.any((m) => m['status'] == 'ACTIVE')) {
-        subscriptions = items(await widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true));
-      }
+      final core = await widget.api.get('/api/v1/partners/$id', force: true);
+      if (!mounted) return;
+      setState(() { partner = core; loading = false; });
+      _scrollToInitialSection();
+      unawaited(_loadSupplementary());
     } catch (e) {
-      error = e.toString();
-    } finally {
-      if (mounted) {
-        setState(() => loading = false);
-        _scrollToInitialSection();
-      }
+      if (mounted) setState(() { error = e.toString(); loading = false; supplementalLoading = false; });
     }
   }
 
@@ -2752,7 +2846,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
 
     if (ok == true) {
-      await widget.api.patch('/api/v1/partners/${partner['id']}', {
+      final updated = await widget.api.patch('/api/v1/partners/${partner['id']}', {
         'display_name': display.text.trim(),
         'legal_name': legal.text.trim(),
         'brand_name': brand.text.trim(),
@@ -2781,8 +2875,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         'logo_url': logo.text.trim(),
         'notes': notes.text.trim(),
       });
-      await load();
-      if (mounted) success('Partner data updated.');
+      if (mounted) {
+        setState(() => partner = updated);
+        success('Partner data updated.');
+      }
     }
 
     for (final controller in [
@@ -3239,11 +3335,23 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                   ].join(' · '),
                   actions: [
                     OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const Text('Company data')),
-                    FilledButton.icon(onPressed: editTerms, icon: const Icon(Icons.payments_outlined), label: const Text('Commercial terms')),
+                    FilledButton.icon(onPressed: terms != null && license != null ? editTerms : null, icon: const Icon(Icons.payments_outlined), label: const Text('Commercial terms')),
                   ],
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (supplementalLoading) ...[
+                        const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+                        const SizedBox(height: 12),
+                      ],
+                      if (supplementalError != null) ...[
+                        _MessageCard(
+                          icon: Icons.sync_problem_outlined,
+                          title: 'Secondary data is loading independently',
+                          message: supplementalError!,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       KeyedSubtree(
                         key: _overviewKey,
                         child: Wrap(
