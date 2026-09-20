@@ -2370,7 +2370,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       final paidAmount = double.tryParse(paid.text) ?? 0;
       final hasLicenseEvidence = documents.any((d) {
         final kind = '${d['kind'] ?? ''}'.toUpperCase();
-        return kind == 'PAYMENT_EVIDENCE' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'CONTRACT';
+        final storageReference = '${d['storage_url'] ?? ''}'.trim();
+        final evidenceKind = kind == 'PAYMENT_EVIDENCE' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'CONTRACT';
+        return evidenceKind && storageReference.isNotEmpty;
       });
       if (!waived && requiredAmount > 0 && paidAmount >= requiredAmount && !hasLicenseEvidence) {
         if (mounted) {
@@ -2440,7 +2442,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Register document',
-          subtitle: 'Attach commercial metadata now; binary evidence storage will be connected in a later evidence cycle.',
+          subtitle: 'Register commercial document metadata with a persistent storage URL or document reference.',
           icon: Icons.note_add_outlined,
           width: 640,
           child: Column(
@@ -2452,6 +2454,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 items: const [
                   DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
                   DropdownMenuItem(value: 'INVOICE', child: Text('Invoice')),
+                  DropdownMenuItem(value: 'RECEIPT', child: Text('Receipt')),
                   DropdownMenuItem(value: 'PAYMENT_EVIDENCE', child: Text('Payment evidence')),
                   DropdownMenuItem(value: 'OTHER', child: Text('Other')),
                 ],
@@ -2460,7 +2463,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               const SizedBox(height: 12),
               TextField(controller: name, decoration: const InputDecoration(labelText: 'Document name *')),
               const SizedBox(height: 12),
-              TextField(controller: url, decoration: const InputDecoration(labelText: 'Storage URL / reference')),
+              TextField(
+                controller: url,
+                decoration: const InputDecoration(
+                  labelText: 'Storage URL / reference',
+                  hintText: 'Required for contracts, invoices, receipts and payment evidence',
+                ),
+              ),
               const SizedBox(height: 12),
               TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
             ],
@@ -2472,6 +2481,22 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
 
     if (ok == true && name.text.trim().isNotEmpty) {
+      final evidenceKind = kind == 'CONTRACT' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'PAYMENT_EVIDENCE';
+      if (evidenceKind && url.text.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Commercial evidence requires an attached storage URL or persistent document reference.'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: brandWarning,
+            ),
+          );
+        }
+        for (final controller in [name, url, note]) {
+          controller.dispose();
+        }
+        return;
+      }
       await widget.api.post('/api/v1/billing/partners/${partner['id']}/documents', {
         'kind': kind,
         'name': name.text.trim(),
