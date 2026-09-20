@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–15
+# HIMATE control-plane architecture — START-01–16
 
 ```text
 Browser / Admin
@@ -17,6 +17,7 @@ HIMATE Gateway / Identity / Flutter + Public Website
   +-- private Impact & Metrics Service
   +-- private Evidence Service
   +-- private PDF Reports Service
+  +-- private CMS Service
   +-- private Storage Service
   |
   +-- HIMATE PostgreSQL control-plane database
@@ -32,6 +33,7 @@ HIMATE Gateway / Identity / Flutter + Public Website
   |    +-- impact
   |    +-- evidence
   |    +-- reports
+  |    +-- cms
   |    +-- storage
   |
   +-- isolated partner PostgreSQL databases
@@ -88,6 +90,20 @@ Impact definitions are stable and centrally governed. Observations retain period
 START-14 adds a dedicated Evidence service. File-backed evidence is content-sniffed, size-limited and SHA-256 verified before its bytes are persisted through the Storage service. URL evidence is reference-only and is never fetched. `VERIFIED_DOCUMENT` observations must reference a real, VERIFIED, file-backed Evidence record with matching partner/metric boundaries.
 
 START-15 adds a dedicated Reports service. Report jobs freeze partner scope, period, metric summaries, data sources and Evidence references into an immutable snapshot before PDF rendering. Partner, multi-partner and HIMATE Global reports can therefore be regenerated from the same snapshot without rereading live metric state. Generated PDFs are stored through the same Storage abstraction and retain SHA-256 integrity metadata.
+
+## CMS content plane
+
+START-16 adds a dedicated CMS service behind the Gateway. Administrator writes remain session-authenticated while the CMS service itself remains private and accepts only the internal service credential.
+
+Page identity is stable, while content is stored as immutable versions. Each content edit creates a new `DRAFT` version. The current draft must be promoted to `PREVIEW` before it may become `PUBLISHED`; if the draft changes after preview, publishing fails closed until a fresh preview is created.
+
+Preview access uses a cryptographically random token whose raw value is returned only when issued or rotated. Only its SHA-256 hash is persisted. Preview responses are `no-store` and `noindex`. Public CMS APIs expose only the active published snapshot and omit hidden sections. Draft and preview state never share the public read path.
+
+CMS media is identified by stable asset IDs and persisted through the common Storage service. Uploads are request/file-size bounded and content-sniffed; only PNG, JPEG and WebP are admitted. Media becomes public only when referenced by the active published version. This prevents draft-only media from becoming a public side channel.
+
+SEO fields are versioned with content. Backend publication validation enforces slug format, HTTPS canonical URLs, required title/meta data and uniqueness of published slug/canonical values. The published manifest prepares START-17 sitemap/robots generation.
+
+The existing public landing page and subpages remain unchanged in START-16. START-17 will bind those already approved pages to the published CMS content model and provide SEO-compatible HTML rendering.
 
 ## Billing continuity
 

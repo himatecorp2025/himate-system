@@ -10,6 +10,8 @@ import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 
+part 'cms_page.dart';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
@@ -1103,7 +1105,7 @@ class _ShellState extends State<Shell> {
       case 1: return PartnersPage(api: widget.api);
       case 2: return FinancePage(api: widget.api);
       case 3: return ImpactPage(api: widget.api);
-      case 4: return const PlannedPage(title: 'Website & Marketing', subtitle: 'HIMATE CMS and public marketing tools are planned for START-16–17.', icon: Icons.campaign_outlined);
+      case 4: return WebsiteMarketingPage(api: widget.api);
       case 5: return SystemPage(api: widget.api);
       default: return const PlannedPage(title: 'Administration', subtitle: 'Roles, permissions and advanced audit controls are planned for START-18–19.', icon: Icons.admin_panel_settings_outlined);
     }

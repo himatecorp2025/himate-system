@@ -218,6 +218,28 @@ services:
           property: hostport
 
   - type: pserv
+    name: himate-cms
+    runtime: docker
+    dockerfilePath: ./services/docker/cms.Dockerfile
+    dockerContext: .
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: STORAGE_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-storage
+          property: hostport
+
+  - type: pserv
     name: himate-environments
     runtime: docker
     dockerfilePath: ./services/docker/environments.Dockerfile
@@ -378,6 +400,11 @@ services:
           type: pserv
           name: himate-reports
           property: hostport
+      - key: CMS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-cms
+          property: hostport
       - key: STORAGE_HOSTPORT
         fromService:
           type: pserv
@@ -401,7 +428,7 @@ services:
       - key: HIMATE_ENV
         value: production
       - key: HIMATE_APP_VERSION
-        value: 0.4.0-start-14-15
+        value: 0.5.0-start-16
       - key: COOKIE_SECURE
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS
@@ -477,6 +504,11 @@ services:
         fromService:
           type: pserv
           name: himate-reports
+          property: hostport
+      - key: CMS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-cms
           property: hostport
       - key: STORAGE_HOSTPORT
         fromService:

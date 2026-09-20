@@ -146,6 +146,20 @@ services:
       storage:
         condition: service_started
 
+  cms:
+    build:
+      context: .
+      dockerfile: services/docker/cms.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      STORAGE_HOSTPORT: storage:10000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      storage:
+        condition: service_started
+
   environments:
     build:
       context: .
@@ -222,6 +236,7 @@ services:
       IMPACT_HOSTPORT: impact:10000
       EVIDENCE_HOSTPORT: evidence:10000
       REPORTS_HOSTPORT: reports:10000
+      CMS_HOSTPORT: cms:10000
       STORAGE_HOSTPORT: storage:10000
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
     depends_on:
@@ -247,6 +262,8 @@ services:
         condition: service_started
       reports:
         condition: service_started
+      cms:
+        condition: service_started
       storage:
         condition: service_started
       runtime:
@@ -260,7 +277,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.4.0-start-14-15
+      HIMATE_APP_VERSION: 0.5.0-start-16
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456
@@ -280,6 +297,7 @@ services:
       IMPACT_HOSTPORT: impact:10000
       EVIDENCE_HOSTPORT: evidence:10000
       REPORTS_HOSTPORT: reports:10000
+      CMS_HOSTPORT: cms:10000
       STORAGE_HOSTPORT: storage:10000
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
     depends_on:
@@ -306,6 +324,8 @@ services:
       evidence:
         condition: service_started
       reports:
+        condition: service_started
+      cms:
         condition: service_started
       storage:
         condition: service_started
