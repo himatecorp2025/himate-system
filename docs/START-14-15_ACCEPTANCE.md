@@ -56,6 +56,9 @@ The scope is derived from the START plan: important results may be linked to Evi
 
 ## Cross-cutting release gates
 
+Acceptance candidate: `853b128d73636436a17de6e1cad6a9d157c8c870`. All release-gate checkboxes remain open until a full CI run succeeds on this code state or a documentation-only descendant of it.
+
+
 - [ ] `go vet ./...`
 - [ ] `go test ./...`
 - [ ] `go test -race ./...`
