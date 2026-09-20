@@ -23,10 +23,10 @@ The 2026-09-20 post-merge re-audit reconciles the original START specification w
 - [x] Partner database readiness/identity is checked.
 - [x] Successful completion moves the partner to `CONFIGURATION`.
 - [x] Re-running a completed job creates no duplicate partner database or staging environment.
-- [ ] The New Partner flow is a complete provisioning wizard that captures business data, commercial/license data, required documents, Partner/System identity, environment selection and module preset before provisioning begins.
-- [ ] Partner storage is actually provisioned/isolated and health-checked; a `storage_namespace` metadata value alone is not sufficient.
-- [ ] Provisioning performs an actual staging deployment step and verifies deployed runtime health before the workflow is considered complete.
-- [ ] Cross-tenant database isolation is enforced and integration-tested so Partner A credentials cannot connect to or read Partner B resources.
+- [x] The New Partner flow is a complete provisioning wizard that captures business data, commercial/license data, required documents, Partner/System identity, environment selection and module preset before provisioning begins.
+- [x] Partner storage is actually provisioned/isolated and health-checked; a `storage_namespace` metadata value alone is not sufficient.
+- [x] Provisioning performs an actual staging deployment step and verifies deployed runtime health before the workflow is considered complete.
+- [x] Cross-tenant database isolation is enforced and integration-tested so Partner A credentials cannot connect to or read Partner B resources.
 
 ## START-10 — Partner Environments & Staging
 
@@ -50,7 +50,7 @@ The 2026-09-20 post-merge re-audit reconciles the original START specification w
 - [x] Connector supports approved metric synchronization to the Impact service through an internal API contract.
 - [x] Partner Workspace exposes credential metadata and explicit one-time secret handling.
 - [x] The public connector protocol is routed independently from administrator-session authentication.
-- [ ] HIMATE → partner downstream synchronization is implemented for entitlement state, maintenance state and approved partner configuration; the current reported-state endpoint is not a substitute for desired-state delivery.
+- [x] HIMATE → partner downstream synchronization is implemented for entitlement state, maintenance state and approved partner configuration; the current reported-state endpoint is not a substitute for desired-state delivery.
 
 ## START-12 — System Health
 
@@ -61,9 +61,9 @@ The 2026-09-20 post-merge re-audit reconciles the original START specification w
 - [x] Background snapshots are persisted for fast Partner Portfolio reads.
 - [x] Production connector telemetry is preferred when both production and staging telemetry exist.
 - [x] Responsive System & Operations UI exposes service health, partner health, provisioning and environments.
-- [ ] Ongoing partner-database health is monitored after provisioning, not only checked once during initial provisioning.
-- [ ] Partner domain/hostname reachability/status is monitored and exposed in central System Health.
-- [ ] Connector/data-sync freshness is part of persisted partner health and visible as a first-class health signal.
+- [x] Ongoing partner-database health is monitored after provisioning, not only checked once during initial provisioning.
+- [x] Partner domain/hostname reachability/status is monitored and exposed in central System Health.
+- [x] Connector/data-sync freshness is part of persisted partner health and visible as a first-class health signal.
 
 ## START-13 — Impact & Metrics
 
@@ -78,7 +78,7 @@ The 2026-09-20 post-merge re-audit reconciles the original START specification w
 - [x] Responsive Impact & Reports UI allows metric definition and manual value entry.
 - [x] Partner Workspace exposes partner-specific statistics.
 - [x] Evidence-file management is intentionally excluded and remains START-14.
-- [ ] Metric baseline support is implemented and persisted so period results can be evaluated against an explicit baseline as required by the START-13 specification.
+- [x] Metric baseline support is implemented and persisted so period results can be evaluated against an explicit baseline as required by the START-13 specification.
 
 ## Cross-cutting release gates
 
@@ -107,8 +107,17 @@ The 2026-09-20 post-merge re-audit reconciles the original START specification w
 
 ## Synchronized status
 
-Final acceptance implementation branch: `start-09-13-acceptance-final` (PR #5). Functional gates remain unchecked until the expanded CI/smoke suite passes on this branch.
+Final acceptance implementation branch: `start-09-13-acceptance-final` (PR #5).
 
-The previous checklist overstated specification completeness because it did not include several original START requirements. After reconciliation, 65 of 74 explicit acceptance gates are currently satisfied.
+Final remediation evidence:
+- HIMATE CI run #262 completed successfully on commit `48c44e7388871cd50e004d6e77d5b2c3ea517c46`.
+- Go: `go vet ./...`, `go test ./...`, `go test -race ./...`, OpenAPI verification and `go build ./cmd/...` all passed.
+- Flutter: `flutter analyze`, Chrome tests, release web build and public bundle verification all passed.
+- Docker Compose topology, all microservice builds/startup and gateway/private-service health all passed.
+- START-01–08 regression smoke passed.
+- Expanded START-09–13 integration smoke passed, including pre-license provisioning-plan persistence, isolated partner storage, real staging runtime deployment/health, downstream desired-state synchronization, persistent partner database/storage/hostname/sync health, metric baselines/deltas and two-partner cross-tenant database isolation.
+- Feature-branch Vercel deployments remain disabled; only `develop` is deployment-enabled.
 
-**START-09–13 is not yet specification-complete. Do not begin START-14 until the 9 unchecked functional gates above are implemented, covered by integration tests, and re-audited green.**
+All 74 of 74 explicit START-09–13 acceptance gates are now satisfied.
+
+**START-09–13 is specification-complete. START-14 remains explicitly out of scope for this acceptance closure.**
