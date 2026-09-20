@@ -2249,6 +2249,25 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
 
     if (ok == true) {
+      final requiredAmount = double.tryParse(activation.text) ?? 0;
+      final paidAmount = double.tryParse(paid.text) ?? 0;
+      final hasLicenseEvidence = documents.any((d) {
+        final kind = '${d['kind'] ?? ''}'.toUpperCase();
+        return kind == 'PAYMENT_EVIDENCE' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'CONTRACT';
+      });
+      if (!waived && requiredAmount > 0 && paidAmount >= requiredAmount && !hasLicenseEvidence) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Register the license invoice, receipt, contract, or payment evidence before marking the license paid.'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: brandWarning,
+            ),
+          );
+        }
+        return;
+      }
+
       await widget.api.put('/api/v1/billing/partners/${partner['id']}/terms', {
         'currency': currency,
         'activation_fee': double.tryParse(activation.text) ?? 0,
