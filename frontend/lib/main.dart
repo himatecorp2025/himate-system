@@ -471,7 +471,7 @@ class _HimateAppState extends State<HimateApp> {
       paths.add('/api/v1/cms/media');
     }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read')) {
-      if (_can('health.read')) paths.add('/api/v1/system-health');
+      if (_can('health.read')) paths.add('/api/v1/system-health/snapshot');
       if (_can('provisioning.read')) paths.add('/api/v1/provisioning/jobs');
       if (_can('environments.read')) paths.add('/api/v1/environments');
     }
@@ -5204,7 +5204,7 @@ class SystemPage extends StatelessWidget {
 
   Future<List<Map<String, dynamic>>> _load() async {
     final r = await Future.wait([
-      api.get('/api/v1/system-health'),
+      api.get('/api/v1/system-health/snapshot'),
       api.get('/api/v1/provisioning/jobs'),
       api.get('/api/v1/environments'),
     ]);
