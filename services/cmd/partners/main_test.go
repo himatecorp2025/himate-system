@@ -55,3 +55,15 @@ func TestSlugify(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+func TestProvisioningRequiresLicenseGate(t *testing.T) {
+	if !requiresProvisioningGate("READY_TO_PROVISION", "PROVISIONING") {
+		t.Fatal("provisioning transition must require Billing gate")
+	}
+	if requiresProvisioningGate("LICENSE_PENDING", "READY_TO_PROVISION") {
+		t.Fatal("ready-to-provision staging must not start provisioning")
+	}
+	if requiresProvisioningGate("PROVISIONING", "CONFIGURATION") {
+		t.Fatal("post-provisioning transition must not re-run initial license gate")
+	}
+}
