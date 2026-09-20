@@ -4702,7 +4702,7 @@ class _ImpactPageState extends State<ImpactPage> {
                   ),
                 ),
                 OutlinedButton(
-                  onPressed: evidenceOffset > 0 ? () async { evidenceOffset = (evidenceOffset - evidenceLimit).clamp(0, evidenceTotal); await load(); } : null,
+                  onPressed: evidenceOffset > 0 ? () async { evidenceOffset = (evidenceOffset - evidenceLimit).clamp(0, evidenceTotal).toInt(); await load(); } : null,
                   child: const Text('Previous'),
                 ),
                 const SizedBox(width: 8),
