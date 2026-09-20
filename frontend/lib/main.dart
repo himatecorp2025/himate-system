@@ -3775,7 +3775,6 @@ class _ImpactPageState extends State<ImpactPage> {
   Future<void> addValue() async {
     if (definitions.isEmpty) return;
     String metricKey = '${definitions.first['metric_key']}';
-    String provenance = 'MANUAL';
     final partner = TextEditingController();
     final start = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
     final end = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
@@ -3812,16 +3811,11 @@ class _ImpactPageState extends State<ImpactPage> {
                 second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end', hintText: 'YYYY-MM-DD')),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: provenance,
-                decoration: const InputDecoration(labelText: 'Provenance'),
-                items: const [
-                  DropdownMenuItem(value: 'MANUAL', child: Text('MANUAL')),
-                  DropdownMenuItem(value: 'SYSTEM', child: Text('SYSTEM')),
-                  DropdownMenuItem(value: 'PARTNER_DECLARED', child: Text('PARTNER DECLARED')),
-                  DropdownMenuItem(value: 'VERIFIED_DOCUMENT', child: Text('VERIFIED DOCUMENT')),
+              const _RuleStrip(
+                items: [
+                  _RuleItem(Icons.edit_note_outlined, 'Provenance', 'MANUAL'),
+                  _RuleItem(Icons.shield_outlined, 'Trust boundary', 'SYSTEM and PARTNER DECLARED arrive through connectors'),
                 ],
-                onChanged: (v) { if (v != null) setLocal(() => provenance = v); },
               ),
               const SizedBox(height: 12),
               TextField(controller: source, decoration: const InputDecoration(labelText: 'Source reference', hintText: 'Document, URL or source identifier')),
@@ -3839,7 +3833,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'period_start': start.text.trim(),
         'period_end': end.text.trim(),
         'numeric_value': double.tryParse(numeric.text),
-        'provenance': provenance,
+        'provenance': 'MANUAL',
         'source_ref': source.text.trim(),
       });
       await load();
