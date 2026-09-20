@@ -2812,6 +2812,47 @@ String _humanize(String value) {
       .join(' ');
 }
 
+class ResponsiveFieldPair extends StatelessWidget {
+  const ResponsiveFieldPair({
+    required this.first,
+    required this.second,
+    this.breakpoint = 620,
+    this.gap = 12,
+    super.key,
+  });
+
+  final Widget first;
+  final Widget second;
+  final double breakpoint;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            children: [
+              SizedBox(width: double.infinity, child: first),
+              SizedBox(height: gap),
+              SizedBox(width: double.infinity, child: second),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: first),
+            SizedBox(width: gap),
+            Expanded(child: second),
+          ],
+        );
+      },
+    );
+  }
+}
+
+
 class BrandDialog extends StatelessWidget {
   const BrandDialog({
     required this.title,
