@@ -27,6 +27,15 @@ partner_id="$(printf '%s' "$created" | json_field id)"
 test -n "$partner_id"
 echo "$partner_id"
 
+printf 'pre-license provisioning plan persists without infrastructure allocation... '
+prepared="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' -d "{\"partner_id\":\"$partner_id\",\"system_name\":\"START 09 CI\",\"admin_email\":\"ci-admin@example.com\",\"platform_version\":\"0.3.0-start-09-13\",\"desired_release\":\"0.3.0-start-09-13\",\"environment\":\"STAGING\",\"module_preset\":[\"campaigns_utm\"],\"prepare_only\":true}" "$BASE_URL/api/v1/provisioning/jobs")"
+printf '%s' "$prepared" | grep -q '"status":"READY"'
+printf '%s' "$prepared" | grep -q '"initial_environment":"STAGING"'
+printf '%s' "$prepared" | grep -q '"campaigns_utm"'
+pre_db_count="$(docker compose exec -T postgres psql -U himate -d postgres -Atc "SELECT COUNT(*) FROM pg_database WHERE datname='himate_$partner_id'")"
+test "$pre_db_count" = "0"
+echo ok
+
 printf 'license gate blocks provisioning before payment... '
 curl -fsS -b "$COOKIE_JAR" -X PATCH -H 'Content-Type: application/json'   -d '{"lifecycle":"LICENSE_PENDING","reason":"START-09 CI"}'   "$BASE_URL/api/v1/partners/$partner_id" >/dev/null
 curl -fsS -b "$COOKIE_JAR" -X PATCH -H 'Content-Type: application/json'   -d '{"lifecycle":"READY_TO_PROVISION","reason":"START-09 unpaid provisioning gate"}'   "$BASE_URL/api/v1/partners/$partner_id" >/dev/null
