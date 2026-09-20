@@ -146,6 +146,24 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 	return nil
 }
 
+func MarshalJSON(value any) ([]byte, error) {
+	if value == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(value)
+}
+
+func JSONRawOrEmpty(raw []byte) any {
+	if len(raw) == 0 {
+		return map[string]any{}
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return map[string]any{}
+	}
+	return value
+}
+
 func JSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
