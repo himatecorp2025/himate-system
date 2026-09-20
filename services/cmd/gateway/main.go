@@ -97,6 +97,7 @@ func main() {
 			"impact":       os.Getenv("IMPACT_HOSTPORT"),
 			"evidence":     os.Getenv("EVIDENCE_HOSTPORT"),
 			"reports":      os.Getenv("REPORTS_HOSTPORT"),
+			"cms":          os.Getenv("CMS_HOSTPORT"),
 			"storage":      os.Getenv("STORAGE_HOSTPORT"),
 			"partner-runtime": os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 		},
@@ -130,6 +131,12 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
+	mux.HandleFunc("/public/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
+		a.serveProxy(w, r, "cms")
+	})
+	mux.HandleFunc("/preview/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
+		a.serveProxy(w, r, "cms")
+	})
 	mux.HandleFunc("/connector/v1/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "connector")
 	})
@@ -350,6 +357,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "evidence")
 	case r.URL.Path == "/api/v1/reports", strings.HasPrefix(r.URL.Path, "/api/v1/reports/"):
 		a.serveProxy(w, r, "reports")
+	case r.URL.Path == "/api/v1/cms/pages", strings.HasPrefix(r.URL.Path, "/api/v1/cms/pages/"),
+		r.URL.Path == "/api/v1/cms/media", strings.HasPrefix(r.URL.Path, "/api/v1/cms/media/"):
+		a.serveProxy(w, r, "cms")
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
 	}
@@ -399,7 +409,7 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 			resp.Body.Close()
 		}
 	}
-	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "containerized-microservices-start-09-13", "checked_at": checkedAt, "services": services})
+	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "containerized-microservices-start-16", "checked_at": checkedAt, "services": services})
 }
 
 func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
