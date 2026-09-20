@@ -615,7 +615,18 @@ class PartnerRouteLoader extends StatelessWidget {
     return FutureBuilder<Map<String, dynamic>>(
       future: api.get('/api/v1/partners/$partnerId', force: true),
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
+        if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
+          return const Content(
+            eyebrow: 'PLATFORM OPERATIONS',
+            title: 'System & Operations',
+            subtitle: 'Independent services behind one authenticated public gateway.',
+            child: _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Refreshing operations data',
+              message: 'No cached operations snapshot is available yet. The page is ready and data will appear automatically.',
+            ),
+          );
+        }
         if (snapshot.hasError || snapshot.data == null) {
           return Scaffold(
             backgroundColor: brandIvory,
@@ -1858,7 +1869,7 @@ class PartnersPage extends StatefulWidget {
 class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
-  bool loading = true;
+  bool loading = false;
   bool categoriesLoading = true;
   bool statsReady = false;
   bool hasMore = false;
@@ -1941,7 +1952,7 @@ class _PartnersPageState extends State<PartnersPage> {
   Future<void> _loadPartnerStats(int generation) async {
     if (mounted && generation == _loadGeneration) setState(() => statsReady = false);
     try {
-      final page = await widget.api.get(_partnerStatsUri().toString(), force: true);
+      final page = await widget.api.get(_partnerStatsUri().toString());
       if (!mounted || generation != _loadGeneration) return;
       final counts = page['lifecycle_counts'];
       setState(() {
@@ -1964,7 +1975,7 @@ class _PartnersPageState extends State<PartnersPage> {
     if (ids.isEmpty) return;
     try {
       final uri = Uri(path: '/api/v1/partners/portfolio', queryParameters: {'ids': ids.join(',')});
-      final response = await widget.api.get(uri.toString(), force: true);
+      final response = await widget.api.get(uri.toString());
       if (!mounted || generation != _loadGeneration) return;
       final byId = <String, Map<String, dynamic>>{
         for (final row in items(response)) '${row['partner_id']}': row,
@@ -1983,11 +1994,11 @@ class _PartnersPageState extends State<PartnersPage> {
   Future<void> load({bool reset = false, bool loadCategories = false}) async {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
-    if (mounted) setState(() { loading = true; error = null; statsReady = false; });
+    if (mounted) setState(() { error = null; statsReady = false; });
     if (loadCategories || categories.isEmpty) unawaited(_loadCategories());
 
     try {
-      final page = await widget.api.get(_partnerUri().toString(), force: true);
+      final page = await widget.api.get(_partnerUri().toString());
       if (!mounted || generation != _loadGeneration) return;
       final coreRows = items(page);
       setState(() {
@@ -3848,7 +3859,7 @@ class _FinancePageState extends State<FinancePage> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> groups = <Map<String, dynamic>>[];
   Map<String, dynamic>? profile;
-  bool loading = true;
+  bool loading = false;
   String? error;
   String query = '';
   String groupFilter = 'ALL';
@@ -3860,20 +3871,26 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   Future<void> load() async {
-    if (mounted) setState(() { loading = true; error = null; });
-    try {
-      final r = await Future.wait([
-        widget.api.get('/api/v1/modules'),
-        widget.api.get('/api/v1/module-groups'),
-        widget.api.get('/api/v1/billing/profile'),
-      ]);
-      modules = items(r[0]);
-      groups = items(r[1]);
-      profile = r[2];
-    } catch (e) {
-      error = e.toString();
-    } finally {
-      if (mounted) setState(() => loading = false);
+    if (mounted) setState(() => error = null);
+    final failures = <String>[];
+
+    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
+      try {
+        final data = await widget.api.get(path);
+        if (mounted) setState(() => apply(data));
+      } catch (e) {
+        failures.add(e.toString());
+      }
+    }
+
+    await Future.wait<void>([
+      fetch('/api/v1/modules', (data) => modules = items(data)),
+      fetch('/api/v1/module-groups', (data) => groups = items(data)),
+      fetch('/api/v1/billing/profile', (data) => profile = data),
+    ]);
+
+    if (mounted && failures.length == 3) {
+      setState(() => error = failures.first);
     }
   }
 
@@ -4243,7 +4260,7 @@ class _ImpactPageState extends State<ImpactPage> {
   String evidenceStatusFilter = '';
   String evidencePeriodStart = '';
   String evidencePeriodEnd = '';
-  bool loading = true;
+  bool loading = false;
   String? error;
 
   @override
@@ -4266,23 +4283,30 @@ class _ImpactPageState extends State<ImpactPage> {
   }
 
   Future<void> load() async {
-    if (mounted) setState(() { loading = true; error = null; });
-    try {
-      final r = await Future.wait([
-        widget.api.get('/api/v1/impact/definitions', force: true),
-        widget.api.get('/api/v1/impact/summary', force: true),
-        widget.api.get(evidencePath(), force: true),
-        widget.api.get('/api/v1/reports', force: true),
-      ]);
-      definitions = items(r[0]);
-      summary = items(r[1]);
-      evidence = items(r[2]);
-      evidenceTotal = (r[2]['total'] as num?)?.toInt() ?? evidence.length;
-      reports = items(r[3]);
-    } catch (e) {
-      error = e.toString();
-    } finally {
-      if (mounted) setState(() => loading = false);
+    if (mounted) setState(() => error = null);
+    final failures = <String>[];
+
+    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
+      try {
+        final data = await widget.api.get(path);
+        if (mounted) setState(() => apply(data));
+      } catch (e) {
+        failures.add(e.toString());
+      }
+    }
+
+    await Future.wait<void>([
+      fetch('/api/v1/impact/definitions', (data) => definitions = items(data)),
+      fetch('/api/v1/impact/summary', (data) => summary = items(data)),
+      fetch(evidencePath(), (data) {
+        evidence = items(data);
+        evidenceTotal = (data['total'] as num?)?.toInt() ?? evidence.length;
+      }),
+      fetch('/api/v1/reports', (data) => reports = items(data)),
+    ]);
+
+    if (mounted && failures.length == 4) {
+      setState(() => error = failures.first);
     }
   }
 
@@ -5126,9 +5150,9 @@ class SystemPage extends StatelessWidget {
 
   Future<List<Map<String, dynamic>>> _load() async {
     final r = await Future.wait([
-      api.get('/api/v1/system-health', force: true),
-      api.get('/api/v1/provisioning/jobs', force: true),
-      api.get('/api/v1/environments', force: true),
+      api.get('/api/v1/system-health'),
+      api.get('/api/v1/provisioning/jobs'),
+      api.get('/api/v1/environments'),
     ]);
     return r;
   }
@@ -5324,7 +5348,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
   final searchController = TextEditingController();
   Timer? _searchTimer;
   List<Map<String, dynamic>> events = <Map<String, dynamic>>[];
-  bool loading = true;
+  bool loading = false;
   String? error;
   String resource = 'ALL';
   String method = 'ALL';
@@ -5377,9 +5401,9 @@ class _AdministrationPageState extends State<AdministrationPage> {
   Future<void> load({bool reset = false}) async {
     if (reset) offset = 0;
     final generation = ++_generation;
-    if (mounted) setState(() { loading = true; error = null; });
+    if (mounted) setState(() => error = null);
     try {
-      final response = await widget.api.get(_uri().toString(), force: true);
+      final response = await widget.api.get(_uri().toString());
       if (!mounted || generation != _generation) return;
       setState(() {
         events = items(response);
