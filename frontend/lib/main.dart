@@ -1723,7 +1723,10 @@ class _PartnersPageState extends State<PartnersPage> {
         success('Partner created.');
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => PartnerWorkspace(api: widget.api, partner: created)),
+          MaterialPageRoute(
+            settings: RouteSettings(name: '/app/partners/${Uri.encodeComponent('${created['id']}')}'),
+            builder: (_) => PartnerWorkspace(api: widget.api, partner: created),
+          ),
         );
       }
     }
@@ -1838,7 +1841,10 @@ class _PartnersPageState extends State<PartnersPage> {
                                 partner: p,
                                 onTap: () => Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => PartnerWorkspace(api: widget.api, partner: p)),
+                                  MaterialPageRoute(
+                                    settings: RouteSettings(name: '/app/partners/${Uri.encodeComponent('${p['id']}')}'),
+                                    builder: (_) => PartnerWorkspace(api: widget.api, partner: p),
+                                  ),
                                 ),
                               ),
                             ),
@@ -2300,7 +2306,18 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                             runSpacing: 12,
                             children: [
                               for (final spec in workspaceCards)
-                                SizedBox(width: width, child: WorkspaceCard(spec: spec)),
+                                SizedBox(
+                                  width: width,
+                                  child: WorkspaceCard(
+                                    spec: spec,
+                                    onTap: spec.active
+                                        ? () => Navigator.pushNamed(
+                                              context,
+                                              '/app/partners/${Uri.encodeComponent('${partner['id']}')}/${workspaceRouteSlug(spec.title)}',
+                                            )
+                                        : null,
+                                  ),
+                                ),
                             ],
                           );
                         },
@@ -3050,12 +3067,13 @@ class _WorkspaceSpec {
 }
 
 class WorkspaceCard extends StatelessWidget {
-  const WorkspaceCard({required this.spec, super.key});
+  const WorkspaceCard({required this.spec, this.onTap, super.key});
   final _WorkspaceSpec spec;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       constraints: const BoxConstraints(minHeight: 112),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -3076,6 +3094,15 @@ class WorkspaceCard extends StatelessWidget {
           const SizedBox(height: 3),
           Text(spec.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.6, height: 1.35)),
         ],
+      ),
+    );
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: card,
       ),
     );
   }
