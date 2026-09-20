@@ -60,7 +60,7 @@ class WebsiteMarketingPage extends StatefulWidget {
 class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   List<Map<String, dynamic>> pages = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> media = <Map<String, dynamic>>[];
-  bool loading = true;
+  bool loading = false;
   String? error;
 
   @override
@@ -70,23 +70,25 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Future<void> load() async {
-    if (mounted) {
-      setState(() {
-        loading = true;
-        error = null;
-      });
+    if (mounted) setState(() => error = null);
+    final failures = <String>[];
+
+    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
+      try {
+        final data = await widget.api.get(path);
+        if (mounted) setState(() => apply(data));
+      } catch (e) {
+        failures.add(e.toString());
+      }
     }
-    try {
-      final result = await Future.wait<Map<String, dynamic>>([
-        widget.api.get('/api/v1/cms/pages', force: true),
-        widget.api.get('/api/v1/cms/media', force: true),
-      ]);
-      pages = items(result[0]);
-      media = items(result[1]);
-    } catch (e) {
-      error = e.toString();
-    } finally {
-      if (mounted) setState(() => loading = false);
+
+    await Future.wait<void>([
+      fetch('/api/v1/cms/pages', (data) => pages = items(data)),
+      fetch('/api/v1/cms/media', (data) => media = items(data)),
+    ]);
+
+    if (mounted && failures.length == 2) {
+      setState(() => error = failures.first);
     }
   }
 
