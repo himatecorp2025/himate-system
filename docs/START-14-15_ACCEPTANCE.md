@@ -65,7 +65,9 @@ The scope is derived from the START plan: important results may be linked to Evi
 
 ## Cross-cutting release gates
 
-Acceptance candidate: `853b128d73636436a17de6e1cad6a9d157c8c870`. All release-gate checkboxes remain open until a full CI run succeeds on this code state or a documentation-only descendant of it.
+Acceptance candidate: `6625579f4acab93590ed1b4d684de23446af5e8c`.
+
+Pre-final evidence: HIMATE CI #291 completed successfully with Render Blueprint validation, Go, Flutter, Docker Compose, START-01–08 regression, START-09–13 integration and START-14–15 integration smoke. Release-gate checkboxes remain open until the same full suite succeeds on the current acceptance candidate or a documentation-only descendant.
 
 
 - [ ] `go vet ./...`
