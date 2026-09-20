@@ -4029,6 +4029,69 @@ class _ImpactPageState extends State<ImpactPage> {
     for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
   }
 
+
+  Future<void> addBaseline() async {
+    if (definitions.isEmpty) return;
+    String metricKey = '${definitions.first['metric_key']}';
+    final partner = TextEditingController();
+    final start = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final numeric = TextEditingController();
+    final source = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Set metric baseline',
+          subtitle: 'Store an explicit baseline period and value so later impact results can be evaluated against a reproducible reference point.',
+          icon: Icons.flag_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: metricKey,
+                decoration: const InputDecoration(labelText: 'Metric'),
+                items: [
+                  for (final d in definitions)
+                    DropdownMenuItem(value: '${d['metric_key']}', child: Text('${d['label']} · ${d['metric_key']}')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: partner, decoration: const InputDecoration(labelText: 'Partner ID', hintText: 'Leave empty for global baseline')),
+                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Baseline value')),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Baseline period start', hintText: 'YYYY-MM-DD')),
+                second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Baseline period end', hintText: 'YYYY-MM-DD')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: source, decoration: const InputDecoration(labelText: 'Source reference')),
+            ],
+          ),
+          primaryLabel: 'Save baseline',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.put('/api/v1/impact/baselines', {
+        'partner_id': partner.text.trim(),
+        'metric_key': metricKey,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+        'numeric_value': double.tryParse(numeric.text),
+        'provenance': 'MANUAL',
+        'source_ref': source.text.trim(),
+      });
+      await load();
+    }
+    for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) return const _BrandLoading();
@@ -4051,16 +4114,19 @@ class _ImpactPageState extends State<ImpactPage> {
             builder: (context, c) {
               final actions = [
                 OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const Text('New metric')),
+                OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const Text('Set baseline')),
                 FilledButton.icon(onPressed: definitions.isEmpty ? null : addValue, icon: const Icon(Icons.add_rounded), label: const Text('Record value')),
               ];
-              if (c.maxWidth < 620) {
+              if (c.maxWidth < 720) {
                 return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  SizedBox(width: double.infinity, child: actions[2]),
+                  const SizedBox(height: 8),
                   SizedBox(width: double.infinity, child: actions[1]),
                   const SizedBox(height: 8),
                   SizedBox(width: double.infinity, child: actions[0]),
                 ]);
               }
-              return Row(mainAxisAlignment: MainAxisAlignment.end, children: [actions[0], const SizedBox(width: 10), actions[1]]);
+              return Row(mainAxisAlignment: MainAxisAlignment.end, children: [actions[0], const SizedBox(width: 10), actions[1], const SizedBox(width: 10), actions[2]]);
             },
           ),
           const SizedBox(height: 18),
@@ -4081,6 +4147,8 @@ class _ImpactPageState extends State<ImpactPage> {
                         icon: Icons.insights_outlined,
                         children: [
                           _DefinitionRow(label: 'Value', value: '${m['numeric_value'] ?? '—'} ${m['unit'] ?? ''}'),
+                          _DefinitionRow(label: 'Baseline', value: '${m['baseline_numeric_value'] ?? '—'} ${m['unit'] ?? ''}'),
+                          _DefinitionRow(label: 'Delta', value: '${m['delta_from_baseline'] ?? '—'} ${m['unit'] ?? ''}'),
                           _DefinitionRow(label: 'Aggregation', value: '${m['aggregation'] ?? ''}'),
                           _DefinitionRow(label: 'Latest period', value: '${m['latest_period_end'] ?? '—'}'),
                           _DefinitionRow(label: 'Observations', value: '${m['observations'] ?? 0}'),
