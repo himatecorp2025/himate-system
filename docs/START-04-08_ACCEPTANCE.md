@@ -14,7 +14,7 @@ This file is the source acceptance checklist for the correction pass. It does no
 10. New-partner activation/license fee is individually configurable; USD 13,000 is the minimum for a non-waived USD license.
 11. A paid initial license requires amount, payment date, payment reference, verifier and registered commercial evidence.
 12. Base service fee default annual uplift is 10% on January 1 and remains admin-overridable.
-13. Service cycles are anchored to the partner activation date and renew every 30 days; extra active modules consolidate into the same billing cycle.
+13. Service cycles are anchored to the partner activation date and renew every 30 days; subscriptions can be cancelled at period end without truncating the current paid period, and extra active modules consolidate into the same billing cycle.
 14. HIMATE billing profile, document metadata registry and internal invoice records are editable.
 15. Administrator login is environment-backed; public self-registration is intentionally absent.
 16. Mutating admin API calls require an authenticated platform administrator and same-origin request context.
