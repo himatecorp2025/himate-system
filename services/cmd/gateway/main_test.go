@@ -95,6 +95,38 @@ func TestMarketingFrontendServesFreshAssets(t *testing.T) {
 }
 
 
+func TestAuditResourceClassification(t *testing.T) {
+	tests := []struct {
+		path string
+		wantResource string
+		wantPartner string
+	}{
+		{"/api/v1/partners/ptr_123", "partners", "ptr_123"},
+		{"/api/v1/billing/partners/ptr_456/terms", "billing", "ptr_456"},
+		{"/api/v1/connectors/ptr_789/credential", "connectors", "ptr_789"},
+		{"/api/v1/cms/pages/page_1/publish", "cms", ""},
+		{"/api/v1/impact/values?partner_id=ptr_900", "impact", "ptr_900"},
+		{"/api/v1/modules/demo", "catalog", ""},
+	}
+	for _, tc := range tests {
+		req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+		resource, partnerID := auditResource(req)
+		if resource != tc.wantResource || partnerID != tc.wantPartner {
+			t.Fatalf("%s => (%s,%s), want (%s,%s)", tc.path, resource, partnerID, tc.wantResource, tc.wantPartner)
+		}
+	}
+}
+
+func TestAuditResponseWriterCapturesStatus(t *testing.T) {
+	rec := httptest.NewRecorder()
+	w := &auditResponseWriter{ResponseWriter: rec}
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write([]byte("ok"))
+	if w.status != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", w.status)
+	}
+}
+
 func TestBrandLogoRouteServesVersionedAsset(t *testing.T) {
 	root := t.TempDir()
 	art := filepath.Join(root, "art")
