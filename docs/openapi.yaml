@@ -539,7 +539,8 @@ paths:
       summary: Record an impact observation
       description: >
         Provenance is explicitly SYSTEM, MANUAL, PARTNER_DECLARED or
-        VERIFIED_DOCUMENT. Evidence file management begins in START-14.
+        VERIFIED_DOCUMENT. VERIFIED_DOCUMENT requires a real VERIFIED Evidence
+        record whose partner and metric linkage match the observation.
       responses:
         "201": {description: Impact observation recorded}
   /api/v1/impact/baselines:
@@ -554,7 +555,10 @@ paths:
     put:
       tags: [Impact]
       summary: Create or replace a metric baseline
-      description: Administrator-entered baselines use MANUAL provenance and retain period and source reference.
+      description: >
+        Administrator-entered baselines use MANUAL provenance or VERIFIED_DOCUMENT
+        when a verified Evidence record is supplied. Period and source reference
+        remain persisted.
       responses:
         "200": {description: Baseline stored}
   /api/v1/impact/summary:
@@ -565,6 +569,93 @@ paths:
         - {name: partner_id, in: query, schema: {type: string}}
       responses:
         "200": {description: Aggregated impact metrics}
+  /api/v1/evidence:
+    get:
+      tags: [Evidence]
+      summary: Search the Evidence Library
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+        - {name: metric_key, in: query, schema: {type: string}}
+        - {name: evidence_type, in: query, schema: {type: string}}
+        - {name: verification_status, in: query, schema: {type: string}}
+        - {name: report_id, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Evidence Library records}
+    post:
+      tags: [Evidence]
+      summary: Create evidence
+      description: >
+        File-backed evidence uses multipart/form-data and is content-sniffed,
+        size-limited, checksum-backed and stored through the central storage
+        service. URL and partner-declaration evidence use JSON. URL evidence is
+        referenced only and is never fetched by the service.
+      responses:
+        "201": {description: Evidence created}
+        "400": {description: Invalid evidence metadata}
+        "413": {description: File exceeds the evidence size limit}
+        "415": {description: File content is not allowed for the evidence type}
+  /api/v1/evidence/{evidenceId}:
+    parameters:
+      - {name: evidenceId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Evidence]
+      summary: Read an Evidence record
+      responses:
+        "200": {description: Evidence metadata}
+    patch:
+      tags: [Evidence]
+      summary: Change Evidence verification status
+      responses:
+        "200": {description: Evidence verification updated}
+  /api/v1/evidence/{evidenceId}/download:
+    parameters:
+      - {name: evidenceId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Evidence]
+      summary: Download the immutable file behind an Evidence record
+      responses:
+        "200": {description: Evidence file}
+        "409": {description: Evidence record has no stored file}
+  /api/v1/reports:
+    get:
+      tags: [Reports]
+      summary: List generated and queued reports
+      responses:
+        "200": {description: Report jobs}
+    post:
+      tags: [Reports]
+      summary: Queue a reproducible PDF report
+      description: >
+        Supported report types are PARTNER_IMPACT, MULTI_PARTNER and
+        HIMATE_GLOBAL. A background job freezes metrics, data sources and
+        Evidence references into a persistent snapshot before rendering PDF.
+      responses:
+        "202": {description: Report job queued}
+  /api/v1/reports/{reportId}:
+    parameters:
+      - {name: reportId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Reports]
+      summary: Read report job status and frozen snapshot
+      responses:
+        "200": {description: Report job and snapshot}
+  /api/v1/reports/{reportId}/download:
+    parameters:
+      - {name: reportId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Reports]
+      summary: Download a completed HIMATE PDF report
+      responses:
+        "200": {description: PDF report}
+        "409": {description: Report is not ready}
+  /api/v1/reports/{reportId}/regenerate:
+    parameters:
+      - {name: reportId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Reports]
+      summary: Re-render the PDF from the already frozen snapshot
+      responses:
+        "200": {description: PDF regenerated without reading live metric data}
 components:
   securitySchemes:
     sessionCookie:
