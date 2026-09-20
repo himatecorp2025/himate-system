@@ -14,6 +14,19 @@ import (
 
 type app struct{ db *sql.DB }
 type seedModule struct{ Key, Label, Group string }
+type seedGroup struct {
+	Key, Label string
+	Order      int
+}
+
+var seedGroups = []seedGroup{
+	{"workshop", "Workshop", 1},
+	{"finance_invoicing", "Finance & Invoicing", 2},
+	{"technical", "Technical Operations", 3},
+	{"marketing", "Marketing", 4},
+	{"website_events", "Website & Events", 5},
+	{"communication", "Communication", 6},
+}
 
 var seedModules = []seedModule{
 	{"finance", "Balance Sheet", "finance_invoicing"},
@@ -131,14 +144,7 @@ func (a *app) migrate(ctx context.Context) error {
 		return err
 	}
 
-	groups := []struct {
-		Key, Label string
-		Order      int
-	}{
-		{"workshop", "Workshop", 1}, {"finance_invoicing", "Finance & Invoicing", 2}, {"technical", "Technical Operations", 3},
-		{"marketing", "Marketing", 4}, {"website_events", "Website & Events", 5}, {"communication", "Communication", 6},
-	}
-	for _, g := range groups {
+	for _, g := range seedGroups {
 		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups(group_key,label,sort_order) VALUES($1,$2,$3) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,sort_order=EXCLUDED.sort_order`, g.Key, g.Label, g.Order); err != nil {
 			return err
 		}
