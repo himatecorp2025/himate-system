@@ -17,3 +17,53 @@ func TestJanuaryFirstIncrease(t *testing.T) {
 		t.Fatalf("2028 got %.2f", got)
 	}
 }
+
+func TestCycleWindowIsActivationAnchored(t *testing.T) {
+	anchor := time.Date(2026, 9, 10, 16, 45, 0, 0, time.UTC)
+	tests := []struct {
+		at, start, end string
+	}{
+		{"2026-09-10", "2026-09-10", "2026-10-10"},
+		{"2026-10-09", "2026-09-10", "2026-10-10"},
+		{"2026-10-10", "2026-10-10", "2026-11-09"},
+		{"2026-12-09", "2026-12-09", "2027-01-08"},
+	}
+	for _, tc := range tests {
+		at, _ := time.Parse("2006-01-02", tc.at)
+		start, end := cycleWindow(anchor, at)
+		if got := start.Format("2006-01-02"); got != tc.start {
+			t.Fatalf("%s start expected %s got %s", tc.at, tc.start, got)
+		}
+		if got := end.Format("2006-01-02"); got != tc.end {
+			t.Fatalf("%s end expected %s got %s", tc.at, tc.end, got)
+		}
+	}
+}
+
+func TestCycleBoundary(t *testing.T) {
+	anchor, _ := time.Parse("2006-01-02", "2026-09-10")
+	for _, date := range []string{"2026-10-10", "2026-11-09", "2027-01-08"} {
+		at, _ := time.Parse("2006-01-02", date)
+		if !isCycleBoundary(anchor, at) {
+			t.Fatalf("expected boundary %s", date)
+		}
+	}
+	for _, date := range []string{"2026-09-10", "2026-10-09", "2026-10-11"} {
+		at, _ := time.Parse("2006-01-02", date)
+		if isCycleBoundary(anchor, at) {
+			t.Fatalf("unexpected boundary %s", date)
+		}
+	}
+}
+
+func TestDateOnlyUsesUTC(t *testing.T) {
+	loc := time.FixedZone("test", -5*60*60)
+	input := time.Date(2026, 11, 1, 23, 30, 0, 0, loc)
+	got := dateOnly(input)
+	if got.Location() != time.UTC {
+		t.Fatalf("expected UTC")
+	}
+	if got.Hour() != 0 || got.Minute() != 0 {
+		t.Fatalf("expected UTC midnight got %v", got)
+	}
+}
