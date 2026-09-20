@@ -35,6 +35,7 @@ type app struct {
 	env              string
 	version          string
 	ttl              time.Duration
+	rememberTTL      time.Duration
 	secureCookie     bool
 	client           *http.Client
 	proxies          map[string]*httputil.ReverseProxy
@@ -105,6 +106,8 @@ func main() {
 	}
 	defer db.Close()
 	ttlHours, _ := strconv.Atoi(common.Env("HIMATE_SESSION_TTL_HOURS", "8"))
+	rememberTTLHours, _ := strconv.Atoi(common.Env("HIMATE_REMEMBER_TTL_HOURS", "720"))
+	if rememberTTLHours < ttlHours { rememberTTLHours = ttlHours }
 	secure, _ := strconv.ParseBool(common.Env("COOKIE_SECURE", "true"))
 	transport := &http.Transport{
 		MaxIdleConns:        64,
@@ -114,7 +117,8 @@ func main() {
 	a := &app{
 		db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
-		version: common.Env("HIMATE_APP_VERSION", "0.2.0-start-04-08"), ttl: time.Duration(ttlHours) * time.Hour,
+		version: common.Env("HIMATE_APP_VERSION", "0.2.0-start-04-08"),
+		ttl: time.Duration(ttlHours) * time.Hour, rememberTTL: time.Duration(rememberTTLHours) * time.Hour,
 		secureCookie: secure, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
 		proxies: map[string]*httputil.ReverseProxy{},
 		loginAttempts: map[string]loginState{},
@@ -322,7 +326,11 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 429, "RATE_LIMITED", "Too many sign-in attempts. Try again later.")
 		return
 	}
-	var in struct{ Email, Password string }
+	var in struct {
+		Email string `json:"email"`
+		Password string `json:"password"`
+		Remember bool `json:"remember"`
+	}
 	if common.Decode(r, &in) != nil {
 		common.APIError(w, 400, "JSON", "Invalid request")
 		return
@@ -339,12 +347,18 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.clearLoginFailures(key)
-	token, _ := a.issueSession(u)
-	http.SetCookie(w, &http.Cookie{
+	sessionTTL := a.ttl
+	if in.Remember { sessionTTL = a.rememberTTL }
+	token, _ := a.issueSession(u, sessionTTL)
+	cookie := &http.Cookie{
 		Name: sessionCookie, Value: token, Path: "/", HttpOnly: true,
 		Secure: a.secureCookie, SameSite: http.SameSiteStrictMode,
-		MaxAge: int(a.ttl.Seconds()),
-	})
+	}
+	if in.Remember {
+		cookie.MaxAge = int(sessionTTL.Seconds())
+		cookie.Expires = time.Now().UTC().Add(sessionTTL)
+	}
+	http.SetCookie(w, cookie)
 	common.JSON(w, 200, publicUser(u))
 }
 func (a *app) logout(w http.ResponseWriter, r *http.Request) {
@@ -1263,8 +1277,9 @@ func publicUser(u user) map[string]any {
 	}
 }
 
-func (a *app) issueSession(u user) (string, error) {
-	raw, _ := json.Marshal(claims{Sub: u.ID, Email: u.Email, Name: u.Name, Roles: u.Roles, Exp: time.Now().Add(a.ttl).Unix()})
+func (a *app) issueSession(u user, ttl time.Duration) (string, error) {
+	if ttl <= 0 { ttl = a.ttl }
+	raw, _ := json.Marshal(claims{Sub: u.ID, Email: u.Email, Name: u.Name, Roles: u.Roles, Exp: time.Now().Add(ttl).Unix()})
 	payload := base64.RawURLEncoding.EncodeToString(raw)
 	mac := hmac.New(sha256.New, []byte(a.secret))
 	mac.Write([]byte(payload))
@@ -1348,12 +1363,22 @@ func (a *app) brandLogo(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w,http.StatusMethodNotAllowed,"METHOD","Use GET or HEAD")
 		return
 	}
-	file:=filepath.Join(filepath.Clean(a.webDir),"art","himate_logo_master_v2.webp")
-	if info,err:=os.Stat(file);err!=nil||info.IsDir(){http.NotFound(w,r);return}
-	w.Header().Set("Content-Type","image/webp")
-	w.Header().Set("Cache-Control","no-store, max-age=0, must-revalidate")
-	w.Header().Set("Pragma","no-cache")
-	http.ServeFile(w,r,file)
+	root := filepath.Clean(a.webDir)
+	candidates := []string{
+		filepath.Join(root, "art", "himate_logo_master_v2.webp"),
+		filepath.Join(root, "assets", "assets", "himate_logo_master_v2.webp"),
+	}
+	for _, file := range candidates {
+		if info, err := os.Stat(file); err == nil && !info.IsDir() {
+			w.Header().Set("Content-Type", "image/webp")
+			w.Header().Set("Cache-Control", "no-store, max-age=0, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("X-Himate-Logo-Source", strings.TrimPrefix(file, root))
+			http.ServeFile(w, r, file)
+			return
+		}
+	}
+	common.APIError(w, http.StatusNotFound, "LOGO_ASSET_MISSING", "HIMATE logo asset is missing from the deployed bundle")
 }
 
 func (a *app) web() http.Handler {
