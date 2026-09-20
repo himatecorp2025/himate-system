@@ -484,14 +484,25 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 400, "VALIDATION", "Price cannot be negative")
 			return
 		}
-		var old sql.NullFloat64
-		_ = tx.QueryRow(`SELECT price_override FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`, partnerID, key).Scan(&old)
-		if _, err = tx.Exec(`UPDATE catalog.partner_modules SET price_override=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerPrice); err != nil {
-			common.APIError(w, 500, "DB", "Could not update price")
+		var oldValue float64
+		if err = tx.QueryRow(`
+			SELECT COALESCE(
+				(SELECT ph.new_price FROM catalog.price_history ph
+				 WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
+				 ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1),
+				pm.price_override,m.default_monthly_price)
+			FROM catalog.partner_modules pm
+			JOIN catalog.modules m ON m.module_key=pm.module_key
+			WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key).Scan(&oldValue); err != nil {
+			common.APIError(w, 404, "NOT_FOUND", "Module not found")
 			return
 		}
-		var oldValue any
-		if old.Valid { oldValue = old.Float64 }
+		if !effectiveAt.After(time.Now().UTC()) {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET price_override=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerPrice); err != nil {
+				common.APIError(w, 500, "DB", "Could not update price")
+				return
+			}
+		}
 		if _, err = tx.Exec(`INSERT INTO catalog.price_history(partner_id,module_key,old_price,new_price,effective_at,actor,reason) VALUES($1,$2,$3,$4,$5,$6,$7)`, partnerID, key, oldValue, *in.PartnerPrice, effectiveAt, actor, reason); err != nil {
 			common.APIError(w, 500, "DB", "Could not save price history")
 			return
@@ -553,10 +564,18 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(`
 		SELECT pm.partner_id,
 			COUNT(*) FILTER (WHERE pm.status='ACTIVE' AND m.availability='ACTIVE'),
-			COALESCE(SUM(CASE WHEN pm.status='ACTIVE' AND m.availability='ACTIVE' AND pm.included_in_base=FALSE THEN COALESCE(pm.price_override,m.default_monthly_price) ELSE 0 END),0),
+			COALESCE(SUM(CASE WHEN pm.status='ACTIVE' AND m.availability='ACTIVE' AND pm.included_in_base=FALSE
+				THEN COALESCE(ep.new_price,pm.price_override,m.default_monthly_price) ELSE 0 END),0),
 			MAX(pm.updated_at)
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
+		LEFT JOIN LATERAL (
+			SELECT ph.new_price
+			FROM catalog.price_history ph
+			WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
+			ORDER BY ph.effective_at DESC,ph.id DESC
+			LIMIT 1
+		) ep ON TRUE
 		GROUP BY pm.partner_id
 		ORDER BY pm.partner_id`)
 	if err != nil {
@@ -578,7 +597,7 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 }
 
 
-const partnerModuleSelect = `SELECT pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,m.default_monthly_price,COALESCE(pm.price_override,m.default_monthly_price),m.currency,m.version,m.latest_version,m.last_updated_at,m.availability FROM catalog.partner_modules pm JOIN catalog.modules m ON m.module_key=pm.module_key JOIN catalog.module_groups g ON g.group_key=m.group_key`
+const partnerModuleSelect = `SELECT pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,m.default_monthly_price,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),m.currency,m.version,m.latest_version,m.last_updated_at,m.availability FROM catalog.partner_modules pm JOIN catalog.modules m ON m.module_key=pm.module_key JOIN catalog.module_groups g ON g.group_key=m.group_key LEFT JOIN LATERAL (SELECT ph.new_price FROM catalog.price_history ph WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW() ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1) ep ON TRUE`
 
 type scanner interface{ Scan(...any) error }
 
