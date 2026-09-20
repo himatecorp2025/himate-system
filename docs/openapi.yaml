@@ -436,9 +436,57 @@ paths:
         schema: {type: string}
     patch:
       tags: [Environments]
-      summary: Update environment hostname, release and deployment state
+      summary: Update environment hostname, platform version, desired release and configuration
+      description: |
+        Changing a production hostname resets DNS/TLS verification. LIVE cannot
+        be set directly; production must pass the launch gate.
       responses:
         "200": {description: Updated environment}
+        "409": {description: Direct LIVE transition rejected by launch gate}
+  /api/v1/environments/{environmentId}/verify-domain:
+    parameters:
+      - name: environmentId
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      tags: [Environments]
+      summary: Verify environment DNS and TLS readiness
+      description: |
+        Performs a live DNS lookup and TLS handshake for public hostnames and
+        persists DNS, TLS, domain status, last check time and diagnostic error.
+      responses:
+        "200": {description: Environment with current domain verification state}
+  /api/v1/environments/{environmentId}/deploy:
+    parameters:
+      - name: environmentId
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      tags: [Environments]
+      summary: Deploy or redeploy an environment release
+      description: |
+        Deploys STAGING or PRODUCTION through the private partner runtime.
+        Production remains configuration-required until all launch gates pass.
+      responses:
+        "200": {description: Deployed environment}
+        "502": {description: Runtime deployment failed}
+  /api/v1/environments/{environmentId}/launch:
+    parameters:
+      - name: environmentId
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      tags: [Environments]
+      summary: Transition production READY FOR LAUNCH to LIVE
+      description: |
+        Re-checks runtime health and requires DEPLOYED runtime, active release,
+        verified domain, DNS and TLS. Records launch actor and timestamp.
+      responses:
+        "200": {description: Production environment is LIVE}
+        "409": {description: One or more launch gates are not satisfied}
   /api/v1/connectors/{partnerId}/credential:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
