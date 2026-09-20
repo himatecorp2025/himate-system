@@ -1958,6 +1958,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   String? error;
   String moduleQuery = '';
   String moduleState = 'ALL';
+  final GlobalKey _overviewKey = GlobalKey();
+  final GlobalKey _companyKey = GlobalKey();
+  final GlobalKey _pricingKey = GlobalKey();
+  final GlobalKey _modulesKey = GlobalKey();
+  final GlobalKey _financeKey = GlobalKey();
+  bool _initialSectionHandled = false;
 
   static const workspaceCards = <_WorkspaceSpec>[
     _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
@@ -2004,8 +2010,31 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     } catch (e) {
       error = e.toString();
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+        _scrollToInitialSection();
+      }
     }
+  }
+
+  void _scrollToInitialSection() {
+    if (_initialSectionHandled || widget.initialSection == null) return;
+    _initialSectionHandled = true;
+    final slug = widget.initialSection!;
+    final key = switch (slug) {
+      'overview' => _overviewKey,
+      'company-data' || 'system-and-environment' => _companyKey,
+      'pricing-and-subscription' => _pricingKey,
+      'modules' => _modulesKey,
+      'finance-and-documents' => _financeKey,
+      _ => _overviewKey,
+    };
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = key.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic, alignment: .04);
+      }
+    });
   }
 
   void success(String message) {
@@ -2568,15 +2597,18 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
+                      KeyedSubtree(
+                        key: _overviewKey,
+                        child: Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
                           Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
                           Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
-                          Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
-                        ],
+                            Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 22),
                       _SectionHeader(title: 'Workspace', subtitle: 'Current and scheduled control areas for this partner.'),
@@ -2608,8 +2640,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       const SizedBox(height: 26),
                       LayoutBuilder(
                         builder: (context, c) {
-                          final company = _PartnerDetailsCard(partner: partner);
-                          final termsCard = _CommercialSummaryCard(terms: terms ?? {}, billing: billing ?? {}, license: license ?? {}, onEdit: editTerms);
+                          final company = KeyedSubtree(key: _companyKey, child: _PartnerDetailsCard(partner: partner));
+                          final termsCard = KeyedSubtree(key: _pricingKey, child: _CommercialSummaryCard(terms: terms ?? {}, billing: billing ?? {}, license: license ?? {}, onEdit: editTerms));
                           if (c.maxWidth < 930) {
                             return Column(children: [company, const SizedBox(height: 14), termsCard]);
                           }
@@ -2621,10 +2653,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         },
                       ),
                       const SizedBox(height: 26),
-                      _SectionHeader(
-                        title: 'Partner Modules',
-                        subtitle: 'Entitlement, visibility, base-package inclusion and partner-specific pricing.',
-                        trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                      KeyedSubtree(
+                        key: _modulesKey,
+                        child: _SectionHeader(
+                          title: 'Partner Modules',
+                          subtitle: 'Entitlement, visibility, base-package inclusion and partner-specific pricing.',
+                          trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       _FilterSurface(
@@ -2665,10 +2700,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         },
                       ),
                       const SizedBox(height: 26),
-                      _SectionHeader(
-                        title: 'Finance & Documents',
-                        subtitle: 'Commercial evidence and internal invoice records for this partner.',
-                        trailing: FilledButton.icon(onPressed: addDocument, icon: const Icon(Icons.note_add_outlined), label: const Text('Register document')),
+                      KeyedSubtree(
+                        key: _financeKey,
+                        child: _SectionHeader(
+                          title: 'Finance & Documents',
+                          subtitle: 'Commercial evidence and internal invoice records for this partner.',
+                          trailing: FilledButton.icon(onPressed: addDocument, icon: const Icon(Icons.note_add_outlined), label: const Text('Register document')),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       LayoutBuilder(
