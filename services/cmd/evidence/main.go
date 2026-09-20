@@ -449,8 +449,9 @@ func (a *app)validate(w http.ResponseWriter,r *http.Request){
 	e,err:=a.get(id)
 	if err!=nil{common.APIError(w,404,"EVIDENCE_NOT_FOUND","Evidence record not found");return}
 	if e.VerificationStatus!="VERIFIED"{common.APIError(w,409,"EVIDENCE_NOT_VERIFIED","Evidence is not verified");return}
+	if e.ObjectKey==""{common.APIError(w,409,"EVIDENCE_NOT_DOCUMENT","VERIFIED_DOCUMENT provenance requires file-backed Evidence");return}
 	if partnerID!=""&&e.PartnerID!=partnerID{common.APIError(w,409,"EVIDENCE_PARTNER_MISMATCH","Evidence belongs to another partner");return}
-	if metricKey!=""&&e.MetricKey!=""&&e.MetricKey!=metricKey{common.APIError(w,409,"EVIDENCE_METRIC_MISMATCH","Evidence is linked to another metric");return}
+	if metricKey!=""&&e.MetricKey!=metricKey{common.APIError(w,409,"EVIDENCE_METRIC_MISMATCH","Evidence must be linked to the same metric");return}
 	common.JSON(w,200,map[string]any{"valid":true,"evidence":mapEvidence(e)})
 }
 
