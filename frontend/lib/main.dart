@@ -1741,89 +1741,277 @@ class _PartnersPageState extends State<PartnersPage> {
       return;
     }
 
+    final moduleResponse = await widget.api.get('/api/v1/modules', force: true);
+    final availableModules = items(moduleResponse);
+
     final displayName = TextEditingController();
     final legalName = TextEditingController();
     final contactName = TextEditingController();
     final contactEmail = TextEditingController();
     final primaryDomain = TextEditingController();
     final country = TextEditingController(text: 'United States');
+    final activationFee = TextEditingController(text: '13000');
+    final baseMonthlyFee = TextEditingController(text: '250');
+    final paidAmount = TextEditingController(text: '0');
+    final paymentReference = TextEditingController();
+    final evidenceName = TextEditingController(text: 'Initial license payment evidence');
+    final evidenceReference = TextEditingController();
+    final systemName = TextEditingController();
+    final release = TextEditingController(text: '0.3.0-start-09-13');
     String category = '${categories.first['id']}';
+    String environment = 'STAGING';
+    int step = 0;
+    final selectedModules = <String>{};
 
     final ok = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
-          title: 'New Partner',
-          subtitle: 'Create the partner record now. Provisioning remains a separate controlled lifecycle step.',
-          icon: Icons.add_business_outlined,
-          width: 680,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ResponsiveFieldPair(
-                first: TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name *')),
-                second: TextField(controller: legalName, decoration: const InputDecoration(labelText: 'Legal name')),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: category,
-                decoration: const InputDecoration(labelText: 'Partner category'),
-                items: [
-                  for (final c in categories)
-                    DropdownMenuItem(value: '${c['id']}', child: Text('${c['name']}')),
-                ],
-                onChanged: (v) {
-                  if (v != null) setLocal(() => category = v);
-                },
-              ),
-              const SizedBox(height: 12),
-              ResponsiveFieldPair(
-                first: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Primary contact')),
-                second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Contact email')),
-              ),
-              const SizedBox(height: 12),
-              ResponsiveFieldPair(
-                first: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country')),
-                second: TextField(controller: primaryDomain, decoration: const InputDecoration(labelText: 'Primary domain', hintText: 'example.org')),
-              ),
-            ],
+          title: 'New Partner · Provisioning Wizard',
+          subtitle: 'Business, commercial, evidence, system identity, environment and module preset are captured before provisioning can begin.',
+          icon: Icons.precision_manufacturing_outlined,
+          width: 820,
+          child: SizedBox(
+            height: 560,
+            child: Stepper(
+              currentStep: step,
+              type: StepperType.vertical,
+              controlsBuilder: (context, details) => const SizedBox.shrink(),
+              onStepTapped: (value) => setLocal(() => step = value),
+              steps: [
+                Step(
+                  title: const Text('1 · Business identity'),
+                  isActive: step >= 0,
+                  content: Column(
+                    children: [
+                      ResponsiveFieldPair(
+                        first: TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name *')),
+                        second: TextField(controller: legalName, decoration: const InputDecoration(labelText: 'Legal name')),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: category,
+                        decoration: const InputDecoration(labelText: 'Partner category'),
+                        items: [
+                          for (final item in categories)
+                            DropdownMenuItem(value: '${item['id']}', child: Text('${item['name']}')),
+                        ],
+                        onChanged: (value) { if (value != null) setLocal(() => category = value); },
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Primary contact')),
+                        second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Administrator / contact email *')),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country')),
+                        second: TextField(controller: primaryDomain, decoration: const InputDecoration(labelText: 'Primary domain', hintText: 'example.org')),
+                      ),
+                    ],
+                  ),
+                ),
+                Step(
+                  title: const Text('2 · Commercial & license evidence'),
+                  isActive: step >= 1,
+                  content: Column(
+                    children: [
+                      ResponsiveFieldPair(
+                        first: TextField(controller: activationFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Activation fee · USD')),
+                        second: TextField(controller: baseMonthlyFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Base monthly fee · USD')),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: paidAmount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Verified paid amount · USD')),
+                        second: TextField(controller: paymentReference, decoration: const InputDecoration(labelText: 'Payment reference')),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: evidenceName, decoration: const InputDecoration(labelText: 'Evidence name')),
+                        second: TextField(controller: evidenceReference, decoration: const InputDecoration(labelText: 'Persistent evidence reference / URL')),
+                      ),
+                      const SizedBox(height: 10),
+                      const _RuleStrip(items: [
+                        _RuleItem(Icons.lock_clock_outlined, 'Provisioning gate', 'Provisioning starts only after the license is PAID and persistent evidence exists.'),
+                      ]),
+                    ],
+                  ),
+                ),
+                Step(
+                  title: const Text('3 · System & environment'),
+                  isActive: step >= 2,
+                  content: Column(
+                    children: [
+                      ResponsiveFieldPair(
+                        first: TextField(controller: systemName, decoration: const InputDecoration(labelText: 'System name', hintText: 'Defaults to partner display name')),
+                        second: TextField(controller: release, decoration: const InputDecoration(labelText: 'Desired platform release')),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: environment,
+                        decoration: const InputDecoration(labelText: 'Initial environment'),
+                        items: const [
+                          DropdownMenuItem(value: 'STAGING', child: Text('STAGING · required first environment')),
+                        ],
+                        onChanged: (value) { if (value != null) setLocal(() => environment = value); },
+                      ),
+                    ],
+                  ),
+                ),
+                Step(
+                  title: const Text('4 · Module preset'),
+                  isActive: step >= 3,
+                  content: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 250),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final module in availableModules)
+                          CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            value: selectedModules.contains('${module['key']}'),
+                            title: Text('${module['label'] ?? module['key']}'),
+                            subtitle: Text('${module['key']}'),
+                            onChanged: (value) => setLocal(() {
+                              final key = '${module['key']}';
+                              if (value == true) {
+                                selectedModules.add(key);
+                              } else {
+                                selectedModules.remove(key);
+                              }
+                            }),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          primaryLabel: 'Create partner',
-          onPrimary: () => Navigator.pop(context, true),
+          primaryLabel: 'Create & validate provisioning',
+          onPrimary: () {
+            if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Display name and administrator email are required.'), behavior: SnackBarBehavior.floating),
+              );
+              return;
+            }
+            Navigator.pop(context, true);
+          },
         ),
       ),
     );
 
-    if (ok == true && displayName.text.trim().isNotEmpty) {
-      final created = await widget.api.post('/api/v1/partners', {
-        'display_name': displayName.text.trim(),
-        'legal_name': legalName.text.trim().isEmpty ? displayName.text.trim() : legalName.text.trim(),
-        'category_id': category,
-        'lifecycle': 'PROSPECT',
-        'contact_name': contactName.text.trim(),
-        'contact_email': contactEmail.text.trim(),
-        'country': country.text.trim(),
-        'primary_domain': primaryDomain.text.trim(),
-      });
-      await load();
-      if (mounted) {
-        success('Partner created.');
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            settings: RouteSettings(name: "/app/partners/${created['id']}"),
-            builder: (_) => PartnerWorkspace(api: widget.api, partner: created),
-          ),
-        );
+    if (ok == true) {
+      try {
+        final created = await widget.api.post('/api/v1/partners', {
+          'display_name': displayName.text.trim(),
+          'legal_name': legalName.text.trim().isEmpty ? displayName.text.trim() : legalName.text.trim(),
+          'category_id': category,
+          'lifecycle': 'PROSPECT',
+          'contact_name': contactName.text.trim(),
+          'contact_email': contactEmail.text.trim(),
+          'country': country.text.trim(),
+          'primary_domain': primaryDomain.text.trim(),
+        });
+        final partnerId = '${created['id']}';
+        final fee = double.tryParse(activationFee.text) ?? 13000;
+        final monthly = double.tryParse(baseMonthlyFee.text) ?? 0;
+        final paid = double.tryParse(paidAmount.text) ?? 0;
+        final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
+
+        await widget.api.put('/api/v1/billing/partners/$partnerId/terms', {
+          'currency': 'USD',
+          'activation_fee': fee,
+          'activation_fee_waived': false,
+          'activation_fee_reason': '',
+          'base_monthly_fee': monthly,
+          'annual_increase_percent': 10,
+          'price_effective_from': today,
+          'service_anchor_date': today,
+          'reason': 'New Partner provisioning wizard',
+        });
+
+        await widget.api.patch('/api/v1/partners/$partnerId', {
+          'lifecycle': 'LICENSE_PENDING',
+          'reason': 'Commercial and provisioning configuration captured',
+        });
+
+        if (evidenceReference.text.trim().isNotEmpty) {
+          await widget.api.post('/api/v1/billing/partners/$partnerId/documents', {
+            'kind': 'PAYMENT_EVIDENCE',
+            'name': evidenceName.text.trim().isEmpty ? 'Initial license payment evidence' : evidenceName.text.trim(),
+            'storage_url': evidenceReference.text.trim(),
+            'note': 'Registered during New Partner provisioning wizard',
+            'mime_type': 'application/octet-stream',
+            'sha256': '',
+            'size_bytes': 0,
+          });
+        }
+
+        final readyForProvisioning = paid >= fee &&
+            fee > 0 &&
+            paymentReference.text.trim().isNotEmpty &&
+            evidenceReference.text.trim().isNotEmpty;
+
+        if (readyForProvisioning) {
+          await widget.api.put('/api/v1/billing/partners/$partnerId/license', {
+            'currency': 'USD',
+            'required_amount': fee,
+            'paid_amount': paid,
+            'payment_date': today,
+            'payment_reference': paymentReference.text.trim(),
+            'verified_by': 'new-partner-wizard',
+            'note': 'Verified during New Partner provisioning wizard',
+            'waived': false,
+            'waiver_reason': '',
+          });
+          await widget.api.patch('/api/v1/partners/$partnerId', {
+            'lifecycle': 'READY_TO_PROVISION',
+            'reason': 'License and evidence verified; provisioning inputs complete',
+          });
+          await widget.api.post('/api/v1/provisioning/jobs', {
+            'partner_id': partnerId,
+            'system_name': systemName.text.trim().isEmpty ? displayName.text.trim() : systemName.text.trim(),
+            'admin_email': contactEmail.text.trim(),
+            'platform_version': release.text.trim(),
+            'desired_release': release.text.trim(),
+            'environment': environment,
+            'module_preset': selectedModules.toList()..sort(),
+          });
+        }
+
+        await load();
+        if (mounted) {
+          success(readyForProvisioning
+              ? 'Partner created and staging provisioning completed.'
+              : 'Partner created in LICENSE_PENDING. Provisioning was not started because payment/evidence is incomplete.');
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              settings: RouteSettings(name: '/app/partners/$partnerId'),
+              builder: (_) => PartnerWorkspace(api: widget.api, partner: created),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('New Partner wizard failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+          );
+        }
       }
     }
 
-    displayName.dispose();
-    legalName.dispose();
-    contactName.dispose();
-    contactEmail.dispose();
-    primaryDomain.dispose();
-    country.dispose();
+    for (final controller in [
+      displayName, legalName, contactName, contactEmail, primaryDomain, country,
+      activationFee, baseMonthlyFee, paidAmount, paymentReference, evidenceName,
+      evidenceReference, systemName, release,
+    ]) {
+      controller.dispose();
+    }
   }
 
   List<Map<String, dynamic>> get filtered => partners;
