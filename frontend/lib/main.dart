@@ -172,44 +172,111 @@ class Api {
   final Map<String, _ApiCacheEntry> _cache = <String, _ApiCacheEntry>{};
   final Map<String, Future<Map<String, dynamic>>> _inflight = <String, Future<Map<String, dynamic>>>{};
 
-  Future<Map<String, dynamic>> get(
-    String path, {
-    Duration maxAge = const Duration(seconds: 8),
-    bool force = false,
-  }) {
-    if (!force) {
-      final cached = _cache[path];
-      if (cached != null && DateTime.now().isBefore(cached.expiresAt)) {
-        return Future<Map<String, dynamic>>.value(cached.data);
-      }
-      final pending = _inflight[path];
-      if (pending != null) return pending;
-    }
-
+  Future<Map<String, dynamic>> _fetchGet(String path, Duration maxAge) {
+    final pending = _inflight[path];
+    if (pending != null) return pending;
     final future = request('GET', path).then((data) {
       _cache[path] = _ApiCacheEntry(data, DateTime.now().add(maxAge));
       return data;
     }).whenComplete(() => _inflight.remove(path));
-
     _inflight[path] = future;
     return future;
   }
 
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Duration maxAge = const Duration(seconds: 30),
+    bool force = false,
+  }) {
+    if (force) {
+      return request('GET', path).then((data) {
+        _cache[path] = _ApiCacheEntry(data, DateTime.now().add(maxAge));
+        return data;
+      });
+    }
+
+    final cached = _cache[path];
+    if (cached != null) {
+      if (DateTime.now().isAfter(cached.expiresAt) && !_inflight.containsKey(path)) {
+        unawaited(_fetchGet(path, maxAge).catchError((_) => cached.data));
+      }
+      return Future<Map<String, dynamic>>.value(cached.data);
+    }
+
+    final pending = _inflight[path];
+    if (pending != null) return pending;
+    return _fetchGet(path, maxAge);
+  }
+
+  void prefetch(Iterable<String> paths, {Duration maxAge = const Duration(seconds: 45)}) {
+    for (final path in paths) {
+      unawaited(get(path, maxAge: maxAge).catchError((_) => <String, dynamic>{}));
+    }
+  }
+
+  void _invalidateMutation(String path) {
+    final prefixes = <String>{};
+    void add(String prefix) => prefixes.add(prefix);
+
+    if (path.startsWith('/api/v1/partners') || path.startsWith('/api/v1/partner-categories')) {
+      add('/api/v1/partners');
+      add('/api/v1/partner-categories');
+      add('/api/v1/dashboard');
+    } else if (path.startsWith('/api/v1/modules') || path.startsWith('/api/v1/module-groups')) {
+      add('/api/v1/modules');
+      add('/api/v1/module-groups');
+      add('/api/v1/partners');
+      add('/api/v1/dashboard');
+    } else if (path.startsWith('/api/v1/billing')) {
+      add('/api/v1/billing');
+      add('/api/v1/partners');
+      add('/api/v1/dashboard');
+    } else if (path.startsWith('/api/v1/impact') || path.startsWith('/api/v1/evidence') || path.startsWith('/api/v1/reports')) {
+      add('/api/v1/impact');
+      add('/api/v1/evidence');
+      add('/api/v1/reports');
+      add('/api/v1/dashboard');
+    } else if (path.startsWith('/api/v1/cms')) {
+      add('/api/v1/cms');
+    } else if (path.startsWith('/api/v1/provisioning') || path.startsWith('/api/v1/environments') || path.startsWith('/api/v1/connectors')) {
+      add('/api/v1/provisioning');
+      add('/api/v1/environments');
+      add('/api/v1/connectors');
+      add('/api/v1/system-health');
+      add('/api/v1/dashboard');
+    } else if (path.startsWith('/api/v1/admin')) {
+      add('/api/v1/admin');
+      add('/api/v1/audit');
+    } else if (path.startsWith('/api/v1/auth')) {
+      if (path.endsWith('/logout')) {
+        clearCache();
+        return;
+      }
+      add('/api/v1/auth');
+    } else {
+      add('/api/v1/dashboard');
+    }
+
+    for (final prefix in prefixes) {
+      clearCache(prefix);
+    }
+  }
+
   Future<Map<String, dynamic>> post(String path, [Map<String, dynamic>? body]) async {
     final result = await request('POST', path, body);
-    clearCache();
+    _invalidateMutation(path);
     return result;
   }
 
   Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) async {
     final result = await request('PUT', path, body);
-    clearCache();
+    _invalidateMutation(path);
     return result;
   }
 
   Future<Map<String, dynamic>> patch(String path, Map<String, dynamic> body) async {
     final result = await request('PATCH', path, body);
-    clearCache();
+    _invalidateMutation(path);
     return result;
   }
 
@@ -231,7 +298,7 @@ class Api {
       if (decoded is Map) data = Map<String, dynamic>.from(decoded);
     }
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      clearCache();
+      _invalidateMutation(path);
       return data;
     }
     final error = data['error'];
@@ -254,7 +321,7 @@ class Api {
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;
     final uri = Uri.parse(path);
-    final timeout = const Duration(seconds: 8);
+    final timeout = const Duration(seconds: 4);
     if (method == 'POST') {
       response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(timeout);
     } else if (method == 'PUT') {
