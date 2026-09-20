@@ -260,6 +260,11 @@ services:
           type: pserv
           name: himate-runtime
           property: hostport
+      - key: PARTNERS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-partners
+          property: hostport
 
   - type: pserv
     name: himate-connector
