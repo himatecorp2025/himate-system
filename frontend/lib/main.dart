@@ -1978,6 +1978,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> documents = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> subscriptions = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
   Map<String, dynamic>? terms;
   Map<String, dynamic>? license;
@@ -2026,6 +2027,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         widget.api.get('/api/v1/billing/partners/$id/license'),
         widget.api.get('/api/v1/billing/partners/$id/documents'),
         widget.api.get('/api/v1/billing/partners/$id/invoices'),
+        widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true),
       ]);
       partner = r[0];
       modules = items(r[1]);
@@ -2034,6 +2036,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       license = r[4];
       documents = items(r[5]);
       invoices = items(r[6]);
+      subscriptions = items(r[7]);
+      if (subscriptions.isEmpty && modules.any((m) => m['status'] == 'ACTIVE')) {
+        subscriptions = items(await widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true));
+      }
     } catch (e) {
       error = e.toString();
     } finally {
@@ -2480,10 +2486,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     }
   }
 
+  Map<String, dynamic>? subscriptionFor(String moduleKey) {
+    for (final item in subscriptions) {
+      if ('${item['module_key']}' == moduleKey) return item;
+    }
+    return null;
+  }
+
   Future<void> editModule(Map<String, dynamic> module) async {
     String state = '${module['status']}';
     bool visible = module['visible'] == true;
     bool included = module['included_in_base'] == true;
+    final moduleKey = '${module['key']}';
+    var subscription = subscriptionFor(moduleKey);
+    bool cancelAtPeriodEnd = subscription?['cancel_at_period_end'] == true;
+    final initialCancel = cancelAtPeriodEnd;
     final price = TextEditingController(text: number(module['partner_price']).toStringAsFixed(2));
     final effectiveAt = TextEditingController();
     final reason = TextEditingController();
@@ -2524,6 +2541,17 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 title: const Text('Included in base package'),
                 subtitle: const Text('Modules outside the base package contribute to recurring fees.'),
               ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: cancelAtPeriodEnd,
+                onChanged: state == 'ACTIVE' ? (v) => setLocal(() => cancelAtPeriodEnd = v) : null,
+                title: const Text('Cancel at period end'),
+                subtitle: Text(
+                  subscription == null
+                      ? 'A 30-day subscription record is created when the active module is synchronized.'
+                      : 'Current period ends ${subscription?['period_end_exclusive'] ?? '—'}. Cancellation keeps access through that date.',
+                ),
+              ),
               const SizedBox(height: 8),
               ResponsiveFieldPair(
                 first: TextField(
@@ -2539,7 +2567,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               const SizedBox(height: 12),
               TextField(
                 controller: reason,
-                decoration: const InputDecoration(labelText: 'Change reason', hintText: 'Recorded in module and price history'),
+                decoration: const InputDecoration(labelText: 'Change reason', hintText: 'Recorded in module, price and subscription history'),
               ),
             ],
           ),
@@ -2551,7 +2579,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
     if (ok == true) {
       await widget.api.patch(
-        '/api/v1/partners/${partner['id']}/modules/${module['key']}',
+        '/api/v1/partners/${partner['id']}/modules/$moduleKey',
         {
           'status': state,
           'visible': visible,
@@ -2561,6 +2589,25 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           'reason': reason.text.trim(),
         },
       );
+
+      if (state == 'ACTIVE' && cancelAtPeriodEnd != initialCancel) {
+        if (subscription == null) {
+          await widget.api.get('/api/v1/billing/partners/${partner['id']}/summary', force: true);
+          final refreshed = await widget.api.get('/api/v1/billing/partners/${partner['id']}/subscriptions', force: true);
+          subscriptions = items(refreshed);
+          subscription = subscriptionFor(moduleKey);
+        }
+        if (subscription != null) {
+          await widget.api.patch(
+            '/api/v1/billing/partners/${partner['id']}/subscriptions/$moduleKey',
+            {
+              'cancel_at_period_end': cancelAtPeriodEnd,
+              'reason': reason.text.trim(),
+            },
+          );
+        }
+      }
+
       await load();
       if (mounted) success('Module configuration updated.');
     }
@@ -3747,11 +3794,14 @@ class _PartnerModuleCardState extends State<PartnerModuleCard> {
                 const SizedBox(height: 5),
                 Text('${m['group_label']} · ${m['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
                 const SizedBox(height: 13),
-                Row(children: [
-                  _TinyFlag(icon: visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, label: visible ? 'VISIBLE' : 'HIDDEN', active: visible),
-                  const SizedBox(width: 7),
-                  _TinyFlag(icon: included ? Icons.inventory_2_outlined : Icons.add_card_outlined, label: included ? 'BASE' : 'EXTRA', active: included),
-                ]),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    _TinyFlag(icon: visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, label: visible ? 'VISIBLE' : 'HIDDEN', active: visible),
+                    _TinyFlag(icon: included ? Icons.inventory_2_outlined : Icons.add_card_outlined, label: included ? 'BASE' : 'EXTRA', active: included),
+                  ],
+                ),
                 const SizedBox(height: 13),
                 Row(children: [
                   const Text('Monthly', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
