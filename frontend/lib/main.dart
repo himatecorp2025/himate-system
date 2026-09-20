@@ -989,8 +989,21 @@ class HimateLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final asset = compact ? 'assets/himate_mark.webp' : 'assets/himate_logo_master.webp';
-    final ratio = compact ? (120 / 129) : (180 / 118);
+    const asset = 'assets/himate_logo_master.webp';
+    if (compact) {
+      return SizedBox(
+        width: width,
+        height: width,
+        child: Image.asset(
+          asset,
+          fit: BoxFit.cover,
+          alignment: Alignment.centerLeft,
+          filterQuality: FilterQuality.high,
+          semanticLabel: 'HIMATE',
+        ),
+      );
+    }
+    const ratio = 300 / 80;
     return SizedBox(
       width: width,
       height: width / ratio,
@@ -998,9 +1011,7 @@ class HimateLogo extends StatelessWidget {
         asset,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
-        color: compact ? const Color(0xFFE0B568) : null,
-        colorBlendMode: compact ? BlendMode.modulate : null,
-        semanticLabel: compact ? 'HIMATE' : 'HIMATE System',
+        semanticLabel: 'HIMATE System',
       ),
     );
   }
@@ -1015,11 +1026,10 @@ class BrandMark extends StatelessWidget {
     width: size,
     height: size,
     child: Image.asset(
-      'assets/himate_mark.webp',
-      fit: BoxFit.contain,
+      'assets/himate_logo_master.webp',
+      fit: BoxFit.cover,
+      alignment: Alignment.centerLeft,
       filterQuality: FilterQuality.high,
-      color: const Color(0xFFE0B568),
-      colorBlendMode: BlendMode.modulate,
       semanticLabel: 'HIMATE',
     ),
   );
