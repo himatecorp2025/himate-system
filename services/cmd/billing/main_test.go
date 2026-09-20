@@ -82,3 +82,15 @@ func TestCancelAtPeriodEndBoundary(t *testing.T) {
 		t.Fatal("auto-renewing subscription must not expire at boundary")
 	}
 }
+
+func TestModuleActivationDateUsesCatalogTimestamp(t *testing.T) {
+	fallback, _ := time.Parse("2006-01-02", "2026-09-20")
+	got := moduleActivationDate(map[string]any{"activated_at": "2026-09-12T15:04:05Z"}, fallback)
+	if value := got.Format("2006-01-02"); value != "2026-09-12" {
+		t.Fatalf("expected catalog activation date got %s", value)
+	}
+	got = moduleActivationDate(map[string]any{"activated_at": nil}, fallback)
+	if value := got.Format("2006-01-02"); value != "2026-09-20" {
+		t.Fatalf("expected fallback activation date got %s", value)
+	}
+}
