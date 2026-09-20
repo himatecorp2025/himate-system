@@ -3088,13 +3088,27 @@ class BrandDialog extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
                 decoration: const BoxDecoration(border: Border(top: BorderSide(color: brandMist))),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                    const SizedBox(width: 8),
-                    FilledButton(onPressed: onPrimary, child: Text(primaryLabel)),
-                  ],
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final actions = [
+                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                      FilledButton(onPressed: onPrimary, child: Text(primaryLabel)),
+                    ];
+                    if (constraints.maxWidth < 420) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(width: double.infinity, child: actions[1]),
+                          const SizedBox(height: 8),
+                          SizedBox(width: double.infinity, child: actions[0]),
+                        ],
+                      );
+                    }
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [actions[0], const SizedBox(width: 8), actions[1]],
+                    );
+                  },
                 ),
               ),
             ],
@@ -3385,21 +3399,28 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final copy = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11.5, height: 1.4)),
-            ],
-          ),
-        ),
-        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11.5, height: 1.4)),
       ],
+    );
+    if (trailing == null) return copy;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 620) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [copy, const SizedBox(height: 10), trailing!],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [Expanded(child: copy), const SizedBox(width: 12), trailing!],
+        );
+      },
     );
   }
 }
