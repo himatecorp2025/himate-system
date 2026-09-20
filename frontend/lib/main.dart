@@ -1133,7 +1133,7 @@ class HimateLogo extends StatelessWidget {
   final bool compact;
   final double width;
 
-  static const String source = '/art/himate_logo_master_v2.webp';
+  static const String source = '/brand/himate-logo-v3.webp';
 
   Widget _fallback(BuildContext context, {required double height}) {
     return Container(
