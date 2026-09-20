@@ -87,7 +87,7 @@ func (a *app) migrate(ctx context.Context) error {
 				PRIMARY KEY(partner_id,environment)
 			)`,
 			`CREATE TABLE IF NOT EXISTS connector.partner_state(
-				partner_id TEXT PRIMARY KEY,
+				partner_id TEXT NOT NULL,
 				environment TEXT NOT NULL DEFAULT 'PRODUCTION',
 				reported_version TEXT NOT NULL DEFAULT '',
 				health TEXT NOT NULL DEFAULT 'UNKNOWN',
@@ -95,7 +95,8 @@ func (a *app) migrate(ctx context.Context) error {
 				last_seen_at TIMESTAMPTZ,
 				last_metric_sync_at TIMESTAMPTZ,
 				last_error TEXT NOT NULL DEFAULT '',
-				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				PRIMARY KEY(partner_id,environment)
 			)`,
 			`CREATE INDEX IF NOT EXISTS connector_state_health_idx ON connector.partner_state(health,last_seen_at)`,
 		}},
@@ -135,7 +136,7 @@ func (a *app) issueCredential(ctx context.Context,partnerID,environment string)(
 		partnerID,environment,credentialID,hash)
 	if err!=nil{return nil,err}
 	_,_ = a.db.ExecContext(ctx,`INSERT INTO connector.partner_state(partner_id,environment) VALUES($1,$2)
-		ON CONFLICT(partner_id) DO UPDATE SET environment=EXCLUDED.environment,updated_at=NOW()`,partnerID,environment)
+		ON CONFLICT(partner_id,environment) DO UPDATE SET updated_at=NOW()`,partnerID,environment)
 	return map[string]any{
 		"partner_id":partnerID,"environment":environment,"credential_id":credentialID,
 		"token":token,"token_returned_once":true,"rotated_at":time.Now().UTC(),
@@ -232,7 +233,7 @@ func (a *app) heartbeat(w http.ResponseWriter,r *http.Request){
 	modules,_:=common.MarshalJSON(in.Modules)
 	_,err=a.db.Exec(`INSERT INTO connector.partner_state(partner_id,environment,reported_version,health,module_state,last_seen_at,last_error)
 		VALUES($1,$2,$3,$4,$5::jsonb,NOW(),$6)
-		ON CONFLICT(partner_id) DO UPDATE SET environment=EXCLUDED.environment,reported_version=EXCLUDED.reported_version,
+		ON CONFLICT(partner_id,environment) DO UPDATE SET reported_version=EXCLUDED.reported_version,
 			health=EXCLUDED.health,module_state=EXCLUDED.module_state,last_seen_at=NOW(),last_error=EXCLUDED.last_error,updated_at=NOW()`,
 		c.PartnerID,c.Environment,strings.TrimSpace(in.Version),health,string(modules),strings.TrimSpace(in.Error))
 	if err!=nil { common.APIError(w,500,"DB","Could not record heartbeat");return }
@@ -246,7 +247,7 @@ func (a *app) state(w http.ResponseWriter,r *http.Request){
 	var version,health string
 	var modules []byte
 	var seen,metrics sql.NullTime
-	err=a.db.QueryRow(`SELECT reported_version,health,module_state,last_seen_at,last_metric_sync_at FROM connector.partner_state WHERE partner_id=$1`,c.PartnerID).
+	err=a.db.QueryRow(`SELECT reported_version,health,module_state,last_seen_at,last_metric_sync_at FROM connector.partner_state WHERE partner_id=$1 AND environment=$2`,c.PartnerID,c.Environment).
 		Scan(&version,&health,&modules,&seen,&metrics)
 	if err!=nil { common.APIError(w,404,"NOT_FOUND","Connector state not found");return }
 	var lastSeen,lastMetrics any
@@ -281,7 +282,7 @@ func (a *app) metrics(w http.ResponseWriter,r *http.Request){
 		if resp.StatusCode<200 || resp.StatusCode>=300 { common.APIError(w,409,"METRIC_REJECTED",fmt.Sprintf("Impact service rejected metric %d",i));return }
 		accepted++
 	}
-	_,_ = a.db.Exec(`UPDATE connector.partner_state SET last_metric_sync_at=NOW(),updated_at=NOW() WHERE partner_id=$1`,c.PartnerID)
+	_,_ = a.db.Exec(`UPDATE connector.partner_state SET last_metric_sync_at=NOW(),updated_at=NOW() WHERE partner_id=$1 AND environment=$2`,c.PartnerID,c.Environment)
 	common.JSON(w,202,map[string]any{"status":"accepted","partner_id":c.PartnerID,"accepted":accepted})
 }
 
