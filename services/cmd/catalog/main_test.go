@@ -23,6 +23,18 @@ func TestSeedModules(t *testing.T) {
 	}
 }
 
+func TestSixModuleGroups(t *testing.T) {
+	if len(seedGroups) != 6 {
+		t.Fatalf("expected six module groups got %d", len(seedGroups))
+	}
+	want := []string{"workshop", "finance_invoicing", "technical", "marketing", "website_events", "communication"}
+	for i, key := range want {
+		if seedGroups[i].Key != key {
+			t.Fatalf("group %d expected %s got %s", i, key, seedGroups[i].Key)
+		}
+	}
+}
+
 func TestModuleStateContract(t *testing.T) {
 	for _, state := range []string{"ACTIVE", "NOT_LICENSED", "MAINTENANCE"} {
 		if !moduleStates[state] {
