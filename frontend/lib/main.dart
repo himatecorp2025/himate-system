@@ -1,5 +1,8 @@
+// ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:convert';
+import 'dart:html' as html;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -207,6 +210,34 @@ class Api {
     return result;
   }
 
+  Future<Map<String, dynamic>> multipart(
+    String path,
+    Map<String, String> fields,
+    Uint8List bytes,
+    String filename,
+  ) async {
+    final request = http.MultipartRequest('POST', Uri.parse(path));
+    request.headers['Accept'] = 'application/json';
+    request.fields.addAll(fields);
+    request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final streamed = await client.send(request).timeout(const Duration(seconds: 35));
+    final response = await http.Response.fromStream(streamed);
+    Map<String, dynamic> data = <String, dynamic>{};
+    if (response.body.trim().isNotEmpty) {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map) data = Map<String, dynamic>.from(decoded);
+    }
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      clearCache();
+      return data;
+    }
+    final error = data['error'];
+    if (error is Map && error['message'] != null) {
+      throw ApiError(response.statusCode, '${error['message']}');
+    }
+    throw ApiError(response.statusCode, 'Upload failed (${response.statusCode})');
+  }
+
   void clearCache([String? prefix]) {
     if (prefix == null) {
       _cache.clear();
@@ -243,6 +274,29 @@ class Api {
     }
     throw ApiError(response.statusCode, 'Request failed (${response.statusCode})');
   }
+}
+
+Future<html.File?> pickBrowserFile(String accept) async {
+  final input = html.FileUploadInputElement()..accept = accept;
+  input.click();
+  await input.onChange.first;
+  final files = input.files;
+  if (files == null || files.isEmpty) return null;
+  return files.first;
+}
+
+Future<Uint8List> readBrowserFile(html.File file) async {
+  final reader = html.FileReader();
+  reader.readAsArrayBuffer(file);
+  await reader.onLoad.first;
+  final result = reader.result;
+  if (result is ByteBuffer) return result.asUint8List();
+  if (result is Uint8List) return result;
+  throw StateError('Could not read selected file.');
+}
+
+void openBrowserDownload(String path) {
+  html.window.open(path, '_blank');
 }
 
 List<Map<String, dynamic>> items(Map<String, dynamic> json) {
@@ -3872,6 +3926,8 @@ class ImpactPage extends StatefulWidget {
 class _ImpactPageState extends State<ImpactPage> {
   List<Map<String, dynamic>> definitions = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> summary = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> evidence = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> reports = <Map<String, dynamic>>[];
   bool loading = true;
   String? error;
 
@@ -3887,9 +3943,13 @@ class _ImpactPageState extends State<ImpactPage> {
       final r = await Future.wait([
         widget.api.get('/api/v1/impact/definitions', force: true),
         widget.api.get('/api/v1/impact/summary', force: true),
+        widget.api.get('/api/v1/evidence', force: true),
+        widget.api.get('/api/v1/reports', force: true),
       ]);
       definitions = items(r[0]);
       summary = items(r[1]);
+      evidence = items(r[2]);
+      reports = items(r[3]);
     } catch (e) {
       error = e.toString();
     } finally {
@@ -3980,7 +4040,7 @@ class _ImpactPageState extends State<ImpactPage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Record impact value',
-          subtitle: 'Every value keeps period, provenance and source metadata for later evidence and reporting.',
+          subtitle: 'Manual values remain distinct from connector and verified-document provenance.',
           icon: Icons.insights_outlined,
           width: 700,
           child: Column(
@@ -4006,14 +4066,7 @@ class _ImpactPageState extends State<ImpactPage> {
                 second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end', hintText: 'YYYY-MM-DD')),
               ),
               const SizedBox(height: 12),
-              const _RuleStrip(
-                items: [
-                  _RuleItem(Icons.edit_note_outlined, 'Provenance', 'MANUAL'),
-                  _RuleItem(Icons.shield_outlined, 'Trust boundary', 'SYSTEM and PARTNER DECLARED arrive through connectors'),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: source, decoration: const InputDecoration(labelText: 'Source reference', hintText: 'Document, URL or source identifier')),
+              TextField(controller: source, decoration: const InputDecoration(labelText: 'Source reference')),
             ],
           ),
           primaryLabel: 'Record value',
@@ -4036,7 +4089,6 @@ class _ImpactPageState extends State<ImpactPage> {
     for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
   }
 
-
   Future<void> addBaseline() async {
     if (definitions.isEmpty) return;
     String metricKey = '${definitions.first['metric_key']}';
@@ -4050,7 +4102,7 @@ class _ImpactPageState extends State<ImpactPage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Set metric baseline',
-          subtitle: 'Store an explicit baseline period and value so later impact results can be evaluated against a reproducible reference point.',
+          subtitle: 'Store an explicit baseline period and value for reproducible comparison.',
           icon: Icons.flag_outlined,
           width: 700,
           child: Column(
@@ -4099,6 +4151,291 @@ class _ImpactPageState extends State<ImpactPage> {
     for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
   }
 
+  Future<void> addEvidence() async {
+    final partner = TextEditingController();
+    final title = TextEditingController();
+    final description = TextEditingController();
+    final start = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final sourceUrl = TextEditingController();
+    final declaration = TextEditingController();
+    String evidenceType = 'PDF';
+    String metricKey = '';
+    html.File? selectedFile;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) {
+          final fileBacked = evidenceType != 'URL' && evidenceType != 'PARTNER_DECLARATION';
+          return BrandDialog(
+            title: 'Upload Evidence',
+            subtitle: 'Evidence is partner-scoped, checksum-backed and explicitly verified before it can support VERIFIED_DOCUMENT provenance.',
+            icon: Icons.verified_outlined,
+            width: 760,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ResponsiveFieldPair(
+                  first: TextField(controller: partner, decoration: const InputDecoration(labelText: 'Partner ID *')),
+                  second: DropdownButtonFormField<String>(
+                    value: evidenceType,
+                    decoration: const InputDecoration(labelText: 'Evidence type'),
+                    items: const [
+                      DropdownMenuItem(value: 'PDF', child: Text('PDF')),
+                      DropdownMenuItem(value: 'IMAGE', child: Text('Image')),
+                      DropdownMenuItem(value: 'INVOICE', child: Text('Invoice')),
+                      DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
+                      DropdownMenuItem(value: 'SCREENSHOT', child: Text('Screenshot')),
+                      DropdownMenuItem(value: 'REPORT', child: Text('External report')),
+                      DropdownMenuItem(value: 'URL', child: Text('URL reference')),
+                      DropdownMenuItem(value: 'PARTNER_DECLARATION', child: Text('Partner declaration')),
+                      DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+                    ],
+                    onChanged: (v) { if (v != null) setLocal(() { evidenceType = v; selectedFile = null; }); },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: metricKey,
+                  decoration: const InputDecoration(labelText: 'Linked metric'),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('No metric link')),
+                    for (final d in definitions)
+                      DropdownMenuItem(value: '${d['metric_key']}', child: Text('${d['label']} · ${d['metric_key']}')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
+                ),
+                const SizedBox(height: 12),
+                TextField(controller: title, decoration: const InputDecoration(labelText: 'Evidence title *')),
+                const SizedBox(height: 12),
+                TextField(controller: description, maxLines: 2, decoration: const InputDecoration(labelText: 'Description')),
+                const SizedBox(height: 12),
+                ResponsiveFieldPair(
+                  first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start')),
+                  second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end')),
+                ),
+                const SizedBox(height: 12),
+                if (fileBacked)
+                  Row(
+                    children: [
+                      Expanded(child: Text(selectedFile?.name ?? 'No file selected', style: const TextStyle(color: brandTextSoft))),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final file = await pickBrowserFile('application/pdf,image/png,image/jpeg,image/webp,text/plain');
+                          if (file != null) setLocal(() => selectedFile = file);
+                        },
+                        icon: const Icon(Icons.upload_file_outlined),
+                        label: const Text('Choose file'),
+                      ),
+                    ],
+                  ),
+                if (evidenceType == 'URL')
+                  TextField(controller: sourceUrl, decoration: const InputDecoration(labelText: 'HTTP(S) source URL *')),
+                if (evidenceType == 'PARTNER_DECLARATION')
+                  TextField(controller: declaration, maxLines: 4, decoration: const InputDecoration(labelText: 'Partner declaration *')),
+                const SizedBox(height: 12),
+                const _RuleStrip(items: [
+                  _RuleItem(Icons.security_outlined, 'Validation', 'Content-sniffed · max 20 MiB · SHA-256'),
+                  _RuleItem(Icons.link_off_outlined, 'URL safety', 'URL evidence is referenced, never fetched'),
+                ]),
+              ],
+            ),
+            primaryLabel: 'Create evidence',
+            onPrimary: () {
+              final fileBackedNow = evidenceType != 'URL' && evidenceType != 'PARTNER_DECLARATION';
+              if (partner.text.trim().isEmpty || title.text.trim().isEmpty ||
+                  (fileBackedNow && selectedFile == null) ||
+                  (evidenceType == 'URL' && sourceUrl.text.trim().isEmpty) ||
+                  (evidenceType == 'PARTNER_DECLARATION' && declaration.text.trim().isEmpty)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Complete the required Evidence fields.'), behavior: SnackBarBehavior.floating),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+          );
+        },
+      ),
+    );
+
+    if (ok == true) {
+      if (evidenceType == 'URL' || evidenceType == 'PARTNER_DECLARATION') {
+        await widget.api.post('/api/v1/evidence', {
+          'partner_id': partner.text.trim(),
+          'metric_key': metricKey,
+          'evidence_type': evidenceType,
+          'title': title.text.trim(),
+          'description': description.text.trim(),
+          'period_start': start.text.trim(),
+          'period_end': end.text.trim(),
+          'source_url': sourceUrl.text.trim(),
+          'declaration_text': declaration.text.trim(),
+        });
+      } else {
+        final file = selectedFile!;
+        final bytes = await readBrowserFile(file);
+        await widget.api.multipart('/api/v1/evidence', {
+          'partner_id': partner.text.trim(),
+          'metric_key': metricKey,
+          'evidence_type': evidenceType,
+          'title': title.text.trim(),
+          'description': description.text.trim(),
+          'period_start': start.text.trim(),
+          'period_end': end.text.trim(),
+        }, bytes, file.name);
+      }
+      await load();
+    }
+    for (final controller in [partner, title, description, start, end, sourceUrl, declaration]) { controller.dispose(); }
+  }
+
+  Future<void> verifyEvidence(Map<String, dynamic> item) async {
+    await widget.api.patch('/api/v1/evidence/${item['id']}', {'verification_status': 'VERIFIED'});
+    await load();
+  }
+
+  Future<void> recordVerifiedValue(Map<String, dynamic> item) async {
+    final metricKey = '${item['metric_key'] ?? ''}';
+    if (metricKey.isEmpty || item['verification_status'] != 'VERIFIED') return;
+    final numeric = TextEditingController();
+    final start = TextEditingController(text: '${item['period_start'] ?? DateTime.now().toIso8601String().substring(0, 10)}');
+    final end = TextEditingController(text: '${item['period_end'] ?? DateTime.now().toIso8601String().substring(0, 10)}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => BrandDialog(
+        title: 'Record verified metric',
+        subtitle: 'This observation will use VERIFIED_DOCUMENT provenance and is cryptographically tied to the selected Evidence record.',
+        icon: Icons.fact_check_outlined,
+        width: 620,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(enabled: false, decoration: InputDecoration(labelText: 'Evidence', hintText: '${item['id']} · ${item['title']}')),
+            const SizedBox(height: 12),
+            TextField(enabled: false, decoration: InputDecoration(labelText: 'Metric', hintText: metricKey)),
+            const SizedBox(height: 12),
+            TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Verified numeric value')),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start')),
+              second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end')),
+            ),
+          ],
+        ),
+        primaryLabel: 'Record verified value',
+        onPrimary: () => Navigator.pop(context, true),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/impact/values', {
+        'partner_id': '${item['partner_id']}',
+        'metric_key': metricKey,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+        'numeric_value': double.tryParse(numeric.text),
+        'provenance': 'VERIFIED_DOCUMENT',
+        'evidence_id': '${item['id']}',
+      });
+      await load();
+    }
+    numeric.dispose(); start.dispose(); end.dispose();
+  }
+
+  Future<void> generateReport() async {
+    String reportType = 'PARTNER_IMPACT';
+    final title = TextEditingController();
+    final partnerIds = TextEditingController();
+    final now = DateTime.now();
+    final start = TextEditingController(text: DateTime(now.year, now.month - 1, now.day).toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: now.toIso8601String().substring(0, 10));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Generate PDF report',
+          subtitle: 'The report freezes metrics, sources and Evidence references into a reproducible snapshot before PDF rendering.',
+          icon: Icons.picture_as_pdf_outlined,
+          width: 720,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: reportType,
+                decoration: const InputDecoration(labelText: 'Report type'),
+                items: const [
+                  DropdownMenuItem(value: 'PARTNER_IMPACT', child: Text('Partner Impact Report')),
+                  DropdownMenuItem(value: 'MULTI_PARTNER', child: Text('Multi-Partner Report')),
+                  DropdownMenuItem(value: 'HIMATE_GLOBAL', child: Text('HIMATE Global Impact Report')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => reportType = v); },
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: title, decoration: const InputDecoration(labelText: 'Report title', hintText: 'Optional · default title follows report type')),
+              if (reportType != 'HIMATE_GLOBAL') ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: partnerIds,
+                  decoration: InputDecoration(
+                    labelText: reportType == 'PARTNER_IMPACT' ? 'Partner ID *' : 'Partner IDs *',
+                    hintText: reportType == 'MULTI_PARTNER' ? 'ptr_000001, ptr_000002' : 'ptr_000001',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start')),
+                second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end')),
+              ),
+              const SizedBox(height: 12),
+              const _RuleStrip(items: [
+                _RuleItem(Icons.inventory_2_outlined, 'Snapshot', 'Frozen before PDF generation'),
+                _RuleItem(Icons.replay_outlined, 'Reproducible', 'Regeneration never rereads live metrics'),
+              ]),
+            ],
+          ),
+          primaryLabel: 'Queue report',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      final ids = partnerIds.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      final created = await widget.api.post('/api/v1/reports', {
+        'report_type': reportType,
+        'title': title.text.trim(),
+        'partner_ids': reportType == 'HIMATE_GLOBAL' ? <String>[] : ids,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+      });
+      await _waitReport('${created['id']}');
+      await load();
+    }
+    title.dispose(); partnerIds.dispose(); start.dispose(); end.dispose();
+  }
+
+  Future<void> _waitReport(String id) async {
+    for (var i = 0; i < 15; i++) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      final item = await widget.api.get('/api/v1/reports/$id', force: true);
+      final status = '${item['status']}';
+      if (status == 'READY' || status == 'FAILED') return;
+    }
+  }
+
+  Future<void> regenerateReport(Map<String, dynamic> item) async {
+    await widget.api.post('/api/v1/reports/${item['id']}/regenerate');
+    await load();
+  }
+
+  String shortHash(dynamic value) {
+    final raw = '${value ?? ''}';
+    return raw.length > 14 ? '${raw.substring(0, 14)}…' : raw;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) return const _BrandLoading();
@@ -4106,45 +4443,42 @@ class _ImpactPageState extends State<ImpactPage> {
       return Content(
         eyebrow: 'IMPACT CONTROL',
         title: 'Impact & Reports',
-        subtitle: 'Metric definitions, provenance and partner/global impact values.',
+        subtitle: 'Metrics, Evidence and reproducible reports.',
         child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
       );
     }
     return Content(
       eyebrow: 'IMPACT CONTROL',
       title: 'Impact & Reports',
-      subtitle: 'Global and partner impact metrics with explicit source provenance. Evidence files and PDF reports remain START-14–15.',
+      subtitle: 'Global and partner metrics, auditable Evidence and reproducible PDF reporting.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           LayoutBuilder(
-            builder: (context, c) {
-              final actions = [
+            builder: (context, constraints) {
+              final actions = <Widget>[
                 OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const Text('New metric')),
                 OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const Text('Set baseline')),
+                OutlinedButton.icon(onPressed: addEvidence, icon: const Icon(Icons.verified_outlined), label: const Text('Upload Evidence')),
+                OutlinedButton.icon(onPressed: generateReport, icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('Generate Report')),
                 FilledButton.icon(onPressed: definitions.isEmpty ? null : addValue, icon: const Icon(Icons.add_rounded), label: const Text('Record value')),
               ];
-              if (c.maxWidth < 720) {
-                return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  SizedBox(width: double.infinity, child: actions[2]),
-                  const SizedBox(height: 8),
-                  SizedBox(width: double.infinity, child: actions[1]),
-                  const SizedBox(height: 8),
-                  SizedBox(width: double.infinity, child: actions[0]),
-                ]);
-              }
-              return Row(mainAxisAlignment: MainAxisAlignment.end, children: [actions[0], const SizedBox(width: 10), actions[1], const SizedBox(width: 10), actions[2]]);
+              return Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 10,
+                runSpacing: 8,
+                children: actions,
+              );
             },
           ),
           const SizedBox(height: 18),
           _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: '${summary.length} metrics')),
           const SizedBox(height: 12),
           LayoutBuilder(
-            builder: (context, c) {
-              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 620 ? constraints.maxWidth : constraints.maxWidth < 1000 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
               return Wrap(
-                spacing: 12,
-                runSpacing: 12,
+                spacing: 12, runSpacing: 12,
                 children: [
                   for (final m in summary)
                     SizedBox(
@@ -4167,14 +4501,151 @@ class _ImpactPageState extends State<ImpactPage> {
             },
           ),
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions are reused by manual entry, partner connectors and future verified-document workflows.', trailing: _MiniCounter(label: '${definitions.length} definitions')),
+          _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: '${evidence.length} records')),
+          const SizedBox(height: 12),
+          if (evidence.isEmpty)
+            const _MessageCard(icon: Icons.verified_outlined, title: 'No Evidence yet', message: 'Upload a PDF, image, invoice, contract, screenshot, URL or partner declaration.')
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 700 ? constraints.maxWidth : constraints.maxWidth < 1100 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final item in evidence)
+                      SizedBox(
+                        width: width,
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  const Icon(Icons.verified_outlined, color: brandGold),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: Text('${item['title']}', style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy))),
+                                ]),
+                                const SizedBox(height: 14),
+                                _DefinitionRow(label: 'Partner', value: '${item['partner_id']}'),
+                                _DefinitionRow(label: 'Type', value: '${item['evidence_type']}'),
+                                _DefinitionRow(label: 'Metric', value: '${item['metric_key'] == '' ? '—' : item['metric_key']}'),
+                                _DefinitionRow(label: 'Period', value: '${item['period_start'] ?? '—'} → ${item['period_end'] ?? '—'}'),
+                                _DefinitionRow(label: 'Verification', value: '${item['verification_status']}'),
+                                _DefinitionRow(label: 'SHA-256', value: shortHash(item['sha256'])),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    if (item['has_file'] == true)
+                                      OutlinedButton.icon(
+                                        onPressed: () => openBrowserDownload('/api/v1/evidence/${item['id']}/download'),
+                                        icon: const Icon(Icons.download_outlined),
+                                        label: const Text('Download'),
+                                      ),
+                                    if ('${item['source_url'] ?? ''}'.isNotEmpty)
+                                      OutlinedButton.icon(
+                                        onPressed: () => html.window.open('${item['source_url']}', '_blank'),
+                                        icon: const Icon(Icons.open_in_new_rounded),
+                                        label: const Text('Open URL'),
+                                      ),
+                                    if (item['verification_status'] != 'VERIFIED')
+                                      FilledButton.icon(
+                                        onPressed: () => verifyEvidence(item),
+                                        icon: const Icon(Icons.fact_check_outlined),
+                                        label: const Text('Verify'),
+                                      ),
+                                    if (item['verification_status'] == 'VERIFIED' && '${item['metric_key'] ?? ''}'.isNotEmpty)
+                                      FilledButton.icon(
+                                        onPressed: () => recordVerifiedValue(item),
+                                        icon: const Icon(Icons.add_chart_rounded),
+                                        label: const Text('Verified metric'),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          const SizedBox(height: 24),
+          _SectionHeader(title: 'Reports', subtitle: 'Partner, multi-partner and HIMATE Global PDFs generated from frozen, auditable snapshots.', trailing: _MiniCounter(label: '${reports.length} reports')),
+          const SizedBox(height: 12),
+          if (reports.isEmpty)
+            const _MessageCard(icon: Icons.picture_as_pdf_outlined, title: 'No reports yet', message: 'Generate a report to freeze impact metrics, data sources and Evidence references into a reproducible snapshot.')
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 700 ? constraints.maxWidth : constraints.maxWidth < 1100 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final item in reports)
+                      SizedBox(
+                        width: width,
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  const Icon(Icons.picture_as_pdf_outlined, color: brandGold),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: Text('${item['title']}', style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy))),
+                                ]),
+                                const SizedBox(height: 14),
+                                _DefinitionRow(label: 'Report ID', value: '${item['id']}'),
+                                _DefinitionRow(label: 'Type', value: '${item['report_type']}'),
+                                _DefinitionRow(label: 'Period', value: '${item['period_start']} → ${item['period_end']}'),
+                                _DefinitionRow(label: 'Status', value: '${item['status']}'),
+                                _DefinitionRow(label: 'Evidence', value: '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} linked'),
+                                _DefinitionRow(label: 'PDF SHA-256', value: shortHash(item['pdf_sha256'])),
+                                if ('${item['last_error'] ?? ''}'.isNotEmpty)
+                                  _DefinitionRow(label: 'Error', value: '${item['last_error']}'),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    if (item['download_ready'] == true)
+                                      FilledButton.icon(
+                                        onPressed: () => openBrowserDownload('/api/v1/reports/${item['id']}/download'),
+                                        icon: const Icon(Icons.download_outlined),
+                                        label: const Text('Download PDF'),
+                                      ),
+                                    if (item['download_ready'] == true)
+                                      OutlinedButton.icon(
+                                        onPressed: () => regenerateReport(item),
+                                        icon: const Icon(Icons.replay_outlined),
+                                        label: const Text('Regenerate snapshot'),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          const SizedBox(height: 24),
+          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions reused by manual entry, connectors and verified-document workflows.', trailing: _MiniCounter(label: '${definitions.length} definitions')),
           const SizedBox(height: 12),
           LayoutBuilder(
-            builder: (context, c) {
-              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 620 ? constraints.maxWidth : constraints.maxWidth < 1000 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
               return Wrap(
-                spacing: 12,
-                runSpacing: 12,
+                spacing: 12, runSpacing: 12,
                 children: [
                   for (final d in definitions)
                     SizedBox(
