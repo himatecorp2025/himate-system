@@ -1,8 +1,8 @@
 FROM golang:1.23-alpine AS build
 WORKDIR /src/services
-COPY services/go.mod services/go.sum ./
-RUN go mod download
-COPY services ./
+COPY services/go.mod ./
+COPY services/ ./
+RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/service ./cmd/runtime
 
 FROM alpine:3.21
