@@ -27,6 +27,11 @@ The scope is derived from the START plan: important results may be linked to Evi
 - [x] VERIFIED_DOCUMENT Impact provenance rejects Evidence linked to another metric.
 - [x] VERIFIED_DOCUMENT provenance requires file-backed verified Evidence rather than a URL/declaration-only record.
 - [x] Evidence Library supports partner, metric, type, verification and report filters.
+- [x] Evidence Library supports period filters, server-side free-text search, limit/offset pagination and total/has-more metadata.
+- [x] Evidence detail exposes metric/report relationships and uploader/timestamp metadata.
+- [x] File-backed Evidence supports authenticated inline preview.
+- [x] File integrity can be actively recomputed against recorded SHA-256 and size.
+- [x] Missing stored evidence objects return an explicit broken-reference response rather than failing silently.
 - [x] File-backed Evidence can be downloaded through the authenticated Gateway.
 - [x] Generated reports can link included Evidence records back to the Evidence Library.
 - [x] Responsive Impact & Reports UI includes Evidence upload, verification, download/open and verified-metric workflow.
@@ -39,6 +44,9 @@ The scope is derived from the START plan: important results may be linked to Evi
 - [x] MULTI_PARTNER requires at least two partners.
 - [x] HIMATE_GLOBAL is generated without a manually supplied partner scope.
 - [x] Every report persists report ID, title, report type, partner scope and period.
+- [x] Every report persists a template version.
+- [x] Every frozen snapshot has a SHA-256 reference persisted with the report.
+- [x] Report metric aggregation is authoritative to the requested report period rather than the all-time live summary.
 - [x] Report generation runs as a persisted background job.
 - [x] Interrupted RUNNING jobs are recoverable after service restart.
 - [x] Metric summaries are frozen into a persistent JSON snapshot before PDF rendering.
@@ -47,6 +55,7 @@ The scope is derived from the START plan: important results may be linked to Evi
 - [x] Report PDF rendering reads the frozen snapshot rather than live metric state.
 - [x] Regeneration uses the stored snapshot and produces the same PDF checksum for the same snapshot.
 - [x] Generated PDFs contain HIMATE branding, title, report ID, partner/global scope, period, metrics and chart bars.
+- [x] Generated PDFs print template version, generation timestamp and the frozen snapshot SHA-256 reference.
 - [x] Generated PDFs contain data-source references and Evidence/document references.
 - [x] Generated PDFs include the START reporting disclaimer that reporting is not an automatic legal determination.
 - [x] Generated PDFs are persisted through the central Storage service with SHA-256 and size metadata.
