@@ -42,6 +42,14 @@ type app struct {
 	dashboardMu      sync.RWMutex
 	dashboardPayload map[string]any
 	dashboardExpires time.Time
+	loginMu          sync.Mutex
+	loginAttempts    map[string]loginState
+}
+
+type loginState struct {
+	Failures     int
+	WindowStart  time.Time
+	BlockedUntil time.Time
 }
 
 type user struct {
@@ -76,6 +84,7 @@ func main() {
 		version: common.Env("HIMATE_APP_VERSION", "0.2.0-start-04-08"), ttl: time.Duration(ttlHours) * time.Hour,
 		secureCookie: secure, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
 		proxies: map[string]*httputil.ReverseProxy{},
+		loginAttempts: map[string]loginState{},
 		hosts: map[string]string{
 			"partners": os.Getenv("PARTNERS_HOSTPORT"),
 			"catalog":  os.Getenv("CATALOG_HOSTPORT"),
@@ -113,10 +122,20 @@ func main() {
 }
 
 func (a *app) migrate(ctx context.Context) error {
-	if err := common.ExecStatements(ctx, a.db,
-		`CREATE SCHEMA IF NOT EXISTS identity`,
-		`CREATE TABLE IF NOT EXISTS identity.users(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,roles JSONB NOT NULL DEFAULT '["platform_admin"]'::jsonb,active BOOLEAN NOT NULL DEFAULT TRUE)`,
-	); err != nil {
+	if err := common.ApplyMigrations(ctx, a.db, "identity", []common.Migration{
+		{Version: 1, Name: "identity-base", Statements: []string{
+			`CREATE SCHEMA IF NOT EXISTS identity`,
+			`CREATE TABLE IF NOT EXISTS identity.users(
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				email TEXT UNIQUE NOT NULL,
+				password_hash TEXT NOT NULL,
+				roles JSONB NOT NULL DEFAULT '["platform_admin"]'::jsonb,
+				active BOOLEAN NOT NULL DEFAULT TRUE
+			)`,
+			`CREATE INDEX IF NOT EXISTS identity_users_active_idx ON identity.users(active)`,
+		}},
+	}); err != nil {
 		return err
 	}
 	email := strings.ToLower(strings.TrimSpace(os.Getenv("HIMATE_BOOTSTRAP_ADMIN_EMAIL")))
@@ -130,13 +149,85 @@ func (a *app) migrate(ctx context.Context) error {
 		return err
 	}
 	roles, _ := json.Marshal([]string{"platform_admin"})
-	_, err = a.db.ExecContext(ctx, `INSERT INTO identity.users(id,name,email,password_hash,roles,active) VALUES('usr_bootstrap_001',$1,$2,$3,$4::jsonb,TRUE) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,active=TRUE`, name, email, hashed, string(roles))
+	_, err = a.db.ExecContext(ctx, `INSERT INTO identity.users(id,name,email,password_hash,roles,active)
+		VALUES('usr_bootstrap_001',$1,$2,$3,$4::jsonb,TRUE)
+		ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,active=TRUE`,
+		name, email, hashed, string(roles))
 	return err
+}
+
+func clientKey(r *http.Request) string {
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
+		if i := strings.IndexByte(forwarded, ','); i >= 0 { forwarded = forwarded[:i] }
+		return strings.TrimSpace(forwarded)
+	}
+	host := r.RemoteAddr
+	if i := strings.LastIndex(host, ":"); i > 0 { host = host[:i] }
+	return strings.Trim(host, "[]")
+}
+
+func (a *app) loginAllowed(key string, now time.Time) bool {
+	a.loginMu.Lock()
+	defer a.loginMu.Unlock()
+	state := a.loginAttempts[key]
+	if now.Before(state.BlockedUntil) { return false }
+	if state.WindowStart.IsZero() || now.Sub(state.WindowStart) > 10*time.Minute {
+		delete(a.loginAttempts, key)
+		return true
+	}
+	return true
+}
+
+func (a *app) recordLoginFailure(key string, now time.Time) {
+	a.loginMu.Lock()
+	defer a.loginMu.Unlock()
+	state := a.loginAttempts[key]
+	if state.WindowStart.IsZero() || now.Sub(state.WindowStart) > 10*time.Minute {
+		state = loginState{WindowStart: now}
+	}
+	state.Failures++
+	if state.Failures >= 5 {
+		state.BlockedUntil = now.Add(15 * time.Minute)
+		state.Failures = 0
+		state.WindowStart = now
+	}
+	a.loginAttempts[key] = state
+}
+
+func (a *app) clearLoginFailures(key string) {
+	a.loginMu.Lock()
+	delete(a.loginAttempts, key)
+	a.loginMu.Unlock()
+}
+
+func requestOriginAllowed(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "cross-site") {
+		return false
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" { return true }
+	u, err := url.Parse(origin)
+	if err != nil { return false }
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 func (a *app) login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		common.APIError(w, 405, "METHOD", "Use POST")
+		return
+	}
+	if !requestOriginAllowed(r) {
+		common.APIError(w, 403, "CSRF", "Cross-site request rejected")
+		return
+	}
+	key, now := clientKey(r), time.Now().UTC()
+	if !a.loginAllowed(key, now) {
+		w.Header().Set("Retry-After", "900")
+		common.APIError(w, 429, "RATE_LIMITED", "Too many sign-in attempts. Try again later.")
 		return
 	}
 	var in struct{ Email, Password string }
@@ -145,12 +236,23 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := a.findUser("email", strings.ToLower(strings.TrimSpace(in.Email)))
-	if err != nil || !u.Active || !verifyPassword(u.PasswordHash, in.Password) {
+	valid := err == nil && u.Active && verifyPassword(u.PasswordHash, in.Password)
+	if err != nil {
+		// Keep missing-account and wrong-password work factors closer together.
+		_ = pbkdf2SHA256([]byte(in.Password), make([]byte, 16), passwordIterations, 32)
+	}
+	if !valid {
+		a.recordLoginFailure(key, now)
 		common.APIError(w, 401, "INVALID_CREDENTIALS", "Invalid email or password")
 		return
 	}
+	a.clearLoginFailures(key)
 	token, _ := a.issueSession(u)
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: a.secureCookie, SameSite: http.SameSiteLaxMode, MaxAge: int(a.ttl.Seconds())})
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookie, Value: token, Path: "/", HttpOnly: true,
+		Secure: a.secureCookie, SameSite: http.SameSiteStrictMode,
+		MaxAge: int(a.ttl.Seconds()),
+	})
 	common.JSON(w, 200, publicUser(u))
 }
 func (a *app) logout(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +260,11 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 405, "METHOD", "Use POST")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: a.secureCookie, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	if !requestOriginAllowed(r) {
+		common.APIError(w, 403, "CSRF", "Cross-site request rejected")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: a.secureCookie, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 	w.WriteHeader(204)
 }
 func (a *app) me(w http.ResponseWriter, r *http.Request) {
@@ -170,10 +276,25 @@ func (a *app) me(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w, 200, publicUser(u))
 }
 
+func hasRole(u user, role string) bool {
+	for _, value := range u.Roles {
+		if value == role { return true }
+	}
+	return false
+}
+
 func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	u, err := a.auth(r)
 	if err != nil {
 		common.APIError(w, 401, "UNAUTHORIZED", "Authentication required")
+		return
+	}
+	if !requestOriginAllowed(r) {
+		common.APIError(w, 403, "CSRF", "Cross-site request rejected")
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && !hasRole(u, "platform_admin") {
+		common.APIError(w, 403, "FORBIDDEN", "Platform administrator permission is required")
 		return
 	}
 	r.Header.Set("X-Himate-User-ID", u.ID)
@@ -182,13 +303,15 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
+		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
 		a.proxies["partners"].ServeHTTP(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/modules"):
 		a.proxies["catalog"].ServeHTTP(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/"):
 		a.proxies["partners"].ServeHTTP(w, r)
-	case r.URL.Path == "/api/v1/modules", r.URL.Path == "/api/v1/module-groups":
+	case r.URL.Path == "/api/v1/modules", r.URL.Path == "/api/v1/module-groups", strings.HasPrefix(r.URL.Path, "/api/v1/modules/"):
 		a.proxies["catalog"].ServeHTTP(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/billing/"):
 		a.proxies["billing"].ServeHTTP(w, r)
@@ -200,6 +323,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 func (a *app) health(w http.ResponseWriter, r *http.Request) {
 	services := map[string]string{"identity": "ok"}
 	overall := "ok"
+	checkedAt := time.Now().UTC()
 	for name, host := range a.hosts {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/health", nil)
@@ -215,7 +339,83 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 			resp.Body.Close()
 		}
 	}
-	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "microservices", "services": services})
+	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "containerized-microservices", "checked_at": checkedAt, "services": services})
+}
+
+func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	type partnerPage struct {
+		Items   []map[string]any `json:"items"`
+		Count   int              `json:"count"`
+		Total   int              `json:"total"`
+		Limit   int              `json:"limit"`
+		Offset  int              `json:"offset"`
+		HasMore bool             `json:"has_more"`
+	}
+	type portfolioPage struct { Items []map[string]any `json:"items"` }
+
+	var partners partnerPage
+	var catalogPortfolio, billingPortfolio portfolioPage
+	var partnerErr, catalogErr, billingErr error
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		path := "/api/v1/partners"
+		if r.URL.RawQuery != "" { path += "?" + r.URL.RawQuery }
+		partnerErr = a.internalGET(ctx, a.hosts["partners"], path, &partners)
+	}()
+	go func() {
+		defer wg.Done()
+		catalogErr = a.internalGET(ctx, a.hosts["catalog"], "/internal/v1/portfolio", &catalogPortfolio)
+	}()
+	go func() {
+		defer wg.Done()
+		billingErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/portfolio", &billingPortfolio)
+	}()
+	wg.Wait()
+
+	if partnerErr != nil {
+		common.APIError(w, 502, "PARTNERS_UNAVAILABLE", "Partner portfolio is temporarily unavailable")
+		return
+	}
+
+	catalogByID := map[string]map[string]any{}
+	for _, item := range catalogPortfolio.Items { catalogByID[fmt.Sprint(item["partner_id"])] = item }
+	billingByID := map[string]map[string]any{}
+	for _, item := range billingPortfolio.Items { billingByID[fmt.Sprint(item["partner_id"])] = item }
+
+	for _, p := range partners.Items {
+		id := fmt.Sprint(p["id"])
+		cat := catalogByID[id]
+		bill := billingByID[id]
+		active := 0
+		extra, base := 0.0, 0.0
+		if v, ok := cat["active_modules"].(float64); ok { active = int(v) }
+		if v, ok := cat["extra_module_fee"].(float64); ok { extra = v }
+		if v, ok := bill["effective_base_fee"].(float64); ok { base = v }
+		p["active_modules"] = active
+		p["base_service_fee"] = base
+		p["extra_module_fee"] = extra
+		p["service_value_30d"] = mathRound2(base + extra)
+		if currency := fmt.Sprint(bill["currency"]); currency != "<nil>" { p["currency"] = currency }
+	}
+	if catalogErr != nil || billingErr != nil {
+		w.Header().Set("X-Himate-Portfolio", "partial")
+	}
+	w.Header().Set("Server-Timing", fmt.Sprintf("partner-portfolio;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, 200, map[string]any{
+		"items": partners.Items, "count": partners.Count, "total": partners.Total,
+		"limit": partners.Limit, "offset": partners.Offset, "has_more": partners.HasMore,
+	})
+}
+
+func mathRound2(v float64) float64 {
+	if v >= 0 { return float64(int64(v*100+0.5)) / 100 }
+	return float64(int64(v*100-0.5)) / 100
 }
 
 func (a *app) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -446,7 +646,7 @@ func (a *app) web() http.Handler {
 			}
 		}
 
-		if r.URL.Path == "/login" || r.URL.Path == "/app" {
+		if r.URL.Path == "/login" || r.URL.Path == "/app" || strings.HasPrefix(r.URL.Path, "/app/") {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			http.ServeFile(w, r, filepath.Join(root, "index.html"))
 			return
@@ -507,12 +707,28 @@ func (a *app) web() http.Handler {
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		if requestID == "" {
+			raw := make([]byte, 12)
+			if _, err := rand.Read(raw); err == nil { requestID = base64.RawURLEncoding.EncodeToString(raw) }
+		}
+		if requestID != "" {
+			r.Header.Set("X-Request-ID", requestID)
+			w.Header().Set("X-Request-ID", requestID)
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		path := r.URL.Path
-		if strings.HasPrefix(path, "/art/") {
+		if strings.HasPrefix(path, "/api/") {
+			w.Header().Set("Cache-Control", "no-store")
+		} else if strings.HasPrefix(path, "/art/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else if path == "/" || path == "/login" || path == "/app" || path == "/platform" || path == "/modules" || path == "/programs" || path == "/impact" || path == "/partners" || path == "/contact" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".css") {
 			w.Header().Set("Cache-Control", "no-store, max-age=0, must-revalidate")
