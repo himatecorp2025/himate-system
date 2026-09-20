@@ -100,6 +100,9 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS connector_state_health_idx ON connector.partner_state(health,last_seen_at)`,
 		}},
+		{Version:2,Name:"connector-token-hash-lookup",Statements:[]string{
+			`CREATE UNIQUE INDEX IF NOT EXISTS connector_credentials_token_hash_idx ON connector.credentials(token_hash)`,
+		}},
 	})
 }
 
@@ -200,19 +203,29 @@ func bearer(r *http.Request) string {
 	return ""
 }
 
+func connectorTokenLookupHash(token string)(string,error){
+	token=strings.TrimSpace(token)
+	if token=="" { return "",fmt.Errorf("missing connector credential") }
+	if !strings.HasPrefix(token,"hmc_crd_") { return "",fmt.Errorf("invalid connector credential") }
+	// The token is intentionally opaque. Base64URL may contain '_' characters,
+	// so the credential identity must never be reconstructed by splitting it.
+	return tokenHash(token),nil
+}
+
 func (a *app) authenticate(r *http.Request)(credential,error){
 	token:=bearer(r)
-	if token=="" { return credential{},fmt.Errorf("missing connector credential") }
-	parts:=strings.Split(token,"_")
-	if len(parts)<4 || parts[0]!="hmc" || parts[1]!="crd" { return credential{},fmt.Errorf("invalid connector credential") }
-	credentialID:="crd_"+parts[2]
+	got,err:=connectorTokenLookupHash(token)
+	if err!=nil { return credential{},err }
+
+	// Resolve by the hash of the complete bearer secret. This is deterministic
+	// for every valid Base64URL token and does not expose or parse secret parts.
 	var c credential
-	err:=a.db.QueryRow(`SELECT partner_id,environment,credential_id,token_hash,active,created_at,rotated_at,last_used_at FROM connector.credentials WHERE credential_id=$1`,credentialID).
+	err=a.db.QueryRow(`SELECT partner_id,environment,credential_id,token_hash,active,created_at,rotated_at,last_used_at
+		FROM connector.credentials WHERE token_hash=$1`,got).
 		Scan(&c.PartnerID,&c.Environment,&c.CredentialID,&c.TokenHash,&c.Active,&c.CreatedAt,&c.RotatedAt,&c.LastUsedAt)
 	if err!=nil || !c.Active { return credential{},fmt.Errorf("invalid connector credential") }
-	got:=tokenHash(token)
 	if len(got)!=len(c.TokenHash) || subtle.ConstantTimeCompare([]byte(got),[]byte(c.TokenHash))!=1 { return credential{},fmt.Errorf("invalid connector credential") }
-	_,_ = a.db.Exec(`UPDATE connector.credentials SET last_used_at=NOW() WHERE credential_id=$1`,credentialID)
+	_,_ = a.db.Exec(`UPDATE connector.credentials SET last_used_at=NOW() WHERE credential_id=$1`,c.CredentialID)
 	return c,nil
 }
 
