@@ -2356,15 +2356,17 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     bool visible = module['visible'] == true;
     bool included = module['included_in_base'] == true;
     final price = TextEditingController(text: number(module['partner_price']).toStringAsFixed(2));
+    final effectiveAt = TextEditingController();
+    final reason = TextEditingController();
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: '${module['label']}',
-          subtitle: 'Control entitlement, partner visibility and monthly pricing without removing the underlying module code or data.',
+          subtitle: 'Control entitlement, partner visibility and 30-day pricing without removing the underlying module code or data.',
           icon: Icons.grid_view_outlined,
-          width: 650,
+          width: 680,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2394,10 +2396,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 subtitle: const Text('Modules outside the base package contribute to recurring fees.'),
               ),
               const SizedBox(height: 8),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: price,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Partner 30-day price'),
+                ),
+                second: TextField(
+                  controller: effectiveAt,
+                  decoration: const InputDecoration(labelText: 'Price effective at', hintText: 'Optional RFC3339 timestamp'),
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
-                controller: price,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Partner monthly price (USD)'),
+                controller: reason,
+                decoration: const InputDecoration(labelText: 'Change reason', hintText: 'Recorded in module and price history'),
               ),
             ],
           ),
@@ -2415,13 +2428,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           'visible': visible,
           'included_in_base': included,
           'partner_price': double.tryParse(price.text) ?? 0,
-          'reason': 'HIMATE admin update',
+          'price_effective_at': effectiveAt.text.trim(),
+          'reason': reason.text.trim(),
         },
       );
       await load();
       if (mounted) success('Module configuration updated.');
     }
     price.dispose();
+    effectiveAt.dispose();
+    reason.dispose();
   }
 
   List<Map<String, dynamic>> get filteredModules {
