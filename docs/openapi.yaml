@@ -450,6 +450,21 @@ paths:
       description: The raw bearer token is returned once; HIMATE stores only its hash.
       responses:
         "201": {description: One-time raw token and credential metadata}
+  /api/v1/connectors/{partnerId}/desired-state:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Connector]
+      summary: Read the desired partner state for an environment
+      parameters:
+        - {name: environment, in: query, schema: {type: string, enum: [STAGING, PRODUCTION], default: STAGING}}
+      responses:
+        "200": {description: Versioned entitlement, maintenance and configuration desired state}
+    put:
+      tags: [Connector]
+      summary: Replace the desired partner state for an environment
+      responses:
+        "200": {description: Updated desired state and revision}
   /connector/v1/heartbeat:
     post:
       tags: [Connector]
@@ -467,6 +482,16 @@ paths:
       summary: Read connector state for the authenticated partner/environment
       responses:
         "200": {description: Connector state}
+  /connector/v1/desired-state:
+    get:
+      tags: [Connector]
+      security:
+        - connectorBearer: []
+      summary: Fetch entitlement, maintenance and configuration desired state for the authenticated partner/environment
+      responses:
+        "200": {description: Desired state with monotonically increasing revision}
+        "401": {description: Invalid connector credential}
+        "404": {description: Desired state has not been published}
   /connector/v1/metrics:
     post:
       tags: [Connector]
@@ -483,7 +508,7 @@ paths:
       tags: [System Health]
       summary: Central microservice and partner health snapshot
       responses:
-        "200": {description: Readiness/liveness, latency, connector, environment and provisioning status}
+        "200": {description: Service health plus partner database, storage, hostname/runtime, connector sync, environment and provisioning status}
   /api/v1/impact/definitions:
     get:
       tags: [Impact]
@@ -513,6 +538,21 @@ paths:
         VERIFIED_DOCUMENT. Evidence file management begins in START-14.
       responses:
         "201": {description: Impact observation recorded}
+  /api/v1/impact/baselines:
+    get:
+      tags: [Impact]
+      summary: List explicit metric baselines
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+        - {name: metric_key, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Metric baselines}
+    put:
+      tags: [Impact]
+      summary: Create or replace a metric baseline
+      description: Administrator-entered baselines use MANUAL provenance and retain period and source reference.
+      responses:
+        "200": {description: Baseline stored}
   /api/v1/impact/summary:
     get:
       tags: [Impact]
