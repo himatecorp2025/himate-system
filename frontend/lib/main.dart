@@ -5199,7 +5199,7 @@ class SystemPage extends StatelessWidget {
             title: 'System & Operations',
             subtitle: 'Independent services behind one authenticated public gateway.',
             child: _MessageCard(
-              icon: Icons.database_outlined,
+              icon: Icons.storage_outlined,
               title: 'No cached operations data yet',
               message: 'The workspace is ready. The latest background health snapshot will appear automatically when available.',
             ),
