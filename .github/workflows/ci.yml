@@ -21,6 +21,11 @@ jobs:
       - run: go mod tidy
       - run: go vet ./...
       - run: go test ./...
+      - run: go test -race ./...
+      - name: Verify OpenAPI contract
+        run: |
+          test -s ../docs/openapi.yaml
+          grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
       - run: go build ./cmd/gateway ./cmd/partners ./cmd/catalog ./cmd/billing ./cmd/contact
 
   flutter:
@@ -36,6 +41,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
+      - run: flutter test --platform chrome
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
