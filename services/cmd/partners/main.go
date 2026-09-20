@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
@@ -13,7 +14,12 @@ import (
 	"time"
 )
 
-type app struct{ db *sql.DB }
+type app struct {
+	db          *sql.DB
+	billingHost string
+	token       string
+	client      *http.Client
+}
 
 type partner struct {
 	ID, Slug, DisplayName, LegalName, BrandName, CategoryID, CategoryName string
@@ -58,7 +64,12 @@ func main() {
 	}
 	defer db.Close()
 
-	a := &app{db: db}
+	a := &app{
+		db: db,
+		billingHost: strings.TrimSpace(os.Getenv("BILLING_HOSTPORT")),
+		token: strings.TrimSpace(os.Getenv("HIMATE_INTERNAL_TOKEN")),
+		client: &http.Client{Timeout: 4 * time.Second},
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := a.migrate(ctx); err != nil {
@@ -360,6 +371,34 @@ func canTransition(from, to string) bool {
 	return lifecycleTransitions[from][to]
 }
 
+func requiresProvisioningGate(from, to string) bool {
+	return from != to && to == "PROVISIONING"
+}
+
+func (a *app) provisioningAllowed(ctx context.Context, partnerID string) (bool, string, error) {
+	if a.billingHost == "" || len(a.token) < 24 {
+		return false, "", fmt.Errorf("billing service credential is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"http://"+a.billingHost+"/internal/v1/partners/"+partnerID+"/provisioning-gate", nil)
+	if err != nil { return false, "", err }
+	req.Header.Set("X-Himate-Internal-Token", a.token)
+	resp, err := a.client.Do(req)
+	if err != nil { return false, "", err }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, "", fmt.Errorf("billing gate returned status %d", resp.StatusCode)
+	}
+	var gate struct {
+		Allowed bool   `json:"allowed"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&gate); err != nil {
+		return false, "", err
+	}
+	return gate.Allowed, gate.Reason, nil
+}
+
 func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/partners/"), "/")
 	if id == "" || strings.Contains(id, "/") {
@@ -459,6 +498,18 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 		if !canTransition(oldLifecycle, p.Lifecycle) {
 			common.APIError(w, 409, "INVALID_LIFECYCLE_TRANSITION", "Lifecycle transition is not allowed")
 			return
+		}
+		if requiresProvisioningGate(oldLifecycle, p.Lifecycle) {
+			allowed, reason, gateErr := a.provisioningAllowed(r.Context(), id)
+			if gateErr != nil {
+				common.APIError(w, 503, "BILLING_GATE_UNAVAILABLE", "Provisioning cannot start while license verification is unavailable")
+				return
+			}
+			if !allowed {
+				if strings.TrimSpace(reason) == "" { reason = "Initial license payment and evidence are required before provisioning" }
+				common.APIError(w, 409, "INITIAL_LICENSE_REQUIRED", reason)
+				return
+			}
 		}
 
 		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
