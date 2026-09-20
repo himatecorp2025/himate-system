@@ -3455,12 +3455,7 @@ class _PartnerCardState extends State<PartnerCard> {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(11)),
-                        child: const Icon(Icons.apartment_rounded, color: brandNavy, size: 21),
-                      ),
+                      _PartnerLogo(url: '${p['logo_url'] ?? ''}'),
                       const Spacer(),
                       if (p['reference_partner'] == true)
                         const Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
@@ -3511,6 +3506,49 @@ class _PartnerCardState extends State<PartnerCard> {
     );
   }
 }
+
+class _PartnerLogo extends StatelessWidget {
+  const _PartnerLogo({required this.url});
+  final String url;
+
+  bool get _safeToLoad {
+    final value = url.trim();
+    if (value.isEmpty) return false;
+    if (value.startsWith('/')) return true;
+    final parsed = Uri.tryParse(value);
+    if (parsed == null) return false;
+    if (!parsed.hasScheme) return true;
+    return parsed.scheme == Uri.base.scheme && parsed.host == Uri.base.host && parsed.port == Uri.base.port;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(11)),
+      child: const Icon(Icons.apartment_rounded, color: brandNavy, size: 21),
+    );
+    if (!_safeToLoad) return fallback;
+    return Container(
+      width: 42,
+      height: 42,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: brandMist),
+      ),
+      child: Image.network(
+        url.trim(),
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => fallback,
+        semanticLabel: 'Partner logo',
+      ),
+    );
+  }
+}
+
 
 class _PartnerMetric extends StatelessWidget {
   const _PartnerMetric({required this.label, required this.value});
