@@ -355,6 +355,7 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 		Offset          int              `json:"offset"`
 		HasMore         bool             `json:"has_more"`
 		LifecycleCounts map[string]int   `json:"lifecycle_counts"`
+		ReferenceCount  int              `json:"reference_count"`
 	}
 	type portfolioPage struct { Items []map[string]any `json:"items"` }
 
@@ -411,7 +412,7 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w, 200, map[string]any{
 		"items": partners.Items, "count": partners.Count, "total": partners.Total,
 		"limit": partners.Limit, "offset": partners.Offset, "has_more": partners.HasMore,
-		"lifecycle_counts": partners.LifecycleCounts,
+		"lifecycle_counts": partners.LifecycleCounts, "reference_count": partners.ReferenceCount,
 	})
 }
 
