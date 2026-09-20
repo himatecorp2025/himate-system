@@ -15,6 +15,12 @@ printf 'login... '
 curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"email":"admin@example.com","password":"local-development-password"}'   "$BASE_URL/api/v1/auth/login" >/dev/null
 echo ok
 
+printf 'gateway includes storage and partner runtime... '
+gateway_health="$(curl -fsS "$BASE_URL/api/v1/health")"
+printf '%s' "$gateway_health" | grep -q '"storage":"ok"'
+printf '%s' "$gateway_health" | grep -q '"partner-runtime":"ok"'
+echo ok
+
 printf 'create START-09 partner... '
 created="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"display_name":"START 09 CI Partner","legal_name":"START 09 CI Partner LLC","brand_name":"START 09 CI","category_id":"cat_006","lifecycle":"PROSPECT","contact_name":"CI Admin","contact_email":"ci-admin@example.com","country":"United States"}'   "$BASE_URL/api/v1/partners")"
 partner_id="$(printf '%s' "$created" | json_field id)"
@@ -57,12 +63,18 @@ policy="$(docker compose exec -T postgres psql -U himate -d "$db_name" -Atc "SEL
 test "$policy" = "STRUCTURE_ONLY_NO_KLAVIERHAUS_BUSINESS_DATA"
 admin_invite="$(docker compose exec -T postgres psql -U himate -d "$db_name" -Atc "SELECT COUNT(*) FROM partner_core.admin_invites WHERE email='ci-admin@example.com'")"
 test "$admin_invite" = "1"
+role_name="${db_name}_app"
+public_connect="$(docker compose exec -T postgres psql -U himate -d postgres -Atc "SELECT has_database_privilege('public','$db_name','CONNECT')")"
+test "$public_connect" = "f"
 echo ok
 
 printf 'START-10 isolated staging environment... '
 envs="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/environments?partner_id=$partner_id")"
 printf '%s' "$envs" | grep -q '"kind":"STAGING"'
-printf '%s' "$envs" | grep -q '"environment_status":"CONFIGURATION_REQUIRED"'
+printf '%s' "$envs" | grep -q '"environment_status":"READY"'
+printf '%s' "$envs" | grep -q '"deployment_status":"DEPLOYED"'
+printf '%s' "$envs" | grep -q '"runtime_status":"OK"'
+printf '%s' "$envs" | grep -q '"active_release":"0.3.0-start-09-13"'
 env_count="$(printf '%s' "$envs" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')"
 test "$env_count" = "1"
 echo ok
