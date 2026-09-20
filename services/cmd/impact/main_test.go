@@ -15,3 +15,24 @@ func TestMetricInputValidation(t *testing.T) {
 	if err!=nil{t.Fatal(err)}
 	if out.Provenance!="MANUAL"{t.Fatalf("unexpected provenance %s",out.Provenance)}
 }
+
+func TestMetricProvenanceTrustBoundaries(t *testing.T) {
+	if !adminProvenanceAllowed("manual") {
+		t.Fatal("admin MANUAL provenance must be accepted")
+	}
+	for _, value := range []string{"SYSTEM", "PARTNER_DECLARED", "VERIFIED_DOCUMENT"} {
+		if adminProvenanceAllowed(value) {
+			t.Fatalf("admin must not be able to self-assert %s provenance", value)
+		}
+	}
+	for _, value := range []string{"SYSTEM", "PARTNER_DECLARED"} {
+		if !connectorProvenanceAllowed(value) {
+			t.Fatalf("connector should accept %s", value)
+		}
+	}
+	for _, value := range []string{"MANUAL", "VERIFIED_DOCUMENT"} {
+		if connectorProvenanceAllowed(value) {
+			t.Fatalf("connector must not assert %s provenance", value)
+		}
+	}
+}
