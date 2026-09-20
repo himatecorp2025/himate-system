@@ -562,6 +562,16 @@ func cancellationExpired(cancelAtPeriodEnd bool, periodEnd, at time.Time) bool {
 	return cancelAtPeriodEnd && !dateOnly(at).Before(dateOnly(periodEnd))
 }
 
+func moduleActivationDate(mod map[string]any, fallback time.Time) time.Time {
+	raw := strings.TrimSpace(fmt.Sprint(mod["activated_at"]))
+	if raw != "" && raw != "<nil>" {
+		if parsed, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+			return dateOnly(parsed)
+		}
+	}
+	return dateOnly(fallback)
+}
+
 func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	t, err := a.ensureTerms(id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load terms"); return }
@@ -678,11 +688,12 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 			FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2`, id, key).
 			Scan(&activation, &existingStart, &existingEnd, &autoRenew, &cancelAtEnd, &paymentStatus)
 		if err == sql.ErrNoRows {
-			start, end := cycleWindow(today, today)
+			activation := moduleActivationDate(mod, today)
+			start, end := cycleWindow(activation, today)
 			if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(
 					partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
 				) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING')`,
-				id, key, currency, today, start, end, price); err != nil {
+				id, key, currency, activation, start, end, price); err != nil {
 				return err
 			}
 			continue
@@ -713,7 +724,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		// A module that was deactivated (not cancelled by the subscriber) begins
 		// a fresh 30-day subscription when it is explicitly activated again.
 		if paymentStatus == "INACTIVE" {
-			activation = today
+			activation = moduleActivationDate(mod, today)
 		}
 		start, end := cycleWindow(activation, today)
 		if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
