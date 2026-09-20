@@ -872,8 +872,8 @@ class HimateLogo extends StatelessWidget {
         asset,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
-        color: const Color(0xFFE0B568),
-        colorBlendMode: BlendMode.modulate,
+        color: compact ? const Color(0xFFE0B568) : null,
+        colorBlendMode: compact ? BlendMode.modulate : null,
         semanticLabel: compact ? 'HIMATE' : 'HIMATE System',
       ),
     );

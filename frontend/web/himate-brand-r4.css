@@ -438,3 +438,128 @@ body{background:#F8F9FB}
   .impact-copy p{font-size:15px}
   .numbers{padding:26px 22px}
 }
+
+
+/* R10 final frontend completion */
+/* Use the approved supplied logo asset exactly as delivered. */
+.brand-logo img{
+  filter:none!important;
+}
+
+/* Fine dark edge for text that sits on bright photographic areas.
+   Main hero/page titles and descriptive subtitle paragraphs intentionally remain clean. */
+.site-nav .links a,
+.nav-login-text,
+.login-pill,
+.hero .caps,
+.hero-sideword,
+.metric strong,
+.page-hero .caps,
+.hero-actions .btn,
+.page-hero .btn{
+  -webkit-text-stroke:.28px rgba(0,0,0,.86);
+  text-shadow:
+    -1px 0 rgba(0,0,0,.42),
+     1px 0 rgba(0,0,0,.42),
+     0 -1px rgba(0,0,0,.42),
+     0 1px rgba(0,0,0,.42),
+     0 1px 2px rgba(0,0,0,.76);
+}
+
+/* Landing hero subtitle +50% on desktop. */
+.hero p{
+  max-width:720px;
+  font-size:27px;
+  line-height:1.38;
+}
+
+/* Every public subpage hero now inherits the same typographic system as the landing hero. */
+.page-hero .inner{
+  min-height:100svh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding-top:138px;
+  padding-bottom:70px;
+}
+.hero h1,
+.page-hero h1{
+  font-family:"Cormorant Garamond",Georgia,serif;
+  font-size:clamp(68px,4.3vw,88px);
+  font-weight:600;
+  line-height:.92;
+  letter-spacing:-.55px;
+  color:#F1DFB9;
+}
+.page-hero .caps{
+  font-family:"Cormorant Garamond",Georgia,serif;
+  font-size:13px;
+  font-weight:700;
+  letter-spacing:4.8px;
+  color:#E0BA73;
+}
+.page-hero p{
+  max-width:720px;
+  font-family:"Cormorant Garamond",Georgia,serif;
+  font-size:27px;
+  font-weight:600;
+  line-height:1.38;
+  color:#F1F3F6;
+}
+.page-hero .btn{
+  height:58px;
+  min-height:58px;
+  font-family:"Cormorant Garamond",Georgia,serif;
+  font-size:13px;
+  font-weight:700;
+  letter-spacing:1.45px;
+}
+
+/* Keep the newly supplied A More Vibrant Tomorrow artwork fully visible in its left panel. */
+.impact-story .image{
+  background:#E9E1D5;
+}
+.impact-story .image img{
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  object-position:center!important;
+}
+
+/* Footer legal line belongs at the lower-right, clear of the logo. */
+.footer{
+  position:relative;
+  padding-bottom:30px;
+}
+.footer-copy{
+  position:absolute;
+  right:var(--public-inset);
+  bottom:10px;
+  width:auto!important;
+  margin:0!important;
+  text-align:right;
+  white-space:nowrap;
+  font-size:10px;
+  color:#8293A4;
+}
+
+@media(max-width:1000px){
+  .hero p,.page-hero p{font-size:22px;max-width:620px}
+  .page-hero h1{font-size:62px}
+}
+@media(max-width:620px){
+  .hero p,.page-hero p{font-size:16px;max-width:350px}
+  .page-hero .inner{min-height:100svh;padding-top:104px;padding-bottom:46px;justify-content:flex-start}
+  .page-hero h1{font-size:49px}
+  .footer{padding-bottom:18px}
+  .footer-copy{
+    position:static;
+    width:min(100% - 36px,1540px)!important;
+    margin:14px auto 0!important;
+    text-align:left;
+    white-space:normal;
+  }
+}
