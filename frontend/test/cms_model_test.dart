@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/main.dart';
+import 'package:himate_frontend/main.dart';
 
 void main() {
   test('CMS section serialization preserves content and deterministic order', () {
