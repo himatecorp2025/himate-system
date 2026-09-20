@@ -13,6 +13,7 @@ import 'package:google_fonts/google_fonts.dart';
 part 'cms_page.dart';
 part 'administration_rbac.dart';
 part 'brand_assets.dart';
+part 'domains_deployments.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -5344,39 +5345,9 @@ class SystemPage extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 24),
-              _SectionHeader(
-                title: 'Partner Environments',
-                subtitle: 'Staging and production records retain hostname, version, deployment and environment state.',
-                trailing: _MiniCounter(label: '${environments.length} environments'),
-              ),
-              const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, c) {
-                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (final e in environments)
-                        SizedBox(
-                          width: width,
-                          child: _InfoCard(
-                            title: '${e['partner_id']} · ${e['kind']}',
-                            icon: Icons.dns_outlined,
-                            children: [
-                              _DefinitionRow(label: 'Hostname', value: '${e['hostname'] ?? '—'}'),
-                              _DefinitionRow(label: 'Environment', value: '${e['environment_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Deployment', value: '${e['deployment_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Runtime', value: '${e['runtime_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Runtime latency', value: '${e['runtime_latency_ms'] ?? 0} ms'),
-                              _DefinitionRow(label: 'Version', value: '${e['platform_version'] ?? '—'}'),
-                              _DefinitionRow(label: 'Active release', value: '${e['active_release'] ?? '—'}'),
-                            ],
-                          ),
-                        ),
-                    ],
-                  );
-                },
+              DomainsDeploymentsPanel(
+                api: api,
+                initialEnvironments: environments,
               ),
               const SizedBox(height: 24),
               LayoutBuilder(
