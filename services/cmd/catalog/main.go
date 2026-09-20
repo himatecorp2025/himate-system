@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
 	"os"
@@ -57,64 +58,7 @@ var seedModules = []seedModule{
 
 var moduleStates = map[string]bool{"ACTIVE": true, "NOT_LICENSED": true, "MAINTENANCE": true}
 var availabilityValues = map[string]bool{"ACTIVE": true, "UNAVAILABLE": true, "DEPRECATED": true}
-var moduleKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.]{2,127}package main
-
-import (
-	"context"
-	"database/sql"
-	"himate.local/services/internal/common"
-	"net/http"
-	"os"
-	"regexp"
-	"strings"
-	"time"
-)
-
-type app struct{ db *sql.DB }
-type seedModule struct{ Key, Label, Group string }
-
-var seedModules = []seedModule{
-	{"finance", "Balance Sheet", "finance_invoicing"},
-	{"income_statement", "Income Statement", "finance_invoicing"},
-	{"invoice_documents", "Invoices Documents", "finance_invoicing"},
-	{"audit_log", "Audit Log", "technical"},
-	{"backups", "Backups", "technical"},
-	{"pianos", "Client Piano", "technical"},
-	{"contacts", "Clients", "technical"},
-	{"closed_jobs", "Closed Jobs", "technical"},
-	{"knowledge_base", "Company Documents Archive", "technical"},
-	{"company_data", "Corporate Data", "technical"},
-	{"inventory", "Inventory", "technical"},
-	{"partners", "Partners", "technical"},
-	{"planned_jobs", "Planned Jobs", "technical"},
-	{"scheduler", "Scheduler", "technical"},
-	{"website_services", "Services", "technical"},
-	{"settings", "Settings", "technical"},
-	{"system_integrations", "System Activation & Integrations", "technical"},
-	{"users", "Users", "technical"},
-	{"workshop_workflow", "Workshop Workflow", "workshop"},
-	{"marketing_overview", "Campaign Overview", "marketing"},
-	{"customer_inbox", "Customer Inbox", "marketing"},
-	{"website_reviews", "Reviews", "marketing"},
-	{"campaigns_utm", "Campaigns & UTM", "marketing"},
-	{"leads", "Leads", "marketing"},
-	{"tracking_cookies", "Tracking & Cookies", "marketing"},
-	{"seo_keywords", "SEO & Keywords", "marketing"},
-	{"heatmap", "Consent Heatmap", "marketing"},
-	{"website_artists", "Artists", "website_events"},
-	{"website_contacts", "Contacts", "website_events"},
-	{"digital_attendance", "Digital Attendance", "website_events"},
-	{"events", "Events", "website_events"},
-	{"event_guest_list", "Guest Data", "website_events"},
-	{"event_invitations", "Invitations", "website_events"},
-	{"media_library", "Media Library", "website_events"},
-	{"pages_content", "Pages & Content", "website_events"},
-	{"publish_preview", "Publish & Preview", "website_events"},
-	{"showroom_pianos", "Showroom Pianos", "website_events"},
-	{"event_tickets", "Ticket Reservation", "website_events"},
-}
-
-)
+var moduleKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.]{2,127}$`)
 
 func main() {
 	log := common.Logger()
