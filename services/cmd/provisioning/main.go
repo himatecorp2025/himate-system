@@ -50,6 +50,7 @@ var stepOrder=[]string{
 	"CREATE_STORAGE",
 	"CREATE_STAGING_ENVIRONMENT",
 	"CREATE_CONNECTOR_CREDENTIAL",
+	"SYNC_DESIRED_STATE",
 	"DEPLOY_STAGING",
 	"STORAGE_HEALTH",
 	"PARTNER_DATABASE_HEALTH",
@@ -265,6 +266,17 @@ func (a *app)executeStep(ctx context.Context,j job,step,actor string)error{
 		payload:=map[string]any{"PartnerID":j.PartnerID,"Environment":"STAGING"}
 		var out map[string]any
 		if err:=a.internalJSON(ctx,http.MethodPost,a.hosts["connector"],"/internal/v1/connectors/ensure",payload,&out,actor);err!=nil{return fmt.Errorf("connector credential: %w",err)}
+	case "SYNC_DESIRED_STATE":
+		entitlements:=map[string]any{}
+		for _,key:=range uniqueStrings(j.ModulePreset){entitlements[key]="ACTIVE"}
+		payload:=map[string]any{
+			"environment":"STAGING",
+			"entitlements":entitlements,
+			"maintenance":map[string]any{"status":"ACTIVE"},
+			"config":map[string]any{"partner_id":j.PartnerID,"system_name":j.SystemName,"platform_version":j.PlatformVersion,"desired_release":j.DesiredRelease},
+		}
+		var out map[string]any
+		if err:=a.internalJSON(ctx,http.MethodPut,a.hosts["connector"],"/api/v1/connectors/"+j.PartnerID+"/desired-state",payload,&out,actor);err!=nil{return fmt.Errorf("connector desired state: %w",err)}
 	case "DEPLOY_STAGING":
 		payload:=map[string]any{"partner_id":j.PartnerID,"release":j.DesiredRelease}
 		var out map[string]any
@@ -438,8 +450,8 @@ func (a *app)steps(id string)[]map[string]any{
 			WHEN 'VALIDATE_PARTNER' THEN 1 WHEN 'VALIDATE_LICENSE' THEN 2 WHEN 'MARK_PROVISIONING' THEN 3
 			WHEN 'CREATE_DATABASE' THEN 4 WHEN 'SEED_REFERENCE_TEMPLATE' THEN 5 WHEN 'APPLY_MODULE_PRESET' THEN 6
 			WHEN 'CREATE_STORAGE' THEN 7 WHEN 'CREATE_STAGING_ENVIRONMENT' THEN 8 WHEN 'CREATE_CONNECTOR_CREDENTIAL' THEN 9
-			WHEN 'DEPLOY_STAGING' THEN 10 WHEN 'STORAGE_HEALTH' THEN 11 WHEN 'PARTNER_DATABASE_HEALTH' THEN 12
-			WHEN 'STAGING_RUNTIME_HEALTH' THEN 13 WHEN 'COMPLETE' THEN 14 ELSE 99 END`,id)
+			WHEN 'SYNC_DESIRED_STATE' THEN 10 WHEN 'DEPLOY_STAGING' THEN 11 WHEN 'STORAGE_HEALTH' THEN 12 WHEN 'PARTNER_DATABASE_HEALTH' THEN 13
+			WHEN 'STAGING_RUNTIME_HEALTH' THEN 14 WHEN 'COMPLETE' THEN 15 ELSE 99 END`,id)
 	if err!=nil{return []map[string]any{}}
 	defer rows.Close()
 	items:=[]map[string]any{}
