@@ -66,7 +66,7 @@ curl -fsS -b "$COOKIE_JAR" -X PATCH   -H 'Content-Type: application/json'   -d '
 echo ok
 
 printf 'module entitlement and pricing... '
-curl -fsS -b "$COOKIE_JAR" -X PATCH   -H 'Content-Type: application/json'   -d '{"status":"ACTIVE","visible":true,"included_in_base":false,"partner_price":49,"reason":"CI module activation"}'   "$BASE_URL/api/v1/partners/$partner_id/modules/marketing_campaigns" | grep -q '"status":"ACTIVE"'
+curl -fsS -b "$COOKIE_JAR" -X PATCH   -H 'Content-Type: application/json'   -d '{"status":"ACTIVE","visible":true,"included_in_base":false,"partner_price":49,"reason":"CI module activation"}'   "$BASE_URL/api/v1/partners/$partner_id/modules/campaigns_utm" | grep -q '"status":"ACTIVE"'
 curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/billing/partners/$partner_id/summary" | grep -q '"cycle_days":30'
 echo ok
 
