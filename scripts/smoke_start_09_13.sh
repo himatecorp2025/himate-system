@@ -111,4 +111,21 @@ printf '%s' "$health" | grep -q '"connector_health":"OK"'
 printf '%s' "$health" | python3 -c 'import json,sys; p=json.load(sys.stdin); pid=sys.argv[1]; item=next(x for x in p["partners"] if x["partner_id"]==pid); assert item["database_health"]=="OK", item; assert item["storage_health"]=="READY", item; assert item["hostname_status"]=="REACHABLE", item; assert item["sync_status"]=="CURRENT", item' "$partner_id"
 echo ok
 
+printf 'cross-tenant database isolation... '
+created2="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' -d '{"display_name":"START 09 Isolation Partner","legal_name":"START 09 Isolation Partner LLC","category_id":"cat_006","lifecycle":"PROSPECT","contact_name":"Isolation Admin","contact_email":"isolation@example.com","country":"United States"}' "$BASE_URL/api/v1/partners")"
+partner2_id="$(printf '%s' "$created2" | json_field id)"
+curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","activation_fee":13000,"activation_fee_waived":false,"base_monthly_fee":250,"annual_increase_percent":10,"price_effective_from":"2026-09-20","service_anchor_date":"2026-09-20","reason":"Isolation CI"}' "$BASE_URL/api/v1/billing/partners/$partner2_id/terms" >/dev/null
+curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' -d '{"kind":"PAYMENT_EVIDENCE","name":"Isolation receipt","storage_url":"ci://start09/isolation.pdf","mime_type":"application/pdf","sha256":"ci-isolation","size_bytes":1}' "$BASE_URL/api/v1/billing/partners/$partner2_id/documents" >/dev/null
+curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"paid_amount":13000,"payment_date":"2026-09-20","payment_reference":"START09-CI-ISO","verified_by":"ci-smoke","waived":false,"waiver_reason":""}' "$BASE_URL/api/v1/billing/partners/$partner2_id/license" >/dev/null
+curl -fsS -b "$COOKIE_JAR" -X PATCH -H 'Content-Type: application/json' -d '{"lifecycle":"LICENSE_PENDING","reason":"Isolation CI"}' "$BASE_URL/api/v1/partners/$partner2_id" >/dev/null
+curl -fsS -b "$COOKIE_JAR" -X PATCH -H 'Content-Type: application/json' -d '{"lifecycle":"READY_TO_PROVISION","reason":"Isolation CI ready"}' "$BASE_URL/api/v1/partners/$partner2_id" >/dev/null
+curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' -d "{\"partner_id\":\"$partner2_id\",\"system_name\":\"START 09 Isolation\",\"admin_email\":\"isolation@example.com\",\"platform_version\":\"0.3.0-start-09-13\",\"desired_release\":\"0.3.0-start-09-13\",\"module_preset\":[]}" "$BASE_URL/api/v1/provisioning/jobs" | grep -q '"status":"CONFIGURATION_REQUIRED"'
+db2_name="himate_$partner2_id"
+role2_name="${db2_name}_app"
+a_to_b="$(docker compose exec -T postgres psql -U himate -d postgres -Atc "SELECT has_database_privilege('$role_name','$db2_name','CONNECT')")"
+b_to_a="$(docker compose exec -T postgres psql -U himate -d postgres -Atc "SELECT has_database_privilege('$role2_name','$db_name','CONNECT')")"
+test "$a_to_b" = "f"
+test "$b_to_a" = "f"
+echo ok
+
 echo "HIMATE START-09–13 integration smoke passed"
