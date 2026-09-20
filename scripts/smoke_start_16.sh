@@ -68,7 +68,7 @@ test -n "$token"
 bad_preview="$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE_URL/preview/v1/cms/pages/ci-cms?token=wrong")"
 test "$bad_preview" = "404"
 preview_body="$(curl -fsS "$BASE_URL/preview/v1/cms/pages/ci-cms?token=$token")"
-printf '%s' "$preview_body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["content_model_version"]==1; assert d["state"]=="PREVIEW"; assert len(d["sections"])==1; assert d["sections"][0]["heading"]=="First Published Heading"'
+printf '%s' "$preview_body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["content_model_version"]==1; assert d["state"]=="PREVIEW"; assert len(d["sections"])==1; assert d["sections"][0]["heading"]=="First Published Heading"; forbidden={"created_by","published_by","page_id","source_version_id","rollback_of_version_id","id"}; assert not forbidden.intersection(d), (forbidden.intersection(d),d)'
 still_private="$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE_URL/public/v1/cms/pages/ci-cms")"
 test "$still_private" = "404"
 echo ok
@@ -89,7 +89,7 @@ published1="$(curl -fsS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/v1/cms/pages/$pa
 published1_id="$(printf '%s' "$published1" | json_field id)"
 test -n "$published1_id"
 public1="$(curl -fsS "$BASE_URL/public/v1/cms/pages/ci-cms")"
-printf '%s' "$public1" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["state"]=="PUBLISHED"; assert d["content_model_version"]==1; assert len(d["sections"])==1; assert d["sections"][0]["heading"]=="First Published Heading"; assert d["seo"]["title"]=="CMS CI Page"'
+printf '%s' "$public1" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["state"]=="PUBLISHED"; assert d["content_model_version"]==1; assert len(d["sections"])==1; assert d["sections"][0]["heading"]=="First Published Heading"; assert d["seo"]["title"]=="CMS CI Page"; forbidden={"created_by","published_by","page_id","source_version_id","rollback_of_version_id","id"}; assert not forbidden.intersection(d), (forbidden.intersection(d),d)'
 if printf '%s' "$public1" | grep -q 'Hidden Draft Content'; then exit 1; fi
 detail="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/cms/pages/$page_id")"
 printf '%s' "$detail" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["published"]["sections"])==2; assert any(x["visible"] is False for x in d["published"]["sections"])'
@@ -148,7 +148,7 @@ echo ok
 
 printf 'public manifest contains published content only... '
 manifest="$(curl -fsS "$BASE_URL/public/v1/cms/manifest")"
-printf '%s' "$manifest" | python3 -c 'import json,sys; d=json.load(sys.stdin); slugs={x["slug"] for x in d["items"]}; assert "ci-cms" in slugs; assert "ci-incomplete" not in slugs; assert "ci-conflict" not in slugs'
+printf '%s' "$manifest" | python3 -c 'import json,sys; d=json.load(sys.stdin); slugs={x["slug"] for x in d["items"]}; assert "ci-cms" in slugs; assert "ci-incomplete" not in slugs; assert "ci-conflict" not in slugs; forbidden={"page_id","page_key","name","created_by","published_by"}; assert all(not forbidden.intersection(x) for x in d["items"]), d'
 echo ok
 
 echo "HIMATE START-16 CMS integration smoke passed"

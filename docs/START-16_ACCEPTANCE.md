@@ -24,6 +24,7 @@ This document is the release gate for START-16. START-17 public landing-page CMS
 - [x] Preview tokens are cryptographically random, persisted only as SHA-256 and returned raw only on issue/rotation.
 - [x] Preview content is no-store/noindex and available only through the scoped token.
 - [x] Public CMS page APIs expose only the active PUBLISHED version.
+- [x] Public/preview CMS payloads expose only allowlisted content fields and do not leak internal actor, page, source-version or rollback metadata.
 - [x] Draft or preview content cannot leak through public page APIs.
 - [x] Disabled sections retain their stored content while being removed from public/preview output.
 - [x] Preview and production use the same content model version.
