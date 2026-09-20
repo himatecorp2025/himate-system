@@ -1010,6 +1010,14 @@ class NavSpec {
   final String subtitle;
 }
 
+enum ShellLayoutMode { mobile, tablet, desktop }
+
+ShellLayoutMode shellLayoutForWidth(double width) {
+  if (width < 720) return ShellLayoutMode.mobile;
+  if (width < 980) return ShellLayoutMode.tablet;
+  return ShellLayoutMode.desktop;
+}
+
 class Shell extends StatefulWidget {
   const Shell({required this.api, required this.user, required this.onLogout, super.key});
   final Api api;
@@ -1050,8 +1058,10 @@ class _ShellState extends State<Shell> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final desktop = constraints.maxWidth >= 980;
-        if (!desktop) {
+        final layoutMode = shellLayoutForWidth(constraints.maxWidth);
+        final mobile = layoutMode == ShellLayoutMode.mobile;
+        final tablet = layoutMode == ShellLayoutMode.tablet;
+        if (mobile) {
           return Scaffold(
             appBar: AppBar(
               toolbarHeight: 64,
@@ -1093,7 +1103,7 @@ class _ShellState extends State<Shell> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 230),
                 curve: Curves.easeOutCubic,
-                width: collapsed ? 82 : 258,
+                width: tablet || collapsed ? 82 : 258,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF061426), brandNavy, Color(0xFF0A2C4C)]),
                 ),
@@ -1101,10 +1111,10 @@ class _ShellState extends State<Shell> {
                   child: _SidebarContent(
                     nav: nav,
                     selected: selected,
-                    collapsed: collapsed,
+                    collapsed: tablet || collapsed,
                     user: widget.user,
                     onSelect: (i) => setState(() => selected = i),
-                    onToggle: () => setState(() => collapsed = !collapsed),
+                    onToggle: tablet ? null : () => setState(() => collapsed = !collapsed),
                     onLogout: widget.onLogout,
                   ),
                 ),
@@ -1118,21 +1128,24 @@ class _ShellState extends State<Shell> {
                       decoration: const BoxDecoration(color: brandWhite, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
                         children: [
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 420),
-                                child: TextField(
-                                  readOnly: true,
-                                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Global search will be activated in a later functional cycle.'), behavior: SnackBarBehavior.floating),
+                          if (!tablet)
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 420),
+                                  child: TextField(
+                                    readOnly: true,
+                                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Global search will be activated in a later functional cycle.'), behavior: SnackBarBehavior.floating),
+                                    ),
+                                    decoration: const InputDecoration(isDense: true, hintText: 'Search anywhere...', prefixIcon: Icon(Icons.search_rounded, size: 19)),
                                   ),
-                                  decoration: const InputDecoration(isDense: true, hintText: 'Search anywhere...', prefixIcon: Icon(Icons.search_rounded, size: 19)),
                                 ),
                               ),
-                            ),
-                          ),
+                            )
+                          else
+                            const Spacer(),
                           const SizedBox(width: 18),
                           _TopIconButton(icon: Icons.notifications_none_rounded, hasDot: true, onTap: () {}),
                           const SizedBox(width: 8),
@@ -1142,23 +1155,28 @@ class _ShellState extends State<Shell> {
                             itemBuilder: (_) => const [
                               PopupMenuItem(value: 'logout', child: Row(children: [Icon(Icons.logout_rounded, size: 18), SizedBox(width: 10), Text('Sign out')])),
                             ],
-                            child: Row(
-                              children: [
-                                _Avatar(name: '${widget.user['name'] ?? 'Admin User'}'),
-                                const SizedBox(width: 9),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 130),
-                                  child: Text(
-                                    '${widget.user['name'] ?? 'Admin User'}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12),
+                            child: tablet
+                                ? Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: _Avatar(name: '${widget.user['name'] ?? 'Admin User'}'),
+                                  )
+                                : Row(
+                                    children: [
+                                      _Avatar(name: '${widget.user['name'] ?? 'Admin User'}'),
+                                      const SizedBox(width: 9),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 130),
+                                        child: Text(
+                                          '${widget.user['name'] ?? 'Admin User'}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.keyboard_arrow_down_rounded, color: brandTextSoft, size: 19),
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.keyboard_arrow_down_rounded, color: brandTextSoft, size: 19),
-                              ],
-                            ),
                           ),
                         ],
                       ),
