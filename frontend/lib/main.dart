@@ -1110,6 +1110,28 @@ class _ShellState extends State<Shell> {
     NavSpec('Administration', Icons.admin_panel_settings_outlined, 'Roles and control'),
   ];
 
+  bool can(String permission) {
+    final roles = widget.user['roles'];
+    if (roles is List && roles.map((e) => e.toString()).contains('platform_admin')) return true;
+    final permissions = widget.user['permissions'];
+    if (permissions is! List) return false;
+    final values = permissions.map((e) => e.toString()).toSet();
+    return values.contains('*') || values.contains(permission);
+  }
+
+  List<int> visibleNavIndexes() {
+    final indexes = <int>[];
+    if (can('dashboard.read')) indexes.add(0);
+    if (can('partners.read')) indexes.add(1);
+    if (can('billing.read')) indexes.add(2);
+    if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(3);
+    if (can('cms.read')) indexes.add(4);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read')) indexes.add(5);
+    if (can('administration.read') || can('audit.read')) indexes.add(6);
+    if (indexes.isEmpty) indexes.add(0);
+    return indexes;
+  }
+
   Widget page() {
     switch (selected) {
       case 0: return DashboardPage(api: widget.api);
@@ -1130,6 +1152,9 @@ class _ShellState extends State<Shell> {
         final layoutMode = shellLayoutForWidth(constraints.maxWidth);
         final mobile = layoutMode == ShellLayoutMode.mobile;
         final tablet = layoutMode == ShellLayoutMode.tablet;
+        final visibleIndexes = visibleNavIndexes();
+        final visibleNav = <NavSpec>[for (final index in visibleIndexes) nav[index]];
+        final visibleSelected = visibleIndexes.indexOf(selected).clamp(0, visibleIndexes.length - 1);
         if (mobile) {
           return Scaffold(
             appBar: AppBar(
@@ -1152,11 +1177,11 @@ class _ShellState extends State<Shell> {
               backgroundColor: brandNavyDeep,
               child: SafeArea(
                 child: _SidebarContent(
-                  nav: nav,
-                  selected: selected,
+                  nav: visibleNav,
+                  selected: visibleSelected,
                   collapsed: false,
                   user: widget.user,
-                  onSelect: (i) { setState(() => selected = i); Navigator.pop(context); },
+                  onSelect: (i) { setState(() => selected = visibleIndexes[i]); Navigator.pop(context); },
                   onToggle: null,
                   onLogout: widget.onLogout,
                 ),
@@ -1178,11 +1203,11 @@ class _ShellState extends State<Shell> {
                 ),
                 child: SafeArea(
                   child: _SidebarContent(
-                    nav: nav,
-                    selected: selected,
+                    nav: visibleNav,
+                    selected: visibleSelected,
                     collapsed: tablet || collapsed,
                     user: widget.user,
-                    onSelect: (i) => setState(() => selected = i),
+                    onSelect: (i) => setState(() => selected = visibleIndexes[i]),
                     onToggle: tablet ? null : () => setState(() => collapsed = !collapsed),
                     onLogout: widget.onLogout,
                   ),
