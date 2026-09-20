@@ -18,10 +18,11 @@ import (
 )
 
 type app struct {
-	db          *sql.DB
-	token       string
-	runtimeHost string
-	client      *http.Client
+	db           *sql.DB
+	token        string
+	runtimeHost  string
+	partnersHost string
+	client       *http.Client
 }
 
 var kindValues = map[string]bool{"STAGING": true, "PRODUCTION": true}
@@ -53,6 +54,7 @@ func main() {
 		db: db,
 		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		runtimeHost: os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
+		partnersHost: os.Getenv("PARTNERS_HOSTPORT"),
 		client: &http.Client{Timeout: 5 * time.Second},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -347,13 +349,21 @@ func (a *app) verifyDomain(w http.ResponseWriter,r *http.Request,id string){
 	e,err:=a.get(id)
 	if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found");return }
 	e=a.checkDomain(r.Context(),e)
-	if e.Kind=="PRODUCTION" && len(launchReadiness(e))==0 { e.EnvironmentStatus="READY_FOR_LAUNCH" }
 	if err:=a.persistDomainState(e);err!=nil { common.APIError(w,500,"DB","Could not persist domain verification");return }
 	e,_=a.get(id)
+	if e.Kind=="PRODUCTION" && len(launchReadiness(e))==0 {
+		actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+		if err:=a.transitionPartnerLifecycle(r.Context(),e.PartnerID,"READY_FOR_LAUNCH",actor,"Production DNS and TLS verification completed all launch gates");err!=nil {
+			common.JSON(w,http.StatusConflict,map[string]any{"error":"PARTNER_LIFECYCLE","message":err.Error(),"environment":mapEnvironment(e)})
+			return
+		}
+		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET environment_status='READY_FOR_LAUNCH',updated_at=NOW() WHERE id=$1`,e.ID)
+		e,_=a.get(id)
+	}
 	common.JSON(w,http.StatusOK,mapEnvironment(e))
 }
 
-func (a *app) deployRecord(ctx context.Context,e environment,release string)(environment,error){
+func (a *app) deployRecord(ctx context.Context,e environment,release,actor string)(environment,error){
 	release=strings.TrimSpace(release)
 	if release==""{release=e.DesiredRelease}
 	if release==""{release=e.PlatformVersion}
@@ -374,9 +384,17 @@ func (a *app) deployRecord(ctx context.Context,e environment,release string)(env
 	if err!=nil{return e,err}
 	e,err=a.get(e.ID)
 	if err!=nil{return e,err}
-	if e.Kind=="PRODUCTION" && len(launchReadiness(e))==0 {
-		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET environment_status='READY_FOR_LAUNCH',updated_at=NOW() WHERE id=$1`,e.ID)
-		e,_=a.get(e.ID)
+	if e.Kind=="PRODUCTION" {
+		if err:=a.transitionPartnerLifecycle(ctx,e.PartnerID,"TESTING",actor,"Production deployment completed; launch testing started");err!=nil {
+			return e,fmt.Errorf("partner lifecycle TESTING: %w",err)
+		}
+		if len(launchReadiness(e))==0 {
+			if err:=a.transitionPartnerLifecycle(ctx,e.PartnerID,"READY_FOR_LAUNCH",actor,"Production deployment, runtime, DNS and TLS gates passed");err!=nil {
+				return e,fmt.Errorf("partner lifecycle READY_FOR_LAUNCH: %w",err)
+			}
+			_,_ = a.db.Exec(`UPDATE environments.partner_environments SET environment_status='READY_FOR_LAUNCH',updated_at=NOW() WHERE id=$1`,e.ID)
+			e,_=a.get(e.ID)
+		}
 	}
 	return e,nil
 }
@@ -389,7 +407,7 @@ func (a *app) deployEnvironment(w http.ResponseWriter,r *http.Request,id string)
 	if r.Body!=nil && r.ContentLength!=0 {
 		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request");return }
 	}
-	e,err=a.deployRecord(r.Context(),e,in.Release)
+	e,err=a.deployRecord(r.Context(),e,in.Release,strings.TrimSpace(r.Header.Get("X-Himate-User-ID")))
 	if err!=nil { common.APIError(w,502,"RUNTIME_DEPLOY",err.Error());return }
 	common.JSON(w,200,mapEnvironment(e))
 }
@@ -407,8 +425,12 @@ func (a *app) launchEnvironment(w http.ResponseWriter,r *http.Request,id string)
 		return
 	}
 	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+	if err:=a.transitionPartnerLifecycle(r.Context(),e.PartnerID,"LIVE",actor,"Production launch gate approved; environment is LIVE");err!=nil {
+		common.JSON(w,http.StatusConflict,map[string]any{"error":"PARTNER_LIFECYCLE","message":err.Error(),"environment":mapEnvironment(e)})
+		return
+	}
 	_,err=a.db.Exec(`UPDATE environments.partner_environments SET environment_status='LIVE',launch_actor=$2,launched_at=NOW(),updated_at=NOW() WHERE id=$1`,id,actor)
-	if err!=nil { common.APIError(w,500,"DB","Could not launch production environment");return }
+	if err!=nil { common.APIError(w,500,"DB","Could not finalize production launch");return }
 	e,_=a.get(id)
 	common.JSON(w,200,mapEnvironment(e))
 }
@@ -463,6 +485,67 @@ func (a *app) runtimeRequest(ctx context.Context, method, path string, payload a
 	return latency,nil
 }
 
+func (a *app) partnerJSON(ctx context.Context,method,path string,payload any,actor string,dst any) error {
+	if strings.TrimSpace(a.partnersHost)=="" { return fmt.Errorf("partners service is not configured") }
+	var body *bytes.Reader
+	if payload==nil { body=bytes.NewReader(nil) } else {
+		raw,err:=json.Marshal(payload); if err!=nil{return err}; body=bytes.NewReader(raw)
+	}
+	req,err:=http.NewRequestWithContext(ctx,method,"http://"+a.partnersHost+path,body)
+	if err!=nil{return err}
+	req.Header.Set("X-Himate-Internal-Token",a.token)
+	if strings.TrimSpace(actor)!="" { req.Header.Set("X-Himate-User-ID",strings.TrimSpace(actor)) }
+	if payload!=nil { req.Header.Set("Content-Type","application/json") }
+	resp,err:=a.client.Do(req)
+	if err!=nil{return err}
+	defer resp.Body.Close()
+	if resp.StatusCode<200||resp.StatusCode>=300 {
+		var apiErr map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
+		return fmt.Errorf("partners status %d: %v",resp.StatusCode,apiErr)
+	}
+	if dst!=nil{return json.NewDecoder(resp.Body).Decode(dst)}
+	return nil
+}
+
+func (a *app) partnerLifecycle(ctx context.Context,partnerID string)(string,error){
+	var out map[string]any
+	if err:=a.partnerJSON(ctx,http.MethodGet,"/api/v1/partners/"+url.PathEscape(partnerID),nil,"",&out);err!=nil{return "",err}
+	return strings.ToUpper(strings.TrimSpace(fmt.Sprint(out["lifecycle"]))),nil
+}
+
+func (a *app) transitionPartnerLifecycle(ctx context.Context,partnerID,target,actor,reason string) error {
+	target=strings.ToUpper(strings.TrimSpace(target))
+	current,err:=a.partnerLifecycle(ctx,partnerID)
+	if err!=nil{return err}
+	if current==target{return nil}
+
+	allowed:=false
+	switch target {
+	case "TESTING":
+		allowed=current=="CONFIGURATION"
+		if current=="READY_FOR_LAUNCH"||current=="LIVE"{return nil}
+	case "READY_FOR_LAUNCH":
+		allowed=current=="TESTING"
+		if current=="LIVE"{return nil}
+	case "LIVE":
+		allowed=current=="READY_FOR_LAUNCH"
+	default:
+		return fmt.Errorf("unsupported lifecycle target %s",target)
+	}
+	if !allowed{return fmt.Errorf("partner lifecycle %s cannot transition to %s",current,target)}
+
+	payload:=map[string]any{"lifecycle":target,"reason":reason}
+	var out map[string]any
+	if err:=a.partnerJSON(ctx,http.MethodPatch,"/api/v1/partners/"+url.PathEscape(partnerID),payload,actor,&out);err!=nil{
+		// The PATCH may have committed before a transport failure. Re-read once
+		// and treat the transition as successful when the target is already live.
+		if state,readErr:=a.partnerLifecycle(ctx,partnerID);readErr==nil&&state==target{return nil}
+		return err
+	}
+	return nil
+}
+
 func (a *app) deployStaging(w http.ResponseWriter, r *http.Request) {
 	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST"); return }
 	var in struct {
@@ -477,7 +560,7 @@ func (a *app) deployStaging(w http.ResponseWriter, r *http.Request) {
 	if release==""{release=e.DesiredRelease}
 	if release==""{release=e.PlatformVersion}
 	if release==""{release="current"}
-	e,err=a.deployRecord(r.Context(),e,release)
+	e,err=a.deployRecord(r.Context(),e,release,strings.TrimSpace(r.Header.Get("X-Himate-User-ID")))
 	if err!=nil{common.APIError(w,502,"RUNTIME_DEPLOY",err.Error());return}
 	common.JSON(w,200,mapEnvironment(e))
 }
