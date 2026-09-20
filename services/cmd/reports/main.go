@@ -385,7 +385,19 @@ func renderPDF(snapshot map[string]any)[]byte{
 
 	pages:=[][]string{}
 	generated:=fmt.Sprint(snapshot["snapshot_created_at"])
-	current:=[]string{"HIMATE","IMPACT REPORT",title,"Report ID: "+reportID,"Period: "+period,"Generated: "+generated,""}
+	scope:="Scope: HIMATE Global"
+	if raw,ok:=snapshot["partners"].([]any);ok && len(raw)>0{
+		names:=[]string{}
+		for _,entry:=range raw{
+			if m,ok:=entry.(map[string]any);ok{
+				name:=strings.TrimSpace(fmt.Sprint(m["display_name"]))
+				if name==""||name=="<nil>"{name=strings.TrimSpace(fmt.Sprint(m["id"]))}
+				if name!=""&&name!="<nil>"{names=append(names,name)}
+			}
+		}
+		if len(names)==1{scope="Partner: "+names[0]}else if len(names)>1{scope="Partners: "+strings.Join(names,", ")}
+	}
+	current:=[]string{"HIMATE","IMPACT REPORT",title,"Report ID: "+reportID,scope,"Period: "+period,"Generated: "+generated,""}
 	for _,s:=range sections{
 		if len(current)>35{pages=append(pages,current);current=[]string{"HIMATE · IMPACT REPORT (continued)",""}}
 		current=append(current,s.Title)

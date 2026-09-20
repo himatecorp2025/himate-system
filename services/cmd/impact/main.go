@@ -381,16 +381,16 @@ func (a *app) baselines(w http.ResponseWriter,r *http.Request){
 		where:=[]string{"1=1"};args:=[]any{}
 		if partnerID!=""{args=append(args,partnerID);where=append(where,fmt.Sprintf("b.partner_id=$%d",len(args)))}
 		if metricKey!=""{args=append(args,metricKey);where=append(where,fmt.Sprintf("b.metric_key=$%d",len(args)))}
-		rows,err:=a.db.Query(`SELECT b.partner_id,b.metric_key,d.label,d.unit,b.period_start,b.period_end,b.numeric_value,b.text_value,b.provenance,b.source_ref,b.recorded_by,b.updated_at
+		rows,err:=a.db.Query(`SELECT b.partner_id,b.metric_key,d.label,d.unit,b.period_start,b.period_end,b.numeric_value,b.text_value,b.provenance,b.source_ref,b.evidence_id,b.recorded_by,b.updated_at
 			FROM impact.metric_baselines b JOIN impact.metric_definitions d ON d.metric_key=b.metric_key WHERE `+strings.Join(where," AND ")+` ORDER BY d.label`,args...)
 		if err!=nil{common.APIError(w,500,"DB","Could not load metric baselines");return}
 		defer rows.Close();items:=[]map[string]any{}
 		for rows.Next(){
-			var partner,key,label,unit,textValue,prov,source,recordedBy string
+			var partner,key,label,unit,textValue,prov,source,evidenceID,recordedBy string
 			var start,end,updated time.Time;var numeric sql.NullFloat64
-			if rows.Scan(&partner,&key,&label,&unit,&start,&end,&numeric,&textValue,&prov,&source,&recordedBy,&updated)==nil{
+			if rows.Scan(&partner,&key,&label,&unit,&start,&end,&numeric,&textValue,&prov,&source,&evidenceID,&recordedBy,&updated)==nil{
 				var num any;if numeric.Valid{num=numeric.Float64}
-				items=append(items,map[string]any{"partner_id":partner,"metric_key":key,"label":label,"unit":unit,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":num,"text_value":textValue,"provenance":prov,"source_ref":source,"recorded_by":recordedBy,"updated_at":updated})
+				items=append(items,map[string]any{"partner_id":partner,"metric_key":key,"label":label,"unit":unit,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":num,"text_value":textValue,"provenance":prov,"source_ref":source,"evidence_id":evidenceID,"recorded_by":recordedBy,"updated_at":updated})
 			}
 		}
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
@@ -406,6 +406,8 @@ func (a *app) baselines(w http.ResponseWriter,r *http.Request){
 			if in.EvidenceID==""{common.APIError(w,400,"EVIDENCE_REQUIRED","VERIFIED_DOCUMENT provenance requires evidence_id");return}
 			if err:=a.validateEvidence(r.Context(),in.EvidenceID,strings.TrimSpace(in.PartnerID),in.MetricKey);err!=nil{common.APIError(w,409,"EVIDENCE_INVALID",err.Error());return}
 			in.SourceRef=in.EvidenceID
+		} else if strings.TrimSpace(in.EvidenceID)!="" {
+			common.APIError(w,400,"EVIDENCE_BOUNDARY","evidence_id may only be supplied with VERIFIED_DOCUMENT provenance");return
 		}
 		var exists bool
 		if err=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM impact.metric_definitions WHERE metric_key=$1 AND active=TRUE)`,in.MetricKey).Scan(&exists);err!=nil||!exists{
