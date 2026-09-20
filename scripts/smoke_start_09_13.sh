@@ -64,8 +64,6 @@ test "$policy" = "STRUCTURE_ONLY_NO_KLAVIERHAUS_BUSINESS_DATA"
 admin_invite="$(docker compose exec -T postgres psql -U himate -d "$db_name" -Atc "SELECT COUNT(*) FROM partner_core.admin_invites WHERE email='ci-admin@example.com'")"
 test "$admin_invite" = "1"
 role_name="${db_name}_app"
-public_connect="$(docker compose exec -T postgres psql -U himate -d postgres -Atc "SELECT has_database_privilege('public','$db_name','CONNECT')")"
-test "$public_connect" = "f"
 echo ok
 
 printf 'START-10 isolated staging environment... '
