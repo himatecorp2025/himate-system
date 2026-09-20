@@ -1643,7 +1643,9 @@ class _PartnersPageState extends State<PartnersPage> {
       referenceCount = (page['reference_count'] as num?)?.toInt() ?? 0;
       final counts = page['lifecycle_counts'];
       lifecycleCounts = counts is Map
-          ? counts.map((key, value) => MapEntry('$key', (value as num?)?.toInt() ?? 0))
+          ? <String, int>{
+              for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
+            }
           : <String, int>{};
       if (r.length > 1) categories = items(r[1]);
     } catch (e) {
