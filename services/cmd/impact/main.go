@@ -214,6 +214,8 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
 		metricKey:=strings.TrimSpace(r.URL.Query().Get("metric_key"))
+		periodStart:=strings.TrimSpace(r.URL.Query().Get("period_start"))
+		periodEnd:=strings.TrimSpace(r.URL.Query().Get("period_end"))
 		limit:=100
 		if raw:=r.URL.Query().Get("limit");raw!="" {
 			if v,err:=strconv.Atoi(raw);err==nil && v>0 && v<=500 { limit=v }
@@ -222,6 +224,18 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 		args:=[]any{}
 		if partnerID!="" { args=append(args,partnerID); where=append(where,fmt.Sprintf("v.partner_id=$%d",len(args))) }
 		if metricKey!="" { args=append(args,metricKey); where=append(where,fmt.Sprintf("v.metric_key=$%d",len(args))) }
+		if periodStart!="" {
+			start,err:=time.Parse("2006-01-02",periodStart)
+			if err!=nil { common.APIError(w,400,"VALIDATION","period_start must be YYYY-MM-DD"); return }
+			args=append(args,start)
+			where=append(where,fmt.Sprintf("v.period_end >= $%d",len(args)))
+		}
+		if periodEnd!="" {
+			end,err:=time.Parse("2006-01-02",periodEnd)
+			if err!=nil { common.APIError(w,400,"VALIDATION","period_end must be YYYY-MM-DD"); return }
+			args=append(args,end)
+			where=append(where,fmt.Sprintf("v.period_start <= $%d",len(args)))
+		}
 		args=append(args,limit)
 		q:=`SELECT v.id,v.partner_id,v.metric_key,d.label,d.unit,v.period_start,v.period_end,v.numeric_value,v.text_value,v.provenance,v.source_ref,v.evidence_id,v.recorded_by,v.recorded_at,v.metadata
 			FROM impact.metric_values v JOIN impact.metric_definitions d ON d.metric_key=v.metric_key WHERE `+strings.Join(where," AND ")+`
@@ -429,9 +443,23 @@ func stringValue(v any)string{if v==nil{return ""};return fmt.Sprint(v)}
 func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }
 	partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
+	periodStart:=strings.TrimSpace(r.URL.Query().Get("period_start"))
+	periodEnd:=strings.TrimSpace(r.URL.Query().Get("period_end"))
 	args:=[]any{}
+	whereParts:=[]string{}
+	if partnerID!="" { args=append(args,partnerID); whereParts=append(whereParts,fmt.Sprintf("v.partner_id=$%d",len(args))) }
+	if periodStart!="" {
+		start,err:=time.Parse("2006-01-02",periodStart)
+		if err!=nil { common.APIError(w,400,"VALIDATION","period_start must be YYYY-MM-DD"); return }
+		args=append(args,start);whereParts=append(whereParts,fmt.Sprintf("v.period_end >= $%d",len(args)))
+	}
+	if periodEnd!="" {
+		end,err:=time.Parse("2006-01-02",periodEnd)
+		if err!=nil { common.APIError(w,400,"VALIDATION","period_end must be YYYY-MM-DD"); return }
+		args=append(args,end);whereParts=append(whereParts,fmt.Sprintf("v.period_start <= $%d",len(args)))
+	}
 	where:=""
-	if partnerID!="" { where="WHERE v.partner_id=$1"; args=append(args,partnerID) }
+	if len(whereParts)>0 { where="WHERE "+strings.Join(whereParts," AND ") }
 	rows,err:=a.db.Query(`SELECT v.metric_key,d.label,d.unit,d.aggregation,
 		CASE d.aggregation
 			WHEN 'LATEST' THEN (ARRAY_AGG(v.numeric_value ORDER BY v.period_end DESC,v.id DESC))[1]
