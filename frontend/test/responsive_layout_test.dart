@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/main.dart';
+import 'package:himate_frontend/main.dart';
 
 void main() {
   test('workspace route slugs are stable', () {
