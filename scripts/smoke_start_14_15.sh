@@ -50,6 +50,10 @@ evidence="$(curl -fsS -b "$COOKIE_JAR"   -F "partner_id=$partner1" -F "metric_ke
 evidence_id="$(printf '%s' "$evidence" | json_field id)"
 test -n "$evidence_id"
 printf '%s' "$evidence" | python3 -c 'import json,sys,re; d=json.load(sys.stdin); assert d["mime_type"]=="application/pdf"; assert d["size_bytes"]>0; assert re.fullmatch(r"[0-9a-f]{64}",d["sha256"])'
+integrity="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/evidence/$evidence_id/integrity")"
+printf '%s' "$integrity" | grep -q '"valid":true'
+curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/evidence/$evidence_id/preview" -o "$BODY"
+cmp "$PDF" "$BODY"
 echo ok
 
 printf 'verify evidence... '
@@ -85,6 +89,12 @@ decl_ev="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "
 printf '%s' "$decl_ev" | grep -q '"evidence_type":"PARTNER_DECLARATION"'
 bad_url_code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d "{\"partner_id\":\"$partner1\",\"evidence_type\":\"URL\",\"title\":\"Bad URL\",\"source_url\":\"file:///etc/passwd\"}"   "$BASE_URL/api/v1/evidence")"
 test "$bad_url_code" = "400"
+paged="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/evidence?partner_id=$partner1&limit=1&offset=0")"
+printf '%s' "$paged" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"]==1; assert d["total"]>=3; assert d["has_more"] is True'
+searched="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/evidence?q=Verified%20CI&limit=10&offset=0")"
+printf '%s' "$searched" | grep -q "$evidence_id"
+outside="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/evidence?partner_id=$partner1&period_start=2025-01-01&period_end=2025-01-31")"
+printf '%s' "$outside" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["total"]==0, d'
 echo ok
 
 printf 'evidence file round-trip... '
@@ -116,11 +126,16 @@ report_id="$(printf '%s' "$report" | json_field id)"
 ready="$(wait_report "$report_id")"
 printf '%s' "$ready" | grep -q '"status":"READY"'
 printf '%s' "$ready" | grep -q "$evidence_id"
+printf '%s' "$ready" | grep -q '"template_version":"impact-v1"'
+printf '%s' "$ready" | python3 -c 'import json,sys,re; d=json.load(sys.stdin); assert re.fullmatch(r"[0-9a-f]{64}",d["snapshot_sha256"]); sections=d["snapshot"]["metric_sections"]; metric=next(m for s in sections for m in s["metrics"] if m["metric_key"]=="ci.evidence"); assert metric["numeric_value"]==9, metric'
 report_hash="$(printf '%s' "$ready" | json_field pdf_sha256)"
+snapshot_hash="$(printf '%s' "$ready" | json_field snapshot_sha256)"
 test -n "$report_hash"
 curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/reports/$report_id/download" -o "$REPORT_PDF"
 head -c 8 "$REPORT_PDF" | grep -q '%PDF-1.4'
 grep -a -q "$report_id" "$REPORT_PDF"
+grep -a -q 'Template: impact-v1' "$REPORT_PDF"
+grep -a -q "Snapshot: $snapshot_hash" "$REPORT_PDF"
 echo ok
 
 printf 'report PDF is reproducible from stored snapshot... '
