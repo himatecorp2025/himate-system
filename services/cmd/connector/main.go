@@ -101,7 +101,10 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS connector_state_health_idx ON connector.partner_state(health,last_seen_at)`,
 		}},
-		{Version:2,Name:"connector-desired-state",Statements:[]string{
+		{Version:2,Name:"connector-token-hash-lookup",Statements:[]string{
+			`CREATE UNIQUE INDEX IF NOT EXISTS connector_credentials_token_hash_idx ON connector.credentials(token_hash)`,
+		}},
+		{Version:3,Name:"connector-desired-state",Statements:[]string{
 			`CREATE TABLE IF NOT EXISTS connector.desired_state(
 				partner_id TEXT NOT NULL,
 				environment TEXT NOT NULL,
@@ -113,9 +116,6 @@ func (a *app) migrate(ctx context.Context) error {
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				PRIMARY KEY(partner_id,environment)
 			)`,
-		}},
-		{Version:3,Name:"connector-token-hash-lookup",Statements:[]string{
-			`CREATE UNIQUE INDEX IF NOT EXISTS connector_credentials_token_hash_idx ON connector.credentials(token_hash)`,
 		}},
 	})
 }
