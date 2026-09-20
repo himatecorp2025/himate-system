@@ -1997,7 +1997,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   static const workspaceCards = <_WorkspaceSpec>[
     _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
     _WorkspaceSpec('Company Data', Icons.apartment_outlined, 'Legal identity, contacts and lifecycle', true),
-    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains and deployment environment', true),
+    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains and deployment environment · START-10', false),
     _WorkspaceSpec('Modules', Icons.grid_view_outlined, 'Entitlements, visibility and pricing', true),
     _WorkspaceSpec('Pricing & Subscription', Icons.payments_outlined, 'Activation fee and recurring terms', true),
     _WorkspaceSpec('Finance & Documents', Icons.folder_copy_outlined, 'Invoices and commercial evidence', true),
