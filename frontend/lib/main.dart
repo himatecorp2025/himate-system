@@ -1584,6 +1584,12 @@ class _PartnersPageState extends State<PartnersPage> {
   String query = '';
   String categoryFilter = 'ALL';
   String lifecycleFilter = 'ALL';
+  static const int pageSize = 24;
+  int offset = 0;
+  int total = 0;
+  int referenceCount = 0;
+  Map<String, int> lifecycleCounts = <String, int>{};
+  Timer? _searchDebounce;
 
   static const lifecycleOptions = [
     'PROSPECT',
@@ -1601,41 +1607,70 @@ class _PartnersPageState extends State<PartnersPage> {
   @override
   void initState() {
     super.initState();
-    load();
+    load(loadCategories: true);
   }
 
-  Future<List<Map<String, dynamic>>> _loadPartnerPortfolio() async {
-    const pageSize = 100;
-    final first = await widget.api.get('/api/v1/partners?limit=$pageSize&offset=0&include_archived=true', force: true);
-    final result = items(first);
-    final total = (first['total'] as num?)?.toInt() ?? result.length;
-    if (total <= result.length) return result;
-
-    final futures = <Future<Map<String, dynamic>>>[];
-    for (var offset = pageSize; offset < total; offset += pageSize) {
-      futures.add(widget.api.get('/api/v1/partners?limit=$pageSize&offset=$offset&include_archived=true', force: true));
-    }
-    final pages = await Future.wait(futures);
-    for (final page in pages) {
-      result.addAll(items(page));
-    }
-    return result;
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
   }
 
-  Future<void> load() async {
+  Uri _partnerUri() {
+    final params = <String, String>{
+      'limit': '$pageSize',
+      'offset': '$offset',
+      'include_archived': 'true',
+    };
+    if (query.trim().isNotEmpty) params['q'] = query.trim();
+    if (categoryFilter != 'ALL') params['category'] = categoryFilter;
+    if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
+    return Uri(path: '/api/v1/partners', queryParameters: params);
+  }
+
+  Future<void> load({bool reset = false, bool loadCategories = false}) async {
+    if (reset) offset = 0;
     if (mounted) setState(() { loading = true; error = null; });
     try {
-      final r = await Future.wait<dynamic>([
-        _loadPartnerPortfolio(),
-        widget.api.get('/api/v1/partner-categories'),
-      ]);
-      partners = List<Map<String, dynamic>>.from(r[0] as List<Map<String, dynamic>>);
-      categories = items(r[1] as Map<String, dynamic>);
+      final futures = <Future<Map<String, dynamic>>>[
+        widget.api.get(_partnerUri().toString(), force: true),
+        if (loadCategories || categories.isEmpty) widget.api.get('/api/v1/partner-categories', force: true),
+      ];
+      final r = await Future.wait(futures);
+      final page = r[0];
+      partners = items(page);
+      total = (page['total'] as num?)?.toInt() ?? partners.length;
+      referenceCount = (page['reference_count'] as num?)?.toInt() ?? 0;
+      final counts = page['lifecycle_counts'];
+      lifecycleCounts = counts is Map
+          ? counts.map((key, value) => MapEntry('$key', (value as num?)?.toInt() ?? 0))
+          : <String, int>{};
+      if (r.length > 1) categories = items(r[1]);
     } catch (e) {
       error = e.toString();
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  void updateSearch(String value) {
+    query = value;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
+      if (mounted) load(reset: true);
+    });
+  }
+
+  void previousPage() {
+    if (offset <= 0) return;
+    offset = offset >= pageSize ? offset - pageSize : 0;
+    load();
+  }
+
+  void nextPage() {
+    if (offset + partners.length >= total) return;
+    offset += pageSize;
+    load();
   }
 
   void success(String message) {
@@ -1762,25 +1797,13 @@ class _PartnersPageState extends State<PartnersPage> {
     country.dispose();
   }
 
-  List<Map<String, dynamic>> get filtered {
-    final q = query.trim().toLowerCase();
-    return partners.where((p) {
-      final searchOk = q.isEmpty ||
-          '${p['display_name']}'.toLowerCase().contains(q) ||
-          '${p['legal_name']}'.toLowerCase().contains(q) ||
-          '${p['category_name']}'.toLowerCase().contains(q) ||
-          '${p['id']}'.toLowerCase().contains(q);
-      final categoryOk = categoryFilter == 'ALL' || '${p['category_id']}' == categoryFilter;
-      final lifecycleOk = lifecycleFilter == 'ALL' || '${p['lifecycle']}' == lifecycleFilter;
-      return searchOk && categoryOk && lifecycleOk;
-    }).toList();
-  }
+  List<Map<String, dynamic>> get filtered => partners;
 
   @override
   Widget build(BuildContext context) {
-    final live = partners.where((p) => p['lifecycle'] == 'LIVE').length;
-    final prospects = partners.where((p) => p['lifecycle'] == 'PROSPECT').length;
-    final reference = partners.where((p) => p['reference_partner'] == true).length;
+    final live = lifecycleCounts['LIVE'] ?? 0;
+    final prospects = lifecycleCounts['PROSPECT'] ?? 0;
+    final reference = referenceCount;
 
     return Content(
       eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
@@ -1801,7 +1824,7 @@ class _PartnersPageState extends State<PartnersPage> {
                       spacing: 12,
                       runSpacing: 12,
                       children: [
-                        Kpi(label: 'Partner records', value: '${partners.length}', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
+                        Kpi(label: 'Partner records', value: '$total', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
                         Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess),
                         Kpi(label: 'Prospects', value: '$prospects', note: 'Pre-license pipeline', icon: Icons.handshake_outlined, accent: brandSteel),
                         Kpi(label: 'Reference partners', value: '$reference', note: 'Reference implementation', icon: Icons.workspace_premium_outlined, accent: brandGold),
@@ -1813,7 +1836,7 @@ class _PartnersPageState extends State<PartnersPage> {
                         builder: (context, c) {
                           final compact = c.maxWidth < 860;
                           final search = TextField(
-                            onChanged: (v) => setState(() => query = v),
+                            onChanged: updateSearch,
                             decoration: const InputDecoration(
                               hintText: 'Search partners...',
                               prefixIcon: Icon(Icons.search_rounded),
@@ -1826,7 +1849,10 @@ class _PartnersPageState extends State<PartnersPage> {
                               const DropdownMenuItem(value: 'ALL', child: Text('All categories')),
                               for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: Text('${c['name']}')),
                             ],
-                            onChanged: (v) => setState(() => categoryFilter = v ?? 'ALL'),
+                            onChanged: (v) {
+                              setState(() => categoryFilter = v ?? 'ALL');
+                              load(reset: true);
+                            },
                           );
                           final lifecycle = DropdownButtonFormField<String>(
                             value: lifecycleFilter,
@@ -1835,7 +1861,10 @@ class _PartnersPageState extends State<PartnersPage> {
                               const DropdownMenuItem(value: 'ALL', child: Text('All lifecycle states')),
                               for (final state in lifecycleOptions) DropdownMenuItem(value: state, child: Text(_humanize(state))),
                             ],
-                            onChanged: (v) => setState(() => lifecycleFilter = v ?? 'ALL'),
+                            onChanged: (v) {
+                              setState(() => lifecycleFilter = v ?? 'ALL');
+                              load(reset: true);
+                            },
                           );
                           if (compact) {
                             return Column(children: [search, const SizedBox(height: 10), category, const SizedBox(height: 10), lifecycle]);
@@ -1849,7 +1878,7 @@ class _PartnersPageState extends State<PartnersPage> {
                       children: [
                         Text('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(width: 10),
-                        _MiniCounter(label: '${filtered.length} shown'),
+                        _MiniCounter(label: '${partners.length} shown · $total matched'),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -1873,7 +1902,32 @@ class _PartnersPageState extends State<PartnersPage> {
                             ),
                           SizedBox(width: width, child: NewPartnerCard(onTap: addPartner)),
                         ];
-                        return Wrap(spacing: 14, runSpacing: 14, children: cards);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(spacing: 14, runSpacing: 14, children: cards),
+                            if (total > pageSize) ...[
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: offset > 0 && !loading ? previousPage : null,
+                                    icon: const Icon(Icons.chevron_left_rounded),
+                                    label: const Text('Previous'),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _MiniCounter(label: 'Page ${offset ~/ pageSize + 1} of ${(total + pageSize - 1) ~/ pageSize}'),
+                                  const SizedBox(width: 10),
+                                  OutlinedButton.icon(
+                                    onPressed: offset + partners.length < total && !loading ? nextPage : null,
+                                    icon: const Icon(Icons.chevron_right_rounded),
+                                    label: const Text('Next'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        );
                       },
                     ),
                   ],
