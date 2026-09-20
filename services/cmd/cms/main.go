@@ -24,7 +24,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-const maxMediaBytes = 10 << 20
+const maxMediaBytes = 64 << 20
 
 var pageKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,63}$`)
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
@@ -632,7 +632,7 @@ func safeFilename(name string)string{
 
 func cmsMimeAllowed(v string)bool{
 	v=strings.ToLower(strings.TrimSpace(strings.Split(v,";")[0]))
-	return v=="image/png"||v=="image/jpeg"||v=="image/webp"
+	return v=="image/png"||v=="image/jpeg"||v=="image/webp"||v=="video/mp4"||v=="video/webm"
 }
 
 func (a *app)ensureStorage(ctx context.Context)error{
@@ -672,19 +672,19 @@ func (a *app)mediaCollection(w http.ResponseWriter,r *http.Request){
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 	case http.MethodPost:
 		r.Body=http.MaxBytesReader(w,r.Body,maxMediaBytes+(1<<20))
-		if err:=r.ParseMultipartForm(maxMediaBytes+(1<<20));err!=nil{common.APIError(w,413,"MEDIA_TOO_LARGE","CMS media request exceeds 11 MiB");return}
+		if err:=r.ParseMultipartForm(maxMediaBytes+(1<<20));err!=nil{common.APIError(w,413,"MEDIA_TOO_LARGE","CMS media request exceeds 65 MiB");return}
 		if r.MultipartForm!=nil{defer r.MultipartForm.RemoveAll()}
 		file,header,err:=r.FormFile("file");if err!=nil{common.APIError(w,400,"FILE_REQUIRED","file is required");return};defer file.Close()
 		tmp,err:=os.CreateTemp("","himate-cms-*");if err!=nil{common.APIError(w,500,"FILE","Could not prepare media");return}
 		tmpName:=tmp.Name();defer func(){tmp.Close();os.Remove(tmpName)}()
 		h:=sha256.New();n,err:=io.Copy(io.MultiWriter(tmp,h),io.LimitReader(file,maxMediaBytes+1))
-		if err!=nil{common.APIError(w,500,"FILE","Could not read media");return};if n>maxMediaBytes{common.APIError(w,413,"MEDIA_TOO_LARGE","CMS media exceeds 10 MiB");return}
+		if err!=nil{common.APIError(w,500,"FILE","Could not read media");return};if n>maxMediaBytes{common.APIError(w,413,"MEDIA_TOO_LARGE","CMS media exceeds 64 MiB");return}
 		if _,err=tmp.Seek(0,0);err!=nil{common.APIError(w,500,"FILE","Could not inspect media");return}
 		buf:=make([]byte,512);readN,_:=tmp.Read(buf);mime:=http.DetectContentType(buf[:readN])
-		if !cmsMimeAllowed(mime){common.APIError(w,415,"MEDIA_TYPE","CMS media must be PNG, JPEG or WebP");return}
+		if !cmsMimeAllowed(mime){common.APIError(w,415,"MEDIA_TYPE","CMS media must be PNG, JPEG, WebP, MP4 or WebM");return}
 		if _,err=tmp.Seek(0,0);err!=nil{common.APIError(w,500,"FILE","Could not store media");return}
 		id:=newID("cms_media_");filename:=safeFilename(header.Filename);ext:=".bin"
-		switch mime{case"image/png":ext=".png";case"image/jpeg":ext=".jpg";case"image/webp":ext=".webp"}
+		switch mime{case"image/png":ext=".png";case"image/jpeg":ext=".jpg";case"image/webp":ext=".webp";case"video/mp4":ext=".mp4";case"video/webm":ext=".webm"}
 		key:="media/"+id+ext;sum:=hex.EncodeToString(h.Sum(nil))
 		stored,err:=a.putMedia(r.Context(),key,tmp,n);if err!=nil{common.APIError(w,502,"STORAGE",err.Error());return}
 		if got:=strings.TrimSpace(fmt.Sprint(stored["sha256"]));got!=""&&got!=sum{common.APIError(w,502,"CHECKSUM_MISMATCH","Stored media checksum mismatch");return}
