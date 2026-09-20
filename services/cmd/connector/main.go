@@ -268,6 +268,52 @@ func (a *app) authenticate(r *http.Request)(credential,error){
 	return c,nil
 }
 
+func (a *app)upsertDesiredState(ctx context.Context,partnerID,environment string,entitlements,maintenance,config map[string]any,actor string)(map[string]any,error){
+	entitlementsRaw,_:=common.MarshalJSON(entitlements)
+	maintenanceRaw,_:=common.MarshalJSON(maintenance)
+	configRaw,_:=common.MarshalJSON(config)
+	var revision int64
+	var updated time.Time
+	err:=a.db.QueryRowContext(ctx,`INSERT INTO connector.desired_state(partner_id,environment,revision,entitlements,maintenance,config,updated_by)
+		VALUES($1,$2,1,$3::jsonb,$4::jsonb,$5::jsonb,$6)
+		ON CONFLICT(partner_id,environment) DO UPDATE SET revision=connector.desired_state.revision+1,
+			entitlements=EXCLUDED.entitlements,maintenance=EXCLUDED.maintenance,config=EXCLUDED.config,updated_by=EXCLUDED.updated_by,updated_at=NOW()
+		RETURNING revision,updated_at`,partnerID,environment,string(entitlementsRaw),string(maintenanceRaw),string(configRaw),actor).Scan(&revision,&updated)
+	if err!=nil{return nil,err}
+	return map[string]any{
+		"partner_id":partnerID,"environment":environment,"revision":revision,
+		"entitlements":common.JSONRawOrEmpty(entitlementsRaw),
+		"maintenance":common.JSONRawOrEmpty(maintenanceRaw),
+		"config":common.JSONRawOrEmpty(configRaw),
+		"updated_at":updated,
+	},nil
+}
+
+func (a *app)writeDesiredState(w http.ResponseWriter,partnerID,environment string){
+	var revision int64
+	var entitlements,maintenance,config []byte
+	var updatedBy string
+	var updated time.Time
+	err:=a.db.QueryRow(`SELECT revision,entitlements,maintenance,config,updated_by,updated_at
+		FROM connector.desired_state WHERE partner_id=$1 AND environment=$2`,partnerID,environment).
+		Scan(&revision,&entitlements,&maintenance,&config,&updatedBy,&updated)
+	if err!=nil{common.APIError(w,404,"NOT_FOUND","Desired state not found");return}
+	common.JSON(w,200,map[string]any{
+		"partner_id":partnerID,"environment":environment,"revision":revision,
+		"entitlements":common.JSONRawOrEmpty(entitlements),
+		"maintenance":common.JSONRawOrEmpty(maintenance),
+		"config":common.JSONRawOrEmpty(config),
+		"updated_by":updatedBy,"updated_at":updated,
+	})
+}
+
+func (a *app)desiredState(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET");return }
+	cred,err:=a.authenticate(r)
+	if err!=nil { common.APIError(w,401,"CONNECTOR_UNAUTHORIZED",err.Error());return }
+	a.writeDesiredState(w,cred.PartnerID,cred.Environment)
+}
+
 func (a *app) heartbeat(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST");return }
 	c,err:=a.authenticate(r)
