@@ -1696,12 +1696,9 @@ class _PartnersPageState extends State<PartnersPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name *'))),
-                  const SizedBox(width: 12),
-                  Expanded(child: TextField(controller: legalName, decoration: const InputDecoration(labelText: 'Legal name'))),
-                ],
+              ResponsiveFieldPair(
+                first: TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name *')),
+                second: TextField(controller: legalName, decoration: const InputDecoration(labelText: 'Legal name')),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -1716,20 +1713,14 @@ class _PartnersPageState extends State<PartnersPage> {
                 },
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Primary contact'))),
-                  const SizedBox(width: 12),
-                  Expanded(child: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Contact email'))),
-                ],
+              ResponsiveFieldPair(
+                first: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Primary contact')),
+                second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Contact email')),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country'))),
-                  const SizedBox(width: 12),
-                  Expanded(child: TextField(controller: primaryDomain, decoration: const InputDecoration(labelText: 'Primary domain', hintText: 'example.org'))),
-                ],
+              ResponsiveFieldPair(
+                first: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country')),
+                second: TextField(controller: primaryDomain, decoration: const InputDecoration(labelText: 'Primary domain', hintText: 'example.org')),
               ),
             ],
           ),
@@ -2678,11 +2669,10 @@ class _FinancePageState extends State<FinancePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(children: [
-              Expanded(child: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name'))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID'))),
-            ]),
+            ResponsiveFieldPair(
+              first: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name')),
+              second: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
+            ),
             const SizedBox(height: 12),
             TextField(controller: address, decoration: const InputDecoration(labelText: 'Company address')),
             const SizedBox(height: 12),
@@ -2690,19 +2680,17 @@ class _FinancePageState extends State<FinancePage> {
             const SizedBox(height: 18),
             const _DialogSectionLabel('BANKING DETAILS'),
             const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: TextField(controller: bank, decoration: const InputDecoration(labelText: 'Bank name'))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: bankAddress, decoration: const InputDecoration(labelText: 'Bank address'))),
-            ]),
+            ResponsiveFieldPair(
+              first: TextField(controller: bank, decoration: const InputDecoration(labelText: 'Bank name')),
+              second: TextField(controller: bankAddress, decoration: const InputDecoration(labelText: 'Bank address')),
+            ),
             const SizedBox(height: 12),
             TextField(controller: account, decoration: const InputDecoration(labelText: 'Account number')),
             const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: TextField(controller: iban, decoration: const InputDecoration(labelText: 'IBAN'))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: swift, decoration: const InputDecoration(labelText: 'SWIFT / BIC'))),
-            ]),
+            ResponsiveFieldPair(
+              first: TextField(controller: iban, decoration: const InputDecoration(labelText: 'IBAN')),
+              second: TextField(controller: swift, decoration: const InputDecoration(labelText: 'SWIFT / BIC')),
+            ),
           ],
         ),
         primaryLabel: 'Save billing profile',
@@ -2750,11 +2738,10 @@ class _FinancePageState extends State<FinancePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(children: [
-                Expanded(child: TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name *'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: key, decoration: const InputDecoration(labelText: 'Stable key *', hintText: 'group.module_name'))),
-              ]),
+              ResponsiveFieldPair(
+                first: TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name *')),
+                second: TextField(controller: key, decoration: const InputDecoration(labelText: 'Stable key *', hintText: 'group.module_name')),
+              ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: group,
