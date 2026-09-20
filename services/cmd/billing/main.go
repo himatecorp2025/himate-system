@@ -15,9 +15,10 @@ import (
 )
 
 type app struct {
-	db          *sql.DB
-	catalogHost string
-	token       string
+	db           *sql.DB
+	catalogHost  string
+	partnersHost string
+	token        string
 	client      *http.Client
 }
 
@@ -63,6 +64,7 @@ func main() {
 	a := &app{
 		db: db,
 		catalogHost: os.Getenv("CATALOG_HOSTPORT"),
+		partnersHost: os.Getenv("PARTNERS_HOSTPORT"),
 		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		client: &http.Client{Timeout: 8 * time.Second},
 	}
@@ -298,6 +300,22 @@ func (a *app) commercialEvidenceCount(ctx context.Context, partnerID string) (in
 	return count, err
 }
 
+func (a *app) referencePartner(ctx context.Context, partnerID string) (bool, error) {
+	if strings.TrimSpace(a.partnersHost) == "" {
+		return false, fmt.Errorf("PARTNERS_HOSTPORT is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.partnersHost+"/api/v1/partners/"+partnerID, nil)
+	if err != nil { return false, err }
+	req.Header.Set("X-Himate-Internal-Token", a.token)
+	resp, err := a.client.Do(req)
+	if err != nil { return false, err }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK { return false, fmt.Errorf("partners status %d", resp.StatusCode) }
+	var p struct { ReferencePartner bool `json:"reference_partner"` }
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil { return false, err }
+	return p.ReferencePartner, nil
+}
+
 func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, 405, "METHOD", "Use GET")
@@ -320,7 +338,12 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paid := x.Status == "PAID" && evidenceCount > 0
-	waived := x.Status == "WAIVED" && x.Waived && strings.TrimSpace(x.WaiverReason) != ""
+	reference, referenceErr := a.referencePartner(r.Context(), id)
+	if referenceErr != nil {
+		common.APIError(w, 502, "PARTNER_LOOKUP", "Could not verify reference-partner waiver")
+		return
+	}
+	waived := reference && x.Status == "WAIVED" && x.Waived && strings.TrimSpace(x.WaiverReason) != ""
 	allowed := paid || waived
 	reason := ""
 	if !allowed {
