@@ -140,6 +140,10 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS partner_module_history_lookup ON catalog.partner_module_history(partner_id,module_key,effective_at DESC)`,
 			`CREATE INDEX IF NOT EXISTS partner_modules_status_idx ON catalog.partner_modules(partner_id,status)`,
 		}},
+		{Version: 3, Name: "module-activation-timestamp", Statements: []string{
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`,
+			`UPDATE catalog.partner_modules SET activated_at=updated_at WHERE status='ACTIVE' AND activated_at IS NULL`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -153,7 +157,7 @@ func (a *app) migrate(ctx context.Context) error {
 		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules(module_key,label,group_key,description,system,availability) VALUES($1,$2,$3,'Klavierhaus verified reference module',TRUE,'ACTIVE') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,group_key=EXCLUDED.group_key,system=TRUE`, m.Key, m.Label, m.Group); err != nil {
 			return err
 		}
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0) ON CONFLICT(partner_id,module_key) DO NOTHING`, m.Key); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW()) ON CONFLICT(partner_id,module_key) DO NOTHING`, m.Key); err != nil {
 			return err
 		}
 	}
@@ -397,7 +401,11 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if old != *in.Status {
-			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET status=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.Status); err != nil {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET
+					status=$3,
+					activated_at=CASE WHEN $3='ACTIVE' THEN NOW() ELSE activated_at END,
+					updated_at=NOW()
+				WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.Status); err != nil {
 				common.APIError(w, 500, "DB", "Could not update module state")
 				return
 			}
@@ -552,7 +560,7 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 }
 
 
-const partnerModuleSelect = `SELECT pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,m.default_monthly_price,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),m.currency,m.version,m.latest_version,m.last_updated_at,m.availability FROM catalog.partner_modules pm JOIN catalog.modules m ON m.module_key=pm.module_key JOIN catalog.module_groups g ON g.group_key=m.group_key LEFT JOIN LATERAL (SELECT ph.new_price FROM catalog.price_history ph WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW() ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1) ep ON TRUE`
+const partnerModuleSelect = `SELECT pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,m.default_monthly_price,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),m.currency,m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at FROM catalog.partner_modules pm JOIN catalog.modules m ON m.module_key=pm.module_key JOIN catalog.module_groups g ON g.group_key=m.group_key LEFT JOIN LATERAL (SELECT ph.new_price FROM catalog.price_history ph WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW() ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1) ep ON TRUE`
 
 type scanner interface{ Scan(...any) error }
 
@@ -561,6 +569,9 @@ func scanPartnerModule(s scanner) (map[string]any, error) {
 	var vis, inc bool
 	var def, price float64
 	var t time.Time
-	err := s.Scan(&id, &k, &l, &g, &gl, &st, &vis, &inc, &def, &price, &currency, &v, &lv, &t, &availability)
-	return map[string]any{"partner_id": id, "key": k, "label": l, "group_key": g, "group_label": gl, "status": st, "visible": vis, "included_in_base": inc, "default_monthly_price": def, "partner_price": price, "currency": currency, "version": v, "latest_version": lv, "last_updated_at": t, "availability": availability}, err
+	var activated sql.NullTime
+	err := s.Scan(&id, &k, &l, &g, &gl, &st, &vis, &inc, &def, &price, &currency, &v, &lv, &t, &availability, &activated)
+	var activatedAt any
+	if activated.Valid { activatedAt = activated.Time.UTC() }
+	return map[string]any{"partner_id": id, "key": k, "label": l, "group_key": g, "group_label": gl, "status": st, "visible": vis, "included_in_base": inc, "default_monthly_price": def, "partner_price": price, "currency": currency, "version": v, "latest_version": lv, "last_updated_at": t, "availability": availability, "activated_at": activatedAt}, err
 }
