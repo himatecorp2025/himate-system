@@ -34,6 +34,11 @@ services:
           type: pserv
           name: himate-catalog
           envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: BILLING_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-billing
+          property: hostport
 
   - type: pserv
     name: himate-billing
