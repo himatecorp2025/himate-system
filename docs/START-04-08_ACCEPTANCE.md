@@ -12,7 +12,7 @@ This file is the source acceptance checklist for the correction pass. It does no
 8. Partner module configuration and pricing changes are historized with actor, reason and effective date; future prices do not become current early.
 9. Klavierhaus activation fee is waived and base service fee is USD 2,000.
 10. New-partner activation/license fee is individually configurable; USD 13,000 is the minimum for a non-waived USD license.
-11. A paid initial license requires amount, payment date, payment reference, verifier and registered commercial evidence.
+11. A paid initial license requires amount, payment date, payment reference, verifier and registered commercial evidence with a non-empty persistent storage URL or document reference.
 12. Entering PROVISIONING fails closed until Billing confirms the initial license is PAID with registered evidence, or an explicit valid waiver applies.
 13. Base service fee default annual uplift is 10% on January 1 and remains admin-overridable.
 14. Service cycles are anchored to the partner activation date and renew every 30 days; subscriptions can be cancelled at period end without truncating the current paid period, and extra active modules consolidate into the same billing cycle.
