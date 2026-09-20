@@ -344,14 +344,6 @@ func (a *app)validateContent(ctx context.Context,pageID string,in versionInput,f
 	if in.SEO.Canonical!=""&&!validCanonical(in.SEO.Canonical){return fmt.Errorf("canonical must be an absolute HTTPS URL")}
 	if in.SEO.OGTitle!=""&&len(in.SEO.OGTitle)>100{return fmt.Errorf("Open Graph title is too long")}
 	if in.SEO.OGDescription!=""&&len(in.SEO.OGDescription)>220{return fmt.Errorf("Open Graph description is too long")}
-	if forPublish{
-		var conflict string
-		err:=a.db.QueryRowContext(ctx,`SELECT p.id FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id
-			WHERE p.id<>$1 AND (lower(v.slug)=lower($2) OR lower(v.seo->>'canonical')=lower($3)) LIMIT 1`,
-			pageID,in.Slug,in.SEO.Canonical).Scan(&conflict)
-		if err==nil{return fmt.Errorf("published slug or canonical conflicts with another page")}
-		if err!=sql.ErrNoRows{return err}
-	}
 	return nil
 }
 
