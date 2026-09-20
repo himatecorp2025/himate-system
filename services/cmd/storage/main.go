@@ -131,16 +131,16 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
-	rows, err := a.db.Query(`SELECT partner_id,status,last_error,checked_at FROM storage.partner_namespaces ORDER BY partner_id`)
+	rows, err := a.db.Query(`SELECT partner_id FROM storage.partner_namespaces ORDER BY partner_id`)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load storage summary"); return }
 	defer rows.Close()
+	partnerIDs := []string{}
+	for rows.Next() { var id string; if rows.Scan(&id)==nil { partnerIDs=append(partnerIDs,id) } }
 	items := []map[string]any{}
-	for rows.Next() {
-		var partnerID, status, lastError string
-		var checked time.Time
-		if rows.Scan(&partnerID, &status, &lastError, &checked) == nil {
-			items = append(items, map[string]any{"partner_id": partnerID, "status": status, "last_error": lastError, "checked_at": checked})
-		}
+	for _,partnerID := range partnerIDs {
+		out,checkErr := a.check(r.Context(),partnerID)
+		if checkErr != nil { items=append(items,out); continue }
+		items=append(items,out)
 	}
 	common.JSON(w, 200, map[string]any{"items": items})
 }
