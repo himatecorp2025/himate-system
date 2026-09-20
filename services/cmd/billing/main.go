@@ -1031,10 +1031,15 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 	for _, id := range ids {
 		t, err := a.ensureTerms(id)
 		if err != nil { return err }
-		if !isCycleBoundary(t.ServiceAnchorDate, at) { continue }
+
+		// Subscription lifecycle is evaluated every daily cron run, not only at
+		// the partner base-fee boundary. This guarantees that a module whose
+		// own 30-day period ends today is cancelled on time.
 		_, rawMods, err := a.catalogFees(ctx, id)
 		if err != nil { return err }
 		if err := a.syncSubscriptions(ctx, id, t.Currency, rawMods, at); err != nil { return err }
+
+		if !isCycleBoundary(t.ServiceAnchorDate, at) { continue }
 		extra, _, err := a.effectiveModuleFees(ctx, id, rawMods, at)
 		if err != nil { return err }
 		start := at.AddDate(0, 0, -30)
