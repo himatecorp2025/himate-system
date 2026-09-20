@@ -170,6 +170,7 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
+	mux.HandleFunc("/brand/himate-logo-v3.webp", a.brandLogo)
 	mux.HandleFunc("/art/himate_logo_master_v2.webp", a.brandLogo)
 	mux.HandleFunc("/public/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "cms")
@@ -1475,6 +1476,10 @@ func securityHeaders(next http.Handler) http.Handler {
 		path := r.URL.Path
 		if strings.HasPrefix(path, "/api/") {
 			w.Header().Set("Cache-Control", "no-store")
+		} else if strings.HasPrefix(path, "/brand/") {
+			w.Header().Set("Cache-Control", "no-store, max-age=0, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
 		} else if strings.HasPrefix(path, "/art/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else if path == "/" || path == "/login" || path == "/app" || strings.HasPrefix(path, "/app/") || path == "/platform" || path == "/modules" || path == "/programs" || path == "/impact" || path == "/partners" || path == "/contact" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".css") {
