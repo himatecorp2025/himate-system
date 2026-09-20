@@ -2392,11 +2392,9 @@ class _PartnersPageState extends State<PartnersPage> {
         OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const Text('Add category')),
         FilledButton.icon(onPressed: addPartner, icon: const Icon(Icons.add_business_outlined), label: const Text('New Partner')),
       ],
-      child: loading
-          ? const _BrandLoading()
-          : error != null
-              ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
-              : Column(
+      child: error != null
+          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
+          : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Wrap(
@@ -4173,11 +4171,9 @@ class _FinancePageState extends State<FinancePage> {
         OutlinedButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const Text('Billing profile')),
         FilledButton.icon(onPressed: addModule, icon: const Icon(Icons.add_box_outlined), label: const Text('Add module')),
       ],
-      child: loading
-          ? const _BrandLoading()
-          : error != null
-              ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
-              : Column(
+      child: error != null
+          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
+          : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Wrap(
@@ -4826,7 +4822,6 @@ class _ImpactPageState extends State<ImpactPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const _BrandLoading();
     if (error != null) {
       return Content(
         eyebrow: 'IMPACT CONTROL',
@@ -5175,7 +5170,18 @@ class SystemPage extends StatelessWidget {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _load(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) return const _BrandLoading();
+        if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
+          return const Content(
+            eyebrow: 'PLATFORM OPERATIONS',
+            title: 'System & Operations',
+            subtitle: 'Independent services behind one authenticated public gateway.',
+            child: _MessageCard(
+              icon: Icons.database_outlined,
+              title: 'No cached operations data yet',
+              message: 'The workspace is ready. The latest background health snapshot will appear automatically when available.',
+            ),
+          );
+        }
         if (snapshot.hasError || snapshot.data == null) {
           return Content(
             eyebrow: 'PLATFORM OPERATIONS',
@@ -5635,12 +5641,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
             ),
           ),
           const SizedBox(height: 16),
-          if (loading && events.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 36),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (error != null)
+          if (error != null)
             _MessageCard(
               icon: Icons.error_outline_rounded,
               title: 'Audit history could not be loaded',
