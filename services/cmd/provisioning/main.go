@@ -32,7 +32,7 @@ type app struct {
 }
 
 type job struct {
-	ID,PartnerID,SystemName,PlatformVersion,DesiredRelease,Status,CurrentStep,LastError string
+	ID,PartnerID,SystemName,AdminEmail,PlatformVersion,DesiredRelease,Status,CurrentStep,LastError string
 	ModulePreset []string
 	CreatedAt,UpdatedAt time.Time
 	StartedAt,CompletedAt sql.NullTime
@@ -43,6 +43,7 @@ var safeID=regexp.MustCompile(`^[a-z0-9_]+$`)
 var stepOrder=[]string{
 	"VALIDATE_PARTNER",
 	"VALIDATE_LICENSE",
+	"MARK_PROVISIONING",
 	"CREATE_DATABASE",
 	"SEED_REFERENCE_TEMPLATE",
 	"APPLY_MODULE_PRESET",
@@ -92,6 +93,7 @@ func (a *app)migrate(ctx context.Context)error{
 				id TEXT PRIMARY KEY,
 				partner_id TEXT NOT NULL UNIQUE,
 				system_name TEXT NOT NULL,
+				admin_email TEXT NOT NULL DEFAULT '',
 				platform_version TEXT NOT NULL DEFAULT '',
 				desired_release TEXT NOT NULL DEFAULT '',
 				module_preset JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -125,7 +127,7 @@ func (a *app)jobs(w http.ResponseWriter,r *http.Request){
 	switch r.Method{
 	case http.MethodGet:
 		partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
-		q:=`SELECT id,partner_id,system_name,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs`
+		q:=`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs`
 		args:=[]any{}
 		if partnerID!=""{q+=" WHERE partner_id=$1";args=append(args,partnerID)}
 		q+=" ORDER BY updated_at DESC"
@@ -139,6 +141,7 @@ func (a *app)jobs(w http.ResponseWriter,r *http.Request){
 		var in struct{
 			PartnerID string `json:"partner_id"`
 			SystemName string `json:"system_name"`
+			AdminEmail string `json:"admin_email"`
 			PlatformVersion string `json:"platform_version"`
 			DesiredRelease string `json:"desired_release"`
 			ModulePreset []string `json:"module_preset"`
@@ -148,15 +151,16 @@ func (a *app)jobs(w http.ResponseWriter,r *http.Request){
 		if strings.TrimSpace(in.SystemName)==""{in.SystemName=in.PartnerID}
 		raw,_:=json.Marshal(uniqueStrings(in.ModulePreset))
 		id:=jobID(in.PartnerID)
-		_,err:=a.db.Exec(`INSERT INTO provisioning.jobs(id,partner_id,system_name,platform_version,desired_release,module_preset,status)
-			VALUES($1,$2,$3,$4,$5,$6::jsonb,'READY')
+		_,err:=a.db.Exec(`INSERT INTO provisioning.jobs(id,partner_id,system_name,admin_email,platform_version,desired_release,module_preset,status)
+			VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,'READY')
 			ON CONFLICT(partner_id) DO UPDATE SET
 				system_name=CASE WHEN provisioning.jobs.status IN ('COMPLETED','CONFIGURATION_REQUIRED') THEN provisioning.jobs.system_name ELSE EXCLUDED.system_name END,
+				admin_email=CASE WHEN EXCLUDED.admin_email<>'' THEN EXCLUDED.admin_email ELSE provisioning.jobs.admin_email END,
 				platform_version=CASE WHEN EXCLUDED.platform_version<>'' THEN EXCLUDED.platform_version ELSE provisioning.jobs.platform_version END,
 				desired_release=CASE WHEN EXCLUDED.desired_release<>'' THEN EXCLUDED.desired_release ELSE provisioning.jobs.desired_release END,
 				module_preset=CASE WHEN EXCLUDED.module_preset<>'[]'::jsonb THEN EXCLUDED.module_preset ELSE provisioning.jobs.module_preset END,
 				updated_at=NOW()`,
-			id,in.PartnerID,strings.TrimSpace(in.SystemName),strings.TrimSpace(in.PlatformVersion),strings.TrimSpace(in.DesiredRelease),string(raw))
+			id,in.PartnerID,strings.TrimSpace(in.SystemName),strings.ToLower(strings.TrimSpace(in.AdminEmail)),strings.TrimSpace(in.PlatformVersion),strings.TrimSpace(in.DesiredRelease),string(raw))
 		if err!=nil{common.APIError(w,500,"DB","Could not create provisioning job");return}
 		for _,step:=range stepOrder{
 			_,_ = a.db.Exec(`INSERT INTO provisioning.steps(job_id,step_key) VALUES($1,$2) ON CONFLICT(job_id,step_key) DO NOTHING`,id,step)
@@ -223,9 +227,6 @@ func (a *app)executeStep(ctx context.Context,j job,step,actor string)error{
 		if lifecycle!="READY_TO_PROVISION" && lifecycle!="PROVISIONING" && lifecycle!="CONFIGURATION"{
 			return fmt.Errorf("partner lifecycle must be READY_TO_PROVISION before provisioning; current=%s",lifecycle)
 		}
-		if lifecycle=="READY_TO_PROVISION"{
-			if err:=a.patchPartnerLifecycle(ctx,j.PartnerID,"PROVISIONING",actor,"Provisioning Engine started");err!=nil{return err}
-		}
 	case "VALIDATE_LICENSE":
 		var gate struct{
 			Allowed bool `json:"allowed"`
@@ -235,6 +236,12 @@ func (a *app)executeStep(ctx context.Context,j job,step,actor string)error{
 		}
 		if err:=a.internalJSON(ctx,http.MethodGet,a.hosts["billing"],"/internal/v1/partners/"+j.PartnerID+"/provisioning-gate",nil,&gate,actor);err!=nil{return fmt.Errorf("license gate: %w",err)}
 		if !gate.Allowed{return fmt.Errorf("%w: %s",errLicenseBlocked,gate.Reason)}
+	case "MARK_PROVISIONING":
+		var p map[string]any
+		if err:=a.internalJSON(ctx,http.MethodGet,a.hosts["partners"],"/api/v1/partners/"+j.PartnerID,nil,&p,actor);err!=nil{return err}
+		if fmt.Sprint(p["lifecycle"])=="READY_TO_PROVISION"{
+			if err:=a.patchPartnerLifecycle(ctx,j.PartnerID,"PROVISIONING",actor,"Initial license gate passed; Provisioning Engine started");err!=nil{return err}
+		}
 	case "CREATE_DATABASE":
 		if err:=a.ensurePartnerDatabase(ctx,j.PartnerID);err!=nil{return err}
 	case "SEED_REFERENCE_TEMPLATE":
@@ -368,8 +375,15 @@ func (a *app)seedPartnerTemplate(ctx context.Context,j job)error{
 		`CREATE TABLE IF NOT EXISTS partner_core.module_entitlements(module_key TEXT PRIMARY KEY,enabled BOOLEAN NOT NULL DEFAULT FALSE,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
 	}
 	for _,stmt:=range stmts{if _,err=db.ExecContext(ctx,stmt);err!=nil{return fmt.Errorf("seed reference template: %w",err)}}
-	values:=map[string]string{"partner_id":j.PartnerID,"system_name":j.SystemName,"platform_version":j.PlatformVersion,"template":"HIMATE Partner Platform","template_data_policy":"STRUCTURE_ONLY_NO_KLAVIERHAUS_BUSINESS_DATA"}
+	values:=map[string]string{
+		"partner_id":j.PartnerID,"system_name":j.SystemName,"platform_version":j.PlatformVersion,
+		"template":"HIMATE Partner Platform","template_data_policy":"STRUCTURE_ONLY_NO_KLAVIERHAUS_BUSINESS_DATA",
+		"storage_namespace":"partner/"+j.PartnerID,
+	}
 	for k,v:=range values{if _,err=db.ExecContext(ctx,`INSERT INTO partner_core.system_meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()`,k,v);err!=nil{return err}}
+	if strings.TrimSpace(j.AdminEmail)!=""{
+		if _,err=db.ExecContext(ctx,`INSERT INTO partner_core.admin_invites(email,status) VALUES($1,'PENDING') ON CONFLICT(email) DO NOTHING`,j.AdminEmail);err!=nil{return err}
+	}
 	for _,key:=range uniqueStrings(j.ModulePreset){if _,err=db.ExecContext(ctx,`INSERT INTO partner_core.module_entitlements(module_key,enabled) VALUES($1,TRUE) ON CONFLICT(module_key) DO UPDATE SET enabled=TRUE,updated_at=NOW()`,key);err!=nil{return err}}
 	return nil
 }
@@ -387,18 +401,23 @@ func (a *app)checkPartnerDatabase(ctx context.Context,partnerID string)error{
 type scanner interface{Scan(...any)error}
 func scanJob(s scanner)(job,error){
 	var j job;var raw []byte
-	err:=s.Scan(&j.ID,&j.PartnerID,&j.SystemName,&j.PlatformVersion,&j.DesiredRelease,&raw,&j.Status,&j.CurrentStep,&j.LastError,&j.StartedAt,&j.CompletedAt,&j.CreatedAt,&j.UpdatedAt)
+	err:=s.Scan(&j.ID,&j.PartnerID,&j.SystemName,&j.AdminEmail,&j.PlatformVersion,&j.DesiredRelease,&raw,&j.Status,&j.CurrentStep,&j.LastError,&j.StartedAt,&j.CompletedAt,&j.CreatedAt,&j.UpdatedAt)
 	_ = json.Unmarshal(raw,&j.ModulePreset)
 	return j,err
 }
 func (a *app)getJob(id string)(job,error){
-	return scanJob(a.db.QueryRow(`SELECT id,partner_id,system_name,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs WHERE id=$1`,id))
+	return scanJob(a.db.QueryRow(`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs WHERE id=$1`,id))
 }
 func nullableTime(v sql.NullTime)any{if !v.Valid{return nil};return v.Time.UTC()}
-func mapJob(j job)map[string]any{return map[string]any{"id":j.ID,"partner_id":j.PartnerID,"system_name":j.SystemName,"platform_version":j.PlatformVersion,"desired_release":j.DesiredRelease,"module_preset":j.ModulePreset,"status":j.Status,"current_step":j.CurrentStep,"last_error":j.LastError,"started_at":nullableTime(j.StartedAt),"completed_at":nullableTime(j.CompletedAt),"created_at":j.CreatedAt,"updated_at":j.UpdatedAt}}
+func mapJob(j job)map[string]any{return map[string]any{"id":j.ID,"partner_id":j.PartnerID,"system_name":j.SystemName,"admin_email":j.AdminEmail,"platform_version":j.PlatformVersion,"desired_release":j.DesiredRelease,"module_preset":j.ModulePreset,"status":j.Status,"current_step":j.CurrentStep,"last_error":j.LastError,"started_at":nullableTime(j.StartedAt),"completed_at":nullableTime(j.CompletedAt),"created_at":j.CreatedAt,"updated_at":j.UpdatedAt}}
 func (a *app)stepSucceeded(id,step string)bool{var status string;return a.db.QueryRow(`SELECT status FROM provisioning.steps WHERE job_id=$1 AND step_key=$2`,id,step).Scan(&status)==nil&&status=="SUCCESS"}
 func (a *app)steps(id string)[]map[string]any{
-	rows,err:=a.db.Query(`SELECT step_key,status,attempts,last_error,started_at,completed_at,updated_at FROM provisioning.steps WHERE job_id=$1 ORDER BY array_position($2::text[],step_key)`,id,stepOrder)
+	rows,err:=a.db.Query(`SELECT step_key,status,attempts,last_error,started_at,completed_at,updated_at FROM provisioning.steps WHERE job_id=$1
+		ORDER BY CASE step_key
+			WHEN 'VALIDATE_PARTNER' THEN 1 WHEN 'VALIDATE_LICENSE' THEN 2 WHEN 'MARK_PROVISIONING' THEN 3
+			WHEN 'CREATE_DATABASE' THEN 4 WHEN 'SEED_REFERENCE_TEMPLATE' THEN 5 WHEN 'APPLY_MODULE_PRESET' THEN 6
+			WHEN 'CREATE_STAGING_ENVIRONMENT' THEN 7 WHEN 'CREATE_CONNECTOR_CREDENTIAL' THEN 8
+			WHEN 'PARTNER_DATABASE_HEALTH' THEN 9 WHEN 'COMPLETE' THEN 10 ELSE 99 END`,id)
 	if err!=nil{return []map[string]any{}}
 	defer rows.Close()
 	items:=[]map[string]any{}
@@ -407,7 +426,7 @@ func (a *app)steps(id string)[]map[string]any{
 }
 func (a *app)summary(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
-	rows,err:=a.db.Query(`SELECT id,partner_id,system_name,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs ORDER BY updated_at DESC`)
+	rows,err:=a.db.Query(`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs ORDER BY updated_at DESC`)
 	if err!=nil{common.APIError(w,500,"DB","Could not load provisioning summary");return}
 	defer rows.Close();items:=[]map[string]any{}
 	for rows.Next(){if j,err:=scanJob(rows);err==nil{items=append(items,mapJob(j))}}
