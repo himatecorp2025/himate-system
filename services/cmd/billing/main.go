@@ -264,6 +264,24 @@ func (a *app) ensureLicense(id string) (initialLicense, error) {
 	return x, err
 }
 
+func isCommercialEvidenceKind(kind string) bool {
+	switch strings.ToUpper(strings.TrimSpace(kind)) {
+	case "PAYMENT_EVIDENCE", "INVOICE", "RECEIPT", "CONTRACT":
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *app) commercialEvidenceCount(ctx context.Context, partnerID string) (int, error) {
+	var count int
+	err := a.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM billing.documents
+		WHERE partner_id=$1
+		  AND kind IN ('PAYMENT_EVIDENCE','INVOICE','RECEIPT','CONTRACT')
+		  AND NULLIF(BTRIM(storage_url),'') IS NOT NULL`, partnerID).Scan(&count)
+	return count, err
+}
+
 func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, 405, "METHOD", "Use GET")
@@ -280,9 +298,8 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 500, "DB", "Could not load initial license")
 		return
 	}
-	var evidenceCount int
-	if err := a.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM billing.documents
-		WHERE partner_id=$1 AND kind IN ('PAYMENT_EVIDENCE','INVOICE','RECEIPT','CONTRACT')`, id).Scan(&evidenceCount); err != nil {
+	evidenceCount, err := a.commercialEvidenceCount(r.Context(), id)
+	if err != nil {
 		common.APIError(w, 500, "DB", "Could not verify license evidence")
 		return
 	}
@@ -514,9 +531,8 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 			}
 			if next.VerifiedBy == "" { next.VerifiedBy = strings.TrimSpace(r.Header.Get("X-Himate-User-ID")) }
 			if next.VerifiedBy == "" { common.APIError(w, 400, "VALIDATION", "Paid license requires verification"); return }
-			var evidenceCount int
-			if err := a.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM billing.documents
-				WHERE partner_id=$1 AND kind IN ('PAYMENT_EVIDENCE','INVOICE','RECEIPT','CONTRACT')`, id).Scan(&evidenceCount); err != nil {
+			evidenceCount, err := a.commercialEvidenceCount(r.Context(), id)
+			if err != nil {
 				common.APIError(w, 500, "DB", "Could not verify license evidence")
 				return
 			}
@@ -889,16 +905,26 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 			common.APIError(w, 400, "VALIDATION", "Document kind and name are required")
 			return
 		}
+		kind := strings.ToUpper(strings.TrimSpace(in.Kind))
+		storageReference := strings.TrimSpace(in.StorageURL)
+		if isCommercialEvidenceKind(kind) && storageReference == "" {
+			common.APIError(w, 400, "EVIDENCE_REFERENCE_REQUIRED", "Commercial evidence requires an attached storage URL or persistent document reference")
+			return
+		}
+		if len(storageReference) > 2048 {
+			common.APIError(w, 400, "VALIDATION", "Document storage reference is too long")
+			return
+		}
 		if in.SizeBytes < 0 { common.APIError(w, 400, "VALIDATION", "Document size cannot be negative"); return }
 		uploadedBy := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 		var docID int64
 		var created time.Time
 		err := a.db.QueryRow(`INSERT INTO billing.documents(partner_id,kind,name,storage_url,note,uploaded_by,verified_by,mime_type,sha256,size_bytes)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,created_at`,
-			id, strings.ToUpper(strings.TrimSpace(in.Kind)), strings.TrimSpace(in.Name), strings.TrimSpace(in.StorageURL), strings.TrimSpace(in.Note),
+			id, kind, strings.TrimSpace(in.Name), storageReference, strings.TrimSpace(in.Note),
 			uploadedBy, strings.TrimSpace(in.VerifiedBy), strings.TrimSpace(in.MIMEType), strings.TrimSpace(in.SHA256), in.SizeBytes).Scan(&docID, &created)
 		if err != nil { common.APIError(w, 500, "DB", "Could not register document"); return }
-		common.JSON(w, 201, map[string]any{"id": docID, "partner_id": id, "kind": in.Kind, "name": in.Name, "storage_url": in.StorageURL, "note": in.Note, "uploaded_by": uploadedBy, "created_at": created})
+		common.JSON(w, 201, map[string]any{"id": docID, "partner_id": id, "kind": kind, "name": strings.TrimSpace(in.Name), "storage_url": storageReference, "note": strings.TrimSpace(in.Note), "uploaded_by": uploadedBy, "created_at": created})
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or POST")
 	}
