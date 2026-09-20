@@ -1003,7 +1003,7 @@ class HimateLogo extends StatelessWidget {
         ),
       );
     }
-    const ratio = 600 / 152;
+    const ratio = 300 / 80;
     return SizedBox(
       width: width,
       height: width / ratio,
