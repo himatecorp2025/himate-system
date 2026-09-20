@@ -12,7 +12,7 @@ class AccessControlPanel extends StatefulWidget {
 class _AccessControlPanelState extends State<AccessControlPanel> {
   List<Map<String, dynamic>> roles = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> users = <Map<String, dynamic>>[];
-  bool loading = true;
+  bool loading = false;
   String? error;
 
   bool get canManage {
@@ -33,21 +33,25 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
   }
 
   Future<void> load() async {
-    if (mounted) setState(() { loading = true; error = null; });
-    try {
-      final result = await Future.wait<Map<String, dynamic>>([
-        widget.api.get('/api/v1/admin/roles', force: true),
-        widget.api.get('/api/v1/admin/users', force: true),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        roles = items(result[0]);
-        users = items(result[1]);
-        loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() { error = e.toString(); loading = false; });
+    if (mounted) setState(() => error = null);
+    final failures = <String>[];
+
+    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
+      try {
+        final data = await widget.api.get(path);
+        if (mounted) setState(() => apply(data));
+      } catch (e) {
+        failures.add(e.toString());
+      }
+    }
+
+    await Future.wait<void>([
+      fetch('/api/v1/admin/roles', (data) => roles = items(data)),
+      fetch('/api/v1/admin/users', (data) => users = items(data)),
+    ]);
+
+    if (mounted && failures.length == 2) {
+      setState(() => error = failures.first);
     }
   }
 
