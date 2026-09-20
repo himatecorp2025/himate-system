@@ -2038,10 +2038,17 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
   Future<void> editTerms() async {
     final activation = TextEditingController(text: number(terms?['activation_fee']).toStringAsFixed(2));
+    final paid = TextEditingController(text: number(license?['paid_amount']).toStringAsFixed(2));
+    final paymentDate = TextEditingController(text: '${license?['payment_date'] ?? ''}');
+    final paymentReference = TextEditingController(text: '${license?['payment_reference'] ?? ''}');
+    final verifiedBy = TextEditingController(text: '${license?['verified_by'] ?? ''}');
+    final licenseNote = TextEditingController(text: '${license?['note'] ?? ''}');
     final base = TextEditingController(text: number(terms?['base_monthly_fee']).toStringAsFixed(2));
     final uplift = TextEditingController(text: number(terms?['annual_increase_percent']).toStringAsFixed(2));
     final effective = TextEditingController(text: '${terms?['price_effective_from'] ?? ''}');
-    final reason = TextEditingController(text: '${terms?['activation_fee_reason'] ?? ''}');
+    final anchor = TextEditingController(text: '${terms?['service_anchor_date'] ?? ''}');
+    final waiverReason = TextEditingController(text: '${terms?['activation_fee_reason'] ?? ''}');
+    final commercialReason = TextEditingController();
     bool waived = terms?['activation_fee_waived'] == true;
     String currency = '${terms?['currency'] ?? 'USD'}';
 
@@ -2050,53 +2057,89 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Pricing & Subscription',
-          subtitle: 'Commercial terms remain partner-specific while invoice day and service-cycle rules stay standardized.',
+          subtitle: 'Partner-specific license and recurring terms with an activation-date anchored 30-day service cycle.',
           icon: Icons.payments_outlined,
-          width: 700,
+          width: 760,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: currency,
-                    decoration: const InputDecoration(labelText: 'Currency'),
-                    items: const [
-                      DropdownMenuItem(value: 'USD', child: Text('USD')),
-                      DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-                      DropdownMenuItem(value: 'GBP', child: Text('GBP')),
-                    ],
-                    onChanged: (v) { if (v != null) setLocal(() => currency = v); },
-                  ),
+              ResponsiveFieldPair(
+                first: DropdownButtonFormField<String>(
+                  value: currency,
+                  decoration: const InputDecoration(labelText: 'Currency'),
+                  items: const [
+                    DropdownMenuItem(value: 'USD', child: Text('USD')),
+                    DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                    DropdownMenuItem(value: 'GBP', child: Text('GBP')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => currency = v); },
                 ),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: activation, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Activation fee'))),
-              ]),
+                second: TextField(
+                  controller: activation,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Initial license / activation fee'),
+                ),
+              ),
               const SizedBox(height: 8),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: waived,
                 onChanged: (v) => setLocal(() => waived = v),
                 title: const Text('Activation fee waived'),
-                subtitle: const Text('Use for an existing/reference partner where no activation transaction applies.'),
+                subtitle: const Text('Use only for an existing/reference partner where no activation transaction applies.'),
               ),
               if (waived) ...[
                 const SizedBox(height: 8),
-                TextField(controller: reason, decoration: const InputDecoration(labelText: 'Waiver reason')),
+                TextField(controller: waiverReason, decoration: const InputDecoration(labelText: 'Waiver reason')),
               ],
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('INITIAL LICENSE PAYMENT'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: paid,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Paid amount'),
+                ),
+                second: TextField(
+                  controller: paymentDate,
+                  decoration: const InputDecoration(labelText: 'Payment date', hintText: 'YYYY-MM-DD'),
+                ),
+              ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: base, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Base monthly fee'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: uplift, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Annual increase %'))),
-              ]),
+              ResponsiveFieldPair(
+                first: TextField(controller: paymentReference, decoration: const InputDecoration(labelText: 'Payment reference')),
+                second: TextField(controller: verifiedBy, decoration: const InputDecoration(labelText: 'Verified by', hintText: 'Optional — current admin is used automatically')),
+              ),
               const SizedBox(height: 12),
-              TextField(controller: effective, decoration: const InputDecoration(labelText: 'Price effective from', hintText: 'YYYY-MM-DD')),
+              TextField(controller: licenseNote, maxLines: 2, decoration: const InputDecoration(labelText: 'License note')),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('RECURRING SERVICE'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: base,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Base 30-day service fee'),
+                ),
+                second: TextField(
+                  controller: uplift,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Annual increase %'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: effective, decoration: const InputDecoration(labelText: 'Price effective from', hintText: 'YYYY-MM-DD')),
+                second: TextField(controller: anchor, decoration: const InputDecoration(labelText: 'Service activation / anchor date', hintText: 'YYYY-MM-DD')),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: commercialReason, decoration: const InputDecoration(labelText: 'Change reason', hintText: 'Recorded in commercial price history')),
               const SizedBox(height: 12),
               const _RuleStrip(
                 items: [
-                  _RuleItem(Icons.calendar_today_outlined, 'Invoice day', '1st of each month'),
-                  _RuleItem(Icons.timelapse_outlined, 'Service cycle', '30 days'),
+                  _RuleItem(Icons.timelapse_outlined, 'Service cycle', '30 days from activation date'),
+                  _RuleItem(Icons.event_repeat_outlined, 'Renewal', 'Every 30 days'),
                   _RuleItem(Icons.trending_up_rounded, 'Annual uplift', 'January 1'),
                 ],
               ),
@@ -2113,17 +2156,43 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         'currency': currency,
         'activation_fee': double.tryParse(activation.text) ?? 0,
         'activation_fee_waived': waived,
-        'activation_fee_reason': reason.text.trim(),
+        'activation_fee_reason': waiverReason.text.trim(),
         'base_monthly_fee': double.tryParse(base.text) ?? 0,
         'annual_increase_percent': double.tryParse(uplift.text) ?? 10,
         'price_effective_from': effective.text.trim(),
+        'service_anchor_date': anchor.text.trim(),
+        'reason': commercialReason.text.trim(),
+      });
+      await widget.api.put('/api/v1/billing/partners/${partner['id']}/license', {
+        'currency': currency,
+        'required_amount': double.tryParse(activation.text) ?? 0,
+        'paid_amount': double.tryParse(paid.text) ?? 0,
+        'payment_date': paymentDate.text.trim(),
+        'payment_reference': paymentReference.text.trim(),
+        'verified_by': verifiedBy.text.trim(),
+        'note': licenseNote.text.trim(),
+        'waived': waived,
+        'waiver_reason': waiverReason.text.trim(),
       });
       await load();
-      if (mounted) success('Commercial terms updated.');
+      if (mounted) success('Commercial terms and initial license updated.');
     }
 
-    for (final c in [activation, base, uplift, effective, reason]) {
-      c.dispose();
+    for (final controller in [
+      activation,
+      paid,
+      paymentDate,
+      paymentReference,
+      verifiedBy,
+      licenseNote,
+      base,
+      uplift,
+      effective,
+      anchor,
+      waiverReason,
+      commercialReason,
+    ]) {
+      controller.dispose();
     }
   }
 
