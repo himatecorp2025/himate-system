@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"himate.local/services/internal/common"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -24,8 +26,9 @@ type app struct {
 
 var kindValues = map[string]bool{"STAGING": true, "PRODUCTION": true}
 var deploymentValues = map[string]bool{"NOT_DEPLOYED": true, "QUEUED": true, "DEPLOYING": true, "DEPLOYED": true, "FAILED": true}
-var environmentValues = map[string]bool{"CREATING": true, "CONFIGURATION_REQUIRED": true, "TESTING": true, "READY": true, "LIVE": true, "SUSPENDED": true, "FAILED": true}
+var environmentValues = map[string]bool{"CREATING": true, "CONFIGURATION_REQUIRED": true, "TESTING": true, "READY": true, "READY_FOR_LAUNCH": true, "LIVE": true, "SUSPENDED": true, "FAILED": true}
 var hostPart = regexp.MustCompile(`[^a-z0-9-]+`)
+var publicHostname = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
 
 type environment struct {
 	ID, PartnerID, Kind, Hostname, PlatformVersion string
@@ -35,7 +38,10 @@ type environment struct {
 	RuntimeStatus                                  string
 	RuntimeLatencyMS                               int64
 	LastHealthCheck                                sql.NullTime
-	CreatedAt, UpdatedAt                           time.Time
+	DNSStatus, TLSStatus, DomainStatus              string
+	DomainError, LaunchActor                        string
+	LastDomainCheck, LaunchedAt                     sql.NullTime
+	CreatedAt, UpdatedAt                            time.Time
 }
 
 func main() {
@@ -94,6 +100,16 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS runtime_latency_ms BIGINT NOT NULL DEFAULT 0`,
 			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS last_health_check TIMESTAMPTZ`,
 		}},
+		{Version: 3, Name: "domains-deployments-launch-gate", Statements: []string{
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS dns_status TEXT NOT NULL DEFAULT 'UNKNOWN'`,
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS tls_status TEXT NOT NULL DEFAULT 'UNKNOWN'`,
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS domain_status TEXT NOT NULL DEFAULT 'UNVERIFIED'`,
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS domain_error TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS last_domain_check TIMESTAMPTZ`,
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS launch_actor TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE environments.partner_environments ADD COLUMN IF NOT EXISTS launched_at TIMESTAMPTZ`,
+			`CREATE INDEX IF NOT EXISTS environments_launch_idx ON environments.partner_environments(kind,environment_status,domain_status,deployment_status)`,
+		}},
 	})
 }
 
@@ -112,6 +128,28 @@ func nullableTime(v sql.NullTime) any {
 	return v.Time.UTC()
 }
 
+func isInternalHostname(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	return strings.HasSuffix(host, ".local") || host == "localhost"
+}
+
+func validPublicHostname(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	return !isInternalHostname(host) && len(host) <= 253 && publicHostname.MatchString(host)
+}
+
+func launchReadiness(e environment) []string {
+	reasons := []string{}
+	if e.Kind != "PRODUCTION" { reasons = append(reasons, "environment must be PRODUCTION") }
+	if e.DeploymentStatus != "DEPLOYED" { reasons = append(reasons, "production deployment is not DEPLOYED") }
+	if e.RuntimeStatus != "OK" { reasons = append(reasons, "runtime health is not OK") }
+	if strings.TrimSpace(e.ActiveRelease) == "" { reasons = append(reasons, "active release is missing") }
+	if e.DomainStatus != "VERIFIED" { reasons = append(reasons, "domain is not VERIFIED") }
+	if e.DNSStatus != "VERIFIED" { reasons = append(reasons, "DNS is not VERIFIED") }
+	if e.TLSStatus != "VERIFIED" { reasons = append(reasons, "TLS is not VERIFIED") }
+	return reasons
+}
+
 func mapEnvironment(e environment) map[string]any {
 	return map[string]any{
 		"id": e.ID, "partner_id": e.PartnerID, "kind": e.Kind, "hostname": e.Hostname,
@@ -120,17 +158,21 @@ func mapEnvironment(e environment) map[string]any {
 		"desired_release": e.DesiredRelease, "active_release": e.ActiveRelease,
 		"runtime_status": e.RuntimeStatus, "runtime_latency_ms": e.RuntimeLatencyMS,
 		"last_health_check": nullableTime(e.LastHealthCheck),
+		"dns_status": e.DNSStatus, "tls_status": e.TLSStatus, "domain_status": e.DomainStatus,
+		"domain_error": e.DomainError, "last_domain_check": nullableTime(e.LastDomainCheck),
+		"launch_actor": e.LaunchActor, "launched_at": nullableTime(e.LaunchedAt),
+		"launch_ready": len(launchReadiness(e)) == 0, "launch_blockers": launchReadiness(e),
 		"created_at": e.CreatedAt, "updated_at": e.UpdatedAt,
 	}
 }
 
 type scanner interface{ Scan(...any) error }
 
-const envSelect = `SELECT id,partner_id,kind,hostname,platform_version,config,deployment_status,environment_status,desired_release,active_release,runtime_status,runtime_latency_ms,last_health_check,created_at,updated_at FROM environments.partner_environments`
+const envSelect = `SELECT id,partner_id,kind,hostname,platform_version,config,deployment_status,environment_status,desired_release,active_release,runtime_status,runtime_latency_ms,last_health_check,dns_status,tls_status,domain_status,domain_error,last_domain_check,launch_actor,launched_at,created_at,updated_at FROM environments.partner_environments`
 
 func scanEnvironment(s scanner) (environment, error) {
 	var e environment
-	err := s.Scan(&e.ID,&e.PartnerID,&e.Kind,&e.Hostname,&e.PlatformVersion,&e.ConfigJSON,&e.DeploymentStatus,&e.EnvironmentStatus,&e.DesiredRelease,&e.ActiveRelease,&e.RuntimeStatus,&e.RuntimeLatencyMS,&e.LastHealthCheck,&e.CreatedAt,&e.UpdatedAt)
+	err := s.Scan(&e.ID,&e.PartnerID,&e.Kind,&e.Hostname,&e.PlatformVersion,&e.ConfigJSON,&e.DeploymentStatus,&e.EnvironmentStatus,&e.DesiredRelease,&e.ActiveRelease,&e.RuntimeStatus,&e.RuntimeLatencyMS,&e.LastHealthCheck,&e.DNSStatus,&e.TLSStatus,&e.DomainStatus,&e.DomainError,&e.LastDomainCheck,&e.LaunchActor,&e.LaunchedAt,&e.CreatedAt,&e.UpdatedAt)
 	return e, err
 }
 
@@ -161,10 +203,17 @@ func (a *app) environments(w http.ResponseWriter, r *http.Request) {
 		in.Kind = strings.ToUpper(strings.TrimSpace(in.Kind))
 		if in.Kind=="" { in.Kind="STAGING" }
 		if !kindValues[in.Kind] { common.APIError(w,400,"VALIDATION","Invalid environment kind"); return }
-		if strings.TrimSpace(in.Hostname)=="" { in.Hostname = slug(in.PartnerID)+"-"+strings.ToLower(in.Kind)+".himate.local" }
+		if strings.TrimSpace(in.Hostname)=="" {
+			if in.Kind=="PRODUCTION" { common.APIError(w,400,"VALIDATION","Production hostname is required"); return }
+			in.Hostname = slug(in.PartnerID)+"-"+strings.ToLower(in.Kind)+".himate.local"
+		}
+		in.Hostname = strings.ToLower(strings.TrimSpace(in.Hostname))
+		if in.Kind=="PRODUCTION" && !validPublicHostname(in.Hostname) {
+			common.APIError(w,400,"VALIDATION","Production hostname must be a public DNS hostname"); return
+		}
 		raw, err := common.MarshalJSON(in.Config)
 		if err != nil { common.APIError(w,400,"VALIDATION","Invalid config"); return }
-		e := environment{ID:envID(in.PartnerID,in.Kind),PartnerID:in.PartnerID,Kind:in.Kind,Hostname:strings.ToLower(strings.TrimSpace(in.Hostname)),PlatformVersion:strings.TrimSpace(in.PlatformVersion),DesiredRelease:strings.TrimSpace(in.DesiredRelease),ConfigJSON:raw}
+		e := environment{ID:envID(in.PartnerID,in.Kind),PartnerID:in.PartnerID,Kind:in.Kind,Hostname:in.Hostname,PlatformVersion:strings.TrimSpace(in.PlatformVersion),DesiredRelease:strings.TrimSpace(in.DesiredRelease),ConfigJSON:raw}
 		_, err = a.db.Exec(`INSERT INTO environments.partner_environments(id,partner_id,kind,hostname,platform_version,config,desired_release)
 			VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)`, e.ID,e.PartnerID,e.Kind,e.Hostname,e.PlatformVersion,string(e.ConfigJSON),e.DesiredRelease)
 		if err != nil { common.APIError(w,409,"CONFLICT","Environment already exists or hostname is in use"); return }
@@ -176,8 +225,26 @@ func (a *app) environments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) environmentByID(w http.ResponseWriter, r *http.Request) {
-	id := strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/environments/"),"/")
-	if id=="" || strings.Contains(id,"/") { common.APIError(w,404,"NOT_FOUND","Environment not found"); return }
+	rawPath := strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/environments/"),"/")
+	parts := strings.Split(rawPath,"/")
+	id := strings.TrimSpace(parts[0])
+	if id=="" { common.APIError(w,404,"NOT_FOUND","Environment not found"); return }
+	action := ""
+	if len(parts)>1 { action = strings.TrimSpace(parts[1]) }
+	if len(parts)>2 { common.APIError(w,404,"NOT_FOUND","Environment action not found"); return }
+
+	switch action {
+	case "verify-domain":
+		a.verifyDomain(w,r,id); return
+	case "deploy":
+		a.deployEnvironment(w,r,id); return
+	case "launch":
+		a.launchEnvironment(w,r,id); return
+	case "":
+	default:
+		common.APIError(w,404,"NOT_FOUND","Environment action not found"); return
+	}
+
 	if r.Method!=http.MethodPatch { common.APIError(w,405,"METHOD","Use PATCH"); return }
 	e, err:=a.get(id)
 	if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found"); return }
@@ -191,7 +258,18 @@ func (a *app) environmentByID(w http.ResponseWriter, r *http.Request) {
 		Config map[string]any `json:"config"`
 	}
 	if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
-	if in.Hostname!=nil { e.Hostname=strings.ToLower(strings.TrimSpace(*in.Hostname)) }
+	if in.Hostname!=nil {
+		next:=strings.ToLower(strings.TrimSpace(*in.Hostname))
+		if e.Kind=="PRODUCTION" && !validPublicHostname(next) {
+			common.APIError(w,400,"VALIDATION","Production hostname must be a public DNS hostname"); return
+		}
+		if next!=e.Hostname {
+			e.Hostname=next
+			e.DNSStatus="UNKNOWN";e.TLSStatus="UNKNOWN";e.DomainStatus="UNVERIFIED";e.DomainError=""
+			e.LastDomainCheck=sql.NullTime{}
+			if e.Kind=="PRODUCTION" && e.EnvironmentStatus=="READY_FOR_LAUNCH" { e.EnvironmentStatus="CONFIGURATION_REQUIRED" }
+		}
+	}
 	if in.PlatformVersion!=nil { e.PlatformVersion=strings.TrimSpace(*in.PlatformVersion) }
 	if in.DeploymentStatus!=nil {
 		v:=strings.ToUpper(strings.TrimSpace(*in.DeploymentStatus))
@@ -201,6 +279,7 @@ func (a *app) environmentByID(w http.ResponseWriter, r *http.Request) {
 	if in.EnvironmentStatus!=nil {
 		v:=strings.ToUpper(strings.TrimSpace(*in.EnvironmentStatus))
 		if !environmentValues[v] { common.APIError(w,400,"VALIDATION","Invalid environment_status"); return }
+		if v=="LIVE" { common.APIError(w,409,"LAUNCH_GATE","Use the launch action to move a production environment LIVE"); return }
 		e.EnvironmentStatus=v
 	}
 	if in.DesiredRelease!=nil { e.DesiredRelease=strings.TrimSpace(*in.DesiredRelease) }
@@ -210,9 +289,127 @@ func (a *app) environmentByID(w http.ResponseWriter, r *http.Request) {
 		raw,err=common.MarshalJSON(in.Config)
 		if err!=nil { common.APIError(w,400,"VALIDATION","Invalid config"); return }
 	}
-	_,err=a.db.Exec(`UPDATE environments.partner_environments SET hostname=$2,platform_version=$3,config=$4::jsonb,deployment_status=$5,environment_status=$6,desired_release=$7,active_release=$8,updated_at=NOW() WHERE id=$1`,
-		id,e.Hostname,e.PlatformVersion,string(raw),e.DeploymentStatus,e.EnvironmentStatus,e.DesiredRelease,e.ActiveRelease)
+	_,err=a.db.Exec(`UPDATE environments.partner_environments SET hostname=$2,platform_version=$3,config=$4::jsonb,deployment_status=$5,environment_status=$6,desired_release=$7,active_release=$8,dns_status=$9,tls_status=$10,domain_status=$11,domain_error=$12,last_domain_check=$13,updated_at=NOW() WHERE id=$1`,
+		id,e.Hostname,e.PlatformVersion,string(raw),e.DeploymentStatus,e.EnvironmentStatus,e.DesiredRelease,e.ActiveRelease,e.DNSStatus,e.TLSStatus,e.DomainStatus,e.DomainError,e.LastDomainCheck)
 	if err!=nil { common.APIError(w,409,"CONFLICT","Environment update failed"); return }
+	e,_=a.get(id)
+	common.JSON(w,200,mapEnvironment(e))
+}
+
+func (a *app) checkDomain(ctx context.Context, e environment) environment {
+	now:=time.Now().UTC()
+	e.LastDomainCheck=sql.NullTime{Time:now,Valid:true}
+	e.DomainError=""
+
+	if isInternalHostname(e.Hostname) {
+		e.DNSStatus="NOT_APPLICABLE"
+		e.TLSStatus="NOT_APPLICABLE"
+		e.DomainStatus="INTERNAL"
+		return e
+	}
+
+	dnsCtx,cancel:=context.WithTimeout(ctx,3*time.Second)
+	defer cancel()
+	if _,err:=net.DefaultResolver.LookupHost(dnsCtx,e.Hostname);err!=nil {
+		e.DNSStatus="FAILED";e.TLSStatus="SKIPPED";e.DomainStatus="FAILED";e.DomainError="DNS: "+err.Error()
+		return e
+	}
+	e.DNSStatus="VERIFIED"
+
+	dialer:=&net.Dialer{Timeout:4*time.Second}
+	conn,err:=tls.DialWithDialer(dialer,"tcp",net.JoinHostPort(e.Hostname,"443"),&tls.Config{
+		ServerName:e.Hostname,MinVersion:tls.VersionTLS12,
+	})
+	if err!=nil {
+		e.TLSStatus="FAILED";e.DomainStatus="FAILED";e.DomainError="TLS: "+err.Error()
+		return e
+	}
+	defer conn.Close()
+	state:=conn.ConnectionState()
+	if len(state.PeerCertificates)==0 || time.Now().After(state.PeerCertificates[0].NotAfter) {
+		e.TLSStatus="FAILED";e.DomainStatus="FAILED";e.DomainError="TLS certificate is missing or expired"
+		return e
+	}
+	e.TLSStatus="VERIFIED"
+	e.DomainStatus="VERIFIED"
+	return e
+}
+
+func (a *app) persistDomainState(e environment) error {
+	_,err:=a.db.Exec(`UPDATE environments.partner_environments
+		SET dns_status=$2,tls_status=$3,domain_status=$4,domain_error=$5,last_domain_check=$6,environment_status=$7,updated_at=NOW()
+		WHERE id=$1`,e.ID,e.DNSStatus,e.TLSStatus,e.DomainStatus,e.DomainError,e.LastDomainCheck,e.EnvironmentStatus)
+	return err
+}
+
+func (a *app) verifyDomain(w http.ResponseWriter,r *http.Request,id string){
+	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST");return }
+	e,err:=a.get(id)
+	if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found");return }
+	e=a.checkDomain(r.Context(),e)
+	if e.Kind=="PRODUCTION" && len(launchReadiness(e))==0 { e.EnvironmentStatus="READY_FOR_LAUNCH" }
+	if err:=a.persistDomainState(e);err!=nil { common.APIError(w,500,"DB","Could not persist domain verification");return }
+	e,_=a.get(id)
+	code:=http.StatusOK
+	if e.DomainStatus=="FAILED" { code=http.StatusUnprocessableEntity }
+	common.JSON(w,code,mapEnvironment(e))
+}
+
+func (a *app) deployRecord(ctx context.Context,e environment,release string)(environment,error){
+	release=strings.TrimSpace(release)
+	if release==""{release=e.DesiredRelease}
+	if release==""{release=e.PlatformVersion}
+	if release==""{release="current"}
+	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYING',environment_status='TESTING',runtime_status='CHECKING',updated_at=NOW() WHERE id=$1`,e.ID)
+	var out map[string]any
+	latency,err:=a.runtimeRequest(ctx,http.MethodPost,"/internal/v1/runtime/deploy",map[string]any{
+		"partner_id":e.PartnerID,"environment":e.Kind,"hostname":e.Hostname,"release":release,"config":common.JSONRawOrEmpty(e.ConfigJSON),
+	},&out)
+	if err!=nil {
+		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='FAILED',environment_status='FAILED',runtime_status='ERROR',runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,latency)
+		return a.get(e.ID)
+	}
+	nextStatus:="READY"
+	if e.Kind=="PRODUCTION" { nextStatus="CONFIGURATION_REQUIRED" }
+	_,err=a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYED',environment_status=$2,active_release=$3,runtime_status='OK',runtime_latency_ms=$4,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,nextStatus,release,latency)
+	if err!=nil{return e,err}
+	e,err=a.get(e.ID)
+	if err!=nil{return e,err}
+	if e.Kind=="PRODUCTION" && len(launchReadiness(e))==0 {
+		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET environment_status='READY_FOR_LAUNCH',updated_at=NOW() WHERE id=$1`,e.ID)
+		e,_=a.get(e.ID)
+	}
+	return e,nil
+}
+
+func (a *app) deployEnvironment(w http.ResponseWriter,r *http.Request,id string){
+	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST");return }
+	e,err:=a.get(id)
+	if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found");return }
+	var in struct{ Release string `json:"release"` }
+	if r.Body!=nil && r.ContentLength!=0 {
+		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request");return }
+	}
+	e,err=a.deployRecord(r.Context(),e,in.Release)
+	if err!=nil { common.APIError(w,502,"RUNTIME_DEPLOY",err.Error());return }
+	common.JSON(w,200,mapEnvironment(e))
+}
+
+func (a *app) launchEnvironment(w http.ResponseWriter,r *http.Request,id string){
+	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST");return }
+	e,err:=a.get(id)
+	if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found");return }
+	if e.Kind!="PRODUCTION" { common.APIError(w,409,"LAUNCH_GATE","Only PRODUCTION environments can go LIVE");return }
+	e,probeErr:=a.probeRuntime(r.Context(),e)
+	if probeErr!=nil { common.APIError(w,409,"LAUNCH_GATE","Production runtime health check failed");return }
+	blockers:=launchReadiness(e)
+	if len(blockers)>0 {
+		common.JSON(w,http.StatusConflict,map[string]any{"error":"LAUNCH_GATE","message":"Production is not ready for launch","blockers":blockers,"environment":mapEnvironment(e)})
+		return
+	}
+	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+	_,err=a.db.Exec(`UPDATE environments.partner_environments SET environment_status='LIVE',launch_actor=$2,launched_at=NOW(),updated_at=NOW() WHERE id=$1`,id,actor)
+	if err!=nil { common.APIError(w,500,"DB","Could not launch production environment");return }
 	e,_=a.get(id)
 	common.JSON(w,200,mapEnvironment(e))
 }
@@ -290,9 +487,8 @@ func (a *app) deployStaging(w http.ResponseWriter, r *http.Request) {
 		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='FAILED',environment_status='FAILED',runtime_status='ERROR',runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,id,latency)
 		common.APIError(w,502,"RUNTIME_DEPLOY",err.Error());return
 	}
-	_,err=a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYED',environment_status='READY',active_release=$2,runtime_status='OK',runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,id,release,latency)
-	if err!=nil{common.APIError(w,500,"DB","Could not finalize staging deployment");return}
-	e,_=a.get(id)
+	e,err=a.deployRecord(r.Context(),e,release)
+	if err!=nil{common.APIError(w,502,"RUNTIME_DEPLOY",err.Error());return}
 	common.JSON(w,200,mapEnvironment(e))
 }
 
@@ -327,13 +523,14 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	items:=[]map[string]any{}
 	for rows.Next() {
 		if e,err:=scanEnvironment(rows);err==nil {
-			if e.DeploymentStatus=="DEPLOYED" { e,_=a.probeRuntime(r.Context(),e) }
 			items=append(items,map[string]any{
 				"id":e.ID,"partner_id":e.PartnerID,"kind":e.Kind,"hostname":e.Hostname,
 				"platform_version":e.PlatformVersion,"deployment_status":e.DeploymentStatus,
 				"environment_status":e.EnvironmentStatus,"active_release":e.ActiveRelease,
 				"runtime_status":e.RuntimeStatus,"runtime_latency_ms":e.RuntimeLatencyMS,
-				"last_health_check":nullableTime(e.LastHealthCheck),"updated_at":e.UpdatedAt,
+				"dns_status":e.DNSStatus,"tls_status":e.TLSStatus,"domain_status":e.DomainStatus,
+				"launch_ready":len(launchReadiness(e))==0,
+				"last_health_check":nullableTime(e.LastHealthCheck),"last_domain_check":nullableTime(e.LastDomainCheck),"updated_at":e.UpdatedAt,
 			})
 		}
 	}
