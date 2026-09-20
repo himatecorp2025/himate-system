@@ -1590,15 +1590,33 @@ class _PartnersPageState extends State<PartnersPage> {
     load();
   }
 
+  Future<List<Map<String, dynamic>>> _loadPartnerPortfolio() async {
+    const pageSize = 100;
+    final first = await widget.api.get('/api/v1/partners?limit=$pageSize&offset=0&include_archived=true', force: true);
+    final result = items(first);
+    final total = (first['total'] as num?)?.toInt() ?? result.length;
+    if (total <= result.length) return result;
+
+    final futures = <Future<Map<String, dynamic>>>[];
+    for (var offset = pageSize; offset < total; offset += pageSize) {
+      futures.add(widget.api.get('/api/v1/partners?limit=$pageSize&offset=$offset&include_archived=true', force: true));
+    }
+    final pages = await Future.wait(futures);
+    for (final page in pages) {
+      result.addAll(items(page));
+    }
+    return result;
+  }
+
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
     try {
-      final r = await Future.wait([
-        widget.api.get('/api/v1/partners'),
+      final r = await Future.wait<dynamic>([
+        _loadPartnerPortfolio(),
         widget.api.get('/api/v1/partner-categories'),
       ]);
-      partners = items(r[0]);
-      categories = items(r[1]);
+      partners = List<Map<String, dynamic>>.from(r[0] as List<Map<String, dynamic>>);
+      categories = items(r[1] as Map<String, dynamic>);
     } catch (e) {
       error = e.toString();
     } finally {
