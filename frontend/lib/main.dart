@@ -2912,9 +2912,12 @@ class _FinancePageState extends State<FinancePage> {
 
   Future<void> editProfile() async {
     final legal = TextEditingController(text: '${profile?['legal_name'] ?? ''}');
+    final registration = TextEditingController(text: '${profile?['registration_number'] ?? ''}');
     final address = TextEditingController(text: '${profile?['address'] ?? ''}');
     final tax = TextEditingController(text: '${profile?['tax_id'] ?? ''}');
+    final contactName = TextEditingController(text: '${profile?['contact_name'] ?? ''}');
     final email = TextEditingController(text: '${profile?['email'] ?? ''}');
+    final phone = TextEditingController(text: '${profile?['phone'] ?? ''}');
     final bank = TextEditingController(text: '${profile?['bank_name'] ?? ''}');
     final bankAddress = TextEditingController(text: '${profile?['bank_address'] ?? ''}');
     final account = TextEditingController(text: '${profile?['account_number'] ?? ''}');
@@ -2933,12 +2936,20 @@ class _FinancePageState extends State<FinancePage> {
           children: [
             ResponsiveFieldPair(
               first: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name')),
-              second: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
+              second: TextField(controller: registration, decoration: const InputDecoration(labelText: 'Registration number')),
+            ),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
+              second: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Billing contact')),
             ),
             const SizedBox(height: 12),
             TextField(controller: address, decoration: const InputDecoration(labelText: 'Company address')),
             const SizedBox(height: 12),
-            TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Billing email')),
+            ResponsiveFieldPair(
+              first: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Billing email')),
+              second: TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Billing phone')),
+            ),
             const SizedBox(height: 18),
             const _DialogSectionLabel('BANKING DETAILS'),
             const SizedBox(height: 10),
@@ -2963,9 +2974,12 @@ class _FinancePageState extends State<FinancePage> {
     if (ok == true) {
       await widget.api.put('/api/v1/billing/profile', {
         'legal_name': legal.text.trim(),
+        'registration_number': registration.text.trim(),
         'address': address.text.trim(),
         'tax_id': tax.text.trim(),
+        'contact_name': contactName.text.trim(),
         'email': email.text.trim(),
+        'phone': phone.text.trim(),
         'bank_name': bank.text.trim(),
         'bank_address': bankAddress.text.trim(),
         'account_number': account.text.trim(),
@@ -2976,7 +2990,7 @@ class _FinancePageState extends State<FinancePage> {
       if (mounted) success('Billing profile updated.');
     }
 
-    for (final c in [legal, address, tax, email, bank, bankAddress, account, iban, swift]) {
+    for (final c in [legal, registration, address, tax, contactName, email, phone, bank, bankAddress, account, iban, swift]) {
       c.dispose();
     }
   }
