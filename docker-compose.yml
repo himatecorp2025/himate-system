@@ -70,6 +70,31 @@ services:
       postgres:
         condition: service_healthy
 
+  storage:
+    build:
+      context: .
+      dockerfile: services/docker/storage.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      HIMATE_STORAGE_ROOT: /data/partners
+    volumes:
+      - himate_partner_storage:/data/partners
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  runtime:
+    build:
+      context: .
+      dockerfile: services/docker/runtime.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   impact:
     build:
       context: .
@@ -88,9 +113,12 @@ services:
     environment:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      PARTNER_RUNTIME_HOSTPORT: runtime:10000
     depends_on:
       postgres:
         condition: service_healthy
+      runtime:
+        condition: service_started
 
   connector:
     build:
@@ -120,6 +148,7 @@ services:
       CATALOG_HOSTPORT: catalog:10000
       ENVIRONMENTS_HOSTPORT: environments:10000
       CONNECTOR_HOSTPORT: connector:10000
+      STORAGE_HOSTPORT: storage:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,6 +161,8 @@ services:
       environments:
         condition: service_started
       connector:
+        condition: service_started
+      storage:
         condition: service_started
 
   health:
@@ -149,6 +180,8 @@ services:
       ENVIRONMENTS_HOSTPORT: environments:10000
       CONNECTOR_HOSTPORT: connector:10000
       IMPACT_HOSTPORT: impact:10000
+      STORAGE_HOSTPORT: storage:10000
+      PARTNER_RUNTIME_HOSTPORT: runtime:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,6 +200,10 @@ services:
       connector:
         condition: service_started
       impact:
+        condition: service_started
+      storage:
+        condition: service_started
+      runtime:
         condition: service_started
 
   gateway:
@@ -216,3 +253,6 @@ services:
         condition: service_started
       impact:
         condition: service_started
+
+volumes:
+  himate_partner_storage:
