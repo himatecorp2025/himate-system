@@ -18,7 +18,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-const maxObjectBytes = 25 << 20
+const maxObjectBytes = 64 << 20
 
 type app struct {
 	db   *sql.DB
@@ -164,7 +164,7 @@ func (a *app) objectRoute(w http.ResponseWriter, r *http.Request) {
 		n, copyErr := io.Copy(io.MultiWriter(tmp,h), io.LimitReader(r.Body,maxObjectBytes+1))
 		closeErr := tmp.Close()
 		if copyErr != nil || closeErr != nil { common.APIError(w,500,"STORAGE","Could not persist object");return }
-		if n > maxObjectBytes { common.APIError(w,413,"OBJECT_TOO_LARGE","Object exceeds 25 MiB");return }
+		if n > maxObjectBytes { common.APIError(w,413,"OBJECT_TOO_LARGE","Object exceeds 64 MiB");return }
 		if err := os.Chmod(tmpName,0600); err != nil { common.APIError(w,500,"STORAGE","Could not secure object");return }
 		if err := os.Rename(tmpName,target); err != nil { common.APIError(w,500,"STORAGE","Could not finalize object");return }
 		sum := hex.EncodeToString(h.Sum(nil))
@@ -181,9 +181,9 @@ func (a *app) objectRoute(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.Header().Set("Content-Type","application/octet-stream")
 		}
-		w.Header().Set("Content-Length",fmt.Sprint(info.Size()))
 		w.Header().Set("Cache-Control","private, no-store")
-		_, _ = io.Copy(w,file)
+		w.Header().Set("Accept-Ranges","bytes")
+		http.ServeContent(w,r,filepath.Base(target),info.ModTime(),file)
 	case http.MethodDelete:
 		if err := os.Remove(target); err != nil && !os.IsNotExist(err) { common.APIError(w,500,"STORAGE","Could not delete object");return }
 		w.WriteHeader(http.StatusNoContent)
