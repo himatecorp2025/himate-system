@@ -368,43 +368,89 @@ func scanEvidence(s scanner)(e evidence,err error){
 	return
 }
 func (a *app)get(id string)(evidence,error){return scanEvidence(a.db.QueryRow(evidenceSelect()+" WHERE id=$1",id))}
-func mapEvidence(e evidence)map[string]any{
+func mapEvidence(e evidence, reportIDs ...[]string)map[string]any{
+	reports:=[]string{}
+	if len(reportIDs)>0 && reportIDs[0]!=nil { reports=reportIDs[0] }
 	return map[string]any{
 		"id":e.ID,"partner_id":e.PartnerID,"metric_key":e.MetricKey,"evidence_type":e.EvidenceType,
 		"title":e.Title,"description":e.Description,"period_start":dateValue(e.PeriodStart),"period_end":dateValue(e.PeriodEnd),
 		"verification_status":e.VerificationStatus,"source_url":e.SourceURL,"declaration_text":e.DeclarationText,
 		"original_filename":e.OriginalFilename,"mime_type":e.MimeType,"size_bytes":e.SizeBytes,"sha256":e.SHA256,
 		"uploaded_by":e.UploadedBy,"verified_by":e.VerifiedBy,"verified_at":timeValue(e.VerifiedAt),
-		"has_file":e.ObjectKey!="","created_at":e.CreatedAt,"updated_at":e.UpdatedAt,
+		"has_file":e.ObjectKey!="","report_ids":reports,"created_at":e.CreatedAt,"updated_at":e.UpdatedAt,
 	}
+}
+
+func (a *app)reportIDsFor(evidenceID string)[]string{
+	rows,err:=a.db.Query(`SELECT report_id FROM evidence.report_links WHERE evidence_id=$1 ORDER BY report_id`,evidenceID)
+	if err!=nil{return []string{}}
+	defer rows.Close()
+	out:=[]string{}
+	for rows.Next(){var id string;if rows.Scan(&id)==nil{out=append(out,id)}}
+	return out
 }
 
 func (a *app)list(w http.ResponseWriter,r *http.Request){
 	partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
 	metricKey:=strings.TrimSpace(r.URL.Query().Get("metric_key"))
 	kind:=normalizeType(r.URL.Query().Get("evidence_type"))
-	verification:=normalizeVerification(r.URL.Query().Get("verification_status"))
+	rawVerification:=strings.TrimSpace(r.URL.Query().Get("verification_status"))
+	verification:=normalizeVerification(rawVerification)
 	reportID:=strings.TrimSpace(r.URL.Query().Get("report_id"))
-	limit:=100
-	if raw:=r.URL.Query().Get("limit");raw!=""{if v,err:=strconv.Atoi(raw);err==nil&&v>0&&v<=500{limit=v}}
+	periodStart:=strings.TrimSpace(r.URL.Query().Get("period_start"))
+	periodEnd:=strings.TrimSpace(r.URL.Query().Get("period_end"))
+	search:=strings.TrimSpace(r.URL.Query().Get("q"))
+	limit:=50
+	offset:=0
+	if raw:=r.URL.Query().Get("limit");raw!=""{if v,err:=strconv.Atoi(raw);err==nil&&v>0&&v<=100{limit=v}}
+	if raw:=r.URL.Query().Get("offset");raw!=""{if v,err:=strconv.Atoi(raw);err==nil&&v>=0{offset=v}}
+
 	where:=[]string{"1=1"};args:=[]any{}
 	if partnerID!=""{args=append(args,partnerID);where=append(where,fmt.Sprintf("e.partner_id=$%d",len(args)))}
 	if metricKey!=""{args=append(args,metricKey);where=append(where,fmt.Sprintf("e.metric_key=$%d",len(args)))}
 	if kind!=""{if !evidenceTypes[kind]{common.APIError(w,400,"VALIDATION","Invalid evidence_type");return};args=append(args,kind);where=append(where,fmt.Sprintf("e.evidence_type=$%d",len(args)))}
-	if verification!=""&&r.URL.Query().Get("verification_status")!=""{if !verificationValues[verification]{common.APIError(w,400,"VALIDATION","Invalid verification_status");return};args=append(args,verification);where=append(where,fmt.Sprintf("e.verification_status=$%d",len(args)))}
+	if rawVerification!=""{if !verificationValues[verification]{common.APIError(w,400,"VALIDATION","Invalid verification_status");return};args=append(args,verification);where=append(where,fmt.Sprintf("e.verification_status=$%d",len(args)))}
+	if periodStart!=""{
+		start,err:=time.Parse("2006-01-02",periodStart);if err!=nil{common.APIError(w,400,"VALIDATION","period_start must be YYYY-MM-DD");return}
+		args=append(args,start);where=append(where,fmt.Sprintf("(e.period_end IS NULL OR e.period_end >= $%d)",len(args)))
+	}
+	if periodEnd!=""{
+		end,err:=time.Parse("2006-01-02",periodEnd);if err!=nil{common.APIError(w,400,"VALIDATION","period_end must be YYYY-MM-DD");return}
+		args=append(args,end);where=append(where,fmt.Sprintf("(e.period_start IS NULL OR e.period_start <= $%d)",len(args)))
+	}
+	if search!=""{
+		args=append(args,"%"+search+"%")
+		n:=len(args)
+		where=append(where,fmt.Sprintf("(e.title ILIKE $%d OR e.description ILIKE $%d OR e.original_filename ILIKE $%d OR e.source_url ILIKE $%d OR e.declaration_text ILIKE $%d OR e.partner_id ILIKE $%d OR e.metric_key ILIKE $%d)",n,n,n,n,n,n,n))
+	}
 	join:=""
-	if reportID!=""{join=" JOIN evidence.report_links l ON l.evidence_id=e.id ";args=append(args,reportID);where=append(where,fmt.Sprintf("l.report_id=$%d",len(args)))}
-	args=append(args,limit)
-	q:=strings.Replace(evidenceSelect()," FROM evidence.items"," FROM evidence.items e",1)
-	q=strings.Replace(q,"SELECT id,partner_id,metric_key,evidence_type,title,description,period_start,period_end,verification_status,source_url,declaration_text,object_namespace,object_key,original_filename,mime_type,size_bytes,sha256,uploaded_by,verified_by,verified_at,created_at,updated_at",
-		"SELECT e.id,e.partner_id,e.metric_key,e.evidence_type,e.title,e.description,e.period_start,e.period_end,e.verification_status,e.source_url,e.declaration_text,e.object_namespace,e.object_key,e.original_filename,e.mime_type,e.size_bytes,e.sha256,e.uploaded_by,e.verified_by,e.verified_at,e.created_at,e.updated_at",1)
-	q+=join+" WHERE "+strings.Join(where," AND ")+" ORDER BY e.created_at DESC LIMIT $"+strconv.Itoa(len(args))
-	rows,err:=a.db.Query(q,args...)
+	if reportID!=""{join=" JOIN evidence.report_links filter_link ON filter_link.evidence_id=e.id ";args=append(args,reportID);where=append(where,fmt.Sprintf("filter_link.report_id=$%d",len(args)))}
+	whereSQL:=strings.Join(where," AND ")
+
+	var total int
+	if err:=a.db.QueryRow("SELECT COUNT(DISTINCT e.id) FROM evidence.items e"+join+" WHERE "+whereSQL,args...).Scan(&total);err!=nil{
+		common.APIError(w,500,"DB","Could not count evidence");return
+	}
+	queryArgs:=append([]any{},args...)
+	queryArgs=append(queryArgs,limit,offset)
+	limitPos:=len(queryArgs)-1
+	offsetPos:=len(queryArgs)
+	q:=`SELECT e.id,e.partner_id,e.metric_key,e.evidence_type,e.title,e.description,e.period_start,e.period_end,e.verification_status,e.source_url,e.declaration_text,e.object_namespace,e.object_key,e.original_filename,e.mime_type,e.size_bytes,e.sha256,e.uploaded_by,e.verified_by,e.verified_at,e.created_at,e.updated_at,
+		COALESCE((SELECT jsonb_agg(l.report_id ORDER BY l.report_id) FROM evidence.report_links l WHERE l.evidence_id=e.id),'[]'::jsonb)
+		FROM evidence.items e`+join+` WHERE `+whereSQL+` ORDER BY e.created_at DESC,e.id DESC LIMIT $`+strconv.Itoa(limitPos)+` OFFSET $`+strconv.Itoa(offsetPos)
+	rows,err:=a.db.Query(q,queryArgs...)
 	if err!=nil{common.APIError(w,500,"DB","Could not load evidence");return}
 	defer rows.Close()
 	items:=[]map[string]any{}
-	for rows.Next(){if e,err:=scanEvidence(rows);err==nil{items=append(items,mapEvidence(e))}}
-	common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+	for rows.Next(){
+		var e evidence
+		var reportsRaw []byte
+		err:=rows.Scan(&e.ID,&e.PartnerID,&e.MetricKey,&e.EvidenceType,&e.Title,&e.Description,&e.PeriodStart,&e.PeriodEnd,&e.VerificationStatus,&e.SourceURL,&e.DeclarationText,&e.ObjectNamespace,&e.ObjectKey,&e.OriginalFilename,&e.MimeType,&e.SizeBytes,&e.SHA256,&e.UploadedBy,&e.VerifiedBy,&e.VerifiedAt,&e.CreatedAt,&e.UpdatedAt,&reportsRaw)
+		if err!=nil{continue}
+		reportIDs:=[]string{};_ = json.Unmarshal(reportsRaw,&reportIDs)
+		items=append(items,mapEvidence(e,reportIDs))
+	}
+	common.JSON(w,200,map[string]any{"items":items,"count":len(items),"total":total,"limit":limit,"offset":offset,"has_more":offset+len(items)<total})
 }
 
 func (a *app)item(w http.ResponseWriter,r *http.Request){
@@ -412,25 +458,43 @@ func (a *app)item(w http.ResponseWriter,r *http.Request){
 	parts:=strings.Split(raw,"/")
 	if len(parts)==0||parts[0]==""{common.APIError(w,404,"NOT_FOUND","Evidence not found");return}
 	id:=parts[0]
-	if len(parts)==2&&parts[1]=="download"{
+	if len(parts)==2&&(parts[1]=="download"||parts[1]=="preview"){
 		if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
 		e,err:=a.get(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Evidence not found");return}
 		if e.ObjectKey==""{common.APIError(w,409,"NO_FILE","Evidence has no stored file");return}
 		resp,err:=a.getObject(r.Context(),e.ObjectNamespace,e.ObjectKey,e.MimeType)
 		if err!=nil{common.APIError(w,502,"STORAGE","Could not load evidence object");return}
 		defer resp.Body.Close()
+		if resp.StatusCode==http.StatusNotFound{common.APIError(w,410,"BROKEN_EVIDENCE_REFERENCE","Evidence metadata exists but the stored file is missing");return}
 		if resp.StatusCode<200||resp.StatusCode>=300{common.APIError(w,502,"STORAGE","Evidence object unavailable");return}
 		w.Header().Set("Content-Type",e.MimeType)
-		w.Header().Set("Content-Disposition",`attachment; filename="`+safeFilename(e.OriginalFilename)+`"`)
+		disposition:="attachment";if parts[1]=="preview"{disposition="inline"}
+		w.Header().Set("Content-Disposition",disposition+`; filename="`+safeFilename(e.OriginalFilename)+`"`)
 		w.Header().Set("Cache-Control","private, no-store")
 		_,_=io.Copy(w,resp.Body)
+		return
+	}
+	if len(parts)==2&&parts[1]=="integrity"{
+		if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+		e,err:=a.get(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Evidence not found");return}
+		if e.ObjectKey==""{common.APIError(w,409,"NO_FILE","Evidence has no stored file");return}
+		resp,err:=a.getObject(r.Context(),e.ObjectNamespace,e.ObjectKey,e.MimeType)
+		if err!=nil{common.APIError(w,502,"STORAGE","Could not load evidence object");return}
+		defer resp.Body.Close()
+		if resp.StatusCode==http.StatusNotFound{common.APIError(w,410,"BROKEN_EVIDENCE_REFERENCE","Evidence metadata exists but the stored file is missing");return}
+		if resp.StatusCode<200||resp.StatusCode>=300{common.APIError(w,502,"STORAGE","Evidence object unavailable");return}
+		h:=sha256.New();n,err:=io.Copy(h,io.LimitReader(resp.Body,maxEvidenceBytes+1))
+		if err!=nil{common.APIError(w,502,"STORAGE","Could not verify evidence bytes");return}
+		sum:=hex.EncodeToString(h.Sum(nil))
+		if n!=e.SizeBytes||sum!=e.SHA256{common.JSON(w,409,map[string]any{"valid":false,"status":"INTEGRITY_MISMATCH","expected_sha256":e.SHA256,"actual_sha256":sum,"expected_size_bytes":e.SizeBytes,"actual_size_bytes":n});return}
+		common.JSON(w,200,map[string]any{"valid":true,"status":"VALID","sha256":sum,"size_bytes":n,"checked_at":time.Now().UTC()})
 		return
 	}
 	if len(parts)!=1{common.APIError(w,404,"NOT_FOUND","Evidence route not found");return}
 	switch r.Method{
 	case http.MethodGet:
 		e,err:=a.get(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Evidence not found");return}
-		common.JSON(w,200,mapEvidence(e))
+		common.JSON(w,200,mapEvidence(e,a.reportIDsFor(id)))
 	case http.MethodPatch:
 		var in struct{VerificationStatus string `json:"verification_status"`}
 		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
@@ -440,7 +504,7 @@ func (a *app)item(w http.ResponseWriter,r *http.Request){
 		_,err:=a.db.Exec(`UPDATE evidence.items SET verification_status=$2,verified_by=CASE WHEN $2='VERIFIED' THEN $3 ELSE '' END,verified_at=CASE WHEN $2='VERIFIED' THEN NOW() ELSE NULL END,updated_at=NOW() WHERE id=$1`,id,status,actor)
 		if err!=nil{common.APIError(w,500,"DB","Could not update evidence verification");return}
 		e,err:=a.get(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Evidence not found");return}
-		common.JSON(w,200,mapEvidence(e))
+		common.JSON(w,200,mapEvidence(e,a.reportIDsFor(id)))
 	default:
 		common.APIError(w,405,"METHOD","Use GET or PATCH")
 	}
