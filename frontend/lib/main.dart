@@ -2517,6 +2517,15 @@ class _PartnersPageState extends State<PartnersPage> {
                       builder: (context, c) {
                         final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1040 ? (c.maxWidth - 14) / 2 : (c.maxWidth - 28) / 3;
                         final cards = <Widget>[
+                          if (filtered.isEmpty)
+                            SizedBox(
+                              width: width,
+                              child: const _MessageCard(
+                                icon: Icons.inbox_outlined,
+                                title: 'No partner data',
+                                message: 'No partners match the current filters. Create a new partner or adjust the filters.',
+                              ),
+                            ),
                           for (final p in filtered)
                             SizedBox(
                               width: width,
@@ -4252,19 +4261,26 @@ class _FinancePageState extends State<FinancePage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    LayoutBuilder(
-                      builder: (context, c) {
-                        final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                        return Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            for (final m in filteredModules)
-                              SizedBox(width: width, child: CatalogModuleCard(module: m, onTap: () => editCatalogModule(m))),
-                          ],
-                        );
-                      },
-                    ),
+                    if (filteredModules.isEmpty)
+                      const _MessageCard(
+                        icon: Icons.inventory_2_outlined,
+                        title: 'No module data',
+                        message: 'No modules match the current catalog filters.',
+                      )
+                    else
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              for (final m in filteredModules)
+                                SizedBox(width: width, child: CatalogModuleCard(module: m, onTap: () => editCatalogModule(m))),
+                            ],
+                          );
+                        },
+                      ),
                   ],
                 ),
     );
@@ -4880,14 +4896,21 @@ class _ImpactPageState extends State<ImpactPage> {
           const SizedBox(height: 18),
           _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: '${summary.length} metrics')),
           const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth < 620 ? constraints.maxWidth : constraints.maxWidth < 1000 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
-              return Wrap(
-                spacing: 12, runSpacing: 12,
-                children: [
-                  for (final m in summary)
-                    SizedBox(
+          if (summary.isEmpty)
+            const _MessageCard(
+              icon: Icons.insights_outlined,
+              title: 'No impact data',
+              message: 'No impact observations have been recorded yet.',
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 620 ? constraints.maxWidth : constraints.maxWidth < 1000 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+                return Wrap(
+                  spacing: 12, runSpacing: 12,
+                  children: [
+                    for (final m in summary)
+                      SizedBox(
                       width: width,
                       child: _InfoCard(
                         title: '${m['label'] ?? m['metric_key']}',
@@ -4901,11 +4924,11 @@ class _ImpactPageState extends State<ImpactPage> {
                           _DefinitionRow(label: 'Observations', value: '${m['observations'] ?? 0}'),
                         ],
                       ),
-                    ),
-                ],
-              );
-            },
-          ),
+                      ),
+                  ],
+                );
+              },
+            ),
           const SizedBox(height: 24),
           _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: '$evidenceTotal records')),
           const SizedBox(height: 12),
@@ -5236,14 +5259,21 @@ class SystemPage extends StatelessWidget {
                 trailing: _MiniCounter(label: '${services.length} services'),
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final s in services)
-                    ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
-                ],
-              ),
+              if (services.isEmpty)
+                const _MessageCard(
+                  icon: Icons.dns_outlined,
+                  title: 'No service health data',
+                  message: 'No service-health snapshot is available yet.',
+                )
+              else
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final s in services)
+                      ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
+                  ],
+                ),
               const SizedBox(height: 24),
               _SectionHeader(
                 title: 'Partner Health',
