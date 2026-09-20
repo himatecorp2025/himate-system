@@ -53,6 +53,7 @@ func main() {
 	})
 	publicMux.HandleFunc("/connector/v1/heartbeat",a.heartbeat)
 	publicMux.HandleFunc("/connector/v1/state",a.state)
+	publicMux.HandleFunc("/connector/v1/desired-state",a.desiredState)
 	publicMux.HandleFunc("/connector/v1/metrics",a.metrics)
 
 	privateMux:=http.NewServeMux()
@@ -100,6 +101,19 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS connector_state_health_idx ON connector.partner_state(health,last_seen_at)`,
 		}},
+		{Version:2,Name:"connector-desired-state",Statements:[]string{
+			`CREATE TABLE IF NOT EXISTS connector.desired_state(
+				partner_id TEXT NOT NULL,
+				environment TEXT NOT NULL,
+				revision BIGINT NOT NULL DEFAULT 1,
+				entitlements JSONB NOT NULL DEFAULT '{}'::jsonb,
+				maintenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+				config JSONB NOT NULL DEFAULT '{}'::jsonb,
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				PRIMARY KEY(partner_id,environment)
+			)`,
+		}},
 	})
 }
 
@@ -146,35 +160,63 @@ func (a *app) issueCredential(ctx context.Context,partnerID,environment string)(
 func (a *app) adminConnector(w http.ResponseWriter,r *http.Request){
 	path:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/connectors/"),"/")
 	parts:=strings.Split(path,"/")
-	if len(parts)!=2 || parts[0]=="" || parts[1]!="credential" { common.APIError(w,404,"NOT_FOUND","Connector route not found");return }
-	partnerID:=parts[0]
-	switch r.Method {
-	case http.MethodPost:
-		var in struct{ Environment string `json:"environment"` }
-		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request");return }
-		out,err:=a.issueCredential(r.Context(),partnerID,in.Environment)
-		if err!=nil { common.APIError(w,400,"VALIDATION",err.Error());return }
-		common.JSON(w,201,out)
-	case http.MethodGet:
-		rows,err:=a.db.Query(`SELECT partner_id,environment,credential_id,active,created_at,rotated_at,last_used_at FROM connector.credentials WHERE partner_id=$1 ORDER BY environment`,partnerID)
-		if err!=nil { common.APIError(w,500,"DB","Could not load connector credentials");return }
-		defer rows.Close()
-		items:=[]map[string]any{}
-		for rows.Next(){
-			var p,e,id string
-			var active bool
-			var created,rotated time.Time
-			var last sql.NullTime
-			if rows.Scan(&p,&e,&id,&active,&created,&rotated,&last)==nil {
-				var used any
-				if last.Valid { used=last.Time.UTC() }
-				items=append(items,map[string]any{"partner_id":p,"environment":e,"credential_id":id,"active":active,"created_at":created,"rotated_at":rotated,"last_used_at":used})
+	if len(parts)!=2 || parts[0]=="" { common.APIError(w,404,"NOT_FOUND","Connector route not found");return }
+	partnerID,section:=parts[0],parts[1]
+	if section=="credential" {
+		switch r.Method {
+		case http.MethodPost:
+			var in struct{ Environment string `json:"environment"` }
+			if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request");return }
+			out,err:=a.issueCredential(r.Context(),partnerID,in.Environment)
+			if err!=nil { common.APIError(w,400,"VALIDATION",err.Error());return }
+			common.JSON(w,201,out)
+		case http.MethodGet:
+			rows,err:=a.db.Query(`SELECT partner_id,environment,credential_id,active,created_at,rotated_at,last_used_at FROM connector.credentials WHERE partner_id=$1 ORDER BY environment`,partnerID)
+			if err!=nil { common.APIError(w,500,"DB","Could not load connector credentials");return }
+			defer rows.Close()
+			items:=[]map[string]any{}
+			for rows.Next(){
+				var p,e,id string
+				var active bool
+				var created,rotated time.Time
+				var last sql.NullTime
+				if rows.Scan(&p,&e,&id,&active,&created,&rotated,&last)==nil {
+					var used any
+					if last.Valid { used=last.Time.UTC() }
+					items=append(items,map[string]any{"partner_id":p,"environment":e,"credential_id":id,"active":active,"created_at":created,"rotated_at":rotated,"last_used_at":used})
+				}
 			}
+			common.JSON(w,200,map[string]any{"items":items})
+		default:
+			common.APIError(w,405,"METHOD","Use GET or POST")
 		}
-		common.JSON(w,200,map[string]any{"items":items})
-	default:
-		common.APIError(w,405,"METHOD","Use GET or POST")
+		return
 	}
+	if section=="desired-state" {
+		switch r.Method {
+		case http.MethodGet:
+			environment:=normalizeEnvironment(r.URL.Query().Get("environment"))
+			if environment=="" { environment="STAGING" }
+			a.writeDesiredState(w,partnerID,environment)
+		case http.MethodPut:
+			var in struct{
+				Environment string `json:"environment"`
+				Entitlements map[string]any `json:"entitlements"`
+				Maintenance map[string]any `json:"maintenance"`
+				Config map[string]any `json:"config"`
+			}
+			if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request");return }
+			environment:=normalizeEnvironment(in.Environment)
+			if environment=="" { common.APIError(w,400,"VALIDATION","STAGING or PRODUCTION environment is required");return }
+			out,err:=a.upsertDesiredState(r.Context(),partnerID,environment,in.Entitlements,in.Maintenance,in.Config,strings.TrimSpace(r.Header.Get("X-Himate-User-ID")))
+			if err!=nil { common.APIError(w,500,"DB","Could not update connector desired state");return }
+			common.JSON(w,200,out)
+		default:
+			common.APIError(w,405,"METHOD","Use GET or PUT")
+		}
+		return
+	}
+	common.APIError(w,404,"NOT_FOUND","Connector route not found")
 }
 
 func (a *app) ensureCredential(w http.ResponseWriter,r *http.Request){
@@ -214,6 +256,39 @@ func (a *app) authenticate(r *http.Request)(credential,error){
 	if len(got)!=len(c.TokenHash) || subtle.ConstantTimeCompare([]byte(got),[]byte(c.TokenHash))!=1 { return credential{},fmt.Errorf("invalid connector credential") }
 	_,_ = a.db.Exec(`UPDATE connector.credentials SET last_used_at=NOW() WHERE credential_id=$1`,credentialID)
 	return c,nil
+}
+
+func (a *app)upsertDesiredState(ctx context.Context,partnerID,environment string,entitlements,maintenance,config map[string]any,actor string)(map[string]any,error){
+	entitlementsRaw,_:=common.MarshalJSON(entitlements)
+	maintenanceRaw,_:=common.MarshalJSON(maintenance)
+	configRaw,_:=common.MarshalJSON(config)
+	var revision int64
+	var updated time.Time
+	err:=a.db.QueryRowContext(ctx,`INSERT INTO connector.desired_state(partner_id,environment,revision,entitlements,maintenance,config,updated_by)
+		VALUES($1,$2,1,$3::jsonb,$4::jsonb,$5::jsonb,$6)
+		ON CONFLICT(partner_id,environment) DO UPDATE SET revision=connector.desired_state.revision+1,
+			entitlements=EXCLUDED.entitlements,maintenance=EXCLUDED.maintenance,config=EXCLUDED.config,updated_by=EXCLUDED.updated_by,updated_at=NOW()
+		RETURNING revision,updated_at`,partnerID,environment,string(entitlementsRaw),string(maintenanceRaw),string(configRaw),actor).Scan(&revision,&updated)
+	if err!=nil{return nil,err}
+	return map[string]any{"partner_id":partnerID,"environment":environment,"revision":revision,"entitlements":common.JSONRawOrEmpty(entitlementsRaw),"maintenance":common.JSONRawOrEmpty(maintenanceRaw),"config":common.JSONRawOrEmpty(configRaw),"updated_at":updated},nil
+}
+
+func (a *app)writeDesiredState(w http.ResponseWriter,partnerID,environment string){
+	var revision int64
+	var entitlements,maintenance,config []byte
+	var updatedBy string
+	var updated time.Time
+	err:=a.db.QueryRow(`SELECT revision,entitlements,maintenance,config,updated_by,updated_at FROM connector.desired_state WHERE partner_id=$1 AND environment=$2`,partnerID,environment).
+		Scan(&revision,&entitlements,&maintenance,&config,&updatedBy,&updated)
+	if err!=nil{common.APIError(w,404,"NOT_FOUND","Desired state not found");return}
+	common.JSON(w,200,map[string]any{"partner_id":partnerID,"environment":environment,"revision":revision,"entitlements":common.JSONRawOrEmpty(entitlements),"maintenance":common.JSONRawOrEmpty(maintenance),"config":common.JSONRawOrEmpty(config),"updated_by":updatedBy,"updated_at":updated})
+}
+
+func (a *app)desiredState(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET");return }
+	cred,err:=a.authenticate(r)
+	if err!=nil { common.APIError(w,401,"CONNECTOR_UNAUTHORIZED",err.Error());return }
+	a.writeDesiredState(w,cred.PartnerID,cred.Environment)
 }
 
 func (a *app) heartbeat(w http.ResponseWriter,r *http.Request){
