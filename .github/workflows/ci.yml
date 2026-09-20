@@ -64,6 +64,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate Render Blueprint bindings
+        run: |
+          grep -q 'healthCheckPath: /api/v1/live' render.yaml
+          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT STORAGE_HOSTPORT PARTNER_RUNTIME_HOSTPORT; do
+            grep -q "key: $key" render.yaml || { echo "Missing Render binding: $key"; exit 1; }
+          done
+          for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-storage himate-runtime; do
+            grep -q "name: $service" render.yaml || { echo "Missing Render service: $service"; exit 1; }
+          done
       - name: Validate Docker Compose topology
         run: docker compose config --quiet
       - name: Build and start containerized microservices
