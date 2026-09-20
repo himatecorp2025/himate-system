@@ -7,8 +7,10 @@ OPS_COOKIE="${TMPDIR:-/tmp}/himate-start-18-19-ops.txt"
 FIN_COOKIE="${TMPDIR:-/tmp}/himate-start-18-19-fin.txt"
 REPORT_COOKIE="${TMPDIR:-/tmp}/himate-start-18-19-report.txt"
 BODY="${TMPDIR:-/tmp}/himate-start-18-19-body.json"
-rm -f "$PLATFORM_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$REPORT_COOKIE" "$BODY"
-trap 'rm -f "$PLATFORM_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$REPORT_COOKIE" "$BODY"' EXIT
+LOGO="${TMPDIR:-/tmp}/himate-start-18-19-logo.webp"
+LOGO_HEADERS="${TMPDIR:-/tmp}/himate-start-18-19-logo.headers"
+rm -f "$PLATFORM_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$REPORT_COOKIE" "$BODY" "$LOGO" "$LOGO_HEADERS"
+trap 'rm -f "$PLATFORM_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$REPORT_COOKIE" "$BODY" "$LOGO" "$LOGO_HEADERS"' EXIT
 
 json_field() {
   python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
@@ -26,12 +28,35 @@ login() {
   cookie="$1"
   email="$2"
   password="$3"
-  curl -fsS -c "$cookie" -H 'Content-Type: application/json'     -d "{\"email\":\"$email\",\"password\":\"$password\"}"     "$BASE_URL/api/v1/auth/login"
+  remember="${4:-false}"
+  curl -fsS -c "$cookie" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$email\",\"password\":\"$password\",\"remember\":$remember}" \
+    "$BASE_URL/api/v1/auth/login"
 }
 
-printf 'platform login... '
-platform_user="$(login "$PLATFORM_COOKIE" "admin@example.com" "local-development-password")"
+printf 'brand logo endpoint serves a real WebP... '
+curl -fsS -D "$LOGO_HEADERS" -o "$LOGO" "$BASE_URL/art/himate_logo_master_v2.webp"
+grep -qi '^Content-Type: image/webp' "$LOGO_HEADERS"
+python3 - "$LOGO" <<'PY'
+import pathlib,sys
+data=pathlib.Path(sys.argv[1]).read_bytes()
+assert data[:4] == b"RIFF", data[:16]
+assert data[8:12] == b"WEBP", data[:16]
+assert len(data) > 100
+PY
+echo ok
+
+printf 'platform login with persistent Remember me... '
+platform_user="$(login "$PLATFORM_COOKIE" "admin@example.com" "local-development-password" true)"
 printf '%s' "$platform_user" | grep -q '"platform_admin"'
+python3 - "$PLATFORM_COOKIE" <<'PY'
+import pathlib,sys,time
+lines=[line for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line and not line.startswith("#")]
+session=[line.split("\t") for line in lines if "\thimate_session\t" in line]
+assert session, "persistent session cookie missing"
+expiry=int(session[-1][4])
+assert expiry > time.time() + 25*24*3600, f"remember expiry too short: {expiry}"
+PY
 echo ok
 
 printf 'role catalog exposes START-19 matrix... '
