@@ -199,6 +199,44 @@ func TestAuditResponseWriterCapturesStatus(t *testing.T) {
 	}
 }
 
+func TestRememberSessionUsesRequestedTTL(t *testing.T) {
+	a := &app{secret: "test-secret", ttl: 8 * time.Hour}
+	u := user{ID: "usr_test", Email: "test@example.com", Name: "Test User", Roles: []string{"platform_admin"}, Active: true}
+
+	shortToken, err := a.issueSession(u, 8*time.Hour)
+	if err != nil { t.Fatal(err) }
+	longToken, err := a.issueSession(u, 30*24*time.Hour)
+	if err != nil { t.Fatal(err) }
+
+	shortClaims, err := a.parseSession(shortToken)
+	if err != nil { t.Fatal(err) }
+	longClaims, err := a.parseSession(longToken)
+	if err != nil { t.Fatal(err) }
+
+	if longClaims.Exp-shortClaims.Exp < int64((29*24*time.Hour)/time.Second) {
+		t.Fatalf("remember session was not materially longer: short=%d long=%d", shortClaims.Exp, longClaims.Exp)
+	}
+}
+
+func TestBrandLogoFallsBackToFlutterBundle(t *testing.T) {
+	root := t.TempDir()
+	assetDir := filepath.Join(root, "assets", "assets")
+	if err := os.MkdirAll(assetDir, 0o700); err != nil { t.Fatal(err) }
+	body := []byte("RIFF-fallback-WEBP")
+	if err := os.WriteFile(filepath.Join(assetDir, "himate_logo_master_v2.webp"), body, 0o600); err != nil { t.Fatal(err) }
+
+	a := &app{webDir: root}
+	req := httptest.NewRequest(http.MethodGet, "/art/himate_logo_master_v2.webp", nil)
+	rec := httptest.NewRecorder()
+	a.brandLogo(rec, req)
+
+	if rec.Code != http.StatusOK { t.Fatalf("expected logo 200, got %d", rec.Code) }
+	if rec.Body.String() != string(body) { t.Fatalf("unexpected fallback body %q", rec.Body.String()) }
+	if got := rec.Header().Get("X-Himate-Logo-Source"); !strings.Contains(got, "assets") {
+		t.Fatalf("expected Flutter bundle fallback source, got %q", got)
+	}
+}
+
 func TestBrandLogoRouteServesVersionedAsset(t *testing.T) {
 	root := t.TempDir()
 	art := filepath.Join(root, "art")
