@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -682,6 +683,31 @@ func (a *app) effectiveModuleFees(ctx context.Context, id string, mods []map[str
 	return math.Round(total*100) / 100, effective, nil
 }
 
+func (a *app) setCatalogModuleNotLicensed(ctx context.Context, partnerID, moduleKey string) error {
+	if strings.TrimSpace(a.catalogHost) == "" || len(strings.TrimSpace(a.token)) < 24 {
+		return fmt.Errorf("catalog service credential is not configured")
+	}
+	body, err := json.Marshal(map[string]any{
+		"status": "NOT_LICENSED",
+		"reason": "Subscription cancellation period ended",
+	})
+	if err != nil { return err }
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch,
+		"http://"+a.catalogHost+"/internal/v1/partners/"+partnerID+"/modules/"+moduleKey,
+		bytes.NewReader(body))
+	if err != nil { return err }
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.token)
+	req.Header.Set("X-Himate-User-ID", "billing-cycle")
+	resp, err := a.client.Do(req)
+	if err != nil { return err }
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("catalog entitlement update returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods []map[string]any, now time.Time) error {
 	today := dateOnly(now)
 	activeKeys := make([]string, 0, len(mods))
@@ -720,6 +746,12 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		existingEnd = dateOnly(existingEnd)
 		if cancelAtEnd {
 			if cancellationExpired(true, existingEnd, today) {
+				// The paid period has ended. Keep catalog entitlement and billing
+				// state synchronized so the module becomes NOT_LICENSED without
+				// deleting any historical/business data.
+				if err := a.setCatalogModuleNotLicensed(ctx, id, key); err != nil {
+					return fmt.Errorf("expire subscription %s/%s: %w", id, key, err)
+				}
 				if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
 					SET auto_renew=FALSE,payment_status='INACTIVE',updated_at=NOW()
 					WHERE partner_id=$1 AND module_key=$2`, id, key); err != nil {
