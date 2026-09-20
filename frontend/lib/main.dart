@@ -1951,6 +1951,21 @@ class _PartnersPageState extends State<PartnersPage> {
           });
         }
 
+        final provisioningPlan = {
+          'partner_id': partnerId,
+          'system_name': systemName.text.trim().isEmpty ? displayName.text.trim() : systemName.text.trim(),
+          'admin_email': contactEmail.text.trim(),
+          'platform_version': release.text.trim(),
+          'desired_release': release.text.trim(),
+          'environment': environment,
+          'module_preset': selectedModules.toList()..sort(),
+        };
+
+        await widget.api.post('/api/v1/provisioning/jobs', {
+          ...provisioningPlan,
+          'prepare_only': true,
+        });
+
         final readyForProvisioning = paid >= fee &&
             fee > 0 &&
             paymentReference.text.trim().isNotEmpty &&
@@ -1972,15 +1987,7 @@ class _PartnersPageState extends State<PartnersPage> {
             'lifecycle': 'READY_TO_PROVISION',
             'reason': 'License and evidence verified; provisioning inputs complete',
           });
-          await widget.api.post('/api/v1/provisioning/jobs', {
-            'partner_id': partnerId,
-            'system_name': systemName.text.trim().isEmpty ? displayName.text.trim() : systemName.text.trim(),
-            'admin_email': contactEmail.text.trim(),
-            'platform_version': release.text.trim(),
-            'desired_release': release.text.trim(),
-            'environment': environment,
-            'module_preset': selectedModules.toList()..sort(),
-          });
+          await widget.api.post('/api/v1/provisioning/jobs', provisioningPlan);
         }
 
         await load();
