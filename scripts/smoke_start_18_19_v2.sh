@@ -13,8 +13,11 @@ LOGO_HEADERS="$TMP_ROOT/himate-start-18-19-logo-v3.headers"
 rm -f "$PLATFORM_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$REPORT_COOKIE" "$BODY" "$LOGO" "$LOGO_HEADERS"
 trap 'rm -f "$PLATFORM_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$REPORT_COOKIE" "$BODY" "$LOGO" "$LOGO_HEADERS"' EXIT
 
-BOOTSTRAP_EMAIL="$(docker compose exec -T gateway printenv HIMATE_BOOTSTRAP_ADMIN_EMAIL | tr -d '\r')"
-BOOTSTRAP_PASSWORD="$(docker compose exec -T gateway printenv HIMATE_BOOTSTRAP_ADMIN_PASSWORD | tr -d '\r')"
+COMPOSE_JSON="$(docker compose config --format json)"
+BOOTSTRAP_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
+BOOTSTRAP_PASSWORD="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_PASSWORD"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_PASSWORD=")))')"
+test -n "$BOOTSTRAP_EMAIL"
+test "${#BOOTSTRAP_PASSWORD}" -ge 12
 OPS_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
 FIN_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
 REPORT_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
@@ -46,6 +49,11 @@ status() {
   shift 3
   curl -sS -o "$BODY" -w '%{http_code}' -b "$cookie" -X "$method" "$@" "$BASE_URL$path"
 }
+
+printf 'bootstrap smoke credentials resolved... '
+test -n "$BOOTSTRAP_EMAIL"
+test "${#BOOTSTRAP_PASSWORD}" -ge 12
+echo ok
 
 printf 'brand v3 endpoint serves a real WebP... '
 curl -fsS -D "$LOGO_HEADERS" -o "$LOGO" "$BASE_URL/brand/himate-logo-v3.webp"
