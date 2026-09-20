@@ -57,6 +57,9 @@ jobs:
           grep -q "/api/v1/public/contact" build/web/contact.html
           grep -q 'href="/himate-brand-r4.css"' build/web/landing.html
           grep -q 'src="/site.js"' build/web/landing.html
+          grep -q 'src="data:image/webp;base64,' build/web/landing.html
+          if grep -q '/brand/himate-logo-' build/web/landing.html; then echo "Landing still references dynamic logo route"; exit 1; fi
+          if grep -q 'src="/art/himate_logo_master_' build/web/landing.html; then echo "Landing still depends on external logo asset"; exit 1; fi
           if grep -q 'href="/brand.css"' build/web/landing.html; then exit 1; fi
 
 
