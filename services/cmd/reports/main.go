@@ -36,7 +36,7 @@ type app struct{
 }
 
 type reportRecord struct{
-	ID,ReportType,Title,Status,PDFNamespace,PDFObjectKey,PDFSHA256,RequestedBy,LastError string
+	ID,ReportType,Title,Status,TemplateVersion,SnapshotSHA256,PDFNamespace,PDFObjectKey,PDFSHA256,RequestedBy,LastError string
 	PartnerIDs,Snapshot,EvidenceIDs []byte
 	PeriodStart,PeriodEnd time.Time
 	PDFSizeBytes int64
@@ -93,6 +93,10 @@ func (a *app)migrate(ctx context.Context)error{
 			`CREATE INDEX IF NOT EXISTS reports_status_idx ON reports.jobs(status,created_at)`,
 			`CREATE INDEX IF NOT EXISTS reports_period_idx ON reports.jobs(period_start,period_end)`,
 		}},
+		{Version:2,Name:"report-template-snapshot-reference",Statements:[]string{
+			`ALTER TABLE reports.jobs ADD COLUMN IF NOT EXISTS template_version TEXT NOT NULL DEFAULT 'impact-v1'`,
+			`ALTER TABLE reports.jobs ADD COLUMN IF NOT EXISTS snapshot_sha256 TEXT NOT NULL DEFAULT ''`,
+		}},
 	})
 }
 
@@ -142,9 +146,9 @@ func (a *app)create(w http.ResponseWriter,r *http.Request){
 	go a.process(id)
 }
 
-func reportSelect()string{return `SELECT id,report_type,title,partner_ids,status,snapshot,evidence_ids,pdf_namespace,pdf_object_key,pdf_sha256,pdf_size_bytes,requested_by,last_error,period_start,period_end,started_at,completed_at,created_at,updated_at FROM reports.jobs`}
+func reportSelect()string{return `SELECT id,report_type,title,partner_ids,status,template_version,snapshot,snapshot_sha256,evidence_ids,pdf_namespace,pdf_object_key,pdf_sha256,pdf_size_bytes,requested_by,last_error,period_start,period_end,started_at,completed_at,created_at,updated_at FROM reports.jobs`}
 type scanner interface{Scan(...any)error}
-func scanReport(s scanner)(v reportRecord,err error){err=s.Scan(&v.ID,&v.ReportType,&v.Title,&v.PartnerIDs,&v.Status,&v.Snapshot,&v.EvidenceIDs,&v.PDFNamespace,&v.PDFObjectKey,&v.PDFSHA256,&v.PDFSizeBytes,&v.RequestedBy,&v.LastError,&v.PeriodStart,&v.PeriodEnd,&v.StartedAt,&v.CompletedAt,&v.CreatedAt,&v.UpdatedAt);return}
+func scanReport(s scanner)(v reportRecord,err error){err=s.Scan(&v.ID,&v.ReportType,&v.Title,&v.PartnerIDs,&v.Status,&v.TemplateVersion,&v.Snapshot,&v.SnapshotSHA256,&v.EvidenceIDs,&v.PDFNamespace,&v.PDFObjectKey,&v.PDFSHA256,&v.PDFSizeBytes,&v.RequestedBy,&v.LastError,&v.PeriodStart,&v.PeriodEnd,&v.StartedAt,&v.CompletedAt,&v.CreatedAt,&v.UpdatedAt);return}
 func (a *app)get(id string)(reportRecord,error){return scanReport(a.db.QueryRow(reportSelect()+" WHERE id=$1",id))}
 func mapReport(v reportRecord)map[string]any{
 	partners:=[]string{};_ = json.Unmarshal(v.PartnerIDs,&partners)
@@ -154,7 +158,7 @@ func mapReport(v reportRecord)map[string]any{
 	return map[string]any{
 		"id":v.ID,"report_type":v.ReportType,"title":v.Title,"partner_ids":partners,
 		"period_start":v.PeriodStart.Format("2006-01-02"),"period_end":v.PeriodEnd.Format("2006-01-02"),
-		"status":v.Status,"snapshot":snapshot,"evidence_ids":evidenceIDs,
+		"status":v.Status,"template_version":v.TemplateVersion,"snapshot":snapshot,"snapshot_sha256":v.SnapshotSHA256,"evidence_ids":evidenceIDs,
 		"pdf_sha256":v.PDFSHA256,"pdf_size_bytes":v.PDFSizeBytes,"requested_by":v.RequestedBy,
 		"last_error":v.LastError,"started_at":started,"completed_at":completed,"created_at":v.CreatedAt,"updated_at":v.UpdatedAt,
 		"download_ready":v.Status=="READY"&&v.PDFObjectKey!="",
@@ -275,7 +279,7 @@ func (a *app)buildSnapshot(ctx context.Context,rec reportRecord)(map[string]any,
 	}
 	evidenceIDs:=make([]string,0,len(evidenceSet));for id:=range evidenceSet{evidenceIDs=append(evidenceIDs,id)};sort.Strings(evidenceIDs)
 	snapshot:=map[string]any{
-		"schema_version":1,"report_id":rec.ID,"report_type":rec.ReportType,"title":rec.Title,
+		"schema_version":1,"report_id":rec.ID,"report_type":rec.ReportType,"template_version":rec.TemplateVersion,"title":rec.Title,
 		"partner_ids":partnerIDs,"partners":partnerData,
 		"period_start":rec.PeriodStart.Format("2006-01-02"),"period_end":rec.PeriodEnd.Format("2006-01-02"),
 		"metric_sections":metricSections,"data_sources":dataSources,"evidence":evidenceItems,
@@ -295,8 +299,9 @@ func (a *app)process(id string){
 	snapshot,evidenceIDs,err:=a.buildSnapshot(ctx,rec)
 	if err!=nil{a.fail(id,err);return}
 	rawSnapshot,_:=json.Marshal(snapshot);rawEvidence,_:=json.Marshal(evidenceIDs)
-	if _,err=a.db.ExecContext(ctx,`UPDATE reports.jobs SET snapshot=$2::jsonb,evidence_ids=$3::jsonb,updated_at=NOW() WHERE id=$1`,id,string(rawSnapshot),string(rawEvidence));err!=nil{a.fail(id,err);return}
-	rec.Snapshot=rawSnapshot;rec.EvidenceIDs=rawEvidence
+	snapshotSum:=sha256.Sum256(rawSnapshot);snapshotSHA:=hex.EncodeToString(snapshotSum[:])
+	if _,err=a.db.ExecContext(ctx,`UPDATE reports.jobs SET snapshot=$2::jsonb,snapshot_sha256=$3,evidence_ids=$4::jsonb,updated_at=NOW() WHERE id=$1`,id,string(rawSnapshot),snapshotSHA,string(rawEvidence));err!=nil{a.fail(id,err);return}
+	rec.Snapshot=rawSnapshot;rec.SnapshotSHA256=snapshotSHA;rec.EvidenceIDs=rawEvidence
 	if err=a.renderFromStoredSnapshot(ctx,rec);err!=nil{a.fail(id,err);return}
 	if len(evidenceIDs)>0{
 		_ = a.internalPOST(ctx,a.evidenceHost,"/internal/v1/evidence/report-links",map[string]any{"report_id":id,"evidence_ids":evidenceIDs},nil)
@@ -377,7 +382,9 @@ func pdfEscape(v string)string{
 
 func renderPDF(snapshot map[string]any)[]byte{
 	title:=fmt.Sprint(snapshot["title"]);reportID:=fmt.Sprint(snapshot["report_id"])
+	templateVersion:=fmt.Sprint(snapshot["template_version"])
 	period:=fmt.Sprintf("%v to %v",snapshot["period_start"],snapshot["period_end"])
+	snapshotRaw,_:=json.Marshal(snapshot);snapshotSum:=sha256.Sum256(snapshotRaw);snapshotRef:=hex.EncodeToString(snapshotSum[:])
 	disclaimer:=fmt.Sprint(snapshot["disclaimer"])
 	sections:=snapshotSections(snapshot)
 	evidence:=[]any{};if v,ok:=snapshot["evidence"].([]any);ok{evidence=v}
@@ -397,7 +404,7 @@ func renderPDF(snapshot map[string]any)[]byte{
 		}
 		if len(names)==1{scope="Partner: "+names[0]}else if len(names)>1{scope="Partners: "+strings.Join(names,", ")}
 	}
-	current:=[]string{"HIMATE","IMPACT REPORT",title,"Report ID: "+reportID,scope,"Period: "+period,"Generated: "+generated,""}
+	current:=[]string{"HIMATE","IMPACT REPORT",title,"Report ID: "+reportID,"Template: "+templateVersion,"Snapshot: "+snapshotRef,scope,"Period: "+period,"Generated: "+generated,""}
 	for _,s:=range sections{
 		if len(current)>35{pages=append(pages,current);current=[]string{"HIMATE · IMPACT REPORT (continued)",""}}
 		current=append(current,s.Title)
