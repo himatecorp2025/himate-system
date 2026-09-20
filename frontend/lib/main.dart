@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
@@ -2013,6 +2014,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> documents = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptions = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> provisioningJobs = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> connectorCredentials = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
   Map<String, dynamic>? terms;
   Map<String, dynamic>? license;
@@ -2022,23 +2027,26 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   String moduleState = 'ALL';
   final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _companyKey = GlobalKey();
+  final GlobalKey _environmentKey = GlobalKey();
   final GlobalKey _pricingKey = GlobalKey();
   final GlobalKey _modulesKey = GlobalKey();
   final GlobalKey _financeKey = GlobalKey();
+  final GlobalKey _statisticsKey = GlobalKey();
+  final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
 
   static const workspaceCards = <_WorkspaceSpec>[
     _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
     _WorkspaceSpec('Company Data', Icons.apartment_outlined, 'Legal identity, contacts and lifecycle', true),
-    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains and deployment environment · START-10', false),
+    _WorkspaceSpec('System & Environment', Icons.dns_outlined, 'Domains, staging, deployment and provisioning', true),
     _WorkspaceSpec('Modules', Icons.grid_view_outlined, 'Entitlements, visibility and pricing', true),
     _WorkspaceSpec('Pricing & Subscription', Icons.payments_outlined, 'Activation fee and recurring terms', true),
     _WorkspaceSpec('Finance & Documents', Icons.folder_copy_outlined, 'Invoices and commercial evidence', true),
-    _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics', false),
+    _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics and provenance', true),
     _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', false),
     _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', false),
     _WorkspaceSpec('Users & Contacts', Icons.group_outlined, 'Partner administrators and contacts', false),
-    _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Connector and provider registry', false),
+    _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Secure connector identities and credentials', true),
     _WorkspaceSpec('Audit History', Icons.history_rounded, 'Immutable administrative history', false),
   ];
 
@@ -2062,6 +2070,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         widget.api.get('/api/v1/billing/partners/$id/documents'),
         widget.api.get('/api/v1/billing/partners/$id/invoices'),
         widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true),
+        widget.api.get('/api/v1/environments?partner_id=$id', force: true),
+        widget.api.get('/api/v1/provisioning/jobs?partner_id=$id', force: true),
+        widget.api.get('/api/v1/impact/summary?partner_id=$id', force: true),
+        widget.api.get('/api/v1/connectors/$id/credential', force: true),
       ]);
       partner = r[0];
       modules = items(r[1]);
@@ -2071,6 +2083,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       documents = items(r[5]);
       invoices = items(r[6]);
       subscriptions = items(r[7]);
+      environments = items(r[8]);
+      provisioningJobs = items(r[9]);
+      impactSummary = items(r[10]);
+      connectorCredentials = items(r[11]);
       if (subscriptions.isEmpty && modules.any((m) => m['status'] == 'ACTIVE')) {
         subscriptions = items(await widget.api.get('/api/v1/billing/partners/$id/subscriptions', force: true));
       }
@@ -2090,10 +2106,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final slug = widget.initialSection!;
     final key = switch (slug) {
       'overview' => _overviewKey,
-      'company-data' || 'system-and-environment' => _companyKey,
+      'company-data' => _companyKey,
+      'system-and-environment' => _environmentKey,
       'pricing-and-subscription' => _pricingKey,
       'modules' => _modulesKey,
       'finance-and-documents' => _financeKey,
+      'statistics' => _statisticsKey,
+      'integrations' => _integrationsKey,
       _ => _overviewKey,
     };
     WidgetsBinding.instance.addPostFrameCallback((_) {
