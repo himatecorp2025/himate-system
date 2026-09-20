@@ -32,7 +32,7 @@ type app struct {
 }
 
 type job struct {
-	ID,PartnerID,SystemName,AdminEmail,PlatformVersion,DesiredRelease,Status,CurrentStep,LastError string
+	ID,PartnerID,SystemName,AdminEmail,PlatformVersion,DesiredRelease,InitialEnvironment,Status,CurrentStep,LastError string
 	ModulePreset []string
 	CreatedAt,UpdatedAt time.Time
 	StartedAt,CompletedAt sql.NullTime
@@ -125,6 +125,9 @@ func (a *app)migrate(ctx context.Context)error{
 			)`,
 			`CREATE INDEX IF NOT EXISTS provisioning_jobs_status_idx ON provisioning.jobs(status,updated_at DESC)`,
 		}},
+		{Version:2,Name:"provisioning-plan",Statements:[]string{
+			`ALTER TABLE provisioning.jobs ADD COLUMN IF NOT EXISTS initial_environment TEXT NOT NULL DEFAULT 'STAGING'`,
+		}},
 	})
 }
 
@@ -134,7 +137,7 @@ func (a *app)jobs(w http.ResponseWriter,r *http.Request){
 	switch r.Method{
 	case http.MethodGet:
 		partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
-		q:=`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs`
+		q:=`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,initial_environment,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs`
 		args:=[]any{}
 		if partnerID!=""{q+=" WHERE partner_id=$1";args=append(args,partnerID)}
 		q+=" ORDER BY updated_at DESC"
@@ -151,26 +154,37 @@ func (a *app)jobs(w http.ResponseWriter,r *http.Request){
 			AdminEmail string `json:"admin_email"`
 			PlatformVersion string `json:"platform_version"`
 			DesiredRelease string `json:"desired_release"`
+			Environment string `json:"environment"`
 			ModulePreset []string `json:"module_preset"`
+			PrepareOnly bool `json:"prepare_only"`
 		}
 		if common.Decode(r,&in)!=nil || strings.TrimSpace(in.PartnerID)==""{common.APIError(w,400,"VALIDATION","partner_id is required");return}
 		in.PartnerID=strings.TrimSpace(in.PartnerID)
 		if strings.TrimSpace(in.SystemName)==""{in.SystemName=in.PartnerID}
+		in.Environment=strings.ToUpper(strings.TrimSpace(in.Environment))
+		if in.Environment==""{in.Environment="STAGING"}
+		if in.Environment!="STAGING"{common.APIError(w,400,"VALIDATION","Initial provisioning environment must be STAGING");return}
 		raw,_:=json.Marshal(uniqueStrings(in.ModulePreset))
 		id:=jobID(in.PartnerID)
-		_,err:=a.db.Exec(`INSERT INTO provisioning.jobs(id,partner_id,system_name,admin_email,platform_version,desired_release,module_preset,status)
-			VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,'READY')
+		_,err:=a.db.Exec(`INSERT INTO provisioning.jobs(id,partner_id,system_name,admin_email,platform_version,desired_release,initial_environment,module_preset,status)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,'READY')
 			ON CONFLICT(partner_id) DO UPDATE SET
 				system_name=CASE WHEN provisioning.jobs.status IN ('COMPLETED','CONFIGURATION_REQUIRED') THEN provisioning.jobs.system_name ELSE EXCLUDED.system_name END,
 				admin_email=CASE WHEN EXCLUDED.admin_email<>'' THEN EXCLUDED.admin_email ELSE provisioning.jobs.admin_email END,
 				platform_version=CASE WHEN EXCLUDED.platform_version<>'' THEN EXCLUDED.platform_version ELSE provisioning.jobs.platform_version END,
 				desired_release=CASE WHEN EXCLUDED.desired_release<>'' THEN EXCLUDED.desired_release ELSE provisioning.jobs.desired_release END,
+				initial_environment=CASE WHEN provisioning.jobs.status IN ('COMPLETED','CONFIGURATION_REQUIRED') THEN provisioning.jobs.initial_environment ELSE EXCLUDED.initial_environment END,
 				module_preset=CASE WHEN EXCLUDED.module_preset<>'[]'::jsonb THEN EXCLUDED.module_preset ELSE provisioning.jobs.module_preset END,
 				updated_at=NOW()`,
-			id,in.PartnerID,strings.TrimSpace(in.SystemName),strings.ToLower(strings.TrimSpace(in.AdminEmail)),strings.TrimSpace(in.PlatformVersion),strings.TrimSpace(in.DesiredRelease),string(raw))
+			id,in.PartnerID,strings.TrimSpace(in.SystemName),strings.ToLower(strings.TrimSpace(in.AdminEmail)),strings.TrimSpace(in.PlatformVersion),strings.TrimSpace(in.DesiredRelease),in.Environment,string(raw))
 		if err!=nil{common.APIError(w,500,"DB","Could not create provisioning job");return}
 		for _,step:=range stepOrder{
 			_,_ = a.db.Exec(`INSERT INTO provisioning.steps(job_id,step_key) VALUES($1,$2) ON CONFLICT(job_id,step_key) DO NOTHING`,id,step)
+		}
+		if in.PrepareOnly{
+			j,_:=a.getJob(id)
+			common.JSON(w,202,mapJob(j))
+			return
 		}
 		if err:=a.runJob(r.Context(),id,strings.TrimSpace(r.Header.Get("X-Himate-User-ID")));err!=nil{
 			j,_:=a.getJob(id)
@@ -434,15 +448,15 @@ func (a *app)checkPartnerDatabase(ctx context.Context,partnerID string)error{
 type scanner interface{Scan(...any)error}
 func scanJob(s scanner)(job,error){
 	var j job;var raw []byte
-	err:=s.Scan(&j.ID,&j.PartnerID,&j.SystemName,&j.AdminEmail,&j.PlatformVersion,&j.DesiredRelease,&raw,&j.Status,&j.CurrentStep,&j.LastError,&j.StartedAt,&j.CompletedAt,&j.CreatedAt,&j.UpdatedAt)
+	err:=s.Scan(&j.ID,&j.PartnerID,&j.SystemName,&j.AdminEmail,&j.PlatformVersion,&j.DesiredRelease,&j.InitialEnvironment,&raw,&j.Status,&j.CurrentStep,&j.LastError,&j.StartedAt,&j.CompletedAt,&j.CreatedAt,&j.UpdatedAt)
 	_ = json.Unmarshal(raw,&j.ModulePreset)
 	return j,err
 }
 func (a *app)getJob(id string)(job,error){
-	return scanJob(a.db.QueryRow(`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs WHERE id=$1`,id))
+	return scanJob(a.db.QueryRow(`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,initial_environment,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs WHERE id=$1`,id))
 }
 func nullableTime(v sql.NullTime)any{if !v.Valid{return nil};return v.Time.UTC()}
-func mapJob(j job)map[string]any{return map[string]any{"id":j.ID,"partner_id":j.PartnerID,"system_name":j.SystemName,"admin_email":j.AdminEmail,"platform_version":j.PlatformVersion,"desired_release":j.DesiredRelease,"module_preset":j.ModulePreset,"status":j.Status,"current_step":j.CurrentStep,"last_error":j.LastError,"started_at":nullableTime(j.StartedAt),"completed_at":nullableTime(j.CompletedAt),"created_at":j.CreatedAt,"updated_at":j.UpdatedAt}}
+func mapJob(j job)map[string]any{return map[string]any{"id":j.ID,"partner_id":j.PartnerID,"system_name":j.SystemName,"admin_email":j.AdminEmail,"platform_version":j.PlatformVersion,"desired_release":j.DesiredRelease,"initial_environment":j.InitialEnvironment,"module_preset":j.ModulePreset,"status":j.Status,"current_step":j.CurrentStep,"last_error":j.LastError,"started_at":nullableTime(j.StartedAt),"completed_at":nullableTime(j.CompletedAt),"created_at":j.CreatedAt,"updated_at":j.UpdatedAt}}
 func (a *app)stepSucceeded(id,step string)bool{var status string;return a.db.QueryRow(`SELECT status FROM provisioning.steps WHERE job_id=$1 AND step_key=$2`,id,step).Scan(&status)==nil&&status=="SUCCESS"}
 func (a *app)steps(id string)[]map[string]any{
 	rows,err:=a.db.Query(`SELECT step_key,status,attempts,last_error,started_at,completed_at,updated_at FROM provisioning.steps WHERE job_id=$1
@@ -460,7 +474,7 @@ func (a *app)steps(id string)[]map[string]any{
 }
 func (a *app)summary(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
-	rows,err:=a.db.Query(`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs ORDER BY updated_at DESC`)
+	rows,err:=a.db.Query(`SELECT id,partner_id,system_name,admin_email,platform_version,desired_release,initial_environment,module_preset,status,current_step,last_error,started_at,completed_at,created_at,updated_at FROM provisioning.jobs ORDER BY updated_at DESC`)
 	if err!=nil{common.APIError(w,500,"DB","Could not load provisioning summary");return}
 	defer rows.Close();items:=[]map[string]any{}
 	for rows.Next(){if j,err:=scanJob(rows);err==nil{items=append(items,mapJob(j))}}
