@@ -131,6 +131,7 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
+	mux.HandleFunc("/art/himate_logo_master_v2.webp", a.brandLogo)
 	mux.HandleFunc("/public/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "cms")
 	})
@@ -331,6 +332,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
+		a.partnerPortfolioMetrics(w, r)
 	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
 		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
@@ -430,10 +433,22 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 	type portfolioPage struct { Items []map[string]any `json:"items"` }
 
 	var partners partnerPage
+	query := r.URL.Query()
+	coreOnly := strings.EqualFold(strings.TrimSpace(query.Get("core_only")), "true")
+	query.Del("core_only")
 	path := "/api/v1/partners"
-	if r.URL.RawQuery != "" { path += "?" + r.URL.RawQuery }
+	if encoded := query.Encode(); encoded != "" { path += "?" + encoded }
 	if err := a.internalGET(ctx, a.hosts["partners"], path, &partners); err != nil {
 		common.APIError(w, 502, "PARTNERS_UNAVAILABLE", "Partner portfolio is temporarily unavailable")
+		return
+	}
+	if coreOnly {
+		w.Header().Set("Server-Timing", fmt.Sprintf("partner-core;dur=%d", time.Since(started).Milliseconds()))
+		common.JSON(w, 200, map[string]any{
+			"items": partners.Items, "count": partners.Count, "total": partners.Total,
+			"limit": partners.Limit, "offset": partners.Offset, "has_more": partners.HasMore,
+			"lifecycle_counts": partners.LifecycleCounts, "reference_count": partners.ReferenceCount,
+		})
 		return
 	}
 
@@ -501,6 +516,51 @@ func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 		"limit": partners.Limit, "offset": partners.Offset, "has_more": partners.HasMore,
 		"lifecycle_counts": partners.LifecycleCounts, "reference_count": partners.ReferenceCount,
 	})
+}
+
+func (a *app) partnerPortfolioMetrics(w http.ResponseWriter, r *http.Request) {
+	rawIDs := strings.TrimSpace(r.URL.Query().Get("ids"))
+	if rawIDs == "" {
+		common.JSON(w, 200, map[string]any{"items": []map[string]any{}, "count": 0})
+		return
+	}
+	ids := make([]string, 0, 32)
+	seen := map[string]bool{}
+	for _, raw := range strings.Split(rawIDs, ",") {
+		id := strings.TrimSpace(raw)
+		if id == "" || seen[id] { continue }
+		seen[id] = true
+		ids = append(ids, id)
+		if len(ids) >= 200 { break }
+	}
+	type portfolioPage struct { Items []map[string]any `json:"items"` }
+	ctx, cancel := context.WithTimeout(r.Context(), 2500*time.Millisecond)
+	defer cancel()
+	filter := url.QueryEscape(strings.Join(ids, ","))
+	var catalogPortfolio, billingPortfolio, healthPortfolio portfolioPage
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func(){ defer wg.Done(); _ = a.internalGET(ctx,a.hosts["catalog"],"/internal/v1/portfolio?ids="+filter,&catalogPortfolio) }()
+	go func(){ defer wg.Done(); _ = a.internalGET(ctx,a.hosts["billing"],"/internal/v1/portfolio?ids="+filter,&billingPortfolio) }()
+	go func(){ defer wg.Done(); _ = a.internalGET(ctx,a.hosts["health"],"/internal/v1/system-health/partner-snapshots?ids="+filter,&healthPortfolio) }()
+	wg.Wait()
+	catalogByID:=map[string]map[string]any{}; for _,x:=range catalogPortfolio.Items{catalogByID[fmt.Sprint(x["partner_id"])]=x}
+	billingByID:=map[string]map[string]any{}; for _,x:=range billingPortfolio.Items{billingByID[fmt.Sprint(x["partner_id"])]=x}
+	healthByID:=map[string]map[string]any{}; for _,x:=range healthPortfolio.Items{healthByID[fmt.Sprint(x["partner_id"])]=x}
+	items:=make([]map[string]any,0,len(ids))
+	for _,id:=range ids{
+		out:=map[string]any{"partner_id":id}
+		cat,bill,hlt:=catalogByID[id],billingByID[id],healthByID[id]
+		active:=0; extra,base:=0.0,0.0
+		if v,ok:=cat["active_modules"].(float64);ok{active=int(v)}
+		if v,ok:=cat["extra_module_fee"].(float64);ok{extra=v}
+		if v,ok:=bill["effective_base_fee"].(float64);ok{base=v}
+		out["active_modules"]=active; out["base_service_fee"]=base; out["extra_module_fee"]=extra; out["service_value_30d"]=mathRound2(base+extra)
+		if v:=strings.TrimSpace(fmt.Sprint(hlt["overall_status"]));v!=""&&v!="<nil>"{out["system_health"]=v}
+		if v:=strings.TrimSpace(fmt.Sprint(hlt["platform_version"]));v!=""&&v!="<nil>"{out["platform_version"]=v}
+		items=append(items,out)
+	}
+	common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 }
 
 func mathRound2(v float64) float64 {
@@ -738,6 +798,19 @@ func pbkdf2SHA256(password, salt []byte, iterations, length int) []byte {
 		out = append(out, t...)
 	}
 	return out[:length]
+}
+
+func (a *app) brandLogo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w,http.StatusMethodNotAllowed,"METHOD","Use GET or HEAD")
+		return
+	}
+	file:=filepath.Join(filepath.Clean(a.webDir),"art","himate_logo_master_v2.webp")
+	if info,err:=os.Stat(file);err!=nil||info.IsDir(){http.NotFound(w,r);return}
+	w.Header().Set("Content-Type","image/webp")
+	w.Header().Set("Cache-Control","no-store, max-age=0, must-revalidate")
+	w.Header().Set("Pragma","no-cache")
+	http.ServeFile(w,r,file)
 }
 
 func (a *app) web() http.Handler {
