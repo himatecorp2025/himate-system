@@ -162,6 +162,22 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS billing_documents_partner_idx ON billing.documents(partner_id,created_at DESC)`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_period_unique ON billing.invoices(partner_id,service_period_start,service_period_end)`,
 		}},
+		{Version: 3, Name: "subscription-cancellation-history", Statements: []string{
+			`CREATE TABLE IF NOT EXISTS billing.subscription_history(
+				id BIGSERIAL PRIMARY KEY,
+				partner_id TEXT NOT NULL,
+				module_key TEXT NOT NULL,
+				old_auto_renew BOOLEAN NOT NULL,
+				new_auto_renew BOOLEAN NOT NULL,
+				old_cancel_at_period_end BOOLEAN NOT NULL,
+				new_cancel_at_period_end BOOLEAN NOT NULL,
+				effective_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				actor TEXT NOT NULL DEFAULT '',
+				reason TEXT NOT NULL DEFAULT ''
+			)`,
+			`CREATE INDEX IF NOT EXISTS billing_subscription_history_lookup
+				ON billing.subscription_history(partner_id,module_key,effective_at DESC)`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -249,11 +265,19 @@ func (a *app) ensureLicense(id string) (initialLicense, error) {
 
 func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/billing/partners/"), "/"), "/")
-	if len(parts) != 2 {
+	if len(parts) < 2 || len(parts) > 3 {
 		common.APIError(w, 404, "NOT_FOUND", "Route not found")
 		return
 	}
 	id, section := parts[0], parts[1]
+	if len(parts) == 3 {
+		if section == "subscriptions" {
+			a.subscriptionByKey(w, r, id, parts[2])
+			return
+		}
+		common.APIError(w, 404, "NOT_FOUND", "Route not found")
+		return
+	}
 	switch section {
 	case "terms":
 		a.terms(w, r, id)
@@ -381,7 +405,7 @@ func licenseMap(x initialLicense) map[string]any {
 	if x.PaymentDate.Valid { paymentDate = x.PaymentDate.Time.Format("2006-01-02") }
 	return map[string]any{
 		"partner_id": x.PartnerID, "currency": x.Currency, "required_amount": x.Required, "paid_amount": x.Paid,
-		"status": x.Status, "payment_date": paymentDate, "payment_reference": x.Reference, "verified_by": x.VerifiedBy,
+		"status": x.Status, "payment_status": x.Status, "payment_date": paymentDate, "payment_reference": x.Reference, "verified_by": x.VerifiedBy,
 		"note": x.Note, "waived": x.Waived, "waiver_reason": x.WaiverReason, "updated_at": x.UpdatedAt,
 	}
 }
@@ -599,6 +623,84 @@ func (a *app) subscriptions(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	common.JSON(w, 200, map[string]any{"items": items})
 }
+
+func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, moduleKey string) {
+	if r.Method != http.MethodPatch {
+		common.APIError(w, 405, "METHOD", "Use PATCH")
+		return
+	}
+	moduleKey = strings.TrimSpace(moduleKey)
+	if moduleKey == "" {
+		common.APIError(w, 404, "NOT_FOUND", "Subscription not found")
+		return
+	}
+	var in struct {
+		CancelAtPeriodEnd *bool  `json:"cancel_at_period_end"`
+		Reason            string `json:"reason"`
+	}
+	if common.Decode(r, &in) != nil || in.CancelAtPeriodEnd == nil {
+		common.APIError(w, 400, "VALIDATION", "cancel_at_period_end is required")
+		return
+	}
+
+	tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not start subscription update")
+		return
+	}
+	defer tx.Rollback()
+
+	var oldRenew, oldCancel bool
+	var periodEnd time.Time
+	var paymentStatus string
+	if err = tx.QueryRow(`SELECT auto_renew,cancel_at_period_end,period_end,payment_status
+		FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2 FOR UPDATE`, id, moduleKey).
+		Scan(&oldRenew, &oldCancel, &periodEnd, &paymentStatus); err != nil {
+		if err == sql.ErrNoRows {
+			common.APIError(w, 404, "NOT_FOUND", "Subscription not found; activate the module first")
+		} else {
+			common.APIError(w, 500, "DB", "Could not load subscription")
+		}
+		return
+	}
+
+	nextCancel := *in.CancelAtPeriodEnd
+	nextRenew := !nextCancel
+	if paymentStatus == "INACTIVE" && !nextCancel {
+		common.APIError(w, 409, "SUBSCRIPTION_INACTIVE", "Reactivate the module before enabling renewal")
+		return
+	}
+	if oldCancel != nextCancel || oldRenew != nextRenew {
+		if _, err = tx.Exec(`UPDATE billing.module_subscriptions
+			SET auto_renew=$3,cancel_at_period_end=$4,updated_at=NOW()
+			WHERE partner_id=$1 AND module_key=$2`, id, moduleKey, nextRenew, nextCancel); err != nil {
+			common.APIError(w, 500, "DB", "Could not update subscription")
+			return
+		}
+		actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+		reason := strings.TrimSpace(in.Reason)
+		if reason == "" {
+			if nextCancel { reason = "Cancel at current period end" } else { reason = "Cancellation withdrawn" }
+		}
+		if _, err = tx.Exec(`INSERT INTO billing.subscription_history(
+				partner_id,module_key,old_auto_renew,new_auto_renew,old_cancel_at_period_end,new_cancel_at_period_end,actor,reason
+			) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+			id, moduleKey, oldRenew, nextRenew, oldCancel, nextCancel, actor, reason); err != nil {
+			common.APIError(w, 500, "DB", "Could not record subscription history")
+			return
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		common.APIError(w, 500, "DB", "Could not commit subscription update")
+		return
+	}
+	common.JSON(w, 200, map[string]any{
+		"partner_id": id, "module_key": moduleKey, "auto_renew": nextRenew,
+		"cancel_at_period_end": nextCancel, "period_end_exclusive": periodEnd.Format("2006-01-02"),
+		"payment_status": paymentStatus,
+	})
+}
+
 
 func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 	switch r.Method {
