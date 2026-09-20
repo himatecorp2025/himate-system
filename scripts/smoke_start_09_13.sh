@@ -76,7 +76,7 @@ echo ok
 
 printf 'START-13 metric definition and connector sync... '
 curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"metric_key":"ci.events","label":"CI Events","description":"START-13 smoke metric","unit":"count","aggregation":"SUM","scope":"PARTNER"}'   "$BASE_URL/api/v1/impact/definitions" | grep -q '"metric_key":"ci.events"'
-curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: application/json'   -d '{"items":[{"idempotency_key":"start09-13-ci-event-1","metric_key":"ci.events","period_start":"2026-09-01","period_end":"2026-09-20","numeric_value":7,"provenance":"PARTNER_DECLARED","source_ref":"ci-connector"}]}'   "$BASE_URL/connector/v1/metrics" | grep -q '"accepted":1"'
+curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: application/json'   -d '{"items":[{"idempotency_key":"start09-13-ci-event-1","metric_key":"ci.events","period_start":"2026-09-01","period_end":"2026-09-20","numeric_value":7,"provenance":"PARTNER_DECLARED","source_ref":"ci-connector"}]}'   "$BASE_URL/connector/v1/metrics" | grep -q '"accepted":1'
 summary="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/impact/summary?partner_id=$partner_id")"
 printf '%s' "$summary" | grep -q '"metric_key":"ci.events"'
 printf '%s' "$summary" | grep -q '"numeric_value":7'
