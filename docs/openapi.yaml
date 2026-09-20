@@ -143,7 +143,10 @@ paths:
     patch:
       tags: [Partners]
       summary: Update partner company data or lifecycle
-      description: Lifecycle transitions are backend-enforced and historized.
+      description: >
+        Lifecycle transitions are backend-enforced and historized. Entering
+        PROVISIONING fails closed unless Billing confirms the authoritative
+        initial-license payment/evidence gate (or an explicit valid waiver).
       requestBody:
         required: true
         content:
