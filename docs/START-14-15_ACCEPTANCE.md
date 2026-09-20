@@ -67,24 +67,25 @@ The scope is derived from the START plan: important results may be linked to Evi
 
 Acceptance candidate: `6625579f4acab93590ed1b4d684de23446af5e8c`.
 
-Pre-final evidence: HIMATE CI #291 completed successfully with Render Blueprint validation, Go, Flutter, Docker Compose, START-01–08 regression, START-09–13 integration and START-14–15 integration smoke. Release-gate checkboxes remain open until the same full suite succeeds on the current acceptance candidate or a documentation-only descendant.
+Final code evidence: HIMATE CI #294 completed successfully on acceptance candidate `6625579f4acab93590ed1b4d684de23446af5e8c`, including the complete Render/Go/Flutter/Compose/regression/integration suite.
 
+- [x] `go vet ./...`
+- [x] `go test ./...`
+- [x] `go test -race ./...`
+- [x] `go build ./cmd/...`
+- [x] `flutter analyze`
+- [x] `flutter test --platform chrome`
+- [x] `flutter build web --release`
+- [x] Render Blueprint validation includes Evidence and Reports services and host bindings.
+- [x] Docker Compose topology validates.
+- [x] All microservice containers build and start.
+- [x] Gateway/private-service health includes Evidence and Reports.
+- [x] START-01–08 regression smoke passes.
+- [x] START-09–13 integration smoke passes.
+- [x] START-14–15 integration smoke passes.
 
-- [ ] `go vet ./...`
-- [ ] `go test ./...`
-- [ ] `go test -race ./...`
-- [ ] `go build ./cmd/...`
-- [ ] `flutter analyze`
-- [ ] `flutter test --platform chrome`
-- [ ] `flutter build web --release`
-- [ ] Render Blueprint validation includes Evidence and Reports services and host bindings.
-- [ ] Docker Compose topology validates.
-- [ ] All microservice containers build and start.
-- [ ] Gateway/private-service health includes Evidence and Reports.
-- [ ] START-01–08 regression smoke passes.
-- [ ] START-09–13 integration smoke passes.
-- [ ] START-14–15 integration smoke passes.
-- [ ] The final PR is merged to `develop` only after every release gate is green.
-- [ ] A post-merge `develop` run repeats the complete release gate successfully.
+Release-gate result: **14/14 green** on HIMATE CI #294.
+
+Merge policy: PR #7 may be merged only after these release gates are green. A complete post-merge `develop` run is mandatory and is recorded in the final audit after merge; it is not a pre-merge acceptance checkbox.
 
 START-16 and later work is explicitly out of scope for this block.
