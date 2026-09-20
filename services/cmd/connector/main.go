@@ -267,8 +267,9 @@ func (a *app) metrics(w http.ResponseWriter,r *http.Request){
 	for i,item:=range in.Items {
 		item["partner_id"]=c.PartnerID
 		if _,ok:=item["provenance"];!ok { item["provenance"]="PARTNER_DECLARED" }
-		if _,ok:=item["idempotency_key"];!ok {
-			item["idempotency_key"]=fmt.Sprintf("%s-%s-%d",c.PartnerID,time.Now().UTC().Format("20060102T150405.000000000"),i)
+		if strings.TrimSpace(fmt.Sprint(item["idempotency_key"]))=="" {
+			common.APIError(w,400,"IDEMPOTENCY_KEY_REQUIRED",fmt.Sprintf("Metric %d requires idempotency_key",i))
+			return
 		}
 		raw,_:=json.Marshal(item)
 		req,err:=http.NewRequestWithContext(r.Context(),http.MethodPost,"http://"+a.impactHost+"/internal/v1/impact/ingest",bytes.NewReader(raw))
