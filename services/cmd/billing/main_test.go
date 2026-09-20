@@ -1,6 +1,11 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -105,5 +110,52 @@ func TestCommercialEvidenceKinds(t *testing.T) {
 		if isCommercialEvidenceKind(kind) {
 			t.Fatalf("unexpected commercial evidence kind %q", kind)
 		}
+	}
+}
+
+func TestExpiredSubscriptionDisablesCatalogEntitlement(t *testing.T) {
+	const token = "0123456789abcdefghijklmnop"
+	var gotPath, gotMethod, gotToken, gotActor, gotStatus, gotReason string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		gotToken = r.Header.Get("X-Himate-Internal-Token")
+		gotActor = r.Header.Get("X-Himate-User-ID")
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		gotStatus, _ = body["status"].(string)
+		gotReason, _ = body["reason"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"NOT_LICENSED"}`))
+	}))
+	defer server.Close()
+
+	a := &app{
+		catalogHost: strings.TrimPrefix(server.URL, "http://"),
+		token: token,
+		client: server.Client(),
+	}
+	if err := a.setCatalogModuleNotLicensed(context.Background(), "ptr_000002", "marketing_campaigns"); err != nil {
+		t.Fatalf("catalog sync: %v", err)
+	}
+	if gotMethod != http.MethodPatch {
+		t.Fatalf("expected PATCH got %s", gotMethod)
+	}
+	if gotPath != "/internal/v1/partners/ptr_000002/modules/marketing_campaigns" {
+		t.Fatalf("unexpected path %s", gotPath)
+	}
+	if gotToken != token {
+		t.Fatal("internal service credential missing")
+	}
+	if gotActor != "billing-cycle" {
+		t.Fatalf("expected billing-cycle actor got %q", gotActor)
+	}
+	if gotStatus != "NOT_LICENSED" {
+		t.Fatalf("expected NOT_LICENSED got %q", gotStatus)
+	}
+	if gotReason == "" {
+		t.Fatal("history reason must not be empty")
 	}
 }
