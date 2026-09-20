@@ -719,7 +719,14 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 
 func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
-	rows, err := a.db.Query(`SELECT partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date,updated_at FROM billing.partner_terms ORDER BY partner_id`)
+	query := `SELECT partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date,updated_at FROM billing.partner_terms`
+	args := []any{}
+	if ids := strings.TrimSpace(r.URL.Query().Get("ids")); ids != "" {
+		query += ` WHERE partner_id = ANY(string_to_array($1, ','))`
+		args = append(args, ids)
+	}
+	query += ` ORDER BY partner_id`
+	rows, err := a.db.Query(query, args...)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load billing portfolio"); return }
 	defer rows.Close()
 	items := []map[string]any{}
