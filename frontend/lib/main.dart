@@ -323,7 +323,14 @@ class _HimateAppState extends State<HimateApp> {
     user = await api.post('/api/v1/auth/login', {'email': email, 'password': password});
     if (!mounted) return;
     setState(() {});
+    final target = _pendingDeepLink;
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
+    if (target != null && !_deepLinkHandled) {
+      _deepLinkHandled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navigatorKey.currentState?.pushNamed(target);
+      });
+    }
   }
 
   Future<void> logout() async {
