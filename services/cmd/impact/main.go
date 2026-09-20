@@ -55,6 +55,7 @@ func main() {
 	})
 	mux.HandleFunc("/api/v1/impact/definitions", a.definitions)
 	mux.HandleFunc("/api/v1/impact/values", a.values)
+	mux.HandleFunc("/api/v1/impact/baselines", a.baselines)
 	mux.HandleFunc("/api/v1/impact/summary", a.summary)
 	mux.HandleFunc("/internal/v1/impact/ingest", a.ingest)
 	mux.HandleFunc("/internal/v1/impact/summary", a.summary)
@@ -96,6 +97,22 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS impact_values_partner_metric_idx ON impact.metric_values(partner_id,metric_key,period_end DESC)`,
 			`CREATE INDEX IF NOT EXISTS impact_values_period_idx ON impact.metric_values(period_start,period_end)`,
+		}},
+		{Version: 2, Name: "impact-baselines", Statements: []string{
+			`CREATE TABLE IF NOT EXISTS impact.metric_baselines(
+				partner_id TEXT NOT NULL DEFAULT '',
+				metric_key TEXT NOT NULL REFERENCES impact.metric_definitions(metric_key),
+				period_start DATE NOT NULL,
+				period_end DATE NOT NULL,
+				numeric_value NUMERIC(18,4),
+				text_value TEXT NOT NULL DEFAULT '',
+				provenance TEXT NOT NULL DEFAULT 'MANUAL',
+				source_ref TEXT NOT NULL DEFAULT '',
+				recorded_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				PRIMARY KEY(partner_id,metric_key),
+				CHECK(period_end >= period_start)
+			)`,
 		}},
 	})
 }
@@ -295,6 +312,67 @@ func (a *app) recordValue(w http.ResponseWriter,r *http.Request,in metricInput){
 	common.JSON(w,201,map[string]any{"id":id,"partner_id":strings.TrimSpace(in.PartnerID),"metric_key":in.MetricKey,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"provenance":in.Provenance})
 }
 
+func (a *app) baselines(w http.ResponseWriter,r *http.Request){
+	switch r.Method{
+	case http.MethodGet:
+		partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
+		metricKey:=strings.TrimSpace(r.URL.Query().Get("metric_key"))
+		where:=[]string{"1=1"};args:=[]any{}
+		if partnerID!=""{args=append(args,partnerID);where=append(where,fmt.Sprintf("b.partner_id=$%d",len(args)))}
+		if metricKey!=""{args=append(args,metricKey);where=append(where,fmt.Sprintf("b.metric_key=$%d",len(args)))}
+		rows,err:=a.db.Query(`SELECT b.partner_id,b.metric_key,d.label,d.unit,b.period_start,b.period_end,b.numeric_value,b.text_value,b.provenance,b.source_ref,b.recorded_by,b.updated_at
+			FROM impact.metric_baselines b JOIN impact.metric_definitions d ON d.metric_key=b.metric_key WHERE `+strings.Join(where," AND ")+` ORDER BY d.label`,args...)
+		if err!=nil{common.APIError(w,500,"DB","Could not load metric baselines");return}
+		defer rows.Close();items:=[]map[string]any{}
+		for rows.Next(){
+			var partner,key,label,unit,textValue,prov,source,recordedBy string
+			var start,end,updated time.Time;var numeric sql.NullFloat64
+			if rows.Scan(&partner,&key,&label,&unit,&start,&end,&numeric,&textValue,&prov,&source,&recordedBy,&updated)==nil{
+				var num any;if numeric.Valid{num=numeric.Float64}
+				items=append(items,map[string]any{"partner_id":partner,"metric_key":key,"label":label,"unit":unit,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":num,"text_value":textValue,"provenance":prov,"source_ref":source,"recorded_by":recordedBy,"updated_at":updated})
+			}
+		}
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+	case http.MethodPut:
+		var in metricInput
+		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+		if in.Provenance==""{in.Provenance="MANUAL"}
+		if !adminProvenanceAllowed(in.Provenance){common.APIError(w,400,"PROVENANCE_BOUNDARY","Administrator-entered baselines must use MANUAL provenance");return}
+		in,start,end,err:=parseMetricInput(in)
+		if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
+		var exists bool
+		if err=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM impact.metric_definitions WHERE metric_key=$1 AND active=TRUE)`,in.MetricKey).Scan(&exists);err!=nil||!exists{
+			common.APIError(w,409,"UNKNOWN_METRIC","Metric definition is not active");return
+		}
+		recordedBy:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+		_,err=a.db.Exec(`INSERT INTO impact.metric_baselines(partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,recorded_by)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			ON CONFLICT(partner_id,metric_key) DO UPDATE SET period_start=EXCLUDED.period_start,period_end=EXCLUDED.period_end,
+				numeric_value=EXCLUDED.numeric_value,text_value=EXCLUDED.text_value,provenance=EXCLUDED.provenance,source_ref=EXCLUDED.source_ref,recorded_by=EXCLUDED.recorded_by,updated_at=NOW()`,
+			strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),recordedBy)
+		if err!=nil{common.APIError(w,500,"DB","Could not save metric baseline");return}
+		common.JSON(w,200,map[string]any{"partner_id":strings.TrimSpace(in.PartnerID),"metric_key":in.MetricKey,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),"numeric_value":in.NumericValue,"text_value":strings.TrimSpace(in.TextValue),"provenance":in.Provenance})
+	default:
+		common.APIError(w,405,"METHOD","Use GET or PUT")
+	}
+}
+
+func (a *app) baselineValues(partnerID string)map[string]map[string]any{
+	rows,err:=a.db.Query(`SELECT metric_key,period_start,period_end,numeric_value,text_value FROM impact.metric_baselines WHERE partner_id=$1`,partnerID)
+	if err!=nil{return map[string]map[string]any{}}
+	defer rows.Close();out:=map[string]map[string]any{}
+	for rows.Next(){
+		var key,text string;var start,end time.Time;var numeric sql.NullFloat64
+		if rows.Scan(&key,&start,&end,&numeric,&text)==nil{
+			var num any;if numeric.Valid{num=numeric.Float64}
+			out[key]=map[string]any{"baseline_period_start":start.Format("2006-01-02"),"baseline_period_end":end.Format("2006-01-02"),"baseline_numeric_value":num,"baseline_text_value":text}
+		}
+	}
+	return out
+}
+
+func stringValue(v any)string{if v==nil{return ""};return fmt.Sprint(v)}
+
 func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }
 	partnerID:=strings.TrimSpace(r.URL.Query().Get("partner_id"))
@@ -323,6 +401,16 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 			var value any
 			if num.Valid { value=num.Float64 }
 			items=append(items,map[string]any{"metric_key":key,"label":label,"unit":unit,"aggregation":agg,"numeric_value":value,"latest_period_end":end.Format("2006-01-02"),"observations":count})
+		}
+	}
+	baselines:=a.baselineValues(partnerID)
+	for _,item:=range items{
+		key:=stringValue(item["metric_key"])
+		if b:=baselines[key];b!=nil{
+			for k,v:=range b{item[k]=v}
+			if current,ok:=item["numeric_value"].(float64);ok{
+				if baseline,ok:=b["baseline_numeric_value"].(float64);ok{item["delta_from_baseline"]=current-baseline}
+			}
 		}
 	}
 	common.JSON(w,200,map[string]any{"partner_id":partnerID,"items":items,"count":len(items)})
