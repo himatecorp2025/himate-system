@@ -510,6 +510,7 @@ func (a *app)replacePublishedMedia(ctx context.Context,tx *sql.Tx,pageID,version
 func (a *app)publish(w http.ResponseWriter,r *http.Request,p pageRow){
 	if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use POST");return}
 	preview,err:=a.getVersion(p.PreviewVersionID);if err!=nil{common.APIError(w,409,"PREVIEW_REQUIRED","A preview version is required before publishing");return}
+	if preview.SourceVersionID!=p.DraftVersionID{common.APIError(w,409,"PREVIEW_STALE","The draft changed after preview. Create a fresh preview before publishing.");return}
 	in,err:=inputFromVersion(preview);if err!=nil{common.APIError(w,500,"CMS_DATA","Could not decode preview");return}
 	if err=a.validateContent(r.Context(),p.ID,in,true);err!=nil{common.APIError(w,400,"PUBLISH_VALIDATION",err.Error());return}
 	if err=a.publishedConflict(r.Context(),p.ID,in);err!=nil{common.APIError(w,409,"SEO_CONFLICT",err.Error());return}
@@ -595,7 +596,7 @@ func (a *app)previewPage(w http.ResponseWriter,r *http.Request){
 	slug:=strings.ToLower(strings.Trim(strings.TrimPrefix(r.URL.Path,"/preview/v1/cms/pages/"),"/"))
 	rawToken:=strings.TrimSpace(r.URL.Query().Get("token"))
 	var p pageRow
-	err:=a.db.QueryRow(pageSelect()+` WHERE preview_version_id IN (SELECT id FROM cms.versions WHERE lower(slug)=lower($1) AND state='PREVIEW')`,slug).
+	err:=a.db.QueryRow(pageSelect()+` WHERE preview_token_hash=$2 AND preview_version_id IN (SELECT id FROM cms.versions WHERE lower(slug)=lower($1) AND state='PREVIEW')`,slug,tokenHash(rawToken)).
 		Scan(&p.ID,&p.PageKey,&p.Name,&p.DraftVersionID,&p.PreviewVersionID,&p.PublishedVersionID,&p.PreviewTokenHash,&p.PreviewTokenIssuedAt,&p.CreatedAt,&p.UpdatedAt)
 	if err!=nil||!tokenMatches(rawToken,p.PreviewTokenHash){common.APIError(w,404,"NOT_FOUND","Preview not found");return}
 	v,err:=a.getVersion(p.PreviewVersionID);if err!=nil{common.APIError(w,404,"NOT_FOUND","Preview not found");return}
@@ -666,8 +667,8 @@ func (a *app)mediaCollection(w http.ResponseWriter,r *http.Request){
 		buf:=make([]byte,512);readN,_:=tmp.Read(buf);mime:=http.DetectContentType(buf[:readN])
 		if !cmsMimeAllowed(mime){common.APIError(w,415,"MEDIA_TYPE","CMS media must be PNG, JPEG or WebP");return}
 		if _,err=tmp.Seek(0,0);err!=nil{common.APIError(w,500,"FILE","Could not store media");return}
-		id:=newID("cms_media_");filename:=safeFilename(header.Filename);ext:=strings.ToLower(filepath.Ext(filename))
-		if ext==""{switch mime{case"image/png":ext=".png";case"image/jpeg":ext=".jpg";case"image/webp":ext=".webp"}}
+		id:=newID("cms_media_");filename:=safeFilename(header.Filename);ext:=".bin"
+		switch mime{case"image/png":ext=".png";case"image/jpeg":ext=".jpg";case"image/webp":ext=".webp"}
 		key:="media/"+id+ext;sum:=hex.EncodeToString(h.Sum(nil))
 		stored,err:=a.putMedia(r.Context(),key,tmp,n);if err!=nil{common.APIError(w,502,"STORAGE",err.Error());return}
 		if got:=strings.TrimSpace(fmt.Sprint(stored["sha256"]));got!=""&&got!=sum{common.APIError(w,502,"CHECKSUM_MISMATCH","Stored media checksum mismatch");return}
