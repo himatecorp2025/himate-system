@@ -367,7 +367,8 @@ func (a *app) deployRecord(ctx context.Context,e environment,release string)(env
 	},&out)
 	if err!=nil {
 		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='FAILED',environment_status='FAILED',runtime_status='ERROR',runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,latency)
-		return a.get(e.ID)
+		failed,_:=a.get(e.ID)
+		return failed,err
 	}
 	nextStatus:="READY"
 	if e.Kind=="PRODUCTION" { nextStatus="CONFIGURATION_REQUIRED" }
@@ -478,15 +479,6 @@ func (a *app) deployStaging(w http.ResponseWriter, r *http.Request) {
 	if release==""{release=e.DesiredRelease}
 	if release==""{release=e.PlatformVersion}
 	if release==""{release="current"}
-	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYING',environment_status='TESTING',runtime_status='CHECKING',updated_at=NOW() WHERE id=$1`,id)
-	var out map[string]any
-	latency,err:=a.runtimeRequest(r.Context(),http.MethodPost,"/internal/v1/runtime/deploy",map[string]any{
-		"partner_id":e.PartnerID,"environment":"STAGING","hostname":e.Hostname,"release":release,"config":common.JSONRawOrEmpty(e.ConfigJSON),
-	},&out)
-	if err!=nil {
-		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='FAILED',environment_status='FAILED',runtime_status='ERROR',runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,id,latency)
-		common.APIError(w,502,"RUNTIME_DEPLOY",err.Error());return
-	}
 	e,err=a.deployRecord(r.Context(),e,release)
 	if err!=nil{common.APIError(w,502,"RUNTIME_DEPLOY",err.Error());return}
 	common.JSON(w,200,mapEnvironment(e))
