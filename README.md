@@ -71,6 +71,7 @@ HIMATE is the central control plane for separately deployed arts-sector partner 
 - machine-readable allowlist for exactly 38 Klavierhaus functional modules
 - Node.js Klavierhaus export adapter remains implementation-independent from the Go HIMATE receiver
 - HMAC-SHA-512 signed requests, SHA-512 payload/data integrity, five-minute timestamps and nonce replay protection
+- retained Connector business payloads use AES-256-GCM envelope encryption with per-record data keys and a versioned runtime-only master-key keyring
 - partner/environment identity is derived only from the connector credential
 - 1 MiB/250-item bounded batches with dataset/field validation and fail-closed sensitive-field rejection
 - idempotent batch/item ingestion and SHA-512 reconciliation with SYNCED / OUT_OF_SYNC state
@@ -132,6 +133,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - independent Docker images and service boundaries
 - HTTP connection pooling for internal/provider calls
 - partner business databases physically separated from the HIMATE control-plane DB
+- START-22 retained Connector payloads encrypted at rest with AES-256-GCM envelope encryption
 - server-paginated partner reads and bounded page-level aggregation
 - encrypted offsite restore artifacts with mandatory restore verification
 - Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–22 smoke tests in CI
