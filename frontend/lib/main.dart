@@ -4865,7 +4865,7 @@ class _ImpactPageState extends State<ImpactPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(enabled: false, decoration: InputDecoration(labelText: uiLiteral('Evidence'), hintText: '${item['id']} · ${item['title']}'),
+            TextField(enabled: false, decoration: InputDecoration(labelText: uiLiteral('Evidence'), hintText: '${item['id']} · ${item['title']}')),
             const SizedBox(height: 12),
             TextField(enabled: false, decoration: InputDecoration(labelText: uiLiteral('Metric'), hintText: metricKey)),
             const SizedBox(height: 12),
