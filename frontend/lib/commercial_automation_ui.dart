@@ -89,7 +89,11 @@ extension Start223CommercialAutomationUI on _PartnerWorkspaceState {
           'note': note.text.trim(),
         });
         await _loadSupplementary();
-        if (mounted) success('Commercial agreement updated.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: LText('Commercial agreement updated.'), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+          );
+        }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -239,7 +243,11 @@ extension Start223CommercialAutomationUI on _PartnerWorkspaceState {
           },
         });
         await _loadSupplementary();
-        if (mounted) success('Partner Website Adapter updated.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: LText('Partner Website Adapter updated.'), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+          );
+        }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
