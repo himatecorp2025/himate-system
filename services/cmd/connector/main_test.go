@@ -240,6 +240,21 @@ func TestSTART223WebsiteAdapterValidation(t *testing.T) {
 	}
 }
 
+func TestSTART223AdapterConfigRejectsSensitiveKeys(t *testing.T) {
+	valid := map[string]any{
+		"partner_portal": "/partner/login",
+		"nested": map[string]any{"mode": "readonly"},
+	}
+	if err := validateAdapterConfigValue(valid); err != nil {
+		t.Fatalf("safe adapter config rejected: %v", err)
+	}
+	for _, key := range []string{"api_token", "password", "payment_reference", "bank_account", "cookie"} {
+		if err := validateAdapterConfigValue(map[string]any{key: "must-not-be-stored"}); err == nil {
+			t.Fatalf("sensitive adapter config key %q must be rejected", key)
+		}
+	}
+}
+
 func TestSTART223DomainNormalization(t *testing.T) {
 	tests := map[string]string{
 		"https://Example.com/path": "example.com",
