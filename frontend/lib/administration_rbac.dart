@@ -53,7 +53,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
   void notify(String message, {bool failure = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: LText(message),
         behavior: SnackBarBehavior.floating,
         backgroundColor: failure ? brandDanger : brandSuccess,
       ),
@@ -80,7 +80,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
         borderRadius: BorderRadius.circular(99),
         border: Border.all(color: value == '*' ? brandGold.withOpacity(.28) : brandMist),
       ),
-      child: Text(
+      child: LText(
         value == '*' ? 'ALL PERMISSIONS' : value,
         style: TextStyle(
           color: value == '*' ? brandWarning : brandNavy,
@@ -97,7 +97,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
       title: '${role['label'] ?? _humanize('${role['key']}')}',
       icon: '${role['key']}' == 'platform_admin' ? Icons.shield_outlined : Icons.badge_outlined,
       children: [
-        Text(
+        LText(
           '${role['description'] ?? ''}',
           style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
         ),
@@ -133,7 +133,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                       Row(
                         children: [
                           Flexible(
-                            child: Text(
+                            child: LText(
                               '${user['name'] ?? 'Administrator'}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -151,7 +151,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                         ],
                       ),
                       const SizedBox(height: 3),
-                      Text(
+                      LText(
                         '${user['email'] ?? ''}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -177,7 +177,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                       borderRadius: BorderRadius.circular(99),
                       border: Border.all(color: brandGold.withOpacity(.20)),
                     ),
-                    child: Text(
+                    child: LText(
                       _roleLabel(role),
                       style: const TextStyle(color: brandNavy, fontSize: 8.8, fontWeight: FontWeight.w700),
                     ),
@@ -193,7 +193,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
               child: OutlinedButton.icon(
                 onPressed: () => editUser(user),
                 icon: const Icon(Icons.manage_accounts_outlined),
-                label: const Text('Edit access'),
+                label: const LText('Edit access'),
               ),
             ),
           ],
@@ -231,12 +231,12 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
               ResponsiveFieldPair(
                 first: TextField(
                   controller: name,
-                  decoration: const InputDecoration(labelText: 'Full name'),
+                  decoration: InputDecoration(labelText: uiLiteral('Full name')),
                 ),
                 second: TextField(
                   controller: email,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email address'),
+                  decoration: InputDecoration(labelText: uiLiteral('Email address')),
                 ),
               ),
               const SizedBox(height: 12),
@@ -251,9 +251,9 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                 ),
               ),
               const SizedBox(height: 18),
-              Text('Roles', style: Theme.of(context).textTheme.titleMedium),
+              LText('Roles', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 5),
-              const Text(
+              const LText(
                 'Permissions are additive when multiple roles are assigned.',
                 style: TextStyle(color: brandTextSoft, fontSize: 10.5),
               ),
@@ -264,8 +264,8 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   value: selected.contains('${role['key']}'),
-                  title: Text('${role['label']}', style: const TextStyle(color: brandNavy, fontSize: 12, fontWeight: FontWeight.w700)),
-                  subtitle: Text(
+                  title: LText('${role['label']}', style: const TextStyle(color: brandNavy, fontSize: 12, fontWeight: FontWeight.w700)),
+                  subtitle: LText(
                     '${role['key']}' == 'platform_admin' && editingSystemOwner
                         ? 'Reserved system-owner role'
                         : '${role['description']}',
@@ -289,15 +289,15 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Active account', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700)),
-                  subtitle: const Text('Suspended administrators cannot sign in or use an existing session.', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  title: const LText('Active account', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700)),
+                  subtitle: const LText('Suspended administrators cannot sign in or use an existing session.', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
                   value: active,
                   onChanged: (value) => setDialogState(() { active = value; dialogError = null; }),
                 ),
               ],
               if (dialogError != null) ...[
                 const SizedBox(height: 8),
-                Text(dialogError!, style: const TextStyle(color: brandDanger, fontSize: 10.5, fontWeight: FontWeight.w600)),
+                LText(dialogError!, style: const TextStyle(color: brandDanger, fontSize: 10.5, fontWeight: FontWeight.w600)),
               ],
             ],
           ),
@@ -422,7 +422,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
               FilledButton.icon(
                 onPressed: roles.isEmpty ? null : createUser,
                 icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text('Add administrator'),
+                label: const LText('Add administrator'),
               ),
             ],
           ),
