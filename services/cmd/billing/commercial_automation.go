@@ -273,6 +273,7 @@ func (a *app) agreement(w http.ResponseWriter, r *http.Request, partnerID string
 		err = tx.QueryRowContext(r.Context(), `SELECT status,agreement_reference,note
 			FROM billing.commercial_agreements WHERE partner_id=$1 FOR UPDATE`, partnerID).
 			Scan(&oldStatus, &oldReference, &oldNote)
+		existing := err == nil
 		if err != nil && err != sql.ErrNoRows {
 			common.APIError(w, 500, "DB", "Could not load commercial agreement")
 			return
@@ -294,7 +295,7 @@ func (a *app) agreement(w http.ResponseWriter, r *http.Request, partnerID string
 		case status == "DRAFT" && oldStatus == "AGREED":
 			eventType = "COMMERCIAL_AGREEMENT_DRAFTED"
 		}
-		if oldStatus != status || oldReference != reference || oldNote != strings.TrimSpace(in.Note) || err == sql.ErrNoRows {
+		if !existing || oldStatus != status || oldReference != reference || oldNote != strings.TrimSpace(in.Note) {
 			if err = emitBillingEventTx(r.Context(), tx,
 				fmt.Sprintf("%s:%s:%d", eventType, partnerID, eventAt.UnixNano()),
 				partnerID, "", eventType, eventAt, map[string]any{
