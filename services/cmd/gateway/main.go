@@ -599,7 +599,8 @@ func permissionResource(r *http.Request) string {
 	case path == "/api/v1/reports", strings.HasPrefix(path, "/api/v1/reports/"):
 		return "reports"
 	case path == "/api/v1/cms/pages", strings.HasPrefix(path, "/api/v1/cms/pages/"),
-		path == "/api/v1/cms/media", strings.HasPrefix(path, "/api/v1/cms/media/"):
+		path == "/api/v1/cms/media", strings.HasPrefix(path, "/api/v1/cms/media/"),
+		path == "/api/v1/cms/design", strings.HasPrefix(path, "/api/v1/cms/design/"):
 		return "cms"
 	default:
 		return ""
@@ -866,7 +867,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/v1/reports", strings.HasPrefix(r.URL.Path, "/api/v1/reports/"):
 		a.serveProxy(w, r, "reports")
 	case r.URL.Path == "/api/v1/cms/pages", strings.HasPrefix(r.URL.Path, "/api/v1/cms/pages/"),
-		r.URL.Path == "/api/v1/cms/media", strings.HasPrefix(r.URL.Path, "/api/v1/cms/media/"):
+		r.URL.Path == "/api/v1/cms/media", strings.HasPrefix(r.URL.Path, "/api/v1/cms/media/"),
+		r.URL.Path == "/api/v1/cms/design", strings.HasPrefix(r.URL.Path, "/api/v1/cms/design/"):
 		a.serveProxy(w, r, "cms")
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
