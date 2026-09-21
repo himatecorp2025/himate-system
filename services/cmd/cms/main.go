@@ -45,6 +45,7 @@ type app struct {
 type seoInput struct {
 	Title string `json:"title"`
 	MetaDescription string `json:"meta_description"`
+	Keywords []string `json:"keywords"`
 	Canonical string `json:"canonical"`
 	OGTitle string `json:"og_title"`
 	OGDescription string `json:"og_description"`
@@ -218,6 +219,17 @@ func (a *app)migrate(ctx context.Context)error{
 		}},
 		{Version:4,Name:"cms-site-design",Statements:[]string{
 			`CREATE TABLE IF NOT EXISTS cms.site_design(
+				id INTEGER PRIMARY KEY CHECK(id=1),
+				draft JSONB NOT NULL DEFAULT '{}'::jsonb,
+				published JSONB NOT NULL DEFAULT '{}'::jsonb,
+				version INTEGER NOT NULL DEFAULT 0,
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				published_at TIMESTAMPTZ
+			)`,
+		}},
+		{Version:5,Name:"cms-seo-settings",Statements:[]string{
+			`CREATE TABLE IF NOT EXISTS cms.seo_settings(
 				id INTEGER PRIMARY KEY CHECK(id=1),
 				draft JSONB NOT NULL DEFAULT '{}'::jsonb,
 				published JSONB NOT NULL DEFAULT '{}'::jsonb,
