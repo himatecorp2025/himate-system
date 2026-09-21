@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -12,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"himate.local/services/internal/common"
+	"html"
+	"io"
 	"mime"
 	"net/http"
 	"net/http/httputil"
@@ -22,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const sessionCookie = "himate_session"
@@ -55,23 +59,28 @@ type loginState struct {
 }
 
 type auditEvent struct {
-	ActorID    string
-	ActorName  string
-	ActorRoles []string
-	RequestID  string
-	Method     string
-	Path       string
-	Resource   string
-	PartnerID  string
-	Status     int
-	Outcome    string
-	DurationMS int64
-	CreatedAt  time.Time
+	ActorID       string
+	ActorName     string
+	ActorRoles    []string
+	RequestID     string
+	CorrelationID string
+	Action        string
+	Method        string
+	Path          string
+	Resource      string
+	PartnerID     string
+	Status        int
+	Outcome       string
+	OldState      any
+	NewState      any
+	DurationMS    int64
+	CreatedAt     time.Time
 }
 
 type auditResponseWriter struct {
 	http.ResponseWriter
 	status int
+	body   bytes.Buffer
 }
 
 func (w *auditResponseWriter) WriteHeader(status int) {
@@ -81,6 +90,11 @@ func (w *auditResponseWriter) WriteHeader(status int) {
 
 func (w *auditResponseWriter) Write(p []byte) (int, error) {
 	if w.status == 0 { w.status = http.StatusOK }
+	if w.body.Len() < 65536 {
+		remaining := 65536 - w.body.Len()
+		if len(p) < remaining { remaining = len(p) }
+		if remaining > 0 { _, _ = w.body.Write(p[:remaining]) }
+	}
 	return w.ResponseWriter.Write(p)
 }
 
@@ -90,10 +104,17 @@ type user struct {
 	ID, Name, Email, PasswordHash string
 	Roles                         []string
 	Active                        bool
+	SystemOwner                   bool
+	PreferredLocale               string
+	Timezone                      string
+	JobTitle                      string
+	Phone                         string
+	SessionVersion                int
 }
 type claims struct {
 	Sub, Email, Name string
 	Roles            []string
+	Version          int `json:"v"`
 	Exp              int64
 }
 
@@ -170,6 +191,8 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
+	mux.HandleFunc("/robots.txt", a.robots)
+	mux.HandleFunc("/sitemap.xml", a.sitemap)
 	mux.HandleFunc("/public/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "cms")
 	})
@@ -226,6 +249,30 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS identity_users_roles_idx ON identity.users USING gin(roles)`,
 			`CREATE INDEX IF NOT EXISTS identity_users_name_idx ON identity.users(lower(name),lower(email))`,
 		}},
+		{Version: 4, Name: "audit-integrity-and-state", Statements: []string{
+			`ALTER TABLE identity.audit_events ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.audit_events ADD COLUMN IF NOT EXISTS correlation_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.audit_events ADD COLUMN IF NOT EXISTS old_state JSONB NOT NULL DEFAULT '{}'::jsonb`,
+			`ALTER TABLE identity.audit_events ADD COLUMN IF NOT EXISTS new_state JSONB NOT NULL DEFAULT '{}'::jsonb`,
+			`UPDATE identity.audit_events SET action=UPPER(resource||'_'||method) WHERE action=''`,
+			`UPDATE identity.audit_events SET correlation_id=request_id WHERE correlation_id='' AND request_id<>''`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_action_idx ON identity.audit_events(action,created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_correlation_idx ON identity.audit_events(correlation_id) WHERE correlation_id<>''`,
+			`CREATE OR REPLACE FUNCTION identity.reject_audit_mutation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'identity.audit_events is append-only'; RETURN OLD; END; $$`,
+			`DROP TRIGGER IF EXISTS identity_audit_append_only ON identity.audit_events`,
+			`CREATE TRIGGER identity_audit_append_only BEFORE UPDATE OR DELETE ON identity.audit_events FOR EACH ROW EXECUTE FUNCTION identity.reject_audit_mutation()`,
+		}},
+		{Version: 5, Name: "user-profile-and-owner", Statements: []string{
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS system_owner BOOLEAN NOT NULL DEFAULT FALSE`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS preferred_locale TEXT NOT NULL DEFAULT 'en_US'`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS job_title TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS identity_single_system_owner_idx ON identity.users(system_owner) WHERE system_owner=TRUE`,
+			`CREATE INDEX IF NOT EXISTS identity_users_locale_idx ON identity.users(preferred_locale)`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -240,10 +287,19 @@ func (a *app) migrate(ctx context.Context) error {
 		return err
 	}
 	roles, _ := json.Marshal([]string{"platform_admin"})
-	_, err = a.db.ExecContext(ctx, `INSERT INTO identity.users(id,name,email,password_hash,roles,active)
-		VALUES('usr_bootstrap_001',$1,$2,$3,$4::jsonb,TRUE)
-		ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,active=TRUE`,
+	_, err = a.db.ExecContext(ctx, `INSERT INTO identity.users(id,name,email,password_hash,roles,active,preferred_locale,timezone)
+		VALUES('usr_bootstrap_001',$1,$2,$3,$4::jsonb,TRUE,'en_US','UTC')
+		ON CONFLICT(email) DO NOTHING`,
 		name, email, hashed, string(roles))
+	if err != nil { return err }
+	var ownerCount int
+	if err := a.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM identity.users WHERE system_owner=TRUE`).Scan(&ownerCount); err != nil {
+		return err
+	}
+	if ownerCount == 0 {
+		_, err = a.db.ExecContext(ctx, `UPDATE identity.users SET system_owner=TRUE,roles='["platform_admin"]'::jsonb,active=TRUE,updated_at=NOW()
+			WHERE lower(email)=lower($1)`, email)
+	}
 	return err
 }
 
@@ -469,6 +525,11 @@ func permissionsForRoles(roles []string) []string {
 	return out
 }
 
+func containsRole(roles []string, role string) bool {
+	for _, value := range roles { if value==role { return true } }
+	return false
+}
+
 func hasRole(u user, role string) bool {
 	for _, value := range u.Roles {
 		if value == role { return true }
@@ -542,7 +603,7 @@ func requiredPermission(r *http.Request) string {
 
 	path := r.URL.Path
 	switch {
-	case resource == "administration" && r.Method == http.MethodPatch:
+	case resource == "administration" && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions:
 		action = "approve"
 	case resource == "cms" && (strings.HasSuffix(path, "/publish") || strings.HasSuffix(path, "/rollback")):
 		action = "approve"
@@ -556,6 +617,128 @@ func requiredPermission(r *http.Request) string {
 		action = "approve"
 	}
 	return resource + "." + action
+}
+
+
+func auditSensitiveKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	for _, part := range []string{"password","token","secret","authorization","cookie","credential","api_key","apikey"} {
+		if strings.Contains(key, part) { return true }
+	}
+	return false
+}
+
+func sanitizeAuditValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, item := range typed {
+			if auditSensitiveKey(key) {
+				out[key] = "[REDACTED]"
+				continue
+			}
+			out[key] = sanitizeAuditValue(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed { out[i] = sanitizeAuditValue(item) }
+		return out
+	default:
+		return value
+	}
+}
+
+func captureAuditRequest(r *http.Request) any {
+	if r == nil || r.Body == nil || !strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+		return map[string]any{}
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 65537))
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	if err != nil {
+		return map[string]any{"capture_error": "request body unavailable"}
+	}
+	if len(raw) > 65536 {
+		return map[string]any{"truncated": true}
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return map[string]any{}
+	}
+	var decoded any
+	if json.Unmarshal(raw, &decoded) != nil {
+		return map[string]any{}
+	}
+	return sanitizeAuditValue(decoded)
+}
+
+func decodeAuditState(raw []byte) any {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return map[string]any{}
+	}
+	var decoded any
+	if json.Unmarshal(raw, &decoded) != nil {
+		return map[string]any{}
+	}
+	return sanitizeAuditValue(decoded)
+}
+
+func auditAction(r *http.Request) string {
+	path := r.URL.Path
+	switch {
+	case path == "/api/v1/profile" && r.Method == http.MethodPatch:
+		return "PROFILE_UPDATED"
+	case path == "/api/v1/profile/password" && r.Method == http.MethodPost:
+		return "PROFILE_PASSWORD_CHANGED"
+	case path == "/api/v1/admin/users" && r.Method == http.MethodPost:
+		return "ADMIN_USER_CREATED"
+	case strings.HasPrefix(path, "/api/v1/admin/users/") && r.Method == http.MethodPatch:
+		return "ADMIN_USER_UPDATED"
+	case strings.HasSuffix(path, "/publish"):
+		return "CMS_PAGE_PUBLISHED"
+	case strings.HasSuffix(path, "/rollback"):
+		return "CMS_PAGE_ROLLBACK_PUBLISHED"
+	case strings.HasSuffix(path, "/run") && strings.Contains(path, "/provisioning/"):
+		return "PROVISIONING_RUN"
+	case strings.HasSuffix(path, "/verify-domain"):
+		return "DOMAIN_VERIFIED"
+	case strings.HasSuffix(path, "/deploy") && strings.Contains(path, "/environments/"):
+		return "ENVIRONMENT_DEPLOY"
+	case strings.HasSuffix(path, "/launch") && strings.Contains(path, "/environments/"):
+		return "ENVIRONMENT_LAUNCH"
+	case strings.HasPrefix(path, "/api/v1/evidence/") && r.Method == http.MethodPatch:
+		return "EVIDENCE_VERIFICATION_CHANGED"
+	case strings.Contains(path, "/license") && r.Method == http.MethodPut:
+		return "LICENSE_CHANGED"
+	}
+	resource, _ := auditResource(r)
+	resource = strings.ToUpper(strings.ReplaceAll(resource, "-", "_"))
+	if resource == "" { resource = "API" }
+	return resource + "_" + strings.ToUpper(r.Method)
+}
+
+func auditUserState(u user) map[string]any {
+	return map[string]any{
+		"id":u.ID,"name":u.Name,"email":u.Email,"roles":append([]string(nil),u.Roles...),"active":u.Active,
+		"system_owner":u.SystemOwner,"preferred_locale":normalizedLocale(u.PreferredLocale),"timezone":normalizedTimezone(u.Timezone),
+		"job_title":u.JobTitle,"phone":u.Phone,"permissions":permissionsForRoles(u.Roles),
+	}
+}
+
+func (a *app) auditOldState(r *http.Request) any {
+	if r == nil { return map[string]any{} }
+	if r.Method == http.MethodPatch && r.URL.Path == "/api/v1/profile" {
+		if u, err := a.auth(r); err == nil { return auditUserState(u) }
+	}
+	if r.Method == http.MethodPost && r.URL.Path == "/api/v1/profile/password" {
+		if u, err := a.auth(r); err == nil { return auditUserState(u) }
+	}
+	if r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") {
+		id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/"), "/")
+		if id != "" && !strings.Contains(id, "/") {
+			if u, err := a.findUser("id", id); err == nil { return auditUserState(u) }
+		}
+	}
+	return map[string]any{}
 }
 
 func (a *app) api(w http.ResponseWriter, r *http.Request) {
@@ -572,6 +755,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 	if mutating {
 		started := time.Now()
+		requestState := captureAuditRequest(r)
+		oldState := a.auditOldState(r)
 		recorder := &auditResponseWriter{ResponseWriter: w}
 		w = recorder
 		defer func() {
@@ -580,12 +765,18 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			resource, partnerID := auditResource(r)
 			outcome := "SUCCESS"
 			if status >= 400 { outcome = "FAILED" }
+			newState := decodeAuditState(recorder.body.Bytes())
+			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
+				newState = requestState
+			}
 			a.enqueueAudit(auditEvent{
 				ActorID: u.ID, ActorName: u.Name, ActorRoles: append([]string(nil), u.Roles...),
 				RequestID: strings.TrimSpace(r.Header.Get("X-Request-ID")),
+				CorrelationID: strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
+				Action: auditAction(r),
 				Method: r.Method, Path: r.URL.Path, Resource: resource, PartnerID: partnerID,
-				Status: status, Outcome: outcome, DurationMS: time.Since(started).Milliseconds(),
-				CreatedAt: time.Now().UTC(),
+				Status: status, Outcome: outcome, OldState: oldState, NewState: newState,
+				DurationMS: time.Since(started).Milliseconds(), CreatedAt: time.Now().UTC(),
 			})
 		}()
 	}
@@ -600,12 +791,16 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/v1/profile":
+		a.profile(w,r,u)
+	case r.URL.Path == "/api/v1/profile/password":
+		a.profilePassword(w,r,u)
 	case r.URL.Path == "/api/v1/admin/roles" && r.Method == http.MethodGet:
 		a.adminRoles(w, r)
 	case r.URL.Path == "/api/v1/admin/users":
-		a.adminUsers(w, r)
+		a.adminUsers(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/"):
-		a.adminUser(w, r)
+		a.adminUser(w, r, u)
 	case r.URL.Path == "/api/v1/audit/events" && r.Method == http.MethodGet:
 		a.auditEvents(w, r)
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
@@ -700,11 +895,13 @@ func (a *app) persistAudit(event auditEvent) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	roles, _ := json.Marshal(event.ActorRoles)
+	oldState, _ := json.Marshal(sanitizeAuditValue(event.OldState))
+	newState, _ := json.Marshal(sanitizeAuditValue(event.NewState))
 	_, _ = a.db.ExecContext(ctx, `INSERT INTO identity.audit_events(
-		actor_id,actor_name,actor_roles,request_id,method,path,resource,partner_id,status,outcome,duration_ms,created_at
-	) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-		event.ActorID,event.ActorName,string(roles),event.RequestID,event.Method,event.Path,event.Resource,event.PartnerID,
-		event.Status,event.Outcome,event.DurationMS,event.CreatedAt)
+		actor_id,actor_name,actor_roles,request_id,correlation_id,action,method,path,resource,partner_id,status,outcome,old_state,new_state,duration_ms,created_at
+	) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16)`,
+		event.ActorID,event.ActorName,string(roles),event.RequestID,event.CorrelationID,event.Action,event.Method,event.Path,event.Resource,event.PartnerID,
+		event.Status,event.Outcome,string(oldState),string(newState),event.DurationMS,event.CreatedAt)
 }
 
 func auditLimit(value string, fallback, max int) int {
@@ -728,13 +925,25 @@ func (a *app) auditEvents(w http.ResponseWriter, r *http.Request) {
 	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
 		args = append(args, "%"+q+"%")
 		n := len(args)
-		where = append(where, fmt.Sprintf("(actor_name ILIKE $%d OR actor_id ILIKE $%d OR path ILIKE $%d OR resource ILIKE $%d OR request_id ILIKE $%d OR partner_id ILIKE $%d)", n,n,n,n,n,n))
+		where = append(where, fmt.Sprintf("(actor_name ILIKE $%d OR actor_id ILIKE $%d OR path ILIKE $%d OR resource ILIKE $%d OR request_id ILIKE $%d OR correlation_id ILIKE $%d OR action ILIKE $%d OR partner_id ILIKE $%d)", n,n,n,n,n,n,n,n))
 	}
 	if actorID := strings.TrimSpace(r.URL.Query().Get("actor_id")); actorID != "" { add("actor_id=$%d", actorID) }
 	if resource := strings.TrimSpace(r.URL.Query().Get("resource")); resource != "" { add("resource=$%d", resource) }
+	if action := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("action"))); action != "" { add("action=$%d", action) }
+	if correlationID := strings.TrimSpace(r.URL.Query().Get("correlation_id")); correlationID != "" { add("correlation_id=$%d", correlationID) }
 	if method := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("method"))); method != "" { add("method=$%d", method) }
 	if outcome := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("outcome"))); outcome != "" { add("outcome=$%d", outcome) }
 	if partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id")); partnerID != "" { add("partner_id=$%d", partnerID) }
+	if raw := strings.TrimSpace(r.URL.Query().Get("from")); raw != "" {
+		value, err := time.Parse(time.RFC3339, raw)
+		if err != nil { common.APIError(w,400,"VALIDATION","from must be RFC3339"); return }
+		add("created_at >= $%d", value.UTC())
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("to")); raw != "" {
+		value, err := time.Parse(time.RFC3339, raw)
+		if err != nil { common.APIError(w,400,"VALIDATION","to must be RFC3339"); return }
+		add("created_at <= $%d", value.UTC())
+	}
 
 	whereSQL := strings.Join(where, " AND ")
 	var total int
@@ -743,7 +952,7 @@ func (a *app) auditEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	queryArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := a.db.Query(`SELECT id,actor_id,actor_name,actor_roles,request_id,method,path,resource,partner_id,status,outcome,duration_ms,created_at
+	rows, err := a.db.Query(`SELECT id,actor_id,actor_name,actor_roles,request_id,correlation_id,action,method,path,resource,partner_id,status,outcome,old_state,new_state,duration_ms,created_at
 		FROM identity.audit_events WHERE `+whereSQL+` ORDER BY created_at DESC,id DESC LIMIT $`+strconv.Itoa(len(args)+1)+` OFFSET $`+strconv.Itoa(len(args)+2), queryArgs...)
 	if err != nil {
 		common.APIError(w,500,"DB","Could not load audit events")
@@ -753,18 +962,23 @@ func (a *app) auditEvents(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	for rows.Next() {
 		var id int64
-		var actorID,actorName,requestID,method,path,resource,partnerID,outcome string
-		var rolesRaw []byte
+		var actorID,actorName,requestID,correlationID,action,method,path,resource,partnerID,outcome string
+		var rolesRaw,oldRaw,newRaw []byte
 		var status int
 		var duration int64
 		var created time.Time
-		if rows.Scan(&id,&actorID,&actorName,&rolesRaw,&requestID,&method,&path,&resource,&partnerID,&status,&outcome,&duration,&created) != nil { continue }
+		if rows.Scan(&id,&actorID,&actorName,&rolesRaw,&requestID,&correlationID,&action,&method,&path,&resource,&partnerID,&status,&outcome,&oldRaw,&newRaw,&duration,&created) != nil { continue }
 		var roles []string
+		var oldState,newState any
 		_ = json.Unmarshal(rolesRaw,&roles)
+		_ = json.Unmarshal(oldRaw,&oldState)
+		_ = json.Unmarshal(newRaw,&newState)
 		items = append(items,map[string]any{
-			"id":id,"actor_id":actorID,"actor_name":actorName,"actor_roles":roles,"request_id":requestID,
+			"id":id,"actor_id":actorID,"actor_name":actorName,"actor_roles":roles,
+			"request_id":requestID,"correlation_id":correlationID,"action":action,
 			"method":method,"path":path,"resource":resource,"partner_id":partnerID,"status":status,
-			"outcome":outcome,"duration_ms":duration,"created_at":created.UTC(),
+			"outcome":outcome,"old_state":oldState,"new_state":newState,
+			"duration_ms":duration,"created_at":created.UTC(),
 		})
 	}
 	common.JSON(w,200,map[string]any{
@@ -1096,11 +1310,113 @@ func newProxy(host, token string) (*httputil.ReverseProxy, error) {
 }
 
 
+func normalizedLocale(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "hu", "hu-hu", "hu_hu":
+		return "hu_HU"
+	default:
+		return "en_US"
+	}
+}
+
+func normalizedTimezone(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" { return "UTC" }
+	if len(value) > 64 || strings.IndexFunc(value, unicode.IsSpace) >= 0 { return "UTC" }
+	for _, r := range value {
+		if !((r>='A'&&r<='Z')||(r>='a'&&r<='z')||(r>='0'&&r<='9')||r=='/'||r=='_'||r=='-'||r=='+') {
+			return "UTC"
+		}
+	}
+	return value
+}
+
+func ownerRequired(w http.ResponseWriter, actor user) bool {
+	if actor.SystemOwner { return true }
+	common.APIError(w,http.StatusForbidden,"OWNER_REQUIRED","Only the HIMATE system owner can manage administration users")
+	return false
+}
+
+func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
+	switch r.Method {
+	case http.MethodGet:
+		common.JSON(w,http.StatusOK,publicUser(actor))
+	case http.MethodPatch:
+		var in struct {
+			Name *string `json:"name"`
+			PreferredLocale *string `json:"preferred_locale"`
+			Timezone *string `json:"timezone"`
+			JobTitle *string `json:"job_title"`
+			Phone *string `json:"phone"`
+		}
+		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
+		next:=actor
+		if in.Name!=nil {
+			next.Name=strings.TrimSpace(*in.Name)
+			if len(next.Name)<2||len(next.Name)>120 { common.APIError(w,400,"VALIDATION","Name must be 2-120 characters");return }
+		}
+		if in.PreferredLocale!=nil {
+			raw:=strings.TrimSpace(*in.PreferredLocale)
+			if raw!="en_US"&&raw!="hu_HU" { common.APIError(w,400,"VALIDATION","preferred_locale must be en_US or hu_HU");return }
+			next.PreferredLocale=raw
+		}
+		if in.Timezone!=nil {
+			raw:=strings.TrimSpace(*in.Timezone)
+			next.Timezone=normalizedTimezone(raw)
+			if raw!=""&&next.Timezone=="UTC"&&raw!="UTC" { common.APIError(w,400,"VALIDATION","Invalid timezone");return }
+		}
+		if in.JobTitle!=nil {
+			next.JobTitle=strings.TrimSpace(*in.JobTitle)
+			if len(next.JobTitle)>120 { common.APIError(w,400,"VALIDATION","Job title is too long");return }
+		}
+		if in.Phone!=nil {
+			next.Phone=strings.TrimSpace(*in.Phone)
+			if len(next.Phone)>50 { common.APIError(w,400,"VALIDATION","Phone is too long");return }
+		}
+		_,err:=a.db.Exec(`UPDATE identity.users SET name=$2,preferred_locale=$3,timezone=$4,job_title=$5,phone=$6,updated_at=NOW() WHERE id=$1`,
+			actor.ID,next.Name,next.PreferredLocale,next.Timezone,next.JobTitle,next.Phone)
+		if err!=nil { common.APIError(w,500,"DB","Could not update profile");return }
+		common.JSON(w,http.StatusOK,publicUser(next))
+	default:
+		common.APIError(w,405,"METHOD","Use GET or PATCH")
+	}
+}
+
+func (a *app) profilePassword(w http.ResponseWriter, r *http.Request, actor user) {
+	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST");return }
+	var in struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request");return }
+	if !verifyPassword(actor.PasswordHash,in.CurrentPassword) {
+		common.APIError(w,403,"CURRENT_PASSWORD","Current password is incorrect");return
+	}
+	if len(in.NewPassword)<12 {
+		common.APIError(w,400,"VALIDATION","New password must be at least 12 characters");return
+	}
+	if subtle.ConstantTimeCompare([]byte(in.CurrentPassword),[]byte(in.NewPassword))==1 {
+		common.APIError(w,400,"VALIDATION","New password must be different");return
+	}
+	hash,err:=hashPassword(in.NewPassword)
+	if err!=nil { common.APIError(w,500,"PASSWORD","Could not secure password");return }
+	_,err=a.db.Exec(`UPDATE identity.users SET password_hash=$2,session_version=session_version+1,password_changed_at=NOW(),updated_at=NOW() WHERE id=$1`,actor.ID,hash)
+	if err!=nil { common.APIError(w,500,"DB","Could not change password");return }
+	next,err:=a.findUser("id",actor.ID)
+	if err!=nil { common.APIError(w,500,"DB","Could not refresh profile");return }
+	token,err:=a.issueSession(next,a.ttl)
+	if err!=nil { common.APIError(w,500,"SESSION","Could not refresh session");return }
+	http.SetCookie(w,&http.Cookie{Name:sessionCookie,Value:token,Path:"/",HttpOnly:true,Secure:a.secureCookie,SameSite:http.SameSiteStrictMode})
+	common.JSON(w,http.StatusOK,publicUser(next))
+}
+
 func adminUserMap(u user, createdAt, updatedAt time.Time) map[string]any {
 	return map[string]any{
-		"id": u.ID, "name": u.Name, "email": u.Email, "roles": u.Roles, "active": u.Active,
-		"permissions": permissionsForRoles(u.Roles),
-		"created_at": createdAt.UTC(), "updated_at": updatedAt.UTC(),
+		"id":u.ID,"name":u.Name,"email":u.Email,"roles":u.Roles,"active":u.Active,
+		"system_owner":u.SystemOwner,"preferred_locale":normalizedLocale(u.PreferredLocale),
+		"timezone":normalizedTimezone(u.Timezone),"job_title":u.JobTitle,"phone":u.Phone,
+		"permissions":permissionsForRoles(u.Roles),
+		"created_at":createdAt.UTC(),"updated_at":updatedAt.UTC(),
 	}
 }
 
@@ -1129,11 +1445,12 @@ func (a *app) adminRoles(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
 }
 
-func (a *app) adminUsers(w http.ResponseWriter, r *http.Request) {
+func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
+	if !ownerRequired(w,actor) { return }
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT id,name,email,password_hash,roles,active,created_at,updated_at
-			FROM identity.users ORDER BY active DESC,lower(name),lower(email)`)
+		rows, err := a.db.Query(`SELECT id,name,email,password_hash,roles,active,system_owner,preferred_locale,timezone,job_title,phone,session_version,created_at,updated_at
+			FROM identity.users ORDER BY system_owner DESC,active DESC,lower(name),lower(email)`)
 		if err != nil { common.APIError(w,500,"DB","Could not load administration users"); return }
 		defer rows.Close()
 		items := []map[string]any{}
@@ -1141,7 +1458,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request) {
 			var u user
 			var rolesRaw []byte
 			var createdAt, updatedAt time.Time
-			if rows.Scan(&u.ID,&u.Name,&u.Email,&u.PasswordHash,&rolesRaw,&u.Active,&createdAt,&updatedAt) != nil { continue }
+			if rows.Scan(&u.ID,&u.Name,&u.Email,&u.PasswordHash,&rolesRaw,&u.Active,&u.SystemOwner,&u.PreferredLocale,&u.Timezone,&u.JobTitle,&u.Phone,&u.SessionVersion,&createdAt,&updatedAt) != nil { continue }
 			_ = json.Unmarshal(rolesRaw,&u.Roles)
 			items = append(items, adminUserMap(u,createdAt,updatedAt))
 		}
@@ -1161,6 +1478,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request) {
 		if len(in.Password) < 12 { common.APIError(w,400,"VALIDATION","Password must be at least 12 characters"); return }
 		roles, err := normalizeRoles(in.Roles)
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
+		if containsRole(roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
 		var exists bool
 		_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1))`,in.Email).Scan(&exists)
 		if exists { common.APIError(w,409,"EMAIL_EXISTS","An administrator with this email already exists"); return }
@@ -1174,14 +1492,15 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request) {
 			VALUES($1,$2,$3,$4,$5::jsonb,TRUE)
 			RETURNING created_at,updated_at`,id,in.Name,in.Email,hash,string(rolesRaw)).Scan(&createdAt,&updatedAt)
 		if err != nil { common.APIError(w,500,"DB","Could not create administration user"); return }
-		u := user{ID:id,Name:in.Name,Email:in.Email,PasswordHash:hash,Roles:roles,Active:true}
+		u := user{ID:id,Name:in.Name,Email:in.Email,PasswordHash:hash,Roles:roles,Active:true,PreferredLocale:"en_US",Timezone:"UTC"}
 		common.JSON(w,201,adminUserMap(u,createdAt,updatedAt))
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
 }
 
-func (a *app) adminUser(w http.ResponseWriter, r *http.Request) {
+func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
+	if !ownerRequired(w,actor) { return }
 	if r.Method != http.MethodPatch { common.APIError(w,405,"METHOD","Use PATCH"); return }
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/admin/users/"),"/")
 	if id == "" || strings.Contains(id,"/") { common.APIError(w,404,"NOT_FOUND","Administration user not found"); return }
@@ -1213,6 +1532,7 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request) {
 	if in.Roles != nil {
 		next.Roles, err = normalizeRoles(*in.Roles)
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
+		if !current.SystemOwner && containsRole(next.Roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
 	}
 	if in.Active != nil { next.Active = *in.Active }
 
@@ -1229,6 +1549,10 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w,409,"LAST_PLATFORM_ADMIN","At least one active Platform Admin must remain")
 			return
 		}
+	}
+	if current.SystemOwner && (!next.Active || !containsRole(next.Roles,"platform_admin")) {
+		common.APIError(w,409,"OWNER_PROTECTED","The HIMATE system owner must remain an active Platform Admin")
+		return
 	}
 
 	hash := current.PasswordHash
@@ -1252,7 +1576,9 @@ func (a *app) findUser(field, value string) (user, error) {
 	}
 	var u user
 	var raw []byte
-	err := a.db.QueryRow(`SELECT id,name,email,password_hash,roles,active FROM identity.users WHERE `+field+`=$1`, value).Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &raw, &u.Active)
+	err := a.db.QueryRow(`SELECT id,name,email,password_hash,roles,active,system_owner,preferred_locale,timezone,job_title,phone,session_version
+		FROM identity.users WHERE `+field+`=$1`, value).
+		Scan(&u.ID,&u.Name,&u.Email,&u.PasswordHash,&raw,&u.Active,&u.SystemOwner,&u.PreferredLocale,&u.Timezone,&u.JobTitle,&u.Phone,&u.SessionVersion)
 	_ = json.Unmarshal(raw, &u.Roles)
 	return u, err
 }
@@ -1269,18 +1595,27 @@ func (a *app) auth(r *http.Request) (user, error) {
 	if err != nil || !u.Active {
 		return user{}, errors.New("inactive")
 	}
+	if c.Version != u.SessionVersion {
+		return user{}, errors.New("session superseded")
+	}
 	return u, nil
 }
 func publicUser(u user) map[string]any {
 	return map[string]any{
-		"id": u.ID, "name": u.Name, "email": u.Email, "roles": u.Roles,
-		"permissions": permissionsForRoles(u.Roles),
+		"id":u.ID,"name":u.Name,"email":u.Email,"roles":u.Roles,
+		"permissions":permissionsForRoles(u.Roles),
+		"system_owner":u.SystemOwner,
+		"preferred_locale":normalizedLocale(u.PreferredLocale),
+		"timezone":normalizedTimezone(u.Timezone),
+		"job_title":u.JobTitle,
+		"phone":u.Phone,
+		"can_manage_users":u.SystemOwner,
 	}
 }
 
 func (a *app) issueSession(u user, ttl time.Duration) (string, error) {
 	if ttl <= 0 { ttl = a.ttl }
-	raw, _ := json.Marshal(claims{Sub: u.ID, Email: u.Email, Name: u.Name, Roles: u.Roles, Exp: time.Now().Add(ttl).Unix()})
+	raw, _ := json.Marshal(claims{Sub:u.ID,Email:u.Email,Name:u.Name,Roles:u.Roles,Version:u.SessionVersion,Exp:time.Now().Add(ttl).Unix()})
 	payload := base64.RawURLEncoding.EncodeToString(raw)
 	mac := hmac.New(sha256.New, []byte(a.secret))
 	mac.Write([]byte(payload))
@@ -1359,16 +1694,391 @@ func pbkdf2SHA256(password, salt []byte, iterations, length int) []byte {
 	return out[:length]
 }
 
+
+type publicCMSSEO struct {
+	Title           string `json:"title"`
+	MetaDescription string `json:"meta_description"`
+	Canonical       string `json:"canonical"`
+	OGTitle         string `json:"og_title"`
+	OGDescription   string `json:"og_description"`
+	OGImageAssetID  string `json:"og_image_asset_id"`
+	NoIndex         bool   `json:"noindex"`
+}
+
+type publicCMSSection struct {
+	ID            string `json:"id"`
+	ComponentType string `json:"component_type"`
+	Heading       string `json:"heading"`
+	Body          string `json:"body"`
+	MediaAssetID  string `json:"media_asset_id"`
+	CTALabel      string `json:"cta_label"`
+	CTAURL        string `json:"cta_url"`
+	Visible       bool   `json:"visible"`
+	SortOrder     int    `json:"sort_order"`
+}
+
+type publicCMSPage struct {
+	Slug           string             `json:"slug"`
+	SEO            publicCMSSEO       `json:"seo"`
+	Sections       []publicCMSSection `json:"sections"`
+	HiddenSections []string           `json:"hidden_sections"`
+}
+
+type publicCMSManifest struct {
+	Items []struct {
+		Slug      string `json:"slug"`
+		Canonical string `json:"canonical"`
+		Title     string `json:"title"`
+		NoIndex   bool   `json:"noindex"`
+	} `json:"items"`
+}
+
+func (a *app) fetchPublishedCMS(ctx context.Context, slug string) (publicCMSPage, error) {
+	var out publicCMSPage
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return out, errors.New("CMS service is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/pages/"+url.PathEscape(slug), nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("CMS page %s returned %d", slug, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (a *app) fetchPublishedManifest(ctx context.Context) (publicCMSManifest, error) {
+	var out publicCMSManifest
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return out, errors.New("CMS service is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/manifest", nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("CMS manifest returned %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func publicOrigin(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+		scheme = "https"
+	}
+	host := strings.TrimSpace(r.Host)
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwarded != "" {
+		host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+	}
+	if host == "" {
+		host = "localhost"
+	}
+	return scheme + "://" + host
+}
+
+func replaceHeadTag(doc, marker, replacement string) string {
+	lower := strings.ToLower(doc)
+	idx := strings.Index(lower, strings.ToLower(marker))
+	if idx >= 0 {
+		start := strings.LastIndex(doc[:idx], "<")
+		endRel := strings.Index(doc[idx:], ">")
+		if start >= 0 && endRel >= 0 {
+			end := idx + endRel + 1
+			return doc[:start] + replacement + doc[end:]
+		}
+	}
+	if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+		return doc[:headEnd] + replacement + doc[headEnd:]
+	}
+	return doc
+}
+
+func replaceTitle(doc, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return doc
+	}
+	lower := strings.ToLower(doc)
+	start := strings.Index(lower, "<title>")
+	end := strings.Index(lower, "</title>")
+	tag := "<title>" + html.EscapeString(value) + "</title>"
+	if start >= 0 && end > start {
+		return doc[:start] + tag + doc[end+len("</title>"):]
+	}
+	if headEnd := strings.Index(lower, "</head>"); headEnd >= 0 {
+		return doc[:headEnd] + tag + doc[headEnd:]
+	}
+	return doc
+}
+
+func replaceFirstTagText(fragment, tag, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fragment
+	}
+	lower := strings.ToLower(fragment)
+	open := strings.Index(lower, "<"+tag)
+	if open < 0 {
+		return fragment
+	}
+	openEndRel := strings.Index(fragment[open:], ">")
+	if openEndRel < 0 {
+		return fragment
+	}
+	contentStart := open + openEndRel + 1
+	closeTag := "</" + tag + ">"
+	closeRel := strings.Index(strings.ToLower(fragment[contentStart:]), closeTag)
+	if closeRel < 0 {
+		return fragment
+	}
+	contentEnd := contentStart + closeRel
+	escaped := strings.ReplaceAll(html.EscapeString(value), "\n", "<br>")
+	return fragment[:contentStart] + escaped + fragment[contentEnd:]
+}
+
+func replaceFirstAttribute(fragment, tag, attr, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fragment
+	}
+	lower := strings.ToLower(fragment)
+	open := strings.Index(lower, "<"+tag)
+	if open < 0 {
+		return fragment
+	}
+	openEndRel := strings.Index(fragment[open:], ">")
+	if openEndRel < 0 {
+		return fragment
+	}
+	openEnd := open + openEndRel + 1
+	opening := fragment[open:openEnd]
+	attrNeedle := attr + "=\""
+	attrPos := strings.Index(strings.ToLower(opening), strings.ToLower(attrNeedle))
+	escaped := html.EscapeString(value)
+	if attrPos >= 0 {
+		valueStart := attrPos + len(attrNeedle)
+		valueEndRel := strings.Index(opening[valueStart:], "\"")
+		if valueEndRel >= 0 {
+			valueEnd := valueStart + valueEndRel
+			opening = opening[:valueStart] + escaped + opening[valueEnd:]
+		}
+	} else {
+		opening = strings.TrimSuffix(opening, ">") + " " + attr + "=\"" + escaped + "\">"
+	}
+	return fragment[:open] + opening + fragment[openEnd:]
+}
+
+func marketingSectionBounds(doc, id string) (int, int, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return 0, 0, false
+	}
+	needle := "data-cms-section=\"" + id + "\""
+	idx := strings.Index(doc, needle)
+	if idx < 0 {
+		return 0, 0, false
+	}
+	start := strings.LastIndex(doc[:idx], "<section")
+	if start < 0 {
+		return 0, 0, false
+	}
+	endRel := strings.Index(strings.ToLower(doc[idx:]), "</section>")
+	if endRel < 0 {
+		return 0, 0, false
+	}
+	end := idx + endRel + len("</section>")
+	return start, end, true
+}
+
+func removeMarketingSection(doc, id string) string {
+	start, end, ok := marketingSectionBounds(doc, id)
+	if !ok {
+		return doc
+	}
+	return doc[:start] + doc[end:]
+}
+
+func renderMarketingSection(doc string, section publicCMSSection) string {
+	start, end, ok := marketingSectionBounds(doc, section.ID)
+	if !ok {
+		return doc
+	}
+	fragment := doc[start:end]
+	for _, tag := range []string{"h1", "h2", "h3"} {
+		next := replaceFirstTagText(fragment, tag, section.Heading)
+		if next != fragment {
+			fragment = next
+			break
+		}
+	}
+	fragment = replaceFirstTagText(fragment, "p", section.Body)
+	if section.CTALabel != "" {
+		fragment = replaceFirstTagText(fragment, "a", section.CTALabel)
+	}
+	if section.CTAURL != "" {
+		fragment = replaceFirstAttribute(fragment, "a", "href", section.CTAURL)
+	}
+	if section.MediaAssetID != "" {
+		fragment = replaceFirstAttribute(fragment, "img", "src", "/public/v1/cms/media/"+url.PathEscape(section.MediaAssetID))
+	}
+	return doc[:start] + fragment + doc[end:]
+}
+
+func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) string {
+	doc = replaceTitle(doc, page.SEO.Title)
+	if value := strings.TrimSpace(page.SEO.MetaDescription); value != "" {
+		doc = replaceHeadTag(doc, "name=\"description\"", "<meta name=\"description\" content=\""+html.EscapeString(value)+"\">")
+	}
+	canonical := strings.TrimSpace(page.SEO.Canonical)
+	if canonical == "" {
+		canonical = requestURL
+	}
+	doc = replaceHeadTag(doc, "rel=\"canonical\"", "<link rel=\"canonical\" href=\""+html.EscapeString(canonical)+"\">")
+	robots := "index,follow"
+	if page.SEO.NoIndex {
+		robots = "noindex,nofollow"
+	}
+	doc = replaceHeadTag(doc, "name=\"robots\"", "<meta name=\"robots\" content=\""+robots+"\">")
+	ogTitle := strings.TrimSpace(page.SEO.OGTitle)
+	if ogTitle == "" {
+		ogTitle = strings.TrimSpace(page.SEO.Title)
+	}
+	if ogTitle != "" {
+		doc = replaceHeadTag(doc, "property=\"og:title\"", "<meta property=\"og:title\" content=\""+html.EscapeString(ogTitle)+"\">")
+	}
+	ogDescription := strings.TrimSpace(page.SEO.OGDescription)
+	if ogDescription == "" {
+		ogDescription = strings.TrimSpace(page.SEO.MetaDescription)
+	}
+	if ogDescription != "" {
+		doc = replaceHeadTag(doc, "property=\"og:description\"", "<meta property=\"og:description\" content=\""+html.EscapeString(ogDescription)+"\">")
+	}
+	doc = replaceHeadTag(doc, "property=\"og:url\"", "<meta property=\"og:url\" content=\""+html.EscapeString(canonical)+"\">")
+	if mediaID := strings.TrimSpace(page.SEO.OGImageAssetID); mediaID != "" {
+		doc = replaceHeadTag(doc, "property=\"og:image\"", "<meta property=\"og:image\" content=\"/public/v1/cms/media/"+url.PathEscape(mediaID)+"\">")
+	}
+	for _, id := range page.HiddenSections {
+		doc = removeMarketingSection(doc, id)
+	}
+	for _, section := range page.Sections {
+		doc = renderMarketingSection(doc, section)
+	}
+	if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+		doc = doc[:headEnd] + "<!-- HIMATE SSR:PUBLISHED -->" + doc[headEnd:]
+	}
+	return doc
+}
+
+func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filename, slug string) {
+	path := filepath.Join(filepath.Clean(a.webDir), filename)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	doc := string(raw)
+	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
+	page, cmsErr := a.fetchPublishedCMS(ctx, slug)
+	cancel()
+	if cmsErr == nil {
+		doc = renderPublishedCMSHTML(doc, page, publicOrigin(r)+r.URL.Path)
+		w.Header().Set("X-Himate-SSR", "published")
+	} else {
+		w.Header().Set("X-Himate-SSR", "static-fallback")
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len([]byte(doc))))
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	_, _ = w.Write([]byte(doc))
+}
+
+func (a *app) robots(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	body := "User-agent: *\nAllow: /\nSitemap: " + publicOrigin(r) + "/sitemap.xml\n"
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	if r.Method != http.MethodHead {
+		_, _ = w.Write([]byte(body))
+	}
+}
+
+func (a *app) sitemap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
+	manifest, err := a.fetchPublishedManifest(ctx)
+	cancel()
+	if err != nil {
+		common.APIError(w, http.StatusServiceUnavailable, "CMS_UNAVAILABLE", "Published CMS manifest is unavailable")
+		return
+	}
+	origin := publicOrigin(r)
+	var body strings.Builder
+	body.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+	body.WriteString("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">")
+	for _, item := range manifest.Items {
+		if item.NoIndex {
+			continue
+		}
+		loc := strings.TrimSpace(item.Canonical)
+		if loc == "" {
+			if strings.EqualFold(strings.TrimSpace(item.Slug), "landing") {
+				loc = origin + "/"
+			} else {
+				loc = origin + "/" + strings.Trim(strings.TrimSpace(item.Slug), "/")
+			}
+		}
+		body.WriteString("<url><loc>")
+		body.WriteString(html.EscapeString(loc))
+		body.WriteString("</loc></url>")
+	}
+	body.WriteString("</urlset>")
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	if r.Method != http.MethodHead {
+		_, _ = w.Write([]byte(body.String()))
+	}
+}
+
+
 func (a *app) web() http.Handler {
 	root := filepath.Clean(a.webDir)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			landing := filepath.Join(root, "landing.html")
-			if _, err := os.Stat(landing); err == nil {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				http.ServeFile(w, r, landing)
-				return
-			}
+			a.serveMarketingPage(w, r, "landing.html", "landing")
+			return
 		}
 
 		if r.URL.Path == "/login" || r.URL.Path == "/app" || strings.HasPrefix(r.URL.Path, "/app/") {
@@ -1391,8 +2101,7 @@ func (a *app) web() http.Handler {
 			"/contact":  "contact.html",
 		}
 		if page, ok := marketingPages[r.URL.Path]; ok {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			http.ServeFile(w, r, filepath.Join(root, page))
+			a.serveMarketingPage(w, r, page, strings.TrimPrefix(r.URL.Path, "/"))
 			return
 		}
 
@@ -1440,6 +2149,14 @@ func securityHeaders(next http.Handler) http.Handler {
 		if requestID != "" {
 			r.Header.Set("X-Request-ID", requestID)
 			w.Header().Set("X-Request-ID", requestID)
+		}
+		correlationID := strings.TrimSpace(r.Header.Get("X-Correlation-ID"))
+		if correlationID == "" && requestID != "" {
+			correlationID = "corr_" + requestID
+		}
+		if correlationID != "" {
+			r.Header.Set("X-Correlation-ID", correlationID)
+			w.Header().Set("X-Correlation-ID", correlationID)
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")

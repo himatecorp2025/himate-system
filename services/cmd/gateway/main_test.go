@@ -143,7 +143,7 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		{http.MethodPost, "/api/v1/cms/pages/page_1/publish", "cms.approve"},
 		{http.MethodPost, "/api/v1/cms/pages/page_1/rollback", "cms.approve"},
 		{http.MethodGet, "/api/v1/admin/users", "administration.read"},
-		{http.MethodPost, "/api/v1/admin/users", "administration.write"},
+		{http.MethodPost, "/api/v1/admin/users", "administration.approve"},
 		{http.MethodPatch, "/api/v1/admin/users/usr_1", "administration.approve"},
 	}
 	for _, tc := range tests {
@@ -309,5 +309,135 @@ func TestMissingProxyReturnsServiceUnavailable(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "SERVICE_UNAVAILABLE") {
 		t.Fatalf("expected structured service unavailable error, got %s", rec.Body.String())
+	}
+}
+
+
+func TestRenderPublishedCMSHTML(t *testing.T) {
+	template := `<!doctype html><html><head><meta name="description" content="fallback"><title>Fallback</title></head><body><section data-cms-section="hero"><h1>Fallback heading</h1><p>Fallback body</p><a href="/old">Old CTA</a><img src="/old.webp"></section><section data-cms-section="hidden"><h2>Hidden static content</h2></section></body></html>`
+	page := publicCMSPage{
+		Slug: "platform",
+		SEO: publicCMSSEO{
+			Title: "Server Rendered HIMATE",
+			MetaDescription: "SSR description",
+			Canonical: "https://www.himate.com/platform",
+			OGTitle: "SSR OG",
+			OGDescription: "SSR OG description",
+			OGImageAssetID: "media_1",
+		},
+		Sections: []publicCMSSection{{
+			ID: "hero", ComponentType: "HERO", Heading: "Published heading", Body: "Published body",
+			CTALabel: "Published CTA", CTAURL: "/contact", MediaAssetID: "media_1", Visible: true,
+		}},
+		HiddenSections: []string{"hidden"},
+	}
+	got := renderPublishedCMSHTML(template, page, "https://fallback.invalid/platform")
+	for _, want := range []string{
+		"<title>Server Rendered HIMATE</title>",
+		`name="description" content="SSR description"`,
+		`rel="canonical" href="https://www.himate.com/platform"`,
+		`property="og:title" content="SSR OG"`,
+		`property="og:description" content="SSR OG description"`,
+		`property="og:image" content="/public/v1/cms/media/media_1"`,
+		"Published heading", "Published body", "Published CTA", `href="/contact"`,
+		`src="/public/v1/cms/media/media_1"`, "HIMATE SSR:PUBLISHED",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected rendered HTML to contain %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "Hidden static content") {
+		t.Fatalf("hidden CMS section remained in server-rendered HTML: %s", got)
+	}
+}
+
+
+func TestAuditSanitization(t *testing.T) {
+	input := map[string]any{
+		"name": "safe",
+		"password": "super-secret",
+		"nested": map[string]any{
+			"api_token": "token-value",
+			"value": "visible",
+		},
+	}
+	got := sanitizeAuditValue(input).(map[string]any)
+	if got["password"] != "[REDACTED]" {
+		t.Fatalf("password was not redacted: %#v", got)
+	}
+	nested := got["nested"].(map[string]any)
+	if nested["api_token"] != "[REDACTED]" || nested["value"] != "visible" {
+		t.Fatalf("nested audit sanitization failed: %#v", nested)
+	}
+}
+
+func TestAuditActionClassification(t *testing.T) {
+	cases := []struct {
+		method string
+		path   string
+		want   string
+	}{
+		{http.MethodPost, "/api/v1/admin/users", "ADMIN_USER_CREATED"},
+		{http.MethodPatch, "/api/v1/admin/users/usr_1", "ADMIN_USER_UPDATED"},
+		{http.MethodPost, "/api/v1/cms/pages/page_1/publish", "CMS_PAGE_PUBLISHED"},
+		{http.MethodPost, "/api/v1/environments/env_1/deploy", "ENVIRONMENT_DEPLOY"},
+		{http.MethodPost, "/api/v1/environments/env_1/launch", "ENVIRONMENT_LAUNCH"},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(tc.method, "https://himate.example"+tc.path, nil)
+		if got := auditAction(req); got != tc.want {
+			t.Fatalf("%s %s: expected %s, got %s", tc.method, tc.path, tc.want, got)
+		}
+	}
+}
+
+func TestSecurityHeadersAddsCorrelationID(t *testing.T) {
+	var gotRequestID, gotCorrelationID string
+	handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRequestID = r.Header.Get("X-Request-ID")
+		gotCorrelationID = r.Header.Get("X-Correlation-ID")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "https://himate.example/api/v1/health", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if gotRequestID == "" || gotCorrelationID == "" {
+		t.Fatalf("request tracing headers missing: request=%q correlation=%q", gotRequestID, gotCorrelationID)
+	}
+	if rec.Header().Get("X-Correlation-ID") != gotCorrelationID {
+		t.Fatalf("correlation ID was not returned to the client")
+	}
+}
+
+
+func TestProfileLocaleNormalization(t *testing.T) {
+	if got := normalizedLocale("hu-HU"); got != "hu_HU" {
+		t.Fatalf("expected hu_HU, got %q", got)
+	}
+	if got := normalizedLocale("unknown"); got != "en_US" {
+		t.Fatalf("unknown locale must fall back to en_US, got %q", got)
+	}
+	if got := normalizedTimezone("Europe/Budapest"); got != "Europe/Budapest" {
+		t.Fatalf("valid timezone changed: %q", got)
+	}
+	if got := normalizedTimezone("../bad zone"); got != "UTC" {
+		t.Fatalf("unsafe timezone must fall back to UTC, got %q", got)
+	}
+}
+
+func TestProfileAuditActions(t *testing.T) {
+	cases := []struct {
+		method string
+		path string
+		want string
+	}{
+		{http.MethodPatch, "/api/v1/profile", "PROFILE_UPDATED"},
+		{http.MethodPost, "/api/v1/profile/password", "PROFILE_PASSWORD_CHANGED"},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(tc.method, "https://himate.example"+tc.path, nil)
+		if got := auditAction(req); got != tc.want {
+			t.Fatalf("%s %s: expected %s, got %s", tc.method, tc.path, tc.want, got)
+		}
 	}
 }

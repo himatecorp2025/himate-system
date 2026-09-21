@@ -4,19 +4,26 @@ import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart' as intl;
+import 'package:intl/date_symbol_data_local.dart' show initializeDateFormatting;
 import 'package:google_fonts/google_fonts.dart';
 
 part 'cms_page.dart';
 part 'administration_rbac.dart';
 part 'brand_assets.dart';
 part 'domains_deployments.dart';
+part 'localization.dart';
+part 'profile_account.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('en_US');
+  await initializeDateFormatting('hu_HU');
   usePathUrlStrategy();
   runApp(const HimateApp());
 }
@@ -394,6 +401,7 @@ class _HimateAppState extends State<HimateApp> {
   final navigatorKey = GlobalKey<NavigatorState>();
   Map<String, dynamic>? user;
   bool loading = true;
+  String anonymousLocale = 'en_US';
 
   Timer? _restoreFallback;
   String? _pendingDeepLink;
@@ -402,6 +410,10 @@ class _HimateAppState extends State<HimateApp> {
   @override
   void initState() {
     super.initState();
+    final storedLocale = html.window.localStorage['himate_locale'];
+    if (storedLocale == 'hu_HU' || storedLocale == 'en_US') {
+      anonymousLocale = storedLocale!;
+    }
     final path = Uri.base.path;
     if (path == '/app' || path.startsWith('/app/')) {
       if (path != '/app') _pendingDeepLink = path;
@@ -531,12 +543,46 @@ class _HimateAppState extends State<HimateApp> {
     }
   }
 
+  String get effectiveLocaleCode {
+    final preferred = user?['preferred_locale']?.toString();
+    if (preferred == 'hu_HU' || preferred == 'en_US') return preferred!;
+    return anonymousLocale;
+  }
+
+  void setAnonymousLocale(String value) {
+    final normalized = value == 'hu_HU' ? 'hu_HU' : 'en_US';
+    html.window.localStorage['himate_locale'] = normalized;
+    if (mounted) setState(() => anonymousLocale = normalized);
+  }
+
+  void updateSignedInUser(Map<String, dynamic> next) {
+    user = Map<String, dynamic>.from(next);
+    final preferred = user?['preferred_locale']?.toString();
+    if (preferred == 'hu_HU' || preferred == 'en_US') {
+      anonymousLocale = preferred!;
+      html.window.localStorage['himate_locale'] = preferred;
+    }
+    api.clearCache('/api/v1/profile');
+    if (mounted) setState(() {});
+  }
+
+  Widget loginPage() => LoginPage(
+        onLogin: login,
+        localeCode: effectiveLocaleCode,
+        onLocaleChanged: setAnonymousLocale,
+      );
+
   Future<void> login(String email, String password, bool remember) async {
     user = await api.post('/api/v1/auth/login', {
       'email': email,
       'password': password,
       'remember': remember,
     });
+    final preferred = user?['preferred_locale']?.toString();
+    if (preferred == 'hu_HU' || preferred == 'en_US') {
+      anonymousLocale = preferred!;
+      html.window.localStorage['himate_locale'] = preferred;
+    }
     if (!mounted) return;
     setState(() {});
     _warmControlPlane();
@@ -586,21 +632,28 @@ class _HimateAppState extends State<HimateApp> {
       debugShowCheckedModeBanner: false,
       title: 'HIMATE System',
       theme: buildBrandTheme(),
+      locale: himateLocaleFromCode(effectiveLocaleCode),
+      supportedLocales: himateSupportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       initialRoute: initial,
       routes: {
         // The public login route must never be gated by protected-route
         // session restoration. This guarantees that a failed /auth/me request
         // cannot strand visitors behind a global spinner.
         '/login': (_) => user == null
-            ? LoginPage(onLogin: login)
+            ? loginPage()
             : _SignedInRedirect(onContinue: () {
                 navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
               }),
         '/app': (_) => loading
             ? loadingScreen()
             : user == null
-                ? LoginPage(onLogin: login)
-                : Shell(api: api, user: user!, onLogout: logout),
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout),
       },
       onGenerateRoute: (settings) {
         final name = settings.name ?? '';
@@ -613,14 +666,14 @@ class _HimateAppState extends State<HimateApp> {
           builder: (_) => loading
               ? loadingScreen()
               : user == null
-                  ? LoginPage(onLogin: login)
+                  ? loginPage()
                   : PartnerRouteLoader(api: api, partnerId: partnerId, initialSection: section),
         );
       },
       onUnknownRoute: (_) => MaterialPageRoute(
         settings: const RouteSettings(name: '/login'),
         builder: (_) => user == null
-            ? LoginPage(onLogin: login)
+            ? loginPage()
             : _SignedInRedirect(onContinue: () {
                 navigatorKey.currentState?.pushNamedAndRemoveUntil('/app', (route) => false);
               }),
@@ -722,8 +775,15 @@ class _SignedInRedirect extends StatelessWidget {
 }
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({required this.onLogin, super.key});
+  const LoginPage({
+    required this.onLogin,
+    required this.localeCode,
+    required this.onLocaleChanged,
+    super.key,
+  });
   final Future<void> Function(String email, String password, bool remember) onLogin;
+  final String localeCode;
+  final ValueChanged<String> onLocaleChanged;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -746,7 +806,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> submit() async {
     if (email.text.trim().isEmpty || password.text.isEmpty) {
-      setState(() => error = 'Enter your administrator email and password.');
+      setState(() => error = tr(context, 'enterCredentials'));
       return;
     }
     setState(() { busy = true; error = null; });
@@ -769,6 +829,13 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: brandNavyDeep,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
+      floatingActionButton: SafeArea(
+        child: _LoginLanguageSelector(
+          value: widget.localeCode,
+          onChanged: widget.onLocaleChanged,
+        ),
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 820;
@@ -800,8 +867,8 @@ class _LoginPageState extends State<LoginPage> {
                         onTogglePassword: () => setState(() => obscure = !obscure),
                         onRemember: (v) => setState(() => remember = v ?? true),
                         onSubmit: submit,
-                        onForgot: () => info('Password recovery will be connected in the security phase.'),
-                        onSso: () => info('SSO is not configured for this environment yet.'),
+                        onForgot: () => info(tr(context, 'recoveryPending')),
+                        onSso: () => info(tr(context, 'ssoPending')),
                       )
                     : _DesktopLoginComposition(
                         email: email,
@@ -814,12 +881,44 @@ class _LoginPageState extends State<LoginPage> {
                         onRemember: (v) => setState(() => remember = v ?? true),
                         onSubmit: submit,
                         onForgot: () => info('Password recovery will be connected in the security phase.'),
-                        onSso: () => info('SSO is not configured for this environment yet.'),
+                        onSso: () => info(tr(context, 'ssoPending')),
                       ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _LoginLanguageSelector extends StatelessWidget {
+  const _LoginLanguageSelector({required this.value, required this.onChanged});
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: brandNavy.withOpacity(.84),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: value == 'hu_HU' ? 'hu_HU' : 'en_US',
+            dropdownColor: brandNavy,
+            iconEnabledColor: brandGold,
+            style: const TextStyle(color: brandWhite, fontWeight: FontWeight.w700),
+            items: [
+              DropdownMenuItem(value: 'en_US', child: Text(HimateI18n.text('en_US', 'englishUS'))),
+              DropdownMenuItem(value: 'hu_HU', child: Text(HimateI18n.text('hu_HU', 'hungarian'))),
+            ],
+            onChanged: (next) {
+              if (next != null) onChanged(next);
+            },
+          ),
+        ),
       ),
     );
   }
@@ -1051,19 +1150,19 @@ class _LoginCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Welcome back',
+            tr(context, 'welcomeBack'),
             textAlign: TextAlign.center,
             style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 39, fontWeight: FontWeight.w700, height: 1),
           ),
           const SizedBox(height: 8),
-          Text('Sign in to your HIMATE System account', textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 15.5)),
+          Text(tr(context, 'signInSubtitle'), textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 15.5)),
           const SizedBox(height: 28),
           TextField(
             controller: email,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
             style: GoogleFonts.inter(color: brandCharcoal, fontSize: 16),
-            decoration: const InputDecoration(hintText: 'Email address', prefixIcon: Icon(Icons.mail_outline_rounded, size: 22)),
+            decoration: InputDecoration(hintText: tr(context, 'emailAddress'), prefixIcon: const Icon(Icons.mail_outline_rounded, size: 22)),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -1073,11 +1172,11 @@ class _LoginCard extends StatelessWidget {
             onSubmitted: (_) => onSubmit(),
             style: GoogleFonts.inter(color: brandCharcoal, fontSize: 16),
             decoration: InputDecoration(
-              hintText: 'Password',
+              hintText: tr(context, 'password'),
               prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
               suffixIcon: IconButton(
                 onPressed: onTogglePassword,
-                tooltip: obscure ? 'Show password' : 'Hide password',
+                tooltip: obscure ? tr(context, 'showPassword') : tr(context, 'hidePassword'),
                 icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 22),
               ),
             ),
@@ -1089,14 +1188,14 @@ class _LoginCard extends StatelessWidget {
                 height: 34,
                 child: Row(children: [
                   Checkbox(value: remember, onChanged: onRemember, visualDensity: VisualDensity.compact),
-                  Text('Remember me', style: GoogleFonts.inter(color: brandNavy, fontSize: 14.2)),
+                  Text(tr(context, 'rememberMe'), style: GoogleFonts.inter(color: brandNavy, fontSize: 14.2)),
                 ]),
               ),
               const Spacer(),
               TextButton(
                 onPressed: onForgot,
                 style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 5)),
-                child: Text('Forgot password?', style: GoogleFonts.inter(fontSize: 14.2, fontWeight: FontWeight.w600)),
+                child: Text(tr(context, 'forgotPassword'), style: GoogleFonts.inter(fontSize: 14.2, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -1121,7 +1220,7 @@ class _LoginCard extends StatelessWidget {
               child: busy
                   ? const SizedBox(key: ValueKey('busy'), width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.1, color: brandWhite))
                   : Row(key: const ValueKey('ready'), mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Text('Sign in', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                      Text(tr(context, 'signIn'), style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                       const SizedBox(width: 16),
                       const Icon(Icons.arrow_forward_rounded, size: 21),
                     ]),
@@ -1299,9 +1398,10 @@ ShellLayoutMode shellLayoutForWidth(double width) {
 }
 
 class Shell extends StatefulWidget {
-  const Shell({required this.api, required this.user, required this.onLogout, super.key});
+  const Shell({required this.api, required this.user, required this.onUserChanged, required this.onLogout, super.key});
   final Api api;
   final Map<String, dynamic> user;
+  final ValueChanged<Map<String, dynamic>> onUserChanged;
   final Future<void> Function() onLogout;
 
   @override
@@ -1312,15 +1412,30 @@ class _ShellState extends State<Shell> {
   int selected = 0;
   bool collapsed = false;
 
-  static const nav = <NavSpec>[
-    NavSpec('Dashboard', Icons.dashboard_outlined, 'Platform overview'),
-    NavSpec('Partners', Icons.groups_2_outlined, 'Partner control'),
-    NavSpec('Licensing & Finance', Icons.account_balance_wallet_outlined, 'Commercial management'),
-    NavSpec('Impact & Reports', Icons.show_chart_rounded, 'Metrics and reporting'),
-    NavSpec('Website & Marketing', Icons.campaign_outlined, 'Brand and growth'),
-    NavSpec('System & Operations', Icons.settings_suggest_outlined, 'Infrastructure health'),
-    NavSpec('Administration', Icons.admin_panel_settings_outlined, 'Roles and control'),
+  static const int navCount = 7;
+
+  List<NavSpec> navFor(BuildContext context) => <NavSpec>[
+    NavSpec(tr(context,'nav.dashboard'), Icons.dashboard_outlined, tr(context,'nav.dashboardSub')),
+    NavSpec(tr(context,'nav.partners'), Icons.groups_2_outlined, tr(context,'nav.partnersSub')),
+    NavSpec(tr(context,'nav.finance'), Icons.account_balance_wallet_outlined, tr(context,'nav.financeSub')),
+    NavSpec(tr(context,'nav.impact'), Icons.show_chart_rounded, tr(context,'nav.impactSub')),
+    NavSpec(tr(context,'nav.website'), Icons.campaign_outlined, tr(context,'nav.websiteSub')),
+    NavSpec(tr(context,'nav.system'), Icons.settings_suggest_outlined, tr(context,'nav.systemSub')),
+    NavSpec(tr(context,'nav.admin'), Icons.admin_panel_settings_outlined, tr(context,'nav.adminSub')),
   ];
+
+  void accountAction(BuildContext context, String value) {
+    if (value == 'profile') {
+      unawaited(showAccountProfileDialog(
+        context,
+        api: widget.api,
+        currentUser: widget.user,
+        onUserChanged: widget.onUserChanged,
+      ));
+    } else if (value == 'logout') {
+      unawaited(widget.onLogout());
+    }
+  }
 
   bool can(String permission) {
     final roles = widget.user['roles'];
@@ -1363,7 +1478,7 @@ class _ShellState extends State<Shell> {
       index: selected,
       sizing: StackFit.expand,
       children: [
-        for (var index = 0; index < nav.length; index++)
+        for (var index = 0; index < navCount; index++)
           visible.contains(index) ? _pageForIndex(index) : const SizedBox.shrink(),
       ],
     );
@@ -1377,7 +1492,8 @@ class _ShellState extends State<Shell> {
         final mobile = layoutMode == ShellLayoutMode.mobile;
         final tablet = layoutMode == ShellLayoutMode.tablet;
         final visibleIndexes = visibleNavIndexes();
-        final visibleNav = <NavSpec>[for (final index in visibleIndexes) nav[index]];
+        final allNav = navFor(context);
+        final visibleNav = <NavSpec>[for (final index in visibleIndexes) allNav[index]];
         final visibleSelected = visibleIndexes.indexOf(selected).clamp(0, visibleIndexes.length - 1);
         if (mobile) {
           return Scaffold(
@@ -1388,10 +1504,11 @@ class _ShellState extends State<Shell> {
               actions: [
                 _TopIconButton(icon: Icons.notifications_none_rounded, onTap: () {}),
                 PopupMenuButton<String>(
-                  tooltip: 'Account',
-                  onSelected: (value) { if (value == 'logout') widget.onLogout(); },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'logout', child: Row(children: [Icon(Icons.logout_rounded, size: 18), SizedBox(width: 10), Text('Sign out')])),
+                  tooltip: tr(context,'account'),
+                  onSelected: (value) => accountAction(context,value),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value:'profile',child:Row(children:[const Icon(Icons.account_circle_outlined,size:18),const SizedBox(width:10),Text(tr(context,'profile'))])),
+                    PopupMenuItem(value:'logout',child:Row(children:[const Icon(Icons.logout_rounded,size:18),const SizedBox(width:10),Text(tr(context,'signOut'))])),
                   ],
                   child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: _Avatar(name: '${widget.user['name'] ?? 'Admin User'}')),
                 ),
@@ -1468,10 +1585,11 @@ class _ShellState extends State<Shell> {
                           _TopIconButton(icon: Icons.notifications_none_rounded, hasDot: true, onTap: () {}),
                           const SizedBox(width: 8),
                           PopupMenuButton<String>(
-                            tooltip: 'Admin account',
-                            onSelected: (value) { if (value == 'logout') widget.onLogout(); },
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(value: 'logout', child: Row(children: [Icon(Icons.logout_rounded, size: 18), SizedBox(width: 10), Text('Sign out')])),
+                            tooltip: tr(context,'account'),
+                            onSelected: (value) => accountAction(context,value),
+                            itemBuilder: (_) => [
+                              PopupMenuItem(value:'profile',child:Row(children:[const Icon(Icons.account_circle_outlined,size:18),const SizedBox(width:10),Text(tr(context,'profile'))])),
+                              PopupMenuItem(value:'logout',child:Row(children:[const Icon(Icons.logout_rounded,size:18),const SizedBox(width:10),Text(tr(context,'signOut'))])),
                             ],
                             child: tablet
                                 ? Padding(

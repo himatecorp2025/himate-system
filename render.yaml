@@ -135,6 +135,14 @@ services:
           type: pserv
           name: himate-catalog
           envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: HIMATE_RUNTIME_PROVIDER
+        value: render
+      - key: RENDER_API_BASE
+        value: https://api.render.com/v1
+      - key: RENDER_API_KEY
+        sync: false
+      - key: HIMATE_RENDER_SERVICE_ID
+        sync: false
 
   - type: pserv
     name: himate-evidence

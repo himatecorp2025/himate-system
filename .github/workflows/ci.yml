@@ -125,6 +125,13 @@ jobs:
           for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-cms himate-storage himate-runtime; do
             grep -q "name: $service" render.yaml || { echo "Missing Render service: $service"; exit 1; }
           done
+          grep -q 'key: HIMATE_RUNTIME_PROVIDER' render.yaml
+          grep -q 'value: render' render.yaml
+          grep -q 'key: RENDER_API_KEY' render.yaml
+          grep -q 'key: RENDER_API_BASE' render.yaml
+          grep -q 'https://api.render.com/v1' render.yaml
+          grep -q 'key: HIMATE_RENDER_SERVICE_ID' render.yaml
+          grep -q 'HIMATE_RUNTIME_PROVIDER: local' docker-compose.yml
       - name: Validate Docker Compose topology
         run: docker compose config --quiet
       - name: Build and start containerized microservices
@@ -149,10 +156,14 @@ jobs:
         run: sh scripts/smoke_start_14_15.sh http://127.0.0.1:8080
       - name: Run START-16 CMS integration smoke
         run: sh scripts/smoke_start_16.sh http://127.0.0.1:8080
+      - name: Run START-17 public SSR and SEO smoke
+        run: sh scripts/smoke_start_17.sh http://127.0.0.1:8080
       - name: Run START-18-19 governance, branding and RBAC smoke V2
         run: sh scripts/smoke_start_18_19_v2.sh http://127.0.0.1:8080
       - name: Run START-20 Domains and Deployments smoke
         run: sh scripts/smoke_start_20.sh http://127.0.0.1:8080
+      - name: Run profile, owner and locale smoke
+        run: sh scripts/smoke_profile_identity.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

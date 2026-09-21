@@ -181,10 +181,24 @@ test "$(status "$REPORT_COOKIE" GET "/api/v1/impact/definitions")" = "401"
 curl -fsS -b "$PLATFORM_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"active":true}' "$BASE_URL/api/v1/admin/users/$report_id" >/dev/null
 echo ok
 
-printf 'central audit records governance mutations... '
+printf 'central audit records semantic, correlated old/new state... '
 sleep 1
-audit="$(curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/audit/events?q=admin%2Fusers&limit=100")"
-printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["total"]>=4, d; assert all(x["actor_id"] for x in d["items"]); assert any(x["method"]=="POST" and x["outcome"]=="SUCCESS" for x in d["items"]); assert any(x["status"]==409 and x["outcome"]=="FAILED" for x in d["items"])'
+audit="$(curl -fsS -b "$PLATFORM_COOKIE" --get   --data-urlencode 'q=admin/users'   --data-urlencode 'from=2000-01-01T00:00:00Z'   --data-urlencode 'limit=100'   "$BASE_URL/api/v1/audit/events")"
+printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d["items"]; assert d["total"]>=4,d; assert all(x["actor_id"] for x in items); assert all(x["correlation_id"] for x in items); assert any(x["action"]=="ADMIN_USER_CREATED" and x["method"]=="POST" and x["outcome"]=="SUCCESS" for x in items); assert any(x["action"]=="ADMIN_USER_UPDATED" and x["status"]==409 and x["outcome"]=="FAILED" for x in items); changed=[x for x in items if x["action"]=="ADMIN_USER_UPDATED" and isinstance(x.get("old_state"),dict) and isinstance(x.get("new_state"),dict) and x["old_state"].get("active") is True and x["new_state"].get("active") is False]; assert changed,items'
+if printf '%s' "$audit" | grep -qi 'local-development-password'; then exit 1; fi
+echo ok
+
+printf 'audit action and correlation filters work... '
+corr="$(printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["correlation_id"] for x in d["items"] if x["action"]=="ADMIN_USER_CREATED"))')"
+filtered="$(curl -fsS -b "$PLATFORM_COOKIE" --get   --data-urlencode 'action=ADMIN_USER_CREATED'   --data-urlencode "correlation_id=$corr"   "$BASE_URL/api/v1/audit/events")"
+printf '%s' "$filtered" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"]>=1; assert all(x["action"]=="ADMIN_USER_CREATED" for x in d["items"]); assert all(x["correlation_id"] for x in d["items"])'
+echo ok
+
+printf 'central audit table is append-only at database level... '
+if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1   -c "UPDATE identity.audit_events SET outcome='TAMPERED' WHERE id=(SELECT max(id) FROM identity.audit_events);" >/dev/null 2>&1; then
+  echo "audit UPDATE unexpectedly succeeded"
+  exit 1
+fi
 echo ok
 
 printf 'administration user list remains consistent... '
@@ -192,4 +206,4 @@ users="$(curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/admin/users")"
 printf '%s' "$users" | python3 -c 'import json,sys; d=json.load(sys.stdin); emails={x["email"]:x for x in d["items"]}; assert emails["ci-operations-v2@example.com"]["roles"]==["operations_admin"]; assert emails["ci-finance-v2@example.com"]["active"] is True; assert emails["ci-reporting-v2@example.com"]["active"] is True'
 echo ok
 
-echo "HIMATE START-18-19 governance, branding and RBAC smoke V2 passed"
+echo "HIMATE START-18-19 governance, immutable audit and RBAC smoke V3 passed"

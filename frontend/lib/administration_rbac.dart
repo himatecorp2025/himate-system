@@ -15,12 +15,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
   bool loading = false;
   String? error;
 
-  bool get canManage {
-    final userRoles = widget.currentUser['roles'];
-    if (userRoles is List && userRoles.map((e) => e.toString()).contains('platform_admin')) return true;
-    final permissions = widget.currentUser['permissions'];
-    return permissions is List && permissions.map((e) => e.toString()).any((p) => p == '*' || p == 'administration.read');
-  }
+  bool get canManage => widget.currentUser['system_owner'] == true;
 
   @override
   void initState() {
@@ -149,6 +144,10 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                             const SizedBox(width: 6),
                             const _MiniCounter(label: 'YOU'),
                           ],
+                          if (user['system_owner'] == true) ...[
+                            const SizedBox(width: 6),
+                            const _MiniCounter(label: 'OWNER'),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 3),
@@ -209,6 +208,8 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
     final email = TextEditingController(text: editing ? '${user['email'] ?? ''}' : '');
     final password = TextEditingController();
     final selected = <String>{..._roleKeys(user?['roles'])};
+    final editingUser = user;
+    final editingSystemOwner = editingUser != null && editingUser['system_owner'] == true;
     if (!editing && selected.isEmpty) selected.add('operations_admin');
     var active = editing ? user['active'] == true : true;
     String? dialogError;
@@ -255,24 +256,32 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                 style: TextStyle(color: brandTextSoft, fontSize: 10.5),
               ),
               const SizedBox(height: 8),
-              for (final role in roles)
+              for (final role in roles.where((role) =>
+                  '${role['key']}' != 'platform_admin' || editingSystemOwner))
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   value: selected.contains('${role['key']}'),
                   title: Text('${role['label']}', style: const TextStyle(color: brandNavy, fontSize: 12, fontWeight: FontWeight.w700)),
-                  subtitle: Text('${role['description']}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-                  onChanged: (value) {
-                    setDialogState(() {
-                      final key = '${role['key']}';
-                      if (value == true) {
-                        selected.add(key);
-                      } else {
-                        selected.remove(key);
-                      }
-                      dialogError = null;
-                    });
-                  },
+                  subtitle: Text(
+                    '${role['key']}' == 'platform_admin' && editingSystemOwner
+                        ? 'Reserved system-owner role'
+                        : '${role['description']}',
+                    style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+                  ),
+                  onChanged: '${role['key']}' == 'platform_admin' && editingSystemOwner
+                      ? null
+                      : (value) {
+                          setDialogState(() {
+                            final key = '${role['key']}';
+                            if (value == true) {
+                              selected.add(key);
+                            } else {
+                              selected.remove(key);
+                            }
+                            dialogError = null;
+                          });
+                        },
                 ),
               if (editing) ...[
                 const SizedBox(height: 8),

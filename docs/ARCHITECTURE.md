@@ -1,10 +1,12 @@
-# HIMATE control-plane architecture — START-01–16
+# HIMATE control-plane architecture — START-01–20 + Pre-START-21 corrections
 
 ```text
-Browser / Admin
+Browser / Admin / Search crawler
   |
   v
-HIMATE Gateway / Identity / Flutter + Public Website
+HIMATE Gateway / Identity
+  |-- Flutter administration SPA
+  |-- Server-rendered public CMS/SEO HTML
   |
   +-- private Partner Service
   +-- private Catalog Service
@@ -19,6 +21,9 @@ HIMATE Gateway / Identity / Flutter + Public Website
   +-- private PDF Reports Service
   +-- private CMS Service
   +-- private Storage Service
+  +-- private Runtime / Deployment Provider Service
+  |       +-- Local adapter (CI/dev)
+  |       +-- Render adapter (production)
   |
   +-- HIMATE PostgreSQL control-plane database
   |    +-- identity
@@ -35,6 +40,7 @@ HIMATE Gateway / Identity / Flutter + Public Website
   |    +-- reports
   |    +-- cms
   |    +-- storage
+  |    +-- runtime
   |
   +-- isolated partner PostgreSQL databases
        +-- Partner A DB + partner-scoped DB role
@@ -42,73 +48,133 @@ HIMATE Gateway / Identity / Flutter + Public Website
        +-- ...
 ```
 
-## Containerized microservices
+## Architecture decision: containerized microservices
 
-Each backend domain is an independently deployable Go binary and Docker image. Only the Gateway and the explicitly public Connector Protocol surface are network-facing. Administrator APIs remain session-authenticated through the Gateway. Private service endpoints require the shared internal credential. Runtime images are distroless and run as non-root.
+HIMATE intentionally retains the independently deployable Go-service topology instead of reverting to the original blueprint's modular-monolith recommendation. The formal decision is ADR-0001.
 
-The HIMATE control-plane services may share the HIMATE PostgreSQL instance while owning separate schemas. Database changes are service-scoped, ordered and transactional. Partner business databases do **not** share this database: START-09 creates a physically separate database and role per partner.
+Each domain is an independently buildable Go binary and Docker image. The public Gateway is the administrative/browser ingress. Private control-plane services require the shared internal service credential. Runtime images are non-root/distroless where applicable.
+
+The HIMATE services currently share the control-plane PostgreSQL instance while owning domain schemas. Partner business databases remain physically isolated.
+
+### Scaling model
+The topology permits independent horizontal/vertical scaling of the hot services, isolates provider failures, and prevents partner-runtime operations from requiring a Gateway rebuild. HTTP clients use connection pooling and explicit timeouts.
+
+Containerization alone is not treated as proof of high-load readiness. Process-local state such as the current login-attempt cache must be externalized to a shared store before multiple Gateway replicas are used for global rate enforcement. Durability-sensitive queues must likewise move to durable infrastructure when their throughput/durability requirements exceed the current in-process audit queue.
+
+## Identity, profile and user administration
+
+The bootstrap account becomes the durable `system_owner` only when no owner exists. Startup does not overwrite a user's changed password or profile.
+
+The owner is the sole account permitted to create or modify HIMATE administration users. Authorization is based on the owner flag and backend permissions, never the person's display name.
+
+User accounts persist:
+- name/email
+- roles
+- active state
+- system-owner status
+- preferred locale (`en_US` or `hu_HU`)
+- time zone
+- job title / phone
+- session version
+
+Password changes verify the current password, rotate the session version and issue a fresh current session.
+
+## Localization
+
+Flutter has one central key map with `en_US` and `hu_HU` locales and standard Flutter localization delegates. User preference is persisted by Identity. Login can choose an anonymous locale, while an authenticated user's persisted preference is authoritative.
+
+This establishes the required key-based localization architecture; domain screens can migrate visible copy into the same key map without adding a translation service or a new network hop.
+
+## Public CMS and SEO (START-17)
+
+The CMS service remains private. The Gateway calls the published CMS endpoint with the internal service credential and renders the approved public HTML server-side.
+
+For public marketing routes, the initial HTML response includes:
+- published title
+- meta description
+- canonical
+- index/noindex
+- Open Graph title/description/url/image
+- published section heading/body/CTA/media
+- hidden-section removal
+
+If CMS is unavailable, the Gateway serves the source-controlled static fallback and sets `X-Himate-SSR: static-fallback`. Published SSR responses use `X-Himate-SSR: published`.
+
+`/sitemap.xml` is generated from the published CMS manifest. `/robots.txt` points crawlers to that sitemap.
+
+ADR-0002 records why this rendering stays at the Gateway boundary rather than introducing a separate frontend service.
+
+## Audit and governance (START-18)
+
+Every authenticated mutating Gateway request generates a central audit event with:
+- actor and roles
+- semantic action
+- HTTP method/path and resource
+- partner ID where applicable
+- request ID and correlation ID
+- success/failure status
+- redacted old/new state
+- duration and timestamp
+
+Password/token/secret/cookie/credential fields are recursively redacted. User/profile mutations have authoritative pre-mutation snapshots. The database rejects UPDATE and DELETE on `identity.audit_events`.
+
+Audit reads support actor, resource, action, partner, correlation, method, outcome, free-text and RFC3339 from/to filtering.
+
+## RBAC (START-19)
+
+The backend is authoritative. Roles:
+- `platform_admin`
+- `operations_admin`
+- `finance_admin`
+- `reporting_admin`
+
+Permissions use `resource.read`, `resource.write` and `resource.approve`. Approval-grade operations include CMS publish/rollback, provisioning runs, deployment/launch, evidence verification and licence approval.
+
+User administration is additionally gated by `system_owner`, so a normal role assignment cannot accidentally delegate owner authority.
+
+## Domains and provider deployments (START-20)
+
+`environments` owns the business deployment/lifecycle state machine. `runtime` owns provider-specific deployment mechanics.
+
+```text
+Environments service
+      |
+      | internal deployment contract
+      v
+Runtime provider service
+      |
+      +-- local adapter --------> CI/dev deterministic READY
+      |
+      +-- Render adapter -------> Render Deploy API
+                                  | trigger deploy
+                                  | persist deploy ID/status
+                                  | poll deploy status
+                                  v
+                             READY / DEPLOYING / FAILED
+```
+
+The Environments service does not mark a release DEPLOYED on HTTP acceptance alone. It waits for Runtime/provider state `READY`. Production lifecycle gates therefore consume provider-authoritative deployment state.
+
+DNS verification uses resolver lookups. TLS verification performs a real TLS connection and certificate validation. Production LIVE remains blocked until deployment/runtime/domain gates are satisfied.
+
+ADR-0003 records the provider boundary.
 
 ## Provisioning and data isolation
 
 Provisioning is a persisted state machine. It validates partner lifecycle and the initial-license gate before changing the partner to `PROVISIONING`. Completed steps are durable and skipped on retry.
 
-The reference-template operation is structure-only. It may create partner platform metadata, module-entitlement structure and an initial administrator invite, but it must never copy Klavierhaus customer, piano, invoice, user, chat, media, financial or statistical data.
-
-Partner database credentials are derived from a dedicated provisioning master secret and are never written to the normal control-plane tables as plaintext.
-
-## Environment model
-
-A partner may have independent `STAGING` and `PRODUCTION` environment records. Each stores hostname, configuration, platform version, desired/active release, deployment status and environment status. START-10 manages the state model; the later START-20 deployment/domain block remains responsible for full production launch/deployment automation.
+Reference-template operations are structure-only and never copy Klavierhaus business/customer/financial/media data.
 
 ## Connector Protocol
 
-```text
-HIMATE Control Plane
-        |
-        | explicit Connector Protocol
-        v
-Partner Backend
-        |
-        v
-Partner-owned isolated DB
-```
+HIMATE never performs cross-tenant SQL through the Connector. Credentials are partner+environment scoped. Raw bearer credentials are returned only on generation/rotation and only hashes are persisted.
 
-HIMATE never performs cross-tenant SQL queries through the Connector. Credentials are partner + environment scoped. The raw bearer token is displayed only at generation/rotation time; only its hash is persisted.
+## Evidence, reports and storage
 
-Partner systems may report health, version, module state and approved metrics. Metric traffic is forwarded to the Impact service through an authenticated internal contract.
-
-## System Health and performance
-
-System Health probes the individual microservices and PostgreSQL, records latency and status, and aggregates connector/environment/provisioning state by partner. Snapshots run in the background and are persisted so Partner Portfolio reads do not synchronously fan out across every operational dependency.
-
-Partner Portfolio remains server-paginated and performs bounded parallel aggregation for only the visible page of partner IDs.
-
-## Impact, Evidence & Reports
-
-Impact definitions are stable and centrally governed. Observations retain period and provenance. Allowed provenance values are `SYSTEM`, `MANUAL`, `PARTNER_DECLARED`, and `VERIFIED_DOCUMENT`.
-
-START-14 adds a dedicated Evidence service. File-backed evidence is content-sniffed, size-limited and SHA-256 verified before its bytes are persisted through the Storage service. URL evidence is reference-only and is never fetched. `VERIFIED_DOCUMENT` observations must reference a real, VERIFIED, file-backed Evidence record with matching partner/metric boundaries.
-
-START-15 adds a dedicated Reports service. Report jobs freeze partner scope, period, metric summaries, data sources and Evidence references into an immutable snapshot before PDF rendering. Partner, multi-partner and HIMATE Global reports can therefore be regenerated from the same snapshot without rereading live metric state. Generated PDFs are stored through the same Storage abstraction and retain SHA-256 integrity metadata.
-
-## CMS content plane
-
-START-16 adds a dedicated CMS service behind the Gateway. Administrator writes remain session-authenticated while the CMS service itself remains private and accepts only the internal service credential.
-
-Page identity is stable, while content is stored as immutable versions. Each content edit creates a new `DRAFT` version. The current draft must be promoted to `PREVIEW` before it may become `PUBLISHED`; if the draft changes after preview, publishing fails closed until a fresh preview is created.
-
-Preview access uses a cryptographically random token whose raw value is returned only when issued or rotated. Only its SHA-256 hash is persisted. Preview responses are `no-store` and `noindex`. Public CMS APIs expose only the active published snapshot and omit hidden sections. Draft and preview state never share the public read path.
-
-CMS media is identified by stable asset IDs and persisted through the common Storage service. Uploads are request/file-size bounded and content-sniffed; only PNG, JPEG and WebP are admitted. Media becomes public only when referenced by the active published version. This prevents draft-only media from becoming a public side channel.
-
-SEO fields are versioned with content. Backend publication validation enforces slug format, HTTPS canonical URLs, required title/meta data and uniqueness of published slug/canonical values. The published manifest prepares START-17 sitemap/robots generation.
-
-The existing public landing page and subpages remain unchanged in START-16. START-17 will bind those already approved pages to the published CMS content model and provide SEO-compatible HTML rendering.
-
-## Billing continuity
-
-Billing remains activation-date anchored to 30-day cycles. Initial-license payment/evidence is a hard provisioning gate. Effective-dated module pricing, cancellation-at-period-end and historical records continue to be preserved from START-01–08.
+Evidence is validated and SHA-256 checked. PDF report jobs freeze immutable snapshots. Storage is an abstraction used by evidence/report/CMS media. Partner and control-plane data boundaries remain explicit.
 
 ## Deployment topology
 
-Local and CI environments use `docker-compose.yml`. Render service topology is declared in `render.yaml`. Vercel preview deployments are disabled on development branches; only `develop` is configured for automatic Vercel deployment.
+Local/CI uses `docker-compose.yml` and the Runtime `local` provider. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled.
+
+The Render Runtime service is configured for the `render` provider and receives `RENDER_API_KEY` / optional default service ID as secrets. Provider credentials never live in source control.
