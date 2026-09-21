@@ -130,6 +130,17 @@ invoice_today="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$part
 printf '%s' "$invoice_today" | python3 -c 'import json,sys; d=json.load(sys.stdin); inv=next(x for x in d["items"] if str(x["service_period_end_exclusive"])[:10]==sys.argv[1]); mods=[i for i in inv["items"] if i["item_type"]=="MODULE" and i["module_key"]=="ci.commercial_snapshot"]; assert len(mods)==1,inv; assert mods[0]["amount"]==50,mods; assert inv["base_fee"]==100 and inv["module_fee"]==50 and inv["total"]==150,inv' "$TODAY"
 echo ok
 
+printf 'database guards reject mutation of immutable billing ledger values... '
+if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.module_period_snapshots SET price_snapshot=999 WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND period_start='$PREV30'::date" >/dev/null 2>&1; then
+  echo "snapshot mutation unexpectedly succeeded" >&2
+  exit 1
+fi
+if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoice_items SET amount=999 WHERE partner_id='$partner_id' AND item_type='MODULE' AND period_start='$PREV30'::date" >/dev/null 2>&1; then
+  echo "invoice item amount mutation unexpectedly succeeded" >&2
+  exit 1
+fi
+echo ok
+
 printf 'next module period adopts the new price snapshot... '
 docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT30"
 sub_next="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/subscriptions")"
@@ -144,6 +155,10 @@ curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"canc
 events="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/events")"
 printf '%s' "$events" | python3 -c 'import json,sys; d=json.load(sys.stdin); types={x["event_type"] for x in d["items"]}; required={"COMMERCIAL_AGREEMENT_CONFIRMED","ACTIVATION_INVOICE_REGISTERED","PAYMENT_EVIDENCE_REGISTERED","LICENSE_PAID","MODULE_ACTIVATED","MODULE_PERIOD_STARTED","MODULE_RENEWED","INVOICE_ITEM_CREATED","INVOICE_GENERATED","MODULE_CANCELLATION_SCHEDULED"}; missing=required-types; assert not missing,missing'
 echo ok
+if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "DELETE FROM billing.billing_events WHERE partner_id='$partner_id'" >/dev/null 2>&1; then
+  echo "billing event deletion unexpectedly succeeded" >&2
+  exit 1
+fi
 
 printf 'website adapter fails closed on authoritative domain mismatch... '
 bad_adapter='{"environment":"PRODUCTION","adapter_type":"GENERIC_HTTP","site_base_url":"https://wrong.example.net","allowed_domains":["wrong.example.net"],"capabilities":["ENTITLEMENTS","HEARTBEAT","METRICS","AGGREGATED_DATA","RECONCILIATION"],"enabled":true,"config":{}}'
