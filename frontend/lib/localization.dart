@@ -886,7 +886,6 @@ class HimateI18n {
     'Environment configuration': 'Környezeti konfiguráció',
     'Environment status': 'Környezet állapota',
     'Every successful restore point automatically queues a real restore test from the offsite copy.': 'Minden sikeres visszaállítási pont automatikusan valódi helyreállítási tesztet állít sorba a külső másolatból.',
-    'Evidence integrity check failed: $e': 'A bizonyíték integritás-ellenőrzése sikertelen: $e',
     'Evidence is partner-scoped, checksum-backed and explicitly verified before it can support VERIFIED_DOCUMENT provenance.': 'A bizonyíték partnerhez kötött, ellenőrzőösszeggel védett, és explicit ellenőrzés szükséges, mielőtt VERIFIED_DOCUMENT eredetet támogathat.',
     'Evidence name': 'Bizonyíték neve',
     'External report': 'Külső jelentés',
@@ -1068,6 +1067,9 @@ class HimateI18n {
     if (value.startsWith('Environment: ') && value.contains(' · Version: ')) {
       final parts = value.substring('Environment: '.length).split(' · Version: ');
       if (parts.length == 2) return 'Környezet: ${parts[0]} · Verzió: ${parts[1]}';
+    }
+    if (value.startsWith('Evidence integrity check failed: ')) {
+      return 'A bizonyíték integritás-ellenőrzése sikertelen: ${value.substring('Evidence integrity check failed: '.length)}';
     }
     if (value.startsWith('Evidence integrity: ')) {
       return 'Bizonyíték integritása: ${value.substring('Evidence integrity: '.length)}';
