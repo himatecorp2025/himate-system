@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–22.2
+# HIMATE control-plane architecture — START-01–22.3
 
 ```text
 Browser / Admin / Partner Portal / Search crawler
@@ -191,6 +191,62 @@ Module self-service is implemented inside the Catalog boundary. It may change on
 Billing remains authoritative for renewal state. Catalog activation is synchronized through the existing Billing summary/subscription model. Cancellation sets `cancel_at_period_end`; Billing keeps the entitlement active through the already-paid 30-day period and marks it NOT_LICENSED only when the period expires.
 
 Company self-service is allowlisted at the Gateway. Lifecycle, provisioning, environment, commercial terms and global Control Plane fields are intentionally absent from the Partner Portal write contract.
+
+## Commercial Automation and Partner Website Integration (START-22.3)
+
+START-22.3 closes the commercial lifecycle without creating a new business-data authority. Catalog remains authoritative for module pricing/entitlements, Billing owns commercial periods and invoices, Partners owns company/domain identity, and Connector remains the only partner-website integration boundary.
+
+```text
+Catalog price history
+       |
+       | effective price @ module period start
+       v
+Billing module_period_snapshots (immutable)
+       |
+       +--> MODULE invoice_items (immutable amount)
+       +--> billing_events
+       |
+Partner base billing boundary
+       |
+       +--> BASE_SERVICE invoice_item
+       +--> attach pending MODULE items
+       v
+Itemized invoice
+```
+
+A module price change during a running 30-day period cannot mutate that period. Billing asks Catalog for the price effective at the exact period start and persists one snapshot keyed by partner/module/period start. If synchronization was unavailable for one or more periods, Billing reconstructs them from activation forward using Catalog history rather than today's price.
+
+Provisioning now consumes a stricter Billing gate:
+
+```text
+Commercial terms
+   -> AGREED agreement
+   -> activation-fee INVOICE evidence
+   -> PAYMENT_EVIDENCE / RECEIPT
+   -> verified PAID initial license
+   -> provisioning allowed
+```
+
+Reference-partner waivers remain explicit documented exceptions.
+
+Partner websites are not reimplemented. A `website_adapters` record binds the existing website, environment, allowed domains and Connector capabilities. The connector credential remains the tenant identity. `/connector/v1/commercial-state` resolves current active entitlements from Catalog and cycle/configuration state from the authoritative services. It intentionally omits partner prices, invoice bodies and payment data.
+
+```text
+Existing Partner Website
+       |
+       | connector credential
+       v
+Connector /commercial-state
+       |
+       +--> Catalog  (active entitlement/version)
+       +--> Billing  (cycle dates only)
+       +--> Partners (authoritative domain binding)
+       +--> desired-state config
+       |
+       +--> metrics / aggregated allowlisted batches / reconciliation
+```
+
+The adapter privacy mode is `AGGREGATED_ONLY`. START-22.3 does not weaken the START-22 field allowlists, HMAC/replay controls, encrypted retained-data boundary or seven-year retention policy.
 
 ## Domains and provider deployments (START-20)
 
