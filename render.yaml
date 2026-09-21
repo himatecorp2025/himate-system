@@ -347,6 +347,10 @@ services:
           type: pserv
           name: himate-catalog
           envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: HIMATE_CONNECTOR_DATA_MASTER_KEY_B64
+        sync: false
+      - key: HIMATE_CONNECTOR_DATA_KEY_VERSION
+        value: v1
       - key: IMPACT_HOSTPORT
         fromService:
           type: pserv
