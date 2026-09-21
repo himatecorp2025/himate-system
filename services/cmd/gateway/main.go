@@ -1535,10 +1535,6 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
 		if !current.SystemOwner && containsRole(next.Roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
 	}
 	if in.Active != nil { next.Active = *in.Active }
-	if current.SystemOwner && (!next.Active || !containsRole(next.Roles,"platform_admin")) {
-		common.APIError(w,409,"OWNER_PROTECTED","The HIMATE system owner must remain an active Platform Admin")
-		return
-	}
 
 	currentPlatform := current.Active && hasRole(current,"platform_admin")
 	nextPlatform := next.Active && hasRole(next,"platform_admin")
@@ -1553,6 +1549,10 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
 			common.APIError(w,409,"LAST_PLATFORM_ADMIN","At least one active Platform Admin must remain")
 			return
 		}
+	}
+	if current.SystemOwner && (!next.Active || !containsRole(next.Roles,"platform_admin")) {
+		common.APIError(w,409,"OWNER_PROTECTED","The HIMATE system owner must remain an active Platform Admin")
+		return
 	}
 
 	hash := current.PasswordHash
