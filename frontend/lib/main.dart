@@ -3967,6 +3967,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           ]);
                         },
                       ),
+                      const SizedBox(height: 14),
+                      start223CommercialWorkflowPanel(),
                       const SizedBox(height: 26),
                       KeyedSubtree(
                         key: _environmentKey,
@@ -4220,6 +4222,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      start223WebsiteAdapterPanel(),
                       const SizedBox(height: 12),
                       connectorCredentials.isEmpty
                           ? const _MessageCard(
@@ -6713,7 +6717,7 @@ class _CommercialSummaryCard extends StatelessWidget {
       _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
       _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
       _DefinitionRow(label: 'License paid', value: '${money(license['paid_amount'])} / ${money(license['required_amount'])}'),
-      _DefinitionRow(label: 'Base monthly fee', value: money(billing['effective_base_fee'])),
+      _DefinitionRow(label: 'Base 30-day fee', value: money(billing['effective_base_fee'])),
       _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
       _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
       _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),
