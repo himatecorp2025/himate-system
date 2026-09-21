@@ -112,28 +112,28 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             ResponsiveFieldPair(
               first: TextField(
                 controller: key,
-                decoration: const InputDecoration(labelText: 'Stable page key *', hintText: 'landing'),
+                decoration: InputDecoration(labelText: uiLiteral('Stable page key *'), hintText: uiLiteral('landing')),
               ),
               second: TextField(
                 controller: name,
-                decoration: const InputDecoration(labelText: 'Admin page name *', hintText: 'HIMATE Landing'),
+                decoration: InputDecoration(labelText: uiLiteral('Admin page name *'), hintText: uiLiteral('HIMATE Landing')),
               ),
             ),
             const SizedBox(height: 12),
-            TextField(controller: slug, decoration: const InputDecoration(labelText: 'Slug *', hintText: 'landing')),
+            TextField(controller: slug, decoration: InputDecoration(labelText: uiLiteral('Slug *'), hintText: uiLiteral('landing'))),
             const SizedBox(height: 12),
-            TextField(controller: seoTitle, decoration: const InputDecoration(labelText: 'SEO title')),
+            TextField(controller: seoTitle, decoration: InputDecoration(labelText: uiLiteral('SEO title'))),
             const SizedBox(height: 12),
-            TextField(controller: meta, maxLines: 2, decoration: const InputDecoration(labelText: 'Meta description')),
+            TextField(controller: meta, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Meta description'))),
             const SizedBox(height: 12),
-            TextField(controller: canonical, decoration: const InputDecoration(labelText: 'Canonical HTTPS URL')),
+            TextField(controller: canonical, decoration: InputDecoration(labelText: uiLiteral('Canonical HTTPS URL'))),
           ],
         ),
         primaryLabel: 'Create draft',
         onPrimary: () {
           if (key.text.trim().isEmpty || name.text.trim().isEmpty || slug.text.trim().isEmpty) {
             ScaffoldMessenger.of(dialogContext).showSnackBar(
-              const SnackBar(content: Text('Page key, name and slug are required.'), behavior: SnackBarBehavior.floating),
+              const SnackBar(content: LText('Page key, name and slug are required.'), behavior: SnackBarBehavior.floating),
             );
             return;
           }
@@ -186,7 +186,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             const SizedBox(height: 12),
             TextField(
               controller: alt,
-              decoration: const InputDecoration(labelText: 'Alt / media description', hintText: 'Describe the image or video for accessibility'),
+              decoration: InputDecoration(labelText: uiLiteral('Alt / media description'), hintText: uiLiteral('Describe the image or video for accessibility')),
             ),
           ],
         ),
@@ -236,7 +236,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Preview created. The raw preview token is returned once and opened in a new tab.'),
+            content: LText('Preview created. The raw preview token is returned once and opened in a new tab.'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -261,7 +261,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(prefix + ': ' + errorValue.toString()),
+        content: LText(prefix + ': ' + errorValue.toString()),
         behavior: SnackBarBehavior.floating,
         backgroundColor: brandDanger,
       ),
@@ -288,7 +288,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                     const Icon(Icons.history_rounded, color: brandGold),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
+                      child: LText(
                         'Version history · ' + (page['name'] ?? '').toString(),
                         style: Theme.of(dialogContext).textTheme.titleLarge,
                       ),
@@ -310,11 +310,11 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: _StatusPill(label: state),
-                      title: Text(
+                      title: LText(
                         'Version ' + (version['version_no'] ?? '').toString() + ' · /' + (version['slug'] ?? '').toString(),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      subtitle: Text(
+                      subtitle: LText(
                         rollback.isEmpty
                             ? 'Created ' + (version['created_at'] ?? '').toString() + ' · ' + (version['created_by'] ?? '').toString()
                             : 'Rollback activation of ' + rollback + ' · ' + (version['created_at'] ?? '').toString(),
@@ -329,7 +329,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                                 if (dialogContext.mounted) Navigator.pop(dialogContext);
                                 await load();
                               },
-                              child: const Text('Restore'),
+                              child: const LText('Restore'),
                             )
                           : null,
                     );
@@ -363,7 +363,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                     const Icon(Icons.receipt_long_outlined, color: brandGold),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
+                      child: LText(
                         'CMS audit · ' + (page['name'] ?? '').toString(),
                         style: Theme.of(dialogContext).textTheme.titleLarge,
                       ),
@@ -383,8 +383,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.fiber_manual_record_rounded, color: brandGold, size: 12),
-                      title: Text((event['action'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text(
+                      title: LText((event['action'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: LText(
                         (event['created_at'] ?? '').toString() +
                             ' · actor ' +
                             (event['actor'] ?? 'system').toString() +
@@ -426,7 +426,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
+                    child: LText(
                       (page['name'] ?? '').toString(),
                       style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14),
                     ),
@@ -448,27 +448,27 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                   FilledButton.icon(
                     onPressed: () => editDraft(page),
                     icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Edit draft'),
+                    label: const LText('Edit draft'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => createPreview(page),
                     icon: const Icon(Icons.visibility_outlined),
-                    label: const Text('Preview'),
+                    label: const LText('Preview'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => publish(page),
                     icon: const Icon(Icons.publish_outlined),
-                    label: const Text('Publish'),
+                    label: const LText('Publish'),
                   ),
                   TextButton.icon(
                     onPressed: () => showVersions(page),
                     icon: const Icon(Icons.history_rounded),
-                    label: const Text('Versions'),
+                    label: const LText('Versions'),
                   ),
                   TextButton.icon(
                     onPressed: () => showAudit(page),
                     icon: const Icon(Icons.receipt_long_outlined),
-                    label: const Text('Audit'),
+                    label: const LText('Audit'),
                   ),
                 ],
               ),
@@ -500,8 +500,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       title: 'HIMATE CMS',
       subtitle: 'Manage published website content, story video, media and SEO without editing source code.',
       actions: [
-        OutlinedButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const Text('Upload media')),
-        FilledButton.icon(onPressed: createPage, icon: const Icon(Icons.add_rounded), label: const Text('New CMS page')),
+        OutlinedButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const LText('Upload media')),
+        FilledButton.icon(onPressed: createPage, icon: const Icon(Icons.add_rounded), label: const LText('New CMS page')),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -572,7 +572,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                           title: (asset['original_filename'] ?? '').toString(),
                           icon: Icons.image_outlined,
                           action: IconButton(
-                            tooltip: 'Preview media',
+                            tooltip: uiLiteral('Preview media'),
                             onPressed: () => openBrowserDownload(
                               '/api/v1/cms/media/' + (asset['id'] ?? '').toString() + '/preview',
                             ),
@@ -742,11 +742,11 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
       value: safeValue,
       decoration: InputDecoration(labelText: label),
       items: <DropdownMenuItem<String>>[
-        const DropdownMenuItem<String>(value: '', child: Text('No media')),
+        const DropdownMenuItem<String>(value: '', child: LText('No media')),
         for (final asset in widget.media)
           DropdownMenuItem<String>(
             value: (asset['id'] ?? '').toString(),
-            child: Text(
+            child: LText(
               (asset['original_filename'] ?? '').toString() +
                   ' · ' +
                   (asset['id'] ?? '').toString(),
@@ -786,12 +786,12 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          LText(
                             'Edit CMS draft · ' + (widget.page['name'] ?? '').toString(),
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 3),
-                          const Text(
+                          const LText(
                             'Saving creates a new immutable DRAFT version. Publishing requires a fresh PREVIEW version.',
                             style: TextStyle(color: brandTextSoft, fontSize: 11.5),
                           ),
@@ -807,31 +807,31 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
                 child: ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
-                    Text('SEO & routing', style: Theme.of(context).textTheme.titleMedium),
+                    LText('SEO & routing', style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 12),
-                    TextField(controller: slug, decoration: const InputDecoration(labelText: 'Slug *')),
+                    TextField(controller: slug, decoration: InputDecoration(labelText: uiLiteral('Slug *'))),
                     const SizedBox(height: 12),
                     ResponsiveFieldPair(
                       first: TextField(
                         controller: seoTitle,
-                        decoration: const InputDecoration(labelText: 'SEO title * for publish'),
+                        decoration: InputDecoration(labelText: uiLiteral('SEO title * for publish')),
                       ),
                       second: TextField(
                         controller: canonical,
-                        decoration: const InputDecoration(labelText: 'Canonical HTTPS URL * for publish'),
+                        decoration: InputDecoration(labelText: uiLiteral('Canonical HTTPS URL * for publish')),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: meta,
                       maxLines: 2,
-                      decoration: const InputDecoration(labelText: 'Meta description * for publish'),
+                      decoration: InputDecoration(labelText: uiLiteral('Meta description * for publish')),
                     ),
                     const SizedBox(height: 12),
                     ResponsiveFieldPair(
                       first: TextField(
                         controller: ogTitle,
-                        decoration: const InputDecoration(labelText: 'Open Graph title'),
+                        decoration: InputDecoration(labelText: uiLiteral('Open Graph title')),
                       ),
                       second: mediaDropdown(
                         ogImage,
@@ -843,23 +843,23 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
                     TextField(
                       controller: ogDescription,
                       maxLines: 2,
-                      decoration: const InputDecoration(labelText: 'Open Graph description'),
+                      decoration: InputDecoration(labelText: uiLiteral('Open Graph description')),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: noindex,
-                      title: const Text('Noindex'),
-                      subtitle: const Text('Published content stays available but is marked not to be indexed.'),
+                      title: const LText('Noindex'),
+                      subtitle: const LText('Published content stays available but is marked not to be indexed.'),
                       onChanged: (value) => setState(() => noindex = value),
                     ),
                     const Divider(height: 28),
                     Row(
                       children: [
-                        Expanded(child: Text('Content sections', style: Theme.of(context).textTheme.titleMedium)),
+                        Expanded(child: LText('Content sections', style: Theme.of(context).textTheme.titleMedium)),
                         OutlinedButton.icon(
                           onPressed: addSection,
                           icon: const Icon(Icons.add_rounded),
-                          label: const Text('Add section'),
+                          label: const LText('Add section'),
                         ),
                       ],
                     ),
@@ -893,12 +893,12 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                    TextButton(onPressed: () => Navigator.pop(context), child: const LText('Cancel')),
                     const SizedBox(width: 8),
                     FilledButton.icon(
                       onPressed: () => Navigator.pop(context, payload()),
                       icon: const Icon(Icons.save_outlined),
-                      label: const Text('Save new draft version'),
+                      label: const LText('Save new draft version'),
                     ),
                   ],
                 ),
@@ -951,18 +951,18 @@ class _CMSSectionEditor extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: LText(
                     'Section ' + (index + 1).toString(),
                     style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700),
                   ),
                 ),
-                IconButton(onPressed: onMoveUp, icon: const Icon(Icons.arrow_upward_rounded), tooltip: 'Move up'),
-                IconButton(onPressed: onMoveDown, icon: const Icon(Icons.arrow_downward_rounded), tooltip: 'Move down'),
+                IconButton(onPressed: onMoveUp, icon: const Icon(Icons.arrow_upward_rounded), tooltip: uiLiteral('Move up')),
+                IconButton(onPressed: onMoveDown, icon: const Icon(Icons.arrow_downward_rounded), tooltip: uiLiteral('Move down')),
                 IconButton(
                   onPressed: onRemove,
                   icon: const Icon(Icons.delete_outline_rounded),
                   color: brandDanger,
-                  tooltip: 'Remove from draft',
+                  tooltip: uiLiteral('Remove from draft'),
                 ),
               ],
             ),
@@ -970,17 +970,17 @@ class _CMSSectionEditor extends StatelessWidget {
             ResponsiveFieldPair(
               first: TextFormField(
                 initialValue: section.id,
-                decoration: const InputDecoration(labelText: 'Section ID *', hintText: 'hero, primary, secondary, modules, programs, impact, contact, story-video'),
+                decoration: InputDecoration(labelText: uiLiteral('Section ID *'), hintText: uiLiteral('hero, primary, secondary, modules, programs, impact, contact, story-video')),
                 onChanged: (value) => section.id = value,
               ),
               second: DropdownButtonFormField<String>(
                 value: componentTypes.contains(section.componentType) ? section.componentType : 'TEXT',
-                decoration: const InputDecoration(labelText: 'Component type'),
+                decoration: InputDecoration(labelText: uiLiteral('Component type')),
                 items: <DropdownMenuItem<String>>[
                   for (final type in componentTypes)
                     DropdownMenuItem<String>(
                       value: type,
-                      child: Text(type.replaceAll('_', ' ')),
+                      child: LText(type.replaceAll('_', ' ')),
                     ),
                 ],
                 onChanged: (value) {
@@ -994,26 +994,26 @@ class _CMSSectionEditor extends StatelessWidget {
             const SizedBox(height: 12),
             TextFormField(
               initialValue: section.heading,
-              decoration: const InputDecoration(labelText: 'Heading * when visible'),
+              decoration: InputDecoration(labelText: uiLiteral('Heading * when visible')),
               onChanged: (value) => section.heading = value,
             ),
             const SizedBox(height: 12),
             TextFormField(
               initialValue: section.body,
               maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Body'),
+              decoration: InputDecoration(labelText: uiLiteral('Body')),
               onChanged: (value) => section.body = value,
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               value: mediaValue,
-              decoration: const InputDecoration(labelText: 'Media asset'),
+              decoration: InputDecoration(labelText: uiLiteral('Media asset')),
               items: <DropdownMenuItem<String>>[
-                const DropdownMenuItem<String>(value: '', child: Text('No media')),
+                const DropdownMenuItem<String>(value: '', child: LText('No media')),
                 for (final asset in media)
                   DropdownMenuItem<String>(
                     value: (asset['id'] ?? '').toString(),
-                    child: Text(
+                    child: LText(
                       (asset['original_filename'] ?? '').toString() +
                           ' · ' +
                           (asset['id'] ?? '').toString(),
@@ -1030,20 +1030,20 @@ class _CMSSectionEditor extends StatelessWidget {
             ResponsiveFieldPair(
               first: TextFormField(
                 initialValue: section.ctaLabel,
-                decoration: const InputDecoration(labelText: 'CTA label'),
+                decoration: InputDecoration(labelText: uiLiteral('CTA label')),
                 onChanged: (value) => section.ctaLabel = value,
               ),
               second: TextFormField(
                 initialValue: section.ctaUrl,
-                decoration: const InputDecoration(labelText: 'CTA URL'),
+                decoration: InputDecoration(labelText: uiLiteral('CTA URL')),
                 onChanged: (value) => section.ctaUrl = value,
               ),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: section.visible,
-              title: const Text('Visible'),
-              subtitle: const Text('Turning this off preserves the section content but removes it from public/preview output.'),
+              title: const LText('Visible'),
+              subtitle: const LText('Turning this off preserves the section content but removes it from public/preview output.'),
               onChanged: (value) {
                 section.visible = value;
                 onChanged();
