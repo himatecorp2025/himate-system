@@ -93,10 +93,10 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
               ResponsiveFieldPair(
                 first: DropdownButtonFormField<String>(
                   value: nextStatus,
-                  decoration: const InputDecoration(labelText: 'Lead status'),
+                  decoration: InputDecoration(labelText: uiLiteral('Lead status')),
                   items: [
                     for (final item in statuses.where((value) => value != 'ALL'))
-                      DropdownMenuItem(value: item, child: Text(_humanize(item))),
+                      DropdownMenuItem(value: item, child: LText(_humanize(item))),
                   ],
                   onChanged: (value) {
                     if (value != null) setDialogState(() => nextStatus = value);
@@ -104,7 +104,7 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
                 ),
                 second: TextField(
                   controller: assignedTo,
-                  decoration: const InputDecoration(labelText: 'Assigned to', hintText: 'Name or team'),
+                  decoration: InputDecoration(labelText: uiLiteral('Assigned to'), hintText: uiLiteral('Name or team')),
                 ),
               ),
               const SizedBox(height: 14),
@@ -113,7 +113,7 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
               _DefinitionRow(label: 'Email', value: (lead['email'] ?? '—').toString()),
               _DefinitionRow(label: 'Notification', value: _humanize((lead['notification_status'] ?? 'stored').toString())),
               const SizedBox(height: 12),
-              Text('Inquiry', style: Theme.of(context).textTheme.titleMedium),
+              LText('Inquiry', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 7),
               SelectableText(
                 (lead['message'] ?? '').toString(),
@@ -124,9 +124,9 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
                 controller: note,
                 minLines: 3,
                 maxLines: 7,
-                decoration: const InputDecoration(
-                  labelText: 'Internal follow-up note',
-                  hintText: 'Record next step, outcome or context',
+                decoration: InputDecoration(
+                  labelText: uiLiteral('Internal follow-up note'),
+                  hintText: uiLiteral('Record next step, outcome or context'),
                 ),
               ),
             ],
@@ -147,14 +147,14 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
       await widget.api.patch('/api/v1/contact/inquiries/${lead['id']}', result);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contact lead updated.')),
+          const SnackBar(content: LText('Contact lead updated.')),
         );
       }
       await load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: brandDanger),
+          SnackBar(content: LText(e.toString()), backgroundColor: brandDanger),
         );
       }
     }
@@ -189,24 +189,24 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
                   const SizedBox(width: 11),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text((lead['name'] ?? '—').toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700)),
+                      LText((lead['name'] ?? '—').toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 2),
-                      Text(organization.isEmpty ? (lead['email'] ?? '').toString() : organization, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10)),
+                      LText(organization.isEmpty ? (lead['email'] ?? '').toString() : organization, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10)),
                     ]),
                   ),
                   _StatusPill(label: _humanize(state)),
                 ]),
                 const SizedBox(height: 12),
-                Text((lead['message'] ?? '').toString(), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandCharcoal, fontSize: 11, height: 1.45)),
+                LText((lead['message'] ?? '').toString(), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandCharcoal, fontSize: 11, height: 1.45)),
                 const SizedBox(height: 12),
                 const Divider(height: 1),
                 const SizedBox(height: 8),
                 Row(children: [
-                  Expanded(child: Text(createdLabel, style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
+                  Expanded(child: LText(createdLabel, style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
                   if (assigned.isNotEmpty)
-                    Flexible(child: Text('Assigned: $assigned', textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandSteel, fontSize: 9.5, fontWeight: FontWeight.w600))),
+                    Flexible(child: LText('Assigned: $assigned', textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandSteel, fontSize: 9.5, fontWeight: FontWeight.w600))),
                   IconButton(
-                    tooltip: 'Email contact',
+                    tooltip: uiLiteral('Email contact'),
                     visualDensity: VisualDensity.compact,
                     onPressed: () => html.window.open('mailto:${Uri.encodeComponent((lead['email'] ?? '').toString())}', '_self'),
                     icon: const Icon(Icons.outgoing_mail, size: 18),
@@ -235,16 +235,16 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
           first: TextField(
             controller: search,
             onChanged: onSearch,
-            decoration: const InputDecoration(
-              labelText: 'Search leads',
-              hintText: 'Name, organization, email or message',
+            decoration: InputDecoration(
+              labelText: uiLiteral('Search leads'),
+              hintText: uiLiteral('Name, organization, email or message'),
               prefixIcon: Icon(Icons.search_rounded),
             ),
           ),
           second: DropdownButtonFormField<String>(
             value: status,
-            decoration: const InputDecoration(labelText: 'Lead status'),
-            items: [for (final item in statuses) DropdownMenuItem(value: item, child: Text(item == 'ALL' ? 'All statuses' : _humanize(item)))],
+            decoration: InputDecoration(labelText: uiLiteral('Lead status')),
+            items: [for (final item in statuses) DropdownMenuItem(value: item, child: LText(item == 'ALL' ? 'All statuses' : _humanize(item)))],
             onChanged: (value) {
               if (value == null) return;
               setState(() => status = value);
