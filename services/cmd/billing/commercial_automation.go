@@ -80,6 +80,68 @@ func start223BillingMigration() common.Migration {
 	}
 }
 
+func start223BillingImmutabilityMigration() common.Migration {
+	return common.Migration{
+		Version: 6,
+		Name: "start-22-3-immutable-ledger-guards",
+		Statements: []string{
+			`CREATE OR REPLACE FUNCTION billing.reject_module_snapshot_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
+			BEGIN
+				RAISE EXCEPTION 'billing.module_period_snapshots is immutable';
+				RETURN OLD;
+			END; $$`,
+			`DROP TRIGGER IF EXISTS billing_module_period_snapshots_immutable ON billing.module_period_snapshots`,
+			`CREATE TRIGGER billing_module_period_snapshots_immutable
+				BEFORE UPDATE OR DELETE ON billing.module_period_snapshots
+				FOR EACH ROW EXECUTE FUNCTION billing.reject_module_snapshot_mutation()`,
+			`CREATE OR REPLACE FUNCTION billing.reject_billing_event_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
+			BEGIN
+				RAISE EXCEPTION 'billing.billing_events is append-only';
+				RETURN OLD;
+			END; $$`,
+			`DROP TRIGGER IF EXISTS billing_billing_events_append_only ON billing.billing_events`,
+			`CREATE TRIGGER billing_billing_events_append_only
+				BEFORE UPDATE OR DELETE ON billing.billing_events
+				FOR EACH ROW EXECUTE FUNCTION billing.reject_billing_event_mutation()`,
+			`CREATE OR REPLACE FUNCTION billing.guard_invoice_item_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
+			BEGIN
+				IF TG_OP='DELETE' THEN
+					RAISE EXCEPTION 'billing.invoice_items is append-only';
+				END IF;
+				IF OLD.item_key IS DISTINCT FROM NEW.item_key
+					OR OLD.partner_id IS DISTINCT FROM NEW.partner_id
+					OR OLD.module_key IS DISTINCT FROM NEW.module_key
+					OR OLD.item_type IS DISTINCT FROM NEW.item_type
+					OR OLD.description IS DISTINCT FROM NEW.description
+					OR OLD.currency IS DISTINCT FROM NEW.currency
+					OR OLD.quantity IS DISTINCT FROM NEW.quantity
+					OR OLD.unit_price IS DISTINCT FROM NEW.unit_price
+					OR OLD.amount IS DISTINCT FROM NEW.amount
+					OR OLD.period_start IS DISTINCT FROM NEW.period_start
+					OR OLD.period_end IS DISTINCT FROM NEW.period_end
+					OR OLD.snapshot_id IS DISTINCT FROM NEW.snapshot_id
+					OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+					RAISE EXCEPTION 'billing.invoice_items commercial fields are immutable';
+				END IF;
+				IF OLD.invoice_id IS NOT NULL AND OLD.invoice_id IS DISTINCT FROM NEW.invoice_id THEN
+					RAISE EXCEPTION 'billing.invoice_items invoice assignment is immutable once set';
+				END IF;
+				IF OLD.status='INVOICED' AND NEW.status IS DISTINCT FROM OLD.status THEN
+					RAISE EXCEPTION 'billing.invoice_items invoiced status cannot be reversed';
+				END IF;
+				IF OLD.invoiced_at IS NOT NULL AND OLD.invoiced_at IS DISTINCT FROM NEW.invoiced_at THEN
+					RAISE EXCEPTION 'billing.invoice_items invoiced_at is immutable once set';
+				END IF;
+				RETURN NEW;
+			END; $$`,
+			`DROP TRIGGER IF EXISTS billing_invoice_items_immutable_fields ON billing.invoice_items`,
+			`CREATE TRIGGER billing_invoice_items_immutable_fields
+				BEFORE UPDATE OR DELETE ON billing.invoice_items
+				FOR EACH ROW EXECUTE FUNCTION billing.guard_invoice_item_mutation()`,
+		},
+	}
+}
+
 type billingEventExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
@@ -159,14 +221,21 @@ func (a *app) ensureModulePeriodSnapshot(
 		return 0, 0, false, fmt.Errorf("module %s currency %s does not match partner billing currency %s", moduleKey, catalogCurrency, billingCurrency)
 	}
 
-	err = a.db.QueryRowContext(ctx, `INSERT INTO billing.module_period_snapshots(
+	_, err = a.db.ExecContext(ctx, `INSERT INTO billing.module_period_snapshots(
 			partner_id,module_key,period_start,period_end,currency,price_snapshot,included_in_base
 		) VALUES($1,$2,$3,$4,$5,$6,$7)
-		ON CONFLICT(partner_id,module_key,period_start) DO UPDATE SET partner_id=EXCLUDED.partner_id
-		RETURNING id,price_snapshot,included_in_base`,
-		partnerID, moduleKey, periodStart, periodEnd, billingCurrency, price, included).
-		Scan(&id, &price, &included)
+		ON CONFLICT(partner_id,module_key,period_start) DO NOTHING`,
+		partnerID, moduleKey, periodStart, periodEnd, billingCurrency, price, included)
 	if err != nil { return 0, 0, false, err }
+	if err = a.db.QueryRowContext(ctx, `SELECT id,price_snapshot,included_in_base,currency
+		FROM billing.module_period_snapshots
+		WHERE partner_id=$1 AND module_key=$2 AND period_start=$3`,
+		partnerID, moduleKey, periodStart).Scan(&id, &price, &included, &currency); err != nil {
+		return 0, 0, false, err
+	}
+	if currency != billingCurrency {
+		return 0, 0, false, fmt.Errorf("snapshot currency mismatch for %s/%s: %s != %s", partnerID, moduleKey, currency, billingCurrency)
+	}
 
 	eventKey := fmt.Sprintf("MODULE_PERIOD_STARTED:%s:%s:%s", partnerID, moduleKey, periodStart.Format("2006-01-02"))
 	if err := a.emitBillingEvent(ctx, eventKey, partnerID, moduleKey, "MODULE_PERIOD_STARTED", periodStart, map[string]any{
