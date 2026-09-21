@@ -129,9 +129,20 @@ printf '%s' "$live" | python3 -c 'import json,sys; d=json.load(sys.stdin); asser
 curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"lifecycle":"LIVE"'
 echo ok
 
+printf 'LIVE production maintenance cannot corrupt lifecycle... '
+test "$(status "$OPS_COOKIE" PATCH "/api/v1/environments/$production_id" -H 'Content-Type: application/json' -d '{"hostname":"changed.example.com"}')" = "409"
+grep -q 'LIVE_DOMAIN_LOCK' "$BODY"
+redeployed="$(curl -fsS -b "$OPS_COOKIE" -H 'Content-Type: application/json' -d '{"release":"start20-prod-r2"}' "$BASE_URL/api/v1/environments/$production_id/deploy")"
+printf '%s' "$redeployed" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["environment_status"]=="LIVE"; assert d["active_release"]=="start20-prod-r2"; assert d["deployment_status"]=="DEPLOYED"'
+curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"lifecycle":"LIVE"'
+rechecked="$(curl -fsS -b "$OPS_COOKIE" -H 'Content-Type: application/json' -d '{}' "$BASE_URL/api/v1/environments/$production_id/verify-domain")"
+printf '%s' "$rechecked" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["environment_status"]=="LIVE"; assert d["domain_status"]=="FAILED"; assert d["launch_ready"] is False'
+curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"lifecycle":"LIVE"'
+echo ok
+
 printf 'environment list exposes START-20 control state... '
 envs="$(curl -fsS -b "$OPS_COOKIE" "$BASE_URL/api/v1/environments?partner_id=$partner_id")"
-printf '%s' "$envs" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"]==2; kinds={x["kind"]:x for x in d["items"]}; assert set(kinds)=={"STAGING","PRODUCTION"}; p=kinds["PRODUCTION"]; assert p["environment_status"]=="LIVE"; assert p["domain_status"]=="VERIFIED"; assert "launch_blockers" in p; assert "dns_status" in p; assert "tls_status" in p'
+printf '%s' "$envs" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"]==2; kinds={x["kind"]:x for x in d["items"]}; assert set(kinds)=={"STAGING","PRODUCTION"}; p=kinds["PRODUCTION"]; assert p["environment_status"]=="LIVE"; assert p["domain_status"]=="FAILED"; assert p["active_release"]=="start20-prod-r2"; assert "launch_blockers" in p; assert "dns_status" in p; assert "tls_status" in p'
 echo ok
 
 printf 'START-20 mutations are present in central audit... '
