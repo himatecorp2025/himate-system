@@ -307,6 +307,13 @@ func (a *app) migrate(ctx context.Context) error {
 	if message := passwordPolicyError(password); message != "" {
 		return fmt.Errorf("HIMATE_BOOTSTRAP_ADMIN_PASSWORD: %s", message)
 	}
+	var partnerEmailCollision bool
+	if err := a.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity.partner_users WHERE lower(email)=lower($1))`, email).Scan(&partnerEmailCollision); err != nil {
+		return err
+	}
+	if partnerEmailCollision {
+		return errors.New("HIMATE_BOOTSTRAP_ADMIN_EMAIL is already assigned to a Partner Portal identity")
+	}
 	hashed, err := hashPassword(password)
 	if err != nil {
 		return err
