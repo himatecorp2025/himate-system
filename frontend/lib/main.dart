@@ -636,6 +636,7 @@ class _HimateAppState extends State<HimateApp> {
 
   @override
   Widget build(BuildContext context) {
+    HimateI18n.activeLocale = effectiveLocaleCode;
     final path = Uri.base.path;
     final initial = path == '/app' || path.startsWith('/app/') ? '/app' : '/login';
 
