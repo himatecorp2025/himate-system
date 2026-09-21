@@ -47,6 +47,7 @@ class HimateI18n {
       'passwordChanged': 'Password changed. Other sessions were invalidated.',
       'passwordsMismatch': 'The new passwords do not match.',
       'passwordMin': 'Use at least 12 characters.',
+      'passwordPolicy': 'Use at least 12 characters with lowercase, uppercase, a number and a special character.',
       'cancel': 'Cancel',
       'close': 'Close',
       'welcomeBack': 'Welcome back',
@@ -101,6 +102,7 @@ class HimateI18n {
       'passwordChanged': 'A jelszó megváltozott. A többi munkamenet érvénytelenítve lett.',
       'passwordsMismatch': 'Az új jelszavak nem egyeznek.',
       'passwordMin': 'Legalább 12 karakter szükséges.',
+      'passwordPolicy': 'Használj legalább 12 karaktert, kis- és nagybetűt, számot és speciális karaktert.',
       'cancel': 'Mégse',
       'close': 'Bezárás',
       'welcomeBack': 'Üdv újra',
@@ -147,3 +149,15 @@ class HimateI18n {
     return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
   }
 }
+
+
+bool himatePasswordMeetsPolicy(String value) {
+  if (value.runes.length < 12) return false;
+  return RegExp(r'[a-z]').hasMatch(value) &&
+      RegExp(r'[A-Z]').hasMatch(value) &&
+      RegExp(r'[0-9]').hasMatch(value) &&
+      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+}
+
+String? himatePasswordPolicyMessage(String locale, String value) =>
+    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
