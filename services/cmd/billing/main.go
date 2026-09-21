@@ -75,7 +75,16 @@ func main() {
 		os.Exit(1)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--run-invoice-cycle" {
-		if err := a.runInvoiceCycle(context.Background(), time.Now().UTC()); err != nil {
+		runAt := time.Now().UTC()
+		if len(os.Args) > 2 && strings.TrimSpace(os.Args[2]) != "" {
+			parsed, parseErr := time.Parse("2006-01-02", strings.TrimSpace(os.Args[2]))
+			if parseErr != nil {
+				log.Error("invoice cycle date", "error", parseErr)
+				os.Exit(1)
+			}
+			runAt = parsed.UTC()
+		}
+		if err := a.runInvoiceCycle(context.Background(), runAt); err != nil {
 			log.Error("invoice cycle", "error", err)
 			os.Exit(1)
 		}
