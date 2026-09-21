@@ -407,7 +407,7 @@ func (a *app) attachInvoiceItems(ctx context.Context, invoiceID, partnerID, curr
 	result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoice_items(
 			item_key,invoice_id,partner_id,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,status,invoiced_at
 		) VALUES($1,$2,$3,'BASE_SERVICE','Base 30-day service',$4,1,$5,$5,$6,$7,'INVOICED',NOW())
-		ON CONFLICT(item_key) DO UPDATE SET invoice_id=EXCLUDED.invoice_id,status='INVOICED',invoiced_at=NOW()`,
+		ON CONFLICT(item_key) DO NOTHING`,
 		baseKey, invoiceID, partnerID, currency, base, dateOnly(serviceStart), dateOnly(serviceEnd))
 	if err != nil { return 0, err }
 	if rows, _ := result.RowsAffected(); rows > 0 {
