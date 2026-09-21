@@ -455,7 +455,59 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
             String? validation;
             if (cleanLabel.length < 2) {
               validation = 'Enter a role name.';
-            } else if (!editing && !RegExp(r'^[a-z][a-z0-9_]{2,63}    final id = '${updated['id']}';
+            } else if (!editing && !RegExp(r'^[a-z][a-z0-9_]{2,63}$').hasMatch(cleanKey)) {
+              validation = 'Use a stable key such as finance_assistant.';
+            } else if (selected.isEmpty) {
+              validation = 'Select at least one permission.';
+            }
+            if (validation != null) {
+              setLocal(() => dialogError = validation);
+              return;
+            }
+            Navigator.pop(dialogContext, <String, dynamic>{
+              if (!editing) 'key': cleanKey,
+              'label': cleanLabel,
+              'description': description.text.trim(),
+              'permissions': selected.toList()..sort(),
+              if (editing) 'active': active,
+            });
+          },
+        ),
+      ),
+    );
+
+    key.dispose();
+    label.dispose();
+    description.dispose();
+    return result;
+  }
+
+  Future<void> createRole() async {
+    final payload = await _roleDialog();
+    if (payload == null) return;
+    try {
+      await widget.api.post('/api/v1/admin/roles', payload);
+      await load();
+      if (mounted) notify('Custom role created.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  Future<void> editRole(Map<String, dynamic> role) async {
+    final payload = await _roleDialog(role: role);
+    if (payload == null) return;
+    try {
+      await widget.api.patch('/api/v1/admin/roles/${role['key']}', payload);
+      await load();
+      if (mounted) notify('Custom role updated.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  void _replaceUser(Map<String, dynamic> updated) {
+    final id = '${updated['id']}';
     final next = <Map<String, dynamic>>[
       for (final user in users)
         if ('${user['id']}' == id) updated else user,
@@ -616,213 +668,6 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
     );
   }
 }
-).hasMatch(cleanKey)) {
-              validation = 'Use a stable key such as finance_assistant.';
-            } else if (selected.isEmpty) {
-              validation = 'Select at least one permission.';
-            }
-            if (validation != null) {
-              setLocal(() => dialogError = validation);
-              return;
-            }
-            Navigator.pop(dialogContext, <String, dynamic>{
-              if (!editing) 'key': cleanKey,
-              'label': cleanLabel,
-              'description': description.text.trim(),
-              'permissions': selected.toList()..sort(),
-              if (editing) 'active': active,
-            });
-          },
-        ),
-      ),
-    );
-
-    key.dispose();
-    label.dispose();
-    description.dispose();
-    return result;
-  }
-
-  Future<void> createRole() async {
-    final payload = await _roleDialog();
-    if (payload == null) return;
-    try {
-      await widget.api.post('/api/v1/admin/roles', payload);
-      await load();
-      if (mounted) notify('Custom role created.');
-    } catch (e) {
-      if (mounted) notify(e.toString(), failure: true);
-    }
-  }
-
-  Future<void> editRole(Map<String, dynamic> role) async {
-    final payload = await _roleDialog(role: role);
-    if (payload == null) return;
-    try {
-      await widget.api.patch('/api/v1/admin/roles/${role['key']}', payload);
-      await load();
-      if (mounted) notify('Custom role updated.');
-    } catch (e) {
-      if (mounted) notify(e.toString(), failure: true);
-    }
-  }
-
-  void _replaceUser(Map<String, dynamic> updated) {
-    final id = '${updated['id']}';
-    final next = <Map<String, dynamic>>[
-      for (final user in users)
-        if ('${user['id']}' == id) updated else user,
-    ];
-    next.sort((a, b) {
-      final activeA = a['active'] == true ? 0 : 1;
-      final activeB = b['active'] == true ? 0 : 1;
-      if (activeA != activeB) return activeA.compareTo(activeB);
-      return '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase());
-    });
-    setState(() => users = next);
-  }
-
-  Future<void> createUser() async {
-    final payload = await _userDialog();
-    if (payload == null) return;
-    try {
-      final created = await widget.api.post('/api/v1/admin/users', payload);
-      if (!mounted) return;
-      setState(() {
-        users = <Map<String, dynamic>>[created, ...users];
-      });
-      notify('Administrator created.');
-    } catch (e) {
-      if (mounted) notify(e.toString(), failure: true);
-    }
-  }
-
-  Future<void> editUser(Map<String, dynamic> user) async {
-    final payload = await _userDialog(user: user);
-    if (payload == null) return;
-    try {
-      final updated = await widget.api.patch('/api/v1/admin/users/${user['id']}', payload);
-      if (!mounted) return;
-      _replaceUser(updated);
-      notify('Administrator access updated.');
-      if ('${user['id']}' == '${widget.currentUser['id']}') {
-        notify('Your own permissions are now enforced immediately. Reload the page to refresh navigation if your roles changed.');
-      }
-    } catch (e) {
-      if (mounted) notify(e.toString(), failure: true);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!canManage) {
-      return const _MessageCard(
-        icon: Icons.lock_outline_rounded,
-        title: 'Platform Admin access required',
-        message: 'Role assignment and administrator lifecycle are protected by backend Administration permissions.',
-      );
-    }
-    if (loading && roles.isEmpty && users.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 28),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (error != null && roles.isEmpty && users.isEmpty) {
-      return _MessageCard(
-        icon: Icons.error_outline_rounded,
-        title: 'Roles & Permissions could not be loaded',
-        message: error!,
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SectionHeader(
-          title: 'Roles & Permissions',
-          subtitle: 'Backend-enforced RBAC. Read, write and approval rights are checked before each protected administration API request.',
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _MiniCounter(label: '${users.length} admins'),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: roles.isEmpty ? null : createUser,
-                icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const LText('Add administrator'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _RuleStrip(items: [
-          _RuleItem(Icons.admin_panel_settings_outlined, 'Platform', 'Full control'),
-          _RuleItem(Icons.settings_suggest_outlined, 'Operations', 'Technical operations'),
-          _RuleItem(Icons.account_balance_wallet_outlined, 'Finance', 'Commercial control'),
-          _RuleItem(Icons.analytics_outlined, 'Reporting', 'Impact & reports'),
-        ]),
-        const SizedBox(height: 18),
-        _SectionHeader(
-          title: 'Role Matrix',
-          subtitle: 'Roles are additive. Approval permissions protect sensitive actions such as publishing, verification and provisioning execution.',
-          trailing: _MiniCounter(label: '${roles.length} roles'),
-        ),
-        const SizedBox(height: 10),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth < 760
-                ? constraints.maxWidth
-                : constraints.maxWidth < 1180
-                    ? (constraints.maxWidth - 12) / 2
-                    : (constraints.maxWidth - 36) / 4;
-            return Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final role in roles) SizedBox(width: width, child: _roleCard(role)),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 24),
-        _SectionHeader(
-          title: 'Administrators',
-          subtitle: 'Accounts are never hard-deleted from administration. Suspend access to preserve audit identity and historical attribution.',
-          trailing: _MiniCounter(label: '${users.where((u) => u['active'] == true).length} active'),
-        ),
-        const SizedBox(height: 10),
-        if (users.isEmpty)
-          const _MessageCard(
-            icon: Icons.person_off_outlined,
-            title: 'No administrators found',
-            message: 'Create an administrator to assign a scoped HIMATE role.',
-          )
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth < 760
-                  ? constraints.maxWidth
-                  : constraints.maxWidth < 1180
-                      ? (constraints.maxWidth - 12) / 2
-                      : (constraints.maxWidth - 24) / 3;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final user in users) SizedBox(width: width, child: _userCard(user)),
-                ],
-              );
-            },
-          ),
-        if (loading) ...[
-          const SizedBox(height: 12),
-          const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
-        ],
-      ],
-    );
-  }
-}
 
 class CompanySettingsPanel extends StatefulWidget {
   const CompanySettingsPanel({required this.api, required this.currentUser, super.key});
@@ -914,10 +759,10 @@ class _CompanySettingsPanelState extends State<CompanySettingsPanel> {
       try {
         final updated = await widget.api.put('/api/v1/billing/profile', {
           'legal_name': legal.text.trim(), 'registration_number': registration.text.trim(),
-          'address': address.text.trim(), 'tax_id': tax.text.trim(),
-          'contact_name': contact.text.trim(), 'email': email.text.trim(), 'phone': phone.text.trim(),
-          'bank_name': bank.text.trim(), 'bank_address': bankAddress.text.trim(),
-          'account_number': account.text.trim(), 'iban': iban.text.trim(), 'swift': swift.text.trim(),
+          'address': address.text.trim(), 'tax_id': tax.text.trim(), 'contact_name': contact.text.trim(),
+          'email': email.text.trim(), 'phone': phone.text.trim(), 'bank_name': bank.text.trim(),
+          'bank_address': bankAddress.text.trim(), 'account_number': account.text.trim(),
+          'iban': iban.text.trim(), 'swift': swift.text.trim(),
         });
         if (mounted) {
           setState(() => profile = updated);
