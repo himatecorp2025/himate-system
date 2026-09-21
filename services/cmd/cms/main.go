@@ -1369,7 +1369,9 @@ func (a *app)mediaItem(w http.ResponseWriter,r *http.Request){
 func (a *app)publicMedia(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet&&r.Method!=http.MethodHead{common.APIError(w,405,"METHOD","Use GET or HEAD");return}
 	id:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/public/v1/cms/media/"),"/")
-	var exists bool;_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cms.published_media_refs WHERE media_id=$1)`,id).Scan(&exists)
+	var exists bool;_ = a.db.QueryRow(`SELECT
+		EXISTS(SELECT 1 FROM cms.published_media_refs WHERE media_id=$1)
+		OR EXISTS(SELECT 1 FROM cms.site_design WHERE id=1 AND published->>'logo_media_asset_id'=$1)`,id).Scan(&exists)
 	if !exists{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	w.Header().Set("Cache-Control","public, max-age=3600, immutable");a.serveMedia(w,r,m,true)
