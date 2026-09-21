@@ -61,6 +61,7 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	go a.start22RetentionLoop()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{"status": "ok", "service": "impact", "time": time.Now().UTC()})
@@ -74,6 +75,19 @@ func main() {
 	mux.HandleFunc("/internal/v1/impact/ingest", a.ingest)
 	mux.HandleFunc("/internal/v1/impact/summary", a.summary)
 	common.Run(log, "impact", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
+}
+
+func (a *app) start22RetentionLoop() {
+	run:=func(){
+		ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second)
+		defer cancel()
+		_,_=a.db.ExecContext(ctx,`DELETE FROM impact.metric_values
+			WHERE retention_policy='HIMATE_7Y' AND retain_until<=NOW() AND legal_hold=FALSE`)
+	}
+	run()
+	ticker:=time.NewTicker(24*time.Hour)
+	defer ticker.Stop()
+	for range ticker.C { run() }
 }
 
 func (a *app) migrate(ctx context.Context) error {
