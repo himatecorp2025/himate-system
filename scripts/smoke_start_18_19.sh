@@ -47,7 +47,7 @@ PY
 echo ok
 
 printf 'platform login with persistent Remember me... '
-platform_user="$(login "$PLATFORM_COOKIE" "admin@example.com" "local-development-password" true)"
+platform_user="$(login "$PLATFORM_COOKIE" "admin@example.com" "Local-Development1!Password" true)"
 printf '%s' "$platform_user" | grep -q '"platform_admin"'
 python3 - "$PLATFORM_COOKIE" <<'PY'
 import pathlib,sys,time
