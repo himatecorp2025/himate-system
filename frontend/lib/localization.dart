@@ -891,6 +891,58 @@ class HimateI18n {
     'Versioned marketing content and publishing workflow.': 'Verziózott marketingtartalom és publikálási munkafolyamat.',
   };
 
+
+  static const Map<String, String> _seoHu = <String, String>{
+    'SEO & Keywords': 'SEO és kulcsszavak',
+    'Global bilingual keywords, structured SEO defaults and automatic page-content analysis.': 'Globális kétnyelvű kulcsszavak, strukturált SEO-alapértékek és automatikus oldaltartalom-elemzés.',
+    'SEO settings unavailable': 'A SEO-beállítások nem érhetők el',
+    'Bilingual keywords': 'Kétnyelvű kulcsszavak',
+    'English + Hungarian': 'Angol + magyar',
+    'Automatic audit': 'Automatikus audit',
+    'Title, meta, content and keyword fit': 'Cím, metaadat, tartalom és kulcsszó-illeszkedés',
+    'Structured data': 'Strukturált adatok',
+    'Published EN/HU alternates': 'Publikált EN/HU alternatívák',
+    'Global keywords · English': 'Globális kulcsszavak · angol',
+    'Global keywords · Hungarian': 'Globális kulcsszavak · magyar',
+    'Comma-separated · up to 30 unique keywords': 'Vesszővel elválasztva · legfeljebb 30 egyedi kulcsszó',
+    'Schema.org organization name': 'Schema.org szervezet neve',
+    'Schema.org organization HTTPS URL': 'Schema.org szervezet HTTPS URL-je',
+    'Default Open Graph image': 'Alapértelmezett Open Graph kép',
+    'No global default image': 'Nincs globális alapértelmezett kép',
+    'SEO settings have not been published yet': 'A SEO-beállítások még nincsenek publikálva',
+    'Save SEO draft': 'SEO-vázlat mentése',
+    'Publish SEO settings': 'SEO-beállítások publikálása',
+    'SEO settings draft saved.': 'A SEO-beállítások vázlata elmentve.',
+    'SEO settings published to the public website.': 'A SEO-beállítások publikálva a nyilvános weboldalon.',
+    'Automatic SEO Audit': 'Automatikus SEO-audit',
+    'Draft-aware analysis of every CMS page using its language-specific content and keywords.': 'Minden CMS-oldal vázlattudatos elemzése a nyelvspecifikus tartalom és kulcsszavak alapján.',
+    'Refresh audit': 'Audit frissítése',
+    'No pages available for SEO audit': 'Nincs SEO-auditra elérhető oldal',
+    'Create a CMS page draft to begin automatic SEO analysis.': 'Hozz létre CMS-oldalvázlatot az automatikus SEO-elemzés megkezdéséhez.',
+    'Suggested keywords': 'Javasolt kulcsszavak',
+    'SEO title length': 'SEO-cím hossza',
+    'Meta description length': 'Meta leírás hossza',
+    'Visible content characters': 'Látható tartalom karakterszáma',
+    'Page keywords': 'Oldalszintű kulcsszavak',
+    'Comma-separated · up to 24 unique page keywords': 'Vesszővel elválasztva · legfeljebb 24 egyedi oldalszintű kulcsszó',
+    'SEO title is missing.': 'Hiányzik a SEO-cím.',
+    'SEO title is shorter than 30 characters.': 'A SEO-cím 30 karakternél rövidebb.',
+    'SEO title is longer than 60 characters.': 'A SEO-cím 60 karakternél hosszabb.',
+    'Meta description is missing.': 'Hiányzik a meta leírás.',
+    'Meta description is shorter than 120 characters.': 'A meta leírás 120 karakternél rövidebb.',
+    'Meta description is longer than 160 characters.': 'A meta leírás 160 karakternél hosszabb.',
+    'Canonical URL must be an absolute HTTPS URL.': 'A kanonikus URL-nek teljes HTTPS URL-nek kell lennie.',
+    'Add at least three page-specific keywords.': 'Adj meg legalább három oldalspecifikus kulcsszót.',
+    'Consider focusing page-specific keywords to twelve or fewer.': 'Érdemes az oldalspecifikus kulcsszavakat legfeljebb tizenkettőre fókuszálni.',
+    'Global keywords for this language are sparse.': 'Kevés globális kulcsszó van beállítva ehhez a nyelvhez.',
+    'Visible page content is thin for organic search.': 'A látható oldaltartalom kevés az organikus kereséshez.',
+    'Page keywords are not represented in visible page content.': 'Az oldalspecifikus kulcsszavak nem jelennek meg a látható oldaltartalomban.',
+    'Open Graph title will fall back to the SEO title.': 'Az Open Graph cím a SEO-címre fog visszaesni.',
+    'Open Graph description will fall back to the meta description.': 'Az Open Graph leírás a meta leírásra fog visszaesni.',
+    'NEEDS ATTENTION': 'FIGYELMET IGÉNYEL',
+    'BLOCKED': 'BLOKKOLVA',
+  };
+
   static const Map<String, String> _designHu = <String, String>{
     'Design Guide': 'Arculati útmutató',
     'Global website brand controls for logo, colors, typography, buttons and bilingual navigation.': 'Globális weboldal-arculati beállítások logóhoz, színekhez, tipográfiához, gombokhoz és kétnyelvű navigációhoz.',
@@ -950,7 +1002,7 @@ class HimateI18n {
 
   static String literal(String locale, String value) {
     if (locale != 'hu_HU' || value.trim().isEmpty) return value;
-    final exact = _literalHu[value] ?? _extendedHu[value] ?? _completionHu[value] ?? _designHu[value];
+    final exact = _literalHu[value] ?? _extendedHu[value] ?? _completionHu[value] ?? _seoHu[value] ?? _designHu[value];
     if (exact != null) return exact;
 
     String countLabel(String suffix, String translatedSuffix) {
@@ -1017,6 +1069,20 @@ class HimateI18n {
     }
     if (value.startsWith('Navigation item ')) {
       return 'Navigációs elem ${value.substring('Navigation item '.length)}';
+    }
+    if (value.startsWith('SEO published ')) {
+      return 'SEO publikálva: ${value.substring('SEO published '.length)}';
+    }
+    if (value.startsWith('Average ') && value.endsWith('/100')) {
+      return 'Átlag: ${value.substring('Average '.length)}';
+    }
+    if (value.endsWith(' ready')) {
+      final raw = value.substring(0, value.length - ' ready'.length).trim();
+      if (int.tryParse(raw) != null) return '$raw kész';
+    }
+    if (value.endsWith(' need attention')) {
+      final raw = value.substring(0, value.length - ' need attention'.length).trim();
+      if (int.tryParse(raw) != null) return '$raw figyelmet igényel';
     }
     if (value.startsWith('Published ')) {
       return 'Publikálva: ${value.substring('Published '.length)}';
