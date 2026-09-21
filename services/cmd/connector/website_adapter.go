@@ -172,11 +172,18 @@ func (a *app) websiteAdapterMap(partnerID,environment string) (map[string]any,er
 		FROM connector.website_adapters WHERE partner_id=$1 AND environment=$2`,partnerID,environment).
 		Scan(&adapterType,&baseURL,&domains,&caps,&privacyMode,&enabled,&config,&updatedBy,&updated)
 	if err!=nil { return nil,err }
+	var domainValues []string
+	var capabilityValues []string
+	var configValue map[string]any
+	_ = json.Unmarshal(domains,&domainValues)
+	_ = json.Unmarshal(caps,&capabilityValues)
+	_ = json.Unmarshal(config,&configValue)
+	if configValue==nil { configValue=map[string]any{} }
 	return map[string]any{
 		"partner_id":partnerID,"environment":environment,"adapter_type":adapterType,
-		"site_base_url":baseURL,"allowed_domains":common.JSONRawOrEmpty(domains),
-		"capabilities":common.JSONRawOrEmpty(caps),"privacy_mode":privacyMode,
-		"enabled":enabled,"config":common.JSONRawOrEmpty(config),
+		"site_base_url":baseURL,"allowed_domains":domainValues,
+		"capabilities":capabilityValues,"privacy_mode":privacyMode,
+		"enabled":enabled,"config":configValue,
 		"updated_by":updatedBy,"updated_at":updated,
 	},nil
 }
@@ -245,6 +252,15 @@ func (a *app) commercialState(w http.ResponseWriter,r *http.Request) {
 		"/api/v1/partners/"+url.PathEscape(cred.PartnerID),&partner);err!=nil {
 		common.APIError(w,502,"PARTNER_UNAVAILABLE","Could not resolve partner domain binding");return
 	}
+	primaryDomain:=normalizeDomain(fmt.Sprint(partner["primary_domain"]))
+	if primaryDomain!="" {
+		allowed:=false
+		for _,domain:=range adapterDomains(adapter["allowed_domains"]){if domain==primaryDomain{allowed=true;break}}
+		if !allowed {
+			common.APIError(w,409,"DOMAIN_BINDING_MISMATCH","Website adapter does not include the partner primary domain")
+			return
+		}
+	}
 
 	entitlements:=map[string]any{}
 	activeCount:=0
@@ -260,9 +276,16 @@ func (a *app) commercialState(w http.ResponseWriter,r *http.Request) {
 		activeCount++
 	}
 
-	desired:=map[string]any{}
-	_ = a.connectorInternalGET(ctx,a.selfHost,
-		"/api/v1/connectors/"+url.PathEscape(cred.PartnerID)+"/desired-state?environment="+url.QueryEscape(cred.Environment),&desired)
+	desired:=map[string]any{"maintenance":map[string]any{},"config":map[string]any{}}
+	var maintenanceRaw,configRaw []byte
+	if err:=a.db.QueryRowContext(ctx,`SELECT maintenance,config FROM connector.desired_state
+		WHERE partner_id=$1 AND environment=$2`,cred.PartnerID,cred.Environment).Scan(&maintenanceRaw,&configRaw);err==nil {
+		var maintenance,config map[string]any
+		_ = json.Unmarshal(maintenanceRaw,&maintenance)
+		_ = json.Unmarshal(configRaw,&config)
+		desired["maintenance"]=maintenance
+		desired["config"]=config
+	}
 
 	common.JSON(w,200,map[string]any{
 		"partner_id":cred.PartnerID,"environment":cred.Environment,
@@ -299,9 +322,12 @@ func (a *app) commercialState(w http.ResponseWriter,r *http.Request) {
 }
 
 func adapterDomains(value any) []string {
-	raw,ok:=value.([]any)
-	if !ok{return []string{}}
 	out:=[]string{}
-	for _,x:=range raw{if s:=normalizeDomain(fmt.Sprint(x));s!=""{out=append(out,s)}}
+	switch raw:=value.(type) {
+	case []string:
+		for _,x:=range raw{if s:=normalizeDomain(x);s!=""{out=append(out,s)}}
+	case []any:
+		for _,x:=range raw{if s:=normalizeDomain(fmt.Sprint(x));s!=""{out=append(out,s)}}
+	}
 	return out
 }
