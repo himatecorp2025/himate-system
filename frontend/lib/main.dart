@@ -1842,28 +1842,6 @@ class _SidebarIconButton extends StatelessWidget {
   }
 }
 
-class _TopIconButton extends StatelessWidget {
-  const _TopIconButton({required this.icon, required this.onTap, this.hasDot = false});
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool hasDot;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        IconButton(onPressed: onTap, icon: Icon(icon, size: 21)),
-        if (hasDot)
-          const Positioned(
-            right: 8,
-            top: 7,
-            child: DecoratedBox(decoration: BoxDecoration(color: brandGold, shape: BoxShape.circle), child: SizedBox(width: 6, height: 6)),
-          ),
-      ],
-    );
-  }
-}
-
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.name, this.dark = false});
   final String name;
