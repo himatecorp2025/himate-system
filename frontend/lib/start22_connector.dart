@@ -68,6 +68,8 @@ class _Start22ConnectorPanelState extends State<Start22ConnectorPanel> {
     final health = '${state['health'] ?? 'UNKNOWN'}';
     final protocol = '${state['protocol_version'] ?? mapping['protocol_version'] ?? '1.0'}';
     final sourceVersion = '${state['reported_version'] ?? '—'}';
+    final dataEncryption = '${summary['data_encryption'] ?? mapping['data_encryption'] ?? 'AES-256-GCM'}';
+    final dataKeyVersion = '${summary['data_key_version'] ?? mapping['data_key_version'] ?? '—'}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -93,7 +95,7 @@ class _Start22ConnectorPanelState extends State<Start22ConnectorPanel> {
         else ...[
           const _RuleStrip(items: [
             _RuleItem(Icons.arrow_forward_rounded, 'Data direction', 'Klavierhaus → HIMATE'),
-            _RuleItem(Icons.shield_outlined, 'Security', 'HMAC-SHA-512 + replay protection'),
+            _RuleItem(Icons.shield_outlined, 'Security', 'HMAC-SHA-512 + AES-256-GCM'),
             _RuleItem(Icons.inventory_2_outlined, 'Data contract', '38 allowlisted modules'),
             _RuleItem(Icons.schedule_rounded, 'Retention', 'HIMATE 7 years'),
           ]),
@@ -149,6 +151,8 @@ class _Start22ConnectorPanelState extends State<Start22ConnectorPanel> {
                         _DefinitionRow(label: 'Next retention expiry', value: timestamp(retention['next_retention_expiry'])),
                         _DefinitionRow(label: 'Legal holds', value: '$holds'),
                         _DefinitionRow(label: 'Privacy delete requests', value: '$privacyDeletes'),
+                        _DefinitionRow(label: 'Data at rest', value: '$dataEncryption envelope encrypted'),
+                        _DefinitionRow(label: 'Encryption key version', value: dataKeyVersion),
                         const _DefinitionRow(label: 'Secrets in exported datasets', value: 'Prohibited'),
                         const _DefinitionRow(label: 'Raw customer message bodies', value: 'Prohibited'),
                       ],
