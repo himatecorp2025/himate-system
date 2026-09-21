@@ -138,7 +138,11 @@ func (a *app) archiveNamespace(w http.ResponseWriter, r *http.Request, partnerID
 		return
 	}
 
-	files := []string{}
+	type archiveEntry struct {
+		path string
+		rel  string
+	}
+	entries := []archiveEntry{}
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil { return walkErr }
 		if path == root { return nil }
@@ -152,46 +156,76 @@ func (a *app) archiveNamespace(w http.ResponseWriter, r *http.Request, partnerID
 		if relErr != nil { return relErr }
 		rel = filepath.ToSlash(rel)
 		if rel == ".himate-storage" || strings.HasPrefix(rel, ".health-") { return nil }
-		if rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") { return fmt.Errorf("unsafe archive path") }
-		files = append(files, path)
+		if rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
+			return fmt.Errorf("unsafe archive path")
+		}
+
+		// Preflight readability before any response bytes are written. This
+		// prevents a TAR header from being emitted for a file the storage
+		// service cannot actually read.
+		file, openErr := os.Open(path)
+		if openErr != nil { return fmt.Errorf("media object %s is unreadable: %w", rel, openErr) }
+		info, statErr := file.Stat()
+		closeErr := file.Close()
+		if statErr != nil { return fmt.Errorf("media object %s cannot be statted: %w", rel, statErr) }
+		if closeErr != nil { return fmt.Errorf("media object %s cannot be closed: %w", rel, closeErr) }
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 { return nil }
+		entries = append(entries, archiveEntry{path: path, rel: rel})
 		return nil
 	})
 	if err != nil {
-		common.APIError(w, http.StatusInternalServerError, "STORAGE", "Could not enumerate partner media")
+		common.APIError(w, http.StatusInternalServerError, "STORAGE", "Could not prepare partner media archive")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-media.tar.gz"`, partnerID))
 	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("X-Himate-Archive-Files", strconv.Itoa(len(files)))
+	w.Header().Set("X-Himate-Archive-Files", strconv.Itoa(len(entries)))
 
 	gz := gzip.NewWriter(w)
-	defer gz.Close()
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
 
-	for _, path := range files {
-		info, statErr := os.Lstat(path)
-		if statErr != nil { return }
-		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 { continue }
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil { return }
-		rel = filepath.ToSlash(rel)
+	for _, entry := range entries {
+		file, openErr := os.Open(entry.path)
+		if openErr != nil {
+			_ = tw.Close()
+			_ = gz.Close()
+			return
+		}
+		info, statErr := file.Stat()
+		if statErr != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			_ = file.Close()
+			_ = tw.Close()
+			_ = gz.Close()
+			return
+		}
 		header := &tar.Header{
-			Name: rel,
+			Name: entry.rel,
 			Mode: 0600,
 			Size: info.Size(),
 			ModTime: info.ModTime().UTC(),
 			Typeflag: tar.TypeReg,
 		}
-		if err := tw.WriteHeader(header); err != nil { return }
-		file, openErr := os.Open(path)
-		if openErr != nil { return }
-		_, copyErr := io.Copy(tw, file)
-		_ = file.Close()
-		if copyErr != nil { return }
+		if err := tw.WriteHeader(header); err != nil {
+			_ = file.Close()
+			_ = tw.Close()
+			_ = gz.Close()
+			return
+		}
+		_, copyErr := io.CopyN(tw, file, info.Size())
+		closeErr := file.Close()
+		if copyErr != nil || closeErr != nil {
+			_ = tw.Close()
+			_ = gz.Close()
+			return
+		}
 	}
+	if err := tw.Close(); err != nil {
+		_ = gz.Close()
+		return
+	}
+	_ = gz.Close()
 }
 
 func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {

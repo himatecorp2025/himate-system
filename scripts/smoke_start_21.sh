@@ -72,7 +72,7 @@ echo "$partner_id"
 
 printf 'seed partner media for backup verification... '
 media_marker="START21-MEDIA-${partner_id}-ENCRYPTED"
-docker compose exec -T storage sh -c "mkdir -p '/data/partners/$partner_id/start21-smoke' && printf '%s' '$media_marker' > '/data/partners/$partner_id/start21-smoke/marker.txt' && chmod 600 '/data/partners/$partner_id/start21-smoke/marker.txt'"
+docker compose exec -T storage sh -c "mkdir -p '/data/partners/$partner_id/start21-smoke' && printf '%s' '$media_marker' > '/data/partners/$partner_id/start21-smoke/marker.txt' && chown himate:himate '/data/partners/$partner_id/start21-smoke/marker.txt' && chmod 600 '/data/partners/$partner_id/start21-smoke/marker.txt'"
 echo ok
 
 printf 'RBAC blocks Finance and permits Operations backup access... '
