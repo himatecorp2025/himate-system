@@ -137,9 +137,10 @@ func TestSTART19RolePermissionMatrix(t *testing.T) {
 		{"marketing_admin", "billing.read", false},
 		{"marketing_admin", "administration.read", false},
 	}
+	a := &app{}
 	for _, tc := range tests {
 		u := user{Roles: []string{tc.role}}
-		if got := hasPermission(u, tc.permission); got != tc.want {
+		if got := a.hasPermission(u, tc.permission); got != tc.want {
 			t.Fatalf("%s permission %s = %v, want %v", tc.role, tc.permission, got, tc.want)
 		}
 	}
@@ -152,6 +153,9 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		want   string
 	}{
 		{http.MethodGet, "/api/v1/dashboard/summary", "dashboard.read"},
+		{http.MethodGet, "/api/v1/notifications", "notifications.read"},
+		{http.MethodPost, "/api/v1/notifications/read-all", "notifications.write"},
+		{http.MethodPost, "/api/v1/admin/roles", "administration.approve"},
 		{http.MethodGet, "/api/v1/partners", "partners.read"},
 		{http.MethodPatch, "/api/v1/partners/ptr_1", "partners.write"},
 		{http.MethodGet, "/api/v1/partners/ptr_1/modules", "catalog.read"},
