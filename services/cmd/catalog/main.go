@@ -470,6 +470,14 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 404, "NOT_FOUND", "Route not found")
 		return
 	}
+	if internal && len(parts) == 4 && parts[3] == "price-at" {
+		if r.Method != http.MethodGet {
+			common.APIError(w, 405, "METHOD", "Use GET")
+			return
+		}
+		a.partnerModulePriceAt(w, r, partnerID, parts[2])
+		return
+	}
 	if len(parts) == 2 {
 		if r.Method != http.MethodGet {
 			common.APIError(w, 405, "METHOD", "Use GET")
@@ -637,6 +645,61 @@ func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billab
 		out["extra_monthly_total"] = extra
 	}
 	common.JSON(w, 200, out)
+}
+
+func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partnerID, key string) {
+	rawAt := strings.TrimSpace(r.URL.Query().Get("at"))
+	at := time.Now().UTC()
+	if rawAt != "" {
+		parsed, err := time.Parse("2006-01-02", rawAt)
+		if err != nil {
+			common.APIError(w, 400, "VALIDATION", "at must be YYYY-MM-DD")
+			return
+		}
+		at = parsed.UTC()
+	}
+	var price float64
+	var currency string
+	var included bool
+	err := a.db.QueryRow(`
+		SELECT
+			COALESCE(
+				(SELECT ph.new_price FROM catalog.price_history ph
+				 WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=$3
+				 ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1),
+				(SELECT ph.old_price FROM catalog.price_history ph
+				 WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at>$3 AND ph.old_price IS NOT NULL
+				 ORDER BY ph.effective_at ASC,ph.id ASC LIMIT 1),
+				pm.price_override,m.default_monthly_price
+			),
+			m.currency,
+			COALESCE(
+				(SELECT CASE WHEN lower(pmh.new_value)='true' THEN TRUE WHEN lower(pmh.new_value)='false' THEN FALSE END
+				 FROM catalog.partner_module_history pmh
+				 WHERE pmh.partner_id=pm.partner_id AND pmh.module_key=pm.module_key AND pmh.field_name='included_in_base' AND pmh.effective_at<=$3
+				 ORDER BY pmh.effective_at DESC,pmh.id DESC LIMIT 1),
+				(SELECT CASE WHEN lower(pmh.old_value)='true' THEN TRUE WHEN lower(pmh.old_value)='false' THEN FALSE END
+				 FROM catalog.partner_module_history pmh
+				 WHERE pmh.partner_id=pm.partner_id AND pmh.module_key=pm.module_key AND pmh.field_name='included_in_base' AND pmh.effective_at>$3
+				 ORDER BY pmh.effective_at ASC,pmh.id ASC LIMIT 1),
+				pm.included_in_base
+			)
+		FROM catalog.partner_modules pm
+		JOIN catalog.modules m ON m.module_key=pm.module_key
+		WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key, at).Scan(&price, &currency, &included)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			common.APIError(w, 404, "NOT_FOUND", "Partner module not found")
+		} else {
+			common.APIError(w, 500, "DB", "Could not resolve historical partner module price")
+		}
+		return
+	}
+	common.JSON(w, 200, map[string]any{
+		"partner_id": partnerID, "module_key": key, "at": at.Format("2006-01-02"),
+		"price": price, "currency": currency, "included_in_base": included,
+		"source": "CATALOG_EFFECTIVE_PRICE_HISTORY",
+	})
 }
 
 func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key string) {
