@@ -731,20 +731,30 @@ func (a *app) effectiveModuleFees(ctx context.Context, id string, mods []map[str
 		Cancel    bool
 		PeriodEnd time.Time
 		Status    string
+		Price     float64
+		Included  bool
 	}
 	states := map[string]subState{}
-	rows, err := a.db.QueryContext(ctx, `SELECT module_key,cancel_at_period_end,period_end,payment_status
-		FROM billing.module_subscriptions WHERE partner_id=$1`, id)
+	rows, err := a.db.QueryContext(ctx, `SELECT s.module_key,s.cancel_at_period_end,s.period_end,s.payment_status,s.price,
+		COALESCE(ps.included_in_base,FALSE)
+		FROM billing.module_subscriptions s
+		LEFT JOIN billing.module_period_snapshots ps
+			ON ps.partner_id=s.partner_id AND ps.module_key=s.module_key AND ps.period_start=s.period_start
+		WHERE s.partner_id=$1`, id)
 	if err != nil { return 0, nil, err }
 	for rows.Next() {
 		var key, status string
-		var cancel bool
+		var cancel, included bool
 		var periodEnd time.Time
-		if err := rows.Scan(&key, &cancel, &periodEnd, &status); err != nil {
+		var price float64
+		if err := rows.Scan(&key, &cancel, &periodEnd, &status, &price, &included); err != nil {
 			rows.Close()
 			return 0, nil, err
 		}
-		states[key] = subState{Cancel: cancel, PeriodEnd: dateOnly(periodEnd), Status: status}
+		states[key] = subState{
+			Cancel: cancel, PeriodEnd: dateOnly(periodEnd), Status: status,
+			Price: price, Included: included,
+		}
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -761,10 +771,20 @@ func (a *app) effectiveModuleFees(ctx context.Context, id string, mods []map[str
 			if cancellationExpired(state.Cancel, state.PeriodEnd, today) {
 				continue
 			}
-			if state.Status == "INACTIVE" && state.Cancel {
+			if state.Status == "INACTIVE" {
 				continue
 			}
+			copyMod := make(map[string]any, len(mod)+2)
+			for k, v := range mod { copyMod[k] = v }
+			copyMod["partner_price"] = state.Price
+			copyMod["included_in_base"] = state.Included
+			copyMod["price_source"] = "MODULE_PERIOD_SNAPSHOT"
+			effective = append(effective, copyMod)
+			if !state.Included { total += state.Price }
+			continue
 		}
+		// A newly active module is expected to have been synchronized before this
+		// function runs. Fallback retains compatibility if the row is not present.
 		effective = append(effective, mod)
 		if mod["included_in_base"] == true { continue }
 		if value, ok := mod["partner_price"].(float64); ok {
