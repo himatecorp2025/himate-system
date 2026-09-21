@@ -131,10 +131,13 @@ func main(){
 	mux.HandleFunc("/api/v1/cms/media/",a.mediaItem)
 	mux.HandleFunc("/api/v1/cms/design",a.design)
 	mux.HandleFunc("/api/v1/cms/design/",a.designAction)
+	mux.HandleFunc("/api/v1/cms/seo",a.seoSettings)
+	mux.HandleFunc("/api/v1/cms/seo/",a.seoAction)
 	mux.HandleFunc("/public/v1/cms/pages/",a.publicPage)
 	mux.HandleFunc("/public/v1/cms/media/",a.publicMedia)
 	mux.HandleFunc("/public/v1/cms/manifest",a.publicManifest)
 	mux.HandleFunc("/public/v1/cms/design",a.publicDesign)
+	mux.HandleFunc("/public/v1/cms/seo",a.publicSEOSettings)
 	mux.HandleFunc("/preview/v1/cms/pages/",a.previewPage)
 	mux.HandleFunc("/preview/v1/cms/media/",a.previewMedia)
 	common.Run(log,"cms",common.Env("PORT","10000"),common.InternalAuth(a.token,mux))
@@ -330,6 +333,7 @@ func normalizedInput(in versionInput)versionInput{
 	in.Slug=strings.ToLower(strings.Trim(strings.TrimSpace(in.Slug),"/"))
 	in.SEO.Title=strings.TrimSpace(in.SEO.Title)
 	in.SEO.MetaDescription=strings.TrimSpace(in.SEO.MetaDescription)
+	in.SEO.Keywords=normalizeKeywords(in.SEO.Keywords,24)
 	in.SEO.Canonical=strings.TrimSpace(in.SEO.Canonical)
 	in.SEO.OGTitle=strings.TrimSpace(in.SEO.OGTitle)
 	in.SEO.OGDescription=strings.TrimSpace(in.SEO.OGDescription)
@@ -397,6 +401,7 @@ func (a *app)validateContent(ctx context.Context,pageID string,in versionInput,f
 		if in.SEO.MetaDescription==""||len(in.SEO.MetaDescription)>180{return fmt.Errorf("meta description is required and must be at most 180 characters")}
 		if !validCanonical(in.SEO.Canonical){return fmt.Errorf("canonical must be an absolute HTTPS URL")}
 	}
+	if err:=validateKeywords(in.SEO.Keywords,24);err!=nil{return fmt.Errorf("page keywords: %w",err)}
 	if in.SEO.OGImageAssetID!=""&&!a.mediaExists(ctx,in.SEO.OGImageAssetID){return fmt.Errorf("Open Graph media asset does not exist")}
 	if in.SEO.Canonical!=""&&!validCanonical(in.SEO.Canonical){return fmt.Errorf("canonical must be an absolute HTTPS URL")}
 	if in.SEO.OGTitle!=""&&len(in.SEO.OGTitle)>100{return fmt.Errorf("Open Graph title is too long")}
@@ -658,12 +663,13 @@ func (a *app)publicPage(w http.ResponseWriter,r *http.Request){
 	slug:=strings.ToLower(strings.Trim(strings.TrimPrefix(r.URL.Path,"/public/v1/cms/pages/"),"/"))
 	if slug==""{common.APIError(w,404,"NOT_FOUND","Published page not found");return}
 	locale:=normalizeLocale(r.URL.Query().Get("locale"))
-	var versionID string
-	err:=a.db.QueryRow(`SELECT p.published_version_id FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id WHERE lower(v.slug)=lower($1) AND p.locale=$2`,slug,locale).Scan(&versionID)
+	var versionID,pageKey string
+	err:=a.db.QueryRow(`SELECT p.published_version_id,p.page_key FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id WHERE lower(v.slug)=lower($1) AND p.locale=$2`,slug,locale).Scan(&versionID,&pageKey)
 	if err!=nil{common.APIError(w,404,"NOT_FOUND","Published page not found");return}
 	v,err:=a.getVersion(versionID);if err!=nil||v.State!="PUBLISHED"{common.APIError(w,404,"NOT_FOUND","Published page not found");return}
 	w.Header().Set("Cache-Control","public, max-age=60, stale-while-revalidate=300")
 	out:=publicVersion(v,true);out["locale"]=locale
+	a.enrichPublicSEO(r.Context(),pageKey,locale,out)
 	if r.Method==http.MethodHead{w.WriteHeader(http.StatusOK);return}
 	common.JSON(w,200,out)
 }
@@ -677,7 +683,10 @@ func (a *app)previewPage(w http.ResponseWriter,r *http.Request){
 	v,err:=a.getVersion(p.PreviewVersionID);if err!=nil{common.APIError(w,404,"NOT_FOUND","Preview not found");return}
 	w.Header().Set("Cache-Control","private, no-store")
 	w.Header().Set("X-Robots-Tag","noindex, nofollow")
-	common.JSON(w,200,publicVersion(v,true))
+	out:=publicVersion(v,true);out["locale"]=normalizeLocale(p.Locale)
+	a.enrichPublicSEO(r.Context(),p.PageKey,p.Locale,out)
+	if r.Method==http.MethodHead{w.WriteHeader(http.StatusOK);return}
+	common.JSON(w,200,out)
 }
 
 func safeFilename(name string)string{
