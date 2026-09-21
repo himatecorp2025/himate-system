@@ -102,6 +102,7 @@ func main() {
 	mux.HandleFunc("/api/v1/modules/", a.moduleByKey)
 	mux.HandleFunc("/api/v1/partners/", a.partnerModules)
 	mux.HandleFunc("/internal/v1/partners/", a.partnerModules)
+	mux.HandleFunc("/internal/v1/partner-portal/", a.partnerPortal)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	common.Run(log, "catalog", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
 }
