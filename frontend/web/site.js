@@ -39,13 +39,32 @@
     return node;
   };
 
+  const ensurePropertyMeta = (property) => {
+    let node = document.head.querySelector(`meta[property="${property}"]`);
+    if (!node) {
+      node = document.createElement('meta');
+      node.setAttribute('property', property);
+      document.head.appendChild(node);
+    }
+    return node;
+  };
+
   const applySEO = (seo) => {
     if (!seo || typeof seo !== 'object') return;
     if (typeof seo.title === 'string' && seo.title.trim()) document.title = seo.title.trim();
     if (typeof seo.meta_description === 'string' && seo.meta_description.trim()) {
       ensureMeta('description').setAttribute('content', seo.meta_description.trim());
     }
-    if (seo.noindex === true) ensureMeta('robots').setAttribute('content', 'noindex,nofollow');
+    ensureMeta('robots').setAttribute('content', seo.noindex === true ? 'noindex,nofollow' : 'index,follow');
+    const title = typeof seo.title === 'string' ? seo.title.trim() : '';
+    const description = typeof seo.meta_description === 'string' ? seo.meta_description.trim() : '';
+    const ogTitle = typeof seo.og_title === 'string' && seo.og_title.trim() ? seo.og_title.trim() : title;
+    const ogDescription = typeof seo.og_description === 'string' && seo.og_description.trim() ? seo.og_description.trim() : description;
+    if (ogTitle) ensurePropertyMeta('og:title').setAttribute('content', ogTitle);
+    if (ogDescription) ensurePropertyMeta('og:description').setAttribute('content', ogDescription);
+    if (typeof seo.og_image_asset_id === 'string' && seo.og_image_asset_id.trim()) {
+      ensurePropertyMeta('og:image').setAttribute('content', `/public/v1/cms/media/${encodeURIComponent(seo.og_image_asset_id.trim())}`);
+    }
     if (typeof seo.canonical === 'string' && seo.canonical.trim()) {
       let canonical = document.head.querySelector('link[rel="canonical"]');
       if (!canonical) {
@@ -54,6 +73,7 @@
         document.head.appendChild(canonical);
       }
       canonical.setAttribute('href', seo.canonical.trim());
+      ensurePropertyMeta('og:url').setAttribute('content', seo.canonical.trim());
     }
   };
 
@@ -194,6 +214,12 @@
       if (!response.ok) return;
       const page = await response.json();
       applySEO(page.seo);
+      const hidden = Array.isArray(page.hidden_sections) ? page.hidden_sections : [];
+      for (const id of hidden) {
+        if (typeof id !== 'string' || !id.trim()) continue;
+        const safe = window.CSS?.escape ? window.CSS.escape(id.trim()) : id.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+        document.querySelector(`[data-cms-section="${safe}"]`)?.remove();
+      }
       const sections = Array.isArray(page.sections) ? [...page.sections] : [];
       sections.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       for (const section of sections) {

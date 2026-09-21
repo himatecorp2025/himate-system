@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"himate.local/services/internal/common"
+	"html"
 	"mime"
 	"net/http"
 	"net/http/httputil"
@@ -170,6 +171,8 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
+	mux.HandleFunc("/robots.txt", a.robots)
+	mux.HandleFunc("/sitemap.xml", a.sitemap)
 	mux.HandleFunc("/public/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "cms")
 	})
@@ -1359,16 +1362,391 @@ func pbkdf2SHA256(password, salt []byte, iterations, length int) []byte {
 	return out[:length]
 }
 
+
+type publicCMSSEO struct {
+	Title           string \`json:"title"\`
+	MetaDescription string \`json:"meta_description"\`
+	Canonical       string \`json:"canonical"\`
+	OGTitle         string \`json:"og_title"\`
+	OGDescription   string \`json:"og_description"\`
+	OGImageAssetID  string \`json:"og_image_asset_id"\`
+	NoIndex         bool   \`json:"noindex"\`
+}
+
+type publicCMSSection struct {
+	ID            string \`json:"id"\`
+	ComponentType string \`json:"component_type"\`
+	Heading       string \`json:"heading"\`
+	Body          string \`json:"body"\`
+	MediaAssetID  string \`json:"media_asset_id"\`
+	CTALabel      string \`json:"cta_label"\`
+	CTAURL        string \`json:"cta_url"\`
+	Visible       bool   \`json:"visible"\`
+	SortOrder     int    \`json:"sort_order"\`
+}
+
+type publicCMSPage struct {
+	Slug           string             \`json:"slug"\`
+	SEO            publicCMSSEO       \`json:"seo"\`
+	Sections       []publicCMSSection \`json:"sections"\`
+	HiddenSections []string           \`json:"hidden_sections"\`
+}
+
+type publicCMSManifest struct {
+	Items []struct {
+		Slug      string \`json:"slug"\`
+		Canonical string \`json:"canonical"\`
+		Title     string \`json:"title"\`
+		NoIndex   bool   \`json:"noindex"\`
+	} \`json:"items"\`
+}
+
+func (a *app) fetchPublishedCMS(ctx context.Context, slug string) (publicCMSPage, error) {
+	var out publicCMSPage
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return out, errors.New("CMS service is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/pages/"+url.PathEscape(slug), nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("CMS page %s returned %d", slug, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (a *app) fetchPublishedManifest(ctx context.Context) (publicCMSManifest, error) {
+	var out publicCMSManifest
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return out, errors.New("CMS service is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/manifest", nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("CMS manifest returned %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func publicOrigin(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+		scheme = "https"
+	}
+	host := strings.TrimSpace(r.Host)
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwarded != "" {
+		host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+	}
+	if host == "" {
+		host = "localhost"
+	}
+	return scheme + "://" + host
+}
+
+func replaceHeadTag(doc, marker, replacement string) string {
+	lower := strings.ToLower(doc)
+	idx := strings.Index(lower, strings.ToLower(marker))
+	if idx >= 0 {
+		start := strings.LastIndex(doc[:idx], "<")
+		endRel := strings.Index(doc[idx:], ">")
+		if start >= 0 && endRel >= 0 {
+			end := idx + endRel + 1
+			return doc[:start] + replacement + doc[end:]
+		}
+	}
+	if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+		return doc[:headEnd] + replacement + doc[headEnd:]
+	}
+	return doc
+}
+
+func replaceTitle(doc, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return doc
+	}
+	lower := strings.ToLower(doc)
+	start := strings.Index(lower, "<title>")
+	end := strings.Index(lower, "</title>")
+	tag := "<title>" + html.EscapeString(value) + "</title>"
+	if start >= 0 && end > start {
+		return doc[:start] + tag + doc[end+len("</title>"):]
+	}
+	if headEnd := strings.Index(lower, "</head>"); headEnd >= 0 {
+		return doc[:headEnd] + tag + doc[headEnd:]
+	}
+	return doc
+}
+
+func replaceFirstTagText(fragment, tag, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fragment
+	}
+	lower := strings.ToLower(fragment)
+	open := strings.Index(lower, "<"+tag)
+	if open < 0 {
+		return fragment
+	}
+	openEndRel := strings.Index(fragment[open:], ">")
+	if openEndRel < 0 {
+		return fragment
+	}
+	contentStart := open + openEndRel + 1
+	closeTag := "</" + tag + ">"
+	closeRel := strings.Index(strings.ToLower(fragment[contentStart:]), closeTag)
+	if closeRel < 0 {
+		return fragment
+	}
+	contentEnd := contentStart + closeRel
+	escaped := strings.ReplaceAll(html.EscapeString(value), "\n", "<br>")
+	return fragment[:contentStart] + escaped + fragment[contentEnd:]
+}
+
+func replaceFirstAttribute(fragment, tag, attr, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fragment
+	}
+	lower := strings.ToLower(fragment)
+	open := strings.Index(lower, "<"+tag)
+	if open < 0 {
+		return fragment
+	}
+	openEndRel := strings.Index(fragment[open:], ">")
+	if openEndRel < 0 {
+		return fragment
+	}
+	openEnd := open + openEndRel + 1
+	opening := fragment[open:openEnd]
+	attrNeedle := attr + "=\""
+	attrPos := strings.Index(strings.ToLower(opening), strings.ToLower(attrNeedle))
+	escaped := html.EscapeString(value)
+	if attrPos >= 0 {
+		valueStart := attrPos + len(attrNeedle)
+		valueEndRel := strings.Index(opening[valueStart:], "\"")
+		if valueEndRel >= 0 {
+			valueEnd := valueStart + valueEndRel
+			opening = opening[:valueStart] + escaped + opening[valueEnd:]
+		}
+	} else {
+		opening = strings.TrimSuffix(opening, ">") + " " + attr + "=\"" + escaped + "\">"
+	}
+	return fragment[:open] + opening + fragment[openEnd:]
+}
+
+func marketingSectionBounds(doc, id string) (int, int, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return 0, 0, false
+	}
+	needle := "data-cms-section=\"" + id + "\""
+	idx := strings.Index(doc, needle)
+	if idx < 0 {
+		return 0, 0, false
+	}
+	start := strings.LastIndex(doc[:idx], "<section")
+	if start < 0 {
+		return 0, 0, false
+	}
+	endRel := strings.Index(strings.ToLower(doc[idx:]), "</section>")
+	if endRel < 0 {
+		return 0, 0, false
+	}
+	end := idx + endRel + len("</section>")
+	return start, end, true
+}
+
+func removeMarketingSection(doc, id string) string {
+	start, end, ok := marketingSectionBounds(doc, id)
+	if !ok {
+		return doc
+	}
+	return doc[:start] + doc[end:]
+}
+
+func renderMarketingSection(doc string, section publicCMSSection) string {
+	start, end, ok := marketingSectionBounds(doc, section.ID)
+	if !ok {
+		return doc
+	}
+	fragment := doc[start:end]
+	for _, tag := range []string{"h1", "h2", "h3"} {
+		next := replaceFirstTagText(fragment, tag, section.Heading)
+		if next != fragment {
+			fragment = next
+			break
+		}
+	}
+	fragment = replaceFirstTagText(fragment, "p", section.Body)
+	if section.CTALabel != "" {
+		fragment = replaceFirstTagText(fragment, "a", section.CTALabel)
+	}
+	if section.CTAURL != "" {
+		fragment = replaceFirstAttribute(fragment, "a", "href", section.CTAURL)
+	}
+	if section.MediaAssetID != "" {
+		fragment = replaceFirstAttribute(fragment, "img", "src", "/public/v1/cms/media/"+url.PathEscape(section.MediaAssetID))
+	}
+	return doc[:start] + fragment + doc[end:]
+}
+
+func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) string {
+	doc = replaceTitle(doc, page.SEO.Title)
+	if value := strings.TrimSpace(page.SEO.MetaDescription); value != "" {
+		doc = replaceHeadTag(doc, "name=\"description\"", "<meta name=\"description\" content=\""+html.EscapeString(value)+"\">")
+	}
+	canonical := strings.TrimSpace(page.SEO.Canonical)
+	if canonical == "" {
+		canonical = requestURL
+	}
+	doc = replaceHeadTag(doc, "rel=\"canonical\"", "<link rel=\"canonical\" href=\""+html.EscapeString(canonical)+"\">")
+	robots := "index,follow"
+	if page.SEO.NoIndex {
+		robots = "noindex,nofollow"
+	}
+	doc = replaceHeadTag(doc, "name=\"robots\"", "<meta name=\"robots\" content=\""+robots+"\">")
+	ogTitle := strings.TrimSpace(page.SEO.OGTitle)
+	if ogTitle == "" {
+		ogTitle = strings.TrimSpace(page.SEO.Title)
+	}
+	if ogTitle != "" {
+		doc = replaceHeadTag(doc, "property=\"og:title\"", "<meta property=\"og:title\" content=\""+html.EscapeString(ogTitle)+"\">")
+	}
+	ogDescription := strings.TrimSpace(page.SEO.OGDescription)
+	if ogDescription == "" {
+		ogDescription = strings.TrimSpace(page.SEO.MetaDescription)
+	}
+	if ogDescription != "" {
+		doc = replaceHeadTag(doc, "property=\"og:description\"", "<meta property=\"og:description\" content=\""+html.EscapeString(ogDescription)+"\">")
+	}
+	doc = replaceHeadTag(doc, "property=\"og:url\"", "<meta property=\"og:url\" content=\""+html.EscapeString(canonical)+"\">")
+	if mediaID := strings.TrimSpace(page.SEO.OGImageAssetID); mediaID != "" {
+		doc = replaceHeadTag(doc, "property=\"og:image\"", "<meta property=\"og:image\" content=\"/public/v1/cms/media/"+url.PathEscape(mediaID)+"\">")
+	}
+	for _, id := range page.HiddenSections {
+		doc = removeMarketingSection(doc, id)
+	}
+	for _, section := range page.Sections {
+		doc = renderMarketingSection(doc, section)
+	}
+	if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+		doc = doc[:headEnd] + "<!-- HIMATE SSR:PUBLISHED -->" + doc[headEnd:]
+	}
+	return doc
+}
+
+func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filename, slug string) {
+	path := filepath.Join(filepath.Clean(a.webDir), filename)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	doc := string(raw)
+	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
+	page, cmsErr := a.fetchPublishedCMS(ctx, slug)
+	cancel()
+	if cmsErr == nil {
+		doc = renderPublishedCMSHTML(doc, page, publicOrigin(r)+r.URL.Path)
+		w.Header().Set("X-Himate-SSR", "published")
+	} else {
+		w.Header().Set("X-Himate-SSR", "static-fallback")
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len([]byte(doc))))
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	_, _ = w.Write([]byte(doc))
+}
+
+func (a *app) robots(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	body := "User-agent: *\nAllow: /\nSitemap: " + publicOrigin(r) + "/sitemap.xml\n"
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	if r.Method != http.MethodHead {
+		_, _ = w.Write([]byte(body))
+	}
+}
+
+func (a *app) sitemap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
+	manifest, err := a.fetchPublishedManifest(ctx)
+	cancel()
+	if err != nil {
+		common.APIError(w, http.StatusServiceUnavailable, "CMS_UNAVAILABLE", "Published CMS manifest is unavailable")
+		return
+	}
+	origin := publicOrigin(r)
+	var body strings.Builder
+	body.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+	body.WriteString("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">")
+	for _, item := range manifest.Items {
+		if item.NoIndex {
+			continue
+		}
+		loc := strings.TrimSpace(item.Canonical)
+		if loc == "" {
+			if strings.EqualFold(strings.TrimSpace(item.Slug), "landing") {
+				loc = origin + "/"
+			} else {
+				loc = origin + "/" + strings.Trim(strings.TrimSpace(item.Slug), "/")
+			}
+		}
+		body.WriteString("<url><loc>")
+		body.WriteString(html.EscapeString(loc))
+		body.WriteString("</loc></url>")
+	}
+	body.WriteString("</urlset>")
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	if r.Method != http.MethodHead {
+		_, _ = w.Write([]byte(body.String()))
+	}
+}
+
+
 func (a *app) web() http.Handler {
 	root := filepath.Clean(a.webDir)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			landing := filepath.Join(root, "landing.html")
-			if _, err := os.Stat(landing); err == nil {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				http.ServeFile(w, r, landing)
-				return
-			}
+			a.serveMarketingPage(w, r, "landing.html", "landing")
+			return
 		}
 
 		if r.URL.Path == "/login" || r.URL.Path == "/app" || strings.HasPrefix(r.URL.Path, "/app/") {
@@ -1391,8 +1769,7 @@ func (a *app) web() http.Handler {
 			"/contact":  "contact.html",
 		}
 		if page, ok := marketingPages[r.URL.Path]; ok {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			http.ServeFile(w, r, filepath.Join(root, page))
+			a.serveMarketingPage(w, r, page, strings.TrimPrefix(r.URL.Path, "/"))
 			return
 		}
 

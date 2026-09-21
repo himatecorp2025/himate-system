@@ -311,3 +311,42 @@ func TestMissingProxyReturnsServiceUnavailable(t *testing.T) {
 		t.Fatalf("expected structured service unavailable error, got %s", rec.Body.String())
 	}
 }
+
+
+func TestRenderPublishedCMSHTML(t *testing.T) {
+	template := `<!doctype html><html><head><meta name="description" content="fallback"><title>Fallback</title></head><body><section data-cms-section="hero"><h1>Fallback heading</h1><p>Fallback body</p><a href="/old">Old CTA</a><img src="/old.webp"></section><section data-cms-section="hidden"><h2>Hidden static content</h2></section></body></html>`
+	page := publicCMSPage{
+		Slug: "platform",
+		SEO: publicCMSSEO{
+			Title: "Server Rendered HIMATE",
+			MetaDescription: "SSR description",
+			Canonical: "https://www.himate.com/platform",
+			OGTitle: "SSR OG",
+			OGDescription: "SSR OG description",
+			OGImageAssetID: "media_1",
+		},
+		Sections: []publicCMSSection{{
+			ID: "hero", ComponentType: "HERO", Heading: "Published heading", Body: "Published body",
+			CTALabel: "Published CTA", CTAURL: "/contact", MediaAssetID: "media_1", Visible: true,
+		}},
+		HiddenSections: []string{"hidden"},
+	}
+	got := renderPublishedCMSHTML(template, page, "https://fallback.invalid/platform")
+	for _, want := range []string{
+		"<title>Server Rendered HIMATE</title>",
+		`name="description" content="SSR description"`,
+		`rel="canonical" href="https://www.himate.com/platform"`,
+		`property="og:title" content="SSR OG"`,
+		`property="og:description" content="SSR OG description"`,
+		`property="og:image" content="/public/v1/cms/media/media_1"`,
+		"Published heading", "Published body", "Published CTA", `href="/contact"`,
+		`src="/public/v1/cms/media/media_1"`, "HIMATE SSR:PUBLISHED",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected rendered HTML to contain %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "Hidden static content") {
+		t.Fatalf("hidden CMS section remained in server-rendered HTML: %s", got)
+	}
+}

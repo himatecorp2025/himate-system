@@ -149,6 +149,8 @@ jobs:
         run: sh scripts/smoke_start_14_15.sh http://127.0.0.1:8080
       - name: Run START-16 CMS integration smoke
         run: sh scripts/smoke_start_16.sh http://127.0.0.1:8080
+      - name: Run START-17 public SSR and SEO smoke
+        run: sh scripts/smoke_start_17.sh http://127.0.0.1:8080
       - name: Run START-18-19 governance, branding and RBAC smoke V2
         run: sh scripts/smoke_start_18_19_v2.sh http://127.0.0.1:8080
       - name: Run START-20 Domains and Deployments smoke

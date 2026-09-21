@@ -577,9 +577,13 @@ func publicVersion(v versionRow,visibleOnly bool)map[string]any{
 	_ = json.Unmarshal(v.SEO,&seo)
 	var sections []sectionInput
 	_ = json.Unmarshal(v.Sections,&sections)
+	hiddenSections:=[]string{}
 	if visibleOnly{
 		filtered:=[]sectionInput{}
-		for _,s:=range sections{if s.Visible{filtered=append(filtered,s)}}
+		for _,s:=range sections{
+			if s.Visible{filtered=append(filtered,s);continue}
+			if strings.TrimSpace(s.ID)!=""{hiddenSections=append(hiddenSections,s.ID)}
+		}
 		sections=filtered
 	}
 	var publishedAt any
@@ -591,6 +595,7 @@ func publicVersion(v versionRow,visibleOnly bool)map[string]any{
 		"slug":v.Slug,
 		"seo":seo,
 		"sections":sections,
+		"hidden_sections":hiddenSections,
 		"published_at":publishedAt,
 	}
 }
