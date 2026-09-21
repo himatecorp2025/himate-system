@@ -99,6 +99,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     final seoTitle = TextEditingController();
     final meta = TextEditingController();
     final canonical = TextEditingController();
+    final keywords = TextEditingController();
     final localeChoice = ValueNotifier<String>(HimateI18n.activeLocale == 'hu_HU' ? 'hu_HU' : 'en_US');
     final ok = await showDialog<bool>(
       context: context,
@@ -143,6 +144,16 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             TextField(controller: meta, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Meta description'))),
             const SizedBox(height: 12),
             TextField(controller: canonical, decoration: InputDecoration(labelText: uiLiteral('Canonical HTTPS URL'))),
+            const SizedBox(height: 12),
+            TextField(
+              controller: keywords,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: uiLiteral('Page keywords'),
+                hintText: uiLiteral('arts, culture, communities'),
+                helperText: uiLiteral('Comma-separated · up to 24 unique page keywords'),
+              ),
+            ),
           ],
         ),
         primaryLabel: 'Create draft',
@@ -168,6 +179,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           'seo': <String, dynamic>{
             'title': seoTitle.text.trim(),
             'meta_description': meta.text.trim(),
+            'keywords': _cmsKeywords(keywords.text),
             'canonical': canonical.text.trim(),
             'og_title': '',
             'og_description': '',
@@ -181,7 +193,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     }
 
     localeChoice.dispose();
-    for (final controller in <TextEditingController>[key, name, slug, seoTitle, meta, canonical]) {
+    for (final controller in <TextEditingController>[key, name, slug, seoTitle, meta, canonical, keywords]) {
       controller.dispose();
     }
   }
@@ -529,6 +541,10 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           const SizedBox(height: 28),
           const Divider(height: 1),
           const SizedBox(height: 24),
+          SEOKeywordsPanel(api: widget.api, media: media),
+          const SizedBox(height: 28),
+          const Divider(height: 1),
+          const SizedBox(height: 24),
           DesignGuidePanel(api: widget.api, media: media),
           const SizedBox(height: 28),
           const Divider(height: 1),
@@ -627,6 +643,22 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
 
 String _cmsShort(String value) => value.length > 14 ? value.substring(0, 14) + '…' : value;
 
+List<String> _cmsKeywords(String value) => value
+    .split(RegExp(r'[,;\n]'))
+    .map((item) => item.trim())
+    .where((item) => item.isNotEmpty)
+    .toSet()
+    .take(24)
+    .toList();
+
+String _cmsKeywordText(dynamic value) {
+  if (value is! List) return '';
+  return value
+      .map((item) => item.toString().trim())
+      .where((item) => item.isNotEmpty)
+      .join(', ');
+}
+
 class CMSDraftEditorDialog extends StatefulWidget {
   const CMSDraftEditorDialog({
     required this.page,
@@ -647,6 +679,7 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
   late final TextEditingController slug;
   late final TextEditingController seoTitle;
   late final TextEditingController meta;
+  late final TextEditingController keywords;
   late final TextEditingController canonical;
   late final TextEditingController ogTitle;
   late final TextEditingController ogDescription;
@@ -680,6 +713,7 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
     );
     seoTitle = TextEditingController(text: (seo['title'] ?? '').toString());
     meta = TextEditingController(text: (seo['meta_description'] ?? '').toString());
+    keywords = TextEditingController(text: _cmsKeywordText(seo['keywords']));
     canonical = TextEditingController(text: (seo['canonical'] ?? '').toString());
     ogTitle = TextEditingController(text: (seo['og_title'] ?? '').toString());
     ogDescription = TextEditingController(text: (seo['og_description'] ?? '').toString());
@@ -701,6 +735,7 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
       slug,
       seoTitle,
       meta,
+      keywords,
       canonical,
       ogTitle,
       ogDescription,
@@ -742,6 +777,7 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
         'seo': <String, dynamic>{
           'title': seoTitle.text.trim(),
           'meta_description': meta.text.trim(),
+          'keywords': _cmsKeywords(keywords.text),
           'canonical': canonical.text.trim(),
           'og_title': ogTitle.text.trim(),
           'og_description': ogDescription.text.trim(),
@@ -849,6 +885,16 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
                       controller: meta,
                       maxLines: 2,
                       decoration: InputDecoration(labelText: uiLiteral('Meta description * for publish')),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: keywords,
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        labelText: uiLiteral('Page keywords'),
+                        hintText: uiLiteral('arts, culture, communities'),
+                        helperText: uiLiteral('Comma-separated · up to 24 unique page keywords'),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     ResponsiveFieldPair(
