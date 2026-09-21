@@ -1780,6 +1780,7 @@ type publicCMSSection struct {
 }
 
 type publicCMSPage struct {
+	Locale         string             `json:"locale"`
 	Slug           string             `json:"slug"`
 	SEO            publicCMSSEO       `json:"seo"`
 	Sections       []publicCMSSection `json:"sections"`
@@ -1789,19 +1790,43 @@ type publicCMSPage struct {
 type publicCMSManifest struct {
 	Items []struct {
 		Slug      string `json:"slug"`
+		Locale    string `json:"locale"`
 		Canonical string `json:"canonical"`
 		Title     string `json:"title"`
 		NoIndex   bool   `json:"noindex"`
 	} `json:"items"`
 }
 
-func (a *app) fetchPublishedCMS(ctx context.Context, slug string) (publicCMSPage, error) {
+func normalizePublicLocale(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "hu" || value == "hu_hu" || strings.HasPrefix(value, "hu-") {
+		return "hu_HU"
+	}
+	return "en_US"
+}
+
+func publicLocale(r *http.Request) string {
+	if r == nil { return "en_US" }
+	if raw := strings.TrimSpace(r.URL.Query().Get("lang")); raw != "" {
+		return normalizePublicLocale(raw)
+	}
+	if cookie, err := r.Cookie("himate_public_locale"); err == nil && strings.TrimSpace(cookie.Value) != "" {
+		return normalizePublicLocale(cookie.Value)
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Accept-Language"))), "hu") {
+		return "hu_HU"
+	}
+	return "en_US"
+}
+
+func (a *app) fetchPublishedCMS(ctx context.Context, slug, locale string) (publicCMSPage, error) {
 	var out publicCMSPage
 	host := strings.TrimSpace(a.hosts["cms"])
 	if host == "" {
 		return out, errors.New("CMS service is not configured")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/pages/"+url.PathEscape(slug), nil)
+	endpoint := "http://"+host+"/public/v1/cms/pages/"+url.PathEscape(slug)+"?locale="+url.QueryEscape(normalizePublicLocale(locale))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return out, err
 	}
@@ -1821,13 +1846,14 @@ func (a *app) fetchPublishedCMS(ctx context.Context, slug string) (publicCMSPage
 	return out, nil
 }
 
-func (a *app) fetchPublishedManifest(ctx context.Context) (publicCMSManifest, error) {
+func (a *app) fetchPublishedManifest(ctx context.Context, locale string) (publicCMSManifest, error) {
 	var out publicCMSManifest
 	host := strings.TrimSpace(a.hosts["cms"])
 	if host == "" {
 		return out, errors.New("CMS service is not configured")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/manifest", nil)
+	endpoint := "http://"+host+"/public/v1/cms/manifest?locale="+url.QueryEscape(normalizePublicLocale(locale))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return out, err
 	}
@@ -2011,6 +2037,9 @@ func renderMarketingSection(doc string, section publicCMSSection) string {
 }
 
 func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) string {
+	if normalizePublicLocale(page.Locale) == "hu_HU" {
+		doc = strings.Replace(doc, "<html lang=\"en\">", "<html lang=\"hu\">", 1)
+	}
 	doc = replaceTitle(doc, page.SEO.Title)
 	if value := strings.TrimSpace(page.SEO.MetaDescription); value != "" {
 		doc = replaceHeadTag(doc, "name=\"description\"", "<meta name=\"description\" content=\""+html.EscapeString(value)+"\">")
@@ -2063,12 +2092,14 @@ func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filenam
 		return
 	}
 	doc := string(raw)
+	locale := publicLocale(r)
 	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
-	page, cmsErr := a.fetchPublishedCMS(ctx, slug)
+	page, cmsErr := a.fetchPublishedCMS(ctx, slug, locale)
 	cancel()
 	if cmsErr == nil {
 		doc = renderPublishedCMSHTML(doc, page, publicOrigin(r)+r.URL.Path)
 		w.Header().Set("X-Himate-SSR", "published")
+		w.Header().Set("Content-Language", map[bool]string{true:"hu",false:"en"}[locale=="hu_HU"])
 	} else {
 		w.Header().Set("X-Himate-SSR", "static-fallback")
 	}
@@ -2100,7 +2131,7 @@ func (a *app) sitemap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
-	manifest, err := a.fetchPublishedManifest(ctx)
+	manifest, err := a.fetchPublishedManifest(ctx, publicLocale(r))
 	cancel()
 	if err != nil {
 		common.APIError(w, http.StatusServiceUnavailable, "CMS_UNAVAILABLE", "Published CMS manifest is unavailable")
