@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
@@ -272,8 +273,23 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 	case http.MethodPost:
 		var in struct {
-			Key,Label,GroupKey,Description,Currency,Version,LatestVersion,Availability,ModuleType,OwnerTeam string
-			SourceRepository,SourcePath,SourceRef,SourceCommit,ArtifactType,ArtifactReference,MinPlatformVersion string
+			Key string `json:"key"`
+			Label string `json:"label"`
+			GroupKey string `json:"group_key"`
+			Description string `json:"description"`
+			Currency string `json:"currency"`
+			Version string `json:"version"`
+			LatestVersion string `json:"latest_version"`
+			Availability string `json:"availability"`
+			ModuleType string `json:"module_type"`
+			OwnerTeam string `json:"owner_team"`
+			SourceRepository string `json:"source_repository"`
+			SourcePath string `json:"source_path"`
+			SourceRef string `json:"source_ref"`
+			SourceCommit string `json:"source_commit"`
+			ArtifactType string `json:"artifact_type"`
+			ArtifactReference string `json:"artifact_reference"`
+			MinPlatformVersion string `json:"min_platform_version"`
 			DefaultMonthlyPrice float64 `json:"default_monthly_price"`
 			Manifest map[string]any `json:"manifest"`
 		}
@@ -315,8 +331,20 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method!=http.MethodPatch{common.APIError(w,405,"METHOD","Use PATCH");return}
 	var in struct {
-		Label,Description,GroupKey,Availability,LatestVersion,ModuleType,OwnerTeam *string
-		SourceRepository,SourcePath,SourceRef,SourceCommit,ArtifactType,ArtifactReference,MinPlatformVersion *string
+		Label *string `json:"label"`
+		Description *string `json:"description"`
+		GroupKey *string `json:"group_key"`
+		Availability *string `json:"availability"`
+		LatestVersion *string `json:"latest_version"`
+		ModuleType *string `json:"module_type"`
+		OwnerTeam *string `json:"owner_team"`
+		SourceRepository *string `json:"source_repository"`
+		SourcePath *string `json:"source_path"`
+		SourceRef *string `json:"source_ref"`
+		SourceCommit *string `json:"source_commit"`
+		ArtifactType *string `json:"artifact_type"`
+		ArtifactReference *string `json:"artifact_reference"`
+		MinPlatformVersion *string `json:"min_platform_version"`
 		DefaultMonthlyPrice *float64 `json:"default_monthly_price"`
 		Manifest map[string]any `json:"manifest"`
 	}
