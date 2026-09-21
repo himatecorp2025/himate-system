@@ -339,16 +339,20 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paid := x.Status == "PAID" && evidenceCount > 0
+	agreementStatus := "DRAFT"
+	_ = a.db.QueryRow(`SELECT status FROM billing.commercial_agreements WHERE partner_id=$1`, id).Scan(&agreementStatus)
 	reference, referenceErr := a.referencePartner(r.Context(), id)
 	if referenceErr != nil {
 		common.APIError(w, 502, "PARTNER_LOOKUP", "Could not verify reference-partner waiver")
 		return
 	}
 	waived := reference && x.Status == "WAIVED" && x.Waived && strings.TrimSpace(x.WaiverReason) != ""
-	allowed := paid || waived
+	allowed := (agreementStatus == "AGREED" && paid) || waived
 	reason := ""
 	if !allowed {
-		if x.Status != "PAID" && !x.Waived {
+		if agreementStatus != "AGREED" && !waived {
+			reason = "Commercial agreement is not confirmed"
+		} else if x.Status != "PAID" && !x.Waived {
 			reason = "Initial license payment is not verified"
 		} else if x.Status == "PAID" && evidenceCount == 0 {
 			reason = "Commercial payment evidence is missing"
@@ -359,6 +363,7 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w, 200, map[string]any{
 		"partner_id": id,
 		"allowed": allowed,
+		"agreement_status": agreementStatus,
 		"payment_status": x.Status,
 		"evidence_count": evidenceCount,
 		"waived": x.Waived,
@@ -489,6 +494,18 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			common.APIError(w, 500, "DB", "Could not sync initial license")
 			return
 		}
+		termsEventAt := time.Now().UTC()
+		if err = emitBillingEventTx(r.Context(), tx,
+			fmt.Sprintf("COMMERCIAL_TERMS_UPDATED:%s:%d", id, termsEventAt.UnixNano()),
+			id, "", "COMMERCIAL_TERMS_UPDATED", termsEventAt, map[string]any{
+				"currency": next.Currency, "activation_fee": next.ActivationFee,
+				"activation_fee_waived": next.ActivationFeeWaived,
+				"base_30_day_fee": next.BaseMonthlyFee, "price_effective_from": next.PriceEffectiveFrom.Format("2006-01-02"),
+				"actor": actor, "reason": reason,
+			}); err != nil {
+			common.APIError(w, 500, "DB", "Could not record commercial terms event")
+			return
+		}
 		if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit terms update"); return }
 		t, _ := a.ensureTerms(id)
 		common.JSON(w, 200, termsMap(t))
@@ -589,9 +606,28 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 		}
 		var payment any
 		if next.PaymentDate.Valid { payment = next.PaymentDate.Time }
-		_, err = a.db.Exec(`UPDATE billing.initial_licenses SET currency=$2,required_amount=$3,paid_amount=$4,status=$5,payment_date=$6,payment_reference=$7,verified_by=$8,note=$9,waived=$10,waiver_reason=$11,updated_at=NOW() WHERE partner_id=$1`,
+		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+		if err != nil { common.APIError(w, 500, "DB", "Could not start activation payment update"); return }
+		defer tx.Rollback()
+		_, err = tx.Exec(`UPDATE billing.initial_licenses SET currency=$2,required_amount=$3,paid_amount=$4,status=$5,payment_date=$6,payment_reference=$7,verified_by=$8,note=$9,waived=$10,waiver_reason=$11,updated_at=NOW() WHERE partner_id=$1`,
 			id, next.Currency, next.Required, next.Paid, status, payment, next.Reference, next.VerifiedBy, next.Note, next.Waived, next.WaiverReason)
 		if err != nil { common.APIError(w, 500, "DB", "Could not update initial license"); return }
+		if current.Status != status || current.Paid != next.Paid {
+			eventAt := time.Now().UTC()
+			eventType := "ACTIVATION_PAYMENT_UPDATED"
+			if status == "PAID" { eventType = "LICENSE_PAID" }
+			if status == "WAIVED" { eventType = "ACTIVATION_FEE_WAIVED" }
+			if err = emitBillingEventTx(r.Context(), tx,
+				fmt.Sprintf("%s:%s:%d", eventType, id, eventAt.UnixNano()),
+				id, "", eventType, eventAt, map[string]any{
+					"required_amount": next.Required, "paid_amount": next.Paid, "currency": next.Currency,
+					"payment_reference": next.Reference, "verified_by": next.VerifiedBy, "status": status,
+				}); err != nil {
+				common.APIError(w, 500, "DB", "Could not record activation payment event")
+				return
+			}
+		}
+		if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit activation payment"); return }
 		x, _ := a.ensureLicense(id)
 		common.JSON(w, 200, licenseMap(x))
 	default:
@@ -1049,11 +1085,29 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 		uploadedBy := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 		var docID int64
 		var created time.Time
-		err := a.db.QueryRow(`INSERT INTO billing.documents(partner_id,kind,name,storage_url,note,uploaded_by,verified_by,mime_type,sha256,size_bytes)
+		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+		if err != nil { common.APIError(w, 500, "DB", "Could not start document registration"); return }
+		defer tx.Rollback()
+		err = tx.QueryRow(`INSERT INTO billing.documents(partner_id,kind,name,storage_url,note,uploaded_by,verified_by,mime_type,sha256,size_bytes)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,created_at`,
 			id, kind, strings.TrimSpace(in.Name), storageReference, strings.TrimSpace(in.Note),
 			uploadedBy, strings.TrimSpace(in.VerifiedBy), strings.TrimSpace(in.MIMEType), strings.TrimSpace(in.SHA256), in.SizeBytes).Scan(&docID, &created)
 		if err != nil { common.APIError(w, 500, "DB", "Could not register document"); return }
+		if isCommercialEvidenceKind(kind) {
+			eventType := "COMMERCIAL_EVIDENCE_REGISTERED"
+			if kind == "INVOICE" { eventType = "ACTIVATION_INVOICE_REGISTERED" }
+			if kind == "PAYMENT_EVIDENCE" || kind == "RECEIPT" { eventType = "PAYMENT_EVIDENCE_REGISTERED" }
+			if err = emitBillingEventTx(r.Context(), tx,
+				fmt.Sprintf("%s:%s:%d", eventType, id, docID),
+				id, "", eventType, created, map[string]any{
+					"document_id": docID, "kind": kind, "name": strings.TrimSpace(in.Name),
+					"storage_reference": storageReference, "uploaded_by": uploadedBy,
+				}); err != nil {
+				common.APIError(w, 500, "DB", "Could not record commercial evidence event")
+				return
+			}
+		}
+		if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit document registration"); return }
 		common.JSON(w, 201, map[string]any{"id": docID, "partner_id": id, "kind": kind, "name": strings.TrimSpace(in.Name), "storage_url": storageReference, "note": strings.TrimSpace(in.Note), "uploaded_by": uploadedBy, "created_at": created})
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or POST")
