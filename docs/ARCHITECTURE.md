@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–21
+# HIMATE control-plane architecture — START-01–22
 
 ```text
 Browser / Admin / Search crawler
@@ -219,9 +219,39 @@ Provisioning is a persisted state machine. It validates partner lifecycle and th
 
 Reference-template operations are structure-only and never copy Klavierhaus business/customer/financial/media data.
 
-## Connector Protocol
+## Connector Protocol and Klavierhaus START-22 data boundary
 
 HIMATE never performs cross-tenant SQL through the Connector. Credentials are partner+environment scoped. Raw bearer credentials are returned only on generation/rotation and only hashes are persisted.
+
+START-22 adds a language-neutral one-way Klavierhaus -> HIMATE data contract. Klavierhaus remains free to use its current Node.js/Express/SQLite implementation or a future Go backend because the integration boundary is HTTPS/JSON rather than shared code or database access.
+
+```text
+Klavierhaus business DB
+        |
+        | 38 explicit privacy-safe collectors
+        v
+Klavierhaus export adapter
+        |
+        | Connector Protocol v1
+        | bearer partner/environment identity
+        | SHA-512 body/data digest
+        | HMAC-SHA-512 signature
+        | timestamp + nonce replay protection
+        v
+HIMATE Gateway -> Connector
+        |
+        +-- retained allowlisted START-22 record (HIMATE_7Y)
+        +-- numeric KPI -> Impact (same retention/provenance)
+        +-- reconciliation -> System Health
+```
+
+The Connector owns a machine-readable registry for exactly 38 Klavierhaus modules. Unknown module/dataset pairs, unknown fields, nested/free-text payloads outside the contract and secret-bearing fields fail closed. Batch identity and partner identity cannot be supplied by Klavierhaus JSON.
+
+Signed batches are bounded to 1 MiB and 250 items. Exact retries are idempotent; conflicting reuse is rejected. Reconciliation compares per-dataset counts and aggregate SHA-512 checksums and persists SYNCED / OUT_OF_SYNC state.
+
+All accepted START-22 records use the HIMATE product policy `HIMATE_7Y`. Routed Impact observations inherit the same retention deadline. Legal hold blocks deletion; mandatory privacy deletion is synchronized from Connector to the routed Impact copy before Connector purge. The seven-year value is a HIMATE policy rather than a claim of one universal US statutory retention period.
+
+ADR-0005 records this boundary and the reasons for rejecting direct SQL access and raw Klavierhaus database replication.
 
 ## Evidence, reports and storage
 
