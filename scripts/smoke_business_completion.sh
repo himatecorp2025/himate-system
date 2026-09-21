@@ -41,6 +41,16 @@ audit="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/audit/events?action=CONTAC
 printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(x["action"]=="CONTACT_LEAD_UPDATED" and x["resource"]=="contact" for x in d["items"]),d'
 echo ok
 
+printf 'SEO Keywords draft and publication... '
+seo_payload='{"global_keywords_en":["arts","culture","cultural organizations","HIMATE"],"global_keywords_hu":["művészet","kultúra","kulturális szervezetek","HIMATE"],"organization_name":"HIMATE System","organization_url":"https://www.himate.com","default_og_image_asset_id":""}'
+seo_draft="$(curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d "$seo_payload" "$BASE_URL/api/v1/cms/seo/draft")"
+printf '%s' "$seo_draft" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "culture" in d["draft"]["global_keywords_en"]; assert "kultúra" in d["draft"]["global_keywords_hu"]'
+seo_published="$(curl -fsS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/v1/cms/seo/publish")"
+printf '%s' "$seo_published" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["version"]>=1; assert d["published"]["organization_name"]=="HIMATE System"'
+public_seo="$(curl -fsS "$BASE_URL/public/v1/cms/seo?locale=hu_HU")"
+printf '%s' "$public_seo" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["locale"]=="hu_HU"; assert "kultúra" in d["global_keywords"]; assert d["organization_url"]=="https://www.himate.com"'
+echo ok
+
 printf 'Design Guide draft and publication... '
 design_payload='{"logo_media_asset_id":"","navy":"#06172C","gold":"#D7AE62","background":"#F8F9FB","text_color":"#1F2937","heading_font":"Cormorant Garamond","body_font":"Inter","button_radius":8,"navigation":[{"label_en":"Platform","label_hu":"Platform","url":"/platform","visible":true,"sort_order":10},{"label_en":"Modules","label_hu":"Modulok","url":"/modules","visible":true,"sort_order":20},{"label_en":"Contact","label_hu":"Kapcsolat","url":"/contact","visible":true,"sort_order":30}]}'
 draft="$(curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d "$design_payload" "$BASE_URL/api/v1/cms/design/draft")"
@@ -53,13 +63,13 @@ echo ok
 
 printf 'CMS stores independent English and Hungarian variants... '
 en_page="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' \
-  -d '{"page_key":"business_locale_ci","name":"Business Locale CI EN","locale":"en_US","version":{"slug":"business-locale-ci","seo":{"title":"Business Locale CI","meta_description":"English locale acceptance page for HIMATE.","canonical":"https://www.himate.com/business-locale-ci","og_title":"","og_description":"","og_image_asset_id":"","noindex":true},"sections":[{"id":"hero","component_type":"HERO","heading":"English Locale","body":"English locale content.","media_asset_id":"","cta_label":"","cta_url":"","visible":true,"sort_order":10,"settings":{}}]}}' \
+  -d '{"page_key":"business_locale_ci","name":"Business Locale CI EN","locale":"en_US","version":{"slug":"business-locale-ci","seo":{"title":"HIMATE cultural platform for arts organizations","meta_description":"HIMATE connects arts and cultural organizations with programs, partnerships, evidence, reporting and measurable community impact on one digital platform.","keywords":["arts organizations","cultural platform","community impact"],"canonical":"https://www.himate.com/business-locale-ci","og_title":"HIMATE cultural platform","og_description":"A connected platform for arts and cultural organizations.","og_image_asset_id":"","noindex":true},"sections":[{"id":"hero","component_type":"HERO","heading":"Culture connects people and organizations","body":"Arts organizations use the HIMATE cultural platform to connect programs, partnerships, evidence, reporting, communities and measurable impact. The integrated environment supports cultural teams with structured operations while preserving their identity, context and long-term mission.","media_asset_id":"","cta_label":"","cta_url":"","visible":true,"sort_order":10,"settings":{}}]}}' \
   "$BASE_URL/api/v1/cms/pages")"
 en_id="$(printf '%s' "$en_page" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["page"]["locale"]=="en_US"; print(d["page"]["id"])')"
 test -n "$en_id"
 
 hu_page="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' \
-  -d '{"page_key":"business_locale_ci","name":"Business Locale CI HU","locale":"hu_HU","version":{"slug":"business-locale-ci","seo":{"title":"HIMATE magyar oldal","meta_description":"Magyar nyelvű HIMATE elfogadási oldal a kétnyelvű CMS teszteléséhez.","canonical":"https://www.himate.com/business-locale-ci","og_title":"","og_description":"","og_image_asset_id":"","noindex":true},"sections":[{"id":"hero","component_type":"HERO","heading":"Magyar tartalom","body":"A magyar CMS-változat külön verzióként él.","media_asset_id":"","cta_label":"Kapcsolat","cta_url":"/contact","visible":true,"sort_order":10,"settings":{}}]}}' \
+  -d '{"page_key":"business_locale_ci","name":"Business Locale CI HU","locale":"hu_HU","version":{"slug":"business-locale-ci","seo":{"title":"HIMATE kulturális platform művészeti szervezeteknek","meta_description":"A HIMATE egy digitális kulturális platform, amely programokat, partnerségeket, bizonyítékokat, jelentéseket és mérhető közösségi hatást kapcsol össze.","keywords":["kulturális platform","művészeti szervezetek","közösségi hatás"],"canonical":"https://www.himate.com/hu/business-locale-ci","og_title":"HIMATE kulturális platform","og_description":"Összekapcsolt platform művészeti és kulturális szervezeteknek.","og_image_asset_id":"","noindex":true},"sections":[{"id":"hero","component_type":"HERO","heading":"A kultúra embereket és szervezeteket kapcsol össze","body":"A művészeti szervezetek a HIMATE kulturális platformon kapcsolhatják össze programjaikat, partnerségeiket, bizonyítékaikat, jelentéseiket, közösségeiket és mérhető hatásukat. Az integrált környezet strukturált működést támogat, miközben megőrzi a kulturális identitást, a kontextust és a hosszú távú küldetést.","media_asset_id":"","cta_label":"Kapcsolat","cta_url":"/contact","visible":true,"sort_order":10,"settings":{}}]}}' \
   "$BASE_URL/api/v1/cms/pages")"
 hu_id="$(printf '%s' "$hu_page" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["page"]["locale"]=="hu_HU"; print(d["page"]["id"])')"
 test -n "$hu_id"
