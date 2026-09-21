@@ -18,9 +18,9 @@ BOOTSTRAP_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=
 BOOTSTRAP_PASSWORD="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_PASSWORD"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_PASSWORD=")))')"
 test -n "$BOOTSTRAP_EMAIL"
 test "${#BOOTSTRAP_PASSWORD}" -ge 12
-OPS_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
-FIN_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
-REPORT_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+OPS_PASSWORD="$(python3 -c 'import secrets; print("Aa1!"+secrets.token_urlsafe(24))')"
+FIN_PASSWORD="$(python3 -c 'import secrets; print("Bb2!"+secrets.token_urlsafe(24))')"
+REPORT_PASSWORD="$(python3 -c 'import secrets; print("Cc3!"+secrets.token_urlsafe(24))')"
 
 json_field() {
   python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
@@ -91,7 +91,7 @@ echo ok
 
 printf 'role catalog exposes START-19 matrix... '
 roles="$(curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/admin/roles")"
-printf '%s' "$roles" | python3 -c 'import json,sys; d=json.load(sys.stdin); m={x["key"]:x for x in d["items"]}; assert set(m)=={"platform_admin","operations_admin","finance_admin","reporting_admin"}; assert "*" in m["platform_admin"]["permissions"]; assert "billing.approve" in m["finance_admin"]["permissions"]; assert "provisioning.approve" in m["operations_admin"]["permissions"]; assert "evidence.approve" in m["reporting_admin"]["permissions"]; assert "billing.write" not in m["operations_admin"]["permissions"]'
+printf '%s' "$roles" | python3 -c 'import json,sys; d=json.load(sys.stdin); m={x["key"]:x for x in d["items"]}; assert set(m)=={"platform_admin","operations_admin","finance_admin","reporting_admin","marketing_admin"}; assert "*" in m["platform_admin"]["permissions"]; assert "billing.approve" in m["finance_admin"]["permissions"]; assert "provisioning.approve" in m["operations_admin"]["permissions"]; assert "evidence.approve" in m["reporting_admin"]["permissions"]; assert "cms.approve" in m["marketing_admin"]["permissions"]; assert "contact.write" in m["marketing_admin"]["permissions"]; assert "billing.write" not in m["marketing_admin"]["permissions"]; assert "billing.write" not in m["operations_admin"]["permissions"]'
 echo ok
 
 printf 'create scoped administrators... '
@@ -185,7 +185,7 @@ printf 'central audit records semantic, correlated old/new state... '
 sleep 1
 audit="$(curl -fsS -b "$PLATFORM_COOKIE" --get   --data-urlencode 'q=admin/users'   --data-urlencode 'from=2000-01-01T00:00:00Z'   --data-urlencode 'limit=100'   "$BASE_URL/api/v1/audit/events")"
 printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d["items"]; assert d["total"]>=4,d; assert all(x["actor_id"] for x in items); assert all(x["correlation_id"] for x in items); assert any(x["action"]=="ADMIN_USER_CREATED" and x["method"]=="POST" and x["outcome"]=="SUCCESS" for x in items); assert any(x["action"]=="ADMIN_USER_UPDATED" and x["status"]==409 and x["outcome"]=="FAILED" for x in items); changed=[x for x in items if x["action"]=="ADMIN_USER_UPDATED" and isinstance(x.get("old_state"),dict) and isinstance(x.get("new_state"),dict) and x["old_state"].get("active") is True and x["new_state"].get("active") is False]; assert changed,items'
-if printf '%s' "$audit" | grep -qi 'local-development-password'; then exit 1; fi
+if printf '%s' "$audit" | grep -qi 'Local-Development1!Password'; then exit 1; fi
 echo ok
 
 printf 'audit action and correlation filters work... '

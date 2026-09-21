@@ -45,6 +45,7 @@ type app struct {
 type seoInput struct {
 	Title string `json:"title"`
 	MetaDescription string `json:"meta_description"`
+	Keywords []string `json:"keywords"`
 	Canonical string `json:"canonical"`
 	OGTitle string `json:"og_title"`
 	OGDescription string `json:"og_description"`
@@ -71,8 +72,27 @@ type versionInput struct {
 	Sections []sectionInput `json:"sections"`
 }
 
+type navigationItem struct {
+	LabelEN string `json:"label_en"`
+	LabelHU string `json:"label_hu"`
+	URL string `json:"url"`
+	Visible bool `json:"visible"`
+	SortOrder int `json:"sort_order"`
+}
+type siteDesign struct {
+	LogoMediaAssetID string `json:"logo_media_asset_id"`
+	Navy string `json:"navy"`
+	Gold string `json:"gold"`
+	Background string `json:"background"`
+	TextColor string `json:"text_color"`
+	HeadingFont string `json:"heading_font"`
+	BodyFont string `json:"body_font"`
+	ButtonRadius int `json:"button_radius"`
+	Navigation []navigationItem `json:"navigation"`
+}
+
 type pageRow struct {
-	ID,PageKey,Name,DraftVersionID,PreviewVersionID,PublishedVersionID,PreviewTokenHash string
+	ID,PageKey,Name,Locale,DraftVersionID,PreviewVersionID,PublishedVersionID,PreviewTokenHash string
 	PreviewTokenIssuedAt sql.NullTime
 	CreatedAt,UpdatedAt time.Time
 }
@@ -109,9 +129,15 @@ func main(){
 	mux.HandleFunc("/api/v1/cms/pages/",a.page)
 	mux.HandleFunc("/api/v1/cms/media",a.mediaCollection)
 	mux.HandleFunc("/api/v1/cms/media/",a.mediaItem)
+	mux.HandleFunc("/api/v1/cms/design",a.design)
+	mux.HandleFunc("/api/v1/cms/design/",a.designAction)
+	mux.HandleFunc("/api/v1/cms/seo",a.seoSettings)
+	mux.HandleFunc("/api/v1/cms/seo/",a.seoAction)
 	mux.HandleFunc("/public/v1/cms/pages/",a.publicPage)
 	mux.HandleFunc("/public/v1/cms/media/",a.publicMedia)
 	mux.HandleFunc("/public/v1/cms/manifest",a.publicManifest)
+	mux.HandleFunc("/public/v1/cms/design",a.publicDesign)
+	mux.HandleFunc("/public/v1/cms/seo",a.publicSEOSettings)
 	mux.HandleFunc("/preview/v1/cms/pages/",a.previewPage)
 	mux.HandleFunc("/preview/v1/cms/media/",a.previewMedia)
 	common.Run(log,"cms",common.Env("PORT","10000"),common.InternalAuth(a.token,mux))
@@ -188,6 +214,34 @@ func (a *app)migrate(ctx context.Context)error{
 			`CREATE INDEX IF NOT EXISTS cms_versions_preview_slug_idx ON cms.versions(lower(slug)) WHERE state='PREVIEW'`,
 			`CREATE INDEX IF NOT EXISTS cms_versions_published_slug_idx ON cms.versions(lower(slug)) WHERE state='PUBLISHED'`,
 		}},
+		{Version:3,Name:"cms-page-locales",Statements:[]string{
+			`ALTER TABLE cms.pages ADD COLUMN IF NOT EXISTS locale TEXT NOT NULL DEFAULT 'en_US'`,
+			`ALTER TABLE cms.pages DROP CONSTRAINT IF EXISTS pages_page_key_key`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS cms_pages_key_locale_unique ON cms.pages(page_key,locale)`,
+			`CREATE INDEX IF NOT EXISTS cms_pages_locale_idx ON cms.pages(locale,name,page_key)`,
+		}},
+		{Version:4,Name:"cms-site-design",Statements:[]string{
+			`CREATE TABLE IF NOT EXISTS cms.site_design(
+				id INTEGER PRIMARY KEY CHECK(id=1),
+				draft JSONB NOT NULL DEFAULT '{}'::jsonb,
+				published JSONB NOT NULL DEFAULT '{}'::jsonb,
+				version INTEGER NOT NULL DEFAULT 0,
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				published_at TIMESTAMPTZ
+			)`,
+		}},
+		{Version:5,Name:"cms-seo-settings",Statements:[]string{
+			`CREATE TABLE IF NOT EXISTS cms.seo_settings(
+				id INTEGER PRIMARY KEY CHECK(id=1),
+				draft JSONB NOT NULL DEFAULT '{}'::jsonb,
+				published JSONB NOT NULL DEFAULT '{}'::jsonb,
+				version INTEGER NOT NULL DEFAULT 0,
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				published_at TIMESTAMPTZ
+			)`,
+		}},
 	})
 }
 
@@ -229,9 +283,9 @@ func (a *app)audit(ctx context.Context,pageID,versionID,action,actorID,corr stri
 	return err
 }
 
-func pageSelect()string{return `SELECT id,page_key,name,draft_version_id,preview_version_id,published_version_id,preview_token_hash,preview_token_issued_at,created_at,updated_at FROM cms.pages`}
+func pageSelect()string{return `SELECT id,page_key,name,locale,draft_version_id,preview_version_id,published_version_id,preview_token_hash,preview_token_issued_at,created_at,updated_at FROM cms.pages`}
 type scanner interface{Scan(...any)error}
-func scanPage(s scanner)(p pageRow,err error){err=s.Scan(&p.ID,&p.PageKey,&p.Name,&p.DraftVersionID,&p.PreviewVersionID,&p.PublishedVersionID,&p.PreviewTokenHash,&p.PreviewTokenIssuedAt,&p.CreatedAt,&p.UpdatedAt);return}
+func scanPage(s scanner)(p pageRow,err error){err=s.Scan(&p.ID,&p.PageKey,&p.Name,&p.Locale,&p.DraftVersionID,&p.PreviewVersionID,&p.PublishedVersionID,&p.PreviewTokenHash,&p.PreviewTokenIssuedAt,&p.CreatedAt,&p.UpdatedAt);return}
 func (a *app)getPage(id string)(pageRow,error){return scanPage(a.db.QueryRow(pageSelect()+" WHERE id=$1",id))}
 
 func versionSelect()string{return `SELECT id,page_id,version_no,state,slug,seo,sections,created_by,source_version_id,rollback_of_version_id,published_by,published_at,created_at FROM cms.versions`}
@@ -261,7 +315,7 @@ func (a *app)mapPage(p pageRow)map[string]any{
 	if publishedNo>0&&publishedNo>=draftNo&&publishedNo>=previewNo{state="PUBLISHED"}else if previewNo>0&&previewNo>=draftNo{state="PREVIEW"}
 	var issued any;if p.PreviewTokenIssuedAt.Valid{issued=p.PreviewTokenIssuedAt.Time.UTC()}
 	return map[string]any{
-		"id":p.ID,"page_key":p.PageKey,"name":p.Name,"workflow_state":state,
+		"id":p.ID,"page_key":p.PageKey,"name":p.Name,"locale":normalizeLocale(p.Locale),"workflow_state":state,
 		"draft_version_id":p.DraftVersionID,"draft_version_no":draftNo,
 		"preview_version_id":p.PreviewVersionID,"preview_version_no":previewNo,
 		"published_version_id":p.PublishedVersionID,"published_version_no":publishedNo,
@@ -273,11 +327,13 @@ func (a *app)mapPage(p pageRow)map[string]any{
 // Placeholder only prevents accidental use of a package-level state helper.
 // Page state is calculated through app.mapPage because it requires DB version numbers.
 func aVersionNumberPlaceholder()(int,error){return 0,fmt.Errorf("not used")}
+func normalizeLocale(value string)string{if strings.TrimSpace(value)=="hu_HU"{return "hu_HU"};return "en_US"}
 
 func normalizedInput(in versionInput)versionInput{
 	in.Slug=strings.ToLower(strings.Trim(strings.TrimSpace(in.Slug),"/"))
 	in.SEO.Title=strings.TrimSpace(in.SEO.Title)
 	in.SEO.MetaDescription=strings.TrimSpace(in.SEO.MetaDescription)
+	in.SEO.Keywords=normalizeKeywords(in.SEO.Keywords,24)
 	in.SEO.Canonical=strings.TrimSpace(in.SEO.Canonical)
 	in.SEO.OGTitle=strings.TrimSpace(in.SEO.OGTitle)
 	in.SEO.OGDescription=strings.TrimSpace(in.SEO.OGDescription)
@@ -345,6 +401,7 @@ func (a *app)validateContent(ctx context.Context,pageID string,in versionInput,f
 		if in.SEO.MetaDescription==""||len(in.SEO.MetaDescription)>180{return fmt.Errorf("meta description is required and must be at most 180 characters")}
 		if !validCanonical(in.SEO.Canonical){return fmt.Errorf("canonical must be an absolute HTTPS URL")}
 	}
+	if err:=validateKeywords(in.SEO.Keywords,24);err!=nil{return fmt.Errorf("page keywords: %w",err)}
 	if in.SEO.OGImageAssetID!=""&&!a.mediaExists(ctx,in.SEO.OGImageAssetID){return fmt.Errorf("Open Graph media asset does not exist")}
 	if in.SEO.Canonical!=""&&!validCanonical(in.SEO.Canonical){return fmt.Errorf("canonical must be an absolute HTTPS URL")}
 	if in.SEO.OGTitle!=""&&len(in.SEO.OGTitle)>100{return fmt.Errorf("Open Graph title is too long")}
@@ -383,7 +440,7 @@ func (a *app)insertVersion(ctx context.Context,tx *sql.Tx,pageID,state string,in
 func (a *app)pages(w http.ResponseWriter,r *http.Request){
 	switch r.Method{
 	case http.MethodGet:
-		rows,err:=a.db.Query(pageSelect()+" ORDER BY name,page_key")
+		rows,err:=a.db.Query(pageSelect()+" ORDER BY locale,name,page_key")
 		if err!=nil{common.APIError(w,500,"DB","Could not load CMS pages");return}
 		defer rows.Close();items:=[]map[string]any{}
 		for rows.Next(){if p,err:=scanPage(rows);err==nil{items=append(items,a.mapPage(p))}}
@@ -392,21 +449,22 @@ func (a *app)pages(w http.ResponseWriter,r *http.Request){
 		var in struct{
 			PageKey string `json:"page_key"`
 			Name string `json:"name"`
+			Locale string `json:"locale"`
 			Version versionInput `json:"version"`
 		}
 		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-		in.PageKey=strings.ToLower(strings.TrimSpace(in.PageKey));in.Name=strings.TrimSpace(in.Name);in.Version=normalizedInput(in.Version)
+		in.PageKey=strings.ToLower(strings.TrimSpace(in.PageKey));in.Name=strings.TrimSpace(in.Name);in.Locale=normalizeLocale(in.Locale);in.Version=normalizedInput(in.Version)
 		if !pageKeyPattern.MatchString(in.PageKey)||in.Name==""||len(in.Name)>120{common.APIError(w,400,"VALIDATION","page_key and a name up to 120 characters are required");return}
 		if err:=a.validateContent(r.Context(),"",in.Version,false);err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
 		tx,err:=a.db.BeginTx(r.Context(),&sql.TxOptions{});if err!=nil{common.APIError(w,500,"DB","Could not start CMS transaction");return};defer tx.Rollback()
 		pageID:=newID("cms_page_")
-		if _,err=tx.ExecContext(r.Context(),`INSERT INTO cms.pages(id,page_key,name) VALUES($1,$2,$3)`,pageID,in.PageKey,in.Name);err!=nil{
+		if _,err=tx.ExecContext(r.Context(),`INSERT INTO cms.pages(id,page_key,name,locale) VALUES($1,$2,$3,$4)`,pageID,in.PageKey,in.Name,in.Locale);err!=nil{
 			common.APIError(w,409,"PAGE_CONFLICT","CMS page key already exists");return
 		}
 		v,err:=a.insertVersion(r.Context(),tx,pageID,"DRAFT",in.Version,actor(r),"","","")
 		if err!=nil{common.APIError(w,500,"DB","Could not create CMS draft");return}
 		if _,err=tx.ExecContext(r.Context(),`UPDATE cms.pages SET draft_version_id=$2,updated_at=NOW() WHERE id=$1`,pageID,v.ID);err!=nil{common.APIError(w,500,"DB","Could not activate CMS draft");return}
-		if err=a.auditTx(r.Context(),tx,pageID,v.ID,"PAGE_CREATED",actor(r),correlationID(r),map[string]any{},map[string]any{"page_key":in.PageKey,"name":in.Name,"version":decodeVersion(v)});err!=nil{common.APIError(w,500,"DB","Could not audit CMS page");return}
+		if err=a.auditTx(r.Context(),tx,pageID,v.ID,"PAGE_CREATED",actor(r),correlationID(r),map[string]any{},map[string]any{"page_key":in.PageKey,"name":in.Name,"locale":in.Locale,"version":decodeVersion(v)});err!=nil{common.APIError(w,500,"DB","Could not audit CMS page");return}
 		if err=tx.Commit();err!=nil{common.APIError(w,500,"DB","Could not commit CMS page");return}
 		p,_:=a.getPage(pageID);common.JSON(w,201,map[string]any{"page":a.mapPage(p),"draft":decodeVersion(v)})
 	default:common.APIError(w,405,"METHOD","Use GET or POST")
@@ -490,7 +548,7 @@ func (a *app)rotatePreviewToken(w http.ResponseWriter,r *http.Request,p pageRow)
 func (a *app)publishedConflict(ctx context.Context,pageID string,in versionInput)error{
 	var id string
 	err:=a.db.QueryRowContext(ctx,`SELECT p.id FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id
-		WHERE p.id<>$1 AND (lower(v.slug)=lower($2) OR lower(v.seo->>'canonical')=lower($3)) LIMIT 1`,pageID,in.Slug,in.SEO.Canonical).Scan(&id)
+		WHERE p.id<>$1 AND p.locale=(SELECT locale FROM cms.pages WHERE id=$1) AND (lower(v.slug)=lower($2) OR lower(v.seo->>'canonical')=lower($3)) LIMIT 1`,pageID,in.Slug,in.SEO.Canonical).Scan(&id)
 	if err==nil{return fmt.Errorf("published slug or canonical conflicts with another page")}
 	if err==sql.ErrNoRows{return nil}
 	return err
@@ -604,26 +662,31 @@ func (a *app)publicPage(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet&&r.Method!=http.MethodHead{common.APIError(w,405,"METHOD","Use GET or HEAD");return}
 	slug:=strings.ToLower(strings.Trim(strings.TrimPrefix(r.URL.Path,"/public/v1/cms/pages/"),"/"))
 	if slug==""{common.APIError(w,404,"NOT_FOUND","Published page not found");return}
-	var versionID string
-	err:=a.db.QueryRow(`SELECT p.published_version_id FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id WHERE lower(v.slug)=lower($1)`,slug).Scan(&versionID)
+	locale:=normalizeLocale(r.URL.Query().Get("locale"))
+	var versionID,pageKey string
+	err:=a.db.QueryRow(`SELECT p.published_version_id,p.page_key FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id WHERE lower(v.slug)=lower($1) AND p.locale=$2`,slug,locale).Scan(&versionID,&pageKey)
 	if err!=nil{common.APIError(w,404,"NOT_FOUND","Published page not found");return}
 	v,err:=a.getVersion(versionID);if err!=nil||v.State!="PUBLISHED"{common.APIError(w,404,"NOT_FOUND","Published page not found");return}
 	w.Header().Set("Cache-Control","public, max-age=60, stale-while-revalidate=300")
-	common.JSON(w,200,publicVersion(v,true))
+	out:=publicVersion(v,true);out["locale"]=locale
+	a.enrichPublicSEO(r.Context(),pageKey,locale,out)
+	if r.Method==http.MethodHead{w.WriteHeader(http.StatusOK);return}
+	common.JSON(w,200,out)
 }
 
 func (a *app)previewPage(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet&&r.Method!=http.MethodHead{common.APIError(w,405,"METHOD","Use GET or HEAD");return}
 	slug:=strings.ToLower(strings.Trim(strings.TrimPrefix(r.URL.Path,"/preview/v1/cms/pages/"),"/"))
 	rawToken:=strings.TrimSpace(r.URL.Query().Get("token"))
-	var p pageRow
-	err:=a.db.QueryRow(pageSelect()+` WHERE preview_token_hash=$2 AND preview_version_id IN (SELECT id FROM cms.versions WHERE lower(slug)=lower($1) AND state='PREVIEW')`,slug,tokenHash(rawToken)).
-		Scan(&p.ID,&p.PageKey,&p.Name,&p.DraftVersionID,&p.PreviewVersionID,&p.PublishedVersionID,&p.PreviewTokenHash,&p.PreviewTokenIssuedAt,&p.CreatedAt,&p.UpdatedAt)
+	p,err:=scanPage(a.db.QueryRow(pageSelect()+` WHERE preview_token_hash=$2 AND preview_version_id IN (SELECT id FROM cms.versions WHERE lower(slug)=lower($1) AND state='PREVIEW')`,slug,tokenHash(rawToken)))
 	if err!=nil||!tokenMatches(rawToken,p.PreviewTokenHash){common.APIError(w,404,"NOT_FOUND","Preview not found");return}
 	v,err:=a.getVersion(p.PreviewVersionID);if err!=nil{common.APIError(w,404,"NOT_FOUND","Preview not found");return}
 	w.Header().Set("Cache-Control","private, no-store")
 	w.Header().Set("X-Robots-Tag","noindex, nofollow")
-	common.JSON(w,200,publicVersion(v,true))
+	out:=publicVersion(v,true);out["locale"]=normalizeLocale(p.Locale)
+	a.enrichPublicSEO(r.Context(),p.PageKey,p.Locale,out)
+	if r.Method==http.MethodHead{w.WriteHeader(http.StatusOK);return}
+	common.JSON(w,200,out)
 }
 
 func safeFilename(name string)string{
@@ -730,7 +793,10 @@ func (a *app)mediaItem(w http.ResponseWriter,r *http.Request){
 func (a *app)publicMedia(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet&&r.Method!=http.MethodHead{common.APIError(w,405,"METHOD","Use GET or HEAD");return}
 	id:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/public/v1/cms/media/"),"/")
-	var exists bool;_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cms.published_media_refs WHERE media_id=$1)`,id).Scan(&exists)
+	var exists bool;_ = a.db.QueryRow(`SELECT
+		EXISTS(SELECT 1 FROM cms.published_media_refs WHERE media_id=$1)
+		OR EXISTS(SELECT 1 FROM cms.site_design WHERE id=1 AND published->>'logo_media_asset_id'=$1)
+		OR EXISTS(SELECT 1 FROM cms.seo_settings WHERE id=1 AND published->>'default_og_image_asset_id'=$1)`,id).Scan(&exists)
 	if !exists{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	w.Header().Set("Cache-Control","public, max-age=3600, immutable");a.serveMedia(w,r,m,true)
@@ -746,9 +812,7 @@ func (a *app)previewMedia(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet&&r.Method!=http.MethodHead{common.APIError(w,405,"METHOD","Use GET or HEAD");return}
 	id:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/preview/v1/cms/media/"),"/")
 	slug:=strings.ToLower(strings.TrimSpace(r.URL.Query().Get("slug")));rawToken:=strings.TrimSpace(r.URL.Query().Get("token"))
-	var p pageRow
-	err:=a.db.QueryRow(pageSelect()+` WHERE preview_token_hash=$2 AND preview_version_id IN (SELECT id FROM cms.versions WHERE lower(slug)=lower($1) AND state='PREVIEW')`,slug,tokenHash(rawToken)).
-		Scan(&p.ID,&p.PageKey,&p.Name,&p.DraftVersionID,&p.PreviewVersionID,&p.PublishedVersionID,&p.PreviewTokenHash,&p.PreviewTokenIssuedAt,&p.CreatedAt,&p.UpdatedAt)
+	p,err:=scanPage(a.db.QueryRow(pageSelect()+` WHERE preview_token_hash=$2 AND preview_version_id IN (SELECT id FROM cms.versions WHERE lower(slug)=lower($1) AND state='PREVIEW')`,slug,tokenHash(rawToken)))
 	if err!=nil||!tokenMatches(rawToken,p.PreviewTokenHash){common.APIError(w,404,"NOT_FOUND","Preview media not found");return}
 	v,err:=a.getVersion(p.PreviewVersionID);if err!=nil||!versionReferencesMedia(v,id){common.APIError(w,404,"NOT_FOUND","Preview media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Preview media not found");return}
@@ -757,15 +821,16 @@ func (a *app)previewMedia(w http.ResponseWriter,r *http.Request){
 
 func (a *app)publicManifest(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+	locale:=normalizeLocale(r.URL.Query().Get("locale"))
 	rows,err:=a.db.Query(`SELECT p.id,p.page_key,p.name,v.id,v.page_id,v.version_no,v.state,v.slug,v.seo,v.sections,v.created_by,v.source_version_id,v.rollback_of_version_id,v.published_by,v.published_at,v.created_at
-		FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id ORDER BY v.slug`)
+		FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id WHERE p.locale=$1 ORDER BY v.slug`,locale)
 	if err!=nil{common.APIError(w,500,"DB","Could not load CMS manifest");return};defer rows.Close()
 	items:=[]map[string]any{}
 	for rows.Next(){
 		var pID,key,name string;v,err:=scanVersionWithPrefix(rows,&pID,&key,&name);if err!=nil{continue}
 		var seo seoInput;_ = json.Unmarshal(v.SEO,&seo)
 		_ = pID; _ = key; _ = name
-		items=append(items,map[string]any{"slug":v.Slug,"canonical":seo.Canonical,"title":seo.Title,"noindex":seo.NoIndex,"published_version":v.VersionNo,"published_at":timeValue(v.PublishedAt)})
+		items=append(items,map[string]any{"slug":v.Slug,"locale":locale,"canonical":seo.Canonical,"title":seo.Title,"noindex":seo.NoIndex,"published_version":v.VersionNo,"published_at":timeValue(v.PublishedAt)})
 	}
 	w.Header().Set("Cache-Control","public, max-age=60");common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 }

@@ -13,8 +13,8 @@ trap 'rm -f "$OWNER_COOKIE" "$USER_COOKIE" "$STALE_COOKIE" "$BODY"' EXIT
 COMPOSE_JSON="$(docker compose config --format json)"
 OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
 OWNER_PASSWORD="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_PASSWORD"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_PASSWORD=")))')"
-USER_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
-USER_PASSWORD_NEW="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+USER_PASSWORD="$(python3 -c 'import secrets; print("Aa1!"+secrets.token_urlsafe(24))')"
+USER_PASSWORD_NEW="$(python3 -c 'import secrets; print("Bb2!"+secrets.token_urlsafe(24))')"
 
 login() {
   cookie="$1"; email="$2"; password="$3"
@@ -67,6 +67,16 @@ echo ok
 
 printf 'non-owner cannot manage users... '
 test "$(status "$USER_COOKIE" POST "/api/v1/admin/users" -H 'Content-Type: application/json' -d "$create_payload")" = "403"
+echo ok
+
+printf 'weak password is rejected... '
+weak_payload="$(python3 - "$USER_PASSWORD" <<'PY'
+import json,sys
+print(json.dumps({"current_password":sys.argv[1],"new_password":"onlylowercase1234"}))
+PY
+)"
+test "$(status "$USER_COOKIE" POST "/api/v1/profile/password" -H 'Content-Type: application/json' -d "$weak_payload")" = "400"
+grep -q 'lowercase, uppercase, a number and a special character' "$BODY"
 echo ok
 
 printf 'password change rotates session version... '

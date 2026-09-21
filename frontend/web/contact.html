@@ -18,6 +18,7 @@
   const button = document.getElementById('contact-submit');
   const status = document.getElementById('contact-status');
   if (!form || !button || !status) return;
+  const t = (value) => typeof window.himateTranslate === 'function' ? window.himateTranslate(value) : value;
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -35,8 +36,8 @@
     };
 
     button.disabled = true;
-    button.textContent = 'Sending…';
-    status.textContent = 'Sending your inquiry…';
+    button.textContent = t('Sending…');
+    status.textContent = t('Sending your inquiry…');
 
     try {
       const response = await fetch('/api/v1/public/contact', {
@@ -48,18 +49,18 @@
       if (!response.ok) {
         const message = result && result.error && result.error.message
           ? result.error.message
-          : 'We could not send your inquiry. Please try again.';
+          : t('We could not send your inquiry. Please try again.');
         throw new Error(message);
       }
       form.reset();
       status.className = 'contact-status success';
-      status.textContent = 'Thank you. Your inquiry has been received.';
+      status.textContent = t('Thank you. Your inquiry has been received.');
     } catch (error) {
       status.className = 'contact-status error';
-      status.textContent = error && error.message ? error.message : 'We could not send your inquiry. Please try again.';
+      status.textContent = error && error.message ? error.message : t('We could not send your inquiry. Please try again.');
     } finally {
       button.disabled = false;
-      button.textContent = 'Send inquiry →';
+      button.textContent = t('Send inquiry →');
     }
   });
 })();

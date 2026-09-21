@@ -13,8 +13,8 @@ trap 'rm -f "$OWNER_COOKIE" "$OPS_COOKIE" "$FIN_COOKIE" "$BODY"' EXIT
 COMPOSE_JSON="$(docker compose config --format json)"
 OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
 OWNER_PASSWORD="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_PASSWORD"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_PASSWORD=")))')"
-OPS_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
-FIN_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+OPS_PASSWORD="$(python3 -c 'import secrets; print("Aa1!"+secrets.token_urlsafe(24))')"
+FIN_PASSWORD="$(python3 -c 'import secrets; print("Bb2!"+secrets.token_urlsafe(24))')"
 
 json_field() {
   python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"

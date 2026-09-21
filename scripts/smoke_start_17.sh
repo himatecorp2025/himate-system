@@ -9,7 +9,7 @@ rm -f "$COOKIE_JAR" "$BODY" "$HEADERS"
 trap 'rm -f "$COOKIE_JAR" "$BODY" "$HEADERS"' EXIT
 
 printf 'login... '
-curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"email":"admin@example.com","password":"local-development-password"}'   "$BASE_URL/api/v1/auth/login" >/dev/null
+curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"email":"admin@example.com","password":"Local-Development1!Password"}'   "$BASE_URL/api/v1/auth/login" >/dev/null
 echo ok
 
 printf 'create and publish CMS-backed platform page... '

@@ -320,7 +320,7 @@ services:
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456
       HIMATE_BOOTSTRAP_ADMIN_NAME: HIMATE Administrator
       HIMATE_BOOTSTRAP_ADMIN_EMAIL: admin@example.com
-      HIMATE_BOOTSTRAP_ADMIN_PASSWORD: local-development-password
+      HIMATE_BOOTSTRAP_ADMIN_PASSWORD: Local-Development1!Password
       HIMATE_SESSION_TTL_HOURS: 8
       COOKIE_SECURE: "false"
       PARTNERS_HOSTPORT: partners:10000

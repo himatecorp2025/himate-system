@@ -50,7 +50,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: LText(message),
         behavior: SnackBarBehavior.floating,
         backgroundColor: failure ? brandDanger : brandSuccess,
       ),
@@ -137,16 +137,16 @@ class _BackupsPanelState extends State<BackupsPanel> {
             children: [
               DropdownButtonFormField<String>(
                 value: selected,
-                decoration: const InputDecoration(labelText: 'Partner'),
+                decoration: InputDecoration(labelText: uiLiteral('Partner')),
                 items: [
-                  for (final id in ids) DropdownMenuItem(value: id, child: Text(id)),
+                  for (final id in ids) DropdownMenuItem(value: id, child: LText(id)),
                 ],
                 onChanged: (value) {
                   if (value != null) setDialogState(() => selected = value);
                 },
               ),
               const SizedBox(height: 12),
-              const Text(
+              const LText(
                 'Every successful restore point automatically queues a real restore test from the offsite copy.',
                 style: TextStyle(color: brandTextSoft, fontSize: 11, height: 1.45),
               ),
@@ -314,31 +314,31 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 first: TextField(
                   controller: retention,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Retention days'),
+                  decoration: InputDecoration(labelText: uiLiteral('Retention days')),
                 ),
                 second: TextField(
                   controller: maxPoints,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Max restore points'),
+                  decoration: InputDecoration(labelText: uiLiteral('Max restore points')),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: schedule,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Automatic backup interval (hours)'),
+                decoration: InputDecoration(labelText: uiLiteral('Automatic backup interval (hours)')),
               ),
               const SizedBox(height: 8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: enabled,
-                title: const Text('Automatic backups enabled'),
-                subtitle: const Text('The durable scheduler queues a restore point when the interval is due.'),
+                title: const LText('Automatic backups enabled'),
+                subtitle: const LText('The durable scheduler queues a restore point when the interval is due.'),
                 onChanged: (value) => setDialogState(() => enabled = value),
               ),
               if (dialogError != null) ...[
                 const SizedBox(height: 8),
-                Text(dialogError!, style: const TextStyle(color: brandDanger, fontWeight: FontWeight.w600)),
+                LText(dialogError!, style: const TextStyle(color: brandDanger, fontWeight: FontWeight.w600)),
               ],
             ],
           ),
@@ -397,7 +397,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(partnerId, style: const TextStyle(color: brandNavy, fontSize: 14, fontWeight: FontWeight.w700)),
+                      LText(partnerId, style: const TextStyle(color: brandNavy, fontSize: 14, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 3),
                       SelectableText(
                         pointId.isEmpty ? 'No restore point yet' : pointId,
@@ -429,17 +429,17 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 OutlinedButton.icon(
                   onPressed: isBusy ? null : () => _editPolicy(partnerId),
                   icon: const Icon(Icons.policy_outlined, size: 17),
-                  label: const Text('Policy'),
+                  label: const LText('Policy'),
                 ),
                 FilledButton.icon(
                   onPressed: isBusy ? null : () => _createRestorePoint(partnerId),
                   icon: const Icon(Icons.backup_outlined, size: 17),
-                  label: const Text('Create restore point'),
+                  label: const LText('Create restore point'),
                 ),
                 OutlinedButton.icon(
                   onPressed: isBusy || backupStatus != 'READY' || pointId.isEmpty ? null : () => _runRestoreTest(partnerId),
                   icon: const Icon(Icons.restore_page_outlined, size: 17),
-                  label: const Text('Run restore test'),
+                  label: const LText('Run restore test'),
                 ),
               ],
             ),
@@ -484,12 +484,12 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 icon: refreshing
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.refresh_rounded, size: 17),
-                label: const Text('Refresh'),
+                label: const LText('Refresh'),
               ),
               FilledButton.icon(
                 onPressed: partnerIds.isEmpty ? null : () => _createRestorePoint(),
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('New restore point'),
+                label: const LText('New restore point'),
               ),
             ],
           ),

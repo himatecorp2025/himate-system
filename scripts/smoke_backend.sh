@@ -24,7 +24,7 @@ test "$code" = "401"
 echo ok
 
 printf 'login... '
-curl -fsS -c "$COOKIE_JAR"   -H 'Content-Type: application/json'   -d '{"email":"admin@example.com","password":"local-development-password"}'   "$BASE_URL/api/v1/auth/login" >/dev/null
+curl -fsS -c "$COOKIE_JAR"   -H 'Content-Type: application/json'   -d '{"email":"admin@example.com","password":"Local-Development1!Password"}'   "$BASE_URL/api/v1/auth/login" >/dev/null
 curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/auth/me" | grep -q 'admin@example.com'
 echo ok
 

@@ -25,3 +25,23 @@ func TestClientIPUsesForwardedFor(t *testing.T) {
 		t.Fatalf("unexpected client ip %q", got)
 	}
 }
+
+func TestNormalizeLeadStatus(t *testing.T) {
+	for _, value := range []string{"NEW", "in_progress", " contacted ", "CLOSED"} {
+		if normalizeLeadStatus(value) == "" {
+			t.Fatalf("expected %q to be accepted", value)
+		}
+	}
+	for _, value := range []string{"", "OPEN", "SPAM", "123"} {
+		if normalizeLeadStatus(value) != "" {
+			t.Fatalf("expected %q to be rejected", value)
+		}
+	}
+}
+
+func TestEnvIntValueBounds(t *testing.T) {
+	if got := envIntValue("", 50, 1, 200); got != 50 { t.Fatalf("default: %d", got) }
+	if got := envIntValue("0", 50, 1, 200); got != 1 { t.Fatalf("minimum: %d", got) }
+	if got := envIntValue("999", 50, 1, 200); got != 200 { t.Fatalf("maximum: %d", got) }
+	if got := envIntValue("75", 50, 1, 200); got != 75 { t.Fatalf("value: %d", got) }
+}

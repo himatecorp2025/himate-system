@@ -24,6 +24,22 @@ func TestPasswordHashRoundTrip(t *testing.T) {
 	}
 }
 
+
+func TestPasswordComplexityPolicy(t *testing.T) {
+	valid := []string{"Strong-Password1!", "Longer_Passphrase9#"}
+	for _, value := range valid {
+		if message := passwordPolicyError(value); message != "" {
+			t.Fatalf("expected %q to satisfy policy: %s", value, message)
+		}
+	}
+	invalid := []string{"Short1!", "alllowercase1!", "ALLUPPERCASE1!", "NoNumberHere!", "NoSpecial1234"}
+	for _, value := range invalid {
+		if message := passwordPolicyError(value); message == "" {
+			t.Fatalf("expected %q to be rejected", value)
+		}
+	}
+}
+
 func TestRequestOriginProtection(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "https://himate.example/api/v1/partners", nil)
 	req.Host = "himate.example"
@@ -113,6 +129,13 @@ func TestSTART19RolePermissionMatrix(t *testing.T) {
 		{"reporting_admin", "evidence.approve", true},
 		{"reporting_admin", "billing.read", false},
 		{"reporting_admin", "administration.read", false},
+		{"marketing_admin", "cms.read", true},
+		{"marketing_admin", "cms.write", true},
+		{"marketing_admin", "cms.approve", true},
+		{"marketing_admin", "contact.read", true},
+		{"marketing_admin", "contact.write", true},
+		{"marketing_admin", "billing.read", false},
+		{"marketing_admin", "administration.read", false},
 	}
 	for _, tc := range tests {
 		u := user{Roles: []string{tc.role}}
@@ -142,6 +165,13 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		{http.MethodPatch, "/api/v1/evidence/ev_1", "evidence.approve"},
 		{http.MethodPost, "/api/v1/cms/pages/page_1/publish", "cms.approve"},
 		{http.MethodPost, "/api/v1/cms/pages/page_1/rollback", "cms.approve"},
+		{http.MethodPut, "/api/v1/cms/design/draft", "cms.write"},
+		{http.MethodPost, "/api/v1/cms/design/publish", "cms.approve"},
+		{http.MethodGet, "/api/v1/contact/inquiries", "contact.read"},
+		{http.MethodPatch, "/api/v1/contact/inquiries/inq_1", "contact.write"},
+		{http.MethodGet, "/api/v1/cms/seo/audit", "cms.read"},
+		{http.MethodPut, "/api/v1/cms/seo/draft", "cms.write"},
+		{http.MethodPost, "/api/v1/cms/seo/publish", "cms.approve"},
 		{http.MethodGet, "/api/v1/admin/users", "administration.read"},
 		{http.MethodPost, "/api/v1/admin/users", "administration.approve"},
 		{http.MethodPatch, "/api/v1/admin/users/usr_1", "administration.approve"},
@@ -180,6 +210,8 @@ func TestAuditResourceClassification(t *testing.T) {
 		{"/api/v1/billing/partners/ptr_456/terms", "billing", "ptr_456"},
 		{"/api/v1/connectors/ptr_789/credential", "connectors", "ptr_789"},
 		{"/api/v1/cms/pages/page_1/publish", "cms", ""},
+		{"/api/v1/cms/design/publish", "cms", ""},
+		{"/api/v1/contact/inquiries/inq_1", "contact", ""},
 		{"/api/v1/impact/values?partner_id=ptr_900", "impact", "ptr_900"},
 		{"/api/v1/modules/demo", "catalog", ""},
 	}
@@ -438,6 +470,78 @@ func TestProfileAuditActions(t *testing.T) {
 		req := httptest.NewRequest(tc.method, "https://himate.example"+tc.path, nil)
 		if got := auditAction(req); got != tc.want {
 			t.Fatalf("%s %s: expected %s, got %s", tc.method, tc.path, tc.want, got)
+		}
+	}
+}
+
+func TestPublicLocaleNormalization(t *testing.T) {
+	tests := map[string]string{
+		"": "en_US",
+		"en": "en_US",
+		"en-US": "en_US",
+		"hu": "hu_HU",
+		"hu_HU": "hu_HU",
+		"hu-HU": "hu_HU",
+	}
+	for value, want := range tests {
+		if got := normalizePublicLocale(value); got != want {
+			t.Fatalf("%q => %q, want %q", value, got, want)
+		}
+	}
+}
+
+func TestPublishedSEOHeadRendering(t *testing.T) {
+	doc := "<html lang=\"en\"><head><title>Static title</title><meta name=\"description\" content=\"static\"><meta name=\"robots\" content=\"index,follow\"></head><body></body></html>"
+	page := publicCMSPage{
+		Locale: "hu_HU",
+		SEO: publicCMSSEO{
+			Title: "HIMATE magyar SEO oldal",
+			MetaDescription: "Magyar SEO leírás a szerveroldali renderelés teszteléséhez.",
+			Canonical: "https://www.himate.com/seo-test-hu",
+			Keywords: []string{"kultúra", "művészet", "HIMATE"},
+			JSONLD: map[string]any{"@context":"https://schema.org","@type":"WebPage","inLanguage":"hu-HU"},
+		},
+		Alternates: map[string]string{
+			"en_US": "https://www.himate.com/seo-test",
+			"hu_HU": "https://www.himate.com/seo-test-hu",
+		},
+	}
+	rendered := renderPublishedCMSHTML(doc, page, "https://www.himate.com/seo-test-hu")
+	for _, required := range []string{
+		"<html lang=\"hu\">",
+		"name=\"keywords\" content=\"kultúra, művészet, HIMATE\"",
+		"application/ld+json",
+		"hreflang=\"en-US\"",
+		"hreflang=\"hu-HU\"",
+		"hreflang=\"x-default\"",
+	} {
+		if !strings.Contains(rendered, required) {
+			t.Fatalf("rendered SEO head missing %q: %s", required, rendered)
+		}
+	}
+}
+
+func TestGlobalSEOFallbackRendering(t *testing.T) {
+	doc := "<html lang=\"en\"><head><title>Static Modules</title><meta name=\"description\" content=\"Static description\"></head><body></body></html>"
+	settings := publicSEOSettings{
+		Locale:                "hu_HU",
+		Version:               3,
+		GlobalKeywords:        []string{"művészet", "kultúra", "HIMATE"},
+		OrganizationName:      "HIMATE System",
+		OrganizationURL:       "https://www.himate.com",
+		DefaultOGImageAssetID: "cms_media_123",
+	}
+	rendered := renderGlobalSEOHTML(doc, settings)
+	for _, required := range []string{
+		"name=\"keywords\" content=\"művészet, kultúra, HIMATE\"",
+		"property=\"og:image\" content=\"/public/v1/cms/media/cms_media_123\"",
+		"application/ld+json",
+		"data-himate-seo=\"organization\"",
+		"\"@type\":\"Organization\"",
+		"\"name\":\"HIMATE System\"",
+	} {
+		if !strings.Contains(rendered, required) {
+			t.Fatalf("global SEO fallback output missing %q: %s", required, rendered)
 		}
 	}
 }

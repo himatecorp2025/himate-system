@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' as material show Text;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -14,6 +15,9 @@ import 'package:intl/date_symbol_data_local.dart' show initializeDateFormatting;
 import 'package:google_fonts/google_fonts.dart';
 
 part 'cms_page.dart';
+part 'contact_leads.dart';
+part 'design_guide.dart';
+part 'seo_panel.dart';
 part 'administration_rbac.dart';
 part 'brand_assets.dart';
 part 'backups_panel.dart';
@@ -250,6 +254,8 @@ class Api {
       add('/api/v1/dashboard');
     } else if (path.startsWith('/api/v1/cms')) {
       add('/api/v1/cms');
+    } else if (path.startsWith('/api/v1/contact/inquiries')) {
+      add('/api/v1/contact/inquiries');
     } else if (path.startsWith('/api/v1/backups')) {
       add('/api/v1/backups');
       add('/api/v1/system-health');
@@ -489,6 +495,9 @@ class _HimateAppState extends State<HimateApp> {
       paths.add('/api/v1/cms/pages');
       paths.add('/api/v1/cms/media');
     }
+    if (_can('contact.read')) {
+      paths.add(Uri(path: '/api/v1/contact/inquiries', queryParameters: const {'limit': '25', 'offset': '0'}).toString());
+    }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read')) {
       if (_can('health.read')) paths.add('/api/v1/system-health/snapshot');
       if (_can('provisioning.read')) paths.add('/api/v1/provisioning/jobs');
@@ -629,6 +638,7 @@ class _HimateAppState extends State<HimateApp> {
 
   @override
   Widget build(BuildContext context) {
+    HimateI18n.activeLocale = effectiveLocaleCode;
     final path = Uri.base.path;
     final initial = path == '/app' || path.startsWith('/app/') ? '/app' : '/login';
 
@@ -752,13 +762,13 @@ class _SignedInRedirect extends StatelessWidget {
                 children: [
                   const HimateLogo(width: 210),
                   const SizedBox(height: 22),
-                  const Text(
+                  const LText(
                     'You are already signed in.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  const LText(
                     'Continue to the HIMATE administration platform.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: brandTextSoft),
@@ -767,7 +777,7 @@ class _SignedInRedirect extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: onContinue,
                     icon: const Icon(Icons.arrow_forward_rounded),
-                    label: const Text('Open admin platform'),
+                    label: const LText('Open admin platform'),
                   ),
                 ],
               ),
@@ -826,7 +836,7 @@ class _LoginPageState extends State<LoginPage> {
 
   void info(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: brandNavy),
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandNavy),
     );
   }
 
@@ -916,8 +926,8 @@ class _LoginLanguageSelector extends StatelessWidget {
             iconEnabledColor: brandGold,
             style: const TextStyle(color: brandWhite, fontWeight: FontWeight.w700),
             items: [
-              DropdownMenuItem(value: 'en_US', child: Text(HimateI18n.text('en_US', 'englishUS'))),
-              DropdownMenuItem(value: 'hu_HU', child: Text(HimateI18n.text('hu_HU', 'hungarian'))),
+              DropdownMenuItem(value: 'en_US', child: LText(HimateI18n.text('en_US', 'englishUS'))),
+              DropdownMenuItem(value: 'hu_HU', child: LText(HimateI18n.text('hu_HU', 'hungarian'))),
             ],
             onChanged: (next) {
               if (next != null) onChanged(next);
@@ -974,7 +984,7 @@ class _DesktopLoginComposition extends StatelessWidget {
               children: [
                 HimateLogo(onDark: true, width: logoWidth),
                 const Spacer(),
-                Text(
+                LText(
                   'Culture\nConnects\nPeople',
                   style: GoogleFonts.cormorantGaramond(
                     color: brandWhite,
@@ -1063,7 +1073,7 @@ class _CompactLoginComposition extends StatelessWidget {
         children: [
           const HimateLogo(onDark: true, width: 188),
           SizedBox(height: narrow ? 58 : 90),
-          Text(
+          LText(
             'Culture Connects People',
             style: GoogleFonts.cormorantGaramond(
               color: brandWhite,
@@ -1154,13 +1164,13 @@ class _LoginCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          LText(
             tr(context, 'welcomeBack'),
             textAlign: TextAlign.center,
             style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 39, fontWeight: FontWeight.w700, height: 1),
           ),
           const SizedBox(height: 8),
-          Text(tr(context, 'signInSubtitle'), textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 15.5)),
+          LText(tr(context, 'signInSubtitle'), textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 15.5)),
           const SizedBox(height: 28),
           TextField(
             controller: email,
@@ -1193,14 +1203,14 @@ class _LoginCard extends StatelessWidget {
                 height: 34,
                 child: Row(children: [
                   Checkbox(value: remember, onChanged: onRemember, visualDensity: VisualDensity.compact),
-                  Text(tr(context, 'rememberMe'), style: GoogleFonts.inter(color: brandNavy, fontSize: 14.2)),
+                  LText(tr(context, 'rememberMe'), style: GoogleFonts.inter(color: brandNavy, fontSize: 14.2)),
                 ]),
               ),
               const Spacer(),
               TextButton(
                 onPressed: onForgot,
                 style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 5)),
-                child: Text(tr(context, 'forgotPassword'), style: GoogleFonts.inter(fontSize: 14.2, fontWeight: FontWeight.w600)),
+                child: LText(tr(context, 'forgotPassword'), style: GoogleFonts.inter(fontSize: 14.2, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -1212,7 +1222,7 @@ class _LoginCard extends StatelessWidget {
               child: Row(children: [
                 const Icon(Icons.error_outline_rounded, color: brandDanger, size: 18),
                 const SizedBox(width: 8),
-                Expanded(child: Text(error!, style: GoogleFonts.inter(color: brandDanger, fontSize: 11.5))),
+                Expanded(child: LText(error!, style: GoogleFonts.inter(color: brandDanger, fontSize: 11.5))),
               ]),
             ),
           ],
@@ -1225,7 +1235,7 @@ class _LoginCard extends StatelessWidget {
               child: busy
                   ? const SizedBox(key: ValueKey('busy'), width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.1, color: brandWhite))
                   : Row(key: const ValueKey('ready'), mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Text(tr(context, 'signIn'), style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                      LText(tr(context, 'signIn'), style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                       const SizedBox(width: 16),
                       const Icon(Icons.arrow_forward_rounded, size: 21),
                     ]),
@@ -1234,7 +1244,7 @@ class _LoginCard extends StatelessWidget {
           const SizedBox(height: 18),
           Row(children: [
             const Expanded(child: Divider(color: brandMist)),
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('or continue with', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 13.0))),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: LText('or continue with', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 13.0))),
             const Expanded(child: Divider(color: brandMist)),
           ]),
           const SizedBox(height: 18),
@@ -1242,13 +1252,13 @@ class _LoginCard extends StatelessWidget {
             onPressed: onSso,
             style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
             icon: const Icon(Icons.account_balance_outlined, size: 21),
-            label: Text('Sign in with SSO', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+            label: LText('Sign in with SSO', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
           ),
           const SizedBox(height: 24),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.verified_user_outlined, color: brandGold, size: 17),
             const SizedBox(width: 7),
-            Text('Secure  •  Trusted  •  Built for a brighter tomorrow', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 11.8)),
+            LText('Secure  •  Trusted  •  Built for a brighter tomorrow', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 11.8)),
           ]),
         ],
       ),
@@ -1285,7 +1295,7 @@ class HimateLogo extends StatelessWidget {
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
       errorBuilder: (_, __, ___) => Center(
-        child: Text(
+        child: LText(
           compact ? 'H' : 'HIMATE',
           style: TextStyle(
             fontSize: compact ? targetHeight * .48 : targetHeight * .34,
@@ -1337,7 +1347,7 @@ class BrandMark extends StatelessWidget {
             border: Border.all(color: brandGold.withValues(alpha: .8)),
           ),
           child: Center(
-            child: Text(
+            child: LText(
               'H',
               style: TextStyle(
                 color: brandGold,
@@ -1380,7 +1390,7 @@ class _LetterspacedLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
+    return LText(
       text,
       style: GoogleFonts.inter(color: color, fontSize: fontSize, fontWeight: FontWeight.w700, letterSpacing: 2.4, height: 1.55),
     );
@@ -1457,7 +1467,7 @@ class _ShellState extends State<Shell> {
     if (can('partners.read')) indexes.add(1);
     if (can('billing.read')) indexes.add(2);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(3);
-    if (can('cms.read')) indexes.add(4);
+    if (can('cms.read') || can('contact.read')) indexes.add(4);
     if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(5);
     if (can('administration.read') || can('audit.read')) indexes.add(6);
     if (indexes.isEmpty) indexes.add(0);
@@ -1512,8 +1522,8 @@ class _ShellState extends State<Shell> {
                   tooltip: tr(context,'account'),
                   onSelected: (value) => accountAction(context,value),
                   itemBuilder: (_) => [
-                    PopupMenuItem(value:'profile',child:Row(children:[const Icon(Icons.account_circle_outlined,size:18),const SizedBox(width:10),Text(tr(context,'profile'))])),
-                    PopupMenuItem(value:'logout',child:Row(children:[const Icon(Icons.logout_rounded,size:18),const SizedBox(width:10),Text(tr(context,'signOut'))])),
+                    PopupMenuItem(value:'profile',child:Row(children:[const Icon(Icons.account_circle_outlined,size:18),const SizedBox(width:10),LText(tr(context,'profile'))])),
+                    PopupMenuItem(value:'logout',child:Row(children:[const Icon(Icons.logout_rounded,size:18),const SizedBox(width:10),LText(tr(context,'signOut'))])),
                   ],
                   child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: _Avatar(name: '${widget.user['name'] ?? 'Admin User'}')),
                 ),
@@ -1577,9 +1587,9 @@ class _ShellState extends State<Shell> {
                                   child: TextField(
                                     readOnly: true,
                                     onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Global search will be activated in a later functional cycle.'), behavior: SnackBarBehavior.floating),
+                                      const SnackBar(content: LText('Global search will be activated in a later functional cycle.'), behavior: SnackBarBehavior.floating),
                                     ),
-                                    decoration: const InputDecoration(isDense: true, hintText: 'Search anywhere...', prefixIcon: Icon(Icons.search_rounded, size: 19)),
+                                    decoration: InputDecoration(isDense: true, hintText: uiLiteral('Search anywhere...'), prefixIcon: Icon(Icons.search_rounded, size: 19)),
                                   ),
                                 ),
                               ),
@@ -1593,8 +1603,8 @@ class _ShellState extends State<Shell> {
                             tooltip: tr(context,'account'),
                             onSelected: (value) => accountAction(context,value),
                             itemBuilder: (_) => [
-                              PopupMenuItem(value:'profile',child:Row(children:[const Icon(Icons.account_circle_outlined,size:18),const SizedBox(width:10),Text(tr(context,'profile'))])),
-                              PopupMenuItem(value:'logout',child:Row(children:[const Icon(Icons.logout_rounded,size:18),const SizedBox(width:10),Text(tr(context,'signOut'))])),
+                              PopupMenuItem(value:'profile',child:Row(children:[const Icon(Icons.account_circle_outlined,size:18),const SizedBox(width:10),LText(tr(context,'profile'))])),
+                              PopupMenuItem(value:'logout',child:Row(children:[const Icon(Icons.logout_rounded,size:18),const SizedBox(width:10),LText(tr(context,'signOut'))])),
                             ],
                             child: tablet
                                 ? Padding(
@@ -1607,7 +1617,7 @@ class _ShellState extends State<Shell> {
                                       const SizedBox(width: 9),
                                       ConstrainedBox(
                                         constraints: const BoxConstraints(maxWidth: 130),
-                                        child: Text(
+                                        child: LText(
                                           '${widget.user['name'] ?? 'Admin User'}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -1715,9 +1725,9 @@ class _SidebarContent extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${user['name'] ?? 'Admin User'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 11.5)),
+                            LText('${user['name'] ?? 'Admin User'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 11.5)),
                             const SizedBox(height: 2),
-                            Text('${user['email'] ?? 'System Administrator'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: const Color(0xFF91A4B8), fontSize: 9.5)),
+                            LText('${user['email'] ?? 'System Administrator'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: const Color(0xFF91A4B8), fontSize: 9.5)),
                           ],
                         ),
                       ),
@@ -1779,7 +1789,7 @@ class _NavItemState extends State<_NavItem> {
                           Icon(widget.spec.icon, color: active ? brandGold : const Color(0xFFA8B7C7), size: 20),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
+                            child: LText(
                               widget.spec.label,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1853,7 +1863,7 @@ class _Avatar extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: dark ? Colors.white.withOpacity(.14) : Colors.transparent),
       ),
-      child: Text(initials, style: const TextStyle(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 10)),
+      child: LText(initials, style: const TextStyle(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 10)),
     );
   }
 }
@@ -1880,9 +1890,9 @@ class PlannedPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Workspace prepared', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 17)),
+                    LText('Workspace prepared', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 17)),
                     SizedBox(height: 7),
-                    Text('The brand system and responsive shell are ready. Functional implementation remains in its scheduled START cycle.', style: TextStyle(color: brandTextSoft, height: 1.5)),
+                    LText('The brand system and responsive shell are ready. Functional implementation remains in its scheduled START cycle.', style: TextStyle(color: brandTextSoft, height: 1.5)),
                   ],
                 ),
               ),
@@ -1952,8 +1962,8 @@ class _ImpactPanel extends StatelessWidget {
       padding:const EdgeInsets.fromLTRB(22,20,22,16),
       child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         Row(children:[
-          Expanded(child:Text('Program Impact',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
-          Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),decoration:BoxDecoration(border:Border.all(color:brandMist),borderRadius:BorderRadius.circular(7)),child:Row(children:[Text('This Year',style:GoogleFonts.inter(color:brandNavy,fontSize:10.5,fontWeight:FontWeight.w600)),const SizedBox(width:5),const Icon(Icons.keyboard_arrow_down_rounded,size:16,color:brandNavy)]))
+          Expanded(child:LText('Program Impact',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+          Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),decoration:BoxDecoration(border:Border.all(color:brandMist),borderRadius:BorderRadius.circular(7)),child:Row(children:[LText('This Year',style:GoogleFonts.inter(color:brandNavy,fontSize:10.5,fontWeight:FontWeight.w600)),const SizedBox(width:5),const Icon(Icons.keyboard_arrow_down_rounded,size:16,color:brandNavy)]))
         ]),
         const SizedBox(height:12),
         const Expanded(child:_ImpactChart()),
@@ -2007,7 +2017,7 @@ class _ActivityPanel extends StatelessWidget {
   Widget build(BuildContext context)=>SizedBox(
     height:330,
     child:Card(child:Padding(padding:const EdgeInsets.fromLTRB(20,20,20,16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[Expanded(child:Text('Recent Activity',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),Text('View all',style:GoogleFonts.inter(color:brandSteel,fontSize:10.5,fontWeight:FontWeight.w600))]),
+      Row(children:[Expanded(child:LText('Recent Activity',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),LText('View all',style:GoogleFonts.inter(color:brandSteel,fontSize:10.5,fontWeight:FontWeight.w600))]),
       const SizedBox(height:10),
       const _ActivityRow(icon:Icons.person_add_alt_1_outlined,title:'New partner registered',subtitle:'Partner activity',tone:Color(0xFF1D6FC2)),
       const Divider(height:12),
@@ -2028,9 +2038,9 @@ class _ActivityRow extends StatelessWidget {
     Container(width:38,height:38,decoration:BoxDecoration(color:tone.withOpacity(.10),shape:BoxShape.circle),child:Icon(icon,color:tone,size:18)),
     const SizedBox(width:11),
     Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text(title,style:GoogleFonts.inter(color:brandNavy,fontWeight:FontWeight.w600,fontSize:11.5)),
+      LText(title,style:GoogleFonts.inter(color:brandNavy,fontWeight:FontWeight.w600,fontSize:11.5)),
       const SizedBox(height:2),
-      Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:GoogleFonts.inter(color:brandTextSoft,fontSize:9.4)),
+      LText(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:GoogleFonts.inter(color:brandTextSoft,fontSize:9.4)),
     ]))
   ]));
 }
@@ -2214,7 +2224,7 @@ class _PartnersPageState extends State<PartnersPage> {
 
   void success(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
     );
   }
 
@@ -2229,7 +2239,7 @@ class _PartnersPageState extends State<PartnersPage> {
         child: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Category name', hintText: 'e.g. Cultural Foundation'),
+          decoration: InputDecoration(labelText: uiLiteral('Category name'), hintText: uiLiteral('e.g. Cultural Foundation')),
         ),
         primaryLabel: 'Add category',
         onPrimary: () => Navigator.pop(context, true),
@@ -2254,7 +2264,7 @@ class _PartnersPageState extends State<PartnersPage> {
     }
     if (categories.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Create a partner category first.'), behavior: SnackBarBehavior.floating),
+        const SnackBar(content: LText('Create a partner category first.'), behavior: SnackBarBehavior.floating),
       );
       return;
     }
@@ -2299,55 +2309,55 @@ class _PartnersPageState extends State<PartnersPage> {
               onStepTapped: (value) => setLocal(() => step = value),
               steps: [
                 Step(
-                  title: const Text('1 · Business identity'),
+                  title: const LText('1 · Business identity'),
                   isActive: step >= 0,
                   content: Column(
                     children: [
                       ResponsiveFieldPair(
-                        first: TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name *')),
-                        second: TextField(controller: legalName, decoration: const InputDecoration(labelText: 'Legal name')),
+                        first: TextField(controller: displayName, decoration: InputDecoration(labelText: uiLiteral('Display name *'))),
+                        second: TextField(controller: legalName, decoration: InputDecoration(labelText: uiLiteral('Legal name'))),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         value: category,
-                        decoration: const InputDecoration(labelText: 'Partner category'),
+                        decoration: InputDecoration(labelText: uiLiteral('Partner category')),
                         items: [
                           for (final item in categories)
-                            DropdownMenuItem(value: '${item['id']}', child: Text('${item['name']}')),
+                            DropdownMenuItem(value: '${item['id']}', child: LText('${item['name']}')),
                         ],
                         onChanged: (value) { if (value != null) setLocal(() => category = value); },
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Primary contact')),
-                        second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Administrator / contact email *')),
+                        first: TextField(controller: contactName, decoration: InputDecoration(labelText: uiLiteral('Primary contact'))),
+                        second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Administrator / contact email *'))),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country')),
-                        second: TextField(controller: primaryDomain, decoration: const InputDecoration(labelText: 'Primary domain', hintText: 'example.org')),
+                        first: TextField(controller: country, decoration: InputDecoration(labelText: uiLiteral('Country'))),
+                        second: TextField(controller: primaryDomain, decoration: InputDecoration(labelText: uiLiteral('Primary domain'), hintText: uiLiteral('example.org'))),
                       ),
                     ],
                   ),
                 ),
                 Step(
-                  title: const Text('2 · Commercial & license evidence'),
+                  title: const LText('2 · Commercial & license evidence'),
                   isActive: step >= 1,
                   content: Column(
                     children: [
                       ResponsiveFieldPair(
-                        first: TextField(controller: activationFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Activation fee · USD')),
-                        second: TextField(controller: baseMonthlyFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Base monthly fee · USD')),
+                        first: TextField(controller: activationFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Activation fee · USD'))),
+                        second: TextField(controller: baseMonthlyFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Base monthly fee · USD'))),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: paidAmount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Verified paid amount · USD')),
-                        second: TextField(controller: paymentReference, decoration: const InputDecoration(labelText: 'Payment reference')),
+                        first: TextField(controller: paidAmount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Verified paid amount · USD'))),
+                        second: TextField(controller: paymentReference, decoration: InputDecoration(labelText: uiLiteral('Payment reference'))),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: evidenceName, decoration: const InputDecoration(labelText: 'Evidence name')),
-                        second: TextField(controller: evidenceReference, decoration: const InputDecoration(labelText: 'Persistent evidence reference / URL')),
+                        first: TextField(controller: evidenceName, decoration: InputDecoration(labelText: uiLiteral('Evidence name'))),
+                        second: TextField(controller: evidenceReference, decoration: InputDecoration(labelText: uiLiteral('Persistent evidence reference / URL'))),
                       ),
                       const SizedBox(height: 10),
                       const _RuleStrip(items: [
@@ -2357,20 +2367,20 @@ class _PartnersPageState extends State<PartnersPage> {
                   ),
                 ),
                 Step(
-                  title: const Text('3 · System & environment'),
+                  title: const LText('3 · System & environment'),
                   isActive: step >= 2,
                   content: Column(
                     children: [
                       ResponsiveFieldPair(
-                        first: TextField(controller: systemName, decoration: const InputDecoration(labelText: 'System name', hintText: 'Defaults to partner display name')),
-                        second: TextField(controller: release, decoration: const InputDecoration(labelText: 'Desired platform release')),
+                        first: TextField(controller: systemName, decoration: InputDecoration(labelText: uiLiteral('System name'), hintText: uiLiteral('Defaults to partner display name'))),
+                        second: TextField(controller: release, decoration: InputDecoration(labelText: uiLiteral('Desired platform release'))),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         value: environment,
-                        decoration: const InputDecoration(labelText: 'Initial environment'),
+                        decoration: InputDecoration(labelText: uiLiteral('Initial environment')),
                         items: const [
-                          DropdownMenuItem(value: 'STAGING', child: Text('STAGING · required first environment')),
+                          DropdownMenuItem(value: 'STAGING', child: LText('STAGING · required first environment')),
                         ],
                         onChanged: (value) { if (value != null) setLocal(() => environment = value); },
                       ),
@@ -2378,7 +2388,7 @@ class _PartnersPageState extends State<PartnersPage> {
                   ),
                 ),
                 Step(
-                  title: const Text('4 · Module preset'),
+                  title: const LText('4 · Module preset'),
                   isActive: step >= 3,
                   content: ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 250),
@@ -2390,8 +2400,8 @@ class _PartnersPageState extends State<PartnersPage> {
                             dense: true,
                             contentPadding: EdgeInsets.zero,
                             value: selectedModules.contains('${module['key']}'),
-                            title: Text('${module['label'] ?? module['key']}'),
-                            subtitle: Text('${module['key']}'),
+                            title: LText('${module['label'] ?? module['key']}'),
+                            subtitle: LText('${module['key']}'),
                             onChanged: (value) => setLocal(() {
                               final key = '${module['key']}';
                               if (value == true) {
@@ -2412,7 +2422,7 @@ class _PartnersPageState extends State<PartnersPage> {
           onPrimary: () {
             if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Display name and administrator email are required.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(content: LText('Display name and administrator email are required.'), behavior: SnackBarBehavior.floating),
               );
               return;
             }
@@ -2524,7 +2534,7 @@ class _PartnersPageState extends State<PartnersPage> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('New Partner wizard failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+            SnackBar(content: LText('New Partner wizard failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
           );
         }
       }
@@ -2553,8 +2563,8 @@ class _PartnersPageState extends State<PartnersPage> {
       title: 'Partners',
       subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
       actions: [
-        OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const Text('Add category')),
-        FilledButton.icon(onPressed: addPartner, icon: const Icon(Icons.add_business_outlined), label: const Text('New Partner')),
+        OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const LText('Add category')),
+        FilledButton.icon(onPressed: addPartner, icon: const Icon(Icons.add_business_outlined), label: const LText('New Partner')),
       ],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
@@ -2578,17 +2588,17 @@ class _PartnersPageState extends State<PartnersPage> {
                           final compact = c.maxWidth < 860;
                           final search = TextField(
                             onChanged: updateSearch,
-                            decoration: const InputDecoration(
-                              hintText: 'Search partners...',
+                            decoration: InputDecoration(
+                              hintText: uiLiteral('Search partners...'),
                               prefixIcon: Icon(Icons.search_rounded),
                             ),
                           );
                           final category = DropdownButtonFormField<String>(
                             value: categoryFilter,
-                            decoration: const InputDecoration(labelText: 'Category'),
+                            decoration: InputDecoration(labelText: uiLiteral('Category')),
                             items: [
-                              const DropdownMenuItem(value: 'ALL', child: Text('All categories')),
-                              for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: Text('${c['name']}')),
+                              const DropdownMenuItem(value: 'ALL', child: LText('All categories')),
+                              for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: LText('${c['name']}')),
                             ],
                             onChanged: (v) {
                               setState(() => categoryFilter = v ?? 'ALL');
@@ -2597,10 +2607,10 @@ class _PartnersPageState extends State<PartnersPage> {
                           );
                           final lifecycle = DropdownButtonFormField<String>(
                             value: lifecycleFilter,
-                            decoration: const InputDecoration(labelText: 'Lifecycle'),
+                            decoration: InputDecoration(labelText: uiLiteral('Lifecycle')),
                             items: [
-                              const DropdownMenuItem(value: 'ALL', child: Text('All lifecycle states')),
-                              for (final state in lifecycleOptions) DropdownMenuItem(value: state, child: Text(_humanize(state))),
+                              const DropdownMenuItem(value: 'ALL', child: LText('All lifecycle states')),
+                              for (final state in lifecycleOptions) DropdownMenuItem(value: state, child: LText(_humanize(state))),
                             ],
                             onChanged: (v) {
                               setState(() => lifecycleFilter = v ?? 'ALL');
@@ -2609,13 +2619,13 @@ class _PartnersPageState extends State<PartnersPage> {
                           );
                           final health = DropdownButtonFormField<String>(
                             value: healthFilter,
-                            decoration: const InputDecoration(labelText: 'Health'),
+                            decoration: InputDecoration(labelText: uiLiteral('Health')),
                             items: const [
-                              DropdownMenuItem(value: 'ALL', child: Text('All health states')),
-                              DropdownMenuItem(value: 'HEALTHY', child: Text('Healthy')),
-                              DropdownMenuItem(value: 'WARNING', child: Text('Warning')),
-                              DropdownMenuItem(value: 'OFFLINE', child: Text('Offline')),
-                              DropdownMenuItem(value: 'UNKNOWN', child: Text('Unknown')),
+                              DropdownMenuItem(value: 'ALL', child: LText('All health states')),
+                              DropdownMenuItem(value: 'HEALTHY', child: LText('Healthy')),
+                              DropdownMenuItem(value: 'WARNING', child: LText('Warning')),
+                              DropdownMenuItem(value: 'OFFLINE', child: LText('Offline')),
+                              DropdownMenuItem(value: 'UNKNOWN', child: LText('Unknown')),
                             ],
                             onChanged: (v) {
                               setState(() => healthFilter = v ?? 'ALL');
@@ -2648,7 +2658,7 @@ class _PartnersPageState extends State<PartnersPage> {
                     const SizedBox(height: 20),
                     Row(
                       children: [
-                        Text('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
+                        LText('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(width: 10),
                         _MiniCounter(label: statsReady ? '${partners.length} shown · $total matched' : '${partners.length} shown'),
                       ],
@@ -2697,13 +2707,13 @@ class _PartnersPageState extends State<PartnersPage> {
                                   OutlinedButton.icon(
                                     onPressed: offset > 0 && !loading ? previousPage : null,
                                     icon: const Icon(Icons.chevron_left_rounded),
-                                    label: const Text('Previous'),
+                                    label: const LText('Previous'),
                                   ),
                                   _MiniCounter(label: statsReady ? 'Page ${offset ~/ pageSize + 1} of ${(total + pageSize - 1) ~/ pageSize}' : 'Page ${offset ~/ pageSize + 1}'),
                                   OutlinedButton.icon(
                                     onPressed: hasMore && !loading ? nextPage : null,
                                     icon: const Icon(Icons.chevron_right_rounded),
-                                    label: const Text('Next'),
+                                    label: const LText('Next'),
                                   ),
                                 ],
                               ),
@@ -2862,7 +2872,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
   void success(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
     );
   }
 
@@ -2874,7 +2884,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     if (!const {'READY_TO_PROVISION', 'PROVISIONING', 'CONFIGURATION'}.contains(lifecycle)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Move the partner to READY TO PROVISION before starting provisioning.'),
+          content: LText('Move the partner to READY TO PROVISION before starting provisioning.'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: brandWarning,
         ),
@@ -2900,7 +2910,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Provisioning could not complete: $e'),
+          content: LText('Provisioning could not complete: $e'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: brandDanger,
         ),
@@ -2920,10 +2930,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           width: 620,
           child: DropdownButtonFormField<String>(
             value: environment,
-            decoration: const InputDecoration(labelText: 'Environment'),
+            decoration: InputDecoration(labelText: uiLiteral('Environment')),
             items: const [
-              DropdownMenuItem(value: 'STAGING', child: Text('STAGING')),
-              DropdownMenuItem(value: 'PRODUCTION', child: Text('PRODUCTION')),
+              DropdownMenuItem(value: 'STAGING', child: LText('STAGING')),
+              DropdownMenuItem(value: 'PRODUCTION', child: LText('PRODUCTION')),
             ],
             onChanged: (v) { if (v != null) setLocal(() => environment = v); },
           ),
@@ -2942,14 +2952,14 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          title: const Text('Store this credential now'),
+          title: const LText('Store this credential now'),
           content: SizedBox(
             width: 560,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('For security, HIMATE stores only the token hash. This raw credential will not be shown again.'),
+                const LText('For security, HIMATE stores only the token hash. This raw credential will not be shown again.'),
                 const SizedBox(height: 14),
                 SelectableText(token, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
               ],
@@ -2961,21 +2971,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 await Clipboard.setData(ClipboardData(text: token));
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Credential copied.'), behavior: SnackBarBehavior.floating),
+                    const SnackBar(content: LText('Credential copied.'), behavior: SnackBarBehavior.floating),
                   );
                 }
               },
               icon: const Icon(Icons.copy_rounded),
-              label: const Text('Copy'),
+              label: const LText('Copy'),
             ),
-            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('I stored it securely')),
+            FilledButton(onPressed: () => Navigator.pop(context), child: const LText('I stored it securely')),
           ],
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Credential operation failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+        SnackBar(content: LText('Credential operation failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
       );
     }
   }
@@ -2998,39 +3008,39 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: hostname, decoration: const InputDecoration(labelText: 'Hostname')),
+              TextField(controller: hostname, decoration: InputDecoration(labelText: uiLiteral('Hostname'))),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: version, decoration: const InputDecoration(labelText: 'Platform version')),
-                second: TextField(controller: desiredRelease, decoration: const InputDecoration(labelText: 'Desired release')),
+                first: TextField(controller: version, decoration: InputDecoration(labelText: uiLiteral('Platform version'))),
+                second: TextField(controller: desiredRelease, decoration: InputDecoration(labelText: uiLiteral('Desired release'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: activeRelease, decoration: const InputDecoration(labelText: 'Active release')),
+              TextField(controller: activeRelease, decoration: InputDecoration(labelText: uiLiteral('Active release'))),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
                 first: DropdownButtonFormField<String>(
                   value: deployment,
-                  decoration: const InputDecoration(labelText: 'Deployment status'),
+                  decoration: InputDecoration(labelText: uiLiteral('Deployment status')),
                   items: const [
-                    DropdownMenuItem(value: 'NOT_DEPLOYED', child: Text('NOT DEPLOYED')),
-                    DropdownMenuItem(value: 'QUEUED', child: Text('QUEUED')),
-                    DropdownMenuItem(value: 'DEPLOYING', child: Text('DEPLOYING')),
-                    DropdownMenuItem(value: 'DEPLOYED', child: Text('DEPLOYED')),
-                    DropdownMenuItem(value: 'FAILED', child: Text('FAILED')),
+                    DropdownMenuItem(value: 'NOT_DEPLOYED', child: LText('NOT DEPLOYED')),
+                    DropdownMenuItem(value: 'QUEUED', child: LText('QUEUED')),
+                    DropdownMenuItem(value: 'DEPLOYING', child: LText('DEPLOYING')),
+                    DropdownMenuItem(value: 'DEPLOYED', child: LText('DEPLOYED')),
+                    DropdownMenuItem(value: 'FAILED', child: LText('FAILED')),
                   ],
                   onChanged: (v) { if (v != null) setLocal(() => deployment = v); },
                 ),
                 second: DropdownButtonFormField<String>(
                   value: environmentStatus,
-                  decoration: const InputDecoration(labelText: 'Environment status'),
+                  decoration: InputDecoration(labelText: uiLiteral('Environment status')),
                   items: const [
-                    DropdownMenuItem(value: 'CREATING', child: Text('CREATING')),
-                    DropdownMenuItem(value: 'CONFIGURATION_REQUIRED', child: Text('CONFIGURATION REQUIRED')),
-                    DropdownMenuItem(value: 'TESTING', child: Text('TESTING')),
-                    DropdownMenuItem(value: 'READY', child: Text('READY')),
-                    DropdownMenuItem(value: 'LIVE', child: Text('LIVE')),
-                    DropdownMenuItem(value: 'SUSPENDED', child: Text('SUSPENDED')),
-                    DropdownMenuItem(value: 'FAILED', child: Text('FAILED')),
+                    DropdownMenuItem(value: 'CREATING', child: LText('CREATING')),
+                    DropdownMenuItem(value: 'CONFIGURATION_REQUIRED', child: LText('CONFIGURATION REQUIRED')),
+                    DropdownMenuItem(value: 'TESTING', child: LText('TESTING')),
+                    DropdownMenuItem(value: 'READY', child: LText('READY')),
+                    DropdownMenuItem(value: 'LIVE', child: LText('LIVE')),
+                    DropdownMenuItem(value: 'SUSPENDED', child: LText('SUSPENDED')),
+                    DropdownMenuItem(value: 'FAILED', child: LText('FAILED')),
                   ],
                   onChanged: (v) { if (v != null) setLocal(() => environmentStatus = v); },
                 ),
@@ -3075,9 +3085,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: hostname, decoration: const InputDecoration(labelText: 'Production hostname')),
+            TextField(controller: hostname, decoration: InputDecoration(labelText: uiLiteral('Production hostname'))),
             const SizedBox(height: 12),
-            TextField(controller: version, decoration: const InputDecoration(labelText: 'Platform version')),
+            TextField(controller: version, decoration: InputDecoration(labelText: uiLiteral('Platform version'))),
           ],
         ),
         primaryLabel: 'Create production environment',
@@ -3139,18 +3149,18 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ResponsiveFieldPair(
-                first: TextField(controller: display, decoration: const InputDecoration(labelText: 'Display name')),
-                second: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name')),
+                first: TextField(controller: display, decoration: InputDecoration(labelText: uiLiteral('Display name'))),
+                second: TextField(controller: legal, decoration: InputDecoration(labelText: uiLiteral('Legal name'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: brand, decoration: const InputDecoration(labelText: 'Brand / DBA')),
+                first: TextField(controller: brand, decoration: InputDecoration(labelText: uiLiteral('Brand / DBA'))),
                 second: DropdownButtonFormField<String>(
                   value: lifecycle,
-                  decoration: const InputDecoration(labelText: 'Lifecycle'),
+                  decoration: InputDecoration(labelText: uiLiteral('Lifecycle')),
                   items: [
                     for (final value in _PartnersPageState.lifecycleOptions)
-                      DropdownMenuItem(value: value, child: Text(_humanize(value))),
+                      DropdownMenuItem(value: value, child: LText(_humanize(value))),
                   ],
                   onChanged: (v) { if (v != null) setLocal(() => lifecycle = v); },
                 ),
@@ -3158,67 +3168,67 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               const SizedBox(height: 12),
               TextField(
                 controller: lifecycleReason,
-                decoration: const InputDecoration(labelText: 'Lifecycle change reason', hintText: 'Required for traceability when status changes'),
+                decoration: InputDecoration(labelText: uiLiteral('Lifecycle change reason'), hintText: uiLiteral('Required for traceability when status changes')),
               ),
               const SizedBox(height: 18),
               const _DialogSectionLabel('REGISTRATION & ADDRESS'),
               const SizedBox(height: 10),
               ResponsiveFieldPair(
-                first: TextField(controller: registration, decoration: const InputDecoration(labelText: 'Registration number')),
-                second: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
+                first: TextField(controller: registration, decoration: InputDecoration(labelText: uiLiteral('Registration number'))),
+                second: TextField(controller: tax, decoration: InputDecoration(labelText: uiLiteral('Tax ID'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: country, decoration: const InputDecoration(labelText: 'Country')),
-                second: TextField(controller: stateRegion, decoration: const InputDecoration(labelText: 'State / region')),
+                first: TextField(controller: country, decoration: InputDecoration(labelText: uiLiteral('Country'))),
+                second: TextField(controller: stateRegion, decoration: InputDecoration(labelText: uiLiteral('State / region'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: city, decoration: const InputDecoration(labelText: 'City')),
-                second: TextField(controller: postal, decoration: const InputDecoration(labelText: 'Postal code')),
+                first: TextField(controller: city, decoration: InputDecoration(labelText: uiLiteral('City'))),
+                second: TextField(controller: postal, decoration: InputDecoration(labelText: uiLiteral('Postal code'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: address1, decoration: const InputDecoration(labelText: 'Address line 1')),
+              TextField(controller: address1, decoration: InputDecoration(labelText: uiLiteral('Address line 1'))),
               const SizedBox(height: 12),
-              TextField(controller: address2, decoration: const InputDecoration(labelText: 'Address line 2')),
+              TextField(controller: address2, decoration: InputDecoration(labelText: uiLiteral('Address line 2'))),
               const SizedBox(height: 18),
               const _DialogSectionLabel('CONTACTS'),
               const SizedBox(height: 10),
               ResponsiveFieldPair(
-                first: TextField(controller: contact, decoration: const InputDecoration(labelText: 'Primary contact')),
-                second: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Primary email')),
+                first: TextField(controller: contact, decoration: InputDecoration(labelText: uiLiteral('Primary contact'))),
+                second: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Primary email'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: financeName, decoration: const InputDecoration(labelText: 'Finance contact')),
-                second: TextField(controller: financeEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Finance email')),
+                first: TextField(controller: financeName, decoration: InputDecoration(labelText: uiLiteral('Finance contact'))),
+                second: TextField(controller: financeEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Finance email'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: technicalName, decoration: const InputDecoration(labelText: 'Technical contact')),
-                second: TextField(controller: technicalEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Technical email')),
+                first: TextField(controller: technicalName, decoration: InputDecoration(labelText: uiLiteral('Technical contact'))),
+                second: TextField(controller: technicalEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Technical email'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: marketingName, decoration: const InputDecoration(labelText: 'Marketing contact')),
-                second: TextField(controller: marketingEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Marketing email')),
+                first: TextField(controller: marketingName, decoration: InputDecoration(labelText: uiLiteral('Marketing contact'))),
+                second: TextField(controller: marketingEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Marketing email'))),
               ),
               const SizedBox(height: 18),
               const _DialogSectionLabel('WEB & ENVIRONMENT REFERENCES'),
               const SizedBox(height: 10),
               ResponsiveFieldPair(
-                first: TextField(controller: website, decoration: const InputDecoration(labelText: 'Website')),
-                second: TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
+                first: TextField(controller: website, decoration: InputDecoration(labelText: uiLiteral('Website'))),
+                second: TextField(controller: phone, decoration: InputDecoration(labelText: uiLiteral('Phone'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: primary, decoration: const InputDecoration(labelText: 'Primary domain')),
-                second: TextField(controller: staging, decoration: const InputDecoration(labelText: 'Staging domain')),
+                first: TextField(controller: primary, decoration: InputDecoration(labelText: uiLiteral('Primary domain'))),
+                second: TextField(controller: staging, decoration: InputDecoration(labelText: uiLiteral('Staging domain'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: logo, decoration: const InputDecoration(labelText: 'Logo URL / asset reference')),
+              TextField(controller: logo, decoration: InputDecoration(labelText: uiLiteral('Logo URL / asset reference'))),
               const SizedBox(height: 12),
-              TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Internal notes')),
+              TextField(controller: notes, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Internal notes'))),
             ],
           ),
           primaryLabel: 'Save changes',
@@ -3303,18 +3313,18 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               ResponsiveFieldPair(
                 first: DropdownButtonFormField<String>(
                   value: currency,
-                  decoration: const InputDecoration(labelText: 'Currency'),
+                  decoration: InputDecoration(labelText: uiLiteral('Currency')),
                   items: const [
-                    DropdownMenuItem(value: 'USD', child: Text('USD')),
-                    DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-                    DropdownMenuItem(value: 'GBP', child: Text('GBP')),
+                    DropdownMenuItem(value: 'USD', child: LText('USD')),
+                    DropdownMenuItem(value: 'EUR', child: LText('EUR')),
+                    DropdownMenuItem(value: 'GBP', child: LText('GBP')),
                   ],
                   onChanged: (v) { if (v != null) setLocal(() => currency = v); },
                 ),
                 second: TextField(
                   controller: activation,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Initial license / activation fee'),
+                  decoration: InputDecoration(labelText: uiLiteral('Initial license / activation fee')),
                 ),
               ),
               const SizedBox(height: 8),
@@ -3322,12 +3332,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 contentPadding: EdgeInsets.zero,
                 value: waived,
                 onChanged: (v) => setLocal(() => waived = v),
-                title: const Text('Activation fee waived'),
-                subtitle: const Text('Use only for an existing/reference partner where no activation transaction applies.'),
+                title: const LText('Activation fee waived'),
+                subtitle: const LText('Use only for an existing/reference partner where no activation transaction applies.'),
               ),
               if (waived) ...[
                 const SizedBox(height: 8),
-                TextField(controller: waiverReason, decoration: const InputDecoration(labelText: 'Waiver reason')),
+                TextField(controller: waiverReason, decoration: InputDecoration(labelText: uiLiteral('Waiver reason'))),
               ],
               const SizedBox(height: 18),
               const _DialogSectionLabel('INITIAL LICENSE PAYMENT'),
@@ -3336,20 +3346,20 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 first: TextField(
                   controller: paid,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Paid amount'),
+                  decoration: InputDecoration(labelText: uiLiteral('Paid amount')),
                 ),
                 second: TextField(
                   controller: paymentDate,
-                  decoration: const InputDecoration(labelText: 'Payment date', hintText: 'YYYY-MM-DD'),
+                  decoration: InputDecoration(labelText: uiLiteral('Payment date'), hintText: uiLiteral('YYYY-MM-DD')),
                 ),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: paymentReference, decoration: const InputDecoration(labelText: 'Payment reference')),
-                second: TextField(controller: verifiedBy, decoration: const InputDecoration(labelText: 'Verified by', hintText: 'Optional — current admin is used automatically')),
+                first: TextField(controller: paymentReference, decoration: InputDecoration(labelText: uiLiteral('Payment reference'))),
+                second: TextField(controller: verifiedBy, decoration: InputDecoration(labelText: uiLiteral('Verified by'), hintText: uiLiteral('Optional — current admin is used automatically'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: licenseNote, maxLines: 2, decoration: const InputDecoration(labelText: 'License note')),
+              TextField(controller: licenseNote, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('License note'))),
               const SizedBox(height: 18),
               const _DialogSectionLabel('RECURRING SERVICE'),
               const SizedBox(height: 10),
@@ -3357,21 +3367,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 first: TextField(
                   controller: base,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Base 30-day service fee'),
+                  decoration: InputDecoration(labelText: uiLiteral('Base 30-day service fee')),
                 ),
                 second: TextField(
                   controller: uplift,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Annual increase %'),
+                  decoration: InputDecoration(labelText: uiLiteral('Annual increase %')),
                 ),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: effective, decoration: const InputDecoration(labelText: 'Price effective from', hintText: 'YYYY-MM-DD')),
-                second: TextField(controller: anchor, decoration: const InputDecoration(labelText: 'Service activation / anchor date', hintText: 'YYYY-MM-DD')),
+                first: TextField(controller: effective, decoration: InputDecoration(labelText: uiLiteral('Price effective from'), hintText: uiLiteral('YYYY-MM-DD'))),
+                second: TextField(controller: anchor, decoration: InputDecoration(labelText: uiLiteral('Service activation / anchor date'), hintText: uiLiteral('YYYY-MM-DD'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: commercialReason, decoration: const InputDecoration(labelText: 'Change reason', hintText: 'Recorded in commercial price history')),
+              TextField(controller: commercialReason, decoration: InputDecoration(labelText: uiLiteral('Change reason'), hintText: uiLiteral('Recorded in commercial price history'))),
               const SizedBox(height: 12),
               const _RuleStrip(
                 items: [
@@ -3401,7 +3411,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Register the license invoice, receipt, contract, or payment evidence before marking the license paid.'),
+              content: LText('Register the license invoice, receipt, contract, or payment evidence before marking the license paid.'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: brandWarning,
             ),
@@ -3473,28 +3483,28 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             children: [
               DropdownButtonFormField<String>(
                 value: kind,
-                decoration: const InputDecoration(labelText: 'Document type'),
+                decoration: InputDecoration(labelText: uiLiteral('Document type')),
                 items: const [
-                  DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
-                  DropdownMenuItem(value: 'INVOICE', child: Text('Invoice')),
-                  DropdownMenuItem(value: 'RECEIPT', child: Text('Receipt')),
-                  DropdownMenuItem(value: 'PAYMENT_EVIDENCE', child: Text('Payment evidence')),
-                  DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+                  DropdownMenuItem(value: 'CONTRACT', child: LText('Contract')),
+                  DropdownMenuItem(value: 'INVOICE', child: LText('Invoice')),
+                  DropdownMenuItem(value: 'RECEIPT', child: LText('Receipt')),
+                  DropdownMenuItem(value: 'PAYMENT_EVIDENCE', child: LText('Payment evidence')),
+                  DropdownMenuItem(value: 'OTHER', child: LText('Other')),
                 ],
                 onChanged: (v) { if (v != null) setLocal(() => kind = v); },
               ),
               const SizedBox(height: 12),
-              TextField(controller: name, decoration: const InputDecoration(labelText: 'Document name *')),
+              TextField(controller: name, decoration: InputDecoration(labelText: uiLiteral('Document name *'))),
               const SizedBox(height: 12),
               TextField(
                 controller: url,
-                decoration: const InputDecoration(
-                  labelText: 'Storage URL / reference',
-                  hintText: 'Required for contracts, invoices, receipts and payment evidence',
+                decoration: InputDecoration(
+                  labelText: uiLiteral('Storage URL / reference'),
+                  hintText: uiLiteral('Required for contracts, invoices, receipts and payment evidence'),
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
+              TextField(controller: note, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Notes'))),
             ],
           ),
           primaryLabel: 'Register document',
@@ -3509,7 +3519,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Commercial evidence requires an attached storage URL or persistent document reference.'),
+              content: LText('Commercial evidence requires an attached storage URL or persistent document reference.'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: brandWarning,
             ),
@@ -3567,11 +3577,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             children: [
               DropdownButtonFormField<String>(
                 value: state,
-                decoration: const InputDecoration(labelText: 'Module state'),
+                decoration: InputDecoration(labelText: uiLiteral('Module state')),
                 items: const [
-                  DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
-                  DropdownMenuItem(value: 'NOT_LICENSED', child: Text('NOT LICENSED')),
-                  DropdownMenuItem(value: 'MAINTENANCE', child: Text('MAINTENANCE')),
+                  DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
+                  DropdownMenuItem(value: 'NOT_LICENSED', child: LText('NOT LICENSED')),
+                  DropdownMenuItem(value: 'MAINTENANCE', child: LText('MAINTENANCE')),
                 ],
                 onChanged: (v) { if (v != null) setLocal(() => state = v); },
               ),
@@ -3580,22 +3590,22 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 contentPadding: EdgeInsets.zero,
                 value: visible,
                 onChanged: (v) => setLocal(() => visible = v),
-                title: const Text('Visible for partner'),
-                subtitle: const Text('Visibility is separate from module code existence.'),
+                title: const LText('Visible for partner'),
+                subtitle: const LText('Visibility is separate from module code existence.'),
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: included,
                 onChanged: (v) => setLocal(() => included = v),
-                title: const Text('Included in base package'),
-                subtitle: const Text('Modules outside the base package contribute to recurring fees.'),
+                title: const LText('Included in base package'),
+                subtitle: const LText('Modules outside the base package contribute to recurring fees.'),
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: cancelAtPeriodEnd,
                 onChanged: state == 'ACTIVE' ? (v) => setLocal(() => cancelAtPeriodEnd = v) : null,
-                title: const Text('Cancel at period end'),
-                subtitle: Text(
+                title: const LText('Cancel at period end'),
+                subtitle: LText(
                   subscription == null
                       ? 'A 30-day subscription record is created when the active module is synchronized.'
                       : 'Current period ends ${subscription['period_end_exclusive'] ?? '—'}. Cancellation keeps access through that date.',
@@ -3606,17 +3616,17 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 first: TextField(
                   controller: price,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Partner 30-day price'),
+                  decoration: InputDecoration(labelText: uiLiteral('Partner 30-day price')),
                 ),
                 second: TextField(
                   controller: effectiveAt,
-                  decoration: const InputDecoration(labelText: 'Price effective at', hintText: 'Optional RFC3339 timestamp'),
+                  decoration: InputDecoration(labelText: uiLiteral('Price effective at'), hintText: uiLiteral('Optional RFC3339 timestamp')),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: reason,
-                decoration: const InputDecoration(labelText: 'Change reason', hintText: 'Recorded in module, price and subscription history'),
+                decoration: InputDecoration(labelText: uiLiteral('Change reason'), hintText: uiLiteral('Recorded in module, price and subscription history')),
               ),
             ],
           ),
@@ -3693,7 +3703,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         actions: [
           _StatusPill(label: '${partner['lifecycle'] ?? 'PROSPECT'}'),
           const SizedBox(width: 12),
-          IconButton(onPressed: editPartner, tooltip: 'Edit partner', icon: const Icon(Icons.edit_outlined)),
+          IconButton(onPressed: editPartner, tooltip: uiLiteral('Edit partner'), icon: const Icon(Icons.edit_outlined)),
           const SizedBox(width: 8),
         ],
       ),
@@ -3716,8 +3726,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     'Version: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
                   ].join(' · '),
                   actions: [
-                    OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const Text('Company data')),
-                    FilledButton.icon(onPressed: terms != null && license != null ? editTerms : null, icon: const Icon(Icons.payments_outlined), label: const Text('Commercial terms')),
+                    OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const LText('Company data')),
+                    FilledButton.icon(onPressed: terms != null && license != null ? editTerms : null, icon: const Icon(Icons.payments_outlined), label: const LText('Commercial terms')),
                   ],
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3802,12 +3812,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                               OutlinedButton.icon(
                                 onPressed: createProductionEnvironment,
                                 icon: const Icon(Icons.public_outlined),
-                                label: Text(environments.any((e) => e['kind'] == 'PRODUCTION') ? 'Production settings' : 'Add production'),
+                                label: LText(environments.any((e) => e['kind'] == 'PRODUCTION') ? 'Production settings' : 'Add production'),
                               ),
                               FilledButton.icon(
                                 onPressed: startProvisioning,
                                 icon: const Icon(Icons.precision_manufacturing_outlined),
-                                label: Text(provisioningJob == null ? 'Start provisioning' : 'Resume provisioning'),
+                                label: LText(provisioningJob == null ? 'Start provisioning' : 'Resume provisioning'),
                               ),
                             ],
                           ),
@@ -3840,7 +3850,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                 title: '${env['kind']}',
                                 icon: env['kind'] == 'PRODUCTION' ? Icons.public_outlined : Icons.science_outlined,
                                 action: IconButton(
-                                  tooltip: 'Edit environment',
+                                  tooltip: uiLiteral('Edit environment'),
                                   onPressed: () => editEnvironment(env),
                                   icon: const Icon(Icons.edit_outlined, size: 18),
                                 ),
@@ -3884,16 +3894,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           builder: (context, c) {
                             final search = TextField(
                               onChanged: (v) => setState(() => moduleQuery = v),
-                              decoration: const InputDecoration(hintText: 'Search modules...', prefixIcon: Icon(Icons.search_rounded)),
+                              decoration: InputDecoration(hintText: uiLiteral('Search modules...'), prefixIcon: Icon(Icons.search_rounded)),
                             );
                             final state = DropdownButtonFormField<String>(
                               value: moduleState,
-                              decoration: const InputDecoration(labelText: 'State'),
+                              decoration: InputDecoration(labelText: uiLiteral('State')),
                               items: const [
-                                DropdownMenuItem(value: 'ALL', child: Text('All states')),
-                                DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
-                                DropdownMenuItem(value: 'NOT_LICENSED', child: Text('Not licensed')),
-                                DropdownMenuItem(value: 'MAINTENANCE', child: Text('Maintenance')),
+                                DropdownMenuItem(value: 'ALL', child: LText('All states')),
+                                DropdownMenuItem(value: 'ACTIVE', child: LText('Active')),
+                                DropdownMenuItem(value: 'NOT_LICENSED', child: LText('Not licensed')),
+                                DropdownMenuItem(value: 'MAINTENANCE', child: LText('Maintenance')),
                               ],
                               onChanged: (v) => setState(() => moduleState = v ?? 'ALL'),
                             );
@@ -3922,7 +3932,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: _SectionHeader(
                           title: 'Finance & Documents',
                           subtitle: 'Commercial evidence and internal invoice records for this partner.',
-                          trailing: FilledButton.icon(onPressed: addDocument, icon: const Icon(Icons.note_add_outlined), label: const Text('Register document')),
+                          trailing: FilledButton.icon(onPressed: addDocument, icon: const Icon(Icons.note_add_outlined), label: const LText('Register document')),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -3988,7 +3998,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           trailing: FilledButton.icon(
                             onPressed: rotateConnectorCredential,
                             icon: const Icon(Icons.key_outlined),
-                            label: const Text('Generate / rotate credential'),
+                            label: const LText('Generate / rotate credential'),
                           ),
                         ),
                       ),
@@ -4080,7 +4090,7 @@ class _FinancePageState extends State<FinancePage> {
 
   void success(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
     );
   }
 
@@ -4109,34 +4119,34 @@ class _FinancePageState extends State<FinancePage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ResponsiveFieldPair(
-              first: TextField(controller: legal, decoration: const InputDecoration(labelText: 'Legal name')),
-              second: TextField(controller: registration, decoration: const InputDecoration(labelText: 'Registration number')),
+              first: TextField(controller: legal, decoration: InputDecoration(labelText: uiLiteral('Legal name'))),
+              second: TextField(controller: registration, decoration: InputDecoration(labelText: uiLiteral('Registration number'))),
             ),
             const SizedBox(height: 12),
             ResponsiveFieldPair(
-              first: TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
-              second: TextField(controller: contactName, decoration: const InputDecoration(labelText: 'Billing contact')),
+              first: TextField(controller: tax, decoration: InputDecoration(labelText: uiLiteral('Tax ID'))),
+              second: TextField(controller: contactName, decoration: InputDecoration(labelText: uiLiteral('Billing contact'))),
             ),
             const SizedBox(height: 12),
-            TextField(controller: address, decoration: const InputDecoration(labelText: 'Company address')),
+            TextField(controller: address, decoration: InputDecoration(labelText: uiLiteral('Company address'))),
             const SizedBox(height: 12),
             ResponsiveFieldPair(
-              first: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Billing email')),
-              second: TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Billing phone')),
+              first: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Billing email'))),
+              second: TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: uiLiteral('Billing phone'))),
             ),
             const SizedBox(height: 18),
             const _DialogSectionLabel('BANKING DETAILS'),
             const SizedBox(height: 10),
             ResponsiveFieldPair(
-              first: TextField(controller: bank, decoration: const InputDecoration(labelText: 'Bank name')),
-              second: TextField(controller: bankAddress, decoration: const InputDecoration(labelText: 'Bank address')),
+              first: TextField(controller: bank, decoration: InputDecoration(labelText: uiLiteral('Bank name'))),
+              second: TextField(controller: bankAddress, decoration: InputDecoration(labelText: uiLiteral('Bank address'))),
             ),
             const SizedBox(height: 12),
-            TextField(controller: account, decoration: const InputDecoration(labelText: 'Account number')),
+            TextField(controller: account, decoration: InputDecoration(labelText: uiLiteral('Account number'))),
             const SizedBox(height: 12),
             ResponsiveFieldPair(
-              first: TextField(controller: iban, decoration: const InputDecoration(labelText: 'IBAN')),
-              second: TextField(controller: swift, decoration: const InputDecoration(labelText: 'SWIFT / BIC')),
+              first: TextField(controller: iban, decoration: InputDecoration(labelText: uiLiteral('IBAN'))),
+              second: TextField(controller: swift, decoration: InputDecoration(labelText: uiLiteral('SWIFT / BIC'))),
             ),
           ],
         ),
@@ -4189,23 +4199,23 @@ class _FinancePageState extends State<FinancePage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ResponsiveFieldPair(
-                first: TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name *')),
-                second: TextField(controller: key, decoration: const InputDecoration(labelText: 'Stable key *', hintText: 'group.module_name')),
+                first: TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Module name *'))),
+                second: TextField(controller: key, decoration: InputDecoration(labelText: uiLiteral('Stable key *'), hintText: uiLiteral('group.module_name'))),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: group,
-                decoration: const InputDecoration(labelText: 'Menu group'),
+                decoration: InputDecoration(labelText: uiLiteral('Menu group')),
                 items: [
                   for (final g in groups)
-                    DropdownMenuItem(value: '${g['group_key']}', child: Text('${g['label']}')),
+                    DropdownMenuItem(value: '${g['group_key']}', child: LText('${g['label']}')),
                 ],
                 onChanged: (v) { if (v != null) setLocal(() => group = v); },
               ),
               const SizedBox(height: 12),
-              TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+              TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Description'))),
               const SizedBox(height: 12),
-              TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Default monthly price (USD)')),
+              TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Default monthly price (USD)'))),
             ],
           ),
           primaryLabel: 'Create module',
@@ -4253,25 +4263,25 @@ class _FinancePageState extends State<FinancePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: label, decoration: const InputDecoration(labelText: 'Module name')),
+              TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Module name'))),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
                 first: DropdownButtonFormField<String>(
                   value: group,
-                  decoration: const InputDecoration(labelText: 'Menu group'),
+                  decoration: InputDecoration(labelText: uiLiteral('Menu group')),
                   items: [
                     for (final g in groups)
-                      DropdownMenuItem(value: '${g['group_key']}', child: Text('${g['label']}')),
+                      DropdownMenuItem(value: '${g['group_key']}', child: LText('${g['label']}')),
                   ],
                   onChanged: (v) { if (v != null) setLocal(() => group = v); },
                 ),
                 second: DropdownButtonFormField<String>(
                   value: availability,
-                  decoration: const InputDecoration(labelText: 'Availability'),
+                  decoration: InputDecoration(labelText: uiLiteral('Availability')),
                   items: const [
-                    DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
-                    DropdownMenuItem(value: 'UNAVAILABLE', child: Text('UNAVAILABLE')),
-                    DropdownMenuItem(value: 'DEPRECATED', child: Text('DEPRECATED')),
+                    DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
+                    DropdownMenuItem(value: 'UNAVAILABLE', child: LText('UNAVAILABLE')),
+                    DropdownMenuItem(value: 'DEPRECATED', child: LText('DEPRECATED')),
                   ],
                   onChanged: (v) { if (v != null) setLocal(() => availability = v); },
                 ),
@@ -4281,17 +4291,17 @@ class _FinancePageState extends State<FinancePage> {
                 first: TextField(
                   controller: price,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Default 30-day price'),
+                  decoration: InputDecoration(labelText: uiLiteral('Default 30-day price')),
                 ),
-                second: TextField(controller: latestVersion, decoration: const InputDecoration(labelText: 'Latest version')),
+                second: TextField(controller: latestVersion, decoration: InputDecoration(labelText: uiLiteral('Latest version'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+              TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Description'))),
               const SizedBox(height: 12),
               TextFormField(
                 initialValue: '${module['key']}',
                 readOnly: true,
-                decoration: const InputDecoration(labelText: 'Stable technical key'),
+                decoration: InputDecoration(labelText: uiLiteral('Stable technical key')),
               ),
             ],
           ),
@@ -4341,8 +4351,8 @@ class _FinancePageState extends State<FinancePage> {
       title: 'Licensing & Finance',
       subtitle: 'Module catalog, pricing foundations and HIMATE issuer data — governed from one place.',
       actions: [
-        OutlinedButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const Text('Billing profile')),
-        FilledButton.icon(onPressed: addModule, icon: const Icon(Icons.add_box_outlined), label: const Text('Add module')),
+        OutlinedButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const LText('Billing profile')),
+        FilledButton.icon(onPressed: addModule, icon: const Icon(Icons.add_box_outlined), label: const LText('Add module')),
       ],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
@@ -4384,15 +4394,15 @@ class _FinancePageState extends State<FinancePage> {
                         builder: (context, c) {
                           final search = TextField(
                             onChanged: (v) => setState(() => query = v),
-                            decoration: const InputDecoration(hintText: 'Search module catalog...', prefixIcon: Icon(Icons.search_rounded)),
+                            decoration: InputDecoration(hintText: uiLiteral('Search module catalog...'), prefixIcon: Icon(Icons.search_rounded)),
                           );
                           final group = DropdownButtonFormField<String>(
                             value: groupFilter,
-                            decoration: const InputDecoration(labelText: 'Menu group'),
+                            decoration: InputDecoration(labelText: uiLiteral('Menu group')),
                             items: [
-                              const DropdownMenuItem(value: 'ALL', child: Text('All groups')),
+                              const DropdownMenuItem(value: 'ALL', child: LText('All groups')),
                               for (final g in groups)
-                                DropdownMenuItem(value: '${g['group_key']}', child: Text('${g['label']}')),
+                                DropdownMenuItem(value: '${g['group_key']}', child: LText('${g['label']}')),
                             ],
                             onChanged: (v) => setState(() => groupFilter = v ?? 'ALL'),
                           );
@@ -4518,19 +4528,19 @@ class _ImpactPageState extends State<ImpactPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ResponsiveFieldPair(
-                first: TextField(controller: key, decoration: const InputDecoration(labelText: 'Metric key', hintText: 'culture.events')),
-                second: TextField(controller: label, decoration: const InputDecoration(labelText: 'Display label')),
+                first: TextField(controller: key, decoration: InputDecoration(labelText: uiLiteral('Metric key'), hintText: uiLiteral('culture.events'))),
+                second: TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Display label'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: unit, decoration: const InputDecoration(labelText: 'Unit')),
+                first: TextField(controller: unit, decoration: InputDecoration(labelText: uiLiteral('Unit'))),
                 second: DropdownButtonFormField<String>(
                   value: aggregation,
-                  decoration: const InputDecoration(labelText: 'Aggregation'),
+                  decoration: InputDecoration(labelText: uiLiteral('Aggregation')),
                   items: const [
-                    DropdownMenuItem(value: 'SUM', child: Text('SUM')),
-                    DropdownMenuItem(value: 'LATEST', child: Text('LATEST')),
-                    DropdownMenuItem(value: 'AVERAGE', child: Text('AVERAGE')),
+                    DropdownMenuItem(value: 'SUM', child: LText('SUM')),
+                    DropdownMenuItem(value: 'LATEST', child: LText('LATEST')),
+                    DropdownMenuItem(value: 'AVERAGE', child: LText('AVERAGE')),
                   ],
                   onChanged: (v) { if (v != null) setLocal(() => aggregation = v); },
                 ),
@@ -4538,16 +4548,16 @@ class _ImpactPageState extends State<ImpactPage> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: scope,
-                decoration: const InputDecoration(labelText: 'Scope'),
+                decoration: InputDecoration(labelText: uiLiteral('Scope')),
                 items: const [
-                  DropdownMenuItem(value: 'PARTNER', child: Text('PARTNER')),
-                  DropdownMenuItem(value: 'GLOBAL', child: Text('GLOBAL')),
-                  DropdownMenuItem(value: 'BOTH', child: Text('BOTH')),
+                  DropdownMenuItem(value: 'PARTNER', child: LText('PARTNER')),
+                  DropdownMenuItem(value: 'GLOBAL', child: LText('GLOBAL')),
+                  DropdownMenuItem(value: 'BOTH', child: LText('BOTH')),
                 ],
                 onChanged: (v) { if (v != null) setLocal(() => scope = v); },
               ),
               const SizedBox(height: 12),
-              TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+              TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Description'))),
             ],
           ),
           primaryLabel: 'Create metric',
@@ -4590,25 +4600,25 @@ class _ImpactPageState extends State<ImpactPage> {
             children: [
               DropdownButtonFormField<String>(
                 value: metricKey,
-                decoration: const InputDecoration(labelText: 'Metric'),
+                decoration: InputDecoration(labelText: uiLiteral('Metric')),
                 items: [
                   for (final d in definitions)
-                    DropdownMenuItem(value: '${d['metric_key']}', child: Text('${d['label']} · ${d['metric_key']}')),
+                    DropdownMenuItem(value: '${d['metric_key']}', child: LText('${d['label']} · ${d['metric_key']}')),
                 ],
                 onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: partner, decoration: const InputDecoration(labelText: 'Partner ID', hintText: 'Leave empty for global metric')),
-                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Numeric value')),
+                first: TextField(controller: partner, decoration: InputDecoration(labelText: uiLiteral('Partner ID'), hintText: uiLiteral('Leave empty for global metric'))),
+                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Numeric value'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start', hintText: 'YYYY-MM-DD')),
-                second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end', hintText: 'YYYY-MM-DD')),
+                first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Period start'), hintText: uiLiteral('YYYY-MM-DD'))),
+                second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Period end'), hintText: uiLiteral('YYYY-MM-DD'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: source, decoration: const InputDecoration(labelText: 'Source reference')),
+              TextField(controller: source, decoration: InputDecoration(labelText: uiLiteral('Source reference'))),
             ],
           ),
           primaryLabel: 'Record value',
@@ -4652,25 +4662,25 @@ class _ImpactPageState extends State<ImpactPage> {
             children: [
               DropdownButtonFormField<String>(
                 value: metricKey,
-                decoration: const InputDecoration(labelText: 'Metric'),
+                decoration: InputDecoration(labelText: uiLiteral('Metric')),
                 items: [
                   for (final d in definitions)
-                    DropdownMenuItem(value: '${d['metric_key']}', child: Text('${d['label']} · ${d['metric_key']}')),
+                    DropdownMenuItem(value: '${d['metric_key']}', child: LText('${d['label']} · ${d['metric_key']}')),
                 ],
                 onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: partner, decoration: const InputDecoration(labelText: 'Partner ID', hintText: 'Leave empty for global baseline')),
-                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Baseline value')),
+                first: TextField(controller: partner, decoration: InputDecoration(labelText: uiLiteral('Partner ID'), hintText: uiLiteral('Leave empty for global baseline'))),
+                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Baseline value'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Baseline period start', hintText: 'YYYY-MM-DD')),
-                second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Baseline period end', hintText: 'YYYY-MM-DD')),
+                first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Baseline period start'), hintText: uiLiteral('YYYY-MM-DD'))),
+                second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Baseline period end'), hintText: uiLiteral('YYYY-MM-DD'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: source, decoration: const InputDecoration(labelText: 'Source reference')),
+              TextField(controller: source, decoration: InputDecoration(labelText: uiLiteral('Source reference'))),
             ],
           ),
           primaryLabel: 'Save baseline',
@@ -4720,20 +4730,20 @@ class _ImpactPageState extends State<ImpactPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ResponsiveFieldPair(
-                  first: TextField(controller: partner, decoration: const InputDecoration(labelText: 'Partner ID *')),
+                  first: TextField(controller: partner, decoration: InputDecoration(labelText: uiLiteral('Partner ID *'))),
                   second: DropdownButtonFormField<String>(
                     value: evidenceType,
-                    decoration: const InputDecoration(labelText: 'Evidence type'),
+                    decoration: InputDecoration(labelText: uiLiteral('Evidence type')),
                     items: const [
-                      DropdownMenuItem(value: 'PDF', child: Text('PDF')),
-                      DropdownMenuItem(value: 'IMAGE', child: Text('Image')),
-                      DropdownMenuItem(value: 'INVOICE', child: Text('Invoice')),
-                      DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
-                      DropdownMenuItem(value: 'SCREENSHOT', child: Text('Screenshot')),
-                      DropdownMenuItem(value: 'REPORT', child: Text('External report')),
-                      DropdownMenuItem(value: 'URL', child: Text('URL reference')),
-                      DropdownMenuItem(value: 'PARTNER_DECLARATION', child: Text('Partner declaration')),
-                      DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+                      DropdownMenuItem(value: 'PDF', child: LText('PDF')),
+                      DropdownMenuItem(value: 'IMAGE', child: LText('Image')),
+                      DropdownMenuItem(value: 'INVOICE', child: LText('Invoice')),
+                      DropdownMenuItem(value: 'CONTRACT', child: LText('Contract')),
+                      DropdownMenuItem(value: 'SCREENSHOT', child: LText('Screenshot')),
+                      DropdownMenuItem(value: 'REPORT', child: LText('External report')),
+                      DropdownMenuItem(value: 'URL', child: LText('URL reference')),
+                      DropdownMenuItem(value: 'PARTNER_DECLARATION', child: LText('Partner declaration')),
+                      DropdownMenuItem(value: 'OTHER', child: LText('Other')),
                     ],
                     onChanged: (v) { if (v != null) setLocal(() { evidenceType = v; selectedFile = null; }); },
                   ),
@@ -4741,28 +4751,28 @@ class _ImpactPageState extends State<ImpactPage> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: metricKey,
-                  decoration: const InputDecoration(labelText: 'Linked metric'),
+                  decoration: InputDecoration(labelText: uiLiteral('Linked metric')),
                   items: [
-                    const DropdownMenuItem(value: '', child: Text('No metric link')),
+                    const DropdownMenuItem(value: '', child: LText('No metric link')),
                     for (final d in definitions)
-                      DropdownMenuItem(value: '${d['metric_key']}', child: Text('${d['label']} · ${d['metric_key']}')),
+                      DropdownMenuItem(value: '${d['metric_key']}', child: LText('${d['label']} · ${d['metric_key']}')),
                   ],
                   onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
                 ),
                 const SizedBox(height: 12),
-                TextField(controller: title, decoration: const InputDecoration(labelText: 'Evidence title *')),
+                TextField(controller: title, decoration: InputDecoration(labelText: uiLiteral('Evidence title *'))),
                 const SizedBox(height: 12),
-                TextField(controller: description, maxLines: 2, decoration: const InputDecoration(labelText: 'Description')),
+                TextField(controller: description, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Description'))),
                 const SizedBox(height: 12),
                 ResponsiveFieldPair(
-                  first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start')),
-                  second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end')),
+                  first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Period start'))),
+                  second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Period end'))),
                 ),
                 const SizedBox(height: 12),
                 if (fileBacked)
                   Row(
                     children: [
-                      Expanded(child: Text(selectedFile?.name ?? 'No file selected', style: const TextStyle(color: brandTextSoft))),
+                      Expanded(child: LText(selectedFile?.name ?? 'No file selected', style: const TextStyle(color: brandTextSoft))),
                       const SizedBox(width: 12),
                       OutlinedButton.icon(
                         onPressed: () async {
@@ -4770,14 +4780,14 @@ class _ImpactPageState extends State<ImpactPage> {
                           if (file != null) setLocal(() => selectedFile = file);
                         },
                         icon: const Icon(Icons.upload_file_outlined),
-                        label: const Text('Choose file'),
+                        label: const LText('Choose file'),
                       ),
                     ],
                   ),
                 if (evidenceType == 'URL')
-                  TextField(controller: sourceUrl, decoration: const InputDecoration(labelText: 'HTTP(S) source URL *')),
+                  TextField(controller: sourceUrl, decoration: InputDecoration(labelText: uiLiteral('HTTP(S) source URL *'))),
                 if (evidenceType == 'PARTNER_DECLARATION')
-                  TextField(controller: declaration, maxLines: 4, decoration: const InputDecoration(labelText: 'Partner declaration *')),
+                  TextField(controller: declaration, maxLines: 4, decoration: InputDecoration(labelText: uiLiteral('Partner declaration *'))),
                 const SizedBox(height: 12),
                 const _RuleStrip(items: [
                   _RuleItem(Icons.security_outlined, 'Validation', 'Content-sniffed · max 20 MiB · SHA-256'),
@@ -4793,7 +4803,7 @@ class _ImpactPageState extends State<ImpactPage> {
                   (evidenceType == 'URL' && sourceUrl.text.trim().isEmpty) ||
                   (evidenceType == 'PARTNER_DECLARATION' && declaration.text.trim().isEmpty)) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Complete the required Evidence fields.'), behavior: SnackBarBehavior.floating),
+                  const SnackBar(content: LText('Complete the required Evidence fields.'), behavior: SnackBarBehavior.floating),
                 );
                 return;
               }
@@ -4856,15 +4866,15 @@ class _ImpactPageState extends State<ImpactPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(enabled: false, decoration: InputDecoration(labelText: 'Evidence', hintText: '${item['id']} · ${item['title']}')),
+            TextField(enabled: false, decoration: InputDecoration(labelText: uiLiteral('Evidence'), hintText: '${item['id']} · ${item['title']}')),
             const SizedBox(height: 12),
-            TextField(enabled: false, decoration: InputDecoration(labelText: 'Metric', hintText: metricKey)),
+            TextField(enabled: false, decoration: InputDecoration(labelText: uiLiteral('Metric'), hintText: metricKey)),
             const SizedBox(height: 12),
-            TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Verified numeric value')),
+            TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Verified numeric value'))),
             const SizedBox(height: 12),
             ResponsiveFieldPair(
-              first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start')),
-              second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end')),
+              first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Period start'))),
+              second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Period end'))),
             ),
           ],
         ),
@@ -4907,16 +4917,16 @@ class _ImpactPageState extends State<ImpactPage> {
             children: [
               DropdownButtonFormField<String>(
                 value: reportType,
-                decoration: const InputDecoration(labelText: 'Report type'),
+                decoration: InputDecoration(labelText: uiLiteral('Report type')),
                 items: const [
-                  DropdownMenuItem(value: 'PARTNER_IMPACT', child: Text('Partner Impact Report')),
-                  DropdownMenuItem(value: 'MULTI_PARTNER', child: Text('Multi-Partner Report')),
-                  DropdownMenuItem(value: 'HIMATE_GLOBAL', child: Text('HIMATE Global Impact Report')),
+                  DropdownMenuItem(value: 'PARTNER_IMPACT', child: LText('Partner Impact Report')),
+                  DropdownMenuItem(value: 'MULTI_PARTNER', child: LText('Multi-Partner Report')),
+                  DropdownMenuItem(value: 'HIMATE_GLOBAL', child: LText('HIMATE Global Impact Report')),
                 ],
                 onChanged: (v) { if (v != null) setLocal(() => reportType = v); },
               ),
               const SizedBox(height: 12),
-              TextField(controller: title, decoration: const InputDecoration(labelText: 'Report title', hintText: 'Optional · default title follows report type')),
+              TextField(controller: title, decoration: InputDecoration(labelText: uiLiteral('Report title'), hintText: uiLiteral('Optional · default title follows report type'))),
               if (reportType != 'HIMATE_GLOBAL') ...[
                 const SizedBox(height: 12),
                 TextField(
@@ -4929,8 +4939,8 @@ class _ImpactPageState extends State<ImpactPage> {
               ],
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: start, decoration: const InputDecoration(labelText: 'Period start')),
-                second: TextField(controller: end, decoration: const InputDecoration(labelText: 'Period end')),
+                first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Period start'))),
+                second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Period end'))),
               ),
               const SizedBox(height: 12),
               const _RuleStrip(items: [
@@ -4978,13 +4988,13 @@ class _ImpactPageState extends State<ImpactPage> {
       final result = await widget.api.get('/api/v1/evidence/${item['id']}/integrity', force: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Evidence integrity: ${result['status']} · ${shortHash(result['sha256'])}'), behavior: SnackBarBehavior.floating),
+          SnackBar(content: LText('Evidence integrity: ${result['status']} · ${shortHash(result['sha256'])}'), behavior: SnackBarBehavior.floating),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Evidence integrity check failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+          SnackBar(content: LText('Evidence integrity check failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
         );
       }
     }
@@ -5020,11 +5030,11 @@ class _ImpactPageState extends State<ImpactPage> {
           LayoutBuilder(
             builder: (context, constraints) {
               final actions = <Widget>[
-                OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const Text('New metric')),
-                OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const Text('Set baseline')),
-                OutlinedButton.icon(onPressed: addEvidence, icon: const Icon(Icons.verified_outlined), label: const Text('Upload Evidence')),
-                OutlinedButton.icon(onPressed: generateReport, icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('Generate Report')),
-                FilledButton.icon(onPressed: definitions.isEmpty ? null : addValue, icon: const Icon(Icons.add_rounded), label: const Text('Record value')),
+                OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
+                OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
+                OutlinedButton.icon(onPressed: addEvidence, icon: const Icon(Icons.verified_outlined), label: const LText('Upload Evidence')),
+                OutlinedButton.icon(onPressed: generateReport, icon: const Icon(Icons.picture_as_pdf_outlined), label: const LText('Generate Report')),
+                FilledButton.icon(onPressed: definitions.isEmpty ? null : addValue, icon: const Icon(Icons.add_rounded), label: const LText('Record value')),
               ];
               return Wrap(
                 alignment: WrapAlignment.end,
@@ -5086,25 +5096,25 @@ class _ImpactPageState extends State<ImpactPage> {
                     child: TextField(
                       onChanged: (value) => evidenceQuery = value,
                       onSubmitted: (_) => applyEvidenceFilters(),
-                      decoration: const InputDecoration(labelText: 'Search Evidence', hintText: 'Title, file, partner, metric, URL…', prefixIcon: Icon(Icons.search_rounded)),
+                      decoration: InputDecoration(labelText: uiLiteral('Search Evidence'), hintText: uiLiteral('Title, file, partner, metric, URL…'), prefixIcon: Icon(Icons.search_rounded)),
                     ),
                   ),
                   SizedBox(
                     width: fieldWidth,
                     child: DropdownButtonFormField<String>(
                       value: evidenceTypeFilter,
-                      decoration: const InputDecoration(labelText: 'Type'),
+                      decoration: InputDecoration(labelText: uiLiteral('Type')),
                       items: const [
-                        DropdownMenuItem(value: '', child: Text('All types')),
-                        DropdownMenuItem(value: 'PDF', child: Text('PDF')),
-                        DropdownMenuItem(value: 'IMAGE', child: Text('Image')),
-                        DropdownMenuItem(value: 'INVOICE', child: Text('Invoice')),
-                        DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
-                        DropdownMenuItem(value: 'SCREENSHOT', child: Text('Screenshot')),
-                        DropdownMenuItem(value: 'REPORT', child: Text('Report')),
-                        DropdownMenuItem(value: 'URL', child: Text('URL')),
-                        DropdownMenuItem(value: 'PARTNER_DECLARATION', child: Text('Partner declaration')),
-                        DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+                        DropdownMenuItem(value: '', child: LText('All types')),
+                        DropdownMenuItem(value: 'PDF', child: LText('PDF')),
+                        DropdownMenuItem(value: 'IMAGE', child: LText('Image')),
+                        DropdownMenuItem(value: 'INVOICE', child: LText('Invoice')),
+                        DropdownMenuItem(value: 'CONTRACT', child: LText('Contract')),
+                        DropdownMenuItem(value: 'SCREENSHOT', child: LText('Screenshot')),
+                        DropdownMenuItem(value: 'REPORT', child: LText('Report')),
+                        DropdownMenuItem(value: 'URL', child: LText('URL')),
+                        DropdownMenuItem(value: 'PARTNER_DECLARATION', child: LText('Partner declaration')),
+                        DropdownMenuItem(value: 'OTHER', child: LText('Other')),
                       ],
                       onChanged: (v) { if (v != null) setState(() => evidenceTypeFilter = v); },
                     ),
@@ -5113,19 +5123,19 @@ class _ImpactPageState extends State<ImpactPage> {
                     width: fieldWidth,
                     child: DropdownButtonFormField<String>(
                       value: evidenceStatusFilter,
-                      decoration: const InputDecoration(labelText: 'Verification'),
+                      decoration: InputDecoration(labelText: uiLiteral('Verification')),
                       items: const [
-                        DropdownMenuItem(value: '', child: Text('All statuses')),
-                        DropdownMenuItem(value: 'UNVERIFIED', child: Text('Unverified')),
-                        DropdownMenuItem(value: 'VERIFIED', child: Text('Verified')),
-                        DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+                        DropdownMenuItem(value: '', child: LText('All statuses')),
+                        DropdownMenuItem(value: 'UNVERIFIED', child: LText('Unverified')),
+                        DropdownMenuItem(value: 'VERIFIED', child: LText('Verified')),
+                        DropdownMenuItem(value: 'REJECTED', child: LText('Rejected')),
                       ],
                       onChanged: (v) { if (v != null) setState(() => evidenceStatusFilter = v); },
                     ),
                   ),
-                  SizedBox(width: fieldWidth, child: TextField(onChanged: (v) => evidencePeriodStart = v, decoration: const InputDecoration(labelText: 'Period from', hintText: 'YYYY-MM-DD'))),
-                  SizedBox(width: fieldWidth, child: TextField(onChanged: (v) => evidencePeriodEnd = v, decoration: const InputDecoration(labelText: 'Period to', hintText: 'YYYY-MM-DD'))),
-                  FilledButton.icon(onPressed: applyEvidenceFilters, icon: const Icon(Icons.filter_alt_outlined), label: const Text('Apply')),
+                  SizedBox(width: fieldWidth, child: TextField(onChanged: (v) => evidencePeriodStart = v, decoration: InputDecoration(labelText: uiLiteral('Period from'), hintText: uiLiteral('YYYY-MM-DD')))),
+                  SizedBox(width: fieldWidth, child: TextField(onChanged: (v) => evidencePeriodEnd = v, decoration: InputDecoration(labelText: uiLiteral('Period to'), hintText: uiLiteral('YYYY-MM-DD')))),
+                  FilledButton.icon(onPressed: applyEvidenceFilters, icon: const Icon(Icons.filter_alt_outlined), label: const LText('Apply')),
                 ],
               );
             },
@@ -5153,7 +5163,7 @@ class _ImpactPageState extends State<ImpactPage> {
                                 Row(children: [
                                   const Icon(Icons.verified_outlined, color: brandGold),
                                   const SizedBox(width: 10),
-                                  Expanded(child: Text('${item['title']}', style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy))),
+                                  Expanded(child: LText('${item['title']}', style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy))),
                                 ]),
                                 const SizedBox(height: 14),
                                 _DefinitionRow(label: 'Partner', value: '${item['partner_id']}'),
@@ -5174,37 +5184,37 @@ class _ImpactPageState extends State<ImpactPage> {
                                       OutlinedButton.icon(
                                         onPressed: () => openBrowserDownload('/api/v1/evidence/${item['id']}/preview'),
                                         icon: const Icon(Icons.visibility_outlined),
-                                        label: const Text('Preview'),
+                                        label: const LText('Preview'),
                                       ),
                                     if (item['has_file'] == true)
                                       OutlinedButton.icon(
                                         onPressed: () => openBrowserDownload('/api/v1/evidence/${item['id']}/download'),
                                         icon: const Icon(Icons.download_outlined),
-                                        label: const Text('Download'),
+                                        label: const LText('Download'),
                                       ),
                                     if (item['has_file'] == true)
                                       OutlinedButton.icon(
                                         onPressed: () => checkEvidenceIntegrity(item),
                                         icon: const Icon(Icons.security_outlined),
-                                        label: const Text('Integrity'),
+                                        label: const LText('Integrity'),
                                       ),
                                     if ('${item['source_url'] ?? ''}'.isNotEmpty)
                                       OutlinedButton.icon(
                                         onPressed: () => html.window.open('${item['source_url']}', '_blank'),
                                         icon: const Icon(Icons.open_in_new_rounded),
-                                        label: const Text('Open URL'),
+                                        label: const LText('Open URL'),
                                       ),
                                     if (item['verification_status'] != 'VERIFIED')
                                       FilledButton.icon(
                                         onPressed: () => verifyEvidence(item),
                                         icon: const Icon(Icons.fact_check_outlined),
-                                        label: const Text('Verify'),
+                                        label: const LText('Verify'),
                                       ),
                                     if (item['verification_status'] == 'VERIFIED' && '${item['metric_key'] ?? ''}'.isNotEmpty)
                                       FilledButton.icon(
                                         onPressed: () => recordVerifiedValue(item),
                                         icon: const Icon(Icons.add_chart_rounded),
-                                        label: const Text('Verified metric'),
+                                        label: const LText('Verified metric'),
                                       ),
                                   ],
                                 ),
@@ -5222,19 +5232,19 @@ class _ImpactPageState extends State<ImpactPage> {
             Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: LText(
                     'Showing ${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} of $evidenceTotal',
                     style: const TextStyle(color: brandTextSoft, fontSize: 11.5, fontWeight: FontWeight.w600),
                   ),
                 ),
                 OutlinedButton(
                   onPressed: evidenceOffset > 0 ? () async { evidenceOffset = (evidenceOffset - evidenceLimit).clamp(0, evidenceTotal).toInt(); await load(); } : null,
-                  child: const Text('Previous'),
+                  child: const LText('Previous'),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: evidenceOffset + evidence.length < evidenceTotal ? () async { evidenceOffset += evidenceLimit; await load(); } : null,
-                  child: const Text('Next'),
+                  child: const LText('Next'),
                 ),
               ],
             ),
@@ -5264,7 +5274,7 @@ class _ImpactPageState extends State<ImpactPage> {
                                 Row(children: [
                                   const Icon(Icons.picture_as_pdf_outlined, color: brandGold),
                                   const SizedBox(width: 10),
-                                  Expanded(child: Text('${item['title']}', style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy))),
+                                  Expanded(child: LText('${item['title']}', style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy))),
                                 ]),
                                 const SizedBox(height: 14),
                                 _DefinitionRow(label: 'Report ID', value: '${item['id']}'),
@@ -5286,13 +5296,13 @@ class _ImpactPageState extends State<ImpactPage> {
                                       FilledButton.icon(
                                         onPressed: () => openBrowserDownload('/api/v1/reports/${item['id']}/download'),
                                         icon: const Icon(Icons.download_outlined),
-                                        label: const Text('Download PDF'),
+                                        label: const LText('Download PDF'),
                                       ),
                                     if (item['download_ready'] == true)
                                       OutlinedButton.icon(
                                         onPressed: () => regenerateReport(item),
                                         icon: const Icon(Icons.replay_outlined),
-                                        label: const Text('Regenerate snapshot'),
+                                        label: const LText('Regenerate snapshot'),
                                       ),
                                   ],
                                 ),
@@ -5691,7 +5701,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
                         children: [
                           _StatusPill(label: '${event['method'] ?? 'UNKNOWN'}'),
                           _StatusPill(label: eventOutcome),
-                          Text(
+                          LText(
                             _humanize('${event['resource'] ?? 'api'}'),
                             style: const TextStyle(color: brandNavy, fontSize: 13, fontWeight: FontWeight.w700),
                           ),
@@ -5706,7 +5716,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text(_timestamp(event['created_at']), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                LText(_timestamp(event['created_at']), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
               ],
             ),
             const SizedBox(height: 14),
@@ -5739,7 +5749,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
         OutlinedButton.icon(
           onPressed: loading ? null : () => load(),
           icon: const Icon(Icons.refresh_rounded),
-          label: const Text('Refresh'),
+          label: const LText('Refresh'),
         ),
       ],
       child: Column(
@@ -5764,18 +5774,18 @@ class _AdministrationPageState extends State<AdministrationPage> {
                 final search = TextField(
                   controller: searchController,
                   onChanged: searchChanged,
-                  decoration: const InputDecoration(
-                    labelText: 'Search audit history',
-                    hintText: 'Actor, request ID, resource, path or partner',
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Search audit history'),
+                    hintText: uiLiteral('Actor, request ID, resource, path or partner'),
                     prefixIcon: Icon(Icons.search_rounded),
                   ),
                 );
                 final resourceFilter = DropdownButtonFormField<String>(
                   value: resource,
-                  decoration: const InputDecoration(labelText: 'Resource'),
+                  decoration: InputDecoration(labelText: uiLiteral('Resource')),
                   items: [
                     for (final value in resources)
-                      DropdownMenuItem(value: value, child: Text(value == 'ALL' ? 'All resources' : _humanize(value))),
+                      DropdownMenuItem(value: value, child: LText(value == 'ALL' ? 'All resources' : _humanize(value))),
                   ],
                   onChanged: (value) {
                     if (value != null) setFilter(() => resource = value);
@@ -5783,13 +5793,13 @@ class _AdministrationPageState extends State<AdministrationPage> {
                 );
                 final methodFilter = DropdownButtonFormField<String>(
                   value: method,
-                  decoration: const InputDecoration(labelText: 'Method'),
+                  decoration: InputDecoration(labelText: uiLiteral('Method')),
                   items: const [
-                    DropdownMenuItem(value: 'ALL', child: Text('All methods')),
-                    DropdownMenuItem(value: 'POST', child: Text('POST')),
-                    DropdownMenuItem(value: 'PATCH', child: Text('PATCH')),
-                    DropdownMenuItem(value: 'PUT', child: Text('PUT')),
-                    DropdownMenuItem(value: 'DELETE', child: Text('DELETE')),
+                    DropdownMenuItem(value: 'ALL', child: LText('All methods')),
+                    DropdownMenuItem(value: 'POST', child: LText('POST')),
+                    DropdownMenuItem(value: 'PATCH', child: LText('PATCH')),
+                    DropdownMenuItem(value: 'PUT', child: LText('PUT')),
+                    DropdownMenuItem(value: 'DELETE', child: LText('DELETE')),
                   ],
                   onChanged: (value) {
                     if (value != null) setFilter(() => method = value);
@@ -5797,11 +5807,11 @@ class _AdministrationPageState extends State<AdministrationPage> {
                 );
                 final outcomeFilter = DropdownButtonFormField<String>(
                   value: outcome,
-                  decoration: const InputDecoration(labelText: 'Outcome'),
+                  decoration: InputDecoration(labelText: uiLiteral('Outcome')),
                   items: const [
-                    DropdownMenuItem(value: 'ALL', child: Text('All outcomes')),
-                    DropdownMenuItem(value: 'SUCCESS', child: Text('Success')),
-                    DropdownMenuItem(value: 'FAILED', child: Text('Failed')),
+                    DropdownMenuItem(value: 'ALL', child: LText('All outcomes')),
+                    DropdownMenuItem(value: 'SUCCESS', child: LText('Success')),
+                    DropdownMenuItem(value: 'FAILED', child: LText('Failed')),
                   ],
                   onChanged: (value) {
                     if (value != null) setFilter(() => outcome = value);
@@ -5874,7 +5884,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
                           }
                         : null,
                     icon: const Icon(Icons.chevron_left_rounded),
-                    label: const Text('Previous'),
+                    label: const LText('Previous'),
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
@@ -5885,7 +5895,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
                           }
                         : null,
                     icon: const Icon(Icons.chevron_right_rounded),
-                    label: const Text('Next'),
+                    label: const LText('Next'),
                   ),
                 ],
               ),
@@ -6007,9 +6017,9 @@ class BrandDialog extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(title, style: Theme.of(context).textTheme.titleLarge),
+                          LText(title, style: Theme.of(context).textTheme.titleLarge),
                           const SizedBox(height: 4),
-                          Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12, height: 1.4)),
+                          LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12, height: 1.4)),
                         ],
                       ),
                     ),
@@ -6029,8 +6039,8 @@ class BrandDialog extends StatelessWidget {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final actions = [
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                      FilledButton(onPressed: onPrimary, child: Text(primaryLabel)),
+                      TextButton(onPressed: () => Navigator.pop(context, false), child: const LText('Cancel')),
+                      FilledButton(onPressed: onPrimary, child: LText(primaryLabel)),
                     ];
                     if (constraints.maxWidth < 420) {
                       return Column(
@@ -6088,7 +6098,7 @@ class _MiniCounter extends StatelessWidget {
         borderRadius: BorderRadius.circular(99),
         border: Border.all(color: brandNavy.withOpacity(.07)),
       ),
-      child: Text(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+      child: LText(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -6110,7 +6120,7 @@ class _StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99), border: Border.all(color: tone.withOpacity(.15))),
-      child: Text(_humanize(label), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .25)),
+      child: LText(_humanize(label), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .25)),
     );
   }
 }
@@ -6157,15 +6167,15 @@ class _PartnerCardState extends State<PartnerCard> {
                       _PartnerLogo(url: '${p['logo_url'] ?? ''}'),
                       const Spacer(),
                       if (p['reference_partner'] == true)
-                        const Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
+                        Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Text('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
+                  LText('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  Text('${p['category_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
+                  LText('${p['category_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
                   const SizedBox(height: 7),
-                  Text(
+                  LText(
                     '${p['primary_domain'] ?? ''}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -6191,8 +6201,8 @@ class _PartnerCardState extends State<PartnerCard> {
                   const Divider(height: 1),
                   const SizedBox(height: 12),
                   Row(children: [
-                    Expanded(child: Text('${p['id']}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
-                    const Text('Open workspace', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                    Expanded(child: LText('${p['id']}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
+                    const LText('Open workspace', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700)),
                     const SizedBox(width: 5),
                     AnimatedSlide(offset: hover ? const Offset(.12, 0) : Offset.zero, duration: const Duration(milliseconds: 160), child: const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 16)),
                   ]),
@@ -6261,7 +6271,7 @@ class _PartnerMetric extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: brandMist),
         ),
-        child: Text(
+        child: LText(
           '$label  $value',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -6306,9 +6316,9 @@ class _NewPartnerCardState extends State<NewPartnerCard> {
                 children: [
                   Container(width: 46, height: 46, decoration: BoxDecoration(color: brandGold.withOpacity(.12), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, color: brandGold, size: 26)),
                   const SizedBox(height: 11),
-                  const Text('NEW PARTNER', style: TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.3)),
+                  const LText('NEW PARTNER', style: TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.3)),
                   const SizedBox(height: 5),
-                  const Text('Create a new partner workspace', style: TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                  const LText('Create a new partner workspace', style: TextStyle(color: brandTextSoft, fontSize: 10.5)),
                 ],
               ),
             ),
@@ -6350,9 +6360,9 @@ class WorkspaceCard extends StatelessWidget {
             _MiniCounter(label: spec.active ? 'AVAILABLE' : 'PLANNED'),
           ]),
           const SizedBox(height: 11),
-          Text(spec.title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12.5)),
+          LText(spec.title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12.5)),
           const SizedBox(height: 3),
-          Text(spec.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.6, height: 1.35)),
+          LText(spec.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.6, height: 1.35)),
         ],
       ),
     );
@@ -6378,9 +6388,9 @@ class _SectionHeader extends StatelessWidget {
     final copy = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        LText(title, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 4),
-        Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11.5, height: 1.4)),
+        LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11.5, height: 1.4)),
       ],
     );
     if (trailing == null) return copy;
@@ -6439,12 +6449,12 @@ class _PartnerModuleCardState extends State<PartnerModuleCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  Expanded(child: Text('${m['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13))),
+                  Expanded(child: LText('${m['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13))),
                   const SizedBox(width: 8),
                   _StatusPill(label: '${m['status']}'),
                 ]),
                 const SizedBox(height: 5),
-                Text('${m['group_label']} · ${m['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                LText('${m['group_label']} · ${m['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
                 const SizedBox(height: 13),
                 Wrap(
                   spacing: 7,
@@ -6456,9 +6466,9 @@ class _PartnerModuleCardState extends State<PartnerModuleCard> {
                 ),
                 const SizedBox(height: 13),
                 Row(children: [
-                  const Text('Monthly', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const LText('Monthly', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
                   const Spacer(),
-                  Text(included ? 'Included' : money(m['partner_price']), style: const TextStyle(color: brandNavy, fontSize: 16, fontWeight: FontWeight.w600)),
+                  LText(included ? 'Included' : money(m['partner_price']), style: const TextStyle(color: brandNavy, fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(width: 7),
                   const Icon(Icons.edit_outlined, color: brandGold, size: 16),
                 ]),
@@ -6484,7 +6494,7 @@ class _TinyFlag extends StatelessWidget {
     child: Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(icon, size: 12, color: active ? brandSuccess : brandSteel),
       const SizedBox(width: 4),
-      Text(label, style: TextStyle(fontSize: 8.5, color: active ? brandSuccess : brandSteel, fontWeight: FontWeight.w700)),
+      LText(label, style: TextStyle(fontSize: 8.5, color: active ? brandSuccess : brandSteel, fontWeight: FontWeight.w700)),
     ]),
   );
 }
@@ -6523,7 +6533,7 @@ class _CommercialSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) => _InfoCard(
     title: 'Pricing & Subscription',
     icon: Icons.payments_outlined,
-    action: IconButton(onPressed: onEdit, tooltip: 'Edit commercial terms', icon: const Icon(Icons.edit_outlined, size: 18)),
+    action: IconButton(onPressed: onEdit, tooltip: uiLiteral('Edit commercial terms'), icon: const Icon(Icons.edit_outlined, size: 18)),
     children: [
       _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
       _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
@@ -6553,7 +6563,7 @@ class _InfoCard extends StatelessWidget {
         Row(children: [
           Container(width: 36, height: 36, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(icon, color: brandGold, size: 19)),
           const SizedBox(width: 10),
-          Expanded(child: Text(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+          Expanded(child: LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
           if (action != null) action!,
         ]),
         const SizedBox(height: 14),
@@ -6572,9 +6582,9 @@ class _DefinitionRow extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 7),
     child: Row(children: [
-      Expanded(child: Text(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5))),
+      Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5))),
       const SizedBox(width: 12),
-      Flexible(child: Text(value, textAlign: TextAlign.right, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: brandNavy, fontSize: emphasis ? 13 : 11, fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600))),
+      Flexible(child: LText(value, textAlign: TextAlign.right, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: brandNavy, fontSize: emphasis ? 13 : 11, fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600))),
     ]),
   );
 }
@@ -6601,8 +6611,8 @@ class _RuleStrip extends StatelessWidget {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(item.icon, color: brandGold, size: 15),
             const SizedBox(width: 7),
-            Text('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            Text(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
           ]),
         ),
     ],
@@ -6620,7 +6630,7 @@ class _DocumentPanel extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Expanded(child: Text('Documents', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+          const Expanded(child: LText('Documents', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
           _MiniCounter(label: '${documents.length} RECORDS'),
         ]),
         const SizedBox(height: 12),
@@ -6647,9 +6657,9 @@ class _DocumentRow extends StatelessWidget {
       Container(width: 34, height: 34, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.description_outlined, color: brandGold, size: 17)),
       const SizedBox(width: 10),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('${document['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+        LText('${document['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
-        Text(_humanize('${document['kind']}'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+        LText(_humanize('${document['kind']}'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
       ])),
       if ('${document['storage_url'] ?? ''}'.isNotEmpty) const Icon(Icons.link_rounded, color: brandSteel, size: 16),
     ]),
@@ -6666,7 +6676,7 @@ class _InvoicePanel extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Expanded(child: Text('Invoices', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+          const Expanded(child: LText('Invoices', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
           _MiniCounter(label: '${invoices.length} RECORDS'),
         ]),
         const SizedBox(height: 12),
@@ -6693,12 +6703,12 @@ class _InvoiceRow extends StatelessWidget {
       Container(width: 34, height: 34, decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.receipt_long_outlined, color: brandNavy, size: 17)),
       const SizedBox(width: 10),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('${invoice['id']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+        LText('${invoice['id']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
-        Text('${invoice['invoice_date'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+        LText('${invoice['invoice_date'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
       ])),
       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text(money(invoice['total']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 14)),
+        LText(money(invoice['total']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 14)),
         const SizedBox(height: 2),
         _StatusPill(label: '${invoice['status'] ?? 'DRAFT'}'),
       ]),
@@ -6721,10 +6731,10 @@ class _EmptyInline extends StatelessWidget {
     child: Column(children: [
       Icon(icon, color: brandSteel, size: 24),
       const SizedBox(height: 8),
-      Text(title, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+      LText(title, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
       if (actionLabel != null && onTap != null) ...[
         const SizedBox(height: 8),
-        TextButton(onPressed: onTap, child: Text(actionLabel!)),
+        TextButton(onPressed: onTap, child: LText(actionLabel!)),
       ],
     ]),
   );
@@ -6737,7 +6747,7 @@ class _DialogSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.centerLeft,
-    child: Text(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+    child: LText(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
   );
 }
 
@@ -6752,7 +6762,7 @@ class _IssuerProfileCard extends StatelessWidget {
   Widget build(BuildContext context) => _InfoCard(
     title: 'HIMATE Issuer Profile',
     icon: Icons.account_balance_outlined,
-    action: IconButton(onPressed: onEdit, tooltip: 'Edit billing profile', icon: const Icon(Icons.edit_outlined, size: 18)),
+    action: IconButton(onPressed: onEdit, tooltip: uiLiteral('Edit billing profile'), icon: const Icon(Icons.edit_outlined, size: 18)),
     children: [
       _DefinitionRow(label: 'Legal name', value: clean(profile['legal_name'])),
       _DefinitionRow(label: 'Billing email', value: clean(profile['email'])),
@@ -6805,16 +6815,16 @@ class CatalogModuleCard extends StatelessWidget {
               _StatusPill(label: availability),
             ]),
             const SizedBox(height: 12),
-            Text('${module['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
+            LText('${module['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
             const SizedBox(height: 4),
-            Text('${module['group_label']}', style: const TextStyle(color: brandSteel, fontSize: 10, fontWeight: FontWeight.w600)),
+            LText('${module['group_label']}', style: const TextStyle(color: brandSteel, fontSize: 10, fontWeight: FontWeight.w600)),
             const SizedBox(height: 3),
-            Text('${module['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+            LText('${module['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
             const SizedBox(height: 12),
             Row(children: [
-              Text('v${module['version'] ?? '1.0.0'} → ${module['latest_version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+              LText('v${module['version'] ?? '1.0.0'} → ${module['latest_version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
               const Spacer(),
-              Text(money(module['default_monthly_price']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
+              LText(money(module['default_monthly_price']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
               const SizedBox(width: 7),
               const Icon(Icons.edit_outlined, color: brandGold, size: 15),
             ]),
@@ -6845,9 +6855,9 @@ class _OperationsHero extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(healthy ? 'Platform operational' : 'Platform requires attention', style: const TextStyle(color: brandWhite, fontSize: 24, fontWeight: FontWeight.w600)),
+              LText(healthy ? 'Platform operational' : 'Platform requires attention', style: const TextStyle(color: brandWhite, fontSize: 24, fontWeight: FontWeight.w600)),
               const SizedBox(height: 5),
-              Text('Environment: $environment · Version: $version', style: const TextStyle(color: Color(0xFFB8C6D6), fontSize: 11)),
+              LText('Environment: $environment · Version: $version', style: const TextStyle(color: Color(0xFFB8C6D6), fontSize: 11)),
             ]),
           ),
           _StatusPill(label: status),
@@ -6918,12 +6928,12 @@ class Content extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (eyebrow != null) ...[
-              Text(eyebrow!, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w600)),
+              LText(eyebrow!, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
             ],
-            Text(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: narrow ? 36 : 42, fontWeight: FontWeight.w600, height: .98)),
+            LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: narrow ? 36 : 42, fontWeight: FontWeight.w600, height: .98)),
             const SizedBox(height: 6),
-            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: Text(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12.5, height: 1.45))),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12.5, height: 1.45))),
           ],
         );
 
@@ -6980,10 +6990,10 @@ class _KpiState extends State<Kpi> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Icon(widget.icon, color: widget.accent, size: 22), const Spacer(), Container(width: 5, height: 5, decoration: BoxDecoration(color: widget.accent, shape: BoxShape.circle))]),
           const Spacer(),
-          Text(widget.label, style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600)),
+          LText(widget.label, style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(widget.value, style: const TextStyle(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
-          Text(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.3)),
+          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: LText(widget.value, style: const TextStyle(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
+          LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.3)),
         ]),
       ),
     ),
@@ -7008,12 +7018,12 @@ class ServiceCard extends StatelessWidget {
             Row(children: [
               Container(width: 36, height: 36, decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(9)), child: const Icon(Icons.dns_outlined, color: brandNavy, size: 19)),
               const Spacer(),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99)), child: Text(status.toUpperCase(), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w700))),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99)), child: LText(status.toUpperCase(), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w700))),
             ]),
             const Spacer(),
-            Text(name, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14)),
+            LText(name, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14)),
             const SizedBox(height: 3),
-            Text(ok ? 'Service responding normally' : 'Awaiting healthy response', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+            LText(ok ? 'Service responding normally' : 'Awaiting healthy response', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
           ]),
         ),
       ),
@@ -7046,9 +7056,9 @@ class _MessageCard extends StatelessWidget {
         Container(width: 46, height: 46, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(11)), child: Icon(icon, color: brandGold, size: 22)),
         const SizedBox(width: 15),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 16)),
+          LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 6),
-          Text(message, style: const TextStyle(color: brandTextSoft, height: 1.45)),
+          LText(message, style: const TextStyle(color: brandTextSoft, height: 1.45)),
         ])),
       ]),
     ),

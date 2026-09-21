@@ -14,7 +14,7 @@ json_field() {
 }
 
 printf 'login... '
-curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"email":"admin@example.com","password":"local-development-password"}'   "$BASE_URL/api/v1/auth/login" >/dev/null
+curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"email":"admin@example.com","password":"Local-Development1!Password"}'   "$BASE_URL/api/v1/auth/login" >/dev/null
 echo ok
 
 printf 'START-14-15 services are healthy... '

@@ -93,8 +93,9 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
       setState(() => error = HimateI18n.text(locale, 'passwordsMismatch'));
       return;
     }
-    if (newPassword.text.length < 12) {
-      setState(() => error = HimateI18n.text(locale, 'passwordMin'));
+    final policyMessage = himatePasswordPolicyMessage(locale, newPassword.text);
+    if (policyMessage != null) {
+      setState(() => error = policyMessage);
       return;
     }
     setState(() { changingPassword = true; error = null; success = null; });
@@ -128,7 +129,7 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
         children: [
           const Icon(Icons.account_circle_outlined, color: brandNavy),
           const SizedBox(width: 10),
-          Expanded(child: Text(t('profile'))),
+          Expanded(child: LText(t('profile'))),
           IconButton(
             onPressed: () => Navigator.pop(context),
             tooltip: t('close'),
@@ -142,7 +143,7 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(t('profileIntro'), style: const TextStyle(color: brandTextSoft)),
+              LText(t('profileIntro'), style: const TextStyle(color: brandTextSoft)),
               if (widget.currentUser['system_owner'] == true) ...[
                 const SizedBox(height: 14),
                 Container(
@@ -160,8 +161,8 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(t('systemOwner'), style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy)),
-                            Text(t('systemOwnerHint'), style: const TextStyle(color: brandTextSoft, fontSize: 11)),
+                            LText(t('systemOwner'), style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy)),
+                            LText(t('systemOwnerHint'), style: const TextStyle(color: brandTextSoft, fontSize: 11)),
                           ],
                         ),
                       ),
@@ -189,8 +190,8 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
                   value: locale,
                   decoration: InputDecoration(labelText: t('language')),
                   items: [
-                    DropdownMenuItem(value: 'en_US', child: Text(t('englishUS'))),
-                    DropdownMenuItem(value: 'hu_HU', child: Text(t('hungarian'))),
+                    DropdownMenuItem(value: 'en_US', child: LText(t('englishUS'))),
+                    DropdownMenuItem(value: 'hu_HU', child: LText(t('hungarian'))),
                   ],
                   onChanged: (value) {
                     if (value != null) setState(() => locale = value);
@@ -199,17 +200,17 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
                 second: TextField(controller: timezone, decoration: InputDecoration(labelText: t('timezone'))),
               ),
               const SizedBox(height: 10),
-              Text('${t('roles')}: ${roles.join(', ')}', style: const TextStyle(color: brandTextSoft, fontSize: 11)),
+              LText('${t('roles')}: ${roles.join(', ')}', style: const TextStyle(color: brandTextSoft, fontSize: 11)),
               const SizedBox(height: 14),
               FilledButton.icon(
                 onPressed: saving ? null : save,
                 icon: saving
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: brandWhite))
                     : const Icon(Icons.save_outlined),
-                label: Text(t('saveChanges')),
+                label: LText(t('saveChanges')),
               ),
               const Padding(padding: EdgeInsets.symmetric(vertical: 22), child: Divider()),
-              Text(t('passwordSecurity'), style: Theme.of(context).textTheme.titleMedium),
+              LText(t('passwordSecurity'), style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
               TextField(
                 controller: currentPassword,
@@ -218,29 +219,29 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
               ),
               const SizedBox(height: 10),
               ResponsiveFieldPair(
-                first: TextField(controller: newPassword, obscureText: true, decoration: InputDecoration(labelText: t('newPassword'))),
+                first: TextField(controller: newPassword, obscureText: true, decoration: InputDecoration(labelText: t('newPassword'), helperText: t('passwordPolicy'))),
                 second: TextField(controller: confirmPassword, obscureText: true, decoration: InputDecoration(labelText: t('confirmPassword'))),
               ),
               const SizedBox(height: 10),
               OutlinedButton.icon(
                 onPressed: changingPassword ? null : changePassword,
                 icon: const Icon(Icons.password_rounded),
-                label: Text(t('changePassword')),
+                label: LText(t('changePassword')),
               ),
               if (error != null) ...[
                 const SizedBox(height: 12),
-                Text(error!, style: const TextStyle(color: brandDanger)),
+                LText(error!, style: const TextStyle(color: brandDanger)),
               ],
               if (success != null) ...[
                 const SizedBox(height: 12),
-                Text(success!, style: const TextStyle(color: brandSuccess)),
+                LText(success!, style: const TextStyle(color: brandSuccess)),
               ],
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(t('close'))),
+        TextButton(onPressed: () => Navigator.pop(context), child: LText(t('close'))),
       ],
     );
   }

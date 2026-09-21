@@ -280,8 +280,11 @@ func (a *app) migrate(ctx context.Context) error {
 	email := strings.ToLower(strings.TrimSpace(os.Getenv("HIMATE_BOOTSTRAP_ADMIN_EMAIL")))
 	password := os.Getenv("HIMATE_BOOTSTRAP_ADMIN_PASSWORD")
 	name := common.Env("HIMATE_BOOTSTRAP_ADMIN_NAME", "HIMATE Administrator")
-	if !strings.Contains(email, "@") || len(password) < 12 {
-		return errors.New("HIMATE_BOOTSTRAP_ADMIN_EMAIL and a 12+ character HIMATE_BOOTSTRAP_ADMIN_PASSWORD are required")
+	if !validEmail(email) {
+		return errors.New("a valid HIMATE_BOOTSTRAP_ADMIN_EMAIL is required")
+	}
+	if message := passwordPolicyError(password); message != "" {
+		return fmt.Errorf("HIMATE_BOOTSTRAP_ADMIN_PASSWORD: %s", message)
 	}
 	hashed, err := hashPassword(password)
 	if err != nil {
@@ -483,6 +486,15 @@ var roleDefinitions = []roleDefinition{
 			"reports.read", "reports.write", "reports.approve",
 		},
 	},
+	{
+		Key: "marketing_admin", Label: "Marketing Admin",
+		Description: "Website content, published design settings and inbound contact-lead management.",
+		Permissions: []string{
+			"dashboard.read",
+			"cms.read", "cms.write", "cms.approve",
+			"contact.read", "contact.write",
+		},
+	},
 }
 
 func roleDefinitionByKey(key string) (roleDefinition, bool) {
@@ -568,6 +580,8 @@ func permissionResource(r *http.Request) string {
 		return "partners"
 	case strings.HasPrefix(path, "/api/v1/billing/"):
 		return "billing"
+	case path == "/api/v1/contact/inquiries", strings.HasPrefix(path, "/api/v1/contact/inquiries/"):
+		return "contact"
 	case strings.HasPrefix(path, "/api/v1/provisioning/"):
 		return "provisioning"
 	case path == "/api/v1/environments", strings.HasPrefix(path, "/api/v1/environments/"):
@@ -585,7 +599,9 @@ func permissionResource(r *http.Request) string {
 	case path == "/api/v1/reports", strings.HasPrefix(path, "/api/v1/reports/"):
 		return "reports"
 	case path == "/api/v1/cms/pages", strings.HasPrefix(path, "/api/v1/cms/pages/"),
-		path == "/api/v1/cms/media", strings.HasPrefix(path, "/api/v1/cms/media/"):
+		path == "/api/v1/cms/media", strings.HasPrefix(path, "/api/v1/cms/media/"),
+		path == "/api/v1/cms/design", strings.HasPrefix(path, "/api/v1/cms/design/"),
+		path == "/api/v1/cms/seo", strings.HasPrefix(path, "/api/v1/cms/seo/"):
 		return "cms"
 	default:
 		return ""
@@ -691,6 +707,14 @@ func decodeAuditState(raw []byte) any {
 func auditAction(r *http.Request) string {
 	path := r.URL.Path
 	switch {
+	case path == "/api/v1/cms/seo/publish" && r.Method == http.MethodPost:
+		return "SEO_SETTINGS_PUBLISHED"
+	case path == "/api/v1/cms/seo/draft" && r.Method == http.MethodPut:
+		return "SEO_SETTINGS_DRAFT_SAVED"
+	case path == "/api/v1/cms/design/publish" && r.Method == http.MethodPost:
+		return "DESIGN_GUIDE_PUBLISHED"
+	case path == "/api/v1/cms/design/draft" && r.Method == http.MethodPut:
+		return "DESIGN_GUIDE_DRAFT_SAVED"
 	case path == "/api/v1/profile" && r.Method == http.MethodPatch:
 		return "PROFILE_UPDATED"
 	case path == "/api/v1/profile/password" && r.Method == http.MethodPost:
@@ -713,6 +737,8 @@ func auditAction(r *http.Request) string {
 		return "ENVIRONMENT_LAUNCH"
 	case strings.HasPrefix(path, "/api/v1/evidence/") && r.Method == http.MethodPatch:
 		return "EVIDENCE_VERIFICATION_CHANGED"
+	case strings.HasPrefix(path, "/api/v1/contact/inquiries/") && r.Method == http.MethodPatch:
+		return "CONTACT_LEAD_UPDATED"
 	case strings.Contains(path, "/license") && r.Method == http.MethodPut:
 		return "LICENSE_CHANGED"
 	case path == "/api/v1/backups" && r.Method == http.MethodPost:
@@ -831,6 +857,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/billing/"):
 		a.serveProxy(w, r, "billing")
+	case r.URL.Path == "/api/v1/contact/inquiries", strings.HasPrefix(r.URL.Path, "/api/v1/contact/inquiries/"):
+		a.serveProxy(w, r, "contact")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/provisioning/"):
 		a.serveProxy(w, r, "provisioning")
 	case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, "/api/v1/environments/"):
@@ -848,7 +876,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/v1/reports", strings.HasPrefix(r.URL.Path, "/api/v1/reports/"):
 		a.serveProxy(w, r, "reports")
 	case r.URL.Path == "/api/v1/cms/pages", strings.HasPrefix(r.URL.Path, "/api/v1/cms/pages/"),
-		r.URL.Path == "/api/v1/cms/media", strings.HasPrefix(r.URL.Path, "/api/v1/cms/media/"):
+		r.URL.Path == "/api/v1/cms/media", strings.HasPrefix(r.URL.Path, "/api/v1/cms/media/"),
+		r.URL.Path == "/api/v1/cms/design", strings.HasPrefix(r.URL.Path, "/api/v1/cms/design/"),
+		r.URL.Path == "/api/v1/cms/seo", strings.HasPrefix(r.URL.Path, "/api/v1/cms/seo/"):
 		a.serveProxy(w, r, "cms")
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
@@ -873,6 +903,8 @@ func auditResource(r *http.Request) (string, string) {
 		if len(parts) > 1 { partnerID = parts[1] }
 	case "cms":
 		resource = "cms"
+	case "contact":
+		resource = "contact"
 	case "impact":
 		resource = "impact"
 	case "evidence":
@@ -1411,8 +1443,8 @@ func (a *app) profilePassword(w http.ResponseWriter, r *http.Request, actor user
 	if !verifyPassword(actor.PasswordHash,in.CurrentPassword) {
 		common.APIError(w,403,"CURRENT_PASSWORD","Current password is incorrect");return
 	}
-	if len(in.NewPassword)<12 {
-		common.APIError(w,400,"VALIDATION","New password must be at least 12 characters");return
+	if message:=passwordPolicyError(in.NewPassword);message!="" {
+		common.APIError(w,400,"VALIDATION",message);return
 	}
 	if subtle.ConstantTimeCompare([]byte(in.CurrentPassword),[]byte(in.NewPassword))==1 {
 		common.APIError(w,400,"VALIDATION","New password must be different");return
@@ -1449,6 +1481,29 @@ func validEmail(value string) bool {
 	value = strings.TrimSpace(value)
 	at := strings.LastIndex(value, "@")
 	return at > 0 && at < len(value)-3 && strings.Contains(value[at+1:], ".")
+}
+
+func passwordPolicyError(password string) string {
+	if len([]rune(password)) < 12 {
+		return "Password must be at least 12 characters and include lowercase, uppercase, a number and a special character"
+	}
+	var hasLower, hasUpper, hasDigit, hasSpecial bool
+	for _, r := range password {
+		switch {
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			hasSpecial = true
+		}
+	}
+	if !hasLower || !hasUpper || !hasDigit || !hasSpecial {
+		return "Password must be at least 12 characters and include lowercase, uppercase, a number and a special character"
+	}
+	return ""
 }
 
 func (a *app) adminRoles(w http.ResponseWriter, r *http.Request) {
@@ -1494,7 +1549,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
 		in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 		if len(in.Name) < 2 || len(in.Name) > 120 { common.APIError(w,400,"VALIDATION","Name must be 2-120 characters"); return }
 		if !validEmail(in.Email) { common.APIError(w,400,"VALIDATION","A valid email is required"); return }
-		if len(in.Password) < 12 { common.APIError(w,400,"VALIDATION","Password must be at least 12 characters"); return }
+		if message:=passwordPolicyError(in.Password); message!="" { common.APIError(w,400,"VALIDATION",message); return }
 		roles, err := normalizeRoles(in.Roles)
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
 		if containsRole(roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
@@ -1576,7 +1631,7 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
 
 	hash := current.PasswordHash
 	if in.Password != nil {
-		if len(*in.Password) < 12 { common.APIError(w,400,"VALIDATION","Password must be at least 12 characters"); return }
+		if message:=passwordPolicyError(*in.Password); message!="" { common.APIError(w,400,"VALIDATION",message); return }
 		hash, err = hashPassword(*in.Password)
 		if err != nil { common.APIError(w,500,"PASSWORD","Could not secure password"); return }
 	}
@@ -1715,8 +1770,10 @@ func pbkdf2SHA256(password, salt []byte, iterations, length int) []byte {
 
 
 type publicCMSSEO struct {
-	Title           string `json:"title"`
-	MetaDescription string `json:"meta_description"`
+	Title           string         `json:"title"`
+	MetaDescription string         `json:"meta_description"`
+	Keywords        []string       `json:"keywords"`
+	JSONLD          map[string]any `json:"json_ld"`
 	Canonical       string `json:"canonical"`
 	OGTitle         string `json:"og_title"`
 	OGDescription   string `json:"og_description"`
@@ -1737,28 +1794,63 @@ type publicCMSSection struct {
 }
 
 type publicCMSPage struct {
+	Locale         string             `json:"locale"`
 	Slug           string             `json:"slug"`
 	SEO            publicCMSSEO       `json:"seo"`
 	Sections       []publicCMSSection `json:"sections"`
 	HiddenSections []string           `json:"hidden_sections"`
+	Alternates     map[string]string  `json:"alternates"`
+}
+
+type publicSEOSettings struct {
+	Locale                string   `json:"locale"`
+	Version               int      `json:"version"`
+	GlobalKeywords        []string `json:"global_keywords"`
+	OrganizationName      string   `json:"organization_name"`
+	OrganizationURL       string   `json:"organization_url"`
+	DefaultOGImageAssetID string   `json:"default_og_image_asset_id"`
 }
 
 type publicCMSManifest struct {
 	Items []struct {
 		Slug      string `json:"slug"`
+		Locale    string `json:"locale"`
 		Canonical string `json:"canonical"`
 		Title     string `json:"title"`
 		NoIndex   bool   `json:"noindex"`
 	} `json:"items"`
 }
 
-func (a *app) fetchPublishedCMS(ctx context.Context, slug string) (publicCMSPage, error) {
+func normalizePublicLocale(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "hu" || value == "hu_hu" || strings.HasPrefix(value, "hu-") {
+		return "hu_HU"
+	}
+	return "en_US"
+}
+
+func publicLocale(r *http.Request) string {
+	if r == nil { return "en_US" }
+	if raw := strings.TrimSpace(r.URL.Query().Get("lang")); raw != "" {
+		return normalizePublicLocale(raw)
+	}
+	if cookie, err := r.Cookie("himate_public_locale"); err == nil && strings.TrimSpace(cookie.Value) != "" {
+		return normalizePublicLocale(cookie.Value)
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Accept-Language"))), "hu") {
+		return "hu_HU"
+	}
+	return "en_US"
+}
+
+func (a *app) fetchPublishedCMS(ctx context.Context, slug, locale string) (publicCMSPage, error) {
 	var out publicCMSPage
 	host := strings.TrimSpace(a.hosts["cms"])
 	if host == "" {
 		return out, errors.New("CMS service is not configured")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/pages/"+url.PathEscape(slug), nil)
+	endpoint := "http://"+host+"/public/v1/cms/pages/"+url.PathEscape(slug)+"?locale="+url.QueryEscape(normalizePublicLocale(locale))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return out, err
 	}
@@ -1778,13 +1870,41 @@ func (a *app) fetchPublishedCMS(ctx context.Context, slug string) (publicCMSPage
 	return out, nil
 }
 
-func (a *app) fetchPublishedManifest(ctx context.Context) (publicCMSManifest, error) {
+func (a *app) fetchPublishedSEOSettings(ctx context.Context, locale string) (publicSEOSettings, error) {
+	var out publicSEOSettings
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return out, errors.New("CMS service is not configured")
+	}
+	endpoint := "http://"+host+"/public/v1/cms/seo?locale="+url.QueryEscape(normalizePublicLocale(locale))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("CMS SEO settings returned %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (a *app) fetchPublishedManifest(ctx context.Context, locale string) (publicCMSManifest, error) {
 	var out publicCMSManifest
 	host := strings.TrimSpace(a.hosts["cms"])
 	if host == "" {
 		return out, errors.New("CMS service is not configured")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/manifest", nil)
+	endpoint := "http://"+host+"/public/v1/cms/manifest?locale="+url.QueryEscape(normalizePublicLocale(locale))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return out, err
 	}
@@ -1967,7 +2087,35 @@ func renderMarketingSection(doc string, section publicCMSSection) string {
 	return doc[:start] + fragment + doc[end:]
 }
 
+func renderGlobalSEOHTML(doc string, settings publicSEOSettings) string {
+	if len(settings.GlobalKeywords) > 0 {
+		doc = replaceHeadTag(doc, "name=\"keywords\"", "<meta name=\"keywords\" content=\""+html.EscapeString(strings.Join(settings.GlobalKeywords, ", "))+"\">")
+	}
+	if mediaID := strings.TrimSpace(settings.DefaultOGImageAssetID); mediaID != "" &&
+		!strings.Contains(strings.ToLower(doc), "property=\"og:image\"") {
+		doc = replaceHeadTag(doc, "property=\"og:image\"", "<meta property=\"og:image\" content=\"/public/v1/cms/media/"+url.PathEscape(mediaID)+"\">")
+	}
+	if strings.TrimSpace(settings.OrganizationName) != "" || strings.TrimSpace(settings.OrganizationURL) != "" {
+		structured := map[string]any{
+			"@context": "https://schema.org",
+			"@type": "Organization",
+			"name": settings.OrganizationName,
+			"url": settings.OrganizationURL,
+		}
+		if raw, err := json.Marshal(structured); err == nil {
+			if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+				tag := "<script type=\"application/ld+json\" data-himate-seo=\"organization\">"+string(raw)+"</script>"
+				doc = doc[:headEnd] + tag + doc[headEnd:]
+			}
+		}
+	}
+	return doc
+}
+
 func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) string {
+	if normalizePublicLocale(page.Locale) == "hu_HU" {
+		doc = strings.Replace(doc, "<html lang=\"en\">", "<html lang=\"hu\">", 1)
+	}
 	doc = replaceTitle(doc, page.SEO.Title)
 	if value := strings.TrimSpace(page.SEO.MetaDescription); value != "" {
 		doc = replaceHeadTag(doc, "name=\"description\"", "<meta name=\"description\" content=\""+html.EscapeString(value)+"\">")
@@ -1982,6 +2130,9 @@ func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) s
 		robots = "noindex,nofollow"
 	}
 	doc = replaceHeadTag(doc, "name=\"robots\"", "<meta name=\"robots\" content=\""+robots+"\">")
+	if len(page.SEO.Keywords) > 0 {
+		doc = replaceHeadTag(doc, "name=\"keywords\"", "<meta name=\"keywords\" content=\""+html.EscapeString(strings.Join(page.SEO.Keywords, ", "))+"\">")
+	}
 	ogTitle := strings.TrimSpace(page.SEO.OGTitle)
 	if ogTitle == "" {
 		ogTitle = strings.TrimSpace(page.SEO.Title)
@@ -1999,6 +2150,29 @@ func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) s
 	doc = replaceHeadTag(doc, "property=\"og:url\"", "<meta property=\"og:url\" content=\""+html.EscapeString(canonical)+"\">")
 	if mediaID := strings.TrimSpace(page.SEO.OGImageAssetID); mediaID != "" {
 		doc = replaceHeadTag(doc, "property=\"og:image\"", "<meta property=\"og:image\" content=\"/public/v1/cms/media/"+url.PathEscape(mediaID)+"\">")
+	}
+	if len(page.SEO.JSONLD) > 0 {
+		if raw, err := json.Marshal(page.SEO.JSONLD); err == nil {
+			if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+				tag := "<script type=\"application/ld+json\">"+string(raw)+"</script>"
+				doc = doc[:headEnd] + tag + doc[headEnd:]
+			}
+		}
+	}
+	if len(page.Alternates) > 0 {
+		var alternateTags strings.Builder
+		if href := strings.TrimSpace(page.Alternates["en_US"]); href != "" {
+			alternateTags.WriteString("<link rel=\"alternate\" hreflang=\"en-US\" href=\""+html.EscapeString(href)+"\">")
+			alternateTags.WriteString("<link rel=\"alternate\" hreflang=\"x-default\" href=\""+html.EscapeString(href)+"\">")
+		}
+		if href := strings.TrimSpace(page.Alternates["hu_HU"]); href != "" {
+			alternateTags.WriteString("<link rel=\"alternate\" hreflang=\"hu-HU\" href=\""+html.EscapeString(href)+"\">")
+		}
+		if alternateTags.Len() > 0 {
+			if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+				doc = doc[:headEnd] + alternateTags.String() + doc[headEnd:]
+			}
+		}
 	}
 	for _, id := range page.HiddenSections {
 		doc = removeMarketingSection(doc, id)
@@ -2020,13 +2194,23 @@ func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filenam
 		return
 	}
 	doc := string(raw)
+	locale := publicLocale(r)
 	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
-	page, cmsErr := a.fetchPublishedCMS(ctx, slug)
+	page, cmsErr := a.fetchPublishedCMS(ctx, slug, locale)
 	cancel()
 	if cmsErr == nil {
 		doc = renderPublishedCMSHTML(doc, page, publicOrigin(r)+r.URL.Path)
 		w.Header().Set("X-Himate-SSR", "published")
+		w.Header().Set("X-Himate-SEO", "page+global")
+		w.Header().Set("Content-Language", map[bool]string{true:"hu",false:"en"}[locale=="hu_HU"])
 	} else {
+		seoCtx, seoCancel := context.WithTimeout(r.Context(), 1200*time.Millisecond)
+		settings, seoErr := a.fetchPublishedSEOSettings(seoCtx, locale)
+		seoCancel()
+		if seoErr == nil {
+			doc = renderGlobalSEOHTML(doc, settings)
+			w.Header().Set("X-Himate-SEO", "global")
+		}
 		w.Header().Set("X-Himate-SSR", "static-fallback")
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -2057,7 +2241,7 @@ func (a *app) sitemap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
-	manifest, err := a.fetchPublishedManifest(ctx)
+	manifest, err := a.fetchPublishedManifest(ctx, publicLocale(r))
 	cancel()
 	if err != nil {
 		common.APIError(w, http.StatusServiceUnavailable, "CMS_UNAVAILABLE", "Published CMS manifest is unavailable")

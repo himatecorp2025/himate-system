@@ -25,6 +25,22 @@ void main() {
     expect(HimateI18n.text('hu_HU', 'passwordSecurity'), 'Jelszó és biztonság');
   });
 
+  test('admin literal translation covers key business surfaces', () {
+    expect(HimateI18n.literal('hu_HU', 'Contact Leads'), 'Kapcsolati érdeklődők');
+    expect(HimateI18n.literal('hu_HU', 'Design Guide'), 'Arculati útmutató');
+    expect(HimateI18n.literal('hu_HU', '6 reports'), '6 jelentés');
+    expect(HimateI18n.literal('en_US', 'Contact Leads'), 'Contact Leads');
+  });
+
+  test('password policy requires every complexity class', () {
+    expect(himatePasswordMeetsPolicy('Strong-Password1!'), isTrue);
+    expect(himatePasswordMeetsPolicy('alllowercase123!'), isFalse);
+    expect(himatePasswordMeetsPolicy('ALLUPPERCASE123!'), isFalse);
+    expect(himatePasswordMeetsPolicy('NoNumberPassword!'), isFalse);
+    expect(himatePasswordMeetsPolicy('NoSpecial123456'), isFalse);
+    expect(himatePasswordPolicyMessage('hu_HU', 'weak'), isNotNull);
+  });
+
   test('locale-aware formatting produces values', () {
     final value = DateTime.utc(2026, 9, 21, 12, 30);
     expect(HimateI18n.dateTime('en_US', value), isNotEmpty);

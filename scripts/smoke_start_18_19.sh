@@ -47,7 +47,7 @@ PY
 echo ok
 
 printf 'platform login with persistent Remember me... '
-platform_user="$(login "$PLATFORM_COOKIE" "admin@example.com" "local-development-password" true)"
+platform_user="$(login "$PLATFORM_COOKIE" "admin@example.com" "Local-Development1!Password" true)"
 printf '%s' "$platform_user" | grep -q '"platform_admin"'
 python3 - "$PLATFORM_COOKIE" <<'PY'
 import pathlib,sys,time
@@ -61,15 +61,15 @@ echo ok
 
 printf 'role catalog exposes START-19 matrix... '
 roles="$(curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/admin/roles")"
-printf '%s' "$roles" | python3 -c 'import json,sys; d=json.load(sys.stdin); m={x["key"]:x for x in d["items"]}; assert set(m)=={"platform_admin","operations_admin","finance_admin","reporting_admin"}; assert "*" in m["platform_admin"]["permissions"]; assert "billing.approve" in m["finance_admin"]["permissions"]; assert "provisioning.approve" in m["operations_admin"]["permissions"]; assert "evidence.approve" in m["reporting_admin"]["permissions"]; assert "billing.write" not in m["operations_admin"]["permissions"]'
+printf '%s' "$roles" | python3 -c 'import json,sys; d=json.load(sys.stdin); m={x["key"]:x for x in d["items"]}; assert set(m)=={"platform_admin","operations_admin","finance_admin","reporting_admin","marketing_admin"}; assert "*" in m["platform_admin"]["permissions"]; assert "billing.approve" in m["finance_admin"]["permissions"]; assert "provisioning.approve" in m["operations_admin"]["permissions"]; assert "evidence.approve" in m["reporting_admin"]["permissions"]; assert "cms.approve" in m["marketing_admin"]["permissions"]; assert "contact.write" in m["marketing_admin"]["permissions"]; assert "billing.write" not in m["marketing_admin"]["permissions"]; assert "billing.write" not in m["operations_admin"]["permissions"]'
 echo ok
 
 printf 'create scoped administrators... '
-ops="$(curl -fsS -b "$PLATFORM_COOKIE" -H 'Content-Type: application/json'   -d '{"name":"CI Operations Admin","email":"ci-operations@example.com","password":"operations-development-password","roles":["operations_admin"]}'   "$BASE_URL/api/v1/admin/users")"
+ops="$(curl -fsS -b "$PLATFORM_COOKIE" -H 'Content-Type: application/json'   -d '{"name":"CI Operations Admin","email":"ci-operations@example.com","password":"Operations-Development1!Password","roles":["operations_admin"]}'   "$BASE_URL/api/v1/admin/users")"
 ops_id="$(printf '%s' "$ops" | json_field id)"
-fin="$(curl -fsS -b "$PLATFORM_COOKIE" -H 'Content-Type: application/json'   -d '{"name":"CI Finance Admin","email":"ci-finance@example.com","password":"finance-development-password","roles":["finance_admin"]}'   "$BASE_URL/api/v1/admin/users")"
+fin="$(curl -fsS -b "$PLATFORM_COOKIE" -H 'Content-Type: application/json'   -d '{"name":"CI Finance Admin","email":"ci-finance@example.com","password":"Finance-Development1!Password","roles":["finance_admin"]}'   "$BASE_URL/api/v1/admin/users")"
 fin_id="$(printf '%s' "$fin" | json_field id)"
-report="$(curl -fsS -b "$PLATFORM_COOKIE" -H 'Content-Type: application/json'   -d '{"name":"CI Reporting Admin","email":"ci-reporting@example.com","password":"reporting-development-password","roles":["reporting_admin"]}'   "$BASE_URL/api/v1/admin/users")"
+report="$(curl -fsS -b "$PLATFORM_COOKIE" -H 'Content-Type: application/json'   -d '{"name":"CI Reporting Admin","email":"ci-reporting@example.com","password":"Reporting-Development1!Password","roles":["reporting_admin"]}'   "$BASE_URL/api/v1/admin/users")"
 report_id="$(printf '%s' "$report" | json_field id)"
 test -n "$ops_id"
 test -n "$fin_id"
@@ -83,11 +83,11 @@ grep -q 'LAST_PLATFORM_ADMIN' "$BODY"
 echo ok
 
 printf 'scoped admin logins return effective permissions... '
-ops_login="$(login "$OPS_COOKIE" "ci-operations@example.com" "operations-development-password")"
+ops_login="$(login "$OPS_COOKIE" "ci-operations@example.com" "Operations-Development1!Password")"
 printf '%s' "$ops_login" | grep -q '"provisioning.approve"'
-fin_login="$(login "$FIN_COOKIE" "ci-finance@example.com" "finance-development-password")"
+fin_login="$(login "$FIN_COOKIE" "ci-finance@example.com" "Finance-Development1!Password")"
 printf '%s' "$fin_login" | grep -q '"billing.approve"'
-report_login="$(login "$REPORT_COOKIE" "ci-reporting@example.com" "reporting-development-password")"
+report_login="$(login "$REPORT_COOKIE" "ci-reporting@example.com" "Reporting-Development1!Password")"
 printf '%s' "$report_login" | grep -q '"evidence.approve"'
 echo ok
 
