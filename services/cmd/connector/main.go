@@ -22,6 +22,9 @@ type app struct {
 	db *sql.DB
 	internalToken string
 	impactHost string
+	catalogHost string
+	billingHost string
+	partnersHost string
 	client *http.Client
 	dataKeyring start22Keyring
 }
@@ -44,6 +47,9 @@ func main() {
 		db:db,
 		internalToken:os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		impactHost:os.Getenv("IMPACT_HOSTPORT"),
+		catalogHost:os.Getenv("CATALOG_HOSTPORT"),
+		billingHost:os.Getenv("BILLING_HOSTPORT"),
+		partnersHost:os.Getenv("PARTNERS_HOSTPORT"),
 		client:&http.Client{Timeout:6*time.Second},
 		dataKeyring:dataKeyring,
 	}
@@ -64,6 +70,7 @@ func main() {
 	publicMux.HandleFunc("/connector/v1/metrics",a.metrics)
 	publicMux.HandleFunc("/connector/v1/data/batches",a.start22DataBatch)
 	publicMux.HandleFunc("/connector/v1/reconcile",a.start22Reconcile)
+	publicMux.HandleFunc("/connector/v1/commercial-state",a.commercialState)
 
 	privateMux:=http.NewServeMux()
 	privateMux.HandleFunc("/api/v1/connectors/start22/mapping",a.start22Mapping)
@@ -216,6 +223,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE connector.data_records ALTER COLUMN data SET DEFAULT '{}'::jsonb`,
 			`CREATE INDEX IF NOT EXISTS connector_records_key_version_idx ON connector.data_records(data_key_version) WHERE data_key_version<>''`,
 		}},
+		start223ConnectorMigration(),
 	})
 }
 
@@ -292,6 +300,10 @@ func (a *app) adminConnector(w http.ResponseWriter,r *http.Request){
 		default:
 			common.APIError(w,405,"METHOD","Use GET or POST")
 		}
+		return
+	}
+	if section=="website-adapter" {
+		a.websiteAdapterAdmin(w,r,partnerID)
 		return
 	}
 	if section=="desired-state" {
