@@ -190,6 +190,10 @@ echo ok
 printf 'Connector and Impact both persist HIMATE_7Y... '
 record_id="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT id FROM connector.data_records WHERE partner_id='$partner_id' AND dataset_key='operations.users' ORDER BY id DESC LIMIT 1")"
 test -n "$record_id"
+encrypted_storage="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT (data='{}'::jsonb)::text||'|'||(data_ciphertext IS NOT NULL)::text||'|'||(data_nonce IS NOT NULL)::text||'|'||(wrapped_data_key IS NOT NULL)::text||'|'||(key_nonce IS NOT NULL)::text||'|'||data_key_version FROM connector.data_records WHERE id=$record_id")"
+test "$encrypted_storage" = "true|true|true|true|true|v1"
+record_api="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/connectors/start22/records?partner_id=$partner_id&limit=10")"
+printf '%s' "$record_api" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if int(i["id"])==int(sys.argv[1])); assert x["data"]["active_user_count"]==4; assert x["data_encryption"]=="AES-256-GCM"; assert x["data_key_version"]=="v1"' "$record_id"
 connector_retention="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT retention_policy||'|'||(retain_until>received_at+INTERVAL '6 years 11 months')::text FROM (SELECT 'HIMATE_7Y' retention_policy,retain_until,received_at FROM connector.data_records WHERE id=$record_id) x")"
 test "$connector_retention" = "HIMATE_7Y|true"
 impact_retention="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM impact.metric_values WHERE partner_id='$partner_id' AND source_ref='connector:data_record:$record_id' AND retention_policy='HIMATE_7Y' AND retain_until>NOW()+INTERVAL '6 years 11 months'")"
