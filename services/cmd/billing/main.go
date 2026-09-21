@@ -1128,6 +1128,7 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 			items = append(items, map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
 				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": provider, "created_at": created,
+				"items": a.invoiceItemsFor(invoiceID),
 			})
 		}
 	}
@@ -1177,15 +1178,31 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		if err := a.syncSubscriptions(ctx, id, t.Currency, rawMods, at); err != nil { return err }
 
 		if !isCycleBoundary(t.ServiceAnchorDate, at) { continue }
-		extra, _, err := a.effectiveModuleFees(ctx, id, rawMods, at)
-		if err != nil { return err }
 		start := at.AddDate(0, 0, -30)
 		base := effectiveBaseFee(t, start)
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
-		_, err = a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
-			invoiceID, id, at, start, at, t.Currency, base, extra, math.Round((base+extra)*100)/100)
+		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
+			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
+			invoiceID, id, at, start, at, t.Currency, base)
 		if err != nil { return err }
+		inserted, _ := result.RowsAffected()
+		// A rerun must keep the originally invoiced base price immutable.
+		if err := a.db.QueryRowContext(ctx, `SELECT id,base_fee FROM billing.invoices
+			WHERE partner_id=$1 AND service_period_start=$2 AND service_period_end=$3`,
+			id, start, at).Scan(&invoiceID, &base); err != nil { return err }
+		moduleTotal, err := a.attachInvoiceItems(ctx, invoiceID, id, t.Currency, start, at, base)
+		if err != nil { return err }
+		total := math.Round((base+moduleTotal)*100)/100
+		if _, err := a.db.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3 WHERE id=$1`,
+			invoiceID, moduleTotal, total); err != nil { return err }
+		if inserted > 0 {
+			if err := a.emitBillingEvent(ctx, "INVOICE_GENERATED:"+invoiceID, id, "", "INVOICE_GENERATED", at, map[string]any{
+				"invoice_id": invoiceID, "currency": t.Currency, "base_fee": base,
+				"module_fee": moduleTotal, "total": total,
+				"service_period_start": start.Format("2006-01-02"),
+				"service_period_end_exclusive": at.Format("2006-01-02"),
+			}); err != nil { return err }
+		}
 	}
 	return nil
 }
