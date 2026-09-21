@@ -211,12 +211,14 @@ test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT CO
 echo ok
 
 printf 'privacy deletion is blocked by hold, then removes Connector and Impact copies after release... '
-blocked_delete="$(status "$COOKIE_JAR" POST "/api/v1/connectors/start22/retention" -H 'Content-Type: application/json' -d "{"action":"PRIVACY_DELETE","record_id":$record_id}")"
+privacy_payload="$(printf '{"action":"PRIVACY_DELETE","record_id":%s}' "$record_id")"
+blocked_delete="$(status "$COOKIE_JAR" POST "/api/v1/connectors/start22/retention" -H 'Content-Type: application/json' -d "$privacy_payload")"
 test "$blocked_delete" = "409"
 grep -q 'LEGAL_HOLD' "$BODY"
-release_code="$(status "$COOKIE_JAR" POST "/api/v1/connectors/start22/retention" -H 'Content-Type: application/json' -d "{"action":"SET_LEGAL_HOLD","record_id":$record_id,"legal_hold":false}")"
+release_payload="$(printf '{"action":"SET_LEGAL_HOLD","record_id":%s,"legal_hold":false}' "$record_id")"
+release_code="$(status "$COOKIE_JAR" POST "/api/v1/connectors/start22/retention" -H 'Content-Type: application/json' -d "$release_payload")"
 test "$release_code" = "200"
-delete_code="$(status "$COOKIE_JAR" POST "/api/v1/connectors/start22/retention" -H 'Content-Type: application/json' -d "{"action":"PRIVACY_DELETE","record_id":$record_id}")"
+delete_code="$(status "$COOKIE_JAR" POST "/api/v1/connectors/start22/retention" -H 'Content-Type: application/json' -d "$privacy_payload")"
 test "$delete_code" = "200"
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM connector.data_records WHERE id=$record_id")" = "0"
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM impact.metric_values WHERE source_ref='connector:data_record:$record_id'")" = "0"
