@@ -1500,7 +1500,7 @@ func ownerRequired(w http.ResponseWriter, actor user) bool {
 func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
 	switch r.Method {
 	case http.MethodGet:
-		common.JSON(w,http.StatusOK,publicUser(actor))
+		common.JSON(w,http.StatusOK,a.publicUser(actor))
 	case http.MethodPatch:
 		var in struct {
 			Name *string `json:"name"`
