@@ -258,7 +258,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`UPDATE identity.audit_events SET correlation_id=request_id WHERE correlation_id='' AND request_id<>''`,
 			`CREATE INDEX IF NOT EXISTS identity_audit_action_idx ON identity.audit_events(action,created_at DESC)`,
 			`CREATE INDEX IF NOT EXISTS identity_audit_correlation_idx ON identity.audit_events(correlation_id) WHERE correlation_id<>''`,
-			`CREATE OR REPLACE FUNCTION identity.reject_audit_mutation() RETURNS trigger LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION 'identity.audit_events is append-only'; RETURN OLD; END; $`,
+			`CREATE OR REPLACE FUNCTION identity.reject_audit_mutation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'identity.audit_events is append-only'; RETURN OLD; END; $$`,
 			`DROP TRIGGER IF EXISTS identity_audit_append_only ON identity.audit_events`,
 			`CREATE TRIGGER identity_audit_append_only BEFORE UPDATE OR DELETE ON identity.audit_events FOR EACH ROW EXECUTE FUNCTION identity.reject_audit_mutation()`,
 		}},
