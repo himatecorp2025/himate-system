@@ -574,8 +574,8 @@ paths:
       tags: [Modules]
       summary: Update partner module state, visibility, package inclusion or price
       description: >
-        Pricing accepts an optional RFC3339 price_effective_at. Historical
-        changes retain actor, reason, old value and new value.
+        Pricing accepts an optional RFC3339 or YYYY-MM-DD price_effective_at.
+        Historical changes retain actor, reason, old value and new value.
       responses:
         "200": {description: Updated partner module}
   /api/v1/billing/profile:
