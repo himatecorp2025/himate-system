@@ -36,7 +36,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: LText(message),
         behavior: SnackBarBehavior.floating,
         backgroundColor: failure ? brandDanger : brandSuccess,
       ),
@@ -152,9 +152,9 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
             children: [
               DropdownButtonFormField<String>(
                 value: partnerId,
-                decoration: const InputDecoration(labelText: 'Partner'),
+                decoration: InputDecoration(labelText: uiLiteral('Partner')),
                 items: [
-                  for (final id in partnerIds) DropdownMenuItem(value: id, child: Text(id)),
+                  for (final id in partnerIds) DropdownMenuItem(value: id, child: LText(id)),
                 ],
                 onChanged: (value) {
                   if (value == null) return;
@@ -168,25 +168,25 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
               const SizedBox(height: 12),
               TextField(
                 controller: hostname,
-                decoration: const InputDecoration(
-                  labelText: 'Production hostname *',
-                  hintText: 'partner.example.com',
+                decoration: InputDecoration(
+                  labelText: uiLiteral('Production hostname *'),
+                  hintText: uiLiteral('partner.example.com'),
                 ),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
                 first: TextField(
                   controller: version,
-                  decoration: const InputDecoration(labelText: 'Platform version'),
+                  decoration: InputDecoration(labelText: uiLiteral('Platform version')),
                 ),
                 second: TextField(
                   controller: release,
-                  decoration: const InputDecoration(labelText: 'Desired release'),
+                  decoration: InputDecoration(labelText: uiLiteral('Desired release')),
                 ),
               ),
               if (dialogError != null) ...[
                 const SizedBox(height: 10),
-                Text(dialogError!, style: const TextStyle(color: brandDanger, fontWeight: FontWeight.w600)),
+                LText(dialogError!, style: const TextStyle(color: brandDanger, fontWeight: FontWeight.w600)),
               ],
             ],
           ),
@@ -241,15 +241,15 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(controller: hostname, decoration: const InputDecoration(labelText: 'Hostname')),
+              TextField(controller: hostname, decoration: InputDecoration(labelText: uiLiteral('Hostname'))),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: version, decoration: const InputDecoration(labelText: 'Platform version')),
-                second: TextField(controller: release, decoration: const InputDecoration(labelText: 'Desired release')),
+                first: TextField(controller: version, decoration: InputDecoration(labelText: uiLiteral('Platform version'))),
+                second: TextField(controller: release, decoration: InputDecoration(labelText: uiLiteral('Desired release'))),
               ),
               if (dialogError != null) ...[
                 const SizedBox(height: 10),
-                Text(dialogError!, style: const TextStyle(color: brandDanger, fontWeight: FontWeight.w600)),
+                LText(dialogError!, style: const TextStyle(color: brandDanger, fontWeight: FontWeight.w600)),
               ],
             ],
           ),
@@ -296,7 +296,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
             _DefinitionRow(label: 'Hostname', value: _value(environment['hostname'])),
             _DefinitionRow(label: 'Release', value: _value(environment['active_release'])),
             const SizedBox(height: 10),
-            const Text(
+            const LText(
               'The backend will re-check runtime health and all launch gates before committing LIVE.',
               style: TextStyle(color: brandTextSoft, fontSize: 11, height: 1.45),
             ),
@@ -341,7 +341,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      LText(
                         '${e['partner_id'] ?? 'Partner'} · $kind',
                         style: const TextStyle(color: brandNavy, fontSize: 14, fontWeight: FontWeight.w700),
                       ),
@@ -370,7 +370,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
               if (_value(e['domain_error'], fallback: '').isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 5),
-                  child: Text(
+                  child: LText(
                     _value(e['domain_error'], fallback: ''),
                     style: const TextStyle(color: brandDanger, fontSize: 9.5, height: 1.35),
                   ),
@@ -385,7 +385,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
                     border: Border.all(color: brandWarning.withOpacity(.18)),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
+                  child: LText(
                     'Launch blockers: ${blockers.join(' · ')}',
                     style: const TextStyle(color: brandWarning, fontSize: 9.4, height: 1.4, fontWeight: FontWeight.w600),
                   ),
@@ -404,24 +404,24 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
                 OutlinedButton.icon(
                   onPressed: isBusy ? null : () => _editEnvironment(e),
                   icon: const Icon(Icons.tune_rounded, size: 17),
-                  label: const Text('Configure'),
+                  label: const LText('Configure'),
                 ),
                 if (production)
                   OutlinedButton.icon(
                     onPressed: isBusy ? null : () => _action(e, 'verify-domain', 'Domain verification completed.'),
                     icon: const Icon(Icons.verified_outlined, size: 17),
-                    label: const Text('Verify DNS/TLS'),
+                    label: const LText('Verify DNS/TLS'),
                   ),
                 FilledButton.icon(
                   onPressed: isBusy ? null : () => _action(e, 'deploy', production ? 'Production deployment completed.' : 'Staging deployment completed.'),
                   icon: const Icon(Icons.cloud_upload_outlined, size: 17),
-                  label: Text('${e['deployment_status']}' == 'DEPLOYED' ? 'Redeploy' : 'Deploy'),
+                  label: LText('${e['deployment_status']}' == 'DEPLOYED' ? 'Redeploy' : 'Deploy'),
                 ),
                 if (production && !isLive)
                   FilledButton.icon(
                     onPressed: isBusy || !launchReady ? null : () => _launch(e),
                     icon: const Icon(Icons.rocket_launch_outlined, size: 17),
-                    label: const Text('Go LIVE'),
+                    label: const LText('Go LIVE'),
                   ),
               ],
             ),
@@ -450,7 +450,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
           trailing: FilledButton.icon(
             onPressed: _createProduction,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Add production'),
+            label: const LText('Add production'),
           ),
         ),
         const SizedBox(height: 12),
