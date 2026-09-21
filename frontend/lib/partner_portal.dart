@@ -816,7 +816,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                 label: const LText('Activate module'),
               ),
             )
-          else if (sub != null && can('modules.write'))
+          else if (sub != null && module['included_in_base'] != true && can('modules.write'))
             SizedBox(
               width: double.infinity,
               child: cancelling
@@ -919,7 +919,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                     const SizedBox(width: 10),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       LText('${invoices[i]['id'] ?? 'Invoice'}', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700)),
-                      LText('${invoices[i]['service_period_start'] ?? ''} — ${invoices[i]['service_period_end'] ?? ''}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                      LText('${invoices[i]['service_period_start'] ?? ''} — ${invoices[i]['service_period_end_exclusive'] ?? ''}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
                     ])),
                     LText('${invoices[i]['currency'] ?? 'USD'} ${number(invoices[i]['total']).toStringAsFixed(2)}', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800)),
                     const SizedBox(width: 10),
