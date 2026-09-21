@@ -25,6 +25,8 @@ func (a *app) start22Mapping(w http.ResponseWriter, r *http.Request) {
 		"module_count": len(start22DatasetRegistry),
 		"retention_policy": "HIMATE_7Y",
 		"retention_years": start22RetentionYears,
+		"data_encryption": start22EncryptionAlgorithm,
+		"data_key_version": a.dataKeyring.ActiveVersion,
 		"items": start22RegistryPayload(),
 	})
 }
@@ -112,6 +114,8 @@ func (a *app) start22Summary(w http.ResponseWriter, r *http.Request) {
 		"next_retention_expiry":nextPurgeValue,
 		"retention_policy":"HIMATE_7Y",
 		"retention_years":start22RetentionYears,
+		"data_encryption":start22EncryptionAlgorithm,
+		"data_key_version":a.dataKeyring.ActiveVersion,
 		"states":states,
 	})
 }
