@@ -112,6 +112,7 @@ class HimateI18n {
       'passwordsMismatch': 'The new passwords do not match.',
       'passwordMin': 'Use at least 12 characters.',
       'passwordPolicy': 'Use at least 12 characters with lowercase, uppercase, a number and a special character.',
+      'passwordPolicy': 'Use at least 12 characters with lowercase, uppercase, a number and a special character.',
       'cancel': 'Cancel',
       'close': 'Close',
       'welcomeBack': 'Welcome back',
@@ -166,6 +167,7 @@ class HimateI18n {
       'passwordChanged': 'A jelszó megváltozott. A többi munkamenet érvénytelenítve lett.',
       'passwordsMismatch': 'Az új jelszavak nem egyeznek.',
       'passwordMin': 'Legalább 12 karakter szükséges.',
+      'passwordPolicy': 'Használj legalább 12 karaktert, kis- és nagybetűt, számot és speciális karaktert.',
       'passwordPolicy': 'Használj legalább 12 karaktert, kis- és nagybetűt, számot és speciális karaktert.',
       'cancel': 'Mégse',
       'close': 'Bezárás',
@@ -622,215 +624,100 @@ class HimateI18n {
     'record': 'rekord',
   };
 
+
+  static const Map<String, String> _designHu = <String, String>{
+    'Design Guide': 'Arculati útmutató',
+    'Global website brand controls for logo, colors, typography, buttons and bilingual navigation.': 'Globális weboldal-arculati beállítások logóhoz, színekhez, tipográfiához, gombokhoz és kétnyelvű navigációhoz.',
+    'Brand': 'Arculat',
+    'Published globally': 'Globálisan publikálva',
+    'Languages': 'Nyelvek',
+    'English + Hungarian labels': 'Angol + magyar feliratok',
+    'Preview-safe': 'Előnézet-biztos',
+    'Draft before publish': 'Vázlat publikálás előtt',
+    'Every save/publish recorded': 'Minden mentés és publikálás naplózva',
+    'Website logo': 'Weboldal logója',
+    'Default HIMATE logo': 'Alapértelmezett HIMATE logó',
+    'Primary navy': 'Elsődleges sötétkék',
+    'Brand gold': 'Arculati arany',
+    'Page background': 'Oldal háttere',
+    'Body text color': 'Törzsszöveg színe',
+    'Heading font': 'Címsor betűtípusa',
+    'Body font': 'Törzsszöveg betűtípusa',
+    'Button corner radius': 'Gombsarkok lekerekítése',
+    '0–40 pixels': '0–40 képpont',
+    'HIMATE website preview': 'HIMATE weboldal előnézet',
+    'The published Design Guide is applied without editing source code.': 'A publikált Arculati útmutató forráskód szerkesztése nélkül lép életbe.',
+    'Primary action': 'Elsődleges művelet',
+    'Website Navigation': 'Weboldal navigáció',
+    'Control visible public menu items, bilingual labels and order.': 'A nyilvános menüpontok láthatóságának, kétnyelvű feliratainak és sorrendjének kezelése.',
+    'Add navigation item': 'Navigációs elem hozzáadása',
+    'No navigation items': 'Nincsenek navigációs elemek',
+    'Add at least one item for public navigation.': 'Adj hozzá legalább egy elemet a nyilvános navigációhoz.',
+    'Navigation item': 'Navigációs elem',
+    'Remove': 'Eltávolítás',
+    'English label': 'Angol felirat',
+    'Hungarian label': 'Magyar felirat',
+    'URL': 'URL',
+    'Visible in navigation': 'Látható a navigációban',
+    'No Design Guide publication yet': 'Az Arculati útmutató még nincs publikálva',
+    'Save design draft': 'Arculati vázlat mentése',
+    'Publish design': 'Arculat publikálása',
+    'Design draft saved.': 'Az arculati vázlat elmentve.',
+    'Design Guide published to the public website.': 'Az Arculati útmutató publikálva a nyilvános weboldalon.',
+    'Design settings loaded from defaults': 'Az arculati beállítások alapértékekből betöltve',
+    'Use six-digit hexadecimal colors, for example #06172C.': 'Használj hatjegyű hexadecimális színeket, például #06172C.',
+    'Button radius must be between 0 and 40.': 'A gombsarkok lekerekítése 0 és 40 között lehet.',
+    'Navigation supports at most 12 items.': 'A navigáció legfeljebb 12 elemet támogat.',
+    'Every navigation item requires English and Hungarian labels.': 'Minden navigációs elemhez angol és magyar felirat szükséges.',
+    'Navigation URLs must be internal paths or absolute HTTP(S) URLs.': 'A navigációs URL-ek belső útvonalak vagy teljes HTTP(S) URL-ek lehetnek.',
+    'Navigation order values must be unique.': 'A navigáció sorrendértékeinek egyedinek kell lenniük.',
+    'Language': 'Nyelv',
+    'English (US)': 'Angol (USA)',
+    'Magyar': 'Magyar',
+    'Stable page key *': 'Stabil oldalkulcs *',
+    'Page key, name and slug are required.': 'Az oldalkulcs, a név és a slug megadása kötelező.',
+    'Versions': 'Verziók',
+    'Preview token': 'Előnézeti token',
+    'Not issued': 'Nincs kiadva',
+    'Page key': 'Oldalkulcs',
+  };
+
   static String literal(String locale, String value) {
     if (locale != 'hu_HU' || value.trim().isEmpty) return value;
-    final exact = _literalHu[value];
+    final exact = _literalHu[value] ?? _designHu[value];
     if (exact != null) return exact;
 
-    final partnerCount = RegExp(r'^(\\d+) partners
-    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
-  }
+    String countLabel(String suffix, String translatedSuffix) {
+      if (!value.endsWith(suffix)) return '';
+      final raw = value.substring(0, value.length - suffix.length).trim();
+      return int.tryParse(raw) == null ? '' : '$raw $translatedSuffix';
+    }
 
-  static String dateTime(String locale, DateTime value) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
-  }
+    for (final pair in <List<String>>[
+      [' partners', 'partner'],
+      [' roles', 'szerepkör'],
+      [' services', 'szolgáltatás'],
+      [' reports', 'jelentés'],
+      [' metrics', 'mérőszám'],
+      [' leads', 'érdeklődő'],
+    ]) {
+      final translated = countLabel(pair[0], pair[1]);
+      if (translated.isNotEmpty) return translated;
+    }
 
-  static String currency(String locale, num value, {String currency = 'USD'}) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
-  }
-}
-
-
-bool himatePasswordMeetsPolicy(String value) {
-  if (value.runes.length < 12) return false;
-  return RegExp(r'[a-z]').hasMatch(value) &&
-      RegExp(r'[A-Z]').hasMatch(value) &&
-      RegExp(r'[0-9]').hasMatch(value) &&
-      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
-}
-
-String? himatePasswordPolicyMessage(String locale, String value) =>
-    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
-).firstMatch(value);
-    if (partnerCount != null) return '${partnerCount.group(1)} partner';
-    final roleCount = RegExp(r'^(\\d+) roles
-    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
-  }
-
-  static String dateTime(String locale, DateTime value) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
-  }
-
-  static String currency(String locale, num value, {String currency = 'USD'}) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
-  }
-}
-
-
-bool himatePasswordMeetsPolicy(String value) {
-  if (value.runes.length < 12) return false;
-  return RegExp(r'[a-z]').hasMatch(value) &&
-      RegExp(r'[A-Z]').hasMatch(value) &&
-      RegExp(r'[0-9]').hasMatch(value) &&
-      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
-}
-
-String? himatePasswordPolicyMessage(String locale, String value) =>
-    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
-).firstMatch(value);
-    if (roleCount != null) return '${roleCount.group(1)} szerepkör';
-    final serviceCount = RegExp(r'^(\\d+) services
-    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
-  }
-
-  static String dateTime(String locale, DateTime value) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
-  }
-
-  static String currency(String locale, num value, {String currency = 'USD'}) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
-  }
-}
-
-
-bool himatePasswordMeetsPolicy(String value) {
-  if (value.runes.length < 12) return false;
-  return RegExp(r'[a-z]').hasMatch(value) &&
-      RegExp(r'[A-Z]').hasMatch(value) &&
-      RegExp(r'[0-9]').hasMatch(value) &&
-      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
-}
-
-String? himatePasswordPolicyMessage(String locale, String value) =>
-    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
-).firstMatch(value);
-    if (serviceCount != null) return '${serviceCount.group(1)} szolgáltatás';
-    final reportCount = RegExp(r'^(\\d+) reports
-    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
-  }
-
-  static String dateTime(String locale, DateTime value) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
-  }
-
-  static String currency(String locale, num value, {String currency = 'USD'}) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
-  }
-}
-
-
-bool himatePasswordMeetsPolicy(String value) {
-  if (value.runes.length < 12) return false;
-  return RegExp(r'[a-z]').hasMatch(value) &&
-      RegExp(r'[A-Z]').hasMatch(value) &&
-      RegExp(r'[0-9]').hasMatch(value) &&
-      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
-}
-
-String? himatePasswordPolicyMessage(String locale, String value) =>
-    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
-).firstMatch(value);
-    if (reportCount != null) return '${reportCount.group(1)} jelentés';
-    final metricCount = RegExp(r'^(\\d+) metrics
-    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
-  }
-
-  static String dateTime(String locale, DateTime value) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
-  }
-
-  static String currency(String locale, num value, {String currency = 'USD'}) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
-  }
-}
-
-
-bool himatePasswordMeetsPolicy(String value) {
-  if (value.runes.length < 12) return false;
-  return RegExp(r'[a-z]').hasMatch(value) &&
-      RegExp(r'[A-Z]').hasMatch(value) &&
-      RegExp(r'[0-9]').hasMatch(value) &&
-      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
-}
-
-String? himatePasswordPolicyMessage(String locale, String value) =>
-    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
-).firstMatch(value);
-    if (metricCount != null) return '${metricCount.group(1)} mérőszám';
-    final leadCount = RegExp(r'^(\\d+) leads
-    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
-  }
-
-  static String dateTime(String locale, DateTime value) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
-  }
-
-  static String currency(String locale, num value, {String currency = 'USD'}) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
-  }
-}
-
-
-bool himatePasswordMeetsPolicy(String value) {
-  if (value.runes.length < 12) return false;
-  return RegExp(r'[a-z]').hasMatch(value) &&
-      RegExp(r'[A-Z]').hasMatch(value) &&
-      RegExp(r'[0-9]').hasMatch(value) &&
-      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
-}
-
-String? himatePasswordPolicyMessage(String locale, String value) =>
-    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
-).firstMatch(value);
-    if (leadCount != null) return '${leadCount.group(1)} érdeklődő';
-    final pageCount = RegExp(r'^Page (\\d+) of (\\d+)
-    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
-  }
-
-  static String dateTime(String locale, DateTime value) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
-  }
-
-  static String currency(String locale, num value, {String currency = 'USD'}) {
-    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
-  }
-}
-
-
-bool himatePasswordMeetsPolicy(String value) {
-  if (value.runes.length < 12) return false;
-  return RegExp(r'[a-z]').hasMatch(value) &&
-      RegExp(r'[A-Z]').hasMatch(value) &&
-      RegExp(r'[0-9]').hasMatch(value) &&
-      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
-}
-
-String? himatePasswordPolicyMessage(String locale, String value) =>
-    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
-).firstMatch(value);
-    if (pageCount != null) return '${pageCount.group(1)} / ${pageCount.group(2)} oldal';
-    if (value.startsWith('Assigned: ')) return 'Felelős: ${value.substring(10)}';
+    if (value.startsWith('Assigned: ')) {
+      return 'Felelős: ${value.substring('Assigned: '.length)}';
+    }
+    if (value.startsWith('Navigation item ')) {
+      return 'Navigációs elem ${value.substring('Navigation item '.length)}';
+    }
+    if (value.startsWith('Published ')) {
+      return 'Publikálva: ${value.substring('Published '.length)}';
+    }
+    if (value.startsWith('Page ') && value.contains(' of ')) {
+      final body = value.substring(5).split(' of ');
+      if (body.length == 2) return '${body[0]} / ${body[1]} oldal';
+    }
 
     var translated = value;
     for (final entry in _fallbackHu.entries) {
@@ -855,13 +742,12 @@ String? himatePasswordPolicyMessage(String locale, String value) =>
   }
 }
 
-
 bool himatePasswordMeetsPolicy(String value) {
   if (value.runes.length < 12) return false;
   return RegExp(r'[a-z]').hasMatch(value) &&
       RegExp(r'[A-Z]').hasMatch(value) &&
       RegExp(r'[0-9]').hasMatch(value) &&
-      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+      RegExp(r'[^A-Za-z0-9\s]').hasMatch(value);
 }
 
 String? himatePasswordPolicyMessage(String locale, String value) =>
