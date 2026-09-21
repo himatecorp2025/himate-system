@@ -828,6 +828,7 @@ class _LoginPageState extends State<LoginPage> {
     setState(() { busy = true; error = null; });
     try {
       await widget.onLogin(email.text.trim(), password.text, remember);
+      TextInput.finishAutofillContext(shouldSave: true);
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -1154,7 +1155,8 @@ class _LoginCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return AutofillGroup(
+      child: Container(
       padding: const EdgeInsets.fromLTRB(42, 44, 42, 36),
       decoration: BoxDecoration(
         color: brandWhite.withOpacity(.975),
@@ -1176,7 +1178,7 @@ class _LoginCard extends StatelessWidget {
           TextField(
             controller: email,
             keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
+            autofillHints: const [AutofillHints.username, AutofillHints.email],
             style: GoogleFonts.inter(color: brandCharcoal, fontSize: 16),
             decoration: InputDecoration(hintText: tr(context, 'emailAddress'), prefixIcon: const Icon(Icons.mail_outline_rounded, size: 22)),
           ),
@@ -1262,6 +1264,7 @@ class _LoginCard extends StatelessWidget {
             LText('Secure  •  Trusted  •  Built for a brighter tomorrow', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 11.8)),
           ]),
         ],
+      ),
       ),
     );
   }
