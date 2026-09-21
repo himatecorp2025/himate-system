@@ -91,6 +91,7 @@ services:
     environment:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      HIMATE_RUNTIME_PROVIDER: local
     depends_on:
       postgres:
         condition: service_healthy

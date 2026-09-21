@@ -55,7 +55,7 @@ func main() {
 		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		runtimeHost: os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 		partnersHost: os.Getenv("PARTNERS_HOSTPORT"),
-		client: &http.Client{Timeout: 5 * time.Second},
+		client: &http.Client{Timeout: 20 * time.Second},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -373,46 +373,98 @@ func deploymentInProgressStatus(e environment) string {
 	return "TESTING"
 }
 
-func (a *app) deployRecord(ctx context.Context,e environment,release,actor string)(environment,error){
-	wasLive:=e.Kind=="PRODUCTION" && e.EnvironmentStatus=="LIVE"
-	release=strings.TrimSpace(release)
-	if release==""{release=e.DesiredRelease}
-	if release==""{release=e.PlatformVersion}
-	if release==""{release="current"}
-	inProgressStatus:=deploymentInProgressStatus(e)
-	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYING',environment_status=$2,runtime_status='CHECKING',updated_at=NOW() WHERE id=$1`,e.ID,inProgressStatus)
-	var out map[string]any
-	latency,err:=a.runtimeRequest(ctx,http.MethodPost,"/internal/v1/runtime/deploy",map[string]any{
-		"partner_id":e.PartnerID,"environment":e.Kind,"hostname":e.Hostname,"release":release,"config":common.JSONRawOrEmpty(e.ConfigJSON),
-	},&out)
-	if err!=nil {
-		failureStatus:="FAILED"
-		if wasLive { failureStatus="LIVE" }
-		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='FAILED',environment_status=$2,runtime_status='ERROR',runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,failureStatus,latency)
-		failed,_:=a.get(e.ID)
-		return failed,err
-	}
-	nextStatus:="READY"
-	if e.Kind=="PRODUCTION" {
-		if wasLive { nextStatus="LIVE" } else { nextStatus="CONFIGURATION_REQUIRED" }
-	}
-	_,err=a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYED',environment_status=$2,active_release=$3,runtime_status='OK',runtime_latency_ms=$4,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,nextStatus,release,latency)
-	if err!=nil{return e,err}
-	e,err=a.get(e.ID)
-	if err!=nil{return e,err}
-	if e.Kind=="PRODUCTION" && !wasLive {
-		if err:=a.transitionPartnerLifecycle(ctx,e.PartnerID,"TESTING",actor,"Production deployment completed; launch testing started");err!=nil {
-			return e,fmt.Errorf("partner lifecycle TESTING: %w",err)
+func runtimeProviderState(out map[string]any) string {
+	return strings.ToUpper(strings.TrimSpace(fmt.Sprint(out["status"])))
+}
+
+func (a *app) finalizeDeployment(ctx context.Context, e environment, release, actor string, latency int64) (environment, error) {
+	wasLive := e.Kind == "PRODUCTION" && e.EnvironmentStatus == "LIVE"
+	nextStatus := "READY"
+	if e.Kind == "PRODUCTION" {
+		if wasLive {
+			nextStatus = "LIVE"
+		} else {
+			nextStatus = "CONFIGURATION_REQUIRED"
 		}
-		if len(launchReadiness(e))==0 {
-			if err:=a.transitionPartnerLifecycle(ctx,e.PartnerID,"READY_FOR_LAUNCH",actor,"Production deployment, runtime, DNS and TLS gates passed");err!=nil {
-				return e,fmt.Errorf("partner lifecycle READY_FOR_LAUNCH: %w",err)
+	}
+	_, err := a.db.Exec(`UPDATE environments.partner_environments
+		SET deployment_status='DEPLOYED',environment_status=$2,active_release=$3,
+		    runtime_status='OK',runtime_latency_ms=$4,last_health_check=NOW(),updated_at=NOW()
+		WHERE id=$1`, e.ID, nextStatus, release, latency)
+	if err != nil {
+		return e, err
+	}
+	e, err = a.get(e.ID)
+	if err != nil {
+		return e, err
+	}
+	if e.Kind == "PRODUCTION" && !wasLive {
+		if err := a.transitionPartnerLifecycle(ctx, e.PartnerID, "TESTING", actor, "Production provider deployment completed; launch testing started"); err != nil {
+			return e, fmt.Errorf("partner lifecycle TESTING: %w", err)
+		}
+		if len(launchReadiness(e)) == 0 {
+			if err := a.transitionPartnerLifecycle(ctx, e.PartnerID, "READY_FOR_LAUNCH", actor, "Production deployment, runtime, DNS and TLS gates passed"); err != nil {
+				return e, fmt.Errorf("partner lifecycle READY_FOR_LAUNCH: %w", err)
 			}
-			_,_ = a.db.Exec(`UPDATE environments.partner_environments SET environment_status='READY_FOR_LAUNCH',updated_at=NOW() WHERE id=$1`,e.ID)
-			e,_=a.get(e.ID)
+			_, _ = a.db.Exec(`UPDATE environments.partner_environments
+				SET environment_status='READY_FOR_LAUNCH',updated_at=NOW() WHERE id=$1`, e.ID)
+			e, _ = a.get(e.ID)
 		}
 	}
-	return e,nil
+	return e, nil
+}
+
+func (a *app) deployRecord(ctx context.Context, e environment, release, actor string) (environment, error) {
+	wasLive := e.Kind == "PRODUCTION" && e.EnvironmentStatus == "LIVE"
+	release = strings.TrimSpace(release)
+	if release == "" { release = e.DesiredRelease }
+	if release == "" { release = e.PlatformVersion }
+	if release == "" { release = "current" }
+
+	inProgressStatus := deploymentInProgressStatus(e)
+	_, _ = a.db.Exec(`UPDATE environments.partner_environments
+		SET deployment_status='DEPLOYING',environment_status=$2,runtime_status='CHECKING',updated_at=NOW()
+		WHERE id=$1`, e.ID, inProgressStatus)
+
+	var out map[string]any
+	latency, err := a.runtimeRequest(ctx, http.MethodPost, "/internal/v1/runtime/deploy", map[string]any{
+		"partner_id": e.PartnerID,
+		"environment": e.Kind,
+		"hostname": e.Hostname,
+		"release": release,
+		"config": common.JSONRawOrEmpty(e.ConfigJSON),
+	}, &out)
+	if err != nil {
+		failureStatus := "FAILED"
+		if wasLive { failureStatus = "LIVE" }
+		_, _ = a.db.Exec(`UPDATE environments.partner_environments
+			SET deployment_status='FAILED',environment_status=$2,runtime_status='ERROR',
+			    runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW()
+			WHERE id=$1`, e.ID, failureStatus, latency)
+		failed, _ := a.get(e.ID)
+		return failed, err
+	}
+
+	switch runtimeProviderState(out) {
+	case "READY":
+		return a.finalizeDeployment(ctx, e, release, actor, latency)
+	case "DEPLOYING":
+		_, _ = a.db.Exec(`UPDATE environments.partner_environments
+			SET deployment_status='DEPLOYING',runtime_status='DEPLOYING',
+			    runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW()
+			WHERE id=$1`, e.ID, latency)
+		pending, _ := a.get(e.ID)
+		return pending, nil
+	default:
+		failureStatus := "FAILED"
+		if wasLive { failureStatus = "LIVE" }
+		_, _ = a.db.Exec(`UPDATE environments.partner_environments
+			SET deployment_status='FAILED',environment_status=$2,runtime_status='ERROR',
+			    runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW()
+			WHERE id=$1`, e.ID, failureStatus, latency)
+		failed, _ := a.get(e.ID)
+		return failed, fmt.Errorf("provider deployment returned unexpected state %q", runtimeProviderState(out))
+	}
 }
 
 func (a *app) deployEnvironment(w http.ResponseWriter,r *http.Request,id string){
@@ -433,14 +485,14 @@ func (a *app) launchEnvironment(w http.ResponseWriter,r *http.Request,id string)
 	e,err:=a.get(id)
 	if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found");return }
 	if e.Kind!="PRODUCTION" { common.APIError(w,409,"LAUNCH_GATE","Only PRODUCTION environments can go LIVE");return }
-	e,probeErr:=a.probeRuntime(r.Context(),e)
+	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+	e,probeErr:=a.probeRuntime(r.Context(),e,actor)
 	if probeErr!=nil { common.APIError(w,409,"LAUNCH_GATE","Production runtime health check failed");return }
 	blockers:=launchReadiness(e)
 	if len(blockers)>0 {
 		common.JSON(w,http.StatusConflict,map[string]any{"error":"LAUNCH_GATE","message":"Production is not ready for launch","blockers":blockers,"environment":mapEnvironment(e)})
 		return
 	}
-	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 	if err:=a.transitionPartnerLifecycle(r.Context(),e.PartnerID,"LIVE",actor,"Production launch gate approved; environment is LIVE");err!=nil {
 		common.JSON(w,http.StatusConflict,map[string]any{"error":"PARTNER_LIFECYCLE","message":err.Error(),"environment":mapEnvironment(e)})
 		return
@@ -581,15 +633,49 @@ func (a *app) deployStaging(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w,200,mapEnvironment(e))
 }
 
-func (a *app) probeRuntime(ctx context.Context,e environment)(environment,error){
-	path:="/internal/v1/runtime/health?partner_id="+url.QueryEscape(e.PartnerID)+"&environment="+url.QueryEscape(e.Kind)
+func (a *app) probeRuntime(ctx context.Context, e environment, actor string) (environment, error) {
+	path := "/internal/v1/runtime/health?partner_id="+url.QueryEscape(e.PartnerID)+"&environment="+url.QueryEscape(e.Kind)
 	var out map[string]any
-	latency,probeErr:=a.runtimeRequest(ctx,http.MethodGet,path,nil,&out)
-	status:="OK"
-	if probeErr!=nil{status="ERROR"}
-	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET runtime_status=$2,runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,status,latency)
-	e.RuntimeStatus=status;e.RuntimeLatencyMS=latency;e.LastHealthCheck=sql.NullTime{Time:time.Now().UTC(),Valid:true}
-	return e,probeErr
+	latency, probeErr := a.runtimeRequest(ctx, http.MethodGet, path, nil, &out)
+	if probeErr != nil {
+		_, _ = a.db.Exec(`UPDATE environments.partner_environments
+			SET runtime_status='ERROR',runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW()
+			WHERE id=$1`, e.ID, latency)
+		e.RuntimeStatus = "ERROR"
+		e.RuntimeLatencyMS = latency
+		e.LastHealthCheck = sql.NullTime{Time: time.Now().UTC(), Valid: true}
+		return e, probeErr
+	}
+
+	switch runtimeProviderState(out) {
+	case "DEPLOYING":
+		_, _ = a.db.Exec(`UPDATE environments.partner_environments
+			SET deployment_status='DEPLOYING',runtime_status='DEPLOYING',
+			    runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW()
+			WHERE id=$1`, e.ID, latency)
+		pending, _ := a.get(e.ID)
+		return pending, nil
+	case "READY":
+		release := strings.TrimSpace(fmt.Sprint(out["release"]))
+		if release == "" { release = e.DesiredRelease }
+		if release == "" { release = e.PlatformVersion }
+		if release == "" { release = "current" }
+		if e.DeploymentStatus != "DEPLOYED" || e.RuntimeStatus != "OK" || strings.TrimSpace(e.ActiveRelease) != release {
+			return a.finalizeDeployment(ctx, e, release, actor, latency)
+		}
+		_, _ = a.db.Exec(`UPDATE environments.partner_environments
+			SET runtime_status='OK',runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW()
+			WHERE id=$1`, e.ID, latency)
+		ready, _ := a.get(e.ID)
+		return ready, nil
+	default:
+		_, _ = a.db.Exec(`UPDATE environments.partner_environments
+			SET deployment_status='FAILED',runtime_status='ERROR',
+			    runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW()
+			WHERE id=$1`, e.ID, latency)
+		failed, _ := a.get(e.ID)
+		return failed, fmt.Errorf("provider runtime returned unexpected state %q", runtimeProviderState(out))
+	}
 }
 
 func (a *app) runtimeHealth(w http.ResponseWriter, r *http.Request) {
@@ -599,8 +685,9 @@ func (a *app) runtimeHealth(w http.ResponseWriter, r *http.Request) {
 	if !kindValues[kind] { common.APIError(w,400,"VALIDATION","environment must be STAGING or PRODUCTION");return }
 	e,err:=a.get(envID(partnerID,kind))
 	if err!=nil{common.APIError(w,404,"NOT_FOUND","Environment not found");return}
-	e,probeErr:=a.probeRuntime(r.Context(),e)
+	e,probeErr:=a.probeRuntime(r.Context(),e,strings.TrimSpace(r.Header.Get("X-Himate-User-ID")))
 	if probeErr!=nil{common.JSON(w,503,map[string]any{"partner_id":partnerID,"environment":kind,"hostname":e.Hostname,"status":"ERROR","latency_ms":e.RuntimeLatencyMS,"error":probeErr.Error()});return}
+	if e.RuntimeStatus=="DEPLOYING"{common.JSON(w,http.StatusAccepted,map[string]any{"partner_id":partnerID,"environment":kind,"hostname":e.Hostname,"status":"DEPLOYING","latency_ms":e.RuntimeLatencyMS,"active_release":e.ActiveRelease,"checked_at":time.Now().UTC()});return}
 	common.JSON(w,200,map[string]any{"partner_id":partnerID,"environment":kind,"hostname":e.Hostname,"status":"OK","hostname_status":"REACHABLE","latency_ms":e.RuntimeLatencyMS,"active_release":e.ActiveRelease,"checked_at":time.Now().UTC()})
 }
 

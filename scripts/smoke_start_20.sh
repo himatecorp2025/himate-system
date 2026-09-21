@@ -76,6 +76,11 @@ staging_deployed="$(curl -fsS -b "$OPS_COOKIE" -H 'Content-Type: application/jso
 printf '%s' "$staging_deployed" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["deployment_status"]=="DEPLOYED"; assert d["environment_status"]=="READY"; assert d["active_release"]=="start20-staging"'
 echo ok
 
+printf 'runtime provider adapter persists deployment identity... '
+runtime_provider="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT provider||':'||status||':'||provider_deploy_id FROM runtime.deployments WHERE partner_id='$partner_id' AND environment='STAGING'")"
+printf '%s' "$runtime_provider" | grep -q '^local:READY:local_'
+echo ok
+
 printf 'production requires explicit public hostname... '
 no_host_payload="$(python3 - "$partner_id" <<'PY'
 import json,sys
@@ -151,4 +156,4 @@ audit="$(curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/audit/events?q=enviro
 printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["total"]>=8, d; assert any(x["resource"]=="environments" and x["method"]=="POST" and x["outcome"]=="SUCCESS" for x in d["items"]); assert any(x["resource"]=="environments" and x["status"]==409 and x["outcome"]=="FAILED" for x in d["items"])'
 echo ok
 
-echo "HIMATE START-20 Domains & Deployments smoke passed"
+echo "HIMATE START-20 Domains, provider deployments and launch-gate smoke passed"

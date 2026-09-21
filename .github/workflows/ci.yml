@@ -125,6 +125,13 @@ jobs:
           for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-cms himate-storage himate-runtime; do
             grep -q "name: $service" render.yaml || { echo "Missing Render service: $service"; exit 1; }
           done
+          grep -q 'key: HIMATE_RUNTIME_PROVIDER' render.yaml
+          grep -q 'value: render' render.yaml
+          grep -q 'key: RENDER_API_KEY' render.yaml
+          grep -q 'key: RENDER_API_BASE' render.yaml
+          grep -q 'https://api.render.com/v1' render.yaml
+          grep -q 'key: HIMATE_RENDER_SERVICE_ID' render.yaml
+          grep -q 'HIMATE_RUNTIME_PROVIDER: local' docker-compose.yml
       - name: Validate Docker Compose topology
         run: docker compose config --quiet
       - name: Build and start containerized microservices
