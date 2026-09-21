@@ -825,6 +825,25 @@ class HimateI18n {
     'Launched at': 'Élesítés ideje',
     'Notification': 'Értesítés',
     'Culture Fuels Tomorrow.': 'A kultúra táplálja a holnapot.',
+    '30 DAYS': '30 NAP',
+    'ACTIVE': 'AKTÍV',
+    'AVERAGE': 'ÁTLAG',
+    'BOTH': 'MINDKETTŐ',
+    'CONFIGURATION REQUIRED': 'KONFIGURÁCIÓ SZÜKSÉGES',
+    'CREATING': 'LÉTREHOZÁS',
+    'GLOBAL': 'GLOBÁLIS',
+    'GREATER IMPACT': 'NAGYOBB HATÁS',
+    'LATEST': 'LEGUTÓBBI',
+    'MAINTENANCE': 'KARBANTARTÁS',
+    'MODULES': 'MODULOK',
+    'MORE OPPORTUNITIES': 'TÖBB LEHETŐSÉG',
+    'NOT LICENSED': 'NINCS LICENCELVE',
+    'OWNER': 'TULAJDONOS',
+    'PARTNER': 'PARTNER',
+    'STRONGER COMMUNITIES': 'ERŐSEBB KÖZÖSSÉGEK',
+    'SUM': 'ÖSSZEG',
+    'VERSION': 'VERZIÓ',
+    'YOU': 'TE',
   };
 
   static const Map<String, String> _designHu = <String, String>{
@@ -907,6 +926,31 @@ class HimateI18n {
       if (translated.isNotEmpty) return translated;
     }
 
+    if (value.startsWith('New Partner wizard failed: ')) {
+      return 'Az új partner varázsló sikertelen: ${value.substring('New Partner wizard failed: '.length)}';
+    }
+    if (value.startsWith('Provisioning could not complete: ')) {
+      return 'A provisioning nem fejeződött be: ${value.substring('Provisioning could not complete: '.length)}';
+    }
+    if (value.startsWith('Credential operation failed: ')) {
+      return 'A hitelesítőadat-művelet sikertelen: ${value.substring('Credential operation failed: '.length)}';
+    }
+    if (value.startsWith('Launch blockers: ')) {
+      return 'Indítási blokkolók: ${value.substring('Launch blockers: '.length)}';
+    }
+    if (value.startsWith('PARTNER WORKSPACE  |  ')) {
+      return 'PARTNER MUNKATERÜLET  |  ${value.substring('PARTNER WORKSPACE  |  '.length)}';
+    }
+    for (final pair in <List<String>>[
+      [' definitions', 'definíció'],
+      [' jobs', 'feladat'],
+      [' admins', 'adminisztrátor'],
+      [' matched', 'találat'],
+      [' RECORDS', 'REKORD'],
+    ]) {
+      final translated = countLabel(pair[0], pair[1]);
+      if (translated.isNotEmpty) return translated;
+    }
     if (value.startsWith('Assigned: ')) {
       return 'Felelős: ${value.substring('Assigned: '.length)}';
     }
