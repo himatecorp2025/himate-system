@@ -208,3 +208,47 @@ func TestStart22AES256MasterKeyValidation(t *testing.T) {
 		t.Fatal("non-256-bit connector encryption key must be rejected")
 	}
 }
+
+func TestSTART223WebsiteAdapterValidation(t *testing.T) {
+	base, err := validateAdapterURL("https://Example.COM/path")
+	if err != nil {
+		t.Fatalf("valid adapter URL rejected: %v", err)
+	}
+	if base != "https://Example.COM/path" && base != "https://example.com/path" {
+		t.Fatalf("unexpected normalized base URL: %s", base)
+	}
+	if _, err := validateAdapterURL("ftp://example.com"); err == nil {
+		t.Fatal("non-HTTP(S) adapter URL must be rejected")
+	}
+
+	domains, err := validateAdapterDomains("https://example.com", []string{"www.example.com", "EXAMPLE.com", "www.example.com"})
+	if err != nil {
+		t.Fatalf("valid domains rejected: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, domain := range domains { seen[domain] = true }
+	if !seen["example.com"] || !seen["www.example.com"] || len(seen) != 2 {
+		t.Fatalf("unexpected normalized domains: %#v", domains)
+	}
+
+	capabilities, err := validAdapterCapabilities([]string{"entitlements", "metrics", "reconciliation"})
+	if err != nil || len(capabilities) != 3 {
+		t.Fatalf("valid capabilities rejected: %#v err=%v", capabilities, err)
+	}
+	if _, err := validAdapterCapabilities([]string{"RAW_PAYMENT_DATA"}); err == nil {
+		t.Fatal("unsafe/unregistered capability must be rejected")
+	}
+}
+
+func TestSTART223DomainNormalization(t *testing.T) {
+	tests := map[string]string{
+		"https://Example.com/path": "example.com",
+		"http://www.example.com/": "www.example.com",
+		"EXAMPLE.COM:443": "example.com",
+	}
+	for input, want := range tests {
+		if got := normalizeDomain(input); got != want {
+			t.Fatalf("%q => %q, want %q", input, got, want)
+		}
+	}
+}
