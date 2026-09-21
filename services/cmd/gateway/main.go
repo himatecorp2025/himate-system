@@ -633,6 +633,8 @@ func requiredPermission(r *http.Request) string {
 		action = "approve"
 	case resource == "backups" && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions:
 		action = "approve"
+	case resource == "connectors" && path == "/api/v1/connectors/start22/retention" && r.Method == http.MethodPost:
+		action = "approve"
 	case resource == "evidence" && r.Method == http.MethodPatch:
 		action = "approve"
 	case resource == "billing" && strings.Contains(path, "/license") && r.Method == http.MethodPut:
