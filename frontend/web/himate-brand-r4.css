@@ -753,3 +753,23 @@ html.story-video-open body{overflow:hidden}
 .locale-switch{appearance:none;border:1px solid rgba(215,174,98,.78);background:rgba(6,23,44,.38);color:#F4E2BA;border-radius:999px;min-width:48px;height:36px;padding:0 12px;font:700 12px/1 Inter,Arial,sans-serif;letter-spacing:1.2px;cursor:pointer;transition:background .16s ease,border-color .16s ease}
 .locale-switch:hover,.locale-switch:focus-visible{background:rgba(215,174,98,.16);border-color:#F3D79A;outline:none}
 @media(max-width:1000px){.locale-switch{width:100%;max-width:120px;margin:8px 0 2px}.nav-divider{display:none!important}}
+
+
+/* Published Design Guide overrides */
+:root{
+  --design-navy:#06172C;
+  --design-gold:#D7AE62;
+  --design-background:#F8F9FB;
+  --design-text:#1F2937;
+  --design-heading-font:"Cormorant Garamond";
+  --design-body-font:"Inter";
+  --design-button-radius:6px;
+}
+body{background:var(--design-background);color:var(--design-text);font-family:var(--design-body-font),Arial,sans-serif}
+.serif,h1,h2,h3,.hero h1,.page-hero h1,.module-card h3,.feature strong,.links a{font-family:var(--design-heading-font),Georgia,serif}
+:root{--navy:var(--design-navy);--deep:var(--design-navy);--gold:var(--design-gold);--gold2:var(--design-gold);--ivory:var(--design-background);--ink:var(--design-text);--brandbook-gold:var(--design-gold);--brandbook-gold-light:var(--design-gold);--brandbook-ivory:var(--design-background);--brandbook-deep:var(--design-navy)}
+.btn,.hero-actions .btn,.login-pill{border-radius:var(--design-button-radius)}
+.btn-gold,.hero-actions .btn-gold,.cta .btn-gold{background:var(--design-gold);color:var(--design-navy)}
+.dark-section,.cta,.footer{background-color:var(--design-navy)}
+.content-section,.editorial,.impact-copy,.numbers,.feature,.contact-box{background-color:var(--design-background)}
+.content-section,.editorial,.feature,.contact-box{color:var(--design-text)}
