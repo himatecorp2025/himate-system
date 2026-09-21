@@ -5388,10 +5388,17 @@ class SystemPage extends StatelessWidget {
         final services = items({'items': health['services']});
         final partners = items({'items': health['partners']});
         final backupPartnerIds = <String>{
-          for (final p in partners) if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty) '${p['partner_id']}',
-          for (final p in provisioning) if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty) '${p['partner_id']}',
-          for (final e in environments) if ('${e['partner_id'] ?? ''}'.trim().isNotEmpty) '${e['partner_id']}',
-          for (final b in backupSummary) if ('${b['partner_id'] ?? ''}'.trim().isNotEmpty) '${b['partner_id']}',
+          for (final p in partners)
+            if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty &&
+                '${p['database_health'] ?? ''}' == 'OK' &&
+                ('${p['storage_health'] ?? ''}' == 'READY' || '${p['storage_health'] ?? ''}' == 'OK'))
+              '${p['partner_id']}',
+          for (final e in environments)
+            if ('${e['partner_id'] ?? ''}'.trim().isNotEmpty)
+              '${e['partner_id']}',
+          for (final b in backupSummary)
+            if ('${b['partner_id'] ?? ''}'.trim().isNotEmpty)
+              '${b['partner_id']}',
         }.toList()..sort();
         final overall = '${health['status'] ?? 'UNKNOWN'}';
 

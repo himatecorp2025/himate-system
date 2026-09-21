@@ -26,6 +26,11 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
+          grep -q 'version: 0.7.0-start-21' ../docs/openapi.yaml
+          grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
+          test -s ../docs/START-21_ACCEPTANCE.md
+          test -s ../docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md
       - run: go build ./cmd/...
 
   flutter:
@@ -172,6 +177,8 @@ jobs:
         run: sh scripts/smoke_start_20.sh http://127.0.0.1:8080
       - name: Run profile, owner and locale smoke
         run: sh scripts/smoke_profile_identity.sh http://127.0.0.1:8080
+      - name: Run START-21 encrypted backups and verified recovery smoke
+        run: sh scripts/smoke_start_21.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

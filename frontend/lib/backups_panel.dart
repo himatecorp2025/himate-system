@@ -164,8 +164,11 @@ class _BackupsPanelState extends State<BackupsPanel> {
     try {
       final point = await widget.api.post('/api/v1/backups', <String, dynamic>{'partner_id': id});
       final pointId = _value(point['id'], fallback: '');
-      _notify(pointId.isEmpty ? 'Restore point queued.' : 'Restore point $pointId queued.');
-      await _pollPartner(id);
+      if (pointId.isEmpty) {
+        throw StateError('Backup service did not return a restore-point identifier.');
+      }
+      _notify('Restore point $pointId queued.');
+      await _pollRestorePoint(id, pointId);
     } catch (e) {
       _notify(e.toString(), failure: true);
     } finally {
@@ -184,9 +187,13 @@ class _BackupsPanelState extends State<BackupsPanel> {
     if (busy.contains(partnerId)) return;
     setState(() => busy.add(partnerId));
     try {
-      await widget.api.post('/api/v1/backups/restore-points/$pointId/restore-test');
-      _notify('Restore test queued from the offsite copy.');
-      await _pollPartner(partnerId, waitForNewTest: true);
+      final test = await widget.api.post('/api/v1/backups/restore-points/$pointId/restore-test');
+      final testId = _value(test['id'], fallback: '');
+      if (testId.isEmpty) {
+        throw StateError('Backup service did not return a restore-test identifier.');
+      }
+      _notify('Restore test $testId queued from the offsite copy.');
+      await _pollRestoreTest(partnerId, testId);
     } catch (e) {
       _notify(e.toString(), failure: true);
     } finally {
@@ -194,34 +201,71 @@ class _BackupsPanelState extends State<BackupsPanel> {
     }
   }
 
-  Future<void> _pollPartner(String partnerId, {bool waitForNewTest = false}) async {
-    String? initialTestStatus;
-    if (waitForNewTest) {
-      initialTestStatus = _value(_summaryFor(partnerId)['latest_restore_test_status'], fallback: 'NEVER');
-    }
+  Future<void> _pollRestorePoint(String partnerId, String pointId) async {
     for (var attempt = 0; attempt < 90; attempt++) {
       if (!mounted) return;
       await Future<void>.delayed(const Duration(seconds: 2));
-      await _refresh(quiet: true);
-      final summary = _summaryFor(partnerId);
-      final backup = _value(summary['latest_backup_status'], fallback: 'NEVER');
-      final test = _value(summary['latest_restore_test_status'], fallback: 'NEVER');
-      if (backup == 'FAILED') {
-        _notify('Backup failed. Open the restore-point details or audit log for diagnostics.', failure: true);
-        return;
-      }
-      if (test == 'FAILED') {
-        _notify('Restore verification failed. Recoverability is not verified.', failure: true);
-        return;
-      }
-      if (backup == 'READY' && test == 'PASSED') {
-        if (!waitForNewTest || initialTestStatus != 'PASSED' || attempt > 0) {
-          _notify('Backup and restore verification passed.');
+      try {
+        final point = await widget.api.get('/api/v1/backups/restore-points/$pointId', force: true);
+        final backupStatus = _value(point['status'], fallback: 'UNKNOWN');
+        if (backupStatus == 'FAILED') {
+          await _refresh(quiet: true);
+          _notify('Backup failed. Open the audit log for diagnostics.', failure: true);
           return;
         }
+        if (backupStatus == 'READY') {
+          final response = await widget.api.get(
+            '/api/v1/backups/restore-tests?restore_point_id=$pointId&limit=1',
+            force: true,
+          );
+          final tests = items(response);
+          if (tests.isNotEmpty) {
+            final testStatus = _value(tests.first['status'], fallback: 'UNKNOWN');
+            if (testStatus == 'FAILED') {
+              await _refresh(quiet: true);
+              _notify('Restore verification failed. Recoverability is not verified.', failure: true);
+              return;
+            }
+            if (testStatus == 'PASSED') {
+              await _refresh(quiet: true);
+              _notify('Backup and restore verification passed.');
+              return;
+            }
+          }
+        }
+        if (attempt % 3 == 0) await _refresh(quiet: true);
+      } catch (_) {
+        if (attempt % 3 == 0) await _refresh(quiet: true);
       }
     }
+    await _refresh(quiet: true);
     _notify('Backup/restore is still running. Refresh the panel to see the latest state.');
+  }
+
+  Future<void> _pollRestoreTest(String partnerId, String testId) async {
+    for (var attempt = 0; attempt < 90; attempt++) {
+      if (!mounted) return;
+      await Future<void>.delayed(const Duration(seconds: 2));
+      try {
+        final test = await widget.api.get('/api/v1/backups/restore-tests/$testId', force: true);
+        final status = _value(test['status'], fallback: 'UNKNOWN');
+        if (status == 'FAILED') {
+          await _refresh(quiet: true);
+          _notify('Restore verification failed. Recoverability is not verified.', failure: true);
+          return;
+        }
+        if (status == 'PASSED') {
+          await _refresh(quiet: true);
+          _notify('Restore verification passed.');
+          return;
+        }
+        if (attempt % 3 == 0) await _refresh(quiet: true);
+      } catch (_) {
+        if (attempt % 3 == 0) await _refresh(quiet: true);
+      }
+    }
+    await _refresh(quiet: true);
+    _notify('Restore verification is still running. Refresh the panel to see the latest state.');
   }
 
   Future<void> _editPolicy(String partnerId) async {
