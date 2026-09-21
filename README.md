@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–20 implementation status
+## START-01–21 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -55,7 +55,18 @@ HIMATE is the central control plane for separately deployed arts-sector partner 
 - environment becomes DEPLOYED only after the provider reports READY/live
 - Docker Compose CI uses a deterministic local provider adapter and never triggers production deploys
 
-## Pre-START-21 identity correction
+### START-21 — Encrypted backups and verified recovery
+- dedicated private `backups` microservice owns backup orchestration, retention and restore verification
+- restore points include the isolated partner PostgreSQL database, partner media namespace and redacted configuration state
+- restore artifacts are encrypted with chunked AES-256-GCM before offsite storage
+- CI/development uses an isolated local offsite adapter; production uses an S3-compatible HTTPS adapter with AWS SigV4
+- backup jobs and partner-scoped retention/scheduling policies are durable in PostgreSQL
+- every successful restore point automatically queues a mandatory restore test
+- restore verification re-downloads the offsite artifact, validates ciphertext/component checksums, restores PostgreSQL into a scratch database and validates media/configuration integrity
+- recoverability is VERIFIED only when the latest restore point is READY and its latest restore test PASSED
+- Gateway RBAC/audit, System Health and the System & Operations UI include backup/recoverability controls
+
+## System-owner identity and localization baseline
 - one durable `system_owner` account controls user creation/access administration
 - the owner authority is data-driven and is never hardcoded to a person's name
 - self-service profile: name, job title, phone, time zone and preferred locale
@@ -70,6 +81,7 @@ The original START blueprint recommended beginning as a modular monolith. HIMATE
 - `docs/adr/0001-containerized-microservice-control-plane.md`
 - `docs/adr/0002-public-cms-server-rendering.md`
 - `docs/adr/0003-provider-deployment-adapter.md`
+- `docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md`
 
 The architecture remains microservice/container based. It is **not** being collapsed back into a monolith.
 
@@ -88,8 +100,10 @@ The architecture remains microservice/container based. It is **not** being colla
 - PDF Reports service
 - CMS service
 - Storage service
+- Backups / recoverability service
 - Runtime / deployment-provider adapter service
 - PostgreSQL control-plane database plus isolated partner databases
+- isolated CI/development offsite backup volume; S3-compatible offsite provider in production
 
 ## Security and performance baseline
 - HttpOnly SameSite=Strict administrator session cookie; Secure in production
@@ -105,7 +119,8 @@ The architecture remains microservice/container based. It is **not** being colla
 - HTTP connection pooling for internal/provider calls
 - partner business databases physically separated from the HIMATE control-plane DB
 - server-paginated partner reads and bounded page-level aggregation
-- Go race tests, Flutter browser tests, Docker Compose health and end-to-end smoke tests in CI
+- encrypted offsite restore artifacts with mandatory restore verification
+- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–21 smoke tests in CI
 
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
@@ -118,7 +133,8 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-17_ACCEPTANCE.md`
 - `docs/START-18-19_ACCEPTANCE.md`
 - `docs/START-20_ACCEPTANCE.md`
+- `docs/START-21_ACCEPTANCE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-21 is intentionally out of scope until the full START-01–20 regression on this correction set is green.
+The current `develop` baseline is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the full START-01–20 regression, the profile/owner/locale smoke and the START-21 encrypted-backup/restore smoke are all green.
