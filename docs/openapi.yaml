@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.7.0-pre-start-21
+  version: 0.7.0-start-21
   description: >
-    Authenticated REST contract for the START-01 through START-20 HIMATE
-    control-plane surface plus the Pre-START-21 identity/profile correction.
-    Partner business databases remain isolated behind connector/API contracts;
-    provider deployment is isolated behind the Runtime adapter service.
+    Authenticated REST contract for the START-01 through START-21 HIMATE
+    control-plane surface. Partner business databases remain isolated behind
+    connector/API contracts; provider deployment is isolated behind the Runtime
+    adapter service; encrypted backup/recovery is isolated behind Backups.
 servers:
   - url: /
 tags:
@@ -22,6 +22,7 @@ tags:
   - name: Environments
   - name: Connector
   - name: System Health
+  - name: Backups
   - name: Impact
   - name: Public
 paths:
@@ -677,6 +678,145 @@ paths:
       summary: Central microservice and partner health snapshot
       responses:
         "200": {description: Service health plus partner database, storage, hostname/runtime, connector sync, environment and provisioning status}
+  /api/v1/backups:
+    get:
+      tags: [Backups]
+      summary: List restore points
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200":
+          description: Restore points
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: "#/components/schemas/RestorePoint"}}
+                  count: {type: integer}
+    post:
+      tags: [Backups]
+      summary: Queue an encrypted offsite restore point
+      description: >
+        Captures the isolated partner database, media namespace and redacted
+        configuration. A successful backup automatically queues a restore test.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [partner_id]
+              properties:
+                partner_id: {type: string}
+      responses:
+        "202":
+          description: Restore point queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RestorePoint"}
+        "409": {description: Backup disabled or already queued/running}
+  /api/v1/backups/summary:
+    get:
+      tags: [Backups]
+      summary: Partner backup and recoverability summary
+      responses:
+        "200":
+          description: Latest backup, restore-test, retention and provider state by partner
+  /api/v1/backups/policies/{partnerId}:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Backups]
+      summary: Read partner backup policy
+      responses:
+        "200":
+          description: Backup policy
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BackupPolicy"}
+    put:
+      tags: [Backups]
+      summary: Create or replace partner backup policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BackupPolicyUpdate"}
+      responses:
+        "200":
+          description: Updated backup policy
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BackupPolicy"}
+  /api/v1/backups/restore-points/{restorePointId}:
+    parameters:
+      - {name: restorePointId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Backups]
+      summary: Read a restore point
+      responses:
+        "200":
+          description: Restore-point metadata and manifest
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RestorePoint"}
+        "404": {description: Restore point not found}
+  /api/v1/backups/restore-points/{restorePointId}/restore-test:
+    parameters:
+      - {name: restorePointId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Backups]
+      summary: Queue an explicit restore test from the offsite copy
+      responses:
+        "202":
+          description: Restore test queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RestoreTest"}
+        "409": {description: Restore point is not READY or a test is already pending}
+  /api/v1/backups/restore-tests:
+    get:
+      tags: [Backups]
+      summary: List restore tests
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+        - {name: restore_point_id, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200":
+          description: Restore tests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: "#/components/schemas/RestoreTest"}}
+                  count: {type: integer}
+  /api/v1/backups/restore-tests/{restoreTestId}:
+    parameters:
+      - {name: restoreTestId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Backups]
+      summary: Read a restore test
+      responses:
+        "200":
+          description: Restore-test result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RestoreTest"}
+        "404": {description: Restore test not found}
+  /api/v1/backups/prune:
+    post:
+      tags: [Backups]
+      summary: Apply partner retention policy immediately
+      parameters:
+        - {name: partner_id, in: query, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Number of expired offsite restore points}
+
   /api/v1/impact/definitions:
     get:
       tags: [Impact]
@@ -1038,6 +1178,54 @@ components:
         type: string
         pattern: "^ptr_[0-9]{6}$"
   schemas:
+    BackupPolicy:
+      type: object
+      properties:
+        partner_id: {type: string}
+        retention_days: {type: integer, minimum: 1, maximum: 3650}
+        max_restore_points: {type: integer, minimum: 1, maximum: 365}
+        schedule_hours: {type: integer, minimum: 1, maximum: 720}
+        enabled: {type: boolean}
+        updated_at: {type: string, format: date-time}
+    BackupPolicyUpdate:
+      type: object
+      required: [retention_days, max_restore_points, schedule_hours, enabled]
+      properties:
+        retention_days: {type: integer, minimum: 1, maximum: 3650}
+        max_restore_points: {type: integer, minimum: 1, maximum: 365}
+        schedule_hours: {type: integer, minimum: 1, maximum: 720}
+        enabled: {type: boolean}
+    RestorePoint:
+      type: object
+      properties:
+        id: {type: string}
+        partner_id: {type: string}
+        status: {type: string, enum: [QUEUED, RUNNING, READY, FAILED, EXPIRED]}
+        provider: {type: string, enum: [local, s3]}
+        object_key: {type: string}
+        ciphertext_sha256: {type: string}
+        ciphertext_bytes: {type: integer, format: int64}
+        manifest: {type: object, additionalProperties: true}
+        created_by: {type: string}
+        error: {type: string}
+        created_at: {type: string, format: date-time}
+        completed_at: {type: [string, "null"], format: date-time}
+        expires_at: {type: [string, "null"], format: date-time}
+    RestoreTest:
+      type: object
+      properties:
+        id: {type: string}
+        restore_point_id: {type: string}
+        partner_id: {type: string}
+        status: {type: string, enum: [QUEUED, RUNNING, PASSED, FAILED]}
+        database_ok: {type: boolean}
+        media_ok: {type: boolean}
+        config_ok: {type: boolean}
+        error: {type: string}
+        created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        completed_at: {type: [string, "null"], format: date-time}
+        duration_ms: {type: integer, format: int64}
     NewPartner:
       type: object
       required: [display_name]

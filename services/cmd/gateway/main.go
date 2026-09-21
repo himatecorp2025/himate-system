@@ -158,6 +158,7 @@ func main() {
 			"reports":      os.Getenv("REPORTS_HOSTPORT"),
 			"cms":          os.Getenv("CMS_HOSTPORT"),
 			"storage":      os.Getenv("STORAGE_HOSTPORT"),
+			"backups":      os.Getenv("BACKUPS_HOSTPORT"),
 			"partner-runtime": os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 		},
 	}
@@ -460,6 +461,7 @@ var roleDefinitions = []roleDefinition{
 			"provisioning.read", "provisioning.write", "provisioning.approve",
 			"environments.read", "environments.write", "environments.approve",
 			"connectors.read", "connectors.write", "connectors.approve",
+			"backups.read", "backups.write", "backups.approve",
 			"health.read",
 		},
 	},
@@ -574,6 +576,8 @@ func permissionResource(r *http.Request) string {
 		return "connectors"
 	case strings.HasPrefix(path, "/api/v1/system-health"):
 		return "health"
+	case path == "/api/v1/backups", strings.HasPrefix(path, "/api/v1/backups/"):
+		return "backups"
 	case strings.HasPrefix(path, "/api/v1/impact/"):
 		return "impact"
 	case path == "/api/v1/evidence", strings.HasPrefix(path, "/api/v1/evidence/"):
@@ -610,6 +614,8 @@ func requiredPermission(r *http.Request) string {
 	case resource == "provisioning" && strings.HasSuffix(path, "/run"):
 		action = "approve"
 	case resource == "environments" && (strings.HasSuffix(path, "/deploy") || strings.HasSuffix(path, "/launch")):
+		action = "approve"
+	case resource == "backups" && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions:
 		action = "approve"
 	case resource == "evidence" && r.Method == http.MethodPatch:
 		action = "approve"
@@ -709,6 +715,14 @@ func auditAction(r *http.Request) string {
 		return "EVIDENCE_VERIFICATION_CHANGED"
 	case strings.Contains(path, "/license") && r.Method == http.MethodPut:
 		return "LICENSE_CHANGED"
+	case path == "/api/v1/backups" && r.Method == http.MethodPost:
+		return "BACKUP_RESTORE_POINT_QUEUED"
+	case strings.HasSuffix(path, "/restore-test") && r.Method == http.MethodPost:
+		return "BACKUP_RESTORE_TEST_QUEUED"
+	case strings.Contains(path, "/backups/policies/") && r.Method == http.MethodPut:
+		return "BACKUP_POLICY_UPDATED"
+	case path == "/api/v1/backups/prune" && r.Method == http.MethodPost:
+		return "BACKUP_RETENTION_PRUNED"
 	}
 	resource, _ := auditResource(r)
 	resource = strings.ToUpper(strings.ReplaceAll(resource, "-", "_"))
@@ -825,6 +839,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "connector")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/system-health"):
 		a.serveProxy(w, r, "health")
+	case r.URL.Path == "/api/v1/backups", strings.HasPrefix(r.URL.Path, "/api/v1/backups/"):
+		a.serveProxy(w, r, "backups")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/impact/"):
 		a.serveProxy(w, r, "impact")
 	case r.URL.Path == "/api/v1/evidence", strings.HasPrefix(r.URL.Path, "/api/v1/evidence/"):
@@ -867,6 +883,9 @@ func auditResource(r *http.Request) (string, string) {
 		resource = "provisioning"
 	case "environments":
 		resource = "environments"
+	case "backups":
+		resource = "backups"
+		if len(parts) > 2 && parts[1] == "policies" { partnerID = parts[2] }
 	case "modules", "module-groups":
 		resource = "catalog"
 	case "partner-categories":

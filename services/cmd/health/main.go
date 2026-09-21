@@ -46,6 +46,7 @@ func main(){
 			"reports":os.Getenv("REPORTS_HOSTPORT"),
 			"cms":os.Getenv("CMS_HOSTPORT"),
 			"storage":os.Getenv("STORAGE_HOSTPORT"),
+			"backups":os.Getenv("BACKUPS_HOSTPORT"),
 			"partner-runtime":os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 		},
 	}

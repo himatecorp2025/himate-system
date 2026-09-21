@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–20 + Pre-START-21 corrections
+# HIMATE control-plane architecture — START-01–21
 
 ```text
 Browser / Admin / Search crawler
@@ -21,6 +21,9 @@ HIMATE Gateway / Identity
   +-- private PDF Reports Service
   +-- private CMS Service
   +-- private Storage Service
+  +-- private Backups Service
+  |       +-- Local offsite adapter (CI/dev)
+  |       +-- S3-compatible offsite adapter (production)
   +-- private Runtime / Deployment Provider Service
   |       +-- Local adapter (CI/dev)
   |       +-- Render adapter (production)
@@ -40,6 +43,7 @@ HIMATE Gateway / Identity
   |    +-- reports
   |    +-- cms
   |    +-- storage
+  |    +-- backups
   |    +-- runtime
   |
   +-- isolated partner PostgreSQL databases
@@ -159,6 +163,56 @@ DNS verification uses resolver lookups. TLS verification performs a real TLS con
 
 ADR-0003 records the provider boundary.
 
+## Backups and verified recovery (START-21)
+
+Backup orchestration is isolated in the private `backups` microservice. It does not run long backup or restore work inside Gateway requests.
+
+```text
+Partner PostgreSQL DB -- pg_dump --+
+                                    |
+Partner Storage -- archive stream --+--> manifest + SHA-256
+                                    |          |
+Partner/env/connector config -------+          v
+                                          tar.gz package
+                                               |
+                                               v
+                                      chunked AES-256-GCM
+                                               |
+                                               v
+                                     Offsite provider adapter
+                                      |                 |
+                                      | local           | S3-compatible
+                                      v                 v
+                                    CI/dev          production
+                                              
+Offsite restore point
+       |
+       +--> ciphertext hash + AES-GCM authentication
+       +--> manifest/component checksum verification
+       +--> pg_restore into temporary scratch DB
+       +--> restored partner identity verification
+       +--> safe media extraction
+       +--> configuration parse/identity verification
+       v
+  PASSED / FAILED recoverability proof
+```
+
+Restore-point and restore-test queues are durable PostgreSQL state. Workers use `FOR UPDATE SKIP LOCKED`, so process restarts do not lose queued work and multiple workers do not claim the same job.
+
+Every successful restore point automatically queues a restore test against the **offsite copy**. A partner is reported `VERIFIED` only when the latest restore point is `READY` and its corresponding restore test is `PASSED`.
+
+Restore artifacts contain:
+- the isolated partner database in PostgreSQL custom dump format,
+- the partner media namespace,
+- partner/environment/connector configuration with secret-bearing keys recursively removed,
+- a manifest containing component SHA-256 hashes and byte sizes.
+
+Artifacts are encrypted with chunked AES-256-GCM. The encryption key is runtime-secret configuration. CI/development uses a separate local offsite Docker volume; production uses the S3-compatible HTTPS adapter with SigV4 credentials. The application/storage disk is not treated as a production offsite boundary.
+
+Partner backup policy persists retention days, maximum restore-point count, automatic interval and enabled state. Pruning deletes the remote object before metadata is marked `EXPIRED`.
+
+ADR-0004 records the backup/offsite/restore-verification boundary.
+
 ## Provisioning and data isolation
 
 Provisioning is a persisted state machine. It validates partner lifecycle and the initial-license gate before changing the partner to `PROVISIONING`. Completed steps are durable and skipped on retry.
@@ -175,6 +229,6 @@ Evidence is validated and SHA-256 checked. PDF report jobs freeze immutable snap
 
 ## Deployment topology
 
-Local/CI uses `docker-compose.yml` and the Runtime `local` provider. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled.
+Local/CI uses `docker-compose.yml`, the Runtime `local` deployment provider and a separate local backup offsite volume. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled. Production Backups uses an S3-compatible HTTPS offsite provider and runtime-injected encryption/storage credentials.
 
 The Render Runtime service is configured for the `render` provider and receives `RENDER_API_KEY` / optional default service ID as secrets. Provider credentials never live in source control.

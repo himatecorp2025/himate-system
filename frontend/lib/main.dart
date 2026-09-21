@@ -16,6 +16,7 @@ import 'package:google_fonts/google_fonts.dart';
 part 'cms_page.dart';
 part 'administration_rbac.dart';
 part 'brand_assets.dart';
+part 'backups_panel.dart';
 part 'domains_deployments.dart';
 part 'localization.dart';
 part 'profile_account.dart';
@@ -249,6 +250,10 @@ class Api {
       add('/api/v1/dashboard');
     } else if (path.startsWith('/api/v1/cms')) {
       add('/api/v1/cms');
+    } else if (path.startsWith('/api/v1/backups')) {
+      add('/api/v1/backups');
+      add('/api/v1/system-health');
+      add('/api/v1/dashboard');
     } else if (path.startsWith('/api/v1/provisioning') || path.startsWith('/api/v1/environments') || path.startsWith('/api/v1/connectors')) {
       add('/api/v1/provisioning');
       add('/api/v1/environments');
@@ -1453,7 +1458,7 @@ class _ShellState extends State<Shell> {
     if (can('billing.read')) indexes.add(2);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(3);
     if (can('cms.read')) indexes.add(4);
-    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read')) indexes.add(5);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(5);
     if (can('administration.read') || can('audit.read')) indexes.add(6);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
@@ -5343,6 +5348,7 @@ class SystemPage extends StatelessWidget {
       api.get('/api/v1/system-health/snapshot'),
       api.get('/api/v1/provisioning/jobs'),
       api.get('/api/v1/environments'),
+      api.get('/api/v1/backups/summary'),
     ]);
     return r;
   }
@@ -5376,18 +5382,34 @@ class SystemPage extends StatelessWidget {
         final health = snapshot.data![0];
         final provisioning = items(snapshot.data![1]);
         final environments = items(snapshot.data![2]);
+        final backupResponse = snapshot.data![3];
+        final backupSummary = items(backupResponse);
+        final backupProvider = '${backupResponse['provider'] ?? 'unknown'}';
         final services = items({'items': health['services']});
         final partners = items({'items': health['partners']});
+        final backupPartnerIds = <String>{
+          for (final p in partners)
+            if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty &&
+                '${p['database_health'] ?? ''}' == 'OK' &&
+                ('${p['storage_health'] ?? ''}' == 'READY' || '${p['storage_health'] ?? ''}' == 'OK'))
+              '${p['partner_id']}',
+          for (final e in environments)
+            if ('${e['partner_id'] ?? ''}'.trim().isNotEmpty)
+              '${e['partner_id']}',
+          for (final b in backupSummary)
+            if ('${b['partner_id'] ?? ''}'.trim().isNotEmpty)
+              '${b['partner_id']}',
+        }.toList()..sort();
         final overall = '${health['status'] ?? 'UNKNOWN'}';
 
         return Content(
           eyebrow: 'PLATFORM OPERATIONS',
           title: 'System & Operations',
-          subtitle: 'Provisioning, partner environments, connectors and central health across the containerized HIMATE control plane.',
+          subtitle: 'Provisioning, partner environments, connectors, backups and central health across the containerized HIMATE control plane.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _OperationsHero(status: overall, environment: 'control plane', version: 'START-09–13'),
+              _OperationsHero(status: overall, environment: 'control plane', version: 'START-09–21'),
               const SizedBox(height: 22),
               _SectionHeader(
                 title: 'Service Health',
@@ -5486,6 +5508,13 @@ class SystemPage extends StatelessWidget {
                 initialEnvironments: environments,
               ),
               const SizedBox(height: 24),
+              BackupsPanel(
+                api: api,
+                initialSummary: backupSummary,
+                partnerIds: backupPartnerIds,
+                initialProvider: backupProvider,
+              ),
+              const SizedBox(height: 24),
               LayoutBuilder(
                 builder: (context, c) {
                   const architecture = _ArchitectureCard();
@@ -5538,6 +5567,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
 
   static const resources = <String>[
     'ALL',
+    'backups',
     'partners',
     'billing',
     'catalog',
