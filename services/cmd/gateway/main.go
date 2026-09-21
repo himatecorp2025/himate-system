@@ -1532,8 +1532,10 @@ func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
 			next.Email=strings.ToLower(strings.TrimSpace(*in.Email))
 			if !validEmail(next.Email) { common.APIError(w,400,"VALIDATION","A valid email is required");return }
 			var duplicate bool
-			_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1) AND id<>$2)`,next.Email,actor.ID).Scan(&duplicate)
-			if duplicate { common.APIError(w,409,"EMAIL_EXISTS","An administrator with this email already exists");return }
+			_ = a.db.QueryRow(`SELECT
+				EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1) AND id<>$2)
+				OR EXISTS(SELECT 1 FROM identity.partner_users WHERE lower(email)=lower($1))`,next.Email,actor.ID).Scan(&duplicate)
+			if duplicate { common.APIError(w,409,"EMAIL_EXISTS","This email already belongs to another HIMATE or Partner Portal identity");return }
 		}
 		if in.PreferredLocale!=nil {
 			raw:=strings.TrimSpace(*in.PreferredLocale)
@@ -1734,8 +1736,10 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
 		if containsRole(roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
 		var exists bool
-		_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1))`,in.Email).Scan(&exists)
-		if exists { common.APIError(w,409,"EMAIL_EXISTS","An administrator with this email already exists"); return }
+		_ = a.db.QueryRow(`SELECT
+			EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1))
+			OR EXISTS(SELECT 1 FROM identity.partner_users WHERE lower(email)=lower($1))`,in.Email).Scan(&exists)
+		if exists { common.APIError(w,409,"EMAIL_EXISTS","This email already belongs to another HIMATE or Partner Portal identity"); return }
 		hash, err := hashPassword(in.Password)
 		if err != nil { common.APIError(w,500,"PASSWORD","Could not secure password"); return }
 		id, err := newUserID()
@@ -1780,8 +1784,10 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
 		next.Email = strings.ToLower(strings.TrimSpace(*in.Email))
 		if !validEmail(next.Email) { common.APIError(w,400,"VALIDATION","A valid email is required"); return }
 		var duplicate bool
-		_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1) AND id<>$2)`,next.Email,id).Scan(&duplicate)
-		if duplicate { common.APIError(w,409,"EMAIL_EXISTS","An administrator with this email already exists"); return }
+		_ = a.db.QueryRow(`SELECT
+			EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1) AND id<>$2)
+			OR EXISTS(SELECT 1 FROM identity.partner_users WHERE lower(email)=lower($1))`,next.Email,id).Scan(&duplicate)
+		if duplicate { common.APIError(w,409,"EMAIL_EXISTS","This email already belongs to another HIMATE or Partner Portal identity"); return }
 	}
 	if in.Roles != nil {
 		next.Roles, err = a.normalizeRoles(*in.Roles)
