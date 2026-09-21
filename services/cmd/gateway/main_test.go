@@ -159,6 +159,7 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		{http.MethodGet, "/api/v1/partners", "partners.read"},
 		{http.MethodPatch, "/api/v1/partners/ptr_1", "partners.write"},
 		{http.MethodGet, "/api/v1/partners/ptr_1/modules", "catalog.read"},
+		{http.MethodPatch, "/api/v1/module-groups/marketing", "catalog.write"},
 		{http.MethodPatch, "/api/v1/partners/ptr_1/modules/mod_1", "catalog.write"},
 		{http.MethodPut, "/api/v1/billing/partners/ptr_1/terms", "billing.write"},
 		{http.MethodPut, "/api/v1/billing/partners/ptr_1/license", "billing.approve"},
@@ -219,6 +220,7 @@ func TestAuditResourceClassification(t *testing.T) {
 		{"/api/v1/contact/inquiries/inq_1", "contact", ""},
 		{"/api/v1/impact/values?partner_id=ptr_900", "impact", "ptr_900"},
 		{"/api/v1/modules/demo", "catalog", ""},
+		{"/api/v1/module-groups/marketing", "catalog", ""},
 		{"/api/v1/notifications/read-all", "notifications", ""},
 	}
 	for _, tc := range tests {
