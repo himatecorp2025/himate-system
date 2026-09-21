@@ -37,6 +37,12 @@
 - [x] Nonces are credential-scoped and replay-protected.
 - [x] Connector request bodies reject nested/free-text data outside the approved scalar contract.
 - [x] Secret-bearing fields remain denied even if a future registry entry is incorrectly expanded.
+- [x] Retained START-22 Connector payloads are encrypted at rest with AES-256-GCM envelope encryption.
+- [x] Every retained record uses a random 256-bit data-encryption key and independent nonces.
+- [x] Per-record data keys are wrapped by a runtime-only versioned 256-bit master key and the raw master key is never persisted.
+- [x] The keyring supports previous key versions so retained seven-year data remains decryptable after controlled key rotation.
+- [x] Fresh records leave the legacy JSONB data column empty; admin reads decrypt only inside the Connector service boundary.
+- [x] Pre-release plaintext START-22 records are encrypted automatically during service startup after the encryption migration.
 
 ## Routing and HIMATE reuse
 - [x] Approved numeric Klavierhaus KPIs route into the existing Impact service.
@@ -77,7 +83,7 @@ The seven-year period is a HIMATE product policy for accepted START-22 data. It 
 - [x] Dedicated Node.js tests verify registry coverage, privacy boundaries, signing and collector behavior.
 
 ## Automated evidence
-- [x] Go unit tests cover registry invariants, canonical JSON/SHA-512, signatures, allowlists and prohibited fields.
+- [x] Go unit tests cover registry invariants, canonical JSON/SHA-512, signatures, allowlists, prohibited fields, AES-256-GCM envelope integrity and key rotation.
 - [x] Go vet/unit/race/build run in CI.
 - [x] Flutter analyze/browser tests/release build run in CI.
 - [x] Klavierhaus has a dedicated START-22 Connector Contract CI job.
