@@ -408,3 +408,36 @@ func TestSecurityHeadersAddsCorrelationID(t *testing.T) {
 		t.Fatalf("correlation ID was not returned to the client")
 	}
 }
+
+
+func TestProfileLocaleNormalization(t *testing.T) {
+	if got := normalizedLocale("hu-HU"); got != "hu_HU" {
+		t.Fatalf("expected hu_HU, got %q", got)
+	}
+	if got := normalizedLocale("unknown"); got != "en_US" {
+		t.Fatalf("unknown locale must fall back to en_US, got %q", got)
+	}
+	if got := normalizedTimezone("Europe/Budapest"); got != "Europe/Budapest" {
+		t.Fatalf("valid timezone changed: %q", got)
+	}
+	if got := normalizedTimezone("../bad zone"); got != "UTC" {
+		t.Fatalf("unsafe timezone must fall back to UTC, got %q", got)
+	}
+}
+
+func TestProfileAuditActions(t *testing.T) {
+	cases := []struct {
+		method string
+		path string
+		want string
+	}{
+		{http.MethodPatch, "/api/v1/profile", "PROFILE_UPDATED"},
+		{http.MethodPost, "/api/v1/profile/password", "PROFILE_PASSWORD_CHANGED"},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(tc.method, "https://himate.example"+tc.path, nil)
+		if got := auditAction(req); got != tc.want {
+			t.Fatalf("%s %s: expected %s, got %s", tc.method, tc.path, tc.want, got)
+		}
+	}
+}

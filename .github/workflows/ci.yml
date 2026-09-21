@@ -162,6 +162,8 @@ jobs:
         run: sh scripts/smoke_start_18_19_v2.sh http://127.0.0.1:8080
       - name: Run START-20 Domains and Deployments smoke
         run: sh scripts/smoke_start_20.sh http://127.0.0.1:8080
+      - name: Run profile, owner and locale smoke
+        run: sh scripts/smoke_profile_identity.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

@@ -103,10 +103,17 @@ type user struct {
 	ID, Name, Email, PasswordHash string
 	Roles                         []string
 	Active                        bool
+	SystemOwner                   bool
+	PreferredLocale               string
+	Timezone                      string
+	JobTitle                      string
+	Phone                         string
+	SessionVersion                int
 }
 type claims struct {
 	Sub, Email, Name string
 	Roles            []string
+	Version          int `json:"v"`
 	Exp              int64
 }
 
@@ -254,6 +261,17 @@ func (a *app) migrate(ctx context.Context) error {
 			`DROP TRIGGER IF EXISTS identity_audit_append_only ON identity.audit_events`,
 			`CREATE TRIGGER identity_audit_append_only BEFORE UPDATE OR DELETE ON identity.audit_events FOR EACH ROW EXECUTE FUNCTION identity.reject_audit_mutation()`,
 		}},
+		{Version: 5, Name: "user-profile-and-owner", Statements: []string{
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS system_owner BOOLEAN NOT NULL DEFAULT FALSE`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS preferred_locale TEXT NOT NULL DEFAULT 'en_US'`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS job_title TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS identity_single_system_owner_idx ON identity.users(system_owner) WHERE system_owner=TRUE`,
+			`CREATE INDEX IF NOT EXISTS identity_users_locale_idx ON identity.users(preferred_locale)`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -268,10 +286,19 @@ func (a *app) migrate(ctx context.Context) error {
 		return err
 	}
 	roles, _ := json.Marshal([]string{"platform_admin"})
-	_, err = a.db.ExecContext(ctx, `INSERT INTO identity.users(id,name,email,password_hash,roles,active)
-		VALUES('usr_bootstrap_001',$1,$2,$3,$4::jsonb,TRUE)
-		ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,active=TRUE`,
+	_, err = a.db.ExecContext(ctx, `INSERT INTO identity.users(id,name,email,password_hash,roles,active,preferred_locale,timezone)
+		VALUES('usr_bootstrap_001',$1,$2,$3,$4::jsonb,TRUE,'en_US','UTC')
+		ON CONFLICT(email) DO NOTHING`,
 		name, email, hashed, string(roles))
+	if err != nil { return err }
+	var ownerCount int
+	if err := a.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM identity.users WHERE system_owner=TRUE`).Scan(&ownerCount); err != nil {
+		return err
+	}
+	if ownerCount == 0 {
+		_, err = a.db.ExecContext(ctx, `UPDATE identity.users SET system_owner=TRUE,roles='["platform_admin"]'::jsonb,active=TRUE,updated_at=NOW()
+			WHERE lower(email)=lower($1)`, email)
+	}
 	return err
 }
 
@@ -497,6 +524,11 @@ func permissionsForRoles(roles []string) []string {
 	return out
 }
 
+func containsRole(roles []string, role string) bool {
+	for _, value := range roles { if value==role { return true } }
+	return false
+}
+
 func hasRole(u user, role string) bool {
 	for _, value := range u.Roles {
 		if value == role { return true }
@@ -570,7 +602,7 @@ func requiredPermission(r *http.Request) string {
 
 	path := r.URL.Path
 	switch {
-	case resource == "administration" && r.Method == http.MethodPatch:
+	case resource == "administration" && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions:
 		action = "approve"
 	case resource == "cms" && (strings.HasSuffix(path, "/publish") || strings.HasSuffix(path, "/rollback")):
 		action = "approve"
@@ -652,6 +684,10 @@ func decodeAuditState(raw []byte) any {
 func auditAction(r *http.Request) string {
 	path := r.URL.Path
 	switch {
+	case path == "/api/v1/profile" && r.Method == http.MethodPatch:
+		return "PROFILE_UPDATED"
+	case path == "/api/v1/profile/password" && r.Method == http.MethodPost:
+		return "PROFILE_PASSWORD_CHANGED"
 	case path == "/api/v1/admin/users" && r.Method == http.MethodPost:
 		return "ADMIN_USER_CREATED"
 	case strings.HasPrefix(path, "/api/v1/admin/users/") && r.Method == http.MethodPatch:
@@ -682,12 +718,19 @@ func auditAction(r *http.Request) string {
 func auditUserState(u user) map[string]any {
 	return map[string]any{
 		"id":u.ID,"name":u.Name,"email":u.Email,"roles":append([]string(nil),u.Roles...),"active":u.Active,
-		"permissions":permissionsForRoles(u.Roles),
+		"system_owner":u.SystemOwner,"preferred_locale":normalizedLocale(u.PreferredLocale),"timezone":normalizedTimezone(u.Timezone),
+		"job_title":u.JobTitle,"phone":u.Phone,"permissions":permissionsForRoles(u.Roles),
 	}
 }
 
 func (a *app) auditOldState(r *http.Request) any {
 	if r == nil { return map[string]any{} }
+	if r.Method == http.MethodPatch && r.URL.Path == "/api/v1/profile" {
+		if u, err := a.auth(r); err == nil { return auditUserState(u) }
+	}
+	if r.Method == http.MethodPost && r.URL.Path == "/api/v1/profile/password" {
+		if u, err := a.auth(r); err == nil { return auditUserState(u) }
+	}
 	if r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") {
 		id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/"), "/")
 		if id != "" && !strings.Contains(id, "/") {
@@ -747,12 +790,16 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/v1/profile":
+		a.profile(w,r,u)
+	case r.URL.Path == "/api/v1/profile/password":
+		a.profilePassword(w,r,u)
 	case r.URL.Path == "/api/v1/admin/roles" && r.Method == http.MethodGet:
 		a.adminRoles(w, r)
 	case r.URL.Path == "/api/v1/admin/users":
-		a.adminUsers(w, r)
+		a.adminUsers(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/"):
-		a.adminUser(w, r)
+		a.adminUser(w, r, u)
 	case r.URL.Path == "/api/v1/audit/events" && r.Method == http.MethodGet:
 		a.auditEvents(w, r)
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
@@ -1262,11 +1309,113 @@ func newProxy(host, token string) (*httputil.ReverseProxy, error) {
 }
 
 
+func normalizedLocale(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "hu", "hu-hu", "hu_hu":
+		return "hu_HU"
+	default:
+		return "en_US"
+	}
+}
+
+func normalizedTimezone(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" { return "UTC" }
+	if len(value) > 64 || strings.ContainsAny(value, " \\t\\r\\n") { return "UTC" }
+	for _, r := range value {
+		if !((r>='A'&&r<='Z')||(r>='a'&&r<='z')||(r>='0'&&r<='9')||r=='/'||r=='_'||r=='-'||r=='+') {
+			return "UTC"
+		}
+	}
+	return value
+}
+
+func ownerRequired(w http.ResponseWriter, actor user) bool {
+	if actor.SystemOwner { return true }
+	common.APIError(w,http.StatusForbidden,"OWNER_REQUIRED","Only the HIMATE system owner can manage administration users")
+	return false
+}
+
+func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
+	switch r.Method {
+	case http.MethodGet:
+		common.JSON(w,http.StatusOK,publicUser(actor))
+	case http.MethodPatch:
+		var in struct {
+			Name *string `json:"name"`
+			PreferredLocale *string `json:"preferred_locale"`
+			Timezone *string `json:"timezone"`
+			JobTitle *string `json:"job_title"`
+			Phone *string `json:"phone"`
+		}
+		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
+		next:=actor
+		if in.Name!=nil {
+			next.Name=strings.TrimSpace(*in.Name)
+			if len(next.Name)<2||len(next.Name)>120 { common.APIError(w,400,"VALIDATION","Name must be 2-120 characters");return }
+		}
+		if in.PreferredLocale!=nil {
+			raw:=strings.TrimSpace(*in.PreferredLocale)
+			if raw!="en_US"&&raw!="hu_HU" { common.APIError(w,400,"VALIDATION","preferred_locale must be en_US or hu_HU");return }
+			next.PreferredLocale=raw
+		}
+		if in.Timezone!=nil {
+			raw:=strings.TrimSpace(*in.Timezone)
+			next.Timezone=normalizedTimezone(raw)
+			if raw!=""&&next.Timezone=="UTC"&&raw!="UTC" { common.APIError(w,400,"VALIDATION","Invalid timezone");return }
+		}
+		if in.JobTitle!=nil {
+			next.JobTitle=strings.TrimSpace(*in.JobTitle)
+			if len(next.JobTitle)>120 { common.APIError(w,400,"VALIDATION","Job title is too long");return }
+		}
+		if in.Phone!=nil {
+			next.Phone=strings.TrimSpace(*in.Phone)
+			if len(next.Phone)>50 { common.APIError(w,400,"VALIDATION","Phone is too long");return }
+		}
+		_,err:=a.db.Exec(`UPDATE identity.users SET name=$2,preferred_locale=$3,timezone=$4,job_title=$5,phone=$6,updated_at=NOW() WHERE id=$1`,
+			actor.ID,next.Name,next.PreferredLocale,next.Timezone,next.JobTitle,next.Phone)
+		if err!=nil { common.APIError(w,500,"DB","Could not update profile");return }
+		common.JSON(w,http.StatusOK,publicUser(next))
+	default:
+		common.APIError(w,405,"METHOD","Use GET or PATCH")
+	}
+}
+
+func (a *app) profilePassword(w http.ResponseWriter, r *http.Request, actor user) {
+	if r.Method!=http.MethodPost { common.APIError(w,405,"METHOD","Use POST");return }
+	var in struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request");return }
+	if !verifyPassword(actor.PasswordHash,in.CurrentPassword) {
+		common.APIError(w,403,"CURRENT_PASSWORD","Current password is incorrect");return
+	}
+	if len(in.NewPassword)<12 {
+		common.APIError(w,400,"VALIDATION","New password must be at least 12 characters");return
+	}
+	if subtle.ConstantTimeCompare([]byte(in.CurrentPassword),[]byte(in.NewPassword))==1 {
+		common.APIError(w,400,"VALIDATION","New password must be different");return
+	}
+	hash,err:=hashPassword(in.NewPassword)
+	if err!=nil { common.APIError(w,500,"PASSWORD","Could not secure password");return }
+	_,err=a.db.Exec(`UPDATE identity.users SET password_hash=$2,session_version=session_version+1,password_changed_at=NOW(),updated_at=NOW() WHERE id=$1`,actor.ID,hash)
+	if err!=nil { common.APIError(w,500,"DB","Could not change password");return }
+	next,err:=a.findUser("id",actor.ID)
+	if err!=nil { common.APIError(w,500,"DB","Could not refresh profile");return }
+	token,err:=a.issueSession(next,a.ttl)
+	if err!=nil { common.APIError(w,500,"SESSION","Could not refresh session");return }
+	http.SetCookie(w,&http.Cookie{Name:sessionCookie,Value:token,Path:"/",HttpOnly:true,Secure:a.secureCookie,SameSite:http.SameSiteStrictMode})
+	common.JSON(w,http.StatusOK,publicUser(next))
+}
+
 func adminUserMap(u user, createdAt, updatedAt time.Time) map[string]any {
 	return map[string]any{
-		"id": u.ID, "name": u.Name, "email": u.Email, "roles": u.Roles, "active": u.Active,
-		"permissions": permissionsForRoles(u.Roles),
-		"created_at": createdAt.UTC(), "updated_at": updatedAt.UTC(),
+		"id":u.ID,"name":u.Name,"email":u.Email,"roles":u.Roles,"active":u.Active,
+		"system_owner":u.SystemOwner,"preferred_locale":normalizedLocale(u.PreferredLocale),
+		"timezone":normalizedTimezone(u.Timezone),"job_title":u.JobTitle,"phone":u.Phone,
+		"permissions":permissionsForRoles(u.Roles),
+		"created_at":createdAt.UTC(),"updated_at":updatedAt.UTC(),
 	}
 }
 
@@ -1295,11 +1444,12 @@ func (a *app) adminRoles(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
 }
 
-func (a *app) adminUsers(w http.ResponseWriter, r *http.Request) {
+func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
+	if !ownerRequired(w,actor) { return }
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT id,name,email,password_hash,roles,active,created_at,updated_at
-			FROM identity.users ORDER BY active DESC,lower(name),lower(email)`)
+		rows, err := a.db.Query(`SELECT id,name,email,password_hash,roles,active,system_owner,preferred_locale,timezone,job_title,phone,session_version,created_at,updated_at
+			FROM identity.users ORDER BY system_owner DESC,active DESC,lower(name),lower(email)`)
 		if err != nil { common.APIError(w,500,"DB","Could not load administration users"); return }
 		defer rows.Close()
 		items := []map[string]any{}
@@ -1307,7 +1457,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request) {
 			var u user
 			var rolesRaw []byte
 			var createdAt, updatedAt time.Time
-			if rows.Scan(&u.ID,&u.Name,&u.Email,&u.PasswordHash,&rolesRaw,&u.Active,&createdAt,&updatedAt) != nil { continue }
+			if rows.Scan(&u.ID,&u.Name,&u.Email,&u.PasswordHash,&rolesRaw,&u.Active,&u.SystemOwner,&u.PreferredLocale,&u.Timezone,&u.JobTitle,&u.Phone,&u.SessionVersion,&createdAt,&updatedAt) != nil { continue }
 			_ = json.Unmarshal(rolesRaw,&u.Roles)
 			items = append(items, adminUserMap(u,createdAt,updatedAt))
 		}
@@ -1327,6 +1477,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request) {
 		if len(in.Password) < 12 { common.APIError(w,400,"VALIDATION","Password must be at least 12 characters"); return }
 		roles, err := normalizeRoles(in.Roles)
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
+		if containsRole(roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
 		var exists bool
 		_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1))`,in.Email).Scan(&exists)
 		if exists { common.APIError(w,409,"EMAIL_EXISTS","An administrator with this email already exists"); return }
@@ -1340,14 +1491,15 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request) {
 			VALUES($1,$2,$3,$4,$5::jsonb,TRUE)
 			RETURNING created_at,updated_at`,id,in.Name,in.Email,hash,string(rolesRaw)).Scan(&createdAt,&updatedAt)
 		if err != nil { common.APIError(w,500,"DB","Could not create administration user"); return }
-		u := user{ID:id,Name:in.Name,Email:in.Email,PasswordHash:hash,Roles:roles,Active:true}
+		u := user{ID:id,Name:in.Name,Email:in.Email,PasswordHash:hash,Roles:roles,Active:true,PreferredLocale:"en_US",Timezone:"UTC"}
 		common.JSON(w,201,adminUserMap(u,createdAt,updatedAt))
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
 }
 
-func (a *app) adminUser(w http.ResponseWriter, r *http.Request) {
+func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
+	if !ownerRequired(w,actor) { return }
 	if r.Method != http.MethodPatch { common.APIError(w,405,"METHOD","Use PATCH"); return }
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/admin/users/"),"/")
 	if id == "" || strings.Contains(id,"/") { common.APIError(w,404,"NOT_FOUND","Administration user not found"); return }
@@ -1379,8 +1531,13 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request) {
 	if in.Roles != nil {
 		next.Roles, err = normalizeRoles(*in.Roles)
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
+		if !current.SystemOwner && containsRole(next.Roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
 	}
 	if in.Active != nil { next.Active = *in.Active }
+	if current.SystemOwner && (!next.Active || !containsRole(next.Roles,"platform_admin")) {
+		common.APIError(w,409,"OWNER_PROTECTED","The HIMATE system owner must remain an active Platform Admin")
+		return
+	}
 
 	currentPlatform := current.Active && hasRole(current,"platform_admin")
 	nextPlatform := next.Active && hasRole(next,"platform_admin")
@@ -1418,7 +1575,9 @@ func (a *app) findUser(field, value string) (user, error) {
 	}
 	var u user
 	var raw []byte
-	err := a.db.QueryRow(`SELECT id,name,email,password_hash,roles,active FROM identity.users WHERE `+field+`=$1`, value).Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &raw, &u.Active)
+	err := a.db.QueryRow(`SELECT id,name,email,password_hash,roles,active,system_owner,preferred_locale,timezone,job_title,phone,session_version
+		FROM identity.users WHERE `+field+`=$1`, value).
+		Scan(&u.ID,&u.Name,&u.Email,&u.PasswordHash,&raw,&u.Active,&u.SystemOwner,&u.PreferredLocale,&u.Timezone,&u.JobTitle,&u.Phone,&u.SessionVersion)
 	_ = json.Unmarshal(raw, &u.Roles)
 	return u, err
 }
@@ -1435,18 +1594,27 @@ func (a *app) auth(r *http.Request) (user, error) {
 	if err != nil || !u.Active {
 		return user{}, errors.New("inactive")
 	}
+	if c.Version != u.SessionVersion {
+		return user{}, errors.New("session superseded")
+	}
 	return u, nil
 }
 func publicUser(u user) map[string]any {
 	return map[string]any{
-		"id": u.ID, "name": u.Name, "email": u.Email, "roles": u.Roles,
-		"permissions": permissionsForRoles(u.Roles),
+		"id":u.ID,"name":u.Name,"email":u.Email,"roles":u.Roles,
+		"permissions":permissionsForRoles(u.Roles),
+		"system_owner":u.SystemOwner,
+		"preferred_locale":normalizedLocale(u.PreferredLocale),
+		"timezone":normalizedTimezone(u.Timezone),
+		"job_title":u.JobTitle,
+		"phone":u.Phone,
+		"can_manage_users":u.SystemOwner,
 	}
 }
 
 func (a *app) issueSession(u user, ttl time.Duration) (string, error) {
 	if ttl <= 0 { ttl = a.ttl }
-	raw, _ := json.Marshal(claims{Sub: u.ID, Email: u.Email, Name: u.Name, Roles: u.Roles, Exp: time.Now().Add(ttl).Unix()})
+	raw, _ := json.Marshal(claims{Sub:u.ID,Email:u.Email,Name:u.Name,Roles:u.Roles,Version:u.SessionVersion,Exp:time.Now().Add(ttl).Unix()})
 	payload := base64.RawURLEncoding.EncodeToString(raw)
 	mac := hmac.New(sha256.New, []byte(a.secret))
 	mac.Write([]byte(payload))
