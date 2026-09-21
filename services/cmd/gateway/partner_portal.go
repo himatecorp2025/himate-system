@@ -251,6 +251,10 @@ func partnerAuditAction(r *http.Request)string{
 func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
 	if !requestOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
+	accessCtx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
+	accessErr:=a.partnerAccessAllowed(accessCtx,u.PartnerID)
+	cancel()
+	if accessErr!=nil{common.APIError(w,403,"PARTNER_ACCESS_DISABLED","Partner Portal access is not available");return}
 	mutating:=r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions
 	if mutating{
 		started:=time.Now();requestState:=captureAuditRequest(r);rec:=&auditResponseWriter{ResponseWriter:w};w=rec
