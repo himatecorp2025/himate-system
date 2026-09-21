@@ -255,19 +255,19 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
               ),
               const SizedBox(height: 8),
               for (final role in roles.where((role) =>
-                  '${role['key']}' != 'platform_admin' || (editing && user?['system_owner'] == true)))
+                  '${role['key']}' != 'platform_admin' || (editing && user['system_owner'] == true)))
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   value: selected.contains('${role['key']}'),
                   title: Text('${role['label']}', style: const TextStyle(color: brandNavy, fontSize: 12, fontWeight: FontWeight.w700)),
                   subtitle: Text(
-                    '${role['key']}' == 'platform_admin' && user?['system_owner'] == true
+                    '${role['key']}' == 'platform_admin' && user['system_owner'] == true
                         ? 'Reserved system-owner role'
                         : '${role['description']}',
                     style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
                   ),
-                  onChanged: '${role['key']}' == 'platform_admin' && user?['system_owner'] == true
+                  onChanged: '${role['key']}' == 'platform_admin' && user['system_owner'] == true
                       ? null
                       : (value) {
                           setDialogState(() {

@@ -139,11 +139,11 @@ class HimateI18n {
 
   static String dateTime(String locale, DateTime value) {
     final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
+    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
   }
 
   static String currency(String locale, num value, {String currency = 'USD'}) {
     final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
-    return NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
+    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
   }
 }
