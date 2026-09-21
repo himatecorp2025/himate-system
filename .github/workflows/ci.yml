@@ -26,7 +26,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.1-start-22.1' ../docs/openapi.yaml
+          grep -q 'version: 0.8.2-start-22.2' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
@@ -36,10 +36,17 @@ jobs:
           grep -q '^  /api/v1/modules/{moduleKey}/relationships:' ../docs/openapi.yaml
           grep -q '^  /api/v1/modules/{moduleKey}/impact-metrics:' ../docs/openapi.yaml
           grep -q '^  /api/v1/notifications:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/auth/login:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/dashboard:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/modules/{moduleKey}/activate:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/modules/{moduleKey}/subscription:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/users:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/partners/{partnerId}/portal-users:' ../docs/openapi.yaml
           grep -q 'HMAC-SHA-512' ../docs/openapi.yaml
           test -s ../docs/START-21_ACCEPTANCE.md
           test -s ../docs/START-22_ACCEPTANCE.md
           test -s ../docs/START-22.1_ACCEPTANCE.md
+          test -s ../docs/START-22.2_ACCEPTANCE.md
           test -s ../docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md
           test -s ../docs/adr/0005-klavierhaus-one-way-data-connector.md
       - run: go build ./cmd/...
@@ -98,6 +105,11 @@ jobs:
           test -s lib/start22_connector.dart
           test -s lib/module_control_plane.dart
           test -s lib/notifications_panel.dart
+          test -s lib/partner_portal.dart
+          grep -q 'class PartnerPortalApp' lib/partner_portal.dart
+          grep -q 'class PartnerPortalShell' lib/partner_portal.dart
+          grep -q '/partner/api/v1/modules' lib/partner_portal.dart
+          grep -q '/partner/login' lib/main.dart
           grep -q 'class ResponsiveKpiGrid' lib/main.dart
           grep -q 'ModuleControlPlanePage' lib/main.dart
           grep -q 'NotificationCenterButton' lib/main.dart
@@ -216,6 +228,8 @@ jobs:
         run: sh scripts/smoke_start_22.sh http://127.0.0.1:8080
       - name: Run START-22.1 Control Plane Completion smoke
         run: sh scripts/smoke_start_22_1.sh http://127.0.0.1:8080
+      - name: Run START-22.2 Partner Portal tenant-isolation smoke
+        run: sh scripts/smoke_start_22_2.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
