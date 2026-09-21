@@ -144,7 +144,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                             const SizedBox(width: 6),
                             const _MiniCounter(label: 'YOU'),
                           ],
-                          if (editingSystemOwner) ...[
+                          if (user['system_owner'] == true) ...[
                             const SizedBox(width: 6),
                             const _MiniCounter(label: 'OWNER'),
                           ],
