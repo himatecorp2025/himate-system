@@ -194,6 +194,10 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/login", a.login)
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
+	mux.HandleFunc("/partner/api/v1/auth/login", a.partnerLogin)
+	mux.HandleFunc("/partner/api/v1/auth/logout", a.partnerLogout)
+	mux.HandleFunc("/partner/api/v1/auth/me", a.partnerMe)
+	mux.HandleFunc("/partner/api/v1/", a.partnerAPI)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
 	mux.HandleFunc("/robots.txt", a.robots)
 	mux.HandleFunc("/sitemap.xml", a.sitemap)
@@ -290,6 +294,7 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS identity_custom_roles_active_idx ON identity.custom_roles(active,role_key)`,
 		}},
+		partnerPortalMigration(),
 	}); err != nil {
 		return err
 	}
@@ -618,6 +623,8 @@ func permissionResource(r *http.Request) string {
 		return "notifications"
 	case path == "/api/v1/admin/roles", strings.HasPrefix(path, "/api/v1/admin/roles/"), path == "/api/v1/admin/users", strings.HasPrefix(path, "/api/v1/admin/users/"):
 		return "administration"
+	case strings.HasPrefix(path, "/api/v1/partners/") && strings.Contains(path, "/portal-users"):
+		return "administration"
 	case strings.HasPrefix(path, "/api/v1/partners/") && strings.Contains(path, "/modules"):
 		return "catalog"
 	case path == "/api/v1/modules", path == "/api/v1/module-groups", strings.HasPrefix(path, "/api/v1/modules/"), strings.HasPrefix(path, "/api/v1/module-groups/"):
@@ -918,6 +925,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
 		a.serveProxy(w, r, "partners")
+	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/portal-users"):
+		a.adminPartnerUsers(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/modules"):
 		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/"):
@@ -2455,7 +2464,8 @@ func (a *app) web() http.Handler {
 			return
 		}
 
-		if r.URL.Path == "/login" || r.URL.Path == "/app" || strings.HasPrefix(r.URL.Path, "/app/") {
+		if r.URL.Path == "/login" || r.URL.Path == "/app" || strings.HasPrefix(r.URL.Path, "/app/") ||
+			r.URL.Path == "/partner/login" || r.URL.Path == "/partner/app" || strings.HasPrefix(r.URL.Path, "/partner/app/") {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			http.ServeFile(w, r, filepath.Join(root, "index.html"))
 			return
