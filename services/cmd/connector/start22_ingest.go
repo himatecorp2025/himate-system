@@ -530,6 +530,8 @@ func (a *app) start22RouteImpactRecord(ctx context.Context, record start22Stored
 			"numeric_value": value,
 			"provenance": "PARTNER_DECLARED",
 			"source_ref": "connector:data_record:" + strconv.FormatInt(record.ID, 10),
+			"retention_policy": "HIMATE_7Y",
+			"retain_until": record.RetainUntil.Format(time.RFC3339),
 			"metadata": map[string]any{
 				"source_system": start22SourceSystem,
 				"source_version": record.SourceVersion,
