@@ -21,7 +21,7 @@ Reference/legacy partners may still use the already documented waiver path; a wa
 
 ### Immutable module-period pricing
 - each active module has activation-anchored 30-day periods;
-- each partner/module/period has one immutable price snapshot;
+- each partner/module/period has one immutable price snapshot, protected against UPDATE/DELETE by a database trigger;
 - the snapshot resolves the Catalog price effective at the exact period start;
 - Catalog price changes during a running period cannot change that period;
 - the new price is eligible only for a later period start;
@@ -34,7 +34,8 @@ Reference/legacy partners may still use the already documented waiver path; a wa
 - invoice generation attaches eligible pending module items;
 - invoice `module_fee` and `total` derive from attached items, not live Catalog prices;
 - invoice API responses expose their itemized lines;
-- idempotent reruns never rewrite an already captured line-item amount.
+- idempotent reruns never rewrite an already captured line-item amount;
+- database guards prevent mutation/deletion of snapshot values, billing events and invoice-item commercial fields after capture.
 
 ### Billing event ledger
 The database-backed immutable event stream includes at minimum:
