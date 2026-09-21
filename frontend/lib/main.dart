@@ -1160,11 +1160,13 @@ class HimateLogo extends StatelessWidget {
     this.width = 300,
     this.compact = false,
     this.shadow = true,
+    this.onDark = false,
   });
 
   final double width;
   final bool compact;
   final bool shadow;
+  final bool onDark;
 
   @override
   Widget build(BuildContext context) {
@@ -1183,7 +1185,7 @@ class HimateLogo extends StatelessWidget {
           compact ? 'H' : 'HIMATE',
           style: TextStyle(
             fontSize: compact ? targetHeight * .48 : targetHeight * .34,
-            color: brandGold,
+            color: onDark ? brandGold : brandNavy,
             fontWeight: FontWeight.w800,
             letterSpacing: compact ? 0 : 3.0,
           ),
