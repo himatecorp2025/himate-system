@@ -185,7 +185,7 @@ printf 'central audit records semantic, correlated old/new state... '
 sleep 1
 audit="$(curl -fsS -b "$PLATFORM_COOKIE" --get   --data-urlencode 'q=admin/users'   --data-urlencode 'from=2000-01-01T00:00:00Z'   --data-urlencode 'limit=100'   "$BASE_URL/api/v1/audit/events")"
 printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d["items"]; assert d["total"]>=4,d; assert all(x["actor_id"] for x in items); assert all(x["correlation_id"] for x in items); assert any(x["action"]=="ADMIN_USER_CREATED" and x["method"]=="POST" and x["outcome"]=="SUCCESS" for x in items); assert any(x["action"]=="ADMIN_USER_UPDATED" and x["status"]==409 and x["outcome"]=="FAILED" for x in items); changed=[x for x in items if x["action"]=="ADMIN_USER_UPDATED" and isinstance(x.get("old_state"),dict) and isinstance(x.get("new_state"),dict) and x["old_state"].get("active") is True and x["new_state"].get("active") is False]; assert changed,items'
-if printf '%s' "$audit" | grep -qi 'local-development-password'; then exit 1; fi
+if printf '%s' "$audit" | grep -qi 'Local-Development1!Password'; then exit 1; fi
 echo ok
 
 printf 'audit action and correlation filters work... '
