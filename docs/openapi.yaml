@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.1-start-22.1
+  version: 0.8.2-start-22.2
   description: >
-    Authenticated REST contract for the START-01 through START-22.1 HIMATE
+    Authenticated REST contract for the START-01 through START-22.2 HIMATE
     control-plane surface. Partner business databases remain isolated behind
     connector/API contracts; provider deployment is isolated behind the Runtime
     adapter service; encrypted backup/recovery is isolated behind Backups.
@@ -16,6 +16,7 @@ tags:
   - name: Administration
   - name: Audit
   - name: Notifications
+  - name: Partner Portal
   - name: Partners
   - name: Modules
   - name: Billing
@@ -232,6 +233,124 @@ paths:
       summary: Mark all visible notifications as read for the authenticated administrator
       responses:
         "200": {description: Visible notifications marked read}
+  /partner/api/v1/auth/login:
+    post:
+      tags: [Partner Portal]
+      security: []
+      summary: Partner Portal sign in
+      description: Issues a separate HttpOnly session cookie scoped to /partner. Tenant scope comes from the authenticated partner identity.
+      responses:
+        "200": {description: Authenticated partner user}
+        "401": {description: Invalid credentials}
+        "403": {description: Partner Portal access suspended or archived}
+        "429": {description: Sign-in rate limited}
+  /partner/api/v1/auth/logout:
+    post:
+      tags: [Partner Portal]
+      summary: End Partner Portal session
+      responses:
+        "204": {description: Session ended}
+  /partner/api/v1/auth/me:
+    get:
+      tags: [Partner Portal]
+      summary: Current tenant-scoped Partner Portal identity
+      responses:
+        "200": {description: Partner identity, partner_id, role and portal permissions}
+        "401": {description: Partner authentication required}
+  /partner/api/v1/dashboard:
+    get:
+      tags: [Partner Portal]
+      summary: Tenant-scoped portal overview
+      description: Partner identifier is taken only from the authenticated session; query/body partner_id values are ignored.
+      responses:
+        "200": {description: Company, module, billing and Impact overview}
+        "403": {description: Partner access disabled}
+  /partner/api/v1/company:
+    get:
+      tags: [Partner Portal]
+      summary: Read own company profile
+      responses:
+        "200": {description: Own partner company profile}
+    patch:
+      tags: [Partner Portal]
+      summary: Update allowlisted own-company identity/contact fields
+      description: Lifecycle, pricing, infrastructure and HIMATE-only controls are not accepted by this portal route.
+      responses:
+        "200": {description: Updated own-company profile}
+        "403": {description: Portal role lacks company.write}
+  /partner/api/v1/modules:
+    get:
+      tags: [Partner Portal]
+      summary: Own active and available modules with effective tenant price and dependency blockers
+      responses:
+        "200": {description: Tenant module catalog}
+  /partner/api/v1/modules/{moduleKey}/activate:
+    parameters:
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Partner Portal]
+      summary: Activate an eligible module for the authenticated tenant
+      description: Backend enforces availability, REQUIRES and CONFLICTS_WITH relationships. Global price, source and dependency metadata are immutable to partners.
+      responses:
+        "200": {description: Module activated and billing synchronized}
+        "409": {description: Dependency, conflict, maintenance or availability gate blocked activation}
+  /partner/api/v1/modules/{moduleKey}/subscription:
+    parameters:
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Partner Portal]
+      summary: Schedule or withdraw end-of-period cancellation for an own active module
+      responses:
+        "200": {description: Subscription renewal state updated}
+        "409": {description: Subscription state does not allow the requested change}
+  /partner/api/v1/billing/summary:
+    get:
+      tags: [Partner Portal]
+      summary: Own current 30-day billing summary
+      responses:
+        "200": {description: Tenant billing summary}
+  /partner/api/v1/billing/subscriptions:
+    get:
+      tags: [Partner Portal]
+      summary: Own module subscription periods and renewal state
+      responses:
+        "200": {description: Tenant module subscriptions}
+  /partner/api/v1/billing/invoices:
+    get:
+      tags: [Partner Portal]
+      summary: Own invoice history
+      responses:
+        "200": {description: Tenant invoices}
+  /partner/api/v1/impact/summary:
+    get:
+      tags: [Partner Portal]
+      summary: Own aggregated Impact results
+      responses:
+        "200": {description: Tenant Impact metrics}
+  /partner/api/v1/users:
+    get:
+      tags: [Partner Portal]
+      summary: List own organization Portal users
+      responses:
+        "200": {description: Tenant Portal users}
+    post:
+      tags: [Partner Portal]
+      summary: Create an own-tenant Portal user
+      description: Portal roles are owner, admin, billing and viewer; they cannot grant HIMATE control-plane roles.
+      responses:
+        "201": {description: Tenant Portal user created}
+        "403": {description: Role lacks users.write or non-owner attempted to assign owner}
+  /partner/api/v1/users/{userId}:
+    parameters:
+      - {name: userId, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Partner Portal]
+      summary: Update an own-tenant Portal user
+      description: Last active owner is protected; role/status changes rotate the target session version.
+      responses:
+        "200": {description: Tenant Portal user updated}
+        "403": {description: Cross-role authority denied}
+        "409": {description: Last-owner continuity guard}
   /api/v1/dashboard/summary:
     get:
       tags: [Health]
@@ -300,6 +419,32 @@ paths:
       responses:
         "201": {description: Partner created}
         "409": {description: Duplicate slug or domain}
+  /api/v1/partners/{partnerId}/portal-users:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Administration]
+      summary: List Partner Portal identities for one partner
+      responses:
+        "200": {description: Partner Portal users}
+        "403": {description: HIMATE System Owner required}
+    post:
+      tags: [Administration]
+      summary: Bootstrap a Partner Portal identity
+      description: HIMATE System Owner only; typically used to create the first partner Owner.
+      responses:
+        "201": {description: Partner Portal user created}
+        "403": {description: HIMATE System Owner required}
+  /api/v1/partners/{partnerId}/portal-users/{userId}:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+      - {name: userId, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Administration]
+      summary: Update a Partner Portal identity from HIMATE administration
+      responses:
+        "200": {description: Partner Portal user updated}
+        "403": {description: HIMATE System Owner required}
   /api/v1/partners/{partnerId}:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
