@@ -245,7 +245,9 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: editing ? 'New password (optional)' : 'Temporary password',
-                  helperText: editing ? 'Leave blank to keep the current password. Minimum 12 characters if changed.' : 'Minimum 12 characters.',
+                  helperText: editing
+                      ? 'Leave blank to keep the current password. Use 12+ characters with lowercase, uppercase, number and special character.'
+                      : 'Use 12+ characters with lowercase, uppercase, number and special character.',
                 ),
               ),
               const SizedBox(height: 18),
@@ -308,10 +310,10 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
               validation = 'Enter the administrator name.';
             } else if (!cleanEmail.contains('@') || !cleanEmail.contains('.')) {
               validation = 'Enter a valid email address.';
-            } else if (!editing && cleanPassword.length < 12) {
-              validation = 'Temporary password must be at least 12 characters.';
-            } else if (editing && cleanPassword.isNotEmpty && cleanPassword.length < 12) {
-              validation = 'New password must be at least 12 characters.';
+            } else if (!editing && !himatePasswordMeetsPolicy(cleanPassword)) {
+              validation = HimateI18n.text(himateLocaleCode(Localizations.localeOf(context)), 'passwordPolicy');
+            } else if (editing && cleanPassword.isNotEmpty && !himatePasswordMeetsPolicy(cleanPassword)) {
+              validation = HimateI18n.text(himateLocaleCode(Localizations.localeOf(context)), 'passwordPolicy');
             } else if (selected.isEmpty) {
               validation = 'Assign at least one role.';
             }
