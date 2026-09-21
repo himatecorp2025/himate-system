@@ -2,19 +2,22 @@
 
 This release gate closes the four business-completeness gaps identified after the START-01–20 audit. It does not redefine START-21 backups/recovery or begin the next numbered START block.
 
-## 1. Password complexity
+## 1. SEO complexity / SEO & Keywords
 
-- [x] All newly accepted passwords require at least 12 characters.
-- [x] A password must contain at least one lowercase letter.
-- [x] A password must contain at least one uppercase letter.
-- [x] A password must contain at least one number.
-- [x] A password must contain at least one special/punctuation character.
-- [x] The rule is authoritative in the Gateway backend, not only in Flutter.
-- [x] Bootstrap owner password validation uses the same policy.
-- [x] Profile password changes verify the current password and use the same policy.
-- [x] Administrator creation/password replacement uses the same policy.
-- [x] Flutter Profile and Administration surfaces explain and validate the same rule.
-- [x] Password/session rotation and secret redaction behavior from the existing identity acceptance remain unchanged.
+- [x] Website & Marketing exposes a dedicated responsive SEO & Keywords workspace.
+- [x] Global keywords are managed independently for English and Hungarian.
+- [x] Each CMS page version supports its own page-specific keyword set.
+- [x] Global and page-specific keywords are normalized, deduplicated and bounded by backend validation.
+- [x] SEO settings use explicit DRAFT and PUBLISHED states with version metadata.
+- [x] Saving and publishing global SEO settings is audited.
+- [x] Automatic SEO analysis scores each CMS draft for title length, meta-description length, canonical validity, keyword count, visible-content depth and keyword/content fit.
+- [x] Automatic analysis produces deterministic keyword suggestions from visible page content.
+- [x] Public CMS output merges language-specific global keywords with page keywords.
+- [x] Gateway SSR emits a server-rendered meta keywords tag for published CMS pages.
+- [x] Public CMS output includes Schema.org WebPage JSON-LD with language and publisher defaults.
+- [x] Published English/Hungarian variants expose canonical alternate mappings and Gateway SSR emits hreflang links.
+- [x] A configurable default Open Graph image may be used when a page has no explicit OG image.
+- [x] Existing title, meta description, canonical, Open Graph, noindex, sitemap and robots behavior remains intact.
 
 ## 2. Contact Leads
 
@@ -62,6 +65,14 @@ This release gate closes the four business-completeness gaps identified after th
 - [x] A published Design Guide logo is allowed through the public CMS media boundary.
 - [x] Existing per-page CMS heading/body/media/CTA/visibility/section-order/version/preview/publish/rollback behavior remains intact.
 
+## Additional security hardening completed in the same correction
+
+- [x] All newly accepted passwords require at least 12 characters.
+- [x] A password must contain at least one lowercase letter, uppercase letter, number and special/punctuation character.
+- [x] The rule is authoritative in the Gateway backend and mirrored by the Flutter Profile/Administration surfaces.
+- [x] Bootstrap owner, profile password changes and administrator creation/replacement use the same policy.
+- [x] Existing password/session rotation and secret-redaction behavior remains unchanged.
+
 ## Regression and release gates
 
 This correction is accepted only when the branch CI proves all of the following on the same candidate commit:
@@ -86,4 +97,4 @@ This correction is accepted only when the branch CI proves all of the following 
 - [ ] Pre-START-22 business completion smoke.
 - [ ] START-21 backup/recovery regression smoke.
 
-The business-completion smoke must prove an actual public inquiry appearing in authenticated Contact Leads, lead workflow persistence and audit, Design Guide draft/publish/public delivery, and independent English/Hungarian CMS variants.
+The business-completion smoke must prove global SEO draft/publish/public delivery, combined bilingual page/global keywords, automatic SEO audit, structured SEO output, an actual public inquiry appearing in authenticated Contact Leads, lead workflow persistence and audit, Design Guide draft/publish/public delivery, and independent published English/Hungarian CMS variants.
