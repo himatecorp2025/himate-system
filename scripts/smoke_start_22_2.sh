@@ -161,7 +161,7 @@ printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); acti
 echo ok
 
 printf 'archived partner loses portal API access with an existing session... '
-curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"lifecycle":"ARCHIVED","lifecycle_reason":"START-22.2 portal access revocation acceptance"}'   "$BASE_URL/api/v1/partners/$partner_a_id" >/dev/null
+curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"lifecycle":"ARCHIVED","reason":"START-22.2 portal access revocation acceptance"}'   "$BASE_URL/api/v1/partners/$partner_a_id" >/dev/null
 test "$(status "$PARTNER_A_COOKIE" GET "/partner/api/v1/dashboard")" = "403"
 grep -q 'PARTNER_ACCESS_DISABLED' "$BODY"
 curl -fsS -b "$PARTNER_B_COOKIE" "$BASE_URL/partner/api/v1/dashboard" >/dev/null
