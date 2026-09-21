@@ -58,8 +58,52 @@ jobs:
           grep -q 'href="/himate-brand-r4.css"' build/web/landing.html
           grep -q 'src="/site.js"' build/web/landing.html
           grep -q 'src="data:image/webp;base64,' build/web/landing.html
-          if grep -q '/brand/himate-logo-' build/web/landing.html; then echo "Landing still references dynamic logo route"; exit 1; fi
-          if grep -q 'src="/art/himate_logo_master_' build/web/landing.html; then echo "Landing still depends on external logo asset"; exit 1; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import re
+
+          canonical = Path("web/art/himate_logo_master_v2.webp").read_bytes()
+          pages = [
+              "landing.html",
+              "platform.html",
+              "modules.html",
+              "programs.html",
+              "impact.html",
+              "partners.html",
+              "contact.html",
+          ]
+          embedded = None
+          for page in pages:
+              html = (Path("build/web") / page).read_text()
+              match = re.search(r'src="data:image/webp;base64,([^"]+)"', html)
+              if match is None:
+                  raise SystemExit(f"{page}: embedded HIMATE logo is missing")
+              payload = base64.b64decode(match.group(1), validate=True)
+              if payload != canonical:
+                  raise SystemExit(f"{page}: embedded HIMATE logo differs from canonical asset")
+              if embedded is None:
+                  embedded = match.group(1)
+              elif embedded != match.group(1):
+                  raise SystemExit(f"{page}: embedded HIMATE logo differs from the other public pages")
+              if "/brand/himate-logo-" in html:
+                  raise SystemExit(f"{page}: dynamic logo route reference is forbidden")
+              if 'src="/art/himate_logo_master_' in html:
+                  raise SystemExit(f"{page}: external logo asset dependency is forbidden")
+
+          brand_source = Path("lib/brand_assets.dart").read_text()
+          brand_match = re.search(r"const String himateLogoBase64 = '([^']+)'", brand_source)
+          if brand_match is None:
+              raise SystemExit("Flutter embedded HIMATE logo source is missing")
+          if base64.b64decode(brand_match.group(1), validate=True) != canonical:
+              raise SystemExit("Flutter embedded HIMATE logo differs from canonical asset")
+          if brand_match.group(1) != embedded:
+              raise SystemExit("Flutter and public-site HIMATE logos are not byte-identical")
+
+          main_source = Path("lib/main.dart").read_text()
+          if "Image.memory(" not in main_source or "himateLogoBytes" not in main_source:
+              raise SystemExit("Flutter logo is not rendered from embedded bytes")
+          PY
           if grep -q 'href="/brand.css"' build/web/landing.html; then exit 1; fi
 
 
@@ -67,6 +111,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate controlled deployment triggers
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path("vercel.json").read_text())
+          enabled = config.get("git", {}).get("deploymentEnabled", {})
+          if enabled.get("*") is not False:
+              raise SystemExit("Vercel Git auto-deploy must remain disabled by default")
+          if any(value is True for value in enabled.values()):
+              raise SystemExit("Vercel development branches must not auto-deploy")
+          PY
+          grep -q 'autoDeploy: false' render.yaml
+
       - name: Validate Render Blueprint bindings
         run: |
           grep -q 'healthCheckPath: /api/v1/live' render.yaml

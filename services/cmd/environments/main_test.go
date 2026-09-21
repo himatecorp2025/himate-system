@@ -60,3 +60,35 @@ func TestSTART20LaunchReadiness(t *testing.T) {
 		}
 	}
 }
+
+func TestSTART20LiveRedeployPreservesEnvironmentStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		env  environment
+		want string
+	}{
+		{
+			name: "live production remains live while redeploying",
+			env:  environment{Kind: "PRODUCTION", EnvironmentStatus: "LIVE"},
+			want: "LIVE",
+		},
+		{
+			name: "prelaunch production enters testing",
+			env:  environment{Kind: "PRODUCTION", EnvironmentStatus: "CONFIGURATION_REQUIRED"},
+			want: "TESTING",
+		},
+		{
+			name: "staging enters testing",
+			env:  environment{Kind: "STAGING", EnvironmentStatus: "READY"},
+			want: "TESTING",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := deploymentInProgressStatus(tc.env); got != tc.want {
+				t.Fatalf("deploymentInProgressStatus() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

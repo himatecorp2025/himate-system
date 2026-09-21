@@ -366,13 +366,21 @@ func (a *app) verifyDomain(w http.ResponseWriter,r *http.Request,id string){
 	common.JSON(w,http.StatusOK,mapEnvironment(e))
 }
 
+func deploymentInProgressStatus(e environment) string {
+	if e.Kind == "PRODUCTION" && e.EnvironmentStatus == "LIVE" {
+		return "LIVE"
+	}
+	return "TESTING"
+}
+
 func (a *app) deployRecord(ctx context.Context,e environment,release,actor string)(environment,error){
 	wasLive:=e.Kind=="PRODUCTION" && e.EnvironmentStatus=="LIVE"
 	release=strings.TrimSpace(release)
 	if release==""{release=e.DesiredRelease}
 	if release==""{release=e.PlatformVersion}
 	if release==""{release="current"}
-	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYING',environment_status='TESTING',runtime_status='CHECKING',updated_at=NOW() WHERE id=$1`,e.ID)
+	inProgressStatus:=deploymentInProgressStatus(e)
+	_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYING',environment_status=$2,runtime_status='CHECKING',updated_at=NOW() WHERE id=$1`,e.ID,inProgressStatus)
 	var out map[string]any
 	latency,err:=a.runtimeRequest(ctx,http.MethodPost,"/internal/v1/runtime/deploy",map[string]any{
 		"partner_id":e.PartnerID,"environment":e.Kind,"hostname":e.Hostname,"release":release,"config":common.JSONRawOrEmpty(e.ConfigJSON),
