@@ -112,14 +112,7 @@ set -- $sig
 timestamp="$1"; nonce="$2"; body_sha="$3"; signature="$4"
 code="$(curl -sS -o "$BODY" -w '%{http_code}'   -H "Authorization: Bearer $connector_token"   -H 'Content-Type: application/json'   -H "X-Himate-Timestamp: $timestamp"   -H "X-Himate-Nonce: $nonce"   -H "X-Himate-Body-SHA512: $body_sha"   -H "X-Himate-Signature: $signature"   --data-binary "@$BATCH" "$BASE_URL/connector/v1/data/batches")"
 test "$code" = "202"
-python3 - "$partner_id" <"$BODY" <<'PY'
-import json,sys
-d=json.load(sys.stdin)
-assert d["partner_id"]==sys.argv[1],d
-assert d["environment"]=="STAGING",d
-assert d["accepted"]==1 and d["route_errors"]==0,d
-assert d["retention_policy"]=="HIMATE_7Y" and d["retention_years"]==7,d
-PY
+python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["partner_id"]==sys.argv[1],d; assert d["environment"]=="STAGING",d; assert d["accepted"]==1 and d["route_errors"]==0,d; assert d["retention_policy"]=="HIMATE_7Y" and d["retention_years"]==7,d' "$partner_id" <"$BODY"
 echo ok
 
 printf 'nonce replay is rejected before duplicate processing... '
