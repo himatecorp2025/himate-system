@@ -75,7 +75,16 @@ func main() {
 		os.Exit(1)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--run-invoice-cycle" {
-		if err := a.runInvoiceCycle(context.Background(), time.Now().UTC()); err != nil {
+		runAt := time.Now().UTC()
+		if len(os.Args) > 2 && strings.TrimSpace(os.Args[2]) != "" {
+			parsed, parseErr := time.Parse("2006-01-02", strings.TrimSpace(os.Args[2]))
+			if parseErr != nil {
+				log.Error("invoice cycle date", "error", parseErr)
+				os.Exit(1)
+			}
+			runAt = parsed.UTC()
+		}
+		if err := a.runInvoiceCycle(context.Background(), runAt); err != nil {
 			log.Error("invoice cycle", "error", err)
 			os.Exit(1)
 		}
@@ -187,6 +196,8 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS contact_name TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`,
 		}},
+		start223BillingMigration(),
+		start223BillingImmutabilityMigration(),
 	}); err != nil {
 		return err
 	}
@@ -332,25 +343,31 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 500, "DB", "Could not load initial license")
 		return
 	}
-	evidenceCount, err := a.commercialEvidenceCount(r.Context(), id)
+	evidenceCount, invoiceCount, paymentEvidenceCount, err := a.commercialEvidenceBreakdown(r.Context(), id)
 	if err != nil {
-		common.APIError(w, 500, "DB", "Could not verify license evidence")
+		common.APIError(w, 500, "DB", "Could not verify commercial evidence")
 		return
 	}
-	paid := x.Status == "PAID" && evidenceCount > 0
+	paid := x.Status == "PAID" && paymentEvidenceCount > 0
+	agreementStatus := "DRAFT"
+	_ = a.db.QueryRow(`SELECT status FROM billing.commercial_agreements WHERE partner_id=$1`, id).Scan(&agreementStatus)
 	reference, referenceErr := a.referencePartner(r.Context(), id)
 	if referenceErr != nil {
 		common.APIError(w, 502, "PARTNER_LOOKUP", "Could not verify reference-partner waiver")
 		return
 	}
 	waived := reference && x.Status == "WAIVED" && x.Waived && strings.TrimSpace(x.WaiverReason) != ""
-	allowed := paid || waived
+	allowed := (agreementStatus == "AGREED" && invoiceCount > 0 && paid) || waived
 	reason := ""
 	if !allowed {
-		if x.Status != "PAID" && !x.Waived {
+		if agreementStatus != "AGREED" && !waived {
+			reason = "Commercial agreement is not confirmed"
+		} else if invoiceCount == 0 && !waived {
+			reason = "Activation fee invoice evidence is missing"
+		} else if paymentEvidenceCount == 0 && !waived {
+			reason = "Payment evidence or receipt is missing"
+		} else if x.Status != "PAID" && !x.Waived {
 			reason = "Initial license payment is not verified"
-		} else if x.Status == "PAID" && evidenceCount == 0 {
-			reason = "Commercial payment evidence is missing"
 		} else {
 			reason = "Initial license gate is incomplete"
 		}
@@ -358,8 +375,11 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w, 200, map[string]any{
 		"partner_id": id,
 		"allowed": allowed,
+		"agreement_status": agreementStatus,
 		"payment_status": x.Status,
 		"evidence_count": evidenceCount,
+		"invoice_evidence_count": invoiceCount,
+		"payment_evidence_count": paymentEvidenceCount,
 		"waived": x.Waived,
 		"reason": reason,
 	})
@@ -386,6 +406,12 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 		a.terms(w, r, id)
 	case "license":
 		a.license(w, r, id)
+	case "agreement":
+		a.agreement(w, r, id)
+	case "commercial-status":
+		a.commercialStatus(w, r, id)
+	case "events":
+		a.billingEvents(w, r, id)
 	case "summary":
 		a.summary(w, r, id)
 	case "documents":
@@ -482,6 +508,18 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			common.APIError(w, 500, "DB", "Could not sync initial license")
 			return
 		}
+		termsEventAt := time.Now().UTC()
+		if err = emitBillingEventTx(r.Context(), tx,
+			fmt.Sprintf("COMMERCIAL_TERMS_UPDATED:%s:%d", id, termsEventAt.UnixNano()),
+			id, "", "COMMERCIAL_TERMS_UPDATED", termsEventAt, map[string]any{
+				"currency": next.Currency, "activation_fee": next.ActivationFee,
+				"activation_fee_waived": next.ActivationFeeWaived,
+				"base_30_day_fee": next.BaseMonthlyFee, "price_effective_from": next.PriceEffectiveFrom.Format("2006-01-02"),
+				"actor": actor, "reason": reason,
+			}); err != nil {
+			common.APIError(w, 500, "DB", "Could not record commercial terms event")
+			return
+		}
 		if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit terms update"); return }
 		t, _ := a.ensureTerms(id)
 		common.JSON(w, 200, termsMap(t))
@@ -570,21 +608,40 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 			}
 			if next.VerifiedBy == "" { next.VerifiedBy = strings.TrimSpace(r.Header.Get("X-Himate-User-ID")) }
 			if next.VerifiedBy == "" { common.APIError(w, 400, "VALIDATION", "Paid license requires verification"); return }
-			evidenceCount, err := a.commercialEvidenceCount(r.Context(), id)
+			_, _, paymentEvidenceCount, err := a.commercialEvidenceBreakdown(r.Context(), id)
 			if err != nil {
-				common.APIError(w, 500, "DB", "Could not verify license evidence")
+				common.APIError(w, 500, "DB", "Could not verify payment evidence")
 				return
 			}
-			if evidenceCount == 0 {
-				common.APIError(w, 409, "LICENSE_EVIDENCE_REQUIRED", "Register an invoice, receipt, contract, or payment evidence before marking the initial license paid")
+			if paymentEvidenceCount == 0 {
+				common.APIError(w, 409, "PAYMENT_EVIDENCE_REQUIRED", "Register payment evidence or a receipt before marking the activation license paid")
 				return
 			}
 		}
 		var payment any
 		if next.PaymentDate.Valid { payment = next.PaymentDate.Time }
-		_, err = a.db.Exec(`UPDATE billing.initial_licenses SET currency=$2,required_amount=$3,paid_amount=$4,status=$5,payment_date=$6,payment_reference=$7,verified_by=$8,note=$9,waived=$10,waiver_reason=$11,updated_at=NOW() WHERE partner_id=$1`,
+		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+		if err != nil { common.APIError(w, 500, "DB", "Could not start activation payment update"); return }
+		defer tx.Rollback()
+		_, err = tx.Exec(`UPDATE billing.initial_licenses SET currency=$2,required_amount=$3,paid_amount=$4,status=$5,payment_date=$6,payment_reference=$7,verified_by=$8,note=$9,waived=$10,waiver_reason=$11,updated_at=NOW() WHERE partner_id=$1`,
 			id, next.Currency, next.Required, next.Paid, status, payment, next.Reference, next.VerifiedBy, next.Note, next.Waived, next.WaiverReason)
 		if err != nil { common.APIError(w, 500, "DB", "Could not update initial license"); return }
+		if current.Status != status || current.Paid != next.Paid {
+			eventAt := time.Now().UTC()
+			eventType := "ACTIVATION_PAYMENT_UPDATED"
+			if status == "PAID" { eventType = "LICENSE_PAID" }
+			if status == "WAIVED" { eventType = "ACTIVATION_FEE_WAIVED" }
+			if err = emitBillingEventTx(r.Context(), tx,
+				fmt.Sprintf("%s:%s:%d", eventType, id, eventAt.UnixNano()),
+				id, "", eventType, eventAt, map[string]any{
+					"required_amount": next.Required, "paid_amount": next.Paid, "currency": next.Currency,
+					"payment_reference": next.Reference, "verified_by": next.VerifiedBy, "status": status,
+				}); err != nil {
+				common.APIError(w, 500, "DB", "Could not record activation payment event")
+				return
+			}
+		}
+		if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit activation payment"); return }
 		x, _ := a.ensureLicense(id)
 		common.JSON(w, 200, licenseMap(x))
 	default:
@@ -675,20 +732,30 @@ func (a *app) effectiveModuleFees(ctx context.Context, id string, mods []map[str
 		Cancel    bool
 		PeriodEnd time.Time
 		Status    string
+		Price     float64
+		Included  bool
 	}
 	states := map[string]subState{}
-	rows, err := a.db.QueryContext(ctx, `SELECT module_key,cancel_at_period_end,period_end,payment_status
-		FROM billing.module_subscriptions WHERE partner_id=$1`, id)
+	rows, err := a.db.QueryContext(ctx, `SELECT s.module_key,s.cancel_at_period_end,s.period_end,s.payment_status,s.price,
+		COALESCE(ps.included_in_base,FALSE)
+		FROM billing.module_subscriptions s
+		LEFT JOIN billing.module_period_snapshots ps
+			ON ps.partner_id=s.partner_id AND ps.module_key=s.module_key AND ps.period_start=s.period_start
+		WHERE s.partner_id=$1`, id)
 	if err != nil { return 0, nil, err }
 	for rows.Next() {
 		var key, status string
-		var cancel bool
+		var cancel, included bool
 		var periodEnd time.Time
-		if err := rows.Scan(&key, &cancel, &periodEnd, &status); err != nil {
+		var price float64
+		if err := rows.Scan(&key, &cancel, &periodEnd, &status, &price, &included); err != nil {
 			rows.Close()
 			return 0, nil, err
 		}
-		states[key] = subState{Cancel: cancel, PeriodEnd: dateOnly(periodEnd), Status: status}
+		states[key] = subState{
+			Cancel: cancel, PeriodEnd: dateOnly(periodEnd), Status: status,
+			Price: price, Included: included,
+		}
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -705,10 +772,20 @@ func (a *app) effectiveModuleFees(ctx context.Context, id string, mods []map[str
 			if cancellationExpired(state.Cancel, state.PeriodEnd, today) {
 				continue
 			}
-			if state.Status == "INACTIVE" && state.Cancel {
+			if state.Status == "INACTIVE" {
 				continue
 			}
+			copyMod := make(map[string]any, len(mod)+2)
+			for k, v := range mod { copyMod[k] = v }
+			copyMod["partner_price"] = state.Price
+			copyMod["included_in_base"] = state.Included
+			copyMod["price_source"] = "MODULE_PERIOD_SNAPSHOT"
+			effective = append(effective, copyMod)
+			if !state.Included { total += state.Price }
+			continue
 		}
+		// A newly active module is expected to have been synchronized before this
+		// function runs. Fallback retains compatibility if the row is not present.
 		effective = append(effective, mod)
 		if mod["included_in_base"] == true { continue }
 		if value, ok := mod["partner_price"].(float64); ok {
@@ -754,26 +831,61 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		if key == "" { continue }
 		activeKeys = append(activeKeys, key)
 
-		price := 0.0
+		catalogPrice := 0.0
 		if v, ok := mod["partner_price"].(float64); ok {
-			price = v
+			catalogPrice = v
 		} else if v, ok := mod["partner_price"].(json.Number); ok {
-			price, _ = v.Float64()
+			catalogPrice, _ = v.Float64()
 		}
+		included := mod["included_in_base"] == true
 
 		var activation, existingStart, existingEnd time.Time
+		var currentPrice float64
 		var autoRenew, cancelAtEnd bool
 		var paymentStatus string
-		err := a.db.QueryRowContext(ctx, `SELECT activation_date,period_start,period_end,auto_renew,cancel_at_period_end,payment_status
+		err := a.db.QueryRowContext(ctx, `SELECT activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
 			FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2`, id, key).
-			Scan(&activation, &existingStart, &existingEnd, &autoRenew, &cancelAtEnd, &paymentStatus)
+			Scan(&activation, &existingStart, &existingEnd, &currentPrice, &autoRenew, &cancelAtEnd, &paymentStatus)
+
 		if err == sql.ErrNoRows {
-			activation := moduleActivationDate(mod, today)
-			start, end := cycleWindow(activation, today)
+			activation = moduleActivationDate(mod, today)
+			start := dateOnly(activation)
+			end := start.AddDate(0, 0, 30)
+			var snapshotPrice float64
+			firstPeriod := true
+			for {
+				_, price, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, start, end, catalogPrice, included)
+				if snapErr != nil { return fmt.Errorf("create subscription snapshot %s/%s: %w", id, key, snapErr) }
+				snapshotPrice = price
+				if firstPeriod {
+					if err := a.emitBillingEvent(ctx,
+						fmt.Sprintf("MODULE_ACTIVATED:%s:%s:%s", id, key, dateOnly(activation).Format("2006-01-02")),
+						id, key, "MODULE_ACTIVATED", activation, map[string]any{
+							"activation_date": dateOnly(activation).Format("2006-01-02"),
+							"period_start": start.Format("2006-01-02"),
+							"period_end_exclusive": end.Format("2006-01-02"),
+							"price_snapshot": snapshotPrice,
+						}); err != nil { return err }
+					firstPeriod = false
+				}
+				if today.Before(end) {
+					break
+				}
+				if err := a.closeModulePeriod(ctx, id, key, start, end, false); err != nil { return err }
+				nextStart := end
+				nextEnd := nextStart.AddDate(0, 0, 30)
+				_, nextPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, nextStart, nextEnd, catalogPrice, included)
+				if snapErr != nil { return fmt.Errorf("backfill renewal snapshot %s/%s: %w", id, key, snapErr) }
+				if err := a.markModuleRenewed(ctx, id, key, nextStart, nextEnd, nextPrice); err != nil { return err }
+				start, end, snapshotPrice = nextStart, nextEnd, nextPrice
+				if today.Before(end) {
+					break
+				}
+			}
 			if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(
 					partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
 				) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING')`,
-				id, key, currency, activation, start, end, price); err != nil {
+				id, key, currency, activation, start, end, snapshotPrice); err != nil {
 				return err
 			}
 			continue
@@ -781,12 +893,12 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		if err != nil { return err }
 
 		activation = dateOnly(activation)
+		existingStart = dateOnly(existingStart)
 		existingEnd = dateOnly(existingEnd)
+
 		if cancelAtEnd {
 			if cancellationExpired(true, existingEnd, today) {
-				// The paid period has ended. Keep catalog entitlement and billing
-				// state synchronized so the module becomes NOT_LICENSED without
-				// deleting any historical/business data.
+				if err := a.closeModulePeriod(ctx, id, key, existingStart, existingEnd, true); err != nil { return err }
 				if err := a.setCatalogModuleNotLicensed(ctx, id, key); err != nil {
 					return fmt.Errorf("expire subscription %s/%s: %w", id, key, err)
 				}
@@ -797,27 +909,57 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 				}
 				continue
 			}
-			// A scheduled cancellation keeps the already-paid current period
-			// intact and never gets silently reset by a catalog refresh.
-			if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-				SET currency=$3,price=$4,auto_renew=FALSE,cancel_at_period_end=TRUE,updated_at=NOW()
-				WHERE partner_id=$1 AND module_key=$2`, id, key, currency, price); err != nil {
+			// The current period is immutable while cancellation is pending.
+			// Catalog price changes are intentionally ignored until the next period.
+			if _, _, _, err := a.ensureModulePeriodSnapshot(ctx, id, key, currency, existingStart, existingEnd, currentPrice, included); err != nil {
 				return err
 			}
 			continue
 		}
 
-		// A module that was deactivated (not cancelled by the subscriber) begins
-		// a fresh 30-day subscription when it is explicitly activated again.
 		if paymentStatus == "INACTIVE" {
 			activation = moduleActivationDate(mod, today)
+			start, end := cycleWindow(activation, today)
+			_, snapshotPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, start, end, catalogPrice, included)
+			if snapErr != nil { return fmt.Errorf("reactivation snapshot %s/%s: %w", id, key, snapErr) }
+			if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
+					currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
+					auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()
+				WHERE partner_id=$1 AND module_key=$2`,
+				id, key, currency, activation, start, end, snapshotPrice); err != nil {
+				return err
+			}
+			if err := a.emitBillingEvent(ctx,
+				fmt.Sprintf("MODULE_ACTIVATED:%s:%s:%s", id, key, dateOnly(activation).Format("2006-01-02")),
+				id, key, "MODULE_ACTIVATED", activation, map[string]any{
+					"reactivation": true, "price_snapshot": snapshotPrice,
+					"period_start": start.Format("2006-01-02"), "period_end_exclusive": end.Format("2006-01-02"),
+				}); err != nil { return err }
+			continue
 		}
-		start, end := cycleWindow(activation, today)
+
+		// Backfill/lock the current period snapshot. Once it exists it is immutable.
+		_, snapshotPrice, _, err := a.ensureModulePeriodSnapshot(ctx, id, key, currency, existingStart, existingEnd, currentPrice, included)
+		if err != nil { return fmt.Errorf("lock current snapshot %s/%s: %w", id, key, err) }
+		currentPrice = snapshotPrice
+
+		// Roll forward every completed module period. Each new period resolves its
+		// price as-of that exact period start, so missed cron runs remain reproducible.
+		for autoRenew && !today.Before(existingEnd) {
+			if err := a.closeModulePeriod(ctx, id, key, existingStart, existingEnd, false); err != nil { return err }
+			nextStart := existingEnd
+			nextEnd := nextStart.AddDate(0, 0, 30)
+			_, nextPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, nextStart, nextEnd, catalogPrice, included)
+			if snapErr != nil { return fmt.Errorf("renewal snapshot %s/%s: %w", id, key, snapErr) }
+			if err := a.markModuleRenewed(ctx, id, key, nextStart, nextEnd, nextPrice); err != nil { return err }
+			existingStart, existingEnd, currentPrice = nextStart, nextEnd, nextPrice
+		}
+
 		if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
 				currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
 				auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()
 			WHERE partner_id=$1 AND module_key=$2`,
-			id, key, currency, activation, start, end, price); err != nil {
+			id, key, currency, activation, existingStart, existingEnd, currentPrice); err != nil {
 			return err
 		}
 	}
@@ -928,6 +1070,16 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 			common.APIError(w, 500, "DB", "Could not record subscription history")
 			return
 		}
+		eventType := "MODULE_CANCELLATION_WITHDRAWN"
+		if nextCancel { eventType = "MODULE_CANCELLATION_SCHEDULED" }
+		eventKey := fmt.Sprintf("%s:%s:%s:%s", eventType, id, moduleKey, dateOnly(periodEnd).Format("2006-01-02"))
+		if err = emitBillingEventTx(r.Context(), tx, eventKey, id, moduleKey, eventType, time.Now().UTC(), map[string]any{
+			"period_end_exclusive": dateOnly(periodEnd).Format("2006-01-02"),
+			"actor": actor, "reason": reason,
+		}); err != nil {
+			common.APIError(w, 500, "DB", "Could not record billing event")
+			return
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		common.APIError(w, 500, "DB", "Could not commit subscription update")
@@ -989,11 +1141,29 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 		uploadedBy := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 		var docID int64
 		var created time.Time
-		err := a.db.QueryRow(`INSERT INTO billing.documents(partner_id,kind,name,storage_url,note,uploaded_by,verified_by,mime_type,sha256,size_bytes)
+		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+		if err != nil { common.APIError(w, 500, "DB", "Could not start document registration"); return }
+		defer tx.Rollback()
+		err = tx.QueryRow(`INSERT INTO billing.documents(partner_id,kind,name,storage_url,note,uploaded_by,verified_by,mime_type,sha256,size_bytes)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,created_at`,
 			id, kind, strings.TrimSpace(in.Name), storageReference, strings.TrimSpace(in.Note),
 			uploadedBy, strings.TrimSpace(in.VerifiedBy), strings.TrimSpace(in.MIMEType), strings.TrimSpace(in.SHA256), in.SizeBytes).Scan(&docID, &created)
 		if err != nil { common.APIError(w, 500, "DB", "Could not register document"); return }
+		if isCommercialEvidenceKind(kind) {
+			eventType := "COMMERCIAL_EVIDENCE_REGISTERED"
+			if kind == "INVOICE" { eventType = "ACTIVATION_INVOICE_REGISTERED" }
+			if kind == "PAYMENT_EVIDENCE" || kind == "RECEIPT" { eventType = "PAYMENT_EVIDENCE_REGISTERED" }
+			if err = emitBillingEventTx(r.Context(), tx,
+				fmt.Sprintf("%s:%s:%d", eventType, id, docID),
+				id, "", eventType, created, map[string]any{
+					"document_id": docID, "kind": kind, "name": strings.TrimSpace(in.Name),
+					"storage_reference": storageReference, "uploaded_by": uploadedBy,
+				}); err != nil {
+				common.APIError(w, 500, "DB", "Could not record commercial evidence event")
+				return
+			}
+		}
+		if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit document registration"); return }
 		common.JSON(w, 201, map[string]any{"id": docID, "partner_id": id, "kind": kind, "name": strings.TrimSpace(in.Name), "storage_url": storageReference, "note": strings.TrimSpace(in.Note), "uploaded_by": uploadedBy, "created_at": created})
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or POST")
@@ -1014,6 +1184,7 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 			items = append(items, map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
 				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": provider, "created_at": created,
+				"items": a.invoiceItemsFor(invoiceID),
 			})
 		}
 	}
@@ -1063,15 +1234,31 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		if err := a.syncSubscriptions(ctx, id, t.Currency, rawMods, at); err != nil { return err }
 
 		if !isCycleBoundary(t.ServiceAnchorDate, at) { continue }
-		extra, _, err := a.effectiveModuleFees(ctx, id, rawMods, at)
-		if err != nil { return err }
 		start := at.AddDate(0, 0, -30)
 		base := effectiveBaseFee(t, start)
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
-		_, err = a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
-			invoiceID, id, at, start, at, t.Currency, base, extra, math.Round((base+extra)*100)/100)
+		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
+			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
+			invoiceID, id, at, start, at, t.Currency, base)
 		if err != nil { return err }
+		inserted, _ := result.RowsAffected()
+		// A rerun must keep the originally invoiced base price immutable.
+		if err := a.db.QueryRowContext(ctx, `SELECT id,base_fee FROM billing.invoices
+			WHERE partner_id=$1 AND service_period_start=$2 AND service_period_end=$3`,
+			id, start, at).Scan(&invoiceID, &base); err != nil { return err }
+		moduleTotal, err := a.attachInvoiceItems(ctx, invoiceID, id, t.Currency, start, at, base)
+		if err != nil { return err }
+		total := math.Round((base+moduleTotal)*100)/100
+		if _, err := a.db.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3 WHERE id=$1`,
+			invoiceID, moduleTotal, total); err != nil { return err }
+		if inserted > 0 {
+			if err := a.emitBillingEvent(ctx, "INVOICE_GENERATED:"+invoiceID, id, "", "INVOICE_GENERATED", at, map[string]any{
+				"invoice_id": invoiceID, "currency": t.Currency, "base_fee": base,
+				"module_fee": moduleTotal, "total": total,
+				"service_period_start": start.Format("2006-01-02"),
+				"service_period_end_exclusive": at.Format("2006-01-02"),
+			}); err != nil { return err }
+		}
 	}
 	return nil
 }

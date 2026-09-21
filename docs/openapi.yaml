@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.2-start-22.2
+  version: 0.8.3-start-22.3
   description: >
-    Authenticated REST contract for the START-01 through START-22.2 HIMATE
+    Authenticated REST contract for the START-01 through START-22.3 HIMATE
     control-plane surface. Partner business databases remain isolated behind
     connector/API contracts; provider deployment is isolated behind the Runtime
     adapter service; encrypted backup/recovery is isolated behind Backups.
@@ -574,8 +574,8 @@ paths:
       tags: [Modules]
       summary: Update partner module state, visibility, package inclusion or price
       description: >
-        Pricing accepts an optional RFC3339 price_effective_at. Historical
-        changes retain actor, reason, old value and new value.
+        Pricing accepts an optional RFC3339 or YYYY-MM-DD price_effective_at.
+        Historical changes retain actor, reason, old value and new value.
       responses:
         "200": {description: Updated partner module}
   /api/v1/billing/profile:
@@ -605,6 +605,47 @@ paths:
         service cycle.
       responses:
         "200": {description: Updated terms}
+  /api/v1/billing/partners/{partnerId}/agreement:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Read the explicit commercial agreement state
+      responses:
+        "200": {description: DRAFT or AGREED agreement state}
+    put:
+      tags: [Billing]
+      summary: Confirm or return a commercial agreement to draft
+      description: >
+        AGREED requires a persistent signed-agreement reference. This approval
+        participates in the provisioning gate and is recorded in the immutable
+        billing event ledger.
+      responses:
+        "200": {description: Updated commercial agreement}
+        "400": {description: Agreement validation failed}
+  /api/v1/billing/partners/{partnerId}/commercial-status:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Commercial activation workflow and provisioning readiness
+      description: >
+        Aggregates agreement, activation-fee invoice evidence, payment evidence,
+        payment verification and initial-license state without duplicating their
+        authoritative records.
+      responses:
+        "200": {description: Workflow steps, next action and provisioning gate}
+  /api/v1/billing/partners/{partnerId}/events:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Immutable commercial and module billing event ledger
+      description: >
+        Includes commercial agreement, activation payment, module activation,
+        period start/end, renewal, cancellation, invoice-item and invoice events.
+      responses:
+        "200": {description: Billing event ledger}
   /api/v1/billing/partners/{partnerId}/license:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -618,7 +659,8 @@ paths:
       summary: Update initial license payment state
       description: >
         PAID requires payment date, reference, verifier and registered
-        commercial evidence.
+        PAYMENT_EVIDENCE or RECEIPT. Provisioning additionally requires an
+        AGREED commercial agreement and activation-fee INVOICE evidence.
       responses:
         "200": {description: Updated initial license}
         "409": {description: License evidence required}
@@ -671,9 +713,13 @@ paths:
       - {$ref: "#/components/parameters/PartnerId"}
     get:
       tags: [Billing]
-      summary: Internal invoice records
+      summary: Itemized invoice records
+      description: >
+        Each invoice includes immutable BASE_SERVICE and MODULE line items.
+        Module line-item amounts come from period-start price snapshots and are
+        never recalculated from the current Catalog price.
       responses:
-        "200": {description: Invoices}
+        "200": {description: Invoices with immutable itemized line items}
   /api/v1/billing/partners/{partnerId}/subscriptions:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -892,6 +938,26 @@ paths:
       responses:
         "200": {description: Production environment is LIVE}
         "409": {description: One or more launch gates are not satisfied}
+  /api/v1/connectors/{partnerId}/website-adapter:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Connector]
+      summary: Read Partner Website Adapter configuration
+      parameters:
+        - {name: environment, in: query, schema: {type: string, enum: [STAGING, PRODUCTION], default: PRODUCTION}}
+      responses:
+        "200": {description: Adapter type, domain allowlist, capabilities and privacy mode}
+    put:
+      tags: [Connector]
+      summary: Configure an existing partner website integration
+      description: >
+        Configures the Connector boundary only; it does not create or replace
+        the partner website. The partner primary domain must be in the adapter
+        allowlist before connector commercial-state access succeeds.
+      responses:
+        "200": {description: Website adapter configuration}
+        "400": {description: URL, domain or capability validation failed}
   /api/v1/connectors/{partnerId}/credential:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -949,6 +1015,24 @@ paths:
         "200": {description: Desired state with monotonically increasing revision}
         "401": {description: Invalid connector credential}
         "404": {description: Desired state has not been published}
+  /connector/v1/commercial-state:
+    get:
+      tags: [Connector]
+      security:
+        - connectorBearer: []
+      summary: Read tenant-bound website entitlement and service-cycle state
+      description: >
+        Partner identity is derived only from the connector credential.
+        Response includes active entitlements, version/configuration, domain
+        binding and 30-day cycle metadata. It deliberately excludes module
+        prices, raw invoices, payment data and unrestricted personal data.
+        Partner websites remain independent applications using this connector
+        contract instead of being reprogrammed by HIMATE.
+      responses:
+        "200": {description: Minimized tenant-bound commercial state}
+        "401": {description: Invalid connector credential}
+        "403": {description: Adapter disabled}
+        "409": {description: Adapter missing or primary-domain binding mismatch}
   /connector/v1/metrics:
     post:
       tags: [Connector]

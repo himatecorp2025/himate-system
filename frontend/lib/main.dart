@@ -28,6 +28,7 @@ part 'profile_account.dart';
 part 'module_control_plane.dart';
 part 'notifications_panel.dart';
 part 'partner_portal.dart';
+part 'commercial_automation_ui.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -2284,6 +2285,8 @@ class _PartnersPageState extends State<PartnersPage> {
     final baseMonthlyFee = TextEditingController(text: '250');
     final paidAmount = TextEditingController(text: '0');
     final paymentReference = TextEditingController();
+    final agreementReference = TextEditingController();
+    final activationInvoiceReference = TextEditingController();
     final evidenceName = TextEditingController(text: 'Initial license payment evidence');
     final evidenceReference = TextEditingController();
     final systemName = TextEditingController();
@@ -2352,18 +2355,30 @@ class _PartnersPageState extends State<PartnersPage> {
                         second: TextField(controller: baseMonthlyFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Base monthly fee · USD'))),
                       ),
                       const SizedBox(height: 12),
+                      TextField(
+                        controller: agreementReference,
+                        decoration: InputDecoration(labelText: uiLiteral('Commercial agreement reference *'), hintText: uiLiteral('Signed contract / agreement reference')),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: activationInvoiceReference,
+                        decoration: InputDecoration(labelText: uiLiteral('Activation-fee invoice reference *'), hintText: uiLiteral('Persistent invoice URL / document reference')),
+                      ),
+                      const SizedBox(height: 12),
                       ResponsiveFieldPair(
                         first: TextField(controller: paidAmount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Verified paid amount · USD'))),
                         second: TextField(controller: paymentReference, decoration: InputDecoration(labelText: uiLiteral('Payment reference'))),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: evidenceName, decoration: InputDecoration(labelText: uiLiteral('Evidence name'))),
-                        second: TextField(controller: evidenceReference, decoration: InputDecoration(labelText: uiLiteral('Persistent evidence reference / URL'))),
+                        first: TextField(controller: evidenceName, decoration: InputDecoration(labelText: uiLiteral('Payment evidence name'))),
+                        second: TextField(controller: evidenceReference, decoration: InputDecoration(labelText: uiLiteral('Payment evidence reference / URL'))),
                       ),
                       const SizedBox(height: 10),
                       const _RuleStrip(items: [
-                        _RuleItem(Icons.lock_clock_outlined, 'Provisioning gate', 'Provisioning starts only after the license is PAID and persistent evidence exists.'),
+                        _RuleItem(Icons.handshake_outlined, 'Agreement', 'Explicit commercial agreement is required'),
+                        _RuleItem(Icons.receipt_long_outlined, 'Activation invoice', 'Persistent invoice reference is recorded'),
+                        _RuleItem(Icons.lock_clock_outlined, 'Provisioning gate', 'Agreement + PAID license + evidence are required'),
                       ]),
                     ],
                   ),
@@ -2422,9 +2437,10 @@ class _PartnersPageState extends State<PartnersPage> {
           ),
           primaryLabel: 'Create & validate provisioning',
           onPrimary: () {
-            if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty) {
+            if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty ||
+                agreementReference.text.trim().isEmpty || activationInvoiceReference.text.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('Display name and administrator email are required.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(content: LText('Display name, administrator email, commercial agreement and activation invoice reference are required.'), behavior: SnackBarBehavior.floating),
               );
               return;
             }
@@ -2463,6 +2479,20 @@ class _PartnersPageState extends State<PartnersPage> {
           'service_anchor_date': today,
           'reason': 'New Partner provisioning wizard',
         });
+        await widget.api.put('/api/v1/billing/partners/$partnerId/agreement', {
+          'status': 'AGREED',
+          'agreement_reference': agreementReference.text.trim(),
+          'note': 'Confirmed during New Partner provisioning wizard',
+        });
+        await widget.api.post('/api/v1/billing/partners/$partnerId/documents', {
+          'kind': 'INVOICE',
+          'name': 'Activation fee invoice',
+          'storage_url': activationInvoiceReference.text.trim(),
+          'note': 'Activation-fee invoice registered during New Partner provisioning wizard',
+          'mime_type': 'application/octet-stream',
+          'sha256': '',
+          'size_bytes': 0,
+        });
 
         await widget.api.patch('/api/v1/partners/$partnerId', {
           'lifecycle': 'LICENSE_PENDING',
@@ -2498,6 +2528,8 @@ class _PartnersPageState extends State<PartnersPage> {
 
         final readyForProvisioning = paid >= fee &&
             fee > 0 &&
+            agreementReference.text.trim().isNotEmpty &&
+            activationInvoiceReference.text.trim().isNotEmpty &&
             paymentReference.text.trim().isNotEmpty &&
             evidenceReference.text.trim().isNotEmpty;
 
@@ -2544,8 +2576,8 @@ class _PartnersPageState extends State<PartnersPage> {
 
     for (final controller in [
       displayName, legalName, contactName, contactEmail, primaryDomain, country,
-      activationFee, baseMonthlyFee, paidAmount, paymentReference, evidenceName,
-      evidenceReference, systemName, release,
+      activationFee, baseMonthlyFee, paidAmount, paymentReference, agreementReference,
+      activationInvoiceReference, evidenceName, evidenceReference, systemName, release,
     ]) {
       controller.dispose();
     }
@@ -2749,9 +2781,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> connectorCredentials = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> portalUsers = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> billingEvents = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
   Map<String, dynamic>? terms;
   Map<String, dynamic>? license;
+  Map<String, dynamic>? agreement;
+  Map<String, dynamic>? commercialStatus;
+  Map<String, dynamic>? websiteAdapter;
   bool loading = true;
   bool supplementalLoading = true;
   String? error;
@@ -2817,6 +2853,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       _safeWorkspaceGet('/api/v1/impact/summary?partner_id=$id', errors),
       _safeWorkspaceGet('/api/v1/connectors/$id/credential', errors),
       _safeWorkspaceGet('/api/v1/partners/$id/portal-users', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/agreement', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/commercial-status', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/events', errors),
+      _safeWorkspaceGet('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', errors),
     ]);
     if (!mounted) return;
     setState(() {
@@ -2832,6 +2872,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       if (r[9] != null) impactSummary = items(r[9]!);
       if (r[10] != null) connectorCredentials = items(r[10]!);
       if (r[11] != null) portalUsers = items(r[11]!);
+      if (r[12] != null) agreement = r[12];
+      if (r[13] != null) commercialStatus = r[13];
+      if (r[14] != null) billingEvents = items(r[14]!);
+      if (r[15] != null) websiteAdapter = r[15];
       supplementalLoading = false;
       supplementalError = errors.isEmpty ? null : 'Some secondary services are still loading or temporarily unavailable.';
     });
@@ -3527,17 +3571,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     if (ok == true) {
       final requiredAmount = double.tryParse(activation.text) ?? 0;
       final paidAmount = double.tryParse(paid.text) ?? 0;
-      final hasLicenseEvidence = documents.any((d) {
+      final hasPaymentEvidence = documents.any((d) {
         final kind = '${d['kind'] ?? ''}'.toUpperCase();
         final storageReference = '${d['storage_url'] ?? ''}'.trim();
-        final evidenceKind = kind == 'PAYMENT_EVIDENCE' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'CONTRACT';
-        return evidenceKind && storageReference.isNotEmpty;
+        return (kind == 'PAYMENT_EVIDENCE' || kind == 'RECEIPT') && storageReference.isNotEmpty;
       });
-      if (!waived && requiredAmount > 0 && paidAmount >= requiredAmount && !hasLicenseEvidence) {
+      if (!waived && requiredAmount > 0 && paidAmount >= requiredAmount && !hasPaymentEvidence) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: LText('Register the license invoice, receipt, contract, or payment evidence before marking the license paid.'),
+              content: LText('Register payment evidence or a receipt before marking the activation license paid.'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: brandWarning,
             ),
@@ -3923,6 +3966,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           ]);
                         },
                       ),
+                      const SizedBox(height: 14),
+                      start223CommercialWorkflowPanel(),
                       const SizedBox(height: 26),
                       KeyedSubtree(
                         key: _environmentKey,
@@ -4176,6 +4221,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      start223WebsiteAdapterPanel(),
                       const SizedBox(height: 12),
                       connectorCredentials.isEmpty
                           ? const _MessageCard(
@@ -6669,7 +6716,7 @@ class _CommercialSummaryCard extends StatelessWidget {
       _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
       _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
       _DefinitionRow(label: 'License paid', value: '${money(license['paid_amount'])} / ${money(license['required_amount'])}'),
-      _DefinitionRow(label: 'Base monthly fee', value: money(billing['effective_base_fee'])),
+      _DefinitionRow(label: 'Base 30-day fee', value: money(billing['effective_base_fee'])),
       _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
       _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
       _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),

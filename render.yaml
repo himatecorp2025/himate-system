@@ -266,6 +266,21 @@ services:
           type: pserv
           name: himate-impact
           property: hostport
+      - key: CATALOG_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-catalog
+          property: hostport
+      - key: BILLING_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-billing
+          property: hostport
+      - key: PARTNERS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-partners
+          property: hostport
       - key: EVIDENCE_HOSTPORT
         fromService:
           type: pserv
@@ -529,7 +544,7 @@ services:
       - key: HIMATE_ENV
         value: production
       - key: HIMATE_APP_VERSION
-        value: 0.8.2-start-22.2
+        value: 0.8.3-start-22.3
       - key: COOKIE_SECURE
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS

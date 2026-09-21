@@ -220,10 +220,19 @@ services:
       HIMATE_CONNECTOR_DATA_MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       HIMATE_CONNECTOR_DATA_KEY_VERSION: v1
       IMPACT_HOSTPORT: impact:10000
+      CATALOG_HOSTPORT: catalog:10000
+      BILLING_HOSTPORT: billing:10000
+      PARTNERS_HOSTPORT: partners:10000
     depends_on:
       postgres:
         condition: service_healthy
       impact:
+        condition: service_started
+      catalog:
+        condition: service_started
+      billing:
+        condition: service_started
+      partners:
         condition: service_started
 
   provisioning:
@@ -332,7 +341,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.8.2-start-22.2
+      HIMATE_APP_VERSION: 0.8.3-start-22.3
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456
