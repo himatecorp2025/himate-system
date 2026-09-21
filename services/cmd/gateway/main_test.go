@@ -24,6 +24,22 @@ func TestPasswordHashRoundTrip(t *testing.T) {
 	}
 }
 
+
+func TestPasswordComplexityPolicy(t *testing.T) {
+	valid := []string{"Strong-Password1!", "Longer_Passphrase9#"}
+	for _, value := range valid {
+		if message := passwordPolicyError(value); message != "" {
+			t.Fatalf("expected %q to satisfy policy: %s", value, message)
+		}
+	}
+	invalid := []string{"Short1!", "alllowercase1!", "ALLUPPERCASE1!", "NoNumberHere!", "NoSpecial1234"}
+	for _, value := range invalid {
+		if message := passwordPolicyError(value); message == "" {
+			t.Fatalf("expected %q to be rejected", value)
+		}
+	}
+}
+
 func TestRequestOriginProtection(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "https://himate.example/api/v1/partners", nil)
 	req.Host = "himate.example"
