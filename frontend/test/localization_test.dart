@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:himate_frontend/main.dart';
+import 'package:intl/date_symbol_data_local.dart' show initializeDateFormatting;
 
 void main() {
+  setUpAll(() async {
+    await initializeDateFormatting('en_US');
+    await initializeDateFormatting('hu_HU');
+  });
+
   test('HIMATE locale mapping supports en_US and hu_HU', () {
     expect(himateLocaleFromCode('en_US'), const Locale('en', 'US'));
     expect(himateLocaleFromCode('hu_HU'), const Locale('hu', 'HU'));

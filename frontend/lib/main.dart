@@ -10,6 +10,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart' as intl;
+import 'package:intl/date_symbol_data_local.dart' show initializeDateFormatting;
 import 'package:google_fonts/google_fonts.dart';
 
 part 'cms_page.dart';
@@ -19,8 +20,10 @@ part 'domains_deployments.dart';
 part 'localization.dart';
 part 'profile_account.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('en_US');
+  await initializeDateFormatting('hu_HU');
   usePathUrlStrategy();
   runApp(const HimateApp());
 }
