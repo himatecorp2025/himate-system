@@ -32,7 +32,7 @@ type seoAuditIssue struct {
 func defaultSiteSEO() siteSEOSettings {
 	return siteSEOSettings{
 		GlobalKeywordsEN: []string{"arts", "culture", "cultural organizations", "HIMATE"},
-		GlobalKeywordsHU: []string{"muvészet", "kultura", "kulturalis szervezetek", "HIMATE"},
+		GlobalKeywordsHU: []string{"művészet", "kultúra", "kulturális szervezetek", "HIMATE"},
 		OrganizationName: "HIMATE System",
 		OrganizationURL:  "https://www.himate.com",
 	}
