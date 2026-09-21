@@ -1802,6 +1802,15 @@ type publicCMSPage struct {
 	Alternates     map[string]string  `json:"alternates"`
 }
 
+type publicSEOSettings struct {
+	Locale                string   `json:"locale"`
+	Version               int      `json:"version"`
+	GlobalKeywords        []string `json:"global_keywords"`
+	OrganizationName      string   `json:"organization_name"`
+	OrganizationURL       string   `json:"organization_url"`
+	DefaultOGImageAssetID string   `json:"default_og_image_asset_id"`
+}
+
 type publicCMSManifest struct {
 	Items []struct {
 		Slug      string `json:"slug"`
@@ -1854,6 +1863,33 @@ func (a *app) fetchPublishedCMS(ctx context.Context, slug, locale string) (publi
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return out, fmt.Errorf("CMS page %s returned %d", slug, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (a *app) fetchPublishedSEOSettings(ctx context.Context, locale string) (publicSEOSettings, error) {
+	var out publicSEOSettings
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return out, errors.New("CMS service is not configured")
+	}
+	endpoint := "http://"+host+"/public/v1/cms/seo?locale="+url.QueryEscape(normalizePublicLocale(locale))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("CMS SEO settings returned %d", resp.StatusCode)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return out, err
@@ -2051,6 +2087,31 @@ func renderMarketingSection(doc string, section publicCMSSection) string {
 	return doc[:start] + fragment + doc[end:]
 }
 
+func renderGlobalSEOHTML(doc string, settings publicSEOSettings) string {
+	if len(settings.GlobalKeywords) > 0 {
+		doc = replaceHeadTag(doc, "name=\"keywords\"", "<meta name=\"keywords\" content=\""+html.EscapeString(strings.Join(settings.GlobalKeywords, ", "))+"\">")
+	}
+	if mediaID := strings.TrimSpace(settings.DefaultOGImageAssetID); mediaID != "" &&
+		!strings.Contains(strings.ToLower(doc), "property=\"og:image\"") {
+		doc = replaceHeadTag(doc, "property=\"og:image\"", "<meta property=\"og:image\" content=\"/public/v1/cms/media/"+url.PathEscape(mediaID)+"\">")
+	}
+	if strings.TrimSpace(settings.OrganizationName) != "" || strings.TrimSpace(settings.OrganizationURL) != "" {
+		structured := map[string]any{
+			"@context": "https://schema.org",
+			"@type": "Organization",
+			"name": settings.OrganizationName,
+			"url": settings.OrganizationURL,
+		}
+		if raw, err := json.Marshal(structured); err == nil {
+			if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+				tag := "<script type=\"application/ld+json\" data-himate-seo=\"organization\">"+string(raw)+"</script>"
+				doc = doc[:headEnd] + tag + doc[headEnd:]
+			}
+		}
+	}
+	return doc
+}
+
 func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) string {
 	if normalizePublicLocale(page.Locale) == "hu_HU" {
 		doc = strings.Replace(doc, "<html lang=\"en\">", "<html lang=\"hu\">", 1)
@@ -2140,8 +2201,16 @@ func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filenam
 	if cmsErr == nil {
 		doc = renderPublishedCMSHTML(doc, page, publicOrigin(r)+r.URL.Path)
 		w.Header().Set("X-Himate-SSR", "published")
+		w.Header().Set("X-Himate-SEO", "page+global")
 		w.Header().Set("Content-Language", map[bool]string{true:"hu",false:"en"}[locale=="hu_HU"])
 	} else {
+		seoCtx, seoCancel := context.WithTimeout(r.Context(), 1200*time.Millisecond)
+		settings, seoErr := a.fetchPublishedSEOSettings(seoCtx, locale)
+		seoCancel()
+		if seoErr == nil {
+			doc = renderGlobalSEOHTML(doc, settings)
+			w.Header().Set("X-Himate-SEO", "global")
+		}
 		w.Header().Set("X-Himate-SSR", "static-fallback")
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
