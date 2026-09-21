@@ -4364,10 +4364,9 @@ class _FinancePageState extends State<FinancePage> {
     return Content(
       eyebrow: 'COMMERCIAL CONTROL',
       title: 'Licensing & Finance',
-      subtitle: 'Module catalog, pricing foundations and HIMATE issuer data — governed from one place.',
+      subtitle: 'Partner commercial terms, pricing oversight and HIMATE issuer data. Module registry management lives under Modules.',
       actions: [
-        OutlinedButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const LText('Billing profile')),
-        FilledButton.icon(onPressed: addModule, icon: const Icon(Icons.add_box_outlined), label: const LText('Add module')),
+        FilledButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const LText('Billing profile')),
       ],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
@@ -4396,55 +4395,11 @@ class _FinancePageState extends State<FinancePage> {
                       },
                     ),
                     const SizedBox(height: 26),
-                    _SectionHeader(
-                      title: 'Canonical Module Catalog',
-                      subtitle: 'The verified reference catalog stays centrally governed while custom modules can be added without changing the partner data model.',
-                      trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                    const _MessageCard(
+                      icon: Icons.hub_outlined,
+                      title: 'Module registry moved to Modules',
+                      message: 'Create modules, link source code, manage versions, dependencies, global pricing and partner usage from the dedicated Modules control-plane area.',
                     ),
-                    const SizedBox(height: 12),
-                    _FilterSurface(
-                      child: LayoutBuilder(
-                        builder: (context, c) {
-                          final search = TextField(
-                            onChanged: (v) => setState(() => query = v),
-                            decoration: InputDecoration(hintText: uiLiteral('Search module catalog...'), prefixIcon: Icon(Icons.search_rounded)),
-                          );
-                          final group = DropdownButtonFormField<String>(
-                            value: groupFilter,
-                            decoration: InputDecoration(labelText: uiLiteral('Menu group')),
-                            items: [
-                              const DropdownMenuItem(value: 'ALL', child: LText('All groups')),
-                              for (final g in groups)
-                                DropdownMenuItem(value: '${g['group_key']}', child: LText('${g['label']}')),
-                            ],
-                            onChanged: (v) => setState(() => groupFilter = v ?? 'ALL'),
-                          );
-                          if (c.maxWidth < 680) return Column(children: [search, const SizedBox(height: 10), group]);
-                          return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: group)]);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (filteredModules.isEmpty)
-                      const _MessageCard(
-                        icon: Icons.inventory_2_outlined,
-                        title: 'No module data',
-                        message: 'No modules match the current catalog filters.',
-                      )
-                    else
-                      LayoutBuilder(
-                        builder: (context, c) {
-                          final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                          return Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              for (final m in filteredModules)
-                                SizedBox(width: width, child: CatalogModuleCard(module: m, onTap: () => editCatalogModule(m))),
-                            ],
-                          );
-                        },
-                      ),
                   ],
                 ),
     );
