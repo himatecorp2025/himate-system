@@ -74,7 +74,7 @@ func partnerPortalMigration() common.Migration {
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 			)`,
 			`CREATE INDEX IF NOT EXISTS identity_partner_users_partner_idx ON identity.partner_users(partner_id,active,role_key)`,
-			`CREATE INDEX IF NOT EXISTS identity_partner_users_email_idx ON identity.partner_users(lower(email))`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS identity_partner_users_email_idx ON identity.partner_users(lower(email))`,
 		},
 	}
 }
