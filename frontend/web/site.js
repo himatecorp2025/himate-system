@@ -94,6 +94,7 @@
   window.himateTranslate = tPublic;
   window.himatePublicLocale = publicLocale;
   document.documentElement.lang = publicLocale === 'hu_HU' ? 'hu' : 'en';
+  if (publicLocale === 'hu_HU') document.title = tPublic(document.title);
   window.localStorage.setItem('himate_locale', publicLocale);
   document.cookie = 'himate_public_locale=' + encodeURIComponent(publicLocale) + '; Path=/; Max-Age=31536000; SameSite=Lax';
 
@@ -121,6 +122,81 @@
         if (translated !== value) node.setAttribute(attr, translated);
       }
     });
+  };
+
+
+  const safeDesignColor = (value, fallback) => /^#[0-9A-Fa-f]{6}$/.test(String(value || '')) ? String(value) : fallback;
+  const safeDesignFont = (value, fallback) => ['Cormorant Garamond','Inter','Georgia','Arial'].includes(String(value || '')) ? String(value) : fallback;
+
+  const applyPublishedDesign = (payload) => {
+    const design = payload && typeof payload.design === 'object' ? payload.design : null;
+    if (!design) return;
+    const root = document.documentElement;
+    root.style.setProperty('--design-navy', safeDesignColor(design.navy, '#06172C'));
+    root.style.setProperty('--design-gold', safeDesignColor(design.gold, '#D7AE62'));
+    root.style.setProperty('--design-background', safeDesignColor(design.background, '#F8F9FB'));
+    root.style.setProperty('--design-text', safeDesignColor(design.text_color, '#1F2937'));
+    root.style.setProperty('--design-heading-font', '"' + safeDesignFont(design.heading_font, 'Cormorant Garamond') + '"');
+    root.style.setProperty('--design-body-font', '"' + safeDesignFont(design.body_font, 'Inter') + '"');
+    const radius = Math.min(40, Math.max(0, Number(design.button_radius || 6)));
+    root.style.setProperty('--design-button-radius', radius + 'px');
+
+    const logoId = typeof design.logo_media_asset_id === 'string' ? design.logo_media_asset_id.trim() : '';
+    if (logoId) {
+      document.querySelectorAll('.brand-logo img').forEach((image) => {
+        if (image instanceof HTMLImageElement) image.src = mediaURL(logoId);
+      });
+    }
+
+    const navigation = Array.isArray(design.navigation)
+      ? design.navigation.filter((item) => item && item.visible !== false).slice().sort((a,b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+      : [];
+    if (navigation.length) {
+      const primary = document.querySelector('.site-nav .links');
+      if (primary) {
+        primary.querySelectorAll('a:not(.nav-login-text):not(.login-pill)').forEach((node) => node.remove());
+        const anchor = primary.querySelector('.locale-switch') || primary.querySelector('.nav-divider') || primary.firstChild;
+        for (const item of navigation) {
+          const link = document.createElement('a');
+          const href = typeof item.url === 'string' && item.url.trim() ? item.url.trim() : '/';
+          link.href = href;
+          link.textContent = publicLocale === 'hu_HU'
+            ? (item.label_hu || item.label_en || href)
+            : (item.label_en || item.label_hu || href);
+          if (window.location.pathname === new URL(href, window.location.origin).pathname) {
+            link.classList.add('active');
+            link.setAttribute('aria-current', 'page');
+          }
+          primary.insertBefore(link, anchor);
+        }
+      }
+      const footer = document.querySelector('.footer-links');
+      if (footer) {
+        footer.textContent = '';
+        for (const item of navigation) {
+          const link = document.createElement('a');
+          link.href = typeof item.url === 'string' && item.url.trim() ? item.url.trim() : '/';
+          link.textContent = publicLocale === 'hu_HU'
+            ? (item.label_hu || item.label_en || link.href)
+            : (item.label_en || item.label_hu || link.href);
+          footer.appendChild(link);
+        }
+      }
+    }
+  };
+
+  const loadPublishedDesign = async () => {
+    try {
+      const response = await fetch('/public/v1/cms/design', {
+        method: 'GET',
+        headers: {'Accept':'application/json'},
+        credentials: 'same-origin',
+      });
+      if (!response.ok) return;
+      applyPublishedDesign(await response.json());
+    } catch (_) {
+      // The approved source-controlled design remains the safe fallback.
+    }
   };
 
   const installLocaleSwitch = () => {
@@ -383,5 +459,6 @@
 
   translatePublicDocument();
   installLocaleSwitch();
+  void loadPublishedDesign();
   void loadPublishedCMS();
 })();
