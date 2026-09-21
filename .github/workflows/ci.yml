@@ -26,15 +26,20 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.0-start-22' ../docs/openapi.yaml
+          grep -q 'version: 0.8.1-start-22.1' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/reconcile:' ../docs/openapi.yaml
           grep -q '^  /api/v1/connectors/start22/retention:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/admin/roles/{roleKey}:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/modules/{moduleKey}/relationships:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/modules/{moduleKey}/impact-metrics:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/notifications:' ../docs/openapi.yaml
           grep -q 'HMAC-SHA-512' ../docs/openapi.yaml
           test -s ../docs/START-21_ACCEPTANCE.md
           test -s ../docs/START-22_ACCEPTANCE.md
+          test -s ../docs/START-22.1_ACCEPTANCE.md
           test -s ../docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md
           test -s ../docs/adr/0005-klavierhaus-one-way-data-connector.md
       - run: go build ./cmd/...
@@ -91,6 +96,15 @@ jobs:
           grep -q "const String himateIconUrl = '/brand/himate_identity_icon_192.webp';" lib/brand_assets.dart
           grep -q 'Image.network(' lib/main.dart
           test -s lib/start22_connector.dart
+          test -s lib/module_control_plane.dart
+          test -s lib/notifications_panel.dart
+          grep -q 'class ResponsiveKpiGrid' lib/main.dart
+          grep -q 'ModuleControlPlanePage' lib/main.dart
+          grep -q 'NotificationCenterButton' lib/main.dart
+          if grep -q 'notifications_none_rounded, onTap: () {}' lib/main.dart; then
+            echo "Notification bell is still a no-op"
+            exit 1
+          fi
           grep -q 'Start22ConnectorPanel' lib/start22_connector.dart
           grep -q 'connectors/start22/summary' lib/start22_connector.dart
           grep -q 'HIMATE 7 years' lib/start22_connector.dart
@@ -141,10 +155,10 @@ jobs:
       - name: Validate Render Blueprint bindings
         run: |
           grep -q 'healthCheckPath: /api/v1/live' render.yaml
-          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT EVIDENCE_HOSTPORT REPORTS_HOSTPORT CMS_HOSTPORT STORAGE_HOSTPORT BACKUPS_HOSTPORT PARTNER_RUNTIME_HOSTPORT; do
+          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT EVIDENCE_HOSTPORT REPORTS_HOSTPORT CMS_HOSTPORT STORAGE_HOSTPORT BACKUPS_HOSTPORT PARTNER_RUNTIME_HOSTPORT NOTIFICATIONS_HOSTPORT; do
             grep -q "key: $key" render.yaml || { echo "Missing Render binding: $key"; exit 1; }
           done
-          for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-cms himate-storage himate-backups himate-runtime; do
+          for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-cms himate-storage himate-backups himate-runtime himate-notifications; do
             grep -q "name: $service" render.yaml || { echo "Missing Render service: $service"; exit 1; }
           done
           grep -q 'key: HIMATE_RUNTIME_PROVIDER' render.yaml
@@ -200,6 +214,8 @@ jobs:
         run: sh scripts/smoke_start_21.sh http://127.0.0.1:8080
       - name: Run START-22 signed Klavierhaus Connector and retention smoke
         run: sh scripts/smoke_start_22.sh http://127.0.0.1:8080
+      - name: Run START-22.1 Control Plane Completion smoke
+        run: sh scripts/smoke_start_22_1.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

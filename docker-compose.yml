@@ -205,6 +205,8 @@ services:
         condition: service_healthy
       runtime:
         condition: service_started
+      notifications:
+        condition: service_started
       partners:
         condition: service_started
 
@@ -255,6 +257,17 @@ services:
       storage:
         condition: service_started
 
+  notifications:
+    build:
+      context: .
+      dockerfile: services/docker/notifications.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   health:
     build:
       context: .
@@ -276,6 +289,7 @@ services:
       STORAGE_HOSTPORT: storage:10000
       BACKUPS_HOSTPORT: backups:10000
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
+      NOTIFICATIONS_HOSTPORT: notifications:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -307,6 +321,8 @@ services:
         condition: service_started
       runtime:
         condition: service_started
+      notifications:
+        condition: service_started
 
   gateway:
     build:
@@ -316,7 +332,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.8.0-start-22
+      HIMATE_APP_VERSION: 0.8.1-start-22.1
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456
@@ -340,6 +356,7 @@ services:
       STORAGE_HOSTPORT: storage:10000
       BACKUPS_HOSTPORT: backups:10000
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
+      NOTIFICATIONS_HOSTPORT: notifications:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -372,6 +389,8 @@ services:
       backups:
         condition: service_started
       runtime:
+        condition: service_started
+      notifications:
         condition: service_started
 
 volumes:

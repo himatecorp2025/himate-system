@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.0-start-22
+  version: 0.8.1-start-22.1
   description: >
-    Authenticated REST contract for the START-01 through START-22 HIMATE
+    Authenticated REST contract for the START-01 through START-22.1 HIMATE
     control-plane surface. Partner business databases remain isolated behind
     connector/API contracts; provider deployment is isolated behind the Runtime
     adapter service; encrypted backup/recovery is isolated behind Backups.
@@ -15,6 +15,7 @@ tags:
   - name: Profile
   - name: Administration
   - name: Audit
+  - name: Notifications
   - name: Partners
   - name: Modules
   - name: Billing
@@ -125,9 +126,26 @@ paths:
   /api/v1/admin/roles:
     get:
       tags: [Administration]
-      summary: List HIMATE role definitions and permissions
+      summary: List built-in and custom HIMATE role definitions and permissions
       responses:
         "200": {description: Role catalog}
+    post:
+      tags: [Administration]
+      summary: Create a custom backend-authoritative role
+      description: System-owner only. Wildcard and system-owner approval authority are not delegable.
+      responses:
+        "201": {description: Custom role created}
+        "403": {description: System owner required}
+        "409": {description: Reserved or duplicate role key}
+  /api/v1/admin/roles/{roleKey}:
+    parameters:
+      - {name: roleKey, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Administration]
+      summary: Update custom role label, permissions or active state
+      responses:
+        "200": {description: Custom role updated}
+        "409": {description: Built-in role protected or custom role still assigned}
   /api/v1/admin/users:
     get:
       tags: [Administration]
@@ -190,6 +208,30 @@ paths:
         "200":
           description: Paginated immutable audit events including semantic action, correlation and redacted old/new state
         "400": {description: Invalid time filter}
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      summary: Permission-filtered notification feed for the authenticated administrator
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: unread_only, in: query, schema: {type: boolean}}
+      responses:
+        "200": {description: Visible notification items and unread count}
+  /api/v1/notifications/{notificationId}/read:
+    parameters:
+      - {name: notificationId, in: path, required: true, schema: {type: integer}}
+    post:
+      tags: [Notifications]
+      summary: Mark one visible notification as read
+      responses:
+        "200": {description: Notification marked read}
+        "403": {description: Notification outside permission scope}
+  /api/v1/notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all visible notifications as read for the authenticated administrator
+      responses:
+        "200": {description: Visible notifications marked read}
   /api/v1/dashboard/summary:
     get:
       tags: [Health]
@@ -285,9 +327,22 @@ paths:
   /api/v1/module-groups:
     get:
       tags: [Modules]
-      summary: Module categories
+      summary: Module groups
       responses:
-        "200": {description: Module categories}
+        "200": {description: Module groups}
+    post:
+      tags: [Modules]
+      summary: Create a stable module group
+      responses:
+        "201": {description: Module group created}
+  /api/v1/module-groups/{groupKey}:
+    parameters:
+      - {name: groupKey, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Modules]
+      summary: Update module group label or sort order
+      responses:
+        "200": {description: Module group updated}
   /api/v1/modules:
     get:
       tags: [Modules]
@@ -311,6 +366,50 @@ paths:
       summary: Update catalog metadata or availability
       responses:
         "200": {description: Updated catalog module}
+  /api/v1/modules/{moduleKey}/relationships:
+    parameters:
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Modules]
+      summary: List directed module relationships
+      responses:
+        "200": {description: Module dependency/integration relationships}
+    post:
+      tags: [Modules]
+      summary: Create or update a directed module relationship
+      responses:
+        "201": {description: Relationship saved}
+  /api/v1/modules/{moduleKey}/relationships/{targetModuleKey}:
+    parameters:
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+      - {name: targetModuleKey, in: path, required: true, schema: {type: string}}
+      - {name: type, in: query, required: true, schema: {type: string}}
+    delete:
+      tags: [Modules]
+      summary: Delete a directed module relationship
+      responses:
+        "204": {description: Relationship removed}
+  /api/v1/modules/{moduleKey}/impact-metrics:
+    parameters:
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Modules]
+      summary: List Impact metric mappings for a module
+      responses:
+        "200": {description: Metric mappings}
+    put:
+      tags: [Modules]
+      summary: Replace Impact metric mappings for a module
+      responses:
+        "200": {description: Metric mappings updated}
+  /api/v1/modules/{moduleKey}/usage:
+    parameters:
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Modules]
+      summary: Read partner entitlement usage for a module
+      responses:
+        "200": {description: Partner usage and status counts}
   /api/v1/partners/{partnerId}/modules:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}

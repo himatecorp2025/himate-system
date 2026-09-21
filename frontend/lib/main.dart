@@ -25,6 +25,8 @@ part 'backups_panel.dart';
 part 'domains_deployments.dart';
 part 'localization.dart';
 part 'profile_account.dart';
+part 'module_control_plane.dart';
+part 'notifications_panel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -270,6 +272,8 @@ class Api {
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
       add('/api/v1/audit');
+    } else if (path.startsWith('/api/v1/notifications')) {
+      add('/api/v1/notifications');
     } else if (path.startsWith('/api/v1/auth')) {
       if (path.endsWith('/logout')) {
         clearCache();
@@ -299,6 +303,12 @@ class Api {
 
   Future<Map<String, dynamic>> patch(String path, Map<String, dynamic> body) async {
     final result = await request('PATCH', path, body);
+    _invalidateMutation(path);
+    return result;
+  }
+
+  Future<Map<String, dynamic>> delete(String path) async {
+    final result = await request('DELETE', path);
     _invalidateMutation(path);
     return result;
   }
@@ -351,6 +361,8 @@ class Api {
       response = await client.put(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
     } else if (method == 'PATCH') {
       response = await client.patch(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
+    } else if (method == 'DELETE') {
+      response = await client.delete(uri, headers: headers).timeout(timeout);
     } else {
       response = await client.get(uri, headers: headers).timeout(timeout);
     }
@@ -1431,11 +1443,12 @@ class _ShellState extends State<Shell> {
   int selected = 0;
   bool collapsed = false;
 
-  static const int navCount = 7;
+  static const int navCount = 8;
 
   List<NavSpec> navFor(BuildContext context) => <NavSpec>[
     NavSpec(tr(context,'nav.dashboard'), Icons.dashboard_outlined, tr(context,'nav.dashboardSub')),
     NavSpec(tr(context,'nav.partners'), Icons.groups_2_outlined, tr(context,'nav.partnersSub')),
+    const NavSpec('Modules', Icons.hub_outlined, 'Registry, dependencies & partner usage'),
     NavSpec(tr(context,'nav.finance'), Icons.account_balance_wallet_outlined, tr(context,'nav.financeSub')),
     NavSpec(tr(context,'nav.impact'), Icons.show_chart_rounded, tr(context,'nav.impactSub')),
     NavSpec(tr(context,'nav.website'), Icons.campaign_outlined, tr(context,'nav.websiteSub')),
@@ -1469,11 +1482,12 @@ class _ShellState extends State<Shell> {
     final indexes = <int>[];
     if (can('dashboard.read')) indexes.add(0);
     if (can('partners.read')) indexes.add(1);
-    if (can('billing.read')) indexes.add(2);
-    if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(3);
-    if (can('cms.read') || can('contact.read')) indexes.add(4);
-    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(5);
-    if (can('administration.read') || can('audit.read')) indexes.add(6);
+    if (can('catalog.read')) indexes.add(2);
+    if (can('billing.read')) indexes.add(3);
+    if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(4);
+    if (can('cms.read') || can('contact.read')) indexes.add(5);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(6);
+    if (can('administration.read') || can('audit.read')) indexes.add(7);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
   }
@@ -1482,11 +1496,12 @@ class _ShellState extends State<Shell> {
     switch (index) {
       case 0: return DashboardPage(api: widget.api);
       case 1: return PartnersPage(api: widget.api);
-      case 2: return FinancePage(api: widget.api);
-      case 3: return ImpactPage(api: widget.api);
-      case 4: return WebsiteMarketingPage(api: widget.api);
-      case 5: return SystemPage(api: widget.api);
-      case 6: return AdministrationPage(api: widget.api, user: widget.user);
+      case 2: return ModuleControlPlanePage(api: widget.api);
+      case 3: return FinancePage(api: widget.api);
+      case 4: return ImpactPage(api: widget.api);
+      case 5: return WebsiteMarketingPage(api: widget.api);
+      case 6: return SystemPage(api: widget.api);
+      case 7: return AdministrationPage(api: widget.api, user: widget.user);
       default: return const SizedBox.shrink();
     }
   }
@@ -1521,7 +1536,7 @@ class _ShellState extends State<Shell> {
               titleSpacing: 12,
               title: const HimateLogo(width: 170),
               actions: [
-                _TopIconButton(icon: Icons.notifications_none_rounded, onTap: () {}),
+                NotificationCenterButton(api: widget.api),
                 PopupMenuButton<String>(
                   tooltip: tr(context,'account'),
                   onSelected: (value) => accountAction(context,value),
@@ -1601,7 +1616,7 @@ class _ShellState extends State<Shell> {
                           else
                             const Spacer(),
                           const SizedBox(width: 18),
-                          _TopIconButton(icon: Icons.notifications_none_rounded, hasDot: true, onTap: () {}),
+                          NotificationCenterButton(api: widget.api),
                           const SizedBox(width: 8),
                           PopupMenuButton<String>(
                             tooltip: tr(context,'account'),
@@ -1823,28 +1838,6 @@ class _SidebarIconButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10), child: SizedBox(width: size, height: size, child: Icon(icon, color: const Color(0xFFA8B7C7), size: 18))),
-    );
-  }
-}
-
-class _TopIconButton extends StatelessWidget {
-  const _TopIconButton({required this.icon, required this.onTap, this.hasDot = false});
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool hasDot;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        IconButton(onPressed: onTap, icon: Icon(icon, size: 21)),
-        if (hasDot)
-          const Positioned(
-            right: 8,
-            top: 7,
-            child: DecoratedBox(decoration: BoxDecoration(color: brandGold, shape: BoxShape.circle), child: SizedBox(width: 6, height: 6)),
-          ),
-      ],
     );
   }
 }
@@ -2575,9 +2568,7 @@ class _PartnersPageState extends State<PartnersPage> {
           : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                    ResponsiveKpiGrid(
                       children: [
                         Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
                         Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess),
@@ -3750,13 +3741,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       ],
                       KeyedSubtree(
                         key: _overviewKey,
-                        child: Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
+                        child: ResponsiveKpiGrid(
                           children: [
                             Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
-                          Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
-                          Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
+                            Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
+                            Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
                             Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
                           ],
                         ),
@@ -4353,19 +4342,16 @@ class _FinancePageState extends State<FinancePage> {
     return Content(
       eyebrow: 'COMMERCIAL CONTROL',
       title: 'Licensing & Finance',
-      subtitle: 'Module catalog, pricing foundations and HIMATE issuer data — governed from one place.',
+      subtitle: 'Partner commercial terms, pricing oversight and HIMATE issuer data. Module registry management lives under Modules.',
       actions: [
-        OutlinedButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const LText('Billing profile')),
-        FilledButton.icon(onPressed: addModule, icon: const Icon(Icons.add_box_outlined), label: const LText('Add module')),
+        FilledButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const LText('Billing profile')),
       ],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
           : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                    ResponsiveKpiGrid(
                       children: [
                         Kpi(label: 'Module catalog', value: '${modules.length}', note: 'Canonical + custom modules', icon: Icons.grid_view_outlined, accent: brandNavy),
                         Kpi(label: 'Custom modules', value: '$custom', note: 'Created by HIMATE admins', icon: Icons.extension_outlined, accent: brandSteel),
@@ -4387,55 +4373,11 @@ class _FinancePageState extends State<FinancePage> {
                       },
                     ),
                     const SizedBox(height: 26),
-                    _SectionHeader(
-                      title: 'Canonical Module Catalog',
-                      subtitle: 'The verified reference catalog stays centrally governed while custom modules can be added without changing the partner data model.',
-                      trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                    const _MessageCard(
+                      icon: Icons.hub_outlined,
+                      title: 'Module registry moved to Modules',
+                      message: 'Create modules, link source code, manage versions, dependencies, global pricing and partner usage from the dedicated Modules control-plane area.',
                     ),
-                    const SizedBox(height: 12),
-                    _FilterSurface(
-                      child: LayoutBuilder(
-                        builder: (context, c) {
-                          final search = TextField(
-                            onChanged: (v) => setState(() => query = v),
-                            decoration: InputDecoration(hintText: uiLiteral('Search module catalog...'), prefixIcon: Icon(Icons.search_rounded)),
-                          );
-                          final group = DropdownButtonFormField<String>(
-                            value: groupFilter,
-                            decoration: InputDecoration(labelText: uiLiteral('Menu group')),
-                            items: [
-                              const DropdownMenuItem(value: 'ALL', child: LText('All groups')),
-                              for (final g in groups)
-                                DropdownMenuItem(value: '${g['group_key']}', child: LText('${g['label']}')),
-                            ],
-                            onChanged: (v) => setState(() => groupFilter = v ?? 'ALL'),
-                          );
-                          if (c.maxWidth < 680) return Column(children: [search, const SizedBox(height: 10), group]);
-                          return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: group)]);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (filteredModules.isEmpty)
-                      const _MessageCard(
-                        icon: Icons.inventory_2_outlined,
-                        title: 'No module data',
-                        message: 'No modules match the current catalog filters.',
-                      )
-                    else
-                      LayoutBuilder(
-                        builder: (context, c) {
-                          final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                          return Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              for (final m in filteredModules)
-                                SizedBox(width: width, child: CatalogModuleCard(module: m, onTap: () => editCatalogModule(m))),
-                            ],
-                          );
-                        },
-                      ),
                   ],
                 ),
     );
@@ -5912,6 +5854,8 @@ class _AdministrationPageState extends State<AdministrationPage> {
             const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
           ],
           const SizedBox(height: 28),
+          CompanySettingsPanel(api: widget.api, currentUser: widget.user),
+          const SizedBox(height: 28),
           AccessControlPanel(api: widget.api, currentUser: widget.user),
         ],
       ),
@@ -6958,6 +6902,27 @@ class Content extends StatelessWidget {
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+class ResponsiveKpiGrid extends StatelessWidget {
+  const ResponsiveKpiGrid({required this.children, this.gap = 12, super.key});
+  final List<Widget> children;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth < 620 ? 1 : constraints.maxWidth < 980 ? 2 : 4;
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [for (final child in children) SizedBox(width: width, child: child)],
         );
       },
     );

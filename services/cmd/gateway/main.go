@@ -21,6 +21,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -160,6 +162,7 @@ func main() {
 			"storage":      os.Getenv("STORAGE_HOSTPORT"),
 			"backups":      os.Getenv("BACKUPS_HOSTPORT"),
 			"partner-runtime": os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
+			"notifications":   os.Getenv("NOTIFICATIONS_HOSTPORT"),
 		},
 	}
 	if len(a.secret) < 32 || len(a.internalToken) < 24 {
@@ -273,6 +276,19 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS identity_single_system_owner_idx ON identity.users(system_owner) WHERE system_owner=TRUE`,
 			`CREATE INDEX IF NOT EXISTS identity_users_locale_idx ON identity.users(preferred_locale)`,
+		}},
+		{Version: 6, Name: "custom-rbac-roles", Statements: []string{
+			`CREATE TABLE IF NOT EXISTS identity.custom_roles(
+				role_key TEXT PRIMARY KEY,
+				label TEXT NOT NULL,
+				description TEXT NOT NULL DEFAULT '',
+				permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
+				active BOOLEAN NOT NULL DEFAULT TRUE,
+				created_by TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)`,
+			`CREATE INDEX IF NOT EXISTS identity_custom_roles_active_idx ON identity.custom_roles(active,role_key)`,
 		}},
 	}); err != nil {
 		return err
@@ -418,7 +434,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		cookie.Expires = time.Now().UTC().Add(sessionTTL)
 	}
 	http.SetCookie(w, cookie)
-	common.JSON(w, 200, publicUser(u))
+	common.JSON(w, 200, a.publicUser(u))
 }
 func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -438,7 +454,7 @@ func (a *app) me(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 401, "UNAUTHORIZED", "Authentication required")
 		return
 	}
-	common.JSON(w, 200, publicUser(u))
+	common.JSON(w, 200, a.publicUser(u))
 }
 
 type roleDefinition struct {
@@ -465,7 +481,7 @@ var roleDefinitions = []roleDefinition{
 			"environments.read", "environments.write", "environments.approve",
 			"connectors.read", "connectors.write", "connectors.approve",
 			"backups.read", "backups.write", "backups.approve",
-			"health.read",
+			"health.read", "notifications.read",
 		},
 	},
 	{
@@ -473,7 +489,7 @@ var roleDefinitions = []roleDefinition{
 		Description: "Partner commercial terms, licenses, subscriptions, billing and finance data.",
 		Permissions: []string{
 			"dashboard.read", "partners.read", "catalog.read",
-			"billing.read", "billing.write", "billing.approve",
+			"billing.read", "billing.write", "billing.approve", "notifications.read",
 		},
 	},
 	{
@@ -483,7 +499,7 @@ var roleDefinitions = []roleDefinition{
 			"dashboard.read", "partners.read",
 			"impact.read", "impact.write", "impact.approve",
 			"evidence.read", "evidence.write", "evidence.approve",
-			"reports.read", "reports.write", "reports.approve",
+			"reports.read", "reports.write", "reports.approve", "notifications.read",
 		},
 	},
 	{
@@ -492,27 +508,63 @@ var roleDefinitions = []roleDefinition{
 		Permissions: []string{
 			"dashboard.read",
 			"cms.read", "cms.write", "cms.approve",
-			"contact.read", "contact.write",
+			"contact.read", "contact.write", "notifications.read",
 		},
 	},
 }
 
-func roleDefinitionByKey(key string) (roleDefinition, bool) {
+func builtinRoleDefinitionByKey(key string) (roleDefinition, bool) {
 	for _, definition := range roleDefinitions {
 		if definition.Key == key { return definition, true }
 	}
 	return roleDefinition{}, false
 }
 
-func normalizeRoles(values []string) ([]string, error) {
+var permissionPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*\.(read|write|approve)$`)
+var roleKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
+
+func normalizeCustomPermissions(values []string) ([]string, error) {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, raw := range values {
+		permission := strings.ToLower(strings.TrimSpace(raw))
+		if permission == "" || seen[permission] { continue }
+		if permission == "*" || !permissionPattern.MatchString(permission) {
+			return nil, fmt.Errorf("invalid permission %q", permission)
+		}
+		if permission == "administration.approve" {
+			return nil, errors.New("administration.approve is reserved for the HIMATE system owner")
+		}
+		seen[permission] = true
+		out = append(out, permission)
+	}
+	if len(out) == 0 { return nil, errors.New("at least one permission is required") }
+	sort.Strings(out)
+	return out, nil
+}
+
+func (a *app) roleDefinitionByKey(key string) (roleDefinition, bool) {
+	if definition, ok := builtinRoleDefinitionByKey(key); ok { return definition, true }
+	if a == nil || a.db == nil { return roleDefinition{}, false }
+	var label, description string
+	var raw []byte
+	var active bool
+	if err := a.db.QueryRow(`SELECT label,description,permissions,active FROM identity.custom_roles WHERE role_key=$1`, key).
+		Scan(&label,&description,&raw,&active); err != nil || !active {
+		return roleDefinition{}, false
+	}
+	permissions := []string{}
+	_ = json.Unmarshal(raw, &permissions)
+	return roleDefinition{Key:key,Label:label,Description:description,Permissions:permissions}, true
+}
+
+func (a *app) normalizeRoles(values []string) ([]string, error) {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(values))
 	for _, raw := range values {
 		key := strings.ToLower(strings.TrimSpace(raw))
 		if key == "" || seen[key] { continue }
-		if _, ok := roleDefinitionByKey(key); !ok {
-			return nil, fmt.Errorf("unknown role %q", key)
-		}
+		if _, ok := a.roleDefinitionByKey(key); !ok { return nil, fmt.Errorf("unknown or inactive role %q", key) }
 		seen[key] = true
 		out = append(out, key)
 	}
@@ -520,22 +572,18 @@ func normalizeRoles(values []string) ([]string, error) {
 	return out, nil
 }
 
-func permissionsForRoles(roles []string) []string {
+func (a *app) permissionsForRoles(roles []string) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, role := range roles {
-		definition, ok := roleDefinitionByKey(role)
+		definition, ok := a.roleDefinitionByKey(role)
 		if !ok { continue }
 		for _, permission := range definition.Permissions {
-			if permission == "*" {
-				return []string{"*"}
-			}
-			if !seen[permission] {
-				seen[permission] = true
-				out = append(out, permission)
-			}
+			if permission == "*" { return []string{"*"} }
+			if !seen[permission] { seen[permission]=true;out=append(out,permission) }
 		}
 	}
+	sort.Strings(out)
 	return out
 }
 
@@ -551,14 +599,10 @@ func hasRole(u user, role string) bool {
 	return false
 }
 
-func hasPermission(u user, required string) bool {
+func (a *app) hasPermission(u user, required string) bool {
 	if strings.TrimSpace(required) == "" { return true }
-	for _, role := range u.Roles {
-		definition, ok := roleDefinitionByKey(role)
-		if !ok { continue }
-		for _, permission := range definition.Permissions {
-			if permission == "*" || permission == required { return true }
-		}
+	for _, permission := range a.permissionsForRoles(u.Roles) {
+		if permission == "*" || permission == required { return true }
 	}
 	return false
 }
@@ -570,11 +614,13 @@ func permissionResource(r *http.Request) string {
 		return "dashboard"
 	case path == "/api/v1/audit/events":
 		return "audit"
-	case path == "/api/v1/admin/roles", path == "/api/v1/admin/users", strings.HasPrefix(path, "/api/v1/admin/users/"):
+	case path == "/api/v1/notifications", strings.HasPrefix(path, "/api/v1/notifications/"):
+		return "notifications"
+	case path == "/api/v1/admin/roles", strings.HasPrefix(path, "/api/v1/admin/roles/"), path == "/api/v1/admin/users", strings.HasPrefix(path, "/api/v1/admin/users/"):
 		return "administration"
 	case strings.HasPrefix(path, "/api/v1/partners/") && strings.Contains(path, "/modules"):
 		return "catalog"
-	case path == "/api/v1/modules", path == "/api/v1/module-groups", strings.HasPrefix(path, "/api/v1/modules/"):
+	case path == "/api/v1/modules", path == "/api/v1/module-groups", strings.HasPrefix(path, "/api/v1/modules/"), strings.HasPrefix(path, "/api/v1/module-groups/"):
 		return "catalog"
 	case path == "/api/v1/partner-categories", path == "/api/v1/partners", strings.HasPrefix(path, "/api/v1/partners/"):
 		return "partners"
@@ -623,6 +669,8 @@ func requiredPermission(r *http.Request) string {
 
 	path := r.URL.Path
 	switch {
+	case resource == "notifications":
+		action = "read"
 	case resource == "administration" && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions:
 		action = "approve"
 	case resource == "cms" && (strings.HasSuffix(path, "/publish") || strings.HasSuffix(path, "/rollback")):
@@ -723,6 +771,18 @@ func auditAction(r *http.Request) string {
 		return "PROFILE_PASSWORD_CHANGED"
 	case path == "/api/v1/admin/users" && r.Method == http.MethodPost:
 		return "ADMIN_USER_CREATED"
+	case path == "/api/v1/admin/roles" && r.Method == http.MethodPost:
+		return "ADMIN_ROLE_CREATED"
+	case strings.HasPrefix(path, "/api/v1/admin/roles/") && r.Method == http.MethodPatch:
+		return "ADMIN_ROLE_UPDATED"
+	case path == "/api/v1/modules" && r.Method == http.MethodPost:
+		return "MODULE_CREATED"
+	case strings.HasPrefix(path, "/api/v1/modules/") && r.Method == http.MethodPatch:
+		return "MODULE_UPDATED"
+	case strings.Contains(path, "/relationships") && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
+		return "MODULE_RELATIONSHIP_CHANGED"
+	case strings.Contains(path, "/impact-metrics") && r.Method == http.MethodPut:
+		return "MODULE_IMPACT_MAPPING_CHANGED"
 	case strings.HasPrefix(path, "/api/v1/admin/users/") && r.Method == http.MethodPatch:
 		return "ADMIN_USER_UPDATED"
 	case strings.HasSuffix(path, "/publish"):
@@ -758,26 +818,26 @@ func auditAction(r *http.Request) string {
 	return resource + "_" + strings.ToUpper(r.Method)
 }
 
-func auditUserState(u user) map[string]any {
+func (a *app) auditUserState(u user) map[string]any {
 	return map[string]any{
 		"id":u.ID,"name":u.Name,"email":u.Email,"roles":append([]string(nil),u.Roles...),"active":u.Active,
 		"system_owner":u.SystemOwner,"preferred_locale":normalizedLocale(u.PreferredLocale),"timezone":normalizedTimezone(u.Timezone),
-		"job_title":u.JobTitle,"phone":u.Phone,"permissions":permissionsForRoles(u.Roles),
+		"job_title":u.JobTitle,"phone":u.Phone,"permissions":a.permissionsForRoles(u.Roles),
 	}
 }
 
 func (a *app) auditOldState(r *http.Request) any {
 	if r == nil { return map[string]any{} }
 	if r.Method == http.MethodPatch && r.URL.Path == "/api/v1/profile" {
-		if u, err := a.auth(r); err == nil { return auditUserState(u) }
+		if u, err := a.auth(r); err == nil { return a.auditUserState(u) }
 	}
 	if r.Method == http.MethodPost && r.URL.Path == "/api/v1/profile/password" {
-		if u, err := a.auth(r); err == nil { return auditUserState(u) }
+		if u, err := a.auth(r); err == nil { return a.auditUserState(u) }
 	}
 	if r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") {
 		id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/"), "/")
 		if id != "" && !strings.Contains(id, "/") {
-			if u, err := a.findUser("id", id); err == nil { return auditUserState(u) }
+			if u, err := a.findUser("id", id); err == nil { return a.auditUserState(u) }
 		}
 	}
 	return map[string]any{}
@@ -811,7 +871,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
 				newState = requestState
 			}
-			a.enqueueAudit(auditEvent{
+			event := auditEvent{
 				ActorID: u.ID, ActorName: u.Name, ActorRoles: append([]string(nil), u.Roles...),
 				RequestID: strings.TrimSpace(r.Header.Get("X-Request-ID")),
 				CorrelationID: strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
@@ -819,11 +879,13 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 				Method: r.Method, Path: r.URL.Path, Resource: resource, PartnerID: partnerID,
 				Status: status, Outcome: outcome, OldState: oldState, NewState: newState,
 				DurationMS: time.Since(started).Milliseconds(), CreatedAt: time.Now().UTC(),
-			})
+			}
+			a.enqueueAudit(event)
+			if resource != "notifications" { go a.emitNotification(event) }
 		}()
 	}
 	required := requiredPermission(r)
-	if required != "" && !hasPermission(u, required) {
+	if required != "" && !a.hasPermission(u, required) {
 		common.APIError(w, 403, "FORBIDDEN", "Required permission: "+required)
 		return
 	}
@@ -837,14 +899,19 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.profile(w,r,u)
 	case r.URL.Path == "/api/v1/profile/password":
 		a.profilePassword(w,r,u)
-	case r.URL.Path == "/api/v1/admin/roles" && r.Method == http.MethodGet:
-		a.adminRoles(w, r)
+	case r.URL.Path == "/api/v1/admin/roles":
+		a.adminRoles(w, r, u)
+	case strings.HasPrefix(r.URL.Path, "/api/v1/admin/roles/"):
+		a.adminRole(w, r, u)
 	case r.URL.Path == "/api/v1/admin/users":
 		a.adminUsers(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/"):
 		a.adminUser(w, r, u)
 	case r.URL.Path == "/api/v1/audit/events" && r.Method == http.MethodGet:
 		a.auditEvents(w, r)
+	case r.URL.Path == "/api/v1/notifications" || strings.HasPrefix(r.URL.Path, "/api/v1/notifications/"):
+		r.Header.Set("X-Himate-Permissions", strings.Join(a.permissionsForRoles(u.Roles), ","))
+		a.serveProxy(w, r, "notifications")
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
 		a.partnerPortfolioMetrics(w, r)
 	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
@@ -855,7 +922,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/"):
 		a.serveProxy(w, r, "partners")
-	case r.URL.Path == "/api/v1/modules", r.URL.Path == "/api/v1/module-groups", strings.HasPrefix(r.URL.Path, "/api/v1/modules/"):
+	case r.URL.Path == "/api/v1/modules", r.URL.Path == "/api/v1/module-groups", strings.HasPrefix(r.URL.Path, "/api/v1/modules/"), strings.HasPrefix(r.URL.Path, "/api/v1/module-groups/"):
 		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/billing/"):
 		a.serveProxy(w, r, "billing")
@@ -922,6 +989,8 @@ func auditResource(r *http.Request) (string, string) {
 		if len(parts) > 2 && parts[1] == "policies" { partnerID = parts[2] }
 	case "modules", "module-groups":
 		resource = "catalog"
+	case "notifications":
+		resource = "notifications"
 	case "partner-categories":
 		resource = "partners"
 	}
@@ -955,6 +1024,47 @@ func (a *app) persistAudit(event auditEvent) {
 	) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16)`,
 		event.ActorID,event.ActorName,string(roles),event.RequestID,event.CorrelationID,event.Action,event.Method,event.Path,event.Resource,event.PartnerID,
 		event.Status,event.Outcome,string(oldState),string(newState),event.DurationMS,event.CreatedAt)
+}
+
+func notificationDescriptor(event auditEvent) (severity,title,message,audience,deepLink string,boolValue bool) {
+	if event.Outcome=="FAILED" {
+		switch event.Resource {
+		case "environments","backups","connectors","provisioning":
+			return "WARNING", strings.ReplaceAll(strings.Title(strings.ToLower(event.Action)),"_"," "), "A protected operation failed. Review the audit trail for details.", event.Resource+".read", "/app", true
+		default:
+			return "","","","","",false
+		}
+	}
+	switch event.Action {
+	case "ADMIN_USER_CREATED": return "INFO","Administrator created",event.ActorName+" created a HIMATE administrator.","administration.read","/app",true
+	case "ADMIN_USER_UPDATED": return "INFO","Administrator access changed",event.ActorName+" updated administrator access.","administration.read","/app",true
+	case "ADMIN_ROLE_CREATED": return "INFO","Custom role created",event.ActorName+" created a custom access role.","administration.read","/app",true
+	case "ADMIN_ROLE_UPDATED": return "INFO","Custom role updated",event.ActorName+" changed a custom access role.","administration.read","/app",true
+	case "MODULE_CREATED": return "INFO","Module created",event.ActorName+" added a module to the HIMATE registry.","catalog.read","/app",true
+	case "MODULE_UPDATED","MODULE_RELATIONSHIP_CHANGED","MODULE_IMPACT_MAPPING_CHANGED":
+		return "INFO","Module registry changed",event.ActorName+" updated module control-plane configuration.","catalog.read","/app",true
+	case "LICENSE_CHANGED": return "INFO","Commercial terms changed","Partner licensing/payment state was updated.","billing.read","/app",true
+	case "ENVIRONMENT_DEPLOY": return "INFO","Deployment started","A partner environment deployment was requested.","environments.read","/app",true
+	case "ENVIRONMENT_LAUNCH": return "INFO","Production launch requested","A partner production launch was requested.","environments.read","/app",true
+	case "BACKUP_RESTORE_POINT_QUEUED","BACKUP_RESTORE_TEST_QUEUED": return "INFO","Backup operation queued","A recoverability operation was queued.","backups.read","/app",true
+	case "SEO_SETTINGS_PUBLISHED": return "INFO","SEO settings published","Published SEO settings changed.","cms.read","/app",true
+	}
+	if event.Resource=="partners" && event.Method==http.MethodPost { return "INFO","Partner created","A new partner record was registered.","partners.read","/app",true }
+	return "","","","","",false
+}
+
+func (a *app) emitNotification(event auditEvent) {
+	host:=strings.TrimSpace(a.hosts["notifications"]);if host==""{return}
+	severity,title,message,audience,deepLink,ok:=notificationDescriptor(event);if !ok{return}
+	body,_:=json.Marshal(map[string]any{
+		"event_type":event.Action,"severity":severity,"title":title,"message":message,"resource":event.Resource,
+		"partner_id":event.PartnerID,"deep_link":deepLink,"audience_permission":audience,
+		"metadata":map[string]any{"actor_id":event.ActorID,"actor_name":event.ActorName,"request_id":event.RequestID,"correlation_id":event.CorrelationID},
+	})
+	ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);defer cancel()
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+host+"/internal/v1/notifications/events",bytes.NewReader(body));if err!=nil{return}
+	req.Header.Set("Content-Type","application/json");req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	resp,err:=a.client.Do(req);if err==nil&&resp!=nil{resp.Body.Close()}
 }
 
 func auditLimit(value string, fallback, max int) int {
@@ -1393,7 +1503,7 @@ func ownerRequired(w http.ResponseWriter, actor user) bool {
 func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
 	switch r.Method {
 	case http.MethodGet:
-		common.JSON(w,http.StatusOK,publicUser(actor))
+		common.JSON(w,http.StatusOK,a.publicUser(actor))
 	case http.MethodPatch:
 		var in struct {
 			Name *string `json:"name"`
@@ -1437,7 +1547,7 @@ func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
 		_,err:=a.db.Exec(`UPDATE identity.users SET name=$2,email=$3,preferred_locale=$4,timezone=$5,job_title=$6,phone=$7,updated_at=NOW() WHERE id=$1`,
 			actor.ID,next.Name,next.Email,next.PreferredLocale,next.Timezone,next.JobTitle,next.Phone)
 		if err!=nil { common.APIError(w,500,"DB","Could not update profile");return }
-		common.JSON(w,http.StatusOK,publicUser(next))
+		common.JSON(w,http.StatusOK,a.publicUser(next))
 	default:
 		common.APIError(w,405,"METHOD","Use GET or PATCH")
 	}
@@ -1468,15 +1578,15 @@ func (a *app) profilePassword(w http.ResponseWriter, r *http.Request, actor user
 	token,err:=a.issueSession(next,a.ttl)
 	if err!=nil { common.APIError(w,500,"SESSION","Could not refresh session");return }
 	http.SetCookie(w,&http.Cookie{Name:sessionCookie,Value:token,Path:"/",HttpOnly:true,Secure:a.secureCookie,SameSite:http.SameSiteStrictMode})
-	common.JSON(w,http.StatusOK,publicUser(next))
+	common.JSON(w,http.StatusOK,a.publicUser(next))
 }
 
-func adminUserMap(u user, createdAt, updatedAt time.Time) map[string]any {
+func (a *app) adminUserMap(u user, createdAt, updatedAt time.Time) map[string]any {
 	return map[string]any{
 		"id":u.ID,"name":u.Name,"email":u.Email,"roles":u.Roles,"active":u.Active,
 		"system_owner":u.SystemOwner,"preferred_locale":normalizedLocale(u.PreferredLocale),
 		"timezone":normalizedTimezone(u.Timezone),"job_title":u.JobTitle,"phone":u.Phone,
-		"permissions":permissionsForRoles(u.Roles),
+		"permissions":a.permissionsForRoles(u.Roles),
 		"created_at":createdAt.UTC(),"updated_at":updatedAt.UTC(),
 	}
 }
@@ -1516,17 +1626,68 @@ func passwordPolicyError(password string) string {
 	return ""
 }
 
-func (a *app) adminRoles(w http.ResponseWriter, r *http.Request) {
-	items := make([]map[string]any, 0, len(roleDefinitions))
-	for _, role := range roleDefinitions {
-		items = append(items, map[string]any{
-			"key": role.Key,
-			"label": role.Label,
-			"description": role.Description,
-			"permissions": role.Permissions,
-		})
+func (a *app) adminRoles(w http.ResponseWriter, r *http.Request, actor user) {
+	switch r.Method {
+	case http.MethodGet:
+		items := make([]map[string]any,0,len(roleDefinitions)+8)
+		for _,role := range roleDefinitions {
+			items=append(items,map[string]any{"key":role.Key,"label":role.Label,"description":role.Description,"permissions":role.Permissions,"system":true,"active":true})
+		}
+		rows,err:=a.db.Query(`SELECT role_key,label,description,permissions,active,created_by,created_at,updated_at FROM identity.custom_roles ORDER BY active DESC,lower(label)`)
+		if err!=nil{common.APIError(w,500,"DB","Could not load custom roles");return}
+		defer rows.Close()
+		for rows.Next(){
+			var key,label,description,createdBy string;var raw []byte;var active bool;var created,updated time.Time
+			if rows.Scan(&key,&label,&description,&raw,&active,&createdBy,&created,&updated)==nil{
+				permissions:=[]string{};_ = json.Unmarshal(raw,&permissions)
+				items=append(items,map[string]any{"key":key,"label":label,"description":description,"permissions":permissions,"system":false,"active":active,"created_by":createdBy,"created_at":created,"updated_at":updated})
+			}
+		}
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+	case http.MethodPost:
+		if !ownerRequired(w,actor){return}
+		var in struct{Key string `json:"key"`;Label string `json:"label"`;Description string `json:"description"`;Permissions []string `json:"permissions"`}
+		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+		in.Key=strings.ToLower(strings.TrimSpace(in.Key));in.Label=strings.TrimSpace(in.Label)
+		if !roleKeyPattern.MatchString(in.Key)||in.Label==""{common.APIError(w,400,"VALIDATION","Stable role key and label are required");return}
+		if _,exists:=builtinRoleDefinitionByKey(in.Key);exists{common.APIError(w,409,"ROLE_RESERVED","Built-in role keys are reserved");return}
+		permissions,err:=normalizeCustomPermissions(in.Permissions);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
+		raw,_:=json.Marshal(permissions)
+		if _,err=a.db.Exec(`INSERT INTO identity.custom_roles(role_key,label,description,permissions,created_by) VALUES($1,$2,$3,$4::jsonb,$5)`,
+			in.Key,in.Label,strings.TrimSpace(in.Description),string(raw),actor.ID);err!=nil{common.APIError(w,409,"CONFLICT","Role could not be created");return}
+		common.JSON(w,201,map[string]any{"key":in.Key,"label":in.Label,"description":strings.TrimSpace(in.Description),"permissions":permissions,"system":false,"active":true})
+	default:
+		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
-	common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
+}
+
+func (a *app) adminRole(w http.ResponseWriter,r *http.Request,actor user){
+	if !ownerRequired(w,actor){return}
+	if r.Method!=http.MethodPatch{common.APIError(w,405,"METHOD","Use PATCH");return}
+	key:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/admin/roles/"),"/")
+	if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Role not found");return}
+	if _,exists:=builtinRoleDefinitionByKey(key);exists{common.APIError(w,409,"ROLE_PROTECTED","Built-in roles cannot be modified");return}
+	var label,description string;var raw []byte;var active bool
+	if err:=a.db.QueryRow(`SELECT label,description,permissions,active FROM identity.custom_roles WHERE role_key=$1`,key).Scan(&label,&description,&raw,&active);err!=nil{
+		common.APIError(w,404,"NOT_FOUND","Role not found");return
+	}
+	permissions:=[]string{};_ = json.Unmarshal(raw,&permissions)
+	var in struct{Label *string `json:"label"`;Description *string `json:"description"`;Permissions *[]string `json:"permissions"`;Active *bool `json:"active"`}
+	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	if in.Label!=nil{label=strings.TrimSpace(*in.Label)}
+	if in.Description!=nil{description=strings.TrimSpace(*in.Description)}
+	if in.Active!=nil{active=*in.Active}
+	if in.Permissions!=nil{next,err:=normalizeCustomPermissions(*in.Permissions);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return};permissions=next}
+	if label==""{common.APIError(w,400,"VALIDATION","Role label is required");return}
+	if !active{
+		var assigned int
+		_ = a.db.QueryRow(`SELECT COUNT(*) FROM identity.users WHERE roles ? $1`,key).Scan(&assigned)
+		if assigned>0{common.APIError(w,409,"ROLE_IN_USE","Remove this role from administrators before deactivating it");return}
+	}
+	raw,_=json.Marshal(permissions)
+	if _,err:=a.db.Exec(`UPDATE identity.custom_roles SET label=$2,description=$3,permissions=$4::jsonb,active=$5,updated_at=NOW() WHERE role_key=$1`,
+		key,label,description,string(raw),active);err!=nil{common.APIError(w,500,"DB","Could not update role");return}
+	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"permissions":permissions,"system":false,"active":active})
 }
 
 func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
@@ -1544,7 +1705,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
 			var createdAt, updatedAt time.Time
 			if rows.Scan(&u.ID,&u.Name,&u.Email,&u.PasswordHash,&rolesRaw,&u.Active,&u.SystemOwner,&u.PreferredLocale,&u.Timezone,&u.JobTitle,&u.Phone,&u.SessionVersion,&createdAt,&updatedAt) != nil { continue }
 			_ = json.Unmarshal(rolesRaw,&u.Roles)
-			items = append(items, adminUserMap(u,createdAt,updatedAt))
+			items = append(items, a.adminUserMap(u,createdAt,updatedAt))
 		}
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 	case http.MethodPost:
@@ -1560,7 +1721,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
 		if len(in.Name) < 2 || len(in.Name) > 120 { common.APIError(w,400,"VALIDATION","Name must be 2-120 characters"); return }
 		if !validEmail(in.Email) { common.APIError(w,400,"VALIDATION","A valid email is required"); return }
 		if message:=passwordPolicyError(in.Password); message!="" { common.APIError(w,400,"VALIDATION",message); return }
-		roles, err := normalizeRoles(in.Roles)
+		roles, err := a.normalizeRoles(in.Roles)
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
 		if containsRole(roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
 		var exists bool
@@ -1577,7 +1738,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
 			RETURNING created_at,updated_at`,id,in.Name,in.Email,hash,string(rolesRaw)).Scan(&createdAt,&updatedAt)
 		if err != nil { common.APIError(w,500,"DB","Could not create administration user"); return }
 		u := user{ID:id,Name:in.Name,Email:in.Email,PasswordHash:hash,Roles:roles,Active:true,PreferredLocale:"en_US",Timezone:"UTC"}
-		common.JSON(w,201,adminUserMap(u,createdAt,updatedAt))
+		common.JSON(w,201,a.adminUserMap(u,createdAt,updatedAt))
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
@@ -1614,7 +1775,7 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
 		if duplicate { common.APIError(w,409,"EMAIL_EXISTS","An administrator with this email already exists"); return }
 	}
 	if in.Roles != nil {
-		next.Roles, err = normalizeRoles(*in.Roles)
+		next.Roles, err = a.normalizeRoles(*in.Roles)
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
 		if !current.SystemOwner && containsRole(next.Roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
 	}
@@ -1651,7 +1812,7 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
 		WHERE id=$1 RETURNING created_at,updated_at`,id,next.Name,next.Email,hash,string(rolesRaw),next.Active).Scan(&createdAt,&updatedAt)
 	if err != nil { common.APIError(w,500,"DB","Could not update administration user"); return }
 	next.PasswordHash = hash
-	common.JSON(w,200,adminUserMap(next,createdAt,updatedAt))
+	common.JSON(w,200,a.adminUserMap(next,createdAt,updatedAt))
 }
 
 func (a *app) findUser(field, value string) (user, error) {
@@ -1684,10 +1845,10 @@ func (a *app) auth(r *http.Request) (user, error) {
 	}
 	return u, nil
 }
-func publicUser(u user) map[string]any {
+func (a *app) publicUser(u user) map[string]any {
 	return map[string]any{
 		"id":u.ID,"name":u.Name,"email":u.Email,"roles":u.Roles,
-		"permissions":permissionsForRoles(u.Roles),
+		"permissions":a.permissionsForRoles(u.Roles),
 		"system_owner":u.SystemOwner,
 		"preferred_locale":normalizedLocale(u.PreferredLocale),
 		"timezone":normalizedTimezone(u.Timezone),

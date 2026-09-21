@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
@@ -71,6 +72,8 @@ var seedModules = []seedModule{
 
 var moduleStates = map[string]bool{"ACTIVE": true, "NOT_LICENSED": true, "MAINTENANCE": true}
 var availabilityValues = map[string]bool{"ACTIVE": true, "UNAVAILABLE": true, "DEPRECATED": true}
+var moduleTypes = map[string]bool{"CORE": true, "FEATURE": true, "INTEGRATION": true, "REPORTING": true, "WEBSITE": true, "FINANCE": true, "INFRASTRUCTURE": true}
+var relationshipTypes = map[string]bool{"REQUIRES": true, "OPTIONAL_DEPENDENCY": true, "INTEGRATES_WITH": true, "EXTENDS": true, "CONFLICTS_WITH": true, "REPLACES": true}
 var moduleKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.]{2,127}$`)
 
 func main() {
@@ -94,6 +97,7 @@ func main() {
 		common.JSON(w, 200, map[string]any{"status": "ok", "service": "catalog", "reference_modules": len(seedModules)})
 	})
 	mux.HandleFunc("/api/v1/module-groups", a.groups)
+	mux.HandleFunc("/api/v1/module-groups/", a.groupByKey)
 	mux.HandleFunc("/api/v1/modules", a.modules)
 	mux.HandleFunc("/api/v1/modules/", a.moduleByKey)
 	mux.HandleFunc("/api/v1/partners/", a.partnerModules)
@@ -144,6 +148,36 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`,
 			`UPDATE catalog.partner_modules SET activated_at=updated_at WHERE status='ACTIVE' AND activated_at IS NULL`,
 		}},
+		{Version: 4, Name: "module-control-plane-registry", Statements: []string{
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS module_type TEXT NOT NULL DEFAULT 'FEATURE'`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS owner_team TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS source_repository TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS source_path TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS source_ref TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS source_commit TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS artifact_type TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS artifact_reference TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS min_platform_version TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS manifest JSONB NOT NULL DEFAULT '{}'::jsonb`,
+			`CREATE TABLE IF NOT EXISTS catalog.module_relationships(
+				module_key TEXT NOT NULL REFERENCES catalog.modules(module_key) ON DELETE CASCADE,
+				target_module_key TEXT NOT NULL REFERENCES catalog.modules(module_key) ON DELETE CASCADE,
+				relation_type TEXT NOT NULL,
+				note TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				PRIMARY KEY(module_key,target_module_key,relation_type),
+				CHECK(module_key<>target_module_key)
+			)`,
+			`CREATE INDEX IF NOT EXISTS module_relationship_target_idx ON catalog.module_relationships(target_module_key,relation_type)`,
+			`CREATE TABLE IF NOT EXISTS catalog.module_impact_metrics(
+				module_key TEXT NOT NULL REFERENCES catalog.modules(module_key) ON DELETE CASCADE,
+				metric_key TEXT NOT NULL,
+				label TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY(module_key,metric_key)
+			)`,
+			`CREATE INDEX IF NOT EXISTS module_impact_metric_idx ON catalog.module_impact_metrics(metric_key)`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -165,139 +199,238 @@ func (a *app) migrate(ctx context.Context) error {
 }
 
 func (a *app) groups(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		common.APIError(w, 405, "METHOD", "Use GET")
-		return
-	}
-	rows, err := a.db.Query(`SELECT group_key,label,sort_order FROM catalog.module_groups ORDER BY sort_order`)
-	if err != nil {
-		common.APIError(w, 500, "DB", "Could not load module groups")
-		return
-	}
-	defer rows.Close()
-	items := []map[string]any{}
-	for rows.Next() {
-		var k, l string
-		var s int
-		if rows.Scan(&k, &l, &s) == nil {
-			items = append(items, map[string]any{"group_key": k, "label": l, "sort_order": s})
+	switch r.Method {
+	case http.MethodGet:
+		rows, err := a.db.Query(`SELECT group_key,label,sort_order FROM catalog.module_groups ORDER BY sort_order,label`)
+		if err != nil { common.APIError(w,500,"DB","Could not load module groups"); return }
+		defer rows.Close()
+		items := []map[string]any{}
+		for rows.Next() {
+			var k,l string; var s int
+			if rows.Scan(&k,&l,&s)==nil { items=append(items,map[string]any{"group_key":k,"label":l,"sort_order":s}) }
 		}
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+	case http.MethodPost:
+		var in struct { Key string `json:"group_key"`; Label string `json:"label"`; SortOrder int `json:"sort_order"` }
+		if common.Decode(r,&in)!=nil || !moduleKeyPattern.MatchString(in.Key) || strings.TrimSpace(in.Label)=="" {
+			common.APIError(w,400,"VALIDATION","Stable group key and label are required"); return
+		}
+		if in.SortOrder<=0 {
+			_ = a.db.QueryRow(`SELECT COALESCE(MAX(sort_order),0)+1 FROM catalog.module_groups`).Scan(&in.SortOrder)
+		}
+		if _,err:=a.db.Exec(`INSERT INTO catalog.module_groups(group_key,label,sort_order) VALUES($1,$2,$3)`,in.Key,strings.TrimSpace(in.Label),in.SortOrder);err!=nil{
+			common.APIError(w,409,"CONFLICT","Module group could not be created");return
+		}
+		common.JSON(w,201,map[string]any{"group_key":in.Key,"label":strings.TrimSpace(in.Label),"sort_order":in.SortOrder})
+	default:
+		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
-	common.JSON(w, 200, map[string]any{"items": items})
+}
+
+func (a *app) groupByKey(w http.ResponseWriter, r *http.Request) {
+	key:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/module-groups/"),"/")
+	if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Module group not found");return}
+	if r.Method!=http.MethodPatch{common.APIError(w,405,"METHOD","Use PATCH");return}
+	var in struct{Label *string `json:"label"`; SortOrder *int `json:"sort_order"`}
+	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	var label string; var order int
+	if err:=a.db.QueryRow(`SELECT label,sort_order FROM catalog.module_groups WHERE group_key=$1`,key).Scan(&label,&order);err!=nil{
+		common.APIError(w,404,"NOT_FOUND","Module group not found");return
+	}
+	if in.Label!=nil{label=strings.TrimSpace(*in.Label)}
+	if in.SortOrder!=nil{order=*in.SortOrder}
+	if label==""||order<=0{common.APIError(w,400,"VALIDATION","Valid label and sort order are required");return}
+	if _,err:=a.db.Exec(`UPDATE catalog.module_groups SET label=$2,sort_order=$3 WHERE group_key=$1`,key,label,order);err!=nil{
+		common.APIError(w,409,"CONFLICT","Module group could not be updated");return
+	}
+	common.JSON(w,200,map[string]any{"group_key":key,"label":label,"sort_order":order})
 }
 
 func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT m.module_key,m.label,m.group_key,g.label,m.description,m.default_monthly_price,m.currency,m.version,m.latest_version,m.last_updated_at,m.system,m.availability FROM catalog.modules m JOIN catalog.module_groups g ON g.group_key=m.group_key ORDER BY g.sort_order,m.label`)
-		if err != nil {
-			common.APIError(w, 500, "DB", "Could not load modules")
-			return
-		}
+		rows, err := a.db.Query(`SELECT m.module_key,m.label,m.group_key,g.label,m.description,m.default_monthly_price,m.currency,m.version,m.latest_version,
+			m.last_updated_at,m.system,m.availability,m.module_type,m.owner_team,m.source_repository,m.source_path,m.source_ref,m.source_commit,
+			m.artifact_type,m.artifact_reference,m.min_platform_version,m.manifest,
+			(SELECT COUNT(*) FROM catalog.module_relationships mr WHERE mr.module_key=m.module_key),
+			(SELECT COUNT(*) FROM catalog.partner_modules pm WHERE pm.module_key=m.module_key AND pm.status='ACTIVE'),
+			(SELECT COUNT(*) FROM catalog.module_impact_metrics mm WHERE mm.module_key=m.module_key)
+			FROM catalog.modules m JOIN catalog.module_groups g ON g.group_key=m.group_key ORDER BY g.sort_order,m.label`)
+		if err != nil { common.APIError(w,500,"DB","Could not load modules"); return }
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var k, l, g, gl, d, currency, v, lv, availability string
-			var p float64
-			var t time.Time
-			var sys bool
-			if rows.Scan(&k, &l, &g, &gl, &d, &p, &currency, &v, &lv, &t, &sys, &availability) == nil {
-				items = append(items, map[string]any{"key": k, "label": l, "group_key": g, "group_label": gl, "description": d, "default_monthly_price": p, "currency": currency, "version": v, "latest_version": lv, "last_updated_at": t, "system": sys, "availability": availability})
+			var k,l,g,gl,d,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+			var p float64; var t time.Time; var sys bool; var manifestRaw []byte; var relCount,usageCount,metricCount int
+			if rows.Scan(&k,&l,&g,&gl,&d,&p,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
+				manifest:=map[string]any{}; _=json.Unmarshal(manifestRaw,&manifest)
+				items=append(items,map[string]any{"key":k,"label":l,"group_key":g,"group_label":gl,"description":d,"default_monthly_price":p,"currency":currency,
+					"version":v,"latest_version":lv,"last_updated_at":t,"system":sys,"availability":availability,"module_type":moduleType,"owner_team":owner,
+					"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,"artifact_type":artifactType,"artifact_reference":artifactRef,
+					"min_platform_version":minPlatform,"manifest":manifest,"relationship_count":relCount,"active_partner_count":usageCount,"impact_metric_count":metricCount})
 			}
 		}
-		common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 	case http.MethodPost:
 		var in struct {
-			Key                 string  `json:"key"`
-			Label               string  `json:"label"`
-			GroupKey            string  `json:"group_key"`
-			Description         string  `json:"description"`
-			Currency            string  `json:"currency"`
-			Version             string  `json:"version"`
-			LatestVersion       string  `json:"latest_version"`
+			Key string `json:"key"`
+			Label string `json:"label"`
+			GroupKey string `json:"group_key"`
+			Description string `json:"description"`
+			Currency string `json:"currency"`
+			Version string `json:"version"`
+			LatestVersion string `json:"latest_version"`
+			Availability string `json:"availability"`
+			ModuleType string `json:"module_type"`
+			OwnerTeam string `json:"owner_team"`
+			SourceRepository string `json:"source_repository"`
+			SourcePath string `json:"source_path"`
+			SourceRef string `json:"source_ref"`
+			SourceCommit string `json:"source_commit"`
+			ArtifactType string `json:"artifact_type"`
+			ArtifactReference string `json:"artifact_reference"`
+			MinPlatformVersion string `json:"min_platform_version"`
 			DefaultMonthlyPrice float64 `json:"default_monthly_price"`
-			Availability        string  `json:"availability"`
+			Manifest map[string]any `json:"manifest"`
 		}
-		if common.Decode(r, &in) != nil || !moduleKeyPattern.MatchString(in.Key) || strings.TrimSpace(in.Label) == "" || strings.TrimSpace(in.GroupKey) == "" {
-			common.APIError(w, 400, "VALIDATION", "Stable key, label and group are required")
-			return
+		if common.Decode(r,&in)!=nil || !moduleKeyPattern.MatchString(in.Key) || strings.TrimSpace(in.Label)=="" || strings.TrimSpace(in.GroupKey)=="" {
+			common.APIError(w,400,"VALIDATION","Stable key, label and group are required");return
 		}
-		if in.Currency == "" {
-			in.Currency = "USD"
-		}
-		if in.Version == "" {
-			in.Version = "1.0.0"
-		}
-		if in.LatestVersion == "" {
-			in.LatestVersion = in.Version
-		}
-		if in.Availability == "" {
-			in.Availability = "ACTIVE"
-		}
-		if !availabilityValues[in.Availability] {
-			common.APIError(w, 400, "VALIDATION", "Invalid module availability")
-			return
-		}
-		if in.DefaultMonthlyPrice < 0 {
-			common.APIError(w, 400, "VALIDATION", "Price cannot be negative")
-			return
-		}
-		_, err := a.db.Exec(`INSERT INTO catalog.modules(module_key,label,group_key,description,default_monthly_price,currency,version,latest_version,system,availability) VALUES($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9)`, in.Key, strings.TrimSpace(in.Label), in.GroupKey, in.Description, in.DefaultMonthlyPrice, in.Currency, in.Version, in.LatestVersion, in.Availability)
-		if err != nil {
-			common.APIError(w, 409, "CONFLICT", "Module could not be created")
-			return
-		}
-		common.JSON(w, 201, map[string]any{"key": in.Key, "label": in.Label, "group_key": in.GroupKey, "default_monthly_price": in.DefaultMonthlyPrice, "currency": in.Currency, "version": in.Version, "latest_version": in.LatestVersion, "availability": in.Availability, "system": false})
+		if in.Currency==""{in.Currency="USD"}; if in.Version==""{in.Version="1.0.0"}; if in.LatestVersion==""{in.LatestVersion=in.Version}
+		if in.Availability==""{in.Availability="ACTIVE"}; in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
+		if !availabilityValues[in.Availability] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
+		manifest,_:=json.Marshal(in.Manifest); if len(manifest)==0{manifest=[]byte("{}")}
+		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
+			module_key,label,group_key,description,default_monthly_price,currency,version,latest_version,system,availability,module_type,owner_team,
+			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb)`,
+			in.Key,strings.TrimSpace(in.Label),in.GroupKey,strings.TrimSpace(in.Description),in.DefaultMonthlyPrice,in.Currency,in.Version,in.LatestVersion,
+			in.Availability,in.ModuleType,strings.TrimSpace(in.OwnerTeam),strings.TrimSpace(in.SourceRepository),strings.TrimSpace(in.SourcePath),
+			strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.SourceCommit),strings.TrimSpace(in.ArtifactType),strings.TrimSpace(in.ArtifactReference),
+			strings.TrimSpace(in.MinPlatformVersion),string(manifest))
+		if err!=nil{common.APIError(w,409,"CONFLICT","Module could not be created");return}
+		common.JSON(w,201,map[string]any{"key":in.Key,"label":strings.TrimSpace(in.Label),"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,
+			"currency":in.Currency,"version":in.Version,"latest_version":in.LatestVersion,"availability":in.Availability,"module_type":in.ModuleType,"system":false})
 	default:
-		common.APIError(w, 405, "METHOD", "Use GET or POST")
+		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
 }
 
 func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
-	key := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/modules/"), "/")
-	if key == "" || strings.Contains(key, "/") {
-		common.APIError(w, 404, "NOT_FOUND", "Module not found")
-		return
+	raw:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/modules/"),"/")
+	parts:=strings.Split(raw,"/")
+	if len(parts)==0||parts[0]==""{common.APIError(w,404,"NOT_FOUND","Module not found");return}
+	key:=parts[0]
+	if len(parts)>1 {
+		switch parts[1] {
+		case "relationships": a.moduleRelationships(w,r,key,parts[2:]); return
+		case "impact-metrics": a.moduleImpactMetrics(w,r,key); return
+		case "usage": a.moduleUsage(w,r,key); return
+		default: common.APIError(w,404,"NOT_FOUND","Module subresource not found"); return
+		}
 	}
-	if r.Method != http.MethodPatch {
-		common.APIError(w, 405, "METHOD", "Use PATCH")
-		return
-	}
+	if r.Method!=http.MethodPatch{common.APIError(w,405,"METHOD","Use PATCH");return}
 	var in struct {
-		Label               *string  `json:"label"`
-		Description         *string  `json:"description"`
-		GroupKey            *string  `json:"group_key"`
+		Label *string `json:"label"`
+		Description *string `json:"description"`
+		GroupKey *string `json:"group_key"`
+		Availability *string `json:"availability"`
+		LatestVersion *string `json:"latest_version"`
+		ModuleType *string `json:"module_type"`
+		OwnerTeam *string `json:"owner_team"`
+		SourceRepository *string `json:"source_repository"`
+		SourcePath *string `json:"source_path"`
+		SourceRef *string `json:"source_ref"`
+		SourceCommit *string `json:"source_commit"`
+		ArtifactType *string `json:"artifact_type"`
+		ArtifactReference *string `json:"artifact_reference"`
+		MinPlatformVersion *string `json:"min_platform_version"`
 		DefaultMonthlyPrice *float64 `json:"default_monthly_price"`
-		Availability        *string  `json:"availability"`
-		LatestVersion       *string  `json:"latest_version"`
+		Manifest map[string]any `json:"manifest"`
 	}
-	if common.Decode(r, &in) != nil {
-		common.APIError(w, 400, "JSON", "Invalid request")
-		return
+	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	var label,description,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+	var price float64; var manifestRaw []byte
+	if err:=a.db.QueryRow(`SELECT label,description,group_key,default_monthly_price,availability,latest_version,module_type,owner_team,source_repository,source_path,
+		source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest FROM catalog.modules WHERE module_key=$1`,key).
+		Scan(&label,&description,&groupKey,&price,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
+		common.APIError(w,404,"NOT_FOUND","Module not found");return
 	}
-	var label, description, groupKey, availability, latestVersion string
-	var price float64
-	if err := a.db.QueryRow(`SELECT label,description,group_key,default_monthly_price,availability,latest_version FROM catalog.modules WHERE module_key=$1`, key).
-		Scan(&label, &description, &groupKey, &price, &availability, &latestVersion); err != nil {
-		common.APIError(w, 404, "NOT_FOUND", "Module not found")
-		return
+	set:=func(dst *string,src *string){if src!=nil{*dst=strings.TrimSpace(*src)}}
+	set(&label,in.Label);set(&description,in.Description);set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
+	set(&repo,in.SourceRepository);set(&path,in.SourcePath);set(&ref,in.SourceRef);set(&commit,in.SourceCommit);set(&artifactType,in.ArtifactType);set(&artifactRef,in.ArtifactReference);set(&minPlatform,in.MinPlatformVersion)
+	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}
+	if label==""||price<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid module update");return}
+	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
+	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,description=$3,group_key=$4,default_monthly_price=$5,availability=$6,latest_version=$7,module_type=$8,
+		owner_team=$9,source_repository=$10,source_path=$11,source_ref=$12,source_commit=$13,artifact_type=$14,artifact_reference=$15,min_platform_version=$16,manifest=$17::jsonb,last_updated_at=NOW()
+		WHERE module_key=$1`,key,label,description,groupKey,price,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
+		common.APIError(w,409,"CONFLICT","Module could not be updated");return
 	}
-	if in.Label != nil { label = strings.TrimSpace(*in.Label) }
-	if in.Description != nil { description = strings.TrimSpace(*in.Description) }
-	if in.GroupKey != nil { groupKey = strings.TrimSpace(*in.GroupKey) }
-	if in.DefaultMonthlyPrice != nil { price = *in.DefaultMonthlyPrice }
-	if in.Availability != nil { availability = strings.TrimSpace(*in.Availability) }
-	if in.LatestVersion != nil { latestVersion = strings.TrimSpace(*in.LatestVersion) }
-	if label == "" || price < 0 || !availabilityValues[availability] {
-		common.APIError(w, 400, "VALIDATION", "Invalid module update")
-		return
+	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"group_key":groupKey,"default_monthly_price":price,"availability":availability,
+		"latest_version":latestVersion,"module_type":moduleType,"owner_team":owner,"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,
+		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform})
+}
+
+func (a *app) moduleRelationships(w http.ResponseWriter,r *http.Request,key string,tail []string){
+	if len(tail)>0 {
+		if r.Method!=http.MethodDelete{common.APIError(w,405,"METHOD","Use DELETE");return}
+		target:=tail[0]; relation:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("type")))
+		if !relationshipTypes[relation]{common.APIError(w,400,"VALIDATION","Valid relationship type is required");return}
+		if res,err:=a.db.Exec(`DELETE FROM catalog.module_relationships WHERE module_key=$1 AND target_module_key=$2 AND relation_type=$3`,key,target,relation);err!=nil{
+			common.APIError(w,500,"DB","Could not delete relationship");return
+		}else if n,_:=res.RowsAffected();n==0{common.APIError(w,404,"NOT_FOUND","Relationship not found");return}
+		w.WriteHeader(http.StatusNoContent);return
 	}
-	if _, err := a.db.Exec(`UPDATE catalog.modules SET label=$2,description=$3,group_key=$4,default_monthly_price=$5,availability=$6,latest_version=$7,last_updated_at=NOW() WHERE module_key=$1`,
-		key, label, description, groupKey, price, availability, latestVersion); err != nil {
-		common.APIError(w, 409, "CONFLICT", "Module could not be updated")
-		return
+	switch r.Method{
+	case http.MethodGet:
+		rows,err:=a.db.Query(`SELECT r.target_module_key,m.label,r.relation_type,r.note,r.updated_at FROM catalog.module_relationships r
+			JOIN catalog.modules m ON m.module_key=r.target_module_key WHERE r.module_key=$1 ORDER BY r.relation_type,m.label`,key)
+		if err!=nil{common.APIError(w,500,"DB","Could not load module relationships");return};defer rows.Close()
+		items:=[]map[string]any{};for rows.Next(){var target,label,relation,note string;var updated time.Time;if rows.Scan(&target,&label,&relation,&note,&updated)==nil{
+			items=append(items,map[string]any{"target_module_key":target,"target_label":label,"relation_type":relation,"note":note,"updated_at":updated})}}
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+	case http.MethodPost:
+		var in struct{TargetModuleKey string `json:"target_module_key"`;RelationType string `json:"relation_type"`;Note string `json:"note"`}
+		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return};in.RelationType=strings.ToUpper(strings.TrimSpace(in.RelationType))
+		if in.TargetModuleKey==""||in.TargetModuleKey==key||!relationshipTypes[in.RelationType]{common.APIError(w,400,"VALIDATION","Valid target and relationship type are required");return}
+		if _,err:=a.db.Exec(`INSERT INTO catalog.module_relationships(module_key,target_module_key,relation_type,note) VALUES($1,$2,$3,$4)
+			ON CONFLICT(module_key,target_module_key,relation_type) DO UPDATE SET note=EXCLUDED.note,updated_at=NOW()`,key,in.TargetModuleKey,in.RelationType,strings.TrimSpace(in.Note));err!=nil{
+			common.APIError(w,409,"CONFLICT","Module relationship could not be saved");return}
+		common.JSON(w,201,map[string]any{"module_key":key,"target_module_key":in.TargetModuleKey,"relation_type":in.RelationType,"note":strings.TrimSpace(in.Note)})
+	default:common.APIError(w,405,"METHOD","Use GET or POST")
 	}
-	common.JSON(w, 200, map[string]any{"key": key, "label": label, "description": description, "group_key": groupKey, "default_monthly_price": price, "availability": availability, "latest_version": latestVersion})
+}
+
+func (a *app) moduleImpactMetrics(w http.ResponseWriter,r *http.Request,key string){
+	switch r.Method{
+	case http.MethodGet:
+		rows,err:=a.db.Query(`SELECT metric_key,label FROM catalog.module_impact_metrics WHERE module_key=$1 ORDER BY metric_key`,key)
+		if err!=nil{common.APIError(w,500,"DB","Could not load module metrics");return};defer rows.Close()
+		items:=[]map[string]any{};for rows.Next(){var metric,label string;if rows.Scan(&metric,&label)==nil{items=append(items,map[string]any{"metric_key":metric,"label":label})}}
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+	case http.MethodPut:
+		var in struct{Items []struct{MetricKey string `json:"metric_key"`;Label string `json:"label"`} `json:"items"`}
+		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+		tx,err:=a.db.Begin();if err!=nil{common.APIError(w,500,"DB","Could not start metric update");return};defer tx.Rollback()
+		if _,err=tx.Exec(`DELETE FROM catalog.module_impact_metrics WHERE module_key=$1`,key);err!=nil{common.APIError(w,500,"DB","Could not reset metric mapping");return}
+		seen:=map[string]bool{};for _,item:=range in.Items{metric:=strings.TrimSpace(item.MetricKey);if metric==""||seen[metric]{continue};seen[metric]=true
+			if _,err=tx.Exec(`INSERT INTO catalog.module_impact_metrics(module_key,metric_key,label) VALUES($1,$2,$3)`,key,metric,strings.TrimSpace(item.Label));err!=nil{
+				common.APIError(w,500,"DB","Could not save metric mapping");return}}
+		if err=tx.Commit();err!=nil{common.APIError(w,500,"DB","Could not commit metric mapping");return}
+		common.JSON(w,200,map[string]any{"module_key":key,"count":len(seen)})
+	default:common.APIError(w,405,"METHOD","Use GET or PUT")
+	}
+}
+
+func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
+	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+	rows,err:=a.db.Query(`SELECT partner_id,status,visible,included_in_base,COALESCE(price_override,0),activated_at,updated_at FROM catalog.partner_modules WHERE module_key=$1 ORDER BY partner_id`,key)
+	if err!=nil{common.APIError(w,500,"DB","Could not load module usage");return};defer rows.Close()
+	items:=[]map[string]any{};counts:=map[string]int{};for rows.Next(){var partner,status string;var visible,included bool;var price float64;var activated sql.NullTime;var updated time.Time
+		if rows.Scan(&partner,&status,&visible,&included,&price,&activated,&updated)==nil{counts[status]++;var activatedAt any;if activated.Valid{activatedAt=activated.Time}
+			items=append(items,map[string]any{"partner_id":partner,"status":status,"visible":visible,"included_in_base":included,"price_override":price,"activated_at":activatedAt,"updated_at":updated})}}
+	common.JSON(w,200,map[string]any{"items":items,"count":len(items),"status_counts":counts})
 }
 
 

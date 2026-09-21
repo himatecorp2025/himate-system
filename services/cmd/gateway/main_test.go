@@ -137,9 +137,10 @@ func TestSTART19RolePermissionMatrix(t *testing.T) {
 		{"marketing_admin", "billing.read", false},
 		{"marketing_admin", "administration.read", false},
 	}
+	a := &app{}
 	for _, tc := range tests {
 		u := user{Roles: []string{tc.role}}
-		if got := hasPermission(u, tc.permission); got != tc.want {
+		if got := a.hasPermission(u, tc.permission); got != tc.want {
 			t.Fatalf("%s permission %s = %v, want %v", tc.role, tc.permission, got, tc.want)
 		}
 	}
@@ -152,9 +153,13 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		want   string
 	}{
 		{http.MethodGet, "/api/v1/dashboard/summary", "dashboard.read"},
+		{http.MethodGet, "/api/v1/notifications", "notifications.read"},
+		{http.MethodPost, "/api/v1/notifications/read-all", "notifications.read"},
+		{http.MethodPost, "/api/v1/admin/roles", "administration.approve"},
 		{http.MethodGet, "/api/v1/partners", "partners.read"},
 		{http.MethodPatch, "/api/v1/partners/ptr_1", "partners.write"},
 		{http.MethodGet, "/api/v1/partners/ptr_1/modules", "catalog.read"},
+		{http.MethodPatch, "/api/v1/module-groups/marketing", "catalog.write"},
 		{http.MethodPatch, "/api/v1/partners/ptr_1/modules/mod_1", "catalog.write"},
 		{http.MethodPut, "/api/v1/billing/partners/ptr_1/terms", "billing.write"},
 		{http.MethodPut, "/api/v1/billing/partners/ptr_1/license", "billing.approve"},
@@ -185,17 +190,18 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 }
 
 func TestSTART19NormalizeRoles(t *testing.T) {
-	roles, err := normalizeRoles([]string{"finance_admin", "finance_admin", "reporting_admin"})
+	a := &app{}
+	roles, err := a.normalizeRoles([]string{"finance_admin", "finance_admin", "reporting_admin"})
 	if err != nil {
 		t.Fatalf("unexpected normalize error: %v", err)
 	}
 	if len(roles) != 2 || roles[0] != "finance_admin" || roles[1] != "reporting_admin" {
 		t.Fatalf("unexpected normalized roles: %#v", roles)
 	}
-	if _, err := normalizeRoles([]string{"root"}); err == nil {
+	if _, err := a.normalizeRoles([]string{"root"}); err == nil {
 		t.Fatal("unknown role must be rejected")
 	}
-	if _, err := normalizeRoles(nil); err == nil {
+	if _, err := a.normalizeRoles(nil); err == nil {
 		t.Fatal("empty roles must be rejected")
 	}
 }
@@ -214,6 +220,8 @@ func TestAuditResourceClassification(t *testing.T) {
 		{"/api/v1/contact/inquiries/inq_1", "contact", ""},
 		{"/api/v1/impact/values?partner_id=ptr_900", "impact", "ptr_900"},
 		{"/api/v1/modules/demo", "catalog", ""},
+		{"/api/v1/module-groups/marketing", "catalog", ""},
+		{"/api/v1/notifications/read-all", "notifications", ""},
 	}
 	for _, tc := range tests {
 		req := httptest.NewRequest(http.MethodPost, tc.path, nil)
