@@ -80,6 +80,12 @@ HIMATE is the central control plane for separately deployed arts-sector partner 
 - legal holds and mandatory privacy deletions synchronize between Connector and routed Impact observations
 - System Health and the bilingual Flutter System & Operations area expose Connector Protocol, sync, coverage, retention and security state
 
+START-22 Connector encryption runtime configuration:
+- `HIMATE_CONNECTOR_DATA_MASTER_KEY_B64`: required production secret; standard-base64 encoding of exactly 32 random bytes.
+- `HIMATE_CONNECTOR_DATA_KEY_VERSION`: active non-secret key version label (for example `v1`).
+- `HIMATE_CONNECTOR_DATA_PREVIOUS_KEYS_JSON`: optional runtime secret JSON object mapping previous key versions to their base64 32-byte keys during controlled key rotation.
+- New records always use the active key version. Older key versions remain decryptable only while their previous keys are present. Never commit any real encryption key.
+
 ## System-owner identity and localization baseline
 - one durable `system_owner` account controls user creation/access administration
 - the owner authority is data-driven and is never hardcoded to a person's name
