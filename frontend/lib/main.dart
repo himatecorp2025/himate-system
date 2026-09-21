@@ -5921,6 +5921,8 @@ class _AdministrationPageState extends State<AdministrationPage> {
             const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
           ],
           const SizedBox(height: 28),
+          CompanySettingsPanel(api: widget.api, currentUser: widget.user),
+          const SizedBox(height: 28),
           AccessControlPanel(api: widget.api, currentUser: widget.user),
         ],
       ),
