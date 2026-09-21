@@ -81,9 +81,14 @@ The seven-year period is a HIMATE product policy for accepted START-22 data. It 
 - [x] Go vet/unit/race/build run in CI.
 - [x] Flutter analyze/browser tests/release build run in CI.
 - [x] Klavierhaus has a dedicated START-22 Connector Contract CI job.
-- [ ] HIMATE START-22 end-to-end signed batch/replay/idempotency/reconciliation/retention smoke is green.
-- [ ] Updated OpenAPI contract is verified in CI.
-- [ ] Full HIMATE START-01–22 Compose regression is green.
+- [x] HIMATE START-22 end-to-end signed batch/replay/idempotency/reconciliation/retention smoke is green.
+- [x] Updated OpenAPI contract is verified in CI.
+- [x] Full HIMATE START-01–22 Compose regression is green.
+
+## Release-gate evidence
+- HIMATE branch head before documentation closure: `3c1d33ad8f980573aa13f240fd5196efa44928fa`
+- GitHub Actions run `35625952285`: Go, Flutter and full Compose/START-01–22 regression all SUCCESS.
+- Klavierhaus dedicated `START-22 Connector Contract` job is SUCCESS on branch head `53bab1cdef7fba49e9db41ee509c940aeb7c93b6`; pre-existing legacy Klavierhaus CI failures are tracked separately from START-22.
 
 ## Evidence
 - `services/cmd/connector/start22_registry.go`
