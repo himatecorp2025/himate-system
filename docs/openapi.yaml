@@ -18,6 +18,7 @@ tags:
   - name: Partners
   - name: Modules
   - name: Billing
+  - name: Contact
   - name: Provisioning
   - name: Environments
   - name: Connector
@@ -468,6 +469,47 @@ paths:
       responses:
         "201": {description: Inquiry accepted}
         "429": {description: Rate limited}
+  /api/v1/contact/inquiries:
+    get:
+      tags: [Contact]
+      summary: List inbound website contact leads
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [ALL, NEW, IN_PROGRESS, CONTACTED, CLOSED]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+      responses:
+        "200": {description: Paginated contact leads}
+        "403": {description: Contact read permission required}
+  /api/v1/contact/inquiries/{inquiryId}:
+    get:
+      tags: [Contact]
+      summary: Read a contact lead
+      parameters:
+        - {name: inquiryId, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Contact lead}
+        "404": {description: Contact lead not found}
+    patch:
+      tags: [Contact]
+      summary: Update contact lead workflow state
+      parameters:
+        - {name: inquiryId, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lead_status: {type: string, enum: [NEW, IN_PROGRESS, CONTACTED, CLOSED]}
+                assigned_to: {type: string, maxLength: 160}
+                admin_note: {type: string, maxLength: 4000}
+      responses:
+        "200": {description: Contact lead updated}
+        "400": {description: Invalid workflow state}
+        "403": {description: Contact write permission required}
+        "404": {description: Contact lead not found}
   /api/v1/provisioning/jobs:
     get:
       tags: [Provisioning]
