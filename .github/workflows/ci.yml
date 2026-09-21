@@ -86,7 +86,7 @@ jobs:
           test -s lib/start22_connector.dart
           grep -q 'Start22ConnectorPanel' lib/start22_connector.dart
           grep -q 'connectors/start22/summary' lib/start22_connector.dart
-          grep -q 'HIMATE 7-Year Retention' lib/start22_connector.dart
+          grep -q 'HIMATE 7 years' lib/start22_connector.dart
           if grep -q 'himateLogoBase64\|himateLogoBytes\|Image.memory(' lib/main.dart lib/brand_assets.dart; then
             echo "Flutter still contains embedded legacy logo bytes"
             exit 1
