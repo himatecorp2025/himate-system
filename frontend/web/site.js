@@ -87,7 +87,11 @@
     'Better operations':'Jobb működés','Greater impact':'Nagyobb hatás','Stronger communities':'Erősebb közösségek',
     'Bring program activity, operational context and future impact evidence into one connected environment. Designed to support artists, institutions and cultural communities with clarity.':'Kapcsold össze a programtevékenységet, a működési kontextust és a jövőbeli hatás bizonyítékait egyetlen környezetben. Művészek, intézmények és kulturális közösségek világos támogatására tervezve.',
     'POWERFUL TOGETHER':'EGYÜTT ERŐSEK','Open navigation':'Navigáció megnyitása','Close navigation':'Navigáció bezárása',
-    'A smarter future for arts & culture':'Intelligensebb jövő a művészet és kultúra számára'
+    'A smarter future for arts & culture':'Intelligensebb jövő a művészet és kultúra számára',
+    'BUILT TO SCALE':'NÖVEKEDÉSRE TERVEZVE','Cultural stewardship':'Kulturális gondoskodás','HIMATE System — Culture Fuels Tomorrow':'HIMATE System — A kultúra táplálja a holnapot',
+    'IMPACT':'HATÁS','meets':'találkozik','MODULES FOR':'MODULOK','PEOPLE':'EMBEREK','PROGRAMS':'PROGRAMOK',
+    'Unite people, data and opportunity in one refined control plane. HIMATE brings governance, partner operations, modules, commercial rules and infrastructure together without sacrificing partner separation.':'Kapcsold össze az embereket, adatokat és lehetőségeket egy kifinomult vezérlőplatformon. A HIMATE egyesíti az irányítást, partnerműködést, modulokat, kereskedelmi szabályokat és infrastruktúrát a partnerek elkülönítésének megőrzésével.',
+    'Verified data':'Ellenőrzött adatok'
   };
 
   const tPublic = (value) => publicLocale === 'hu_HU' ? (publicHu[value] || value) : value;
