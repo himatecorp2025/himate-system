@@ -17,6 +17,23 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
 
   bool get canManage => widget.currentUser['system_owner'] == true;
 
+  static const permissionCatalog = <String>[
+    'dashboard.read',
+    'partners.read','partners.write','partners.approve',
+    'catalog.read','catalog.write','catalog.approve',
+    'billing.read','billing.write','billing.approve',
+    'impact.read','impact.write','impact.approve',
+    'evidence.read','evidence.write','evidence.approve',
+    'reports.read','reports.write','reports.approve',
+    'cms.read','cms.write','cms.approve',
+    'contact.read','contact.write',
+    'provisioning.read','provisioning.write','provisioning.approve',
+    'environments.read','environments.write','environments.approve',
+    'connectors.read','connectors.write','connectors.approve',
+    'backups.read','backups.write','backups.approve',
+    'health.read','notifications.read','audit.read','administration.read',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -93,13 +110,23 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
 
   Widget _roleCard(Map<String, dynamic> role) {
     final permissions = _roleKeys(role['permissions']);
+    final system = role['system'] == true;
+    final active = role['active'] != false;
     return _InfoCard(
       title: '${role['label'] ?? _humanize('${role['key']}')}',
       icon: '${role['key']}' == 'platform_admin' ? Icons.shield_outlined : Icons.badge_outlined,
       children: [
-        LText(
-          '${role['description'] ?? ''}',
-          style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+        Row(
+          children: [
+            Expanded(
+              child: LText(
+                '${role['description'] ?? ''}',
+                style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _StatusPill(label: system ? 'SYSTEM' : (active ? 'CUSTOM' : 'INACTIVE')),
+          ],
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -107,6 +134,17 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
           runSpacing: 6,
           children: [for (final permission in permissions) _permissionChip(permission)],
         ),
+        if (!system) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => editRole(role),
+              icon: const Icon(Icons.tune_rounded),
+              label: const LText('Edit role'),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -259,7 +297,8 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
               ),
               const SizedBox(height: 8),
               for (final role in roles.where((role) =>
-                  '${role['key']}' != 'platform_admin' || editingSystemOwner))
+                  role['active'] != false &&
+                  ('${role['key']}' != 'platform_admin' || editingSystemOwner)))
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
@@ -337,6 +376,295 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
     email.dispose();
     password.dispose();
     return result;
+  }
+
+  Future<Map<String, dynamic>?> _roleDialog({Map<String, dynamic>? role}) async {
+    final editing = role != null;
+    final key = TextEditingController(text: editing ? '${role['key'] ?? ''}' : '');
+    final label = TextEditingController(text: editing ? '${role['label'] ?? ''}' : '');
+    final description = TextEditingController(text: editing ? '${role['description'] ?? ''}' : '');
+    final selected = <String>{..._roleKeys(role?['permissions'])};
+    var active = editing ? role['active'] != false : true;
+    String? dialogError;
+
+    final result = await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: editing ? 'Edit custom role' : 'Create custom role',
+          subtitle: 'Custom roles are additive and remain subordinate to the protected System Owner boundary.',
+          icon: Icons.rule_folder_outlined,
+          width: 820,
+          primaryLabel: editing ? 'Save role' : 'Create role',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ResponsiveFieldPair(
+                first: TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Role name *'))),
+                second: TextField(controller: key, readOnly: editing, decoration: InputDecoration(labelText: uiLiteral('Stable role key *'), hintText: uiLiteral('finance_assistant'))),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: description, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Description'))),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('PERMISSION MATRIX'),
+              const SizedBox(height: 8),
+              const LText(
+                'Read, write and approval permissions are enforced by the backend. administration.approve and System Owner authority cannot be delegated through a custom role.',
+                style: TextStyle(color: brandTextSoft, fontSize: 10, height: 1.45),
+              ),
+              const SizedBox(height: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final permission in permissionCatalog)
+                        FilterChip(
+                          selected: selected.contains(permission),
+                          label: LText(permission),
+                          onSelected: (value) => setLocal(() {
+                            if (value) { selected.add(permission); } else { selected.remove(permission); }
+                            dialogError = null;
+                          }),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              if (editing) ...[
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: active,
+                  title: const LText('Active role', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700)),
+                  subtitle: const LText('Deactivate only after the role is removed from all administrators.', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  onChanged: (value) => setLocal(() => active = value),
+                ),
+              ],
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                LText(dialogError!, style: const TextStyle(color: brandDanger, fontSize: 10.5, fontWeight: FontWeight.w600)),
+              ],
+            ],
+          ),
+          onPrimary: () {
+            final cleanKey = key.text.trim().toLowerCase();
+            final cleanLabel = label.text.trim();
+            String? validation;
+            if (cleanLabel.length < 2) {
+              validation = 'Enter a role name.';
+            } else if (!editing && !RegExp(r'^[a-z][a-z0-9_]{2,63}    final id = '${updated['id']}';
+    final next = <Map<String, dynamic>>[
+      for (final user in users)
+        if ('${user['id']}' == id) updated else user,
+    ];
+    next.sort((a, b) {
+      final activeA = a['active'] == true ? 0 : 1;
+      final activeB = b['active'] == true ? 0 : 1;
+      if (activeA != activeB) return activeA.compareTo(activeB);
+      return '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase());
+    });
+    setState(() => users = next);
+  }
+
+  Future<void> createUser() async {
+    final payload = await _userDialog();
+    if (payload == null) return;
+    try {
+      final created = await widget.api.post('/api/v1/admin/users', payload);
+      if (!mounted) return;
+      setState(() {
+        users = <Map<String, dynamic>>[created, ...users];
+      });
+      notify('Administrator created.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  Future<void> editUser(Map<String, dynamic> user) async {
+    final payload = await _userDialog(user: user);
+    if (payload == null) return;
+    try {
+      final updated = await widget.api.patch('/api/v1/admin/users/${user['id']}', payload);
+      if (!mounted) return;
+      _replaceUser(updated);
+      notify('Administrator access updated.');
+      if ('${user['id']}' == '${widget.currentUser['id']}') {
+        notify('Your own permissions are now enforced immediately. Reload the page to refresh navigation if your roles changed.');
+      }
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!canManage) {
+      return const _MessageCard(
+        icon: Icons.lock_outline_rounded,
+        title: 'Platform Admin access required',
+        message: 'Role assignment and administrator lifecycle are protected by backend Administration permissions.',
+      );
+    }
+    if (loading && roles.isEmpty && users.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (error != null && roles.isEmpty && users.isEmpty) {
+      return _MessageCard(
+        icon: Icons.error_outline_rounded,
+        title: 'Roles & Permissions could not be loaded',
+        message: error!,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          title: 'Roles & Permissions',
+          subtitle: 'Backend-enforced RBAC. Read, write and approval rights are checked before each protected administration API request.',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _MiniCounter(label: '${users.length} admins'),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: createRole,
+                icon: const Icon(Icons.rule_folder_outlined),
+                label: const LText('Create role'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: roles.isEmpty ? null : createUser,
+                icon: const Icon(Icons.person_add_alt_1_rounded),
+                label: const LText('Add administrator'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        const _RuleStrip(items: [
+          _RuleItem(Icons.admin_panel_settings_outlined, 'Platform', 'Full control'),
+          _RuleItem(Icons.settings_suggest_outlined, 'Operations', 'Technical operations'),
+          _RuleItem(Icons.account_balance_wallet_outlined, 'Finance', 'Commercial control'),
+          _RuleItem(Icons.rule_folder_outlined, 'Custom roles', 'Permission matrix'),
+        ]),
+        const SizedBox(height: 18),
+        _SectionHeader(
+          title: 'Role Matrix',
+          subtitle: 'Roles are additive. Approval permissions protect sensitive actions such as publishing, verification and provisioning execution.',
+          trailing: _MiniCounter(label: '${roles.length} roles'),
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth < 760
+                ? constraints.maxWidth
+                : constraints.maxWidth < 1180
+                    ? (constraints.maxWidth - 12) / 2
+                    : (constraints.maxWidth - 36) / 4;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final role in roles) SizedBox(width: width, child: _roleCard(role)),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 24),
+        _SectionHeader(
+          title: 'Administrators',
+          subtitle: 'Accounts are never hard-deleted from administration. Suspend access to preserve audit identity and historical attribution.',
+          trailing: _MiniCounter(label: '${users.where((u) => u['active'] == true).length} active'),
+        ),
+        const SizedBox(height: 10),
+        if (users.isEmpty)
+          const _MessageCard(
+            icon: Icons.person_off_outlined,
+            title: 'No administrators found',
+            message: 'Create an administrator to assign a scoped HIMATE role.',
+          )
+        else
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 760
+                  ? constraints.maxWidth
+                  : constraints.maxWidth < 1180
+                      ? (constraints.maxWidth - 12) / 2
+                      : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final user in users) SizedBox(width: width, child: _userCard(user)),
+                ],
+              );
+            },
+          ),
+        if (loading) ...[
+          const SizedBox(height: 12),
+          const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+        ],
+      ],
+    );
+  }
+}
+).hasMatch(cleanKey)) {
+              validation = 'Use a stable key such as finance_assistant.';
+            } else if (selected.isEmpty) {
+              validation = 'Select at least one permission.';
+            }
+            if (validation != null) {
+              setLocal(() => dialogError = validation);
+              return;
+            }
+            Navigator.pop(dialogContext, <String, dynamic>{
+              if (!editing) 'key': cleanKey,
+              'label': cleanLabel,
+              'description': description.text.trim(),
+              'permissions': selected.toList()..sort(),
+              if (editing) 'active': active,
+            });
+          },
+        ),
+      ),
+    );
+
+    key.dispose();
+    label.dispose();
+    description.dispose();
+    return result;
+  }
+
+  Future<void> createRole() async {
+    final payload = await _roleDialog();
+    if (payload == null) return;
+    try {
+      await widget.api.post('/api/v1/admin/roles', payload);
+      await load();
+      if (mounted) notify('Custom role created.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  Future<void> editRole(Map<String, dynamic> role) async {
+    final payload = await _roleDialog(role: role);
+    if (payload == null) return;
+    try {
+      await widget.api.patch('/api/v1/admin/roles/${role['key']}', payload);
+      await load();
+      if (mounted) notify('Custom role updated.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
   }
 
   void _replaceUser(Map<String, dynamic> updated) {
