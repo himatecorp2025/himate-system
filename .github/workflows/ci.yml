@@ -220,10 +220,16 @@ jobs:
           # Preserve the historical smoke itself and add only its modern commercial prerequisites.
           docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 <<'SQL'
           INSERT INTO billing.commercial_agreements(partner_id,status,agreement_reference,note,agreed_at,agreed_by)
-          VALUES('ptr_000002','AGREED','ci://historical/start01-08-contract','START-22.3 historical fixture',NOW(),'ci-fixture')
+          VALUES
+            ('ptr_000002','AGREED','ci://historical/start01-08-contract','START-22.3 historical fixture',NOW(),'ci-fixture'),
+            ('ptr_000003','AGREED','ci://historical/start09-contract','START-22.3 historical fixture',NOW(),'ci-fixture'),
+            ('ptr_000004','AGREED','ci://historical/start09-isolation-contract','START-22.3 historical fixture',NOW(),'ci-fixture')
           ON CONFLICT(partner_id) DO UPDATE SET status='AGREED',agreement_reference=EXCLUDED.agreement_reference,agreed_at=EXCLUDED.agreed_at,agreed_by=EXCLUDED.agreed_by;
           INSERT INTO billing.documents(partner_id,kind,name,storage_url,note,uploaded_by)
-          VALUES('ptr_000002','INVOICE','Historical activation invoice','ci://historical/start01-08-invoice','START-22.3 historical fixture','ci-fixture');
+          VALUES
+            ('ptr_000002','INVOICE','Historical activation invoice','ci://historical/start01-08-invoice','START-22.3 historical fixture','ci-fixture'),
+            ('ptr_000003','INVOICE','Historical START-09 activation invoice','ci://historical/start09-invoice','START-22.3 historical fixture','ci-fixture'),
+            ('ptr_000004','INVOICE','Historical START-09 isolation activation invoice','ci://historical/start09-isolation-invoice','START-22.3 historical fixture','ci-fixture');
           SQL
           sh scripts/smoke_backend.sh http://127.0.0.1:8080
       - name: Run START-09-13 integration smoke
