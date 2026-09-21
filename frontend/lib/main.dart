@@ -2285,6 +2285,8 @@ class _PartnersPageState extends State<PartnersPage> {
     final baseMonthlyFee = TextEditingController(text: '250');
     final paidAmount = TextEditingController(text: '0');
     final paymentReference = TextEditingController();
+    final agreementReference = TextEditingController();
+    final activationInvoiceReference = TextEditingController();
     final evidenceName = TextEditingController(text: 'Initial license payment evidence');
     final evidenceReference = TextEditingController();
     final systemName = TextEditingController();
@@ -2353,18 +2355,30 @@ class _PartnersPageState extends State<PartnersPage> {
                         second: TextField(controller: baseMonthlyFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Base monthly fee · USD'))),
                       ),
                       const SizedBox(height: 12),
+                      TextField(
+                        controller: agreementReference,
+                        decoration: InputDecoration(labelText: uiLiteral('Commercial agreement reference *'), hintText: uiLiteral('Signed contract / agreement reference')),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: activationInvoiceReference,
+                        decoration: InputDecoration(labelText: uiLiteral('Activation-fee invoice reference *'), hintText: uiLiteral('Persistent invoice URL / document reference')),
+                      ),
+                      const SizedBox(height: 12),
                       ResponsiveFieldPair(
                         first: TextField(controller: paidAmount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Verified paid amount · USD'))),
                         second: TextField(controller: paymentReference, decoration: InputDecoration(labelText: uiLiteral('Payment reference'))),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: evidenceName, decoration: InputDecoration(labelText: uiLiteral('Evidence name'))),
-                        second: TextField(controller: evidenceReference, decoration: InputDecoration(labelText: uiLiteral('Persistent evidence reference / URL'))),
+                        first: TextField(controller: evidenceName, decoration: InputDecoration(labelText: uiLiteral('Payment evidence name'))),
+                        second: TextField(controller: evidenceReference, decoration: InputDecoration(labelText: uiLiteral('Payment evidence reference / URL'))),
                       ),
                       const SizedBox(height: 10),
                       const _RuleStrip(items: [
-                        _RuleItem(Icons.lock_clock_outlined, 'Provisioning gate', 'Provisioning starts only after the license is PAID and persistent evidence exists.'),
+                        _RuleItem(Icons.handshake_outlined, 'Agreement', 'Explicit commercial agreement is required'),
+                        _RuleItem(Icons.receipt_long_outlined, 'Activation invoice', 'Persistent invoice reference is recorded'),
+                        _RuleItem(Icons.lock_clock_outlined, 'Provisioning gate', 'Agreement + PAID license + evidence are required'),
                       ]),
                     ],
                   ),
@@ -2423,9 +2437,10 @@ class _PartnersPageState extends State<PartnersPage> {
           ),
           primaryLabel: 'Create & validate provisioning',
           onPrimary: () {
-            if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty) {
+            if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty ||
+                agreementReference.text.trim().isEmpty || activationInvoiceReference.text.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('Display name and administrator email are required.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(content: LText('Display name, administrator email, commercial agreement and activation invoice reference are required.'), behavior: SnackBarBehavior.floating),
               );
               return;
             }
@@ -2464,6 +2479,20 @@ class _PartnersPageState extends State<PartnersPage> {
           'service_anchor_date': today,
           'reason': 'New Partner provisioning wizard',
         });
+        await widget.api.put('/api/v1/billing/partners/$partnerId/agreement', {
+          'status': 'AGREED',
+          'agreement_reference': agreementReference.text.trim(),
+          'note': 'Confirmed during New Partner provisioning wizard',
+        });
+        await widget.api.post('/api/v1/billing/partners/$partnerId/documents', {
+          'kind': 'INVOICE',
+          'name': 'Activation fee invoice',
+          'storage_url': activationInvoiceReference.text.trim(),
+          'note': 'Activation-fee invoice registered during New Partner provisioning wizard',
+          'mime_type': 'application/octet-stream',
+          'sha256': '',
+          'size_bytes': 0,
+        });
 
         await widget.api.patch('/api/v1/partners/$partnerId', {
           'lifecycle': 'LICENSE_PENDING',
@@ -2499,6 +2528,8 @@ class _PartnersPageState extends State<PartnersPage> {
 
         final readyForProvisioning = paid >= fee &&
             fee > 0 &&
+            agreementReference.text.trim().isNotEmpty &&
+            activationInvoiceReference.text.trim().isNotEmpty &&
             paymentReference.text.trim().isNotEmpty &&
             evidenceReference.text.trim().isNotEmpty;
 
@@ -2545,8 +2576,8 @@ class _PartnersPageState extends State<PartnersPage> {
 
     for (final controller in [
       displayName, legalName, contactName, contactEmail, primaryDomain, country,
-      activationFee, baseMonthlyFee, paidAmount, paymentReference, evidenceName,
-      evidenceReference, systemName, release,
+      activationFee, baseMonthlyFee, paidAmount, paymentReference, agreementReference,
+      activationInvoiceReference, evidenceName, evidenceReference, systemName, release,
     ]) {
       controller.dispose();
     }
