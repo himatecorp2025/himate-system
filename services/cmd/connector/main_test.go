@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"testing"
 )
 
@@ -133,5 +135,76 @@ func TestStart22MetricClassification(t *testing.T) {
 		if got := start22MetricUnit(field); got != want {
 			t.Fatalf("%s => %s, want %s", field, got, want)
 		}
+	}
+}
+
+
+func TestStart22AES256GCMEnvelopeEncryption(t *testing.T) {
+	keyV1 := []byte("0123456789abcdef0123456789abcdef")
+	keyV2 := []byte("abcdef0123456789abcdef0123456789")
+	ringV1 := start22Keyring{
+		ActiveVersion: "v1",
+		Keys: map[string][]byte{"v1": keyV1},
+	}
+	data := map[string]any{
+		"active_user_count": 4.0,
+		"admin_count": 1.0,
+	}
+	plaintext := start22CanonicalJSON(data)
+	aad := start22RecordAAD("ptr_test", "STAGING", "operations.users", "users-test-0001")
+	envelope, err := ringV1.Encrypt(plaintext, aad)
+	if err != nil {
+		t.Fatalf("encrypt failed: %v", err)
+	}
+	if envelope.KeyVersion != "v1" {
+		t.Fatalf("unexpected key version: %s", envelope.KeyVersion)
+	}
+	if len(envelope.Ciphertext) <= len(plaintext) {
+		t.Fatal("AES-GCM ciphertext should include authentication tag")
+	}
+	if bytes.Contains(envelope.Ciphertext, []byte("active_user_count")) {
+		t.Fatal("ciphertext must not expose plaintext field names")
+	}
+	decrypted, err := ringV1.Decrypt(envelope, aad)
+	if err != nil {
+		t.Fatalf("decrypt failed: %v", err)
+	}
+	if !bytes.Equal(decrypted, plaintext) {
+		t.Fatalf("round trip mismatch: %s != %s", decrypted, plaintext)
+	}
+
+	if _, err := ringV1.Decrypt(envelope, start22RecordAAD("ptr_other", "STAGING", "operations.users", "users-test-0001")); err == nil {
+		t.Fatal("AAD must bind encrypted data to partner/environment/dataset/idempotency identity")
+	}
+
+	tampered := envelope
+	tampered.Ciphertext = append([]byte(nil), envelope.Ciphertext...)
+	tampered.Ciphertext[0] ^= 0x01
+	if _, err := ringV1.Decrypt(tampered, aad); err == nil {
+		t.Fatal("tampered ciphertext must fail AES-GCM authentication")
+	}
+
+	ringV2 := start22Keyring{
+		ActiveVersion: "v2",
+		Keys: map[string][]byte{"v1": keyV1, "v2": keyV2},
+	}
+	if _, err := ringV2.Decrypt(envelope, aad); err != nil {
+		t.Fatalf("versioned keyring must decrypt retained records after rotation: %v", err)
+	}
+	newEnvelope, err := ringV2.Encrypt(plaintext, aad)
+	if err != nil || newEnvelope.KeyVersion != "v2" {
+		t.Fatalf("new writes must use active rotated key: %+v err=%v", newEnvelope, err)
+	}
+}
+
+func TestStart22AES256MasterKeyValidation(t *testing.T) {
+	valid := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	key, err := start22DecodeAES256Key(valid)
+	if err != nil || len(key) != 32 {
+		t.Fatalf("valid AES-256 key rejected: len=%d err=%v", len(key), err)
+	}
+	invalid := base64.StdEncoding.EncodeToString([]byte("too-short"))
+	if _, err := start22DecodeAES256Key(invalid); err == nil {
+		t.Fatal("non-256-bit connector encryption key must be rejected")
 	}
 }
