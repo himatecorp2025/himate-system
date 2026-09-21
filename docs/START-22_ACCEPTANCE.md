@@ -92,9 +92,11 @@ The seven-year period is a HIMATE product policy for accepted START-22 data. It 
 - [x] Full HIMATE START-01–22 Compose regression is green.
 
 ## Release-gate evidence
-- HIMATE branch head before documentation closure: `3c1d33ad8f980573aa13f240fd5196efa44928fa`
-- GitHub Actions run `35625952285`: Go, Flutter and full Compose/START-01–22 regression all SUCCESS.
-- Klavierhaus dedicated `START-22 Connector Contract` job is SUCCESS on branch head `53bab1cdef7fba49e9db41ee509c940aeb7c93b6`; pre-existing legacy Klavierhaus CI failures are tracked separately from START-22.
+- Final encrypted-at-rest code candidate: `1f84c79cd2cba2242a1b9eb79bad4497556fc95c`.
+- GitHub Actions run `35631290302`: Go, Flutter and full Docker Compose/START-01–22 regression all SUCCESS.
+- The START-22 smoke in that run proves signed ingestion, replay rejection, idempotency, reconciliation, HIMATE_7Y retention, legal-hold/privacy-delete propagation, AES-256-GCM ciphertext-only PostgreSQL storage and service-boundary decryption.
+- Render Blueprint validation and Docker Compose topology validation both pass with the Connector encryption secret binding.
+- Klavierhaus dedicated `START-22 Connector Contract` job is SUCCESS; its pre-existing legacy failures are documented separately and are unchanged from the pre-START-22 develop baseline.
 
 ## Evidence
 - `services/cmd/connector/start22_registry.go`
