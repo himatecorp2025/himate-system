@@ -215,7 +215,17 @@ jobs:
           docker compose logs --no-color
           exit 1
       - name: Run START-01-08 backend smoke
-        run: sh scripts/smoke_backend.sh http://127.0.0.1:8080
+        run: |
+          # START-01–08 predates the explicit START-22.3 agreement/invoice gate.
+          # Preserve the historical smoke itself and add only its modern commercial prerequisites.
+          docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO billing.commercial_agreements(partner_id,status,agreement_reference,note,agreed_at,agreed_by)
+          VALUES('ptr_000002','AGREED','ci://historical/start01-08-contract','START-22.3 historical fixture',NOW(),'ci-fixture')
+          ON CONFLICT(partner_id) DO UPDATE SET status='AGREED',agreement_reference=EXCLUDED.agreement_reference,agreed_at=EXCLUDED.agreed_at,agreed_by=EXCLUDED.agreed_by;
+          INSERT INTO billing.documents(partner_id,kind,name,storage_url,note,uploaded_by)
+          VALUES('ptr_000002','INVOICE','Historical activation invoice','ci://historical/start01-08-invoice','START-22.3 historical fixture','ci-fixture');
+          SQL
+          sh scripts/smoke_backend.sh http://127.0.0.1:8080
       - name: Run START-09-13 integration smoke
         run: sh scripts/smoke_start_09_13.sh http://127.0.0.1:8080
       - name: Run START-14-15 integration smoke
