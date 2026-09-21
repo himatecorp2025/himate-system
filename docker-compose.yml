@@ -199,11 +199,14 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
+      NOTIFICATIONS_HOSTPORT: notifications:10000
       PARTNERS_HOSTPORT: partners:10000
     depends_on:
       postgres:
         condition: service_healthy
       runtime:
+        condition: service_started
+      notifications:
         condition: service_started
       partners:
         condition: service_started
@@ -254,6 +257,17 @@ services:
         condition: service_started
       storage:
         condition: service_started
+
+  notifications:
+    build:
+      context: .
+      dockerfile: services/docker/notifications.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   health:
     build:
@@ -306,6 +320,8 @@ services:
       backups:
         condition: service_started
       runtime:
+        condition: service_started
+      notifications:
         condition: service_started
 
   gateway:
@@ -372,6 +388,8 @@ services:
       backups:
         condition: service_started
       runtime:
+        condition: service_started
+      notifications:
         condition: service_started
 
 volumes:
