@@ -819,23 +819,45 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 
 		if err == sql.ErrNoRows {
 			activation = moduleActivationDate(mod, today)
-			start, end := cycleWindow(activation, today)
-			_, snapshotPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, start, end, catalogPrice, included)
-			if snapErr != nil { return fmt.Errorf("create subscription snapshot %s/%s: %w", id, key, snapErr) }
+			start := dateOnly(activation)
+			end := start.AddDate(0, 0, 30)
+			var snapshotPrice float64
+			firstPeriod := true
+			for {
+				_, price, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, start, end, catalogPrice, included)
+				if snapErr != nil { return fmt.Errorf("create subscription snapshot %s/%s: %w", id, key, snapErr) }
+				snapshotPrice = price
+				if firstPeriod {
+					if err := a.emitBillingEvent(ctx,
+						fmt.Sprintf("MODULE_ACTIVATED:%s:%s:%s", id, key, dateOnly(activation).Format("2006-01-02")),
+						id, key, "MODULE_ACTIVATED", activation, map[string]any{
+							"activation_date": dateOnly(activation).Format("2006-01-02"),
+							"period_start": start.Format("2006-01-02"),
+							"period_end_exclusive": end.Format("2006-01-02"),
+							"price_snapshot": snapshotPrice,
+						}); err != nil { return err }
+					firstPeriod = false
+				}
+				if today.Before(end) {
+					break
+				}
+				if err := a.closeModulePeriod(ctx, id, key, start, end, false); err != nil { return err }
+				nextStart := end
+				nextEnd := nextStart.AddDate(0, 0, 30)
+				_, nextPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, nextStart, nextEnd, catalogPrice, included)
+				if snapErr != nil { return fmt.Errorf("backfill renewal snapshot %s/%s: %w", id, key, snapErr) }
+				if err := a.markModuleRenewed(ctx, id, key, nextStart, nextEnd, nextPrice); err != nil { return err }
+				start, end, snapshotPrice = nextStart, nextEnd, nextPrice
+				if today.Before(end) {
+					break
+				}
+			}
 			if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(
 					partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
 				) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING')`,
 				id, key, currency, activation, start, end, snapshotPrice); err != nil {
 				return err
 			}
-			if err := a.emitBillingEvent(ctx,
-				fmt.Sprintf("MODULE_ACTIVATED:%s:%s:%s", id, key, dateOnly(activation).Format("2006-01-02")),
-				id, key, "MODULE_ACTIVATED", activation, map[string]any{
-					"activation_date": dateOnly(activation).Format("2006-01-02"),
-					"period_start": start.Format("2006-01-02"),
-					"period_end_exclusive": end.Format("2006-01-02"),
-					"price_snapshot": snapshotPrice,
-				}); err != nil { return err }
 			continue
 		}
 		if err != nil { return err }
