@@ -266,6 +266,9 @@ func (a *app) environmentByID(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w,400,"VALIDATION","Production hostname must be a public DNS hostname"); return
 		}
 		if next!=e.Hostname {
+			if e.Kind=="PRODUCTION" && e.EnvironmentStatus=="LIVE" {
+				common.APIError(w,409,"LIVE_DOMAIN_LOCK","Suspend or move production out of LIVE before changing its hostname"); return
+			}
 			e.Hostname=next
 			e.DNSStatus="UNKNOWN";e.TLSStatus="UNKNOWN";e.DomainStatus="UNVERIFIED";e.DomainError=""
 			e.LastDomainCheck=sql.NullTime{}
@@ -351,7 +354,7 @@ func (a *app) verifyDomain(w http.ResponseWriter,r *http.Request,id string){
 	e=a.checkDomain(r.Context(),e)
 	if err:=a.persistDomainState(e);err!=nil { common.APIError(w,500,"DB","Could not persist domain verification");return }
 	e,_=a.get(id)
-	if e.Kind=="PRODUCTION" && len(launchReadiness(e))==0 {
+	if e.Kind=="PRODUCTION" && e.EnvironmentStatus!="LIVE" && len(launchReadiness(e))==0 {
 		actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 		if err:=a.transitionPartnerLifecycle(r.Context(),e.PartnerID,"READY_FOR_LAUNCH",actor,"Production DNS and TLS verification completed all launch gates");err!=nil {
 			common.JSON(w,http.StatusConflict,map[string]any{"error":"PARTNER_LIFECYCLE","message":err.Error(),"environment":mapEnvironment(e)})
@@ -364,6 +367,7 @@ func (a *app) verifyDomain(w http.ResponseWriter,r *http.Request,id string){
 }
 
 func (a *app) deployRecord(ctx context.Context,e environment,release,actor string)(environment,error){
+	wasLive:=e.Kind=="PRODUCTION" && e.EnvironmentStatus=="LIVE"
 	release=strings.TrimSpace(release)
 	if release==""{release=e.DesiredRelease}
 	if release==""{release=e.PlatformVersion}
@@ -374,17 +378,21 @@ func (a *app) deployRecord(ctx context.Context,e environment,release,actor strin
 		"partner_id":e.PartnerID,"environment":e.Kind,"hostname":e.Hostname,"release":release,"config":common.JSONRawOrEmpty(e.ConfigJSON),
 	},&out)
 	if err!=nil {
-		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='FAILED',environment_status='FAILED',runtime_status='ERROR',runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,latency)
+		failureStatus:="FAILED"
+		if wasLive { failureStatus="LIVE" }
+		_,_ = a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='FAILED',environment_status=$2,runtime_status='ERROR',runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,failureStatus,latency)
 		failed,_:=a.get(e.ID)
 		return failed,err
 	}
 	nextStatus:="READY"
-	if e.Kind=="PRODUCTION" { nextStatus="CONFIGURATION_REQUIRED" }
+	if e.Kind=="PRODUCTION" {
+		if wasLive { nextStatus="LIVE" } else { nextStatus="CONFIGURATION_REQUIRED" }
+	}
 	_,err=a.db.Exec(`UPDATE environments.partner_environments SET deployment_status='DEPLOYED',environment_status=$2,active_release=$3,runtime_status='OK',runtime_latency_ms=$4,last_health_check=NOW(),updated_at=NOW() WHERE id=$1`,e.ID,nextStatus,release,latency)
 	if err!=nil{return e,err}
 	e,err=a.get(e.ID)
 	if err!=nil{return e,err}
-	if e.Kind=="PRODUCTION" {
+	if e.Kind=="PRODUCTION" && !wasLive {
 		if err:=a.transitionPartnerLifecycle(ctx,e.PartnerID,"TESTING",actor,"Production deployment completed; launch testing started");err!=nil {
 			return e,fmt.Errorf("partner lifecycle TESTING: %w",err)
 		}
