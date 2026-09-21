@@ -3571,17 +3571,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     if (ok == true) {
       final requiredAmount = double.tryParse(activation.text) ?? 0;
       final paidAmount = double.tryParse(paid.text) ?? 0;
-      final hasLicenseEvidence = documents.any((d) {
+      final hasPaymentEvidence = documents.any((d) {
         final kind = '${d['kind'] ?? ''}'.toUpperCase();
         final storageReference = '${d['storage_url'] ?? ''}'.trim();
-        final evidenceKind = kind == 'PAYMENT_EVIDENCE' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'CONTRACT';
-        return evidenceKind && storageReference.isNotEmpty;
+        return (kind == 'PAYMENT_EVIDENCE' || kind == 'RECEIPT') && storageReference.isNotEmpty;
       });
-      if (!waived && requiredAmount > 0 && paidAmount >= requiredAmount && !hasLicenseEvidence) {
+      if (!waived && requiredAmount > 0 && paidAmount >= requiredAmount && !hasPaymentEvidence) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: LText('Register the license invoice, receipt, contract, or payment evidence before marking the license paid.'),
+              content: LText('Register payment evidence or a receipt before marking the activation license paid.'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: brandWarning,
             ),
