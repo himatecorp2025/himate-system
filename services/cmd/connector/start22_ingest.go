@@ -255,7 +255,7 @@ func start22ValidateItem(item *start22DataItem) (start22DatasetDefinition, time.
 			return start22DatasetDefinition{}, time.Time{}, time.Time{}, fmt.Errorf("field %s is not allowed for dataset %s", key, item.DatasetKey)
 		}
 		lower := strings.ToLower(key)
-		for _, forbidden := range []string{"password", "secret", "token", "session", "stripe", "card_number", "cvv"} {
+		for _, forbidden := range []string{"password", "secret", "token", "stripe", "card_number", "cvv"} {
 			if strings.Contains(lower, forbidden) {
 				return start22DatasetDefinition{}, time.Time{}, time.Time{}, fmt.Errorf("field %s is prohibited", key)
 			}
