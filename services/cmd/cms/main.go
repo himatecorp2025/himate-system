@@ -78,7 +78,6 @@ type navigationItem struct {
 	Visible bool `json:"visible"`
 	SortOrder int `json:"sort_order"`
 }
-
 type siteDesign struct {
 	LogoMediaAssetID string `json:"logo_media_asset_id"`
 	Navy string `json:"navy"`
@@ -313,12 +312,7 @@ func (a *app)mapPage(p pageRow)map[string]any{
 // Placeholder only prevents accidental use of a package-level state helper.
 // Page state is calculated through app.mapPage because it requires DB version numbers.
 func aVersionNumberPlaceholder()(int,error){return 0,fmt.Errorf("not used")}
-
-func normalizeLocale(value string) string {
-	value=strings.TrimSpace(value)
-	if value=="hu_HU"{return "hu_HU"}
-	return "en_US"
-}
+func normalizeLocale(value string)string{if strings.TrimSpace(value)=="hu_HU"{return "hu_HU"};return "en_US"}
 
 func normalizedInput(in versionInput)versionInput{
 	in.Slug=strings.ToLower(strings.Trim(strings.TrimSpace(in.Slug),"/"))
@@ -507,7 +501,6 @@ type navigationItem struct {
 	Visible bool `json:"visible"`
 	SortOrder int `json:"sort_order"`
 }
-
 type siteDesign struct {
 	LogoMediaAssetID string `json:"logo_media_asset_id"`
 	Navy string `json:"navy"`
@@ -742,12 +735,7 @@ func (a *app)mapPage(p pageRow)map[string]any{
 // Placeholder only prevents accidental use of a package-level state helper.
 // Page state is calculated through app.mapPage because it requires DB version numbers.
 func aVersionNumberPlaceholder()(int,error){return 0,fmt.Errorf("not used")}
-
-func normalizeLocale(value string) string {
-	value=strings.TrimSpace(value)
-	if value=="hu_HU"{return "hu_HU"}
-	return "en_US"
-}
+func normalizeLocale(value string)string{if strings.TrimSpace(value)=="hu_HU"{return "hu_HU"};return "en_US"}
 
 func normalizedInput(in versionInput)versionInput{
 	in.Slug=strings.ToLower(strings.Trim(strings.TrimSpace(in.Slug),"/"))
@@ -856,22 +844,12 @@ func (a *app)insertVersion(ctx context.Context,tx *sql.Tx,pageID,state string,in
 }
 
 )
-var designFonts=map[string]bool{
-	"Cormorant Garamond":true,
-	"Inter":true,
-	"Georgia":true,
-	"Arial":true,
-}
+var designFonts=map[string]bool{"Cormorant Garamond":true,"Inter":true,"Georgia":true,"Arial":true}
 
 func defaultSiteDesign()siteDesign{
 	return siteDesign{
-		Navy:"#06172C",
-		Gold:"#D7AE62",
-		Background:"#F8F9FB",
-		TextColor:"#1F2937",
-		HeadingFont:"Cormorant Garamond",
-		BodyFont:"Inter",
-		ButtonRadius:6,
+		Navy:"#06172C",Gold:"#D7AE62",Background:"#F8F9FB",TextColor:"#1F2937",
+		HeadingFont:"Cormorant Garamond",BodyFont:"Inter",ButtonRadius:6,
 		Navigation:[]navigationItem{
 			{LabelEN:"Platform",LabelHU:"Platform",URL:"/platform",Visible:true,SortOrder:10},
 			{LabelEN:"Modules",LabelHU:"Modulok",URL:"/modules",Visible:true,SortOrder:20},
@@ -882,137 +860,91 @@ func defaultSiteDesign()siteDesign{
 		},
 	}
 }
-
 func normalizeSiteDesign(in siteDesign)siteDesign{
 	in.LogoMediaAssetID=strings.TrimSpace(in.LogoMediaAssetID)
-	in.Navy=strings.ToUpper(strings.TrimSpace(in.Navy))
-	in.Gold=strings.ToUpper(strings.TrimSpace(in.Gold))
-	in.Background=strings.ToUpper(strings.TrimSpace(in.Background))
-	in.TextColor=strings.ToUpper(strings.TrimSpace(in.TextColor))
-	in.HeadingFont=strings.TrimSpace(in.HeadingFont)
-	in.BodyFont=strings.TrimSpace(in.BodyFont)
+	in.Navy=strings.ToUpper(strings.TrimSpace(in.Navy));in.Gold=strings.ToUpper(strings.TrimSpace(in.Gold))
+	in.Background=strings.ToUpper(strings.TrimSpace(in.Background));in.TextColor=strings.ToUpper(strings.TrimSpace(in.TextColor))
+	in.HeadingFont=strings.TrimSpace(in.HeadingFont);in.BodyFont=strings.TrimSpace(in.BodyFont)
 	for i:=range in.Navigation{
-		n:=&in.Navigation[i]
-		n.LabelEN=strings.TrimSpace(n.LabelEN)
-		n.LabelHU=strings.TrimSpace(n.LabelHU)
-		n.URL=strings.TrimSpace(n.URL)
+		n:=&in.Navigation[i];n.LabelEN=strings.TrimSpace(n.LabelEN);n.LabelHU=strings.TrimSpace(n.LabelHU);n.URL=strings.TrimSpace(n.URL)
 	}
 	sort.SliceStable(in.Navigation,func(i,j int)bool{return in.Navigation[i].SortOrder<in.Navigation[j].SortOrder})
 	return in
 }
-
 func (a *app)validateSiteDesign(ctx context.Context,in siteDesign)error{
 	in=normalizeSiteDesign(in)
-	if !designColorPattern.MatchString(in.Navy)||!designColorPattern.MatchString(in.Gold)||
-		!designColorPattern.MatchString(in.Background)||!designColorPattern.MatchString(in.TextColor){
-		return fmt.Errorf("brand colors must use six-digit hexadecimal values")
-	}
-	if !designFonts[in.HeadingFont]||!designFonts[in.BodyFont]{
-		return fmt.Errorf("unsupported design font")
-	}
+	if !designColorPattern.MatchString(in.Navy)||!designColorPattern.MatchString(in.Gold)||!designColorPattern.MatchString(in.Background)||!designColorPattern.MatchString(in.TextColor){return fmt.Errorf("brand colors must use six-digit hexadecimal values")}
+	if !designFonts[in.HeadingFont]||!designFonts[in.BodyFont]{return fmt.Errorf("unsupported design font")}
 	if in.ButtonRadius<0||in.ButtonRadius>40{return fmt.Errorf("button radius must be between 0 and 40")}
 	if in.LogoMediaAssetID!=""&&!a.mediaExists(ctx,in.LogoMediaAssetID){return fmt.Errorf("logo media asset does not exist")}
 	if len(in.Navigation)>12{return fmt.Errorf("navigation supports at most 12 items")}
-	seenOrder:=map[int]bool{}
+	seen:=map[int]bool{}
 	for i,n:=range in.Navigation{
 		if n.LabelEN==""||n.LabelHU==""{return fmt.Errorf("navigation item %d requires English and Hungarian labels",i+1)}
 		if len(n.LabelEN)>80||len(n.LabelHU)>80{return fmt.Errorf("navigation labels are too long")}
-		if !safeCTA(n.URL){return fmt.Errorf("navigation item %d has an invalid URL",i+1)}
-		if n.URL==""{return fmt.Errorf("navigation item %d requires a URL",i+1)}
-		if n.SortOrder<0{return fmt.Errorf("navigation sort_order cannot be negative")}
-		if seenOrder[n.SortOrder]{return fmt.Errorf("duplicate navigation sort_order %d",n.SortOrder)}
-		seenOrder[n.SortOrder]=true
+		if n.URL==""||!safeCTA(n.URL){return fmt.Errorf("navigation item %d has an invalid URL",i+1)}
+		if n.SortOrder<0||seen[n.SortOrder]{return fmt.Errorf("navigation sort_order values must be unique and non-negative")}
+		seen[n.SortOrder]=true
 	}
 	return nil
 }
-
 func (a *app)readSiteDesign()(siteDesign,siteDesign,int,string,time.Time,sql.NullTime,error){
-	defaults:=defaultSiteDesign()
-	var draftRaw,publishedRaw []byte
-	var version int
-	var updatedBy string
-	var updatedAt time.Time
-	var publishedAt sql.NullTime
-	err:=a.db.QueryRow(`SELECT draft,published,version,updated_by,updated_at,published_at FROM cms.site_design WHERE id=1`).Scan(
-		&draftRaw,&publishedRaw,&version,&updatedBy,&updatedAt,&publishedAt)
-	if err==sql.ErrNoRows{return defaults,defaults,0,"",time.Time{},sql.NullTime{},nil}
-	if err!=nil{return defaults,defaults,0,"",time.Time{},sql.NullTime{},err}
-	draft:=defaults
-	published:=defaults
-	if len(draftRaw)>2{_ = json.Unmarshal(draftRaw,&draft)}
-	if len(publishedRaw)>2{_ = json.Unmarshal(publishedRaw,&published)}
+	defaults:=defaultSiteDesign();draft:=defaults;published:=defaults
+	var draftRaw,publishedRaw []byte;var version int;var updatedBy string;var updatedAt time.Time;var publishedAt sql.NullTime
+	err:=a.db.QueryRow(`SELECT draft,published,version,updated_by,updated_at,published_at FROM cms.site_design WHERE id=1`).Scan(&draftRaw,&publishedRaw,&version,&updatedBy,&updatedAt,&publishedAt)
+	if err==sql.ErrNoRows{return draft,published,0,"",time.Time{},sql.NullTime{},nil}
+	if err!=nil{return draft,published,0,"",time.Time{},sql.NullTime{},err}
+	if len(draftRaw)>2{_ = json.Unmarshal(draftRaw,&draft)};if len(publishedRaw)>2{_ = json.Unmarshal(publishedRaw,&published)}
 	return normalizeSiteDesign(draft),normalizeSiteDesign(published),version,updatedBy,updatedAt,publishedAt,nil
 }
-
-func siteDesignPayload(draft,published siteDesign,version int,updatedBy string,updatedAt time.Time,publishedAt sql.NullTime)map[string]any{
-	var publishedValue any
-	if publishedAt.Valid{publishedValue=publishedAt.Time.UTC()}
-	return map[string]any{
-		"draft":draft,
-		"published":published,
-		"version":version,
-		"updated_by":updatedBy,
-		"updated_at":updatedAt,
-		"published_at":publishedValue,
-	}
+func designPayload(draft,published siteDesign,version int,updatedBy string,updatedAt time.Time,publishedAt sql.NullTime)map[string]any{
+	var publishedValue any;if publishedAt.Valid{publishedValue=publishedAt.Time.UTC()}
+	return map[string]any{"draft":draft,"published":published,"version":version,"updated_by":updatedBy,"updated_at":updatedAt,"published_at":publishedValue}
 }
-
 func (a *app)design(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
-	draft,published,version,updatedBy,updatedAt,publishedAt,err:=a.readSiteDesign()
-	if err!=nil{common.APIError(w,500,"DB","Could not load site design");return}
-	common.JSON(w,200,siteDesignPayload(draft,published,version,updatedBy,updatedAt,publishedAt))
+	draft,published,version,updatedBy,updatedAt,publishedAt,err:=a.readSiteDesign();if err!=nil{common.APIError(w,500,"DB","Could not load site design");return}
+	common.JSON(w,200,designPayload(draft,published,version,updatedBy,updatedAt,publishedAt))
 }
-
 func (a *app)designAction(w http.ResponseWriter,r *http.Request){
 	action:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/cms/design/"),"/")
 	switch action{
 	case "draft":
 		if r.Method!=http.MethodPut{common.APIError(w,405,"METHOD","Use PUT");return}
-		var in siteDesign
-		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-		in=normalizeSiteDesign(in)
+		var in siteDesign;if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return};in=normalizeSiteDesign(in)
 		if err:=a.validateSiteDesign(r.Context(),in);err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
-		oldDraft,oldPublished,version,_,_,publishedAt,err:=a.readSiteDesign()
-		if err!=nil{common.APIError(w,500,"DB","Could not load site design");return}
-		raw,_:=json.Marshal(in)
+		oldDraft,oldPublished,version,_,_,_,err:=a.readSiteDesign();if err!=nil{common.APIError(w,500,"DB","Could not load site design");return}
+		draftRaw:=jsonBytes(in);publishedRaw:=jsonBytes(oldPublished)
 		_,err=a.db.ExecContext(r.Context(),`INSERT INTO cms.site_design(id,draft,published,version,updated_by,updated_at)
 			VALUES(1,$1::jsonb,$2::jsonb,$3,$4,NOW())
 			ON CONFLICT(id) DO UPDATE SET draft=EXCLUDED.draft,updated_by=EXCLUDED.updated_by,updated_at=NOW()`,
-			string(raw),string(jsonBytes(oldPublished)),version,actor(r))
+			string(draftRaw),string(publishedRaw),version,actor(r))
 		if err!=nil{common.APIError(w,500,"DB","Could not save design draft");return}
 		_ = a.audit(r.Context(),"","","DESIGN_DRAFT_SAVED",actor(r),correlationID(r),oldDraft,in)
-		draft,published,nextVersion,updatedBy,updatedAt,nextPublishedAt,_:=a.readSiteDesign()
-		_ = publishedAt
-		common.JSON(w,200,siteDesignPayload(draft,published,nextVersion,updatedBy,updatedAt,nextPublishedAt))
+		draft,published,nextVersion,updatedBy,updatedAt,publishedAt,_:=a.readSiteDesign()
+		common.JSON(w,200,designPayload(draft,published,nextVersion,updatedBy,updatedAt,publishedAt))
 	case "publish":
 		if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use POST");return}
-		draft,published,version,_,_,_,err:=a.readSiteDesign()
-		if err!=nil{common.APIError(w,500,"DB","Could not load site design");return}
+		draft,published,version,_,_,_,err:=a.readSiteDesign();if err!=nil{common.APIError(w,500,"DB","Could not load site design");return}
 		if err:=a.validateSiteDesign(r.Context(),draft);err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
-		raw,_:=json.Marshal(draft)
-		nextVersion:=version+1
+		raw:=jsonBytes(draft);nextVersion:=version+1
 		_,err=a.db.ExecContext(r.Context(),`INSERT INTO cms.site_design(id,draft,published,version,updated_by,updated_at,published_at)
 			VALUES(1,$1::jsonb,$1::jsonb,$2,$3,NOW(),NOW())
-			ON CONFLICT(id) DO UPDATE SET published=EXCLUDED.published,version=EXCLUDED.version,
-			updated_by=EXCLUDED.updated_by,updated_at=NOW(),published_at=NOW()`,
+			ON CONFLICT(id) DO UPDATE SET published=EXCLUDED.published,version=EXCLUDED.version,updated_by=EXCLUDED.updated_by,updated_at=NOW(),published_at=NOW()`,
 			string(raw),nextVersion,actor(r))
 		if err!=nil{common.APIError(w,500,"DB","Could not publish site design");return}
 		_ = a.audit(r.Context(),"","","DESIGN_PUBLISHED",actor(r),correlationID(r),published,draft)
 		nextDraft,nextPublished,storedVersion,updatedBy,updatedAt,publishedAt,_:=a.readSiteDesign()
-		common.JSON(w,200,siteDesignPayload(nextDraft,nextPublished,storedVersion,updatedBy,updatedAt,publishedAt))
-	default:
-		common.APIError(w,404,"NOT_FOUND","Design action not found")
+		common.JSON(w,200,designPayload(nextDraft,nextPublished,storedVersion,updatedBy,updatedAt,publishedAt))
+	default:common.APIError(w,404,"NOT_FOUND","Design action not found")
 	}
 }
-
 func (a *app)publicDesign(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet&&r.Method!=http.MethodHead{common.APIError(w,405,"METHOD","Use GET or HEAD");return}
-	_,published,version,_,_,publishedAt,err:=a.readSiteDesign()
-	if err!=nil{common.APIError(w,500,"DB","Could not load public site design");return}
-	var publishedValue any
-	if publishedAt.Valid{publishedValue=publishedAt.Time.UTC()}
+	_,published,version,_,_,publishedAt,err:=a.readSiteDesign();if err!=nil{common.APIError(w,500,"DB","Could not load public site design");return}
+	var publishedValue any;if publishedAt.Valid{publishedValue=publishedAt.Time.UTC()}
 	w.Header().Set("Cache-Control","public, max-age=60, stale-while-revalidate=300")
+	if r.Method==http.MethodHead{w.WriteHeader(http.StatusOK);return}
 	common.JSON(w,200,map[string]any{"version":version,"design":published,"published_at":publishedValue})
 }
 
@@ -1127,8 +1059,7 @@ func (a *app)rotatePreviewToken(w http.ResponseWriter,r *http.Request,p pageRow)
 func (a *app)publishedConflict(ctx context.Context,pageID string,in versionInput)error{
 	var id string
 	err:=a.db.QueryRowContext(ctx,`SELECT p.id FROM cms.pages p JOIN cms.versions v ON v.id=p.published_version_id
-		WHERE p.id<>$1 AND p.locale=(SELECT locale FROM cms.pages WHERE id=$1)
-		AND (lower(v.slug)=lower($2) OR lower(v.seo->>'canonical')=lower($3)) LIMIT 1`,pageID,in.Slug,in.SEO.Canonical).Scan(&id)
+		WHERE p.id<>$1 AND p.locale=(SELECT locale FROM cms.pages WHERE id=$1) AND (lower(v.slug)=lower($2) OR lower(v.seo->>'canonical')=lower($3)) LIMIT 1`,pageID,in.Slug,in.SEO.Canonical).Scan(&id)
 	if err==nil{return fmt.Errorf("published slug or canonical conflicts with another page")}
 	if err==sql.ErrNoRows{return nil}
 	return err
@@ -1248,7 +1179,9 @@ func (a *app)publicPage(w http.ResponseWriter,r *http.Request){
 	if err!=nil{common.APIError(w,404,"NOT_FOUND","Published page not found");return}
 	v,err:=a.getVersion(versionID);if err!=nil||v.State!="PUBLISHED"{common.APIError(w,404,"NOT_FOUND","Published page not found");return}
 	w.Header().Set("Cache-Control","public, max-age=60, stale-while-revalidate=300")
-	out:=publicVersion(v,true);out["locale"]=locale;common.JSON(w,200,out)
+	out:=publicVersion(v,true);out["locale"]=locale
+	if r.Method==http.MethodHead{w.WriteHeader(http.StatusOK);return}
+	common.JSON(w,200,out)
 }
 
 func (a *app)previewPage(w http.ResponseWriter,r *http.Request){
@@ -1369,9 +1302,7 @@ func (a *app)mediaItem(w http.ResponseWriter,r *http.Request){
 func (a *app)publicMedia(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet&&r.Method!=http.MethodHead{common.APIError(w,405,"METHOD","Use GET or HEAD");return}
 	id:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/public/v1/cms/media/"),"/")
-	var exists bool;_ = a.db.QueryRow(`SELECT
-		EXISTS(SELECT 1 FROM cms.published_media_refs WHERE media_id=$1)
-		OR EXISTS(SELECT 1 FROM cms.site_design WHERE id=1 AND published->>'logo_media_asset_id'=$1)`,id).Scan(&exists)
+	var exists bool;_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cms.published_media_refs WHERE media_id=$1) OR EXISTS(SELECT 1 FROM cms.site_design WHERE id=1 AND published->>'logo_media_asset_id'=$1)`,id).Scan(&exists)
 	if !exists{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	w.Header().Set("Cache-Control","public, max-age=3600, immutable");a.serveMedia(w,r,m,true)
