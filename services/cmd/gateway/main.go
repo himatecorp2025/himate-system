@@ -600,7 +600,8 @@ func permissionResource(r *http.Request) string {
 		return "reports"
 	case path == "/api/v1/cms/pages", strings.HasPrefix(path, "/api/v1/cms/pages/"),
 		path == "/api/v1/cms/media", strings.HasPrefix(path, "/api/v1/cms/media/"),
-		path == "/api/v1/cms/design", strings.HasPrefix(path, "/api/v1/cms/design/"):
+		path == "/api/v1/cms/design", strings.HasPrefix(path, "/api/v1/cms/design/"),
+		path == "/api/v1/cms/seo", strings.HasPrefix(path, "/api/v1/cms/seo/"):
 		return "cms"
 	default:
 		return ""
@@ -706,6 +707,14 @@ func decodeAuditState(raw []byte) any {
 func auditAction(r *http.Request) string {
 	path := r.URL.Path
 	switch {
+	case path == "/api/v1/cms/seo/publish" && r.Method == http.MethodPost:
+		return "SEO_SETTINGS_PUBLISHED"
+	case path == "/api/v1/cms/seo/draft" && r.Method == http.MethodPut:
+		return "SEO_SETTINGS_DRAFT_SAVED"
+	case path == "/api/v1/cms/design/publish" && r.Method == http.MethodPost:
+		return "DESIGN_GUIDE_PUBLISHED"
+	case path == "/api/v1/cms/design/draft" && r.Method == http.MethodPut:
+		return "DESIGN_GUIDE_DRAFT_SAVED"
 	case path == "/api/v1/profile" && r.Method == http.MethodPatch:
 		return "PROFILE_UPDATED"
 	case path == "/api/v1/profile/password" && r.Method == http.MethodPost:
@@ -868,7 +877,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "reports")
 	case r.URL.Path == "/api/v1/cms/pages", strings.HasPrefix(r.URL.Path, "/api/v1/cms/pages/"),
 		r.URL.Path == "/api/v1/cms/media", strings.HasPrefix(r.URL.Path, "/api/v1/cms/media/"),
-		r.URL.Path == "/api/v1/cms/design", strings.HasPrefix(r.URL.Path, "/api/v1/cms/design/"):
+		r.URL.Path == "/api/v1/cms/design", strings.HasPrefix(r.URL.Path, "/api/v1/cms/design/"),
+		r.URL.Path == "/api/v1/cms/seo", strings.HasPrefix(r.URL.Path, "/api/v1/cms/seo/"):
 		a.serveProxy(w, r, "cms")
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
@@ -1760,8 +1770,10 @@ func pbkdf2SHA256(password, salt []byte, iterations, length int) []byte {
 
 
 type publicCMSSEO struct {
-	Title           string `json:"title"`
-	MetaDescription string `json:"meta_description"`
+	Title           string         `json:"title"`
+	MetaDescription string         `json:"meta_description"`
+	Keywords        []string       `json:"keywords"`
+	JSONLD          map[string]any `json:"json_ld"`
 	Canonical       string `json:"canonical"`
 	OGTitle         string `json:"og_title"`
 	OGDescription   string `json:"og_description"`
@@ -1787,6 +1799,7 @@ type publicCMSPage struct {
 	SEO            publicCMSSEO       `json:"seo"`
 	Sections       []publicCMSSection `json:"sections"`
 	HiddenSections []string           `json:"hidden_sections"`
+	Alternates     map[string]string  `json:"alternates"`
 }
 
 type publicCMSManifest struct {
@@ -2056,6 +2069,9 @@ func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) s
 		robots = "noindex,nofollow"
 	}
 	doc = replaceHeadTag(doc, "name=\"robots\"", "<meta name=\"robots\" content=\""+robots+"\">")
+	if len(page.SEO.Keywords) > 0 {
+		doc = replaceHeadTag(doc, "name=\"keywords\"", "<meta name=\"keywords\" content=\""+html.EscapeString(strings.Join(page.SEO.Keywords, ", "))+"\">")
+	}
 	ogTitle := strings.TrimSpace(page.SEO.OGTitle)
 	if ogTitle == "" {
 		ogTitle = strings.TrimSpace(page.SEO.Title)
@@ -2073,6 +2089,29 @@ func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) s
 	doc = replaceHeadTag(doc, "property=\"og:url\"", "<meta property=\"og:url\" content=\""+html.EscapeString(canonical)+"\">")
 	if mediaID := strings.TrimSpace(page.SEO.OGImageAssetID); mediaID != "" {
 		doc = replaceHeadTag(doc, "property=\"og:image\"", "<meta property=\"og:image\" content=\"/public/v1/cms/media/"+url.PathEscape(mediaID)+"\">")
+	}
+	if len(page.SEO.JSONLD) > 0 {
+		if raw, err := json.Marshal(page.SEO.JSONLD); err == nil {
+			if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+				tag := "<script type=\"application/ld+json\">"+string(raw)+"</script>"
+				doc = doc[:headEnd] + tag + doc[headEnd:]
+			}
+		}
+	}
+	if len(page.Alternates) > 0 {
+		var alternateTags strings.Builder
+		if href := strings.TrimSpace(page.Alternates["en_US"]); href != "" {
+			alternateTags.WriteString("<link rel=\"alternate\" hreflang=\"en-US\" href=\""+html.EscapeString(href)+"\">")
+			alternateTags.WriteString("<link rel=\"alternate\" hreflang=\"x-default\" href=\""+html.EscapeString(href)+"\">")
+		}
+		if href := strings.TrimSpace(page.Alternates["hu_HU"]); href != "" {
+			alternateTags.WriteString("<link rel=\"alternate\" hreflang=\"hu-HU\" href=\""+html.EscapeString(href)+"\">")
+		}
+		if alternateTags.Len() > 0 {
+			if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+				doc = doc[:headEnd] + alternateTags.String() + doc[headEnd:]
+			}
+		}
 	}
 	for _, id := range page.HiddenSections {
 		doc = removeMarketingSection(doc, id)
