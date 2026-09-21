@@ -27,13 +27,16 @@ part 'localization.dart';
 part 'profile_account.dart';
 part 'module_control_plane.dart';
 part 'notifications_panel.dart';
+part 'partner_portal.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('en_US');
   await initializeDateFormatting('hu_HU');
   usePathUrlStrategy();
-  runApp(const HimateApp());
+  final path = Uri.base.path;
+  final partnerPortal = path == '/partner/login' || path == '/partner/app' || path.startsWith('/partner/app/');
+  runApp(partnerPortal ? const PartnerPortalApp() : const HimateApp());
 }
 
 const brandNavy = Color(0xFF0B1F3B);
@@ -237,7 +240,9 @@ class Api {
     final prefixes = <String>{};
     void add(String prefix) => prefixes.add(prefix);
 
-    if (path.startsWith('/api/v1/partners') || path.startsWith('/api/v1/partner-categories')) {
+    if (path.startsWith('/partner/api/v1')) {
+      add('/partner/api/v1');
+    } else if (path.startsWith('/api/v1/partners') || path.startsWith('/api/v1/partner-categories')) {
       add('/api/v1/partners');
       add('/api/v1/partner-categories');
       add('/api/v1/dashboard');
