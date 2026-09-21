@@ -28,6 +28,7 @@ part 'profile_account.dart';
 part 'module_control_plane.dart';
 part 'notifications_panel.dart';
 part 'partner_portal.dart';
+part 'commercial_automation_ui.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -2749,9 +2750,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> connectorCredentials = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> portalUsers = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> billingEvents = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
   Map<String, dynamic>? terms;
   Map<String, dynamic>? license;
+  Map<String, dynamic>? agreement;
+  Map<String, dynamic>? commercialStatus;
+  Map<String, dynamic>? websiteAdapter;
   bool loading = true;
   bool supplementalLoading = true;
   String? error;
@@ -2817,6 +2822,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       _safeWorkspaceGet('/api/v1/impact/summary?partner_id=$id', errors),
       _safeWorkspaceGet('/api/v1/connectors/$id/credential', errors),
       _safeWorkspaceGet('/api/v1/partners/$id/portal-users', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/agreement', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/commercial-status', errors),
+      _safeWorkspaceGet('/api/v1/billing/partners/$id/events', errors),
+      _safeWorkspaceGet('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', errors),
     ]);
     if (!mounted) return;
     setState(() {
@@ -2832,6 +2841,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       if (r[9] != null) impactSummary = items(r[9]!);
       if (r[10] != null) connectorCredentials = items(r[10]!);
       if (r[11] != null) portalUsers = items(r[11]!);
+      if (r[12] != null) agreement = r[12];
+      if (r[13] != null) commercialStatus = r[13];
+      if (r[14] != null) billingEvents = items(r[14]!);
+      if (r[15] != null) websiteAdapter = r[15];
       supplementalLoading = false;
       supplementalError = errors.isEmpty ? null : 'Some secondary services are still loading or temporarily unavailable.';
     });
