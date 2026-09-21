@@ -143,7 +143,7 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		{http.MethodPost, "/api/v1/cms/pages/page_1/publish", "cms.approve"},
 		{http.MethodPost, "/api/v1/cms/pages/page_1/rollback", "cms.approve"},
 		{http.MethodGet, "/api/v1/admin/users", "administration.read"},
-		{http.MethodPost, "/api/v1/admin/users", "administration.write"},
+		{http.MethodPost, "/api/v1/admin/users", "administration.approve"},
 		{http.MethodPatch, "/api/v1/admin/users/usr_1", "administration.approve"},
 	}
 	for _, tc := range tests {

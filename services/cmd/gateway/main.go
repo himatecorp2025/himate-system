@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const sessionCookie = "himate_session"
@@ -1321,7 +1322,7 @@ func normalizedLocale(value string) string {
 func normalizedTimezone(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" { return "UTC" }
-	if len(value) > 64 || strings.ContainsAny(value, " \\t\\r\\n") { return "UTC" }
+	if len(value) > 64 || strings.IndexFunc(value, unicode.IsSpace) >= 0 { return "UTC" }
 	for _, r := range value {
 		if !((r>='A'&&r<='Z')||(r>='a'&&r<='z')||(r>='0'&&r<='9')||r=='/'||r=='_'||r=='-'||r=='+') {
 			return "UTC"
