@@ -27,13 +27,16 @@ part 'localization.dart';
 part 'profile_account.dart';
 part 'module_control_plane.dart';
 part 'notifications_panel.dart';
+part 'partner_portal.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('en_US');
   await initializeDateFormatting('hu_HU');
   usePathUrlStrategy();
-  runApp(const HimateApp());
+  final path = Uri.base.path;
+  final partnerPortal = path == '/partner/login' || path == '/partner/app' || path.startsWith('/partner/app/');
+  runApp(partnerPortal ? const PartnerPortalApp() : const HimateApp());
 }
 
 const brandNavy = Color(0xFF0B1F3B);
@@ -237,7 +240,9 @@ class Api {
     final prefixes = <String>{};
     void add(String prefix) => prefixes.add(prefix);
 
-    if (path.startsWith('/api/v1/partners') || path.startsWith('/api/v1/partner-categories')) {
+    if (path.startsWith('/partner/api/v1')) {
+      add('/partner/api/v1');
+    } else if (path.startsWith('/api/v1/partners') || path.startsWith('/api/v1/partner-categories')) {
       add('/api/v1/partners');
       add('/api/v1/partner-categories');
       add('/api/v1/dashboard');
@@ -2743,6 +2748,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> provisioningJobs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> connectorCredentials = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> portalUsers = <Map<String, dynamic>>[];
   Map<String, dynamic>? billing;
   Map<String, dynamic>? terms;
   Map<String, dynamic>? license;
@@ -2759,6 +2765,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   final GlobalKey _modulesKey = GlobalKey();
   final GlobalKey _financeKey = GlobalKey();
   final GlobalKey _statisticsKey = GlobalKey();
+  final GlobalKey _usersKey = GlobalKey();
   final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
 
@@ -2772,7 +2779,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics and provenance', true),
     _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', false),
     _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', false),
-    _WorkspaceSpec('Users & Contacts', Icons.group_outlined, 'Partner administrators and contacts', false),
+    _WorkspaceSpec('Users & Contacts', Icons.group_outlined, 'Partner Portal users and organization contacts', true),
     _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Secure connector identities and credentials', true),
     _WorkspaceSpec('Audit History', Icons.history_rounded, 'Immutable administrative history', false),
   ];
@@ -2809,6 +2816,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       _safeWorkspaceGet('/api/v1/provisioning/jobs?partner_id=$id', errors),
       _safeWorkspaceGet('/api/v1/impact/summary?partner_id=$id', errors),
       _safeWorkspaceGet('/api/v1/connectors/$id/credential', errors),
+      _safeWorkspaceGet('/api/v1/partners/$id/portal-users', errors),
     ]);
     if (!mounted) return;
     setState(() {
@@ -2823,6 +2831,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       if (r[8] != null) provisioningJobs = items(r[8]!);
       if (r[9] != null) impactSummary = items(r[9]!);
       if (r[10] != null) connectorCredentials = items(r[10]!);
+      if (r[11] != null) portalUsers = items(r[11]!);
       supplementalLoading = false;
       supplementalError = errors.isEmpty ? null : 'Some secondary services are still loading or temporarily unavailable.';
     });
@@ -2854,6 +2863,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       'modules' => _modulesKey,
       'finance-and-documents' => _financeKey,
       'statistics' => _statisticsKey,
+      'users-and-contacts' => _usersKey,
       'integrations' => _integrationsKey,
       _ => _overviewKey,
     };
@@ -2911,6 +2921,127 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         ),
       );
     }
+  }
+
+  Future<void> createPortalUser() async {
+    final name = TextEditingController();
+    final email = TextEditingController();
+    final password = TextEditingController();
+    String role = portalUsers.isEmpty ? 'owner' : 'viewer';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: portalUsers.isEmpty ? 'Create Partner Portal owner' : 'Add Partner Portal user',
+          subtitle: 'Create an account scoped only to this partner. Portal roles cannot grant HIMATE control-plane access.',
+          icon: Icons.person_add_alt_1_rounded,
+          width: 650,
+          primaryLabel: 'Create portal user',
+          onPrimary: () => Navigator.pop(dialogContext, true),
+          child: Column(children: [
+            TextField(controller: name, decoration: InputDecoration(labelText: uiLiteral('Name'))),
+            const SizedBox(height: 12),
+            TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Email'))),
+            const SizedBox(height: 12),
+            TextField(controller: password, obscureText: true, decoration: InputDecoration(labelText: uiLiteral('Temporary password'))),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: role,
+              decoration: InputDecoration(labelText: uiLiteral('Partner Portal role')),
+              items: const [
+                DropdownMenuItem(value: 'owner', child: LText('Owner')),
+                DropdownMenuItem(value: 'admin', child: LText('Admin')),
+                DropdownMenuItem(value: 'billing', child: LText('Billing')),
+                DropdownMenuItem(value: 'viewer', child: LText('Viewer')),
+              ],
+              onChanged: (value) { if (value != null) setLocal(() => role = value); },
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (ok == true) {
+      try {
+        await widget.api.post('/api/v1/partners/${partner['id']}/portal-users', {
+          'name': name.text.trim(),
+          'email': email.text.trim(),
+          'password': password.text,
+          'role': role,
+        });
+        await _loadSupplementary();
+        if (mounted) success('Partner Portal user created.');
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: LText('Portal user could not be created: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+          );
+        }
+      }
+    }
+    name.dispose(); email.dispose(); password.dispose();
+  }
+
+  Future<void> editPortalUser(Map<String, dynamic> target) async {
+    final name = TextEditingController(text: '${target['name'] ?? ''}');
+    final email = TextEditingController(text: '${target['email'] ?? ''}');
+    String role = '${target['role'] ?? 'viewer'}';
+    bool active = target['active'] != false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Edit Partner Portal user',
+          subtitle: 'Role or status changes invalidate that partner-user session.',
+          icon: Icons.manage_accounts_outlined,
+          width: 650,
+          primaryLabel: 'Save portal user',
+          onPrimary: () => Navigator.pop(dialogContext, true),
+          child: Column(children: [
+            TextField(controller: name, decoration: InputDecoration(labelText: uiLiteral('Name'))),
+            const SizedBox(height: 12),
+            TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Email'))),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: role,
+              decoration: InputDecoration(labelText: uiLiteral('Partner Portal role')),
+              items: const [
+                DropdownMenuItem(value: 'owner', child: LText('Owner')),
+                DropdownMenuItem(value: 'admin', child: LText('Admin')),
+                DropdownMenuItem(value: 'billing', child: LText('Billing')),
+                DropdownMenuItem(value: 'viewer', child: LText('Viewer')),
+              ],
+              onChanged: (value) { if (value != null) setLocal(() => role = value); },
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: active,
+              title: const LText('Active portal access'),
+              onChanged: (value) => setLocal(() => active = value),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (ok == true) {
+      try {
+        await widget.api.patch('/api/v1/partners/${partner['id']}/portal-users/${target['id']}', {
+          'name': name.text.trim(),
+          'email': email.text.trim(),
+          'role': role,
+          'active': active,
+        });
+        await _loadSupplementary();
+        if (mounted) success('Partner Portal user updated.');
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: LText('Portal user could not be updated: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+          );
+        }
+      }
+    }
+    name.dispose(); email.dispose();
   }
 
   Future<void> rotateConnectorCredential() async {
@@ -3975,6 +4106,56 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                             _DefinitionRow(label: 'Aggregation', value: '${metric['aggregation'] ?? '—'}'),
                                             _DefinitionRow(label: 'Latest period', value: '${metric['latest_period_end'] ?? '—'}'),
                                             _DefinitionRow(label: 'Observations', value: '${metric['observations'] ?? 0}'),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
+                        key: _usersKey,
+                        child: _SectionHeader(
+                          title: 'Partner Portal Access',
+                          subtitle: 'Tenant-scoped partner identities. These users can never inherit HIMATE platform-administrator authority.',
+                          trailing: FilledButton.icon(
+                            onPressed: createPortalUser,
+                            icon: const Icon(Icons.person_add_alt_1_rounded),
+                            label: LText(portalUsers.isEmpty ? 'Create portal owner' : 'Add portal user'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      portalUsers.isEmpty
+                          ? const _MessageCard(
+                              icon: Icons.group_outlined,
+                              title: 'No Partner Portal user yet',
+                              message: 'Create the first Owner account to let this partner sign in at /partner/login.',
+                            )
+                          : LayoutBuilder(
+                              builder: (context, c) {
+                                final width = c.maxWidth < 680 ? c.maxWidth : (c.maxWidth - 12) / 2;
+                                return Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    for (final portalUser in portalUsers)
+                                      SizedBox(
+                                        width: width,
+                                        child: _InfoCard(
+                                          title: '${portalUser['name'] ?? 'Portal user'}',
+                                          icon: Icons.person_outline_rounded,
+                                          action: IconButton(
+                                            tooltip: uiLiteral('Edit portal user'),
+                                            onPressed: () => editPortalUser(portalUser),
+                                            icon: const Icon(Icons.edit_outlined, size: 18),
+                                          ),
+                                          children: [
+                                            _DefinitionRow(label: 'Email', value: '${portalUser['email'] ?? '—'}'),
+                                            _DefinitionRow(label: 'Portal role', value: _humanize('${portalUser['role'] ?? 'viewer'}')),
+                                            _DefinitionRow(label: 'Status', value: portalUser['active'] == true ? 'Active' : 'Inactive'),
+                                            _DefinitionRow(label: 'Portal URL', value: '/partner/login'),
                                           ],
                                         ),
                                       ),

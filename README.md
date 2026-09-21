@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–22.1 implementation status
+## START-01–22.2 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -128,6 +128,7 @@ The architecture remains microservice/container based. It is **not** being colla
 
 ## Security and performance baseline
 - HttpOnly SameSite=Strict administrator session cookie; Secure in production
+- separate HttpOnly Partner Portal cookie scoped to `/partner`; tenant ID is session-derived
 - same-origin mutation protection and backend-authoritative authorization
 - unique system-owner user administration
 - session-version invalidation after password changes
@@ -140,6 +141,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - HTTP connection pooling for internal/provider calls
 - partner business databases physically separated from the HIMATE control-plane DB
 - START-22 retained Connector payloads encrypted at rest with AES-256-GCM envelope encryption
+- Partner Portal role namespace is non-interoperable with HIMATE administrator roles
 - server-paginated partner reads and bounded page-level aggregation
 - encrypted offsite restore artifacts with mandatory restore verification
 - Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–22 smoke tests in CI
@@ -156,6 +158,20 @@ The architecture remains microservice/container based. It is **not** being colla
 - shared responsive KPI grid fixes stacked summary cards across Partners, Partner Workspace and Licensing & Finance
 - explicit SEO settings + SEO audit acceptance coverage before START-23
 
+
+### START-22.2 — Partner Portal
+- separate tenant-scoped partner identity/session boundary under `/partner`
+- Partner Portal roles are isolated from HIMATE administrator roles
+- responsive partner self-service UI for Overview, Modules, Results, Billing, Company and Users
+- tenant identity is derived only from the authenticated partner session
+- partner sessions cannot authenticate to the HIMATE administrator API
+- module activation reuses the authoritative Catalog and enforces availability, dependency and conflict rules
+- active modules reuse the Billing 30-day subscription model with end-of-period cancellation
+- Impact and billing data are read from the existing authoritative services
+- company self-service is allowlisted and cannot change lifecycle, global pricing, provisioning or platform controls
+- partner-user role/status changes rotate session versions; last active Owner is protected
+- partner mutations reuse the central append-only audit log
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -169,7 +185,9 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-20_ACCEPTANCE.md`
 - `docs/START-21_ACCEPTANCE.md`
 - `docs/START-22_ACCEPTANCE.md`
+- `docs/START-22.1_ACCEPTANCE.md`
+- `docs/START-22.2_ACCEPTANCE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 remains protected by its historical acceptance suite. START-22.1 additionally requires `docs/START-22.1_ACCEPTANCE.md` and `scripts/smoke_start_22_1.sh`. The START-22 baseline is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the full START-01–21 regression, profile/owner/locale checks and the START-22 signed Connector/reconciliation/retention smoke are all green.
+START-22 and START-22.1 remain protected by their historical acceptance suites. START-22.2 additionally requires `docs/START-22.2_ACCEPTANCE.md` and `scripts/smoke_start_22_2.sh`. The Partner Portal is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the complete START-01–22.1 regression and the dedicated two-tenant isolation/self-service smoke are all green.

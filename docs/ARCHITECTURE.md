@@ -1,11 +1,12 @@
-# HIMATE control-plane architecture — START-01–22
+# HIMATE control-plane architecture — START-01–22.2
 
 ```text
-Browser / Admin / Search crawler
+Browser / Admin / Partner Portal / Search crawler
   |
   v
 HIMATE Gateway / Identity
   |-- Flutter administration SPA
+  |-- Flutter Partner Portal SPA (/partner)
   |-- Server-rendered public CMS/SEO HTML
   |
   +-- private Partner Service
@@ -29,7 +30,7 @@ HIMATE Gateway / Identity
   |       +-- Render adapter (production)
   |
   +-- HIMATE PostgreSQL control-plane database
-  |    +-- identity
+  |    +-- identity (admin + isolated partner identities)
   |    +-- partners
   |    +-- catalog
   |    +-- billing
@@ -159,6 +160,37 @@ Gateway / Identity / RBAC
       +--> Notifications --> permission-scoped feed/read state
       +--> existing Partners / Impact / CMS / Operations services
 ```
+
+## Partner Portal and tenant identity (START-22.2)
+
+The Partner Portal is a separate browser security plane at the same Gateway ingress. It reuses the existing domain microservices; it does not introduce duplicate partner, catalog, billing or Impact stores.
+
+```text
+Partner browser
+     |
+     | /partner/login + /partner/api/v1/*
+     v
+Gateway Partner Identity
+     | session contains immutable partner_id
+     | portal roles: owner/admin/billing/viewer
+     |
+     +--> Partners ---- allowlisted own-company fields
+     +--> Catalog ----- own entitlement/price view + guarded activation
+     +--> Billing ----- own summary/invoices/subscriptions
+     +--> Impact ------ own aggregated results
+     |
+     +--> central append-only audit
+```
+
+Partner sessions use a dedicated HttpOnly SameSite=Strict cookie scoped to `/partner`. The administrator cookie and partner cookie are separate and the partner cookie is not sent to `/api/v1` administrator routes. Partner role names and permissions are independent from HIMATE RBAC and cannot resolve to `platform_admin`, custom HIMATE roles or `system_owner`.
+
+The authoritative tenant ID is read from the authenticated partner identity on every Portal request. Client-supplied `partner_id` query/body values are never used to select a tenant. Portal access fails closed for SUSPENDED or ARCHIVED partners, including previously issued sessions.
+
+Module self-service is implemented inside the Catalog boundary. It may change only the authenticated partner entitlement from NOT_LICENSED to ACTIVE. It cannot alter global catalog metadata, prices, source/release identity or relationships. Activation validates global availability plus `REQUIRES` and `CONFLICTS_WITH` relations before changing entitlement state.
+
+Billing remains authoritative for renewal state. Catalog activation is synchronized through the existing Billing summary/subscription model. Cancellation sets `cancel_at_period_end`; Billing keeps the entitlement active through the already-paid 30-day period and marks it NOT_LICENSED only when the period expires.
+
+Company self-service is allowlisted at the Gateway. Lifecycle, provisioning, environment, commercial terms and global Control Plane fields are intentionally absent from the Partner Portal write contract.
 
 ## Domains and provider deployments (START-20)
 
