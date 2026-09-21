@@ -270,7 +270,7 @@ func (a *app) createRestorePoint(ctx context.Context,p restorePoint)error{
 	return err
 }
 
-func quoteIdent(value string)string{return \`"\`+strings.ReplaceAll(value,\`"\`,\`""\`)+\`"\`}
+func quoteIdent(value string)string{return "\"" + strings.ReplaceAll(value,"\"","\"\"") + "\""}
 
 func (a *app) createScratchDatabase(ctx context.Context,name string)error{
 	adminDSN,err:=partnerdb.AdminDSN(a.dbAdminURL);if err!=nil{return err}
