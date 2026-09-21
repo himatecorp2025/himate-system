@@ -197,6 +197,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`,
 		}},
 		start223BillingMigration(),
+		start223BillingImmutabilityMigration(),
 	}); err != nil {
 		return err
 	}
