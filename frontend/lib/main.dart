@@ -1152,82 +1152,98 @@ class _LoginCard extends StatelessWidget {
   }
 }
 
-class HimateLogo extends StatelessWidget {
-  const HimateLogo({this.onDark = false, this.compact = false, this.width = 205, super.key});
-  final bool onDark;
-  final bool compact;
-  final double width;
+const double _himateWordmarkAspectRatio = 2048 / 682;
 
-  Widget _fallback(BuildContext context, {required double height}) {
-    return Container(
-      width: width,
-      height: height,
-      alignment: Alignment.centerLeft,
-      child: Text(
-        'HIMATE SYSTEM',
-        maxLines: 1,
-        overflow: TextOverflow.clip,
-        style: GoogleFonts.cormorantGaramond(
-          color: onDark ? const Color(0xFFF2D79F) : brandNavy,
-          fontSize: compact ? 12 : (width / 7.2).clamp(16, 31),
-          fontWeight: FontWeight.w700,
-          letterSpacing: compact ? .2 : 1.1,
-        ),
-      ),
-    );
-  }
+class HimateLogo extends StatelessWidget {
+  const HimateLogo({
+    super.key,
+    this.width = 300,
+    this.compact = false,
+    this.shadow = true,
+  });
+
+  final double width;
+  final bool compact;
+  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
-    const ratio = 300 / 80;
-    final height = compact ? width : width / ratio;
+    final targetWidth = compact ? width : width;
+    final targetHeight = compact ? width : width / _himateWordmarkAspectRatio;
+    final assetUrl = compact ? himateIconUrl : himateWordmarkUrl;
+
+    final image = Image.network(
+      assetUrl,
+      width: targetWidth,
+      height: targetHeight,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      errorBuilder: (_, __, ___) => Center(
+        child: Text(
+          compact ? 'H' : 'HIMATE',
+          style: TextStyle(
+            fontSize: compact ? targetHeight * .48 : targetHeight * .34,
+            color: brandGold,
+            fontWeight: FontWeight.w800,
+            letterSpacing: compact ? 0 : 3.0,
+          ),
+        ),
+      ),
+    );
+
     return SizedBox(
-      width: width,
-      height: height,
-      child: Image.memory(
-        himateLogoBytes,
-        fit: compact ? BoxFit.cover : BoxFit.contain,
-        alignment: compact ? Alignment.centerLeft : Alignment.center,
-        filterQuality: FilterQuality.high,
-        semanticLabel: compact ? 'HIMATE' : 'HIMATE System',
-        errorBuilder: (context, error, stackTrace) => _fallback(context, height: height),
+      width: targetWidth,
+      height: targetHeight,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          boxShadow: shadow
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: .12),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : const [],
+        ),
+        child: image,
       ),
     );
   }
 }
 
 class BrandMark extends StatelessWidget {
-  const BrandMark({this.size = 34, super.key});
+  const BrandMark({required this.size, super.key});
   final double size;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: size,
-    height: size,
-    child: Image.memory(
-      himateLogoBytes,
-      fit: BoxFit.cover,
-      alignment: Alignment.centerLeft,
-      filterQuality: FilterQuality.high,
-      semanticLabel: 'HIMATE',
-      errorBuilder: (context, error, stackTrace) => Container(
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: brandGold.withOpacity(.12),
-          borderRadius: BorderRadius.circular(size * .22),
-          border: Border.all(color: brandGold.withOpacity(.36)),
-        ),
-        child: Text(
-          'H',
-          style: GoogleFonts.cormorantGaramond(
-            color: brandGold,
-            fontWeight: FontWeight.w800,
-            fontSize: size * .58,
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: Image.network(
+        himateIconUrl,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        errorBuilder: (_, __, ___) => DecoratedBox(
+          decoration: BoxDecoration(
+            color: brandNavy,
+            borderRadius: BorderRadius.circular(size * .24),
+            border: Border.all(color: brandGold.withValues(alpha: .8)),
+          ),
+          child: Center(
+            child: Text(
+              'H',
+              style: TextStyle(
+                color: brandGold,
+                fontSize: size * .52,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _HeroValue extends StatelessWidget {

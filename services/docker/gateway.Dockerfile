@@ -29,6 +29,7 @@ COPY frontend/web/contact.html /app/web/contact.html
 COPY frontend/web/himate-brand-r4.css /app/web/himate-brand-r4.css
 COPY frontend/web/site.js /app/web/site.js
 COPY frontend/web/art /app/web/art
+COPY frontend/web/brand /app/web/brand
 ENV PORT=10000
 ENV WEB_DIST_DIR=/app/web
 EXPOSE 10000

@@ -170,8 +170,6 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
-	mux.HandleFunc("/brand/himate-logo-v3.webp", a.brandLogo)
-	mux.HandleFunc("/art/himate_logo_master_v2.webp", a.brandLogo)
 	mux.HandleFunc("/public/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "cms")
 	})
@@ -1359,29 +1357,6 @@ func pbkdf2SHA256(password, salt []byte, iterations, length int) []byte {
 		out = append(out, t...)
 	}
 	return out[:length]
-}
-
-func (a *app) brandLogo(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		common.APIError(w,http.StatusMethodNotAllowed,"METHOD","Use GET or HEAD")
-		return
-	}
-	root := filepath.Clean(a.webDir)
-	candidates := []string{
-		filepath.Join(root, "art", "himate_logo_master_v2.webp"),
-		filepath.Join(root, "assets", "assets", "himate_logo_master_v2.webp"),
-	}
-	for _, file := range candidates {
-		if info, err := os.Stat(file); err == nil && !info.IsDir() {
-			w.Header().Set("Content-Type", "image/webp")
-			w.Header().Set("Cache-Control", "no-store, max-age=0, must-revalidate")
-			w.Header().Set("Pragma", "no-cache")
-			w.Header().Set("X-Himate-Logo-Source", strings.TrimPrefix(file, root))
-			http.ServeFile(w, r, file)
-			return
-		}
-	}
-	common.APIError(w, http.StatusNotFound, "LOGO_ASSET_MISSING", "HIMATE logo asset is missing from the deployed bundle")
 }
 
 func (a *app) web() http.Handler {

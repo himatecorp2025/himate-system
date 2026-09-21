@@ -53,59 +53,49 @@ jobs:
           test -s build/web/art/gallery_hall_r5.png
           test -s build/web/art/login_desktop_r5.png
           test -s build/web/art/login_mobile_r5.png
+          test -s build/web/brand/himate_identity_wordmark_2026.webp
+          test -s build/web/brand/himate_identity_icon_192.webp
+          test -s build/web/brand/himate_identity_favicon_32.png
           grep -q "statue_hero_r5.png" build/web/himate-brand-r4.css
           grep -q "/api/v1/public/contact" build/web/contact.html
           grep -q 'href="/himate-brand-r4.css"' build/web/landing.html
           grep -q 'src="/site.js"' build/web/landing.html
-          grep -q 'src="data:image/webp;base64,' build/web/landing.html
+          for page in landing platform modules programs impact partners contact; do
+            file="build/web/$page.html"
+            grep -q 'src="/brand/himate_identity_wordmark_2026.webp"' "$file"
+            grep -q 'href="/brand/himate_identity_favicon_32.png"' "$file"
+            grep -q 'href="/manifest.json"' "$file"
+            if grep -q 'data:image/webp;base64' "$file"; then echo "$file still embeds a legacy logo"; exit 1; fi
+            if grep -q 'himate_logo_master' "$file"; then echo "$file still references a legacy logo filename"; exit 1; fi
+            if grep -q '/brand/himate-logo-' "$file"; then echo "$file still references a legacy dynamic logo route"; exit 1; fi
+          done
+          grep -q "const String himateWordmarkUrl = '/brand/himate_identity_wordmark_2026.webp';" lib/brand_assets.dart
+          grep -q "const String himateIconUrl = '/brand/himate_identity_icon_192.webp';" lib/brand_assets.dart
+          grep -q 'Image.network(' lib/main.dart
+          if grep -q 'himateLogoBase64\|himateLogoBytes\|Image.memory(' lib/main.dart lib/brand_assets.dart; then
+            echo "Flutter still contains embedded legacy logo bytes"
+            exit 1
+          fi
+          if grep -q 'himate_logo_master' pubspec.yaml ../services/cmd/gateway/main.go ../scripts/smoke_start_18_19_v2.sh; then
+            echo "Legacy logo filename still referenced by executable source"
+            exit 1
+          fi
+          if grep -q 'himate-logo-v3' ../services/cmd/gateway/main.go; then
+            echo "Legacy dynamic logo route still exists"
+            exit 1
+          fi
           python3 - <<'PY'
+          import json
           from pathlib import Path
-          import base64
-          import re
 
-          canonical = Path("web/art/himate_logo_master_v2.webp").read_bytes()
-          pages = [
-              "landing.html",
-              "platform.html",
-              "modules.html",
-              "programs.html",
-              "impact.html",
-              "partners.html",
-              "contact.html",
-          ]
-          embedded = None
-          for page in pages:
-              html = (Path("build/web") / page).read_text()
-              match = re.search(r'src="data:image/webp;base64,([^"]+)"', html)
-              if match is None:
-                  raise SystemExit(f"{page}: embedded HIMATE logo is missing")
-              payload = base64.b64decode(match.group(1), validate=True)
-              if payload != canonical:
-                  raise SystemExit(f"{page}: embedded HIMATE logo differs from canonical asset")
-              if embedded is None:
-                  embedded = match.group(1)
-              elif embedded != match.group(1):
-                  raise SystemExit(f"{page}: embedded HIMATE logo differs from the other public pages")
-              if "/brand/himate-logo-" in html:
-                  raise SystemExit(f"{page}: dynamic logo route reference is forbidden")
-              if 'src="/art/himate_logo_master_' in html:
-                  raise SystemExit(f"{page}: external logo asset dependency is forbidden")
-
-          brand_source = Path("lib/brand_assets.dart").read_text()
-          brand_match = re.search(r"const String himateLogoBase64 = '([^']+)'", brand_source)
-          if brand_match is None:
-              raise SystemExit("Flutter embedded HIMATE logo source is missing")
-          if base64.b64decode(brand_match.group(1), validate=True) != canonical:
-              raise SystemExit("Flutter embedded HIMATE logo differs from canonical asset")
-          if brand_match.group(1) != embedded:
-              raise SystemExit("Flutter and public-site HIMATE logos are not byte-identical")
-
-          main_source = Path("lib/main.dart").read_text()
-          if "Image.memory(" not in main_source or "himateLogoBytes" not in main_source:
-              raise SystemExit("Flutter logo is not rendered from embedded bytes")
+          manifest = json.loads(Path("build/web/manifest.json").read_text())
+          icons = manifest.get("icons", [])
+          assert any(
+              icon.get("src") == "/brand/himate_identity_icon_192.webp"
+              and icon.get("sizes") == "192x192"
+              for icon in icons
+          ), manifest
           PY
-          if grep -q 'href="/brand.css"' build/web/landing.html; then exit 1; fi
-
 
   compose:
     runs-on: ubuntu-latest
