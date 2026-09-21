@@ -73,7 +73,8 @@ test -n "$connector_token"
 echo "$partner_id"
 
 printf 'heartbeat and module coverage are partner-scoped... '
-curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: application/json'   -d '{"version":"klavierhaus-6.7.0-start22","health":"OK","modules":{"users":{"enabled":true,"dataset_key":"operations.users","schema_version":1}},"error":""}'   "$BASE_URL/connector/v1/heartbeat" | grep -q ""partner_id":"$partner_id""
+heartbeat="$(curl -fsS -H "Authorization: Bearer $connector_token" -H 'Content-Type: application/json'   -d '{"version":"klavierhaus-6.7.0-start22","health":"OK","modules":{"users":{"enabled":true,"dataset_key":"operations.users","schema_version":1}},"error":""}'   "$BASE_URL/connector/v1/heartbeat")"
+printf '%s' "$heartbeat" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("status")=="accepted",d; assert d.get("partner_id")==sys.argv[1],(d,sys.argv[1]); assert d.get("environment")=="STAGING",d' "$partner_id"
 echo ok
 
 printf 'build canonical signed Klavierhaus batch... '
