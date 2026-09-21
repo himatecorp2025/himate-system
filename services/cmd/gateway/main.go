@@ -1397,6 +1397,7 @@ func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
 	case http.MethodPatch:
 		var in struct {
 			Name *string `json:"name"`
+			Email *string `json:"email"`
 			PreferredLocale *string `json:"preferred_locale"`
 			Timezone *string `json:"timezone"`
 			JobTitle *string `json:"job_title"`
@@ -1407,6 +1408,13 @@ func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
 		if in.Name!=nil {
 			next.Name=strings.TrimSpace(*in.Name)
 			if len(next.Name)<2||len(next.Name)>120 { common.APIError(w,400,"VALIDATION","Name must be 2-120 characters");return }
+		}
+		if in.Email!=nil {
+			next.Email=strings.ToLower(strings.TrimSpace(*in.Email))
+			if !validEmail(next.Email) { common.APIError(w,400,"VALIDATION","A valid email is required");return }
+			var duplicate bool
+			_ = a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity.users WHERE lower(email)=lower($1) AND id<>$2)`,next.Email,actor.ID).Scan(&duplicate)
+			if duplicate { common.APIError(w,409,"EMAIL_EXISTS","An administrator with this email already exists");return }
 		}
 		if in.PreferredLocale!=nil {
 			raw:=strings.TrimSpace(*in.PreferredLocale)
@@ -1426,8 +1434,8 @@ func (a *app) profile(w http.ResponseWriter, r *http.Request, actor user) {
 			next.Phone=strings.TrimSpace(*in.Phone)
 			if len(next.Phone)>50 { common.APIError(w,400,"VALIDATION","Phone is too long");return }
 		}
-		_,err:=a.db.Exec(`UPDATE identity.users SET name=$2,preferred_locale=$3,timezone=$4,job_title=$5,phone=$6,updated_at=NOW() WHERE id=$1`,
-			actor.ID,next.Name,next.PreferredLocale,next.Timezone,next.JobTitle,next.Phone)
+		_,err:=a.db.Exec(`UPDATE identity.users SET name=$2,email=$3,preferred_locale=$4,timezone=$5,job_title=$6,phone=$7,updated_at=NOW() WHERE id=$1`,
+			actor.ID,next.Name,next.Email,next.PreferredLocale,next.Timezone,next.JobTitle,next.Phone)
 		if err!=nil { common.APIError(w,500,"DB","Could not update profile");return }
 		common.JSON(w,http.StatusOK,publicUser(next))
 	default:

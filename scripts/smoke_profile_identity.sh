@@ -56,13 +56,13 @@ test "$(status "$OWNER_COOKIE" POST "/api/v1/admin/users" -H 'Content-Type: appl
 grep -q 'OWNER_ROLE_RESERVED' "$BODY"
 echo ok
 
-printf 'employee profile persists Hungarian preference... '
+printf 'employee profile persists email and Hungarian preference... '
 login "$USER_COOKIE" "ci-profile-user@example.com" "$USER_PASSWORD" >/dev/null
 login "$STALE_COOKIE" "ci-profile-user@example.com" "$USER_PASSWORD" >/dev/null
-updated="$(curl -fsS -b "$USER_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"name":"Profile Test Employee","preferred_locale":"hu_HU","timezone":"Europe/Budapest","job_title":"Operations Specialist","phone":"+36 1 555 0101"}'   "$BASE_URL/api/v1/profile")"
-printf '%s' "$updated" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["preferred_locale"]=="hu_HU"; assert d["timezone"]=="Europe/Budapest"; assert d["job_title"]=="Operations Specialist"; assert d["system_owner"] is False'
+updated="$(curl -fsS -b "$USER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"name":"Profile Test Employee","email":"ci-profile-user-renamed@example.com","preferred_locale":"hu_HU","timezone":"Europe/Budapest","job_title":"Operations Specialist","phone":"+36 1 555 0101"}' "$BASE_URL/api/v1/profile")"
+printf '%s' "$updated" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["email"]=="ci-profile-user-renamed@example.com"; assert d["preferred_locale"]=="hu_HU"; assert d["timezone"]=="Europe/Budapest"; assert d["job_title"]=="Operations Specialist"; assert d["system_owner"] is False'
 profile="$(curl -fsS -b "$USER_COOKIE" "$BASE_URL/api/v1/profile")"
-printf '%s' "$profile" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["preferred_locale"]=="hu_HU"; assert d["timezone"]=="Europe/Budapest"'
+printf '%s' "$profile" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["email"]=="ci-profile-user-renamed@example.com"; assert d["preferred_locale"]=="hu_HU"; assert d["timezone"]=="Europe/Budapest"'
 echo ok
 
 printf 'non-owner cannot manage users... '

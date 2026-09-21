@@ -34,6 +34,7 @@ class _AccountProfileDialog extends StatefulWidget {
 
 class _AccountProfileDialogState extends State<_AccountProfileDialog> {
   late final TextEditingController name;
+  late final TextEditingController email;
   late final TextEditingController jobTitle;
   late final TextEditingController phone;
   late final TextEditingController timezone;
@@ -51,6 +52,7 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
   void initState() {
     super.initState();
     name = TextEditingController(text: '${widget.currentUser['name'] ?? ''}');
+    email = TextEditingController(text: '${widget.currentUser['email'] ?? ''}');
     jobTitle = TextEditingController(text: '${widget.currentUser['job_title'] ?? ''}');
     phone = TextEditingController(text: '${widget.currentUser['phone'] ?? ''}');
     timezone = TextEditingController(text: '${widget.currentUser['timezone'] ?? 'UTC'}');
@@ -60,6 +62,7 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
   @override
   void dispose() {
     name.dispose();
+    email.dispose();
     jobTitle.dispose();
     phone.dispose();
     timezone.dispose();
@@ -74,6 +77,7 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
     try {
       final updated = await widget.api.patch('/api/v1/profile', {
         'name': name.text.trim(),
+        'email': email.text.trim(),
         'job_title': jobTitle.text.trim(),
         'phone': phone.text.trim(),
         'timezone': timezone.text.trim(),
@@ -105,6 +109,7 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
         'new_password': newPassword.text,
       });
       widget.onUserChanged(updated);
+      TextInput.finishAutofillContext(shouldSave: true);
       currentPassword.clear();
       newPassword.clear();
       confirmPassword.clear();
@@ -173,9 +178,10 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
               const SizedBox(height: 18),
               ResponsiveFieldPair(
                 first: TextField(controller: name, decoration: InputDecoration(labelText: t('fullName'))),
-                second: TextFormField(
-                  initialValue: '${widget.currentUser['email'] ?? ''}',
-                  readOnly: true,
+                second: TextField(
+                  controller: email,
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.username, AutofillHints.email],
                   decoration: InputDecoration(labelText: t('emailAddress')),
                 ),
               ),
@@ -215,12 +221,13 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
               TextField(
                 controller: currentPassword,
                 obscureText: true,
+                autofillHints: const [AutofillHints.password],
                 decoration: InputDecoration(labelText: t('currentPassword')),
               ),
               const SizedBox(height: 10),
               ResponsiveFieldPair(
-                first: TextField(controller: newPassword, obscureText: true, decoration: InputDecoration(labelText: t('newPassword'), helperText: t('passwordPolicy'))),
-                second: TextField(controller: confirmPassword, obscureText: true, decoration: InputDecoration(labelText: t('confirmPassword'))),
+                first: TextField(controller: newPassword, obscureText: true, autofillHints: const [AutofillHints.newPassword], decoration: InputDecoration(labelText: t('newPassword'), helperText: t('passwordPolicy'))),
+                second: TextField(controller: confirmPassword, obscureText: true, autofillHints: const [AutofillHints.newPassword], decoration: InputDecoration(labelText: t('confirmPassword'))),
               ),
               const SizedBox(height: 10),
               OutlinedButton.icon(
