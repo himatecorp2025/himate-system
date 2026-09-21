@@ -718,7 +718,7 @@ paths:
     get:
       tags: [Connector]
       summary: Read the Klavierhaus 38-module START-22 allowlist contract
-      description: Returns the machine-readable module/dataset registry, approved fields, target services, cadence and HIMATE_7Y retention policy.
+      description: Returns the machine-readable module/dataset registry, approved fields, target services, cadence, HIMATE_7Y retention policy and safe AES-256-GCM/key-version metadata.
       responses:
         "200": {description: START-22 mapping registry}
   /api/v1/connectors/start22/summary:
@@ -729,7 +729,7 @@ paths:
         - {name: partner_id, in: query, schema: {type: string}}
         - {name: environment, in: query, schema: {type: string, enum: [STAGING, PRODUCTION]}}
       responses:
-        "200": {description: Batch, record, coverage, routing, retention and reconciliation state}
+        "200": {description: Batch, record, coverage, routing, retention, reconciliation and at-rest encryption state}
   /api/v1/connectors/start22/records:
     get:
       tags: [Connector]
@@ -738,7 +738,7 @@ paths:
         - {name: partner_id, in: query, required: true, schema: {type: string}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
       responses:
-        "200": {description: Retained allowlisted data records with provenance and HIMATE_7Y metadata}
+        "200": {description: Retained allowlisted data records decrypted only inside the Connector service boundary, with provenance, HIMATE_7Y and encryption metadata}
         "400": {description: partner_id is required}
   /api/v1/connectors/start22/retention:
     get:
@@ -777,8 +777,10 @@ paths:
         Partner/environment identity is derived from the connector credential.
         Requests require HMAC-SHA-512 integrity headers, a credential-scoped nonce,
         a five-minute timestamp window, approved dataset/field allowlists and
-        SHA-512 item checksums. Maximum body size is 1 MiB and maximum batch size
-        is 250 items.
+        SHA-512 item checksums. Accepted business payloads are retained using
+        AES-256-GCM envelope encryption with per-record data keys and a
+        versioned runtime master-key keyring. Maximum body size is 1 MiB and
+        maximum batch size is 250 items.
       parameters:
         - {name: X-Himate-Timestamp, in: header, required: true, schema: {type: string, format: date-time}}
         - {name: X-Himate-Nonce, in: header, required: true, schema: {type: string}}
