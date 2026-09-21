@@ -80,7 +80,11 @@ class LText extends StatelessWidget {
 String uiLiteralFor(BuildContext context, String value) =>
     HimateI18n.literal(himateLocaleCode(Localizations.localeOf(context)), value);
 
+String uiLiteral(String value) => HimateI18n.literal(HimateI18n.activeLocale, value);
+
 class HimateI18n {
+  static String activeLocale = 'en_US';
+
   static const Map<String, Map<String, String>> _values = {
     'en_US': {
       'account': 'Account',
