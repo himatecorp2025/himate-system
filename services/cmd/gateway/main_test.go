@@ -154,7 +154,7 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/v1/dashboard/summary", "dashboard.read"},
 		{http.MethodGet, "/api/v1/notifications", "notifications.read"},
-		{http.MethodPost, "/api/v1/notifications/read-all", "notifications.write"},
+		{http.MethodPost, "/api/v1/notifications/read-all", "notifications.read"},
 		{http.MethodPost, "/api/v1/admin/roles", "administration.approve"},
 		{http.MethodGet, "/api/v1/partners", "partners.read"},
 		{http.MethodPatch, "/api/v1/partners/ptr_1", "partners.write"},
