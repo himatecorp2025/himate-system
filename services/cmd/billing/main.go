@@ -761,39 +761,52 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		if key == "" { continue }
 		activeKeys = append(activeKeys, key)
 
-		price := 0.0
+		catalogPrice := 0.0
 		if v, ok := mod["partner_price"].(float64); ok {
-			price = v
+			catalogPrice = v
 		} else if v, ok := mod["partner_price"].(json.Number); ok {
-			price, _ = v.Float64()
+			catalogPrice, _ = v.Float64()
 		}
+		included := mod["included_in_base"] == true
 
 		var activation, existingStart, existingEnd time.Time
+		var currentPrice float64
 		var autoRenew, cancelAtEnd bool
 		var paymentStatus string
-		err := a.db.QueryRowContext(ctx, `SELECT activation_date,period_start,period_end,auto_renew,cancel_at_period_end,payment_status
+		err := a.db.QueryRowContext(ctx, `SELECT activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
 			FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2`, id, key).
-			Scan(&activation, &existingStart, &existingEnd, &autoRenew, &cancelAtEnd, &paymentStatus)
+			Scan(&activation, &existingStart, &existingEnd, &currentPrice, &autoRenew, &cancelAtEnd, &paymentStatus)
+
 		if err == sql.ErrNoRows {
-			activation := moduleActivationDate(mod, today)
+			activation = moduleActivationDate(mod, today)
 			start, end := cycleWindow(activation, today)
+			_, snapshotPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, start, end, catalogPrice, included)
+			if snapErr != nil { return fmt.Errorf("create subscription snapshot %s/%s: %w", id, key, snapErr) }
 			if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(
 					partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
 				) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING')`,
-				id, key, currency, activation, start, end, price); err != nil {
+				id, key, currency, activation, start, end, snapshotPrice); err != nil {
 				return err
 			}
+			if err := a.emitBillingEvent(ctx,
+				fmt.Sprintf("MODULE_ACTIVATED:%s:%s:%s", id, key, dateOnly(activation).Format("2006-01-02")),
+				id, key, "MODULE_ACTIVATED", activation, map[string]any{
+					"activation_date": dateOnly(activation).Format("2006-01-02"),
+					"period_start": start.Format("2006-01-02"),
+					"period_end_exclusive": end.Format("2006-01-02"),
+					"price_snapshot": snapshotPrice,
+				}); err != nil { return err }
 			continue
 		}
 		if err != nil { return err }
 
 		activation = dateOnly(activation)
+		existingStart = dateOnly(existingStart)
 		existingEnd = dateOnly(existingEnd)
+
 		if cancelAtEnd {
 			if cancellationExpired(true, existingEnd, today) {
-				// The paid period has ended. Keep catalog entitlement and billing
-				// state synchronized so the module becomes NOT_LICENSED without
-				// deleting any historical/business data.
+				if err := a.closeModulePeriod(ctx, id, key, existingStart, existingEnd, true); err != nil { return err }
 				if err := a.setCatalogModuleNotLicensed(ctx, id, key); err != nil {
 					return fmt.Errorf("expire subscription %s/%s: %w", id, key, err)
 				}
@@ -804,27 +817,57 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 				}
 				continue
 			}
-			// A scheduled cancellation keeps the already-paid current period
-			// intact and never gets silently reset by a catalog refresh.
-			if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-				SET currency=$3,price=$4,auto_renew=FALSE,cancel_at_period_end=TRUE,updated_at=NOW()
-				WHERE partner_id=$1 AND module_key=$2`, id, key, currency, price); err != nil {
+			// The current period is immutable while cancellation is pending.
+			// Catalog price changes are intentionally ignored until the next period.
+			if _, _, _, err := a.ensureModulePeriodSnapshot(ctx, id, key, currency, existingStart, existingEnd, currentPrice, included); err != nil {
 				return err
 			}
 			continue
 		}
 
-		// A module that was deactivated (not cancelled by the subscriber) begins
-		// a fresh 30-day subscription when it is explicitly activated again.
 		if paymentStatus == "INACTIVE" {
 			activation = moduleActivationDate(mod, today)
+			start, end := cycleWindow(activation, today)
+			_, snapshotPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, start, end, catalogPrice, included)
+			if snapErr != nil { return fmt.Errorf("reactivation snapshot %s/%s: %w", id, key, snapErr) }
+			if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
+					currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
+					auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()
+				WHERE partner_id=$1 AND module_key=$2`,
+				id, key, currency, activation, start, end, snapshotPrice); err != nil {
+				return err
+			}
+			if err := a.emitBillingEvent(ctx,
+				fmt.Sprintf("MODULE_ACTIVATED:%s:%s:%s", id, key, dateOnly(activation).Format("2006-01-02")),
+				id, key, "MODULE_ACTIVATED", activation, map[string]any{
+					"reactivation": true, "price_snapshot": snapshotPrice,
+					"period_start": start.Format("2006-01-02"), "period_end_exclusive": end.Format("2006-01-02"),
+				}); err != nil { return err }
+			continue
 		}
-		start, end := cycleWindow(activation, today)
+
+		// Backfill/lock the current period snapshot. Once it exists it is immutable.
+		_, snapshotPrice, _, err := a.ensureModulePeriodSnapshot(ctx, id, key, currency, existingStart, existingEnd, currentPrice, included)
+		if err != nil { return fmt.Errorf("lock current snapshot %s/%s: %w", id, key, err) }
+		currentPrice = snapshotPrice
+
+		// Roll forward every completed module period. Each new period resolves its
+		// price as-of that exact period start, so missed cron runs remain reproducible.
+		for autoRenew && !today.Before(existingEnd) {
+			if err := a.closeModulePeriod(ctx, id, key, existingStart, existingEnd, false); err != nil { return err }
+			nextStart := existingEnd
+			nextEnd := nextStart.AddDate(0, 0, 30)
+			_, nextPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, nextStart, nextEnd, catalogPrice, included)
+			if snapErr != nil { return fmt.Errorf("renewal snapshot %s/%s: %w", id, key, snapErr) }
+			if err := a.markModuleRenewed(ctx, id, key, nextStart, nextEnd, nextPrice); err != nil { return err }
+			existingStart, existingEnd, currentPrice = nextStart, nextEnd, nextPrice
+		}
+
 		if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
 				currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
 				auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()
 			WHERE partner_id=$1 AND module_key=$2`,
-			id, key, currency, activation, start, end, price); err != nil {
+			id, key, currency, activation, existingStart, existingEnd, currentPrice); err != nil {
 			return err
 		}
 	}
