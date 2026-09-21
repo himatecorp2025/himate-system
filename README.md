@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–22 implementation status
+## START-01–22.1 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -144,6 +144,18 @@ The architecture remains microservice/container based. It is **not** being colla
 - encrypted offsite restore artifacts with mandatory restore verification
 - Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–22 smoke tests in CI
 
+
+### START-22.1 — Internal Control Plane Completion
+- dedicated top-level Modules control plane with source/release identity, module groups and global catalog pricing
+- directed dependency/integration relationships and module-to-Impact metric mappings
+- partner-usage visibility from the module registry
+- database-backed custom HIMATE roles with backend-authoritative permission matrices
+- protected System Owner boundary remains non-delegable
+- dedicated Notifications microservice with permission-aware unread/read state and audit-derived events
+- Administration includes the authoritative HIMATE company/issuer/bank profile
+- shared responsive KPI grid fixes stacked summary cards across Partners, Partner Workspace and Licensing & Finance
+- explicit SEO settings + SEO audit acceptance coverage before START-23
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -160,4 +172,4 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-The START-22 branch is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the full START-01–21 regression, profile/owner/locale checks and the START-22 signed Connector/reconciliation/retention smoke are all green.
+START-22 remains protected by its historical acceptance suite. START-22.1 additionally requires `docs/START-22.1_ACCEPTANCE.md` and `scripts/smoke_start_22_1.sh`. The START-22 baseline is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the full START-01–21 regression, profile/owner/locale checks and the START-22 signed Connector/reconciliation/retention smoke are all green.
