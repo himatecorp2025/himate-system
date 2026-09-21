@@ -1364,41 +1364,41 @@ func pbkdf2SHA256(password, salt []byte, iterations, length int) []byte {
 
 
 type publicCMSSEO struct {
-	Title           string \`json:"title"\`
-	MetaDescription string \`json:"meta_description"\`
-	Canonical       string \`json:"canonical"\`
-	OGTitle         string \`json:"og_title"\`
-	OGDescription   string \`json:"og_description"\`
-	OGImageAssetID  string \`json:"og_image_asset_id"\`
-	NoIndex         bool   \`json:"noindex"\`
+	Title           string `json:"title"`
+	MetaDescription string `json:"meta_description"`
+	Canonical       string `json:"canonical"`
+	OGTitle         string `json:"og_title"`
+	OGDescription   string `json:"og_description"`
+	OGImageAssetID  string `json:"og_image_asset_id"`
+	NoIndex         bool   `json:"noindex"`
 }
 
 type publicCMSSection struct {
-	ID            string \`json:"id"\`
-	ComponentType string \`json:"component_type"\`
-	Heading       string \`json:"heading"\`
-	Body          string \`json:"body"\`
-	MediaAssetID  string \`json:"media_asset_id"\`
-	CTALabel      string \`json:"cta_label"\`
-	CTAURL        string \`json:"cta_url"\`
-	Visible       bool   \`json:"visible"\`
-	SortOrder     int    \`json:"sort_order"\`
+	ID            string `json:"id"`
+	ComponentType string `json:"component_type"`
+	Heading       string `json:"heading"`
+	Body          string `json:"body"`
+	MediaAssetID  string `json:"media_asset_id"`
+	CTALabel      string `json:"cta_label"`
+	CTAURL        string `json:"cta_url"`
+	Visible       bool   `json:"visible"`
+	SortOrder     int    `json:"sort_order"`
 }
 
 type publicCMSPage struct {
-	Slug           string             \`json:"slug"\`
-	SEO            publicCMSSEO       \`json:"seo"\`
-	Sections       []publicCMSSection \`json:"sections"\`
-	HiddenSections []string           \`json:"hidden_sections"\`
+	Slug           string             `json:"slug"`
+	SEO            publicCMSSEO       `json:"seo"`
+	Sections       []publicCMSSection `json:"sections"`
+	HiddenSections []string           `json:"hidden_sections"`
 }
 
 type publicCMSManifest struct {
 	Items []struct {
-		Slug      string \`json:"slug"\`
-		Canonical string \`json:"canonical"\`
-		Title     string \`json:"title"\`
-		NoIndex   bool   \`json:"noindex"\`
-	} \`json:"items"\`
+		Slug      string `json:"slug"`
+		Canonical string `json:"canonical"`
+		Title     string `json:"title"`
+		NoIndex   bool   `json:"noindex"`
+	} `json:"items"`
 }
 
 func (a *app) fetchPublishedCMS(ctx context.Context, slug string) (publicCMSPage, error) {
