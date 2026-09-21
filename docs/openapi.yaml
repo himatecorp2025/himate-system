@@ -1043,8 +1043,9 @@ paths:
       tags: [CMS]
       summary: Create a CMS page with its first immutable DRAFT version
       description: >
-        The stable page key is separate from the versioned slug. Draft content
-        is never exposed through public CMS routes.
+        The stable page key is separate from the versioned slug. Each page is
+        explicitly scoped to en_US or hu_HU and the same page_key may exist once
+        per locale. Draft content is never exposed through public CMS routes.
       responses:
         "201": {description: CMS page and initial draft created}
         "400": {description: Content validation failed}
@@ -1149,9 +1150,40 @@ paths:
       summary: Preview an authenticated CMS media asset
       responses:
         "200": {description: Inline media bytes}
+  /api/v1/cms/design:
+    get:
+      tags: [CMS]
+      summary: Read the editable and published global website Design Guide
+      responses:
+        "200": {description: Draft/published design settings, version and timestamps}
+  /api/v1/cms/design/draft:
+    put:
+      tags: [CMS]
+      summary: Save an auditable Design Guide draft
+      description: >
+        Controls the public logo media asset, brand colors, heading/body fonts,
+        button radius and ordered bilingual navigation without source-code edits.
+      responses:
+        "200": {description: Design Guide draft saved}
+        "400": {description: Design validation failed}
+  /api/v1/cms/design/publish:
+    post:
+      tags: [CMS]
+      summary: Publish the current Design Guide draft
+      responses:
+        "200": {description: Published design version}
+        "400": {description: Design validation failed}
+  /public/v1/cms/design:
+    get:
+      tags: [CMS Public]
+      security: []
+      summary: Read the active published global website Design Guide
+      responses:
+        "200": {description: Published logo, color, typography, button and bilingual navigation settings}
   /public/v1/cms/pages/{slug}:
     parameters:
       - {name: slug, in: path, required: true, schema: {type: string}}
+      - {name: locale, in: query, schema: {type: string, enum: [en_US, hu_HU], default: en_US}}
     get:
       tags: [CMS Public]
       security: []
@@ -1196,6 +1228,8 @@ paths:
   /public/v1/cms/manifest:
     get:
       tags: [CMS Public]
+      parameters:
+        - {name: locale, in: query, schema: {type: string, enum: [en_US, hu_HU], default: en_US}}
       security: []
       summary: Published SEO manifest for sitemap/robots preparation
       responses:
