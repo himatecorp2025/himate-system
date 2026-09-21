@@ -303,6 +303,16 @@ func (a *app) billingEvents(w http.ResponseWriter, r *http.Request, partnerID st
 	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
 }
 
+func (a *app) commercialEvidenceBreakdown(ctx context.Context, partnerID string) (commercial, invoices, paymentEvidence int, err error) {
+	err = a.db.QueryRowContext(ctx, `SELECT
+		COUNT(*) FILTER (WHERE kind IN ('PAYMENT_EVIDENCE','INVOICE','RECEIPT','CONTRACT') AND NULLIF(BTRIM(storage_url),'') IS NOT NULL),
+		COUNT(*) FILTER (WHERE kind='INVOICE' AND NULLIF(BTRIM(storage_url),'') IS NOT NULL),
+		COUNT(*) FILTER (WHERE kind IN ('PAYMENT_EVIDENCE','RECEIPT') AND NULLIF(BTRIM(storage_url),'') IS NOT NULL)
+		FROM billing.documents WHERE partner_id=$1`, partnerID).
+		Scan(&commercial, &invoices, &paymentEvidence)
+	return
+}
+
 func (a *app) commercialStatus(w http.ResponseWriter, r *http.Request, partnerID string) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
 	t, err := a.ensureTerms(partnerID)
@@ -316,18 +326,13 @@ func (a *app) commercialStatus(w http.ResponseWriter, r *http.Request, partnerID
 	_ = a.db.QueryRow(`SELECT status,agreement_reference,agreed_at FROM billing.commercial_agreements WHERE partner_id=$1`, partnerID).
 		Scan(&agreementStatus, &agreementReference, &agreedAt)
 
-	var evidenceCount, invoiceCount, paymentEvidenceCount int
-	_ = a.db.QueryRow(`SELECT
-		COUNT(*) FILTER (WHERE kind IN ('PAYMENT_EVIDENCE','INVOICE','RECEIPT','CONTRACT') AND NULLIF(BTRIM(storage_url),'') IS NOT NULL),
-		COUNT(*) FILTER (WHERE kind='INVOICE' AND NULLIF(BTRIM(storage_url),'') IS NOT NULL),
-		COUNT(*) FILTER (WHERE kind IN ('PAYMENT_EVIDENCE','RECEIPT') AND NULLIF(BTRIM(storage_url),'') IS NOT NULL)
-		FROM billing.documents WHERE partner_id=$1`, partnerID).
-		Scan(&evidenceCount, &invoiceCount, &paymentEvidenceCount)
+	evidenceCount, invoiceCount, paymentEvidenceCount, evidenceErr := a.commercialEvidenceBreakdown(r.Context(), partnerID)
+	if evidenceErr != nil { common.APIError(w, 500, "DB", "Could not resolve commercial evidence"); return }
 
 	referencePartner, _ := a.referencePartner(r.Context(), partnerID)
-	paymentVerified := license.Status == "PAID" && evidenceCount > 0
+	paymentVerified := license.Status == "PAID" && paymentEvidenceCount > 0
 	waived := referencePartner && license.Status == "WAIVED" && license.Waived && strings.TrimSpace(license.WaiverReason) != ""
-	provisioningAllowed := (agreementStatus == "AGREED" && paymentVerified) || waived
+	provisioningAllowed := (agreementStatus == "AGREED" && invoiceCount > 0 && paymentVerified) || waived
 	nextAction := "CONFIRM_COMMERCIAL_AGREEMENT"
 	switch {
 	case waived:
