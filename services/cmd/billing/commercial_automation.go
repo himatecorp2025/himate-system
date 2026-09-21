@@ -255,21 +255,58 @@ func (a *app) agreement(w http.ResponseWriter, r *http.Request, partnerID string
 			return
 		}
 		actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+		eventAt := time.Now().UTC()
 		var agreedAt any
-		if status == "AGREED" { agreedAt = time.Now().UTC() }
-		_, err := a.db.Exec(`INSERT INTO billing.commercial_agreements(
+		agreedBy := ""
+		if status == "AGREED" {
+			agreedAt = eventAt
+			agreedBy = actor
+		}
+
+		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+		if err != nil { common.APIError(w, 500, "DB", "Could not start commercial agreement update"); return }
+		defer tx.Rollback()
+
+		oldStatus := "DRAFT"
+		oldReference := ""
+		var oldNote string
+		err = tx.QueryRowContext(r.Context(), `SELECT status,agreement_reference,note
+			FROM billing.commercial_agreements WHERE partner_id=$1 FOR UPDATE`, partnerID).
+			Scan(&oldStatus, &oldReference, &oldNote)
+		if err != nil && err != sql.ErrNoRows {
+			common.APIError(w, 500, "DB", "Could not load commercial agreement")
+			return
+		}
+
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO billing.commercial_agreements(
 				partner_id,status,agreement_reference,note,agreed_at,agreed_by
 			) VALUES($1,$2,$3,$4,$5,$6)
 			ON CONFLICT(partner_id) DO UPDATE SET
 				status=EXCLUDED.status,agreement_reference=EXCLUDED.agreement_reference,note=EXCLUDED.note,
 				agreed_at=EXCLUDED.agreed_at,agreed_by=EXCLUDED.agreed_by,updated_at=NOW()`,
-			partnerID, status, reference, strings.TrimSpace(in.Note), agreedAt, actor)
+			partnerID, status, reference, strings.TrimSpace(in.Note), agreedAt, agreedBy)
 		if err != nil { common.APIError(w, 500, "DB", "Could not save commercial agreement"); return }
-		if status == "AGREED" {
-			_ = a.emitBillingEvent(r.Context(),
-				fmt.Sprintf("COMMERCIAL_AGREEMENT_CONFIRMED:%s:%d", partnerID, time.Now().UnixNano()),
-				partnerID, "", "COMMERCIAL_AGREEMENT_CONFIRMED", time.Now().UTC(),
-				map[string]any{"agreement_reference": reference, "actor": actor})
+
+		eventType := "COMMERCIAL_AGREEMENT_UPDATED"
+		switch {
+		case status == "AGREED" && (oldStatus != "AGREED" || oldReference != reference):
+			eventType = "COMMERCIAL_AGREEMENT_CONFIRMED"
+		case status == "DRAFT" && oldStatus == "AGREED":
+			eventType = "COMMERCIAL_AGREEMENT_DRAFTED"
+		}
+		if oldStatus != status || oldReference != reference || oldNote != strings.TrimSpace(in.Note) || err == sql.ErrNoRows {
+			if err = emitBillingEventTx(r.Context(), tx,
+				fmt.Sprintf("%s:%s:%d", eventType, partnerID, eventAt.UnixNano()),
+				partnerID, "", eventType, eventAt, map[string]any{
+					"status": status, "agreement_reference": reference, "actor": actor,
+				}); err != nil {
+				common.APIError(w, 500, "DB", "Could not record commercial agreement event")
+				return
+			}
+		}
+		if err = tx.Commit(); err != nil {
+			common.APIError(w, 500, "DB", "Could not commit commercial agreement update")
+			return
 		}
 		a.agreement(w, cloneAsGet(r), partnerID)
 	default:
