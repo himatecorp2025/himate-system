@@ -11,10 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"himate.local/services/internal/common"
+	"himate.local/services/internal/partnerdb"
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -38,7 +38,6 @@ type job struct {
 	StartedAt,CompletedAt sql.NullTime
 }
 
-var safeID=regexp.MustCompile(`^[a-z0-9_]+$`)
 
 var stepOrder=[]string{
 	"VALIDATE_PARTNER",
@@ -355,13 +354,8 @@ func (a *app)internalJSON(ctx context.Context,method,host,path string,payload an
 	return nil
 }
 
-func (a *app)partnerDatabaseName(partnerID string)string{
-	id:=strings.ToLower(strings.TrimSpace(partnerID))
-	id=strings.ReplaceAll(id,"-","_")
-	if !safeID.MatchString(id){return ""}
-	return "himate_"+id
-}
-func (a *app)partnerRoleName(partnerID string)string{return a.partnerDatabaseName(partnerID)+"_app"}
+func (a *app)partnerDatabaseName(partnerID string)string{return partnerdb.DatabaseName(partnerID)}
+func (a *app)partnerRoleName(partnerID string)string{return partnerdb.RoleName(partnerID)}
 
 func quoteIdent(v string)string{return `"`+strings.ReplaceAll(v,`"`,`""`)+`"`}
 
@@ -370,12 +364,7 @@ func (a *app)partnerPassword(partnerID string)string{
 	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))[:40]
 }
 
-func (a *app)adminDSN()(string,error){
-	u,err:=url.Parse(a.dbAdminURL);if err!=nil{return "",err}
-	if u.Scheme==""{return "",fmt.Errorf("PARTNER_DATABASE_ADMIN_URL is invalid")}
-	u.Path="/postgres"
-	return u.String(),nil
-}
+func (a *app)adminDSN()(string,error){return partnerdb.AdminDSN(a.dbAdminURL)}
 
 func (a *app)partnerDSN(partnerID string)(string,error){
 	u,err:=url.Parse(a.dbAdminURL);if err!=nil{return "",err}

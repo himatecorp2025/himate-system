@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -122,6 +124,75 @@ func (a *app) check(ctx context.Context, partnerID string) (map[string]any, erro
 	return map[string]any{"partner_id": partnerID, "status": "READY", "checked_at": time.Now().UTC()}, nil
 }
 
+func (a *app) archiveNamespace(w http.ResponseWriter, r *http.Request, partnerID string) {
+	root, err := a.pathFor(partnerID)
+	if err != nil {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		return
+	}
+	marker := filepath.Join(root, ".himate-storage")
+	raw, err := os.ReadFile(marker)
+	if err != nil || strings.TrimSpace(string(raw)) != partnerID {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Partner storage namespace is not initialized")
+		return
+	}
+
+	files := []string{}
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil { return walkErr }
+		if path == root { return nil }
+		if entry.Type()&os.ModeSymlink != 0 {
+			if entry.IsDir() { return filepath.SkipDir }
+			return nil
+		}
+		if entry.IsDir() { return nil }
+		if !entry.Type().IsRegular() { return nil }
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil { return relErr }
+		rel = filepath.ToSlash(rel)
+		if rel == ".himate-storage" || strings.HasPrefix(rel, ".health-") { return nil }
+		if rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") { return fmt.Errorf("unsafe archive path") }
+		files = append(files, path)
+		return nil
+	})
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "STORAGE", "Could not enumerate partner media")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-media.tar.gz"`, partnerID))
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Himate-Archive-Files", strconv.Itoa(len(files)))
+
+	gz := gzip.NewWriter(w)
+	defer gz.Close()
+	tw := tar.NewWriter(gz)
+	defer tw.Close()
+
+	for _, path := range files {
+		info, statErr := os.Lstat(path)
+		if statErr != nil { return }
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 { continue }
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil { return }
+		rel = filepath.ToSlash(rel)
+		header := &tar.Header{
+			Name: rel,
+			Mode: 0600,
+			Size: info.Size(),
+			ModTime: info.ModTime().UTC(),
+			Typeflag: tar.TypeReg,
+		}
+		if err := tw.WriteHeader(header); err != nil { return }
+		file, openErr := os.Open(path)
+		if openErr != nil { return }
+		_, copyErr := io.Copy(tw, file)
+		_ = file.Close()
+		if copyErr != nil { return }
+	}
+}
+
 func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/storage/partners/"), "/")
 	parts := strings.Split(raw, "/")
@@ -136,8 +207,10 @@ func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {
 		out, err := a.check(r.Context(), partnerID)
 		if err != nil { common.JSON(w, 503, out); return }
 		common.JSON(w, 200, out)
+	case r.Method == http.MethodGet && action == "archive":
+		a.archiveNamespace(w, r, partnerID)
 	default:
-		common.APIError(w, 405, "METHOD", "Use POST /ensure or GET /health")
+		common.APIError(w, 405, "METHOD", "Use POST /ensure, GET /health or GET /archive")
 	}
 }
 
