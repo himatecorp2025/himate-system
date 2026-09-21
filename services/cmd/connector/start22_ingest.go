@@ -360,17 +360,24 @@ func (a *app) start22DataBatch(w http.ResponseWriter, r *http.Request) {
 	duplicates := 0
 	records := make([]start22StoredRecord, 0, len(in.Items))
 	for i, item := range in.Items {
-		dataRaw, _ := json.Marshal(item.Data)
+		envelope, encryptionErr := a.start22EncryptData(item.Data, credential.PartnerID, credential.Environment, item.DatasetKey, item.IdempotencyKey)
+		if encryptionErr != nil {
+			common.APIError(w, http.StatusInternalServerError, "ENCRYPTION", "Could not encrypt retained START-22 data")
+			return
+		}
 		var id int64
 		var receivedAt, retainUntil time.Time
 		err = tx.QueryRowContext(r.Context(), `INSERT INTO connector.data_records(
 				partner_id,environment,batch_id,module_key,dataset_key,schema_version,period_start,period_end,aggregation,
-				data,source_checksum,idempotency_key,source_version,retain_until)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,NOW()+INTERVAL '7 years')
+				data,data_ciphertext,data_nonce,wrapped_data_key,key_nonce,data_key_version,
+				source_checksum,idempotency_key,source_version,retain_until)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'{}'::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,NOW()+INTERVAL '7 years')
 			ON CONFLICT(partner_id,environment,dataset_key,idempotency_key) DO NOTHING
 			RETURNING id,received_at,retain_until`,
 			credential.PartnerID, credential.Environment, in.BatchID, item.ModuleKey, item.DatasetKey, item.SchemaVersion,
-			periodStarts[i], periodEnds[i], item.Aggregation, string(dataRaw), item.SourceChecksum, item.IdempotencyKey, in.SourceVersion).
+			periodStarts[i], periodEnds[i], item.Aggregation,
+			envelope.Ciphertext, envelope.DataNonce, envelope.WrappedKey, envelope.KeyNonce, envelope.KeyVersion,
+			item.SourceChecksum, item.IdempotencyKey, in.SourceVersion).
 			Scan(&id, &receivedAt, &retainUntil)
 		if err == sql.ErrNoRows {
 			var existingChecksum string
