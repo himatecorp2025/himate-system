@@ -99,6 +99,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     final seoTitle = TextEditingController();
     final meta = TextEditingController();
     final canonical = TextEditingController();
+    final localeChoice = ValueNotifier<String>(HimateI18n.activeLocale == 'hu_HU' ? 'hu_HU' : 'en_US');
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => BrandDialog(
@@ -121,6 +122,21 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             ),
             const SizedBox(height: 12),
             TextField(controller: slug, decoration: InputDecoration(labelText: uiLiteral('Slug *'), hintText: uiLiteral('landing'))),
+            const SizedBox(height: 12),
+            ValueListenableBuilder<String>(
+              valueListenable: localeChoice,
+              builder: (context, value, _) => DropdownButtonFormField<String>(
+                value: value,
+                decoration: InputDecoration(labelText: uiLiteral('Language')),
+                items: const [
+                  DropdownMenuItem(value: 'en_US', child: LText('English (US)')),
+                  DropdownMenuItem(value: 'hu_HU', child: LText('Magyar')),
+                ],
+                onChanged: (next) {
+                  if (next != null) localeChoice.value = next;
+                },
+              ),
+            ),
             const SizedBox(height: 12),
             TextField(controller: seoTitle, decoration: InputDecoration(labelText: uiLiteral('SEO title'))),
             const SizedBox(height: 12),
@@ -146,6 +162,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       await widget.api.post('/api/v1/cms/pages', <String, dynamic>{
         'page_key': key.text.trim(),
         'name': name.text.trim(),
+        'locale': localeChoice.value,
         'version': <String, dynamic>{
           'slug': slug.text.trim(),
           'seo': <String, dynamic>{
@@ -163,6 +180,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       await load();
     }
 
+    localeChoice.dispose();
     for (final controller in <TextEditingController>[key, name, slug, seoTitle, meta, canonical]) {
       controller.dispose();
     }
@@ -436,6 +454,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
               ),
               const SizedBox(height: 14),
               _DefinitionRow(label: 'Page key', value: (page['page_key'] ?? '').toString()),
+              _DefinitionRow(label: 'Language', value: (page['locale'] ?? 'en_US').toString() == 'hu_HU' ? 'Magyar' : 'English (US)'),
               _DefinitionRow(label: 'Draft', value: 'v' + draftNo),
               _DefinitionRow(label: 'Preview', value: previewNo == '0' ? '—' : 'v' + previewNo),
               _DefinitionRow(label: 'Published', value: publishedNo == '0' ? '—' : 'v' + publishedNo),
