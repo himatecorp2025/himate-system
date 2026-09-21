@@ -2590,9 +2590,7 @@ class _PartnersPageState extends State<PartnersPage> {
           : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                    ResponsiveKpiGrid(
                       children: [
                         Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
                         Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess),
@@ -3765,13 +3763,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       ],
                       KeyedSubtree(
                         key: _overviewKey,
-                        child: Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
+                        child: ResponsiveKpiGrid(
                           children: [
                             Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
-                          Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
-                          Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
+                            Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
+                            Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
                             Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
                           ],
                         ),
@@ -4378,9 +4374,7 @@ class _FinancePageState extends State<FinancePage> {
           : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                    ResponsiveKpiGrid(
                       children: [
                         Kpi(label: 'Module catalog', value: '${modules.length}', note: 'Canonical + custom modules', icon: Icons.grid_view_outlined, accent: brandNavy),
                         Kpi(label: 'Custom modules', value: '$custom', note: 'Created by HIMATE admins', icon: Icons.extension_outlined, accent: brandSteel),
@@ -6973,6 +6967,27 @@ class Content extends StatelessWidget {
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+class ResponsiveKpiGrid extends StatelessWidget {
+  const ResponsiveKpiGrid({required this.children, this.gap = 12, super.key});
+  final List<Widget> children;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth < 620 ? 1 : constraints.maxWidth < 980 ? 2 : 4;
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [for (final child in children) SizedBox(width: width, child: child)],
         );
       },
     );
