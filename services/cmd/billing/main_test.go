@@ -159,3 +159,39 @@ func TestExpiredSubscriptionDisablesCatalogEntitlement(t *testing.T) {
 		t.Fatal("history reason must not be empty")
 	}
 }
+
+func TestSTART223ModulePriceAtUsesPeriodStartContract(t *testing.T) {
+	const token = "0123456789abcdefghijklmnop"
+	var gotPath, gotAt, gotToken string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAt = r.URL.Query().Get("at")
+		gotToken = r.Header.Get("X-Himate-Internal-Token")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"partner_id":"ptr_1","module_key":"ci.module","at":"2026-10-21","price":77.5,"currency":"USD","included_in_base":false,"source":"CATALOG_EFFECTIVE_PRICE_HISTORY"}`))
+	}))
+	defer server.Close()
+
+	a := &app{
+		catalogHost: strings.TrimPrefix(server.URL, "http://"),
+		token: token,
+		client: server.Client(),
+	}
+	at := time.Date(2026, 10, 21, 18, 30, 0, 0, time.UTC)
+	price, included, currency, err := a.modulePriceAt(context.Background(), "ptr_1", "ci.module", at, 12, true, "USD")
+	if err != nil {
+		t.Fatalf("modulePriceAt failed: %v", err)
+	}
+	if gotPath != "/internal/v1/partners/ptr_1/modules/ci.module/price-at" {
+		t.Fatalf("unexpected point-in-time price path: %s", gotPath)
+	}
+	if gotAt != "2026-10-21" {
+		t.Fatalf("expected period-start date, got %s", gotAt)
+	}
+	if gotToken != token {
+		t.Fatal("internal catalog credential missing")
+	}
+	if price != 77.5 || included || currency != "USD" {
+		t.Fatalf("unexpected historical price contract: price=%v included=%v currency=%s", price, included, currency)
+	}
+}
