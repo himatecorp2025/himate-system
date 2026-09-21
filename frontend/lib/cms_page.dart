@@ -529,6 +529,10 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           const SizedBox(height: 28),
           const Divider(height: 1),
           const SizedBox(height: 24),
+          DesignGuidePanel(api: widget.api, media: media),
+          const SizedBox(height: 28),
+          const Divider(height: 1),
+          const SizedBox(height: 24),
           const _RuleStrip(items: [
             _RuleItem(Icons.edit_note_outlined, 'Workflow', 'DRAFT → PREVIEW → PUBLISHED'),
             _RuleItem(Icons.security_outlined, 'Public boundary', 'Published content only'),
