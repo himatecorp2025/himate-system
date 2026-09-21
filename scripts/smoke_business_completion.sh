@@ -4,8 +4,12 @@ set -eu
 BASE_URL="${1:-http://127.0.0.1:8080}"
 COOKIE_JAR="/tmp/himate-business-completion-cookies.txt"
 BODY="/tmp/himate-business-completion-body.json"
-rm -f "$COOKIE_JAR" "$BODY"
-trap 'rm -f "$COOKIE_JAR" "$BODY"' EXIT
+SEO_PNG="/tmp/himate-business-completion-seo.png"
+SEO_DOWNLOADED="/tmp/himate-business-completion-seo-downloaded.png"
+SEO_HTML="/tmp/himate-business-completion-seo.html"
+SEO_HEADERS="/tmp/himate-business-completion-seo-headers.txt"
+rm -f "$COOKIE_JAR" "$BODY" "$SEO_PNG" "$SEO_DOWNLOADED" "$SEO_HTML" "$SEO_HEADERS"
+trap 'rm -f "$COOKIE_JAR" "$BODY" "$SEO_PNG" "$SEO_DOWNLOADED" "$SEO_HTML" "$SEO_HEADERS"' EXIT
 
 json_field() {
   python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
@@ -41,14 +45,38 @@ audit="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/audit/events?action=CONTAC
 printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(x["action"]=="CONTACT_LEAD_UPDATED" and x["resource"]=="contact" for x in d["items"]),d'
 echo ok
 
+printf 'SEO default Open Graph media boundary... '
+python3 - "$SEO_PNG" <<'PY'
+import base64,sys
+raw="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+open(sys.argv[1],"wb").write(base64.b64decode(raw))
+PY
+seo_media="$(curl -fsS -b "$COOKIE_JAR" -F 'alt_text=HIMATE SEO default' -F "file=@$SEO_PNG;type=image/png;filename=seo-default.png" "$BASE_URL/api/v1/cms/media")"
+seo_media_id="$(printf '%s' "$seo_media" | json_field id)"
+test -n "$seo_media_id"
+private_seo_media="$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE_URL/public/v1/cms/media/$seo_media_id")"
+test "$private_seo_media" = "404"
+echo ok
+
 printf 'SEO Keywords draft and publication... '
-seo_payload='{"global_keywords_en":["arts","culture","cultural organizations","HIMATE"],"global_keywords_hu":["művészet","kultúra","kulturális szervezetek","HIMATE"],"organization_name":"HIMATE System","organization_url":"https://www.himate.com","default_og_image_asset_id":""}'
+seo_payload="{\"global_keywords_en\":[\"arts\",\"culture\",\"cultural organizations\",\"HIMATE\"],\"global_keywords_hu\":[\"művészet\",\"kultúra\",\"kulturális szervezetek\",\"HIMATE\"],\"organization_name\":\"HIMATE System\",\"organization_url\":\"https://www.himate.com\",\"default_og_image_asset_id\":\"$seo_media_id\"}"
 seo_draft="$(curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d "$seo_payload" "$BASE_URL/api/v1/cms/seo/draft")"
 printf '%s' "$seo_draft" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "culture" in d["draft"]["global_keywords_en"]; assert "kultúra" in d["draft"]["global_keywords_hu"]'
 seo_published="$(curl -fsS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/v1/cms/seo/publish")"
 printf '%s' "$seo_published" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["version"]>=1; assert d["published"]["organization_name"]=="HIMATE System"'
 public_seo="$(curl -fsS "$BASE_URL/public/v1/cms/seo?locale=hu_HU")"
-printf '%s' "$public_seo" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["locale"]=="hu_HU"; assert "kultúra" in d["global_keywords"]; assert d["organization_url"]=="https://www.himate.com"'
+printf '%s' "$public_seo" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["locale"]=="hu_HU"; assert "kultúra" in d["global_keywords"]; assert d["organization_url"]=="https://www.himate.com"; assert d["default_og_image_asset_id"]'
+curl -fsS "$BASE_URL/public/v1/cms/media/$seo_media_id" -o "$SEO_DOWNLOADED"
+cmp "$SEO_PNG" "$SEO_DOWNLOADED"
+echo ok
+
+printf 'global SEO applies to source-controlled fallback pages... '
+curl -fsS -D "$SEO_HEADERS" "$BASE_URL/modules?lang=hu" -o "$SEO_HTML"
+grep -qi '^X-Himate-SSR: static-fallback' "$SEO_HEADERS"
+grep -qi '^X-Himate-SEO: global' "$SEO_HEADERS"
+grep -q 'name="keywords" content="művészet, kultúra, kulturális szervezetek, HIMATE"' "$SEO_HTML"
+grep -q 'data-himate-seo="organization"' "$SEO_HTML"
+grep -q '"@type":"Organization"' "$SEO_HTML"
 echo ok
 
 printf 'Design Guide draft and publication... '
