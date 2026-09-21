@@ -102,9 +102,12 @@ func (a *app) validateSiteDesign(ctx context.Context, in siteDesign) error {
 }
 
 func (a *app) readSiteDesign() (siteDesign, siteDesign, int, string, time.Time, sql.NullTime, error) {
-	defaults := defaultSiteDesign()
-	draft := defaults
-	published := defaults
+	// Keep draft and published defaults fully independent. siteDesign contains a
+	// Navigation slice, so copying one default struct into both states would
+	// alias the same backing array and allow one JSON unmarshal to overwrite
+	// the other state's navigation.
+	draft := defaultSiteDesign()
+	published := defaultSiteDesign()
 	var draftRaw, publishedRaw []byte
 	var version int
 	var updatedBy string
