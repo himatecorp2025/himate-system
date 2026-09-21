@@ -26,11 +26,17 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.7.0-start-21' ../docs/openapi.yaml
+          grep -q 'version: 0.8.0-start-22' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
+          grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
+          grep -q '^  /connector/v1/reconcile:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/connectors/start22/retention:' ../docs/openapi.yaml
+          grep -q 'HMAC-SHA-512' ../docs/openapi.yaml
           test -s ../docs/START-21_ACCEPTANCE.md
+          test -s ../docs/START-22_ACCEPTANCE.md
           test -s ../docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md
+          test -s ../docs/adr/0005-klavierhaus-one-way-data-connector.md
       - run: go build ./cmd/...
 
   flutter:
@@ -77,6 +83,10 @@ jobs:
           grep -q "const String himateWordmarkUrl = '/brand/himate_identity_wordmark_2026.webp';" lib/brand_assets.dart
           grep -q "const String himateIconUrl = '/brand/himate_identity_icon_192.webp';" lib/brand_assets.dart
           grep -q 'Image.network(' lib/main.dart
+          test -s lib/start22_connector.dart
+          grep -q 'Start22ConnectorPanel' lib/start22_connector.dart
+          grep -q 'connectors/start22/summary' lib/start22_connector.dart
+          grep -q 'HIMATE 7 years' lib/start22_connector.dart
           if grep -q 'himateLogoBase64\|himateLogoBytes\|Image.memory(' lib/main.dart lib/brand_assets.dart; then
             echo "Flutter still contains embedded legacy logo bytes"
             exit 1
@@ -181,6 +191,8 @@ jobs:
         run: sh scripts/smoke_business_completion.sh http://127.0.0.1:8080
       - name: Run START-21 encrypted backups and verified recovery smoke
         run: sh scripts/smoke_start_21.sh http://127.0.0.1:8080
+      - name: Run START-22 signed Klavierhaus Connector and retention smoke
+        run: sh scripts/smoke_start_22.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

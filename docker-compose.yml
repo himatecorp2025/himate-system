@@ -215,6 +215,8 @@ services:
     environment:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      HIMATE_CONNECTOR_DATA_MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      HIMATE_CONNECTOR_DATA_KEY_VERSION: v1
       IMPACT_HOSTPORT: impact:10000
     depends_on:
       postgres:
@@ -314,7 +316,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.7.0-start-21
+      HIMATE_APP_VERSION: 0.8.0-start-22
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456

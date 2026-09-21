@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.7.0-start-21
+  version: 0.8.0-start-22
   description: >
-    Authenticated REST contract for the START-01 through START-21 HIMATE
+    Authenticated REST contract for the START-01 through START-22 HIMATE
     control-plane surface. Partner business databases remain isolated behind
     connector/API contracts; provider deployment is isolated behind the Runtime
     adapter service; encrypted backup/recovery is isolated behind Backups.
@@ -714,6 +714,132 @@ paths:
         "202": {description: Metric batch accepted}
         "401": {description: Invalid connector credential}
         "409": {description: Metric rejected by the Impact service}
+  /api/v1/connectors/start22/mapping:
+    get:
+      tags: [Connector]
+      summary: Read the Klavierhaus 38-module START-22 allowlist contract
+      description: Returns the machine-readable module/dataset registry, approved fields, target services, cadence, HIMATE_7Y retention policy and safe AES-256-GCM/key-version metadata.
+      responses:
+        "200": {description: START-22 mapping registry}
+  /api/v1/connectors/start22/summary:
+    get:
+      tags: [Connector]
+      summary: START-22 connector operations summary
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+        - {name: environment, in: query, schema: {type: string, enum: [STAGING, PRODUCTION]}}
+      responses:
+        "200": {description: Batch, record, coverage, routing, retention, reconciliation and at-rest encryption state}
+  /api/v1/connectors/start22/records:
+    get:
+      tags: [Connector]
+      summary: List retained START-22 connector records for a partner
+      parameters:
+        - {name: partner_id, in: query, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200": {description: Retained allowlisted data records decrypted only inside the Connector service boundary, with provenance, HIMATE_7Y and encryption metadata}
+        "400": {description: partner_id is required}
+  /api/v1/connectors/start22/retention:
+    get:
+      tags: [Connector]
+      summary: Read START-22 retention summary for a partner
+      parameters:
+        - {name: partner_id, in: query, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Seven-year retention, legal-hold and privacy-delete summary}
+    post:
+      tags: [Connector]
+      summary: Apply approval-grade START-22 retention action
+      description: Supports SET_LEGAL_HOLD, PRIVACY_DELETE and PURGE_EXPIRED. Legal hold and privacy delete are synchronized to routed Impact observations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: {type: string, enum: [SET_LEGAL_HOLD, PRIVACY_DELETE, PURGE_EXPIRED]}
+                record_id: {type: integer, format: int64}
+                legal_hold: {type: boolean}
+      responses:
+        "200": {description: Retention action completed}
+        "409": {description: Legal hold or retention conflict}
+        "502": {description: Downstream Impact retention synchronization failed}
+  /connector/v1/data/batches:
+    post:
+      tags: [Connector]
+      security:
+        - connectorBearer: []
+      summary: Submit a signed Klavierhaus START-22 data batch
+      description: >
+        Partner/environment identity is derived from the connector credential.
+        Requests require HMAC-SHA-512 integrity headers, a credential-scoped nonce,
+        a five-minute timestamp window, approved dataset/field allowlists and
+        SHA-512 item checksums. Accepted business payloads are retained using
+        AES-256-GCM envelope encryption with per-record data keys and a
+        versioned runtime master-key keyring. Maximum body size is 1 MiB and
+        maximum batch size is 250 items.
+      parameters:
+        - {name: X-Himate-Timestamp, in: header, required: true, schema: {type: string, format: date-time}}
+        - {name: X-Himate-Nonce, in: header, required: true, schema: {type: string}}
+        - {name: X-Himate-Body-SHA512, in: header, required: true, schema: {type: string, minLength: 128, maxLength: 128}}
+        - {name: X-Himate-Signature, in: header, required: true, schema: {type: string, minLength: 128, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [protocol_version, source_system, source_version, batch_id, generated_at, items]
+              properties:
+                protocol_version: {type: string, const: "1.0"}
+                source_system: {type: string, const: KLAVIERHAUS}
+                source_version: {type: string}
+                batch_id: {type: string}
+                generated_at: {type: string, format: date-time}
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 250
+                  items:
+                    type: object
+                    required: [module_key, dataset_key, schema_version, period_start, period_end, aggregation, data, source_checksum, idempotency_key]
+                    properties:
+                      module_key: {type: string}
+                      dataset_key: {type: string}
+                      schema_version: {type: integer, const: 1}
+                      period_start: {type: string, format: date}
+                      period_end: {type: string, format: date}
+                      aggregation: {type: string, enum: [SUM, LATEST, AVERAGE]}
+                      data: {type: object}
+                      source_checksum: {type: string, minLength: 128, maxLength: 128}
+                      idempotency_key: {type: string}
+      responses:
+        "202": {description: Signed batch accepted and routed}
+        "200": {description: Exact idempotent batch retry already processed}
+        "400": {description: Protocol, schema, dataset or field validation failed}
+        "401": {description: Credential, timestamp, body checksum or signature invalid}
+        "409": {description: Replay or idempotency conflict}
+        "413": {description: Payload exceeds 1 MiB}
+  /connector/v1/reconcile:
+    post:
+      tags: [Connector]
+      security:
+        - connectorBearer: []
+      summary: Reconcile a signed Klavierhaus batch against HIMATE
+      description: Uses per-dataset item counts and aggregate SHA-512 checksums to produce SYNCED or OUT_OF_SYNC state.
+      parameters:
+        - {name: X-Himate-Timestamp, in: header, required: true, schema: {type: string, format: date-time}}
+        - {name: X-Himate-Nonce, in: header, required: true, schema: {type: string}}
+        - {name: X-Himate-Body-SHA512, in: header, required: true, schema: {type: string, minLength: 128, maxLength: 128}}
+        - {name: X-Himate-Signature, in: header, required: true, schema: {type: string, minLength: 128, maxLength: 128}}
+      responses:
+        "200": {description: Reconciliation is SYNCED}
+        "400": {description: Invalid reconciliation contract}
+        "401": {description: Invalid signed connector request}
+        "409": {description: Reconciliation is OUT_OF_SYNC or replay detected}
   /api/v1/system-health:
     get:
       tags: [System Health]

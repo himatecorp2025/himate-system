@@ -23,6 +23,7 @@ type app struct {
 	internalToken string
 	impactHost string
 	client *http.Client
+	dataKeyring start22Keyring
 }
 
 type credential struct {
@@ -37,26 +38,38 @@ func main() {
 	db,err:=common.OpenDB()
 	if err!=nil { log.Error("database","error",err); os.Exit(1) }
 	defer db.Close()
+	dataKeyring,err:=start22LoadKeyringFromEnv()
+	if err!=nil { log.Error("START-22 data encryption","error",err); os.Exit(1) }
 	a:=&app{
 		db:db,
 		internalToken:os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		impactHost:os.Getenv("IMPACT_HOSTPORT"),
 		client:&http.Client{Timeout:6*time.Second},
+		dataKeyring:dataKeyring,
 	}
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second)
 	defer cancel()
 	if err:=a.migrate(ctx);err!=nil { log.Error("migration","error",err);os.Exit(1) }
+	if err:=start22ValidateRegistry();err!=nil { log.Error("START-22 registry","error",err);os.Exit(1) }
+	if err:=a.start22EncryptLegacyPlaintext(ctx);err!=nil { log.Error("START-22 data encryption migration","error",err);os.Exit(1) }
+	go a.start22RetentionLoop()
 
 	publicMux:=http.NewServeMux()
 	publicMux.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){
-		common.JSON(w,200,map[string]any{"status":"ok","service":"connector","time":time.Now().UTC()})
+		common.JSON(w,200,map[string]any{"status":"ok","service":"connector","time":time.Now().UTC(),"data_encryption":start22EncryptionAlgorithm,"data_key_version":a.dataKeyring.ActiveVersion})
 	})
 	publicMux.HandleFunc("/connector/v1/heartbeat",a.heartbeat)
 	publicMux.HandleFunc("/connector/v1/state",a.state)
 	publicMux.HandleFunc("/connector/v1/desired-state",a.desiredState)
 	publicMux.HandleFunc("/connector/v1/metrics",a.metrics)
+	publicMux.HandleFunc("/connector/v1/data/batches",a.start22DataBatch)
+	publicMux.HandleFunc("/connector/v1/reconcile",a.start22Reconcile)
 
 	privateMux:=http.NewServeMux()
+	privateMux.HandleFunc("/api/v1/connectors/start22/mapping",a.start22Mapping)
+	privateMux.HandleFunc("/api/v1/connectors/start22/summary",a.start22Summary)
+	privateMux.HandleFunc("/api/v1/connectors/start22/retention",a.start22Retention)
+	privateMux.HandleFunc("/api/v1/connectors/start22/records",a.start22RecordList)
 	privateMux.HandleFunc("/api/v1/connectors/",a.adminConnector)
 	privateMux.HandleFunc("/internal/v1/connectors/summary",a.summary)
 	privateMux.HandleFunc("/internal/v1/connectors/ensure",a.ensureCredential)
@@ -116,6 +129,92 @@ func (a *app) migrate(ctx context.Context) error {
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				PRIMARY KEY(partner_id,environment)
 			)`,
+		}},
+		{Version:4,Name:"start-22-klavierhaus-data-contract",Statements:[]string{
+			`ALTER TABLE connector.partner_state ADD COLUMN IF NOT EXISTS protocol_version TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE connector.partner_state ADD COLUMN IF NOT EXISTS sync_status TEXT NOT NULL DEFAULT 'NEVER'`,
+			`ALTER TABLE connector.partner_state ADD COLUMN IF NOT EXISTS last_data_sync_at TIMESTAMPTZ`,
+			`ALTER TABLE connector.partner_state ADD COLUMN IF NOT EXISTS last_reconciliation_at TIMESTAMPTZ`,
+			`CREATE TABLE IF NOT EXISTS connector.data_batches(
+				id BIGSERIAL PRIMARY KEY,
+				partner_id TEXT NOT NULL,
+				environment TEXT NOT NULL,
+				batch_id TEXT NOT NULL,
+				protocol_version TEXT NOT NULL,
+				source_system TEXT NOT NULL,
+				source_version TEXT NOT NULL DEFAULT '',
+				generated_at TIMESTAMPTZ NOT NULL,
+				request_sha512 TEXT NOT NULL,
+				item_count INTEGER NOT NULL,
+				accepted_count INTEGER NOT NULL DEFAULT 0,
+				duplicate_count INTEGER NOT NULL DEFAULT 0,
+				routed_count INTEGER NOT NULL DEFAULT 0,
+				route_error_count INTEGER NOT NULL DEFAULT 0,
+				signature_verified BOOLEAN NOT NULL DEFAULT FALSE,
+				status TEXT NOT NULL DEFAULT 'ACCEPTED',
+				received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				retain_until TIMESTAMPTZ NOT NULL DEFAULT (NOW()+INTERVAL '7 years'),
+				UNIQUE(partner_id,environment,batch_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS connector_batches_partner_received_idx ON connector.data_batches(partner_id,environment,received_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS connector_batches_retention_idx ON connector.data_batches(retain_until)`,
+			`CREATE TABLE IF NOT EXISTS connector.data_records(
+				id BIGSERIAL PRIMARY KEY,
+				partner_id TEXT NOT NULL,
+				environment TEXT NOT NULL,
+				batch_id TEXT NOT NULL,
+				module_key TEXT NOT NULL,
+				dataset_key TEXT NOT NULL,
+				schema_version INTEGER NOT NULL,
+				period_start DATE NOT NULL,
+				period_end DATE NOT NULL,
+				aggregation TEXT NOT NULL,
+				data JSONB NOT NULL,
+				source_checksum TEXT NOT NULL,
+				idempotency_key TEXT NOT NULL,
+				source_version TEXT NOT NULL DEFAULT '',
+				route_status TEXT NOT NULL DEFAULT 'PENDING',
+				route_error TEXT NOT NULL DEFAULT '',
+				received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				retain_until TIMESTAMPTZ NOT NULL DEFAULT (NOW()+INTERVAL '7 years'),
+				legal_hold BOOLEAN NOT NULL DEFAULT FALSE,
+				privacy_delete_requested BOOLEAN NOT NULL DEFAULT FALSE,
+				UNIQUE(partner_id,environment,dataset_key,idempotency_key),
+				CHECK(period_end>=period_start)
+			)`,
+			`CREATE INDEX IF NOT EXISTS connector_records_partner_dataset_idx ON connector.data_records(partner_id,environment,dataset_key,received_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS connector_records_batch_idx ON connector.data_records(partner_id,environment,batch_id,dataset_key)`,
+			`CREATE INDEX IF NOT EXISTS connector_records_retention_idx ON connector.data_records(retain_until) WHERE legal_hold=FALSE`,
+			`CREATE TABLE IF NOT EXISTS connector.replay_nonces(
+				credential_id TEXT NOT NULL,
+				nonce_hash TEXT NOT NULL,
+				expires_at TIMESTAMPTZ NOT NULL,
+				PRIMARY KEY(credential_id,nonce_hash)
+			)`,
+			`CREATE INDEX IF NOT EXISTS connector_nonce_expiry_idx ON connector.replay_nonces(expires_at)`,
+			`CREATE TABLE IF NOT EXISTS connector.reconciliations(
+				id BIGSERIAL PRIMARY KEY,
+				partner_id TEXT NOT NULL,
+				environment TEXT NOT NULL,
+				reconciliation_id TEXT NOT NULL,
+				batch_id TEXT NOT NULL,
+				source_version TEXT NOT NULL DEFAULT '',
+				status TEXT NOT NULL,
+				details JSONB NOT NULL DEFAULT '[]'::jsonb,
+				checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				retain_until TIMESTAMPTZ NOT NULL DEFAULT (NOW()+INTERVAL '7 years'),
+				UNIQUE(partner_id,environment,reconciliation_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS connector_reconciliation_partner_idx ON connector.reconciliations(partner_id,environment,checked_at DESC)`,
+		}},
+		{Version:5,Name:"start-22-encrypted-retained-data",Statements:[]string{
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS data_ciphertext BYTEA`,
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS data_nonce BYTEA`,
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS wrapped_data_key BYTEA`,
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS key_nonce BYTEA`,
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS data_key_version TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE connector.data_records ALTER COLUMN data SET DEFAULT '{}'::jsonb`,
+			`CREATE INDEX IF NOT EXISTS connector_records_key_version_idx ON connector.data_records(data_key_version) WHERE data_key_version<>''`,
 		}},
 	})
 }
@@ -388,20 +487,28 @@ func (a *app) metrics(w http.ResponseWriter,r *http.Request){
 func (a *app) summary(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET");return }
 	rows,err:=a.db.Query(`SELECT s.partner_id,s.environment,s.reported_version,s.health,s.last_seen_at,s.last_metric_sync_at,s.last_error,
-		EXISTS(SELECT 1 FROM connector.credentials c WHERE c.partner_id=s.partner_id AND c.active=TRUE)
-		FROM connector.partner_state s ORDER BY s.partner_id`)
+		s.protocol_version,s.sync_status,s.last_data_sync_at,s.last_reconciliation_at,
+		EXISTS(SELECT 1 FROM connector.credentials c WHERE c.partner_id=s.partner_id AND c.environment=s.environment AND c.active=TRUE)
+		FROM connector.partner_state s ORDER BY s.partner_id,s.environment`)
 	if err!=nil { common.APIError(w,500,"DB","Could not load connector summary");return }
 	defer rows.Close()
 	items:=[]map[string]any{}
 	for rows.Next(){
-		var p,e,v,h,lastErr string
-		var seen,metrics sql.NullTime
+		var p,e,v,h,lastErr,protocol,syncStatus string
+		var seen,metrics,dataSync,reconciled sql.NullTime
 		var credentialActive bool
-		if rows.Scan(&p,&e,&v,&h,&seen,&metrics,&lastErr,&credentialActive)==nil {
-			var s,m any
-			if seen.Valid{s=seen.Time.UTC()}
-			if metrics.Valid{m=metrics.Time.UTC()}
-			items=append(items,map[string]any{"partner_id":p,"environment":e,"reported_version":v,"health":h,"last_seen_at":s,"last_metric_sync_at":m,"last_error":lastErr,"credential_active":credentialActive})
+		if rows.Scan(&p,&e,&v,&h,&seen,&metrics,&lastErr,&protocol,&syncStatus,&dataSync,&reconciled,&credentialActive)==nil {
+			var seenValue,metricValue,dataValue,reconcileValue any
+			if seen.Valid{seenValue=seen.Time.UTC()}
+			if metrics.Valid{metricValue=metrics.Time.UTC()}
+			if dataSync.Valid{dataValue=dataSync.Time.UTC()}
+			if reconciled.Valid{reconcileValue=reconciled.Time.UTC()}
+			items=append(items,map[string]any{
+				"partner_id":p,"environment":e,"reported_version":v,"health":h,
+				"protocol_version":protocol,"sync_status":syncStatus,
+				"last_seen_at":seenValue,"last_metric_sync_at":metricValue,"last_data_sync_at":dataValue,
+				"last_reconciliation_at":reconcileValue,"last_error":lastErr,"credential_active":credentialActive,
+			})
 		}
 	}
 	common.JSON(w,200,map[string]any{"items":items})

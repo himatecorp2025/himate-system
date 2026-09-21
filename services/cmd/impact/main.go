@@ -61,6 +61,7 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	go a.start22RetentionLoop()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{"status": "ok", "service": "impact", "time": time.Now().UTC()})
@@ -69,9 +70,24 @@ func main() {
 	mux.HandleFunc("/api/v1/impact/values", a.values)
 	mux.HandleFunc("/api/v1/impact/baselines", a.baselines)
 	mux.HandleFunc("/api/v1/impact/summary", a.summary)
+	mux.HandleFunc("/internal/v1/impact/definitions/ensure", a.ensureSystemDefinition)
+	mux.HandleFunc("/internal/v1/impact/retention", a.connectorRetention)
 	mux.HandleFunc("/internal/v1/impact/ingest", a.ingest)
 	mux.HandleFunc("/internal/v1/impact/summary", a.summary)
 	common.Run(log, "impact", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
+}
+
+func (a *app) start22RetentionLoop() {
+	run:=func(){
+		ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second)
+		defer cancel()
+		_,_=a.db.ExecContext(ctx,`DELETE FROM impact.metric_values
+			WHERE retention_policy='HIMATE_7Y' AND retain_until<=NOW() AND legal_hold=FALSE`)
+	}
+	run()
+	ticker:=time.NewTicker(24*time.Hour)
+	defer ticker.Stop()
+	for range ticker.C { run() }
 }
 
 func (a *app) migrate(ctx context.Context) error {
@@ -131,6 +147,61 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE impact.metric_baselines ADD COLUMN IF NOT EXISTS evidence_id TEXT NOT NULL DEFAULT ''`,
 			`CREATE INDEX IF NOT EXISTS impact_values_evidence_idx ON impact.metric_values(evidence_id) WHERE evidence_id<>''`,
 		}},
+		{Version: 4, Name: "start-22-connector-retention", Statements: []string{
+			`ALTER TABLE impact.metric_values ADD COLUMN IF NOT EXISTS retention_policy TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE impact.metric_values ADD COLUMN IF NOT EXISTS retain_until TIMESTAMPTZ`,
+			`ALTER TABLE impact.metric_values ADD COLUMN IF NOT EXISTS legal_hold BOOLEAN NOT NULL DEFAULT FALSE`,
+			`ALTER TABLE impact.metric_values ADD COLUMN IF NOT EXISTS privacy_delete_requested BOOLEAN NOT NULL DEFAULT FALSE`,
+			`CREATE INDEX IF NOT EXISTS impact_values_retention_idx ON impact.metric_values(retain_until) WHERE retain_until IS NOT NULL AND legal_hold=FALSE`,
+			`CREATE INDEX IF NOT EXISTS impact_values_source_ref_idx ON impact.metric_values(source_ref) WHERE source_ref<>''`,
+		}},
+	})
+}
+
+func (a *app) ensureSystemDefinition(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+		return
+	}
+	var in struct {
+		MetricKey   string `json:"metric_key"`
+		Label       string `json:"label"`
+		Description string `json:"description"`
+		Unit        string `json:"unit"`
+		Aggregation string `json:"aggregation"`
+		Scope       string `json:"scope"`
+	}
+	if common.Decode(r, &in) != nil {
+		common.APIError(w, http.StatusBadRequest, "JSON", "Invalid metric definition")
+		return
+	}
+	in.MetricKey = strings.TrimSpace(in.MetricKey)
+	in.Label = strings.TrimSpace(in.Label)
+	in.Description = strings.TrimSpace(in.Description)
+	in.Unit = strings.TrimSpace(in.Unit)
+	in.Aggregation = strings.ToUpper(strings.TrimSpace(in.Aggregation))
+	in.Scope = strings.ToUpper(strings.TrimSpace(in.Scope))
+	if in.Unit == "" { in.Unit = "count" }
+	if in.Aggregation == "" { in.Aggregation = "LATEST" }
+	if in.Scope == "" { in.Scope = "PARTNER" }
+	if !metricKeyPattern.MatchString(in.MetricKey) || in.Label == "" ||
+		!aggregationValues[in.Aggregation] || !scopeValues[in.Scope] {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", "Invalid system metric definition")
+		return
+	}
+	_, err := a.db.Exec(`INSERT INTO impact.metric_definitions(metric_key,label,description,unit,aggregation,scope,active,system)
+		VALUES($1,$2,$3,$4,$5,$6,TRUE,TRUE)
+		ON CONFLICT(metric_key) DO UPDATE SET
+			label=EXCLUDED.label,description=EXCLUDED.description,unit=EXCLUDED.unit,
+			aggregation=EXCLUDED.aggregation,scope=EXCLUDED.scope,active=TRUE,system=TRUE,updated_at=NOW()`,
+		in.MetricKey,in.Label,in.Description,in.Unit,in.Aggregation,in.Scope)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not ensure system metric definition")
+		return
+	}
+	common.JSON(w,http.StatusOK,map[string]any{
+		"metric_key":in.MetricKey,"label":in.Label,"unit":in.Unit,
+		"aggregation":in.Aggregation,"scope":in.Scope,"active":true,"system":true,
 	})
 }
 
@@ -192,6 +263,8 @@ type metricInput struct {
 	SourceRef string `json:"source_ref"`
 	Metadata map[string]any `json:"metadata"`
 	EvidenceID string `json:"evidence_id"`
+	RetentionPolicy string `json:"retention_policy"`
+	RetainUntil string `json:"retain_until"`
 }
 
 func parseMetricInput(in metricInput)(metricInput,time.Time,time.Time,error){
@@ -261,6 +334,8 @@ func (a *app) values(w http.ResponseWriter, r *http.Request) {
 		var in metricInput
 		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
 		if in.Provenance=="" { in.Provenance="MANUAL" }
+		in.RetentionPolicy=""
+		in.RetainUntil=""
 		if !adminProvenanceAllowed(in.Provenance) {
 			common.APIError(w,400,"PROVENANCE_BOUNDARY","Administrator-entered values may use only MANUAL or VERIFIED_DOCUMENT provenance")
 			return
@@ -297,11 +372,14 @@ func metricPayloadHash(in metricInput,start,end time.Time) string {
 		SourceRef string `json:"source_ref"`
 		Metadata map[string]any `json:"metadata"`
 		EvidenceID string `json:"evidence_id"`
+		RetentionPolicy string `json:"retention_policy"`
+		RetainUntil string `json:"retain_until"`
 	}{
 		PartnerID:strings.TrimSpace(in.PartnerID),MetricKey:in.MetricKey,
 		PeriodStart:start.Format("2006-01-02"),PeriodEnd:end.Format("2006-01-02"),
 		NumericValue:in.NumericValue,TextValue:strings.TrimSpace(in.TextValue),
 		Provenance:in.Provenance,SourceRef:strings.TrimSpace(in.SourceRef),Metadata:in.Metadata,EvidenceID:strings.TrimSpace(in.EvidenceID),
+		RetentionPolicy:strings.TrimSpace(in.RetentionPolicy),RetainUntil:strings.TrimSpace(in.RetainUntil),
 	}
 	raw,_:=json.Marshal(payload)
 	sum:=sha256.Sum256(raw)
@@ -329,16 +407,31 @@ func (a *app) recordValue(w http.ResponseWriter,r *http.Request,in metricInput){
 		return
 	}
 	meta,_:=common.MarshalJSON(in.Metadata)
+	var retainUntil any
+	in.RetentionPolicy=strings.TrimSpace(in.RetentionPolicy)
+	in.RetainUntil=strings.TrimSpace(in.RetainUntil)
+	if in.RetentionPolicy!="" || in.RetainUntil!="" {
+		if in.RetentionPolicy!="HIMATE_7Y" || in.RetainUntil=="" {
+			common.APIError(w,400,"RETENTION_POLICY","Connector retention must use HIMATE_7Y with retain_until")
+			return
+		}
+		parsed,parseErr:=time.Parse(time.RFC3339,in.RetainUntil)
+		if parseErr!=nil || !parsed.After(time.Now().UTC()) {
+			common.APIError(w,400,"RETENTION_POLICY","retain_until must be a future RFC3339 timestamp")
+			return
+		}
+		retainUntil=parsed.UTC()
+	}
 	recordedBy:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 	if recordedBy=="" { recordedBy="connector" }
 	idempotencyKey:=strings.TrimSpace(in.IdempotencyKey)
 	payloadHash:=metricPayloadHash(in,start,end)
 	var id int64
-	err=a.db.QueryRow(`INSERT INTO impact.metric_values(idempotency_key,payload_hash,partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,evidence_id,recorded_by,metadata)
-		VALUES(NULLIF($1,''),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
+	err=a.db.QueryRow(`INSERT INTO impact.metric_values(idempotency_key,payload_hash,partner_id,metric_key,period_start,period_end,numeric_value,text_value,provenance,source_ref,evidence_id,recorded_by,metadata,retention_policy,retain_until)
+		VALUES(NULLIF($1,''),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15)
 		ON CONFLICT(idempotency_key) DO NOTHING
 		RETURNING id`,
-		idempotencyKey,payloadHash,strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.EvidenceID),recordedBy,string(meta)).Scan(&id)
+		idempotencyKey,payloadHash,strings.TrimSpace(in.PartnerID),in.MetricKey,start,end,in.NumericValue,strings.TrimSpace(in.TextValue),in.Provenance,strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.EvidenceID),recordedBy,string(meta),in.RetentionPolicy,retainUntil).Scan(&id)
 	if err==sql.ErrNoRows && idempotencyKey!="" {
 		var existingID int64
 		var existingHash string
@@ -371,6 +464,51 @@ func (a *app) validateEvidence(ctx context.Context,evidenceID,partnerID,metricKe
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("evidence is not a verified document for this partner and metric")}
 	return nil
+}
+
+func (a *app) connectorRetention(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodPost {
+		common.APIError(w,http.StatusMethodNotAllowed,"METHOD","Use POST")
+		return
+	}
+	var in struct{
+		SourceRef string `json:"source_ref"`
+		Action string `json:"action"`
+		LegalHold *bool `json:"legal_hold"`
+	}
+	if common.Decode(r,&in)!=nil {
+		common.APIError(w,400,"JSON","Invalid retention request")
+		return
+	}
+	in.SourceRef=strings.TrimSpace(in.SourceRef)
+	in.Action=strings.ToUpper(strings.TrimSpace(in.Action))
+	if in.SourceRef=="" {
+		common.APIError(w,400,"VALIDATION","source_ref is required")
+		return
+	}
+	switch in.Action {
+	case "SET_LEGAL_HOLD":
+		if in.LegalHold==nil {
+			common.APIError(w,400,"VALIDATION","legal_hold is required")
+			return
+		}
+		result,err:=a.db.ExecContext(r.Context(),`UPDATE impact.metric_values SET legal_hold=$2 WHERE source_ref=$1 AND retention_policy='HIMATE_7Y'`,in.SourceRef,*in.LegalHold)
+		if err!=nil { common.APIError(w,500,"DB","Could not update Impact legal hold");return }
+		affected,_:=result.RowsAffected()
+		common.JSON(w,200,map[string]any{"source_ref":in.SourceRef,"action":in.Action,"legal_hold":*in.LegalHold,"affected":affected})
+	case "PRIVACY_DELETE":
+		result,err:=a.db.ExecContext(r.Context(),`DELETE FROM impact.metric_values WHERE source_ref=$1 AND retention_policy='HIMATE_7Y' AND legal_hold=FALSE`,in.SourceRef)
+		if err!=nil { common.APIError(w,500,"DB","Could not delete retained Impact observations");return }
+		affected,_:=result.RowsAffected()
+		common.JSON(w,200,map[string]any{"source_ref":in.SourceRef,"action":in.Action,"deleted":affected})
+	case "PURGE_EXPIRED":
+		result,err:=a.db.ExecContext(r.Context(),`DELETE FROM impact.metric_values WHERE retention_policy='HIMATE_7Y' AND retain_until<=NOW() AND legal_hold=FALSE`)
+		if err!=nil { common.APIError(w,500,"DB","Could not purge expired Impact observations");return }
+		affected,_:=result.RowsAffected()
+		common.JSON(w,200,map[string]any{"action":in.Action,"deleted":affected})
+	default:
+		common.APIError(w,400,"VALIDATION","Unknown retention action")
+	}
 }
 
 func (a *app) baselines(w http.ResponseWriter,r *http.Request){

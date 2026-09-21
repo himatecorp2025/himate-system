@@ -128,7 +128,7 @@ printf '%s' "$health" | grep -q '"name":"connector"'
 printf '%s' "$health" | grep -q '"name":"impact"'
 printf '%s' "$health" | grep -q "\"partner_id\":\"$partner_id\""
 printf '%s' "$health" | grep -q '"connector_health":"OK"'
-printf '%s' "$health" | python3 -c 'import json,sys; p=json.load(sys.stdin); pid=sys.argv[1]; item=next(x for x in p["partners"] if x["partner_id"]==pid); assert item["database_health"]=="OK", item; assert item["storage_health"]=="READY", item; assert item["hostname_status"]=="REACHABLE", item; assert item["sync_status"]=="CURRENT", item' "$partner_id"
+printf '%s' "$health" | python3 -c 'import json,sys; p=json.load(sys.stdin); pid=sys.argv[1]; item=next(x for x in p["partners"] if x["partner_id"]==pid); assert item["database_health"]=="OK", item; assert item["storage_health"]=="READY", item; assert item["hostname_status"]=="REACHABLE", item; assert item["sync_status"]=="SYNCED", item' "$partner_id"
 echo ok
 
 printf 'cross-tenant database isolation... '

@@ -18,6 +18,7 @@ part 'cms_page.dart';
 part 'contact_leads.dart';
 part 'design_guide.dart';
 part 'seo_panel.dart';
+part 'start22_connector.dart';
 part 'administration_rbac.dart';
 part 'brand_assets.dart';
 part 'backups_panel.dart';
@@ -5419,7 +5420,7 @@ class SystemPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _OperationsHero(status: overall, environment: 'control plane', version: 'START-09–21'),
+              _OperationsHero(status: overall, environment: 'control plane', version: 'START-09–22'),
               const SizedBox(height: 22),
               _SectionHeader(
                 title: 'Service Health',
@@ -5480,6 +5481,8 @@ class SystemPage extends StatelessWidget {
                   );
                 },
               ),
+              const SizedBox(height: 24),
+              Start22ConnectorPanel(api: api),
               const SizedBox(height: 24),
               _SectionHeader(
                 title: 'Provisioning Engine',

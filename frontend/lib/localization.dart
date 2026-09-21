@@ -950,6 +950,51 @@ class HimateI18n {
     'BLOCKED': 'BLOKKOLVA',
   };
 
+
+  static const Map<String, String> _start22Hu = <String, String>{
+    'Klavierhaus Data Connector': 'Klavierhaus adatkapcsolat',
+    'One-way, allowlisted Klavierhaus → HIMATE data contract with signed batches, reconciliation and seven-year retention.': 'Egyirányú, engedélyezési listás Klavierhaus → HIMATE adatkapcsolat aláírt batch-ekkel, egyeztetéssel és hét éves megőrzéssel.',
+    'Refresh connector': 'Adatkapcsolat frissítése',
+    'Klavierhaus connector unavailable': 'A Klavierhaus adatkapcsolat nem érhető el',
+    'Data direction': 'Adatirány',
+    'Klavierhaus → HIMATE': 'Klavierhaus → HIMATE',
+    'Security': 'Biztonság',
+    'HMAC-SHA-512 + replay protection': 'HMAC-SHA-512 + visszajátszás elleni védelem',
+    'HMAC-SHA-512 + AES-256-GCM': 'HMAC-SHA-512 + AES-256-GCM',
+    'Data at rest': 'Tárolt adatok védelme',
+    'Encryption key version': 'Titkosítási kulcs verziója',
+    'AES-256-GCM envelope encrypted': 'AES-256-GCM envelope titkosított',
+    'Data contract': 'Adatszerződés',
+    '38 allowlisted modules': '38 engedélyezett modul',
+    'Retention': 'Megőrzés',
+    'HIMATE 7 years': 'HIMATE 7 év',
+    'Connection & Sync': 'Kapcsolat és szinkron',
+    'Partner': 'Partner',
+    'Environment': 'Környezet',
+    'Health': 'Állapot',
+    'Sync status': 'Szinkron állapota',
+    'Protocol version': 'Protokollverzió',
+    'Klavierhaus version': 'Klavierhaus verzió',
+    'Last heartbeat': 'Legutóbbi heartbeat',
+    'Last data sync': 'Legutóbbi adatszinkron',
+    'Last reconciliation': 'Legutóbbi egyeztetés',
+    'Retention & Protection': 'Megőrzés és védelem',
+    'Retention policy': 'Megőrzési szabály',
+    'Retention period': 'Megőrzési idő',
+    'Oldest retained record': 'Legrégebbi megőrzött rekord',
+    'Next retention expiry': 'Következő megőrzési lejárat',
+    'Legal holds': 'Jogi megőrzési zárolások',
+    'Privacy delete requests': 'Adatvédelmi törlési kérelmek',
+    'Secrets in exported datasets': 'Titkok az exportált adatokban',
+    'Raw customer message bodies': 'Nyers ügyfélüzenet-tartalom',
+    'Prohibited': 'Tiltott',
+    'RECEIVED': 'FOGADVA',
+    'SYNCED': 'SZINKRONBAN',
+    'STALE': 'ELAVULT',
+    'OUT_OF_SYNC': 'ELTÉRÉS',
+    'NEVER': 'MÉG SOHA',
+  };
+
   static const Map<String, String> _designHu = <String, String>{
     'Design Guide': 'Arculati útmutató',
     'Global website brand controls for logo, colors, typography, buttons and bilingual navigation.': 'Globális weboldal-arculati beállítások logóhoz, színekhez, tipográfiához, gombokhoz és kétnyelvű navigációhoz.',
@@ -1009,7 +1054,7 @@ class HimateI18n {
 
   static String literal(String locale, String value) {
     if (locale != 'hu_HU' || value.trim().isEmpty) return value;
-    final exact = _literalHu[value] ?? _extendedHu[value] ?? _completionHu[value] ?? _seoHu[value] ?? _designHu[value];
+    final exact = _literalHu[value] ?? _extendedHu[value] ?? _completionHu[value] ?? _seoHu[value] ?? _start22Hu[value] ?? _designHu[value];
     if (exact != null) return exact;
 
     String countLabel(String suffix, String translatedSuffix) {
@@ -1026,6 +1071,8 @@ class HimateI18n {
       [' metrics', 'mérőszám'],
       [' leads', 'érdeklődő'],
       [' records', 'rekord'],
+      [' batches', 'batch'],
+      [' route errors', 'útválasztási hiba'],
       [' shown', 'megjelenítve'],
     ]) {
       final translated = countLabel(pair[0], pair[1]);
@@ -1090,6 +1137,14 @@ class HimateI18n {
     if (value.endsWith(' need attention')) {
       final raw = value.substring(0, value.length - ' need attention'.length).trim();
       if (int.tryParse(raw) != null) return '$raw figyelmet igényel';
+    }
+    if (value.endsWith(' years')) {
+      final raw = value.substring(0, value.length - ' years'.length).trim();
+      if (int.tryParse(raw) != null) return '$raw év';
+    }
+    if (value.contains(' / ') && value.endsWith(' modules')) {
+      final raw = value.substring(0, value.length - ' modules'.length);
+      return '$raw modul';
     }
     if (value.startsWith('Published ')) {
       return 'Publikálva: ${value.substring('Published '.length)}';

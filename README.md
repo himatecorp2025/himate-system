@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–21 implementation status
+## START-01–22 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -66,6 +66,26 @@ HIMATE is the central control plane for separately deployed arts-sector partner 
 - recoverability is VERIFIED only when the latest restore point is READY and its latest restore test PASSED
 - Gateway RBAC/audit, System Health and the System & Operations UI include backup/recoverability controls
 
+### START-22 — Klavierhaus Data Connector & privacy/retention contract
+- one-way Klavierhaus -> HIMATE data flow through an explicit Connector Protocol v1 boundary
+- machine-readable allowlist for exactly 38 Klavierhaus functional modules
+- Node.js Klavierhaus export adapter remains implementation-independent from the Go HIMATE receiver
+- HMAC-SHA-512 signed requests, SHA-512 payload/data integrity, five-minute timestamps and nonce replay protection
+- retained Connector business payloads use AES-256-GCM envelope encryption with per-record data keys and a versioned runtime-only master-key keyring
+- partner/environment identity is derived only from the connector credential
+- 1 MiB/250-item bounded batches with dataset/field validation and fail-closed sensitive-field rejection
+- idempotent batch/item ingestion and SHA-512 reconciliation with SYNCED / OUT_OF_SYNC state
+- approved numeric KPIs reuse the existing Impact/Reports pipeline
+- accepted START-22 Connector and routed Impact data use the unified `HIMATE_7Y` product retention policy
+- legal holds and mandatory privacy deletions synchronize between Connector and routed Impact observations
+- System Health and the bilingual Flutter System & Operations area expose Connector Protocol, sync, coverage, retention and security state
+
+START-22 Connector encryption runtime configuration:
+- `HIMATE_CONNECTOR_DATA_MASTER_KEY_B64`: required production secret; standard-base64 encoding of exactly 32 random bytes.
+- `HIMATE_CONNECTOR_DATA_KEY_VERSION`: active non-secret key version label (for example `v1`).
+- `HIMATE_CONNECTOR_DATA_PREVIOUS_KEYS_JSON`: optional runtime secret JSON object mapping previous key versions to their base64 32-byte keys during controlled key rotation.
+- New records always use the active key version. Older key versions remain decryptable only while their previous keys are present. Never commit any real encryption key.
+
 ## System-owner identity and localization baseline
 - one durable `system_owner` account controls user creation/access administration
 - the owner authority is data-driven and is never hardcoded to a person's name
@@ -82,6 +102,7 @@ The original START blueprint recommended beginning as a modular monolith. HIMATE
 - `docs/adr/0002-public-cms-server-rendering.md`
 - `docs/adr/0003-provider-deployment-adapter.md`
 - `docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md`
+- `docs/adr/0005-klavierhaus-one-way-data-connector.md`
 
 The architecture remains microservice/container based. It is **not** being collapsed back into a monolith.
 
@@ -118,9 +139,10 @@ The architecture remains microservice/container based. It is **not** being colla
 - independent Docker images and service boundaries
 - HTTP connection pooling for internal/provider calls
 - partner business databases physically separated from the HIMATE control-plane DB
+- START-22 retained Connector payloads encrypted at rest with AES-256-GCM envelope encryption
 - server-paginated partner reads and bounded page-level aggregation
 - encrypted offsite restore artifacts with mandatory restore verification
-- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–21 smoke tests in CI
+- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–22 smoke tests in CI
 
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
@@ -134,7 +156,8 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-18-19_ACCEPTANCE.md`
 - `docs/START-20_ACCEPTANCE.md`
 - `docs/START-21_ACCEPTANCE.md`
+- `docs/START-22_ACCEPTANCE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-The current `develop` baseline is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the full START-01–20 regression, the profile/owner/locale smoke and the START-21 encrypted-backup/restore smoke are all green.
+The START-22 branch is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the full START-01–21 regression, profile/owner/locale checks and the START-22 signed Connector/reconciliation/retention smoke are all green.

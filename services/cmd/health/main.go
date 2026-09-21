@@ -165,8 +165,15 @@ func (a *app)partnerHealth(ctx context.Context)[]map[string]any{
 		if selected=="" || environment=="PRODUCTION" || selected!="PRODUCTION" {
 			p["connector_health"]=stringValue(x["health"])
 			p["platform_version"]=stringValue(x["reported_version"])
+			p["protocol_version"]=stringValue(x["protocol_version"])
 			p["last_seen_at"]=x["last_seen_at"]
-			p["last_sync_at"]=x["last_metric_sync_at"]
+			if x["last_data_sync_at"]!=nil && stringValue(x["last_data_sync_at"])!="" {
+				p["last_sync_at"]=x["last_data_sync_at"]
+			} else {
+				p["last_sync_at"]=x["last_metric_sync_at"]
+			}
+			p["last_reconciliation_at"]=x["last_reconciliation_at"]
+			p["_reported_sync_status"]=strings.ToUpper(stringValue(x["sync_status"]))
 			p["_connector_environment"]=environment
 		}
 	}
@@ -200,20 +207,28 @@ func (a *app)partnerHealth(ctx context.Context)[]map[string]any{
 	for id,p:=range byID{
 		conn:=stringValue(p["connector_health"]);env:=stringValue(p["environment_status"]);prov:=stringValue(p["provisioning_status"])
 		dbHealth:=stringValue(p["database_health"]);storageHealth:=stringValue(p["storage_health"]);hostname:=stringValue(p["hostname_status"])
-		syncStatus:="NEVER"
-		if synced:=timeValue(p["last_sync_at"]);synced!=nil{
-			if now.Sub(*synced)>15*time.Minute{syncStatus="STALE"}else{syncStatus="CURRENT"}
+		syncStatus:=strings.ToUpper(stringValue(p["_reported_sync_status"]))
+		switch syncStatus {
+		case "OUT_OF_SYNC","ERROR":
+			// Preserve the connector's stronger reconciliation result.
+		case "SYNCED":
+			if synced:=timeValue(p["last_sync_at"]);synced==nil || now.Sub(*synced)>15*time.Minute { syncStatus="STALE" }
+		default:
+			syncStatus="NEVER"
+			if synced:=timeValue(p["last_sync_at"]);synced!=nil{
+				if now.Sub(*synced)>15*time.Minute{syncStatus="STALE"}else{syncStatus="SYNCED"}
+			}
 		}
 		p["sync_status"]=syncStatus
 		overall:="OK"
-		if conn=="ERROR"||conn=="OFFLINE"||env=="FAILED"||prov=="FAILED"||dbHealth=="ERROR"||storageHealth=="ERROR"||hostname=="ERROR"{
+		if conn=="ERROR"||conn=="OFFLINE"||env=="FAILED"||prov=="FAILED"||dbHealth=="ERROR"||storageHealth=="ERROR"||hostname=="ERROR"||syncStatus=="ERROR"||syncStatus=="OUT_OF_SYNC"{
 			overall="ERROR"
 		}else if conn=="DEGRADED"||conn=="UNKNOWN"||env=="UNKNOWN"||prov=="BLOCKED_LICENSE"||dbHealth=="UNKNOWN"||storageHealth=="UNKNOWN"||hostname=="UNKNOWN"||syncStatus=="STALE"||syncStatus=="NEVER"{
 			overall="DEGRADED"
 		}
 		if seen:=timeValue(p["last_seen_at"]);seen!=nil && now.Sub(*seen)>15*time.Minute && conn!="UNKNOWN"{overall="DEGRADED"}
 		p["overall_status"]=overall;p["checked_at"]=now
-		delete(p,"_connector_environment");delete(p,"_environment_kind")
+		delete(p,"_connector_environment");delete(p,"_environment_kind");delete(p,"_reported_sync_status")
 		var lastSeen any=p["last_seen_at"];var lastSync any=p["last_sync_at"]
 		_,_ = a.db.ExecContext(ctx,`INSERT INTO health.partner_snapshots(
 				partner_id,overall_status,platform_version,connector_health,environment_status,provisioning_status,last_seen_at,checked_at,
