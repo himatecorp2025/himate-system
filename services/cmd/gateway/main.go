@@ -545,6 +545,7 @@ func normalizeCustomPermissions(values []string) ([]string, error) {
 
 func (a *app) roleDefinitionByKey(key string) (roleDefinition, bool) {
 	if definition, ok := builtinRoleDefinitionByKey(key); ok { return definition, true }
+	if a == nil || a.db == nil { return roleDefinition{}, false }
 	var label, description string
 	var raw []byte
 	var active bool
