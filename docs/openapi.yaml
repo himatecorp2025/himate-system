@@ -1045,7 +1045,9 @@ paths:
       description: >
         The stable page key is separate from the versioned slug. Each page is
         explicitly scoped to en_US or hu_HU and the same page_key may exist once
-        per locale. Draft content is never exposed through public CMS routes.
+        per locale. The versioned SEO payload supports page-specific keywords in
+        addition to title, meta description, canonical and Open Graph metadata.
+        Draft content is never exposed through public CMS routes.
       responses:
         "201": {description: CMS page and initial draft created}
         "400": {description: Content validation failed}
@@ -1136,7 +1138,7 @@ paths:
       tags: [CMS]
       summary: Upload a CMS image asset
       description: >
-        Media is limited to PNG/JPEG/WebP, content-sniffed, max 10 MiB,
+        Media is limited to PNG/JPEG/WebP/MP4/WebM, content-sniffed, max 64 MiB,
         checksum-backed and persisted through the central Storage service.
       responses:
         "201": {description: Stable CMS media asset}
@@ -1150,6 +1152,46 @@ paths:
       summary: Preview an authenticated CMS media asset
       responses:
         "200": {description: Inline media bytes}
+  /api/v1/cms/seo:
+    get:
+      tags: [CMS]
+      summary: Read editable and published global SEO & Keywords settings
+      responses:
+        "200": {description: Draft/published bilingual keyword and structured-SEO settings}
+  /api/v1/cms/seo/draft:
+    put:
+      tags: [CMS]
+      summary: Save an auditable global SEO & Keywords draft
+      description: >
+        Stores English and Hungarian global keywords, Schema.org organization
+        defaults and an optional default Open Graph image.
+      responses:
+        "200": {description: SEO settings draft saved}
+        "400": {description: SEO settings validation failed}
+  /api/v1/cms/seo/publish:
+    post:
+      tags: [CMS]
+      summary: Publish the current global SEO & Keywords draft
+      responses:
+        "200": {description: Published SEO settings version}
+        "400": {description: SEO settings validation failed}
+  /api/v1/cms/seo/audit:
+    get:
+      tags: [CMS]
+      summary: Analyze CMS drafts for SEO completeness and keyword/content fit
+      parameters:
+        - {name: locale, in: query, schema: {type: string, enum: [en_US, hu_HU]}}
+      responses:
+        "200": {description: Per-page score, issues, effective keywords and keyword suggestions}
+  /public/v1/cms/seo:
+    get:
+      tags: [CMS Public]
+      security: []
+      summary: Read active published SEO defaults for one language
+      parameters:
+        - {name: locale, in: query, schema: {type: string, enum: [en_US, hu_HU], default: en_US}}
+      responses:
+        "200": {description: Published global keywords, Schema.org organization defaults and Open Graph image}
   /api/v1/cms/design:
     get:
       tags: [CMS]
@@ -1190,7 +1232,7 @@ paths:
       summary: Read only the active PUBLISHED CMS page
       description: Hidden sections and all draft/preview snapshots are excluded.
       responses:
-        "200": {description: Published content model and structured SEO}
+        "200": {description: Published content model with effective keywords, Schema.org JSON-LD and bilingual canonical alternates}
         "404": {description: No published page exists for this slug}
   /preview/v1/cms/pages/{slug}:
     parameters:
