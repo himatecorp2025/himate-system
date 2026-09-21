@@ -289,8 +289,8 @@ func (a *app) start22RecordList(w http.ResponseWriter,r *http.Request){
 		if n,err:=strconv.Atoi(raw);err==nil&&n>0&&n<=200{limit=n}
 	}
 	rows,err:=a.db.Query(`SELECT id,partner_id,environment,batch_id,module_key,dataset_key,schema_version,
-		period_start,period_end,aggregation,data,source_checksum,idempotency_key,source_version,
-		route_status,route_error,received_at,retain_until,legal_hold,privacy_delete_requested
+		period_start,period_end,aggregation,data,data_ciphertext,data_nonce,wrapped_data_key,key_nonce,data_key_version,
+		source_checksum,idempotency_key,source_version,route_status,route_error,received_at,retain_until,legal_hold,privacy_delete_requested
 		FROM connector.data_records WHERE partner_id=$1 ORDER BY received_at DESC,id DESC LIMIT $2`,partnerID,limit)
 	if err!=nil{
 		common.APIError(w,http.StatusInternalServerError,"DB","Could not load connector data records")
@@ -303,18 +303,33 @@ func (a *app) start22RecordList(w http.ResponseWriter,r *http.Request){
 		var p,e,batch,module,dataset,aggregation,checksum,idempotency,sourceVersion,routeStatus,routeError string
 		var schemaVersion int
 		var start,end,received,retain time.Time
-		var dataRaw []byte
+		var dataRaw,ciphertext,dataNonce,wrappedKey,keyNonce []byte
+		var keyVersion string
 		var legalHold,privacyDelete bool
 		if rows.Scan(&id,&p,&e,&batch,&module,&dataset,&schemaVersion,&start,&end,&aggregation,&dataRaw,
+			&ciphertext,&dataNonce,&wrappedKey,&keyNonce,&keyVersion,
 			&checksum,&idempotency,&sourceVersion,&routeStatus,&routeError,&received,&retain,&legalHold,&privacyDelete)!=nil{continue}
-		var data any
-		_ = json.Unmarshal(dataRaw,&data)
+		var data map[string]any
+		if len(ciphertext)>0 {
+			decrypted,decryptErr:=a.start22DecryptData(start22EncryptedEnvelope{
+				Ciphertext:ciphertext,DataNonce:dataNonce,WrappedKey:wrappedKey,KeyNonce:keyNonce,KeyVersion:keyVersion,
+			},p,e,dataset,idempotency)
+			if decryptErr!=nil {
+				common.APIError(w,http.StatusInternalServerError,"DECRYPTION","Could not decrypt retained START-22 data")
+				return
+			}
+			data=decrypted
+		} else {
+			_ = json.Unmarshal(dataRaw,&data)
+		}
 		items=append(items,map[string]any{
 			"id":id,"partner_id":p,"environment":e,"batch_id":batch,"module_key":module,"dataset_key":dataset,
 			"schema_version":schemaVersion,"period_start":start.Format("2006-01-02"),"period_end":end.Format("2006-01-02"),
 			"aggregation":aggregation,"data":data,"source_checksum_sha512":checksum,"idempotency_key":idempotency,
 			"source_version":sourceVersion,"route_status":routeStatus,"route_error":routeError,
 			"received_at":received.UTC(),"retain_until":retain.UTC(),"retention_policy":"HIMATE_7Y",
+			"data_encryption":map[bool]string{true:start22EncryptionAlgorithm,false:"LEGACY_PLAINTEXT"}[len(ciphertext)>0],
+			"data_key_version":keyVersion,
 			"legal_hold":legalHold,"privacy_delete_requested":privacyDelete,
 		})
 	}
