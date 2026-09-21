@@ -1,7 +1,7 @@
 name: HIMATE CI
 on:
   push:
-    branches: [develop, main]
+    branches: [develop, main, 'start-*', 'pre-start-*']
   pull_request:
     branches: [develop, main]
   workflow_dispatch:
