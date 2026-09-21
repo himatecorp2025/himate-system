@@ -287,6 +287,8 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 		if a.requirePartnerPermission(w,u,"modules.write"){a.partnerSubscription(w,r,u)}
 	case path=="/billing/summary"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"billing.read"){a.partnerBillingSummary(w,r,u)}
+	case path=="/billing/subscriptions"&&r.Method==http.MethodGet:
+		if a.requirePartnerPermission(w,u,"billing.read"){a.partnerBillingSubscriptions(w,r,u)}
 	case path=="/billing/invoices"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"billing.read"){a.partnerBillingInvoices(w,r,u)}
 	case path=="/impact/summary"&&r.Method==http.MethodGet:
@@ -397,6 +399,13 @@ func (a *app) partnerBillingSummary(w http.ResponseWriter,r *http.Request,u part
 	var out map[string]any
 	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/summary",&out);err!=nil{
 		common.APIError(w,502,"BILLING_UNAVAILABLE","Billing summary is temporarily unavailable");return}
+	common.JSON(w,200,out)
+}
+
+func (a *app) partnerBillingSubscriptions(w http.ResponseWriter,r *http.Request,u partnerUser){
+	var out map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/subscriptions",&out);err!=nil{
+		common.APIError(w,502,"BILLING_UNAVAILABLE","Subscriptions are temporarily unavailable");return}
 	common.JSON(w,200,out)
 }
 
