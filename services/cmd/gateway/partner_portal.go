@@ -199,6 +199,10 @@ func (a *app) partnerLogout(w http.ResponseWriter,r *http.Request){
 func (a *app) partnerMe(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
+	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
+	accessErr:=a.partnerAccessAllowed(ctx,u.PartnerID)
+	cancel()
+	if accessErr!=nil{common.APIError(w,403,"PARTNER_ACCESS_DISABLED","Partner Portal access is not available");return}
 	common.JSON(w,200,partnerUserMap(u))
 }
 
@@ -358,6 +362,13 @@ func (a *app) partnerCompany(w http.ResponseWriter,r *http.Request,u partnerUser
 	common.JSON(w,200,out)
 }
 
+func anyItems(value any) []map[string]any {
+	raw,ok:=value.([]any);if !ok{return []map[string]any{}}
+	out:=make([]map[string]any,0,len(raw))
+	for _,item:=range raw{if mapped,ok:=item.(map[string]any);ok{out=append(out,mapped)}}
+	return out
+}
+
 func (a *app) partnerModulesView(w http.ResponseWriter,r *http.Request,u partnerUser){
 	var out map[string]any
 	if err:=a.internalGET(r.Context(),a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules",&out);err!=nil{
@@ -384,6 +395,15 @@ func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u part
 
 func (a *app) partnerSubscription(w http.ResponseWriter,r *http.Request,u partnerUser){
 	key:=partnerModuleKey(r.URL.Path,"/subscription");if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Subscription not found");return}
+	var catalog map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules",&catalog);err!=nil{
+		common.APIError(w,502,"CATALOG_UNAVAILABLE","Module state is temporarily unavailable");return
+	}
+	var target map[string]any
+	for _,item:=range anyItems(catalog["items"]){if fmt.Sprint(item["key"])==key{target=item;break}}
+	if target==nil{common.APIError(w,404,"NOT_FOUND","Module not found");return}
+	if target["included_in_base"]==true{common.APIError(w,409,"BASE_MODULE","Base-package modules cannot be cancelled individually");return}
+	if fmt.Sprint(target["status"])!="ACTIVE"{common.APIError(w,409,"MODULE_NOT_ACTIVE","Only an active module subscription can be changed");return}
 	var in struct{CancelAtPeriodEnd *bool `json:"cancel_at_period_end"`}
 	if common.Decode(r,&in)!=nil||in.CancelAtPeriodEnd==nil{common.APIError(w,400,"VALIDATION","cancel_at_period_end is required");return}
 	payload:=map[string]any{"cancel_at_period_end":*in.CancelAtPeriodEnd,"reason":"Partner Portal request"}
