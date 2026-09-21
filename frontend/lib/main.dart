@@ -14,6 +14,7 @@ import 'package:intl/date_symbol_data_local.dart' show initializeDateFormatting;
 import 'package:google_fonts/google_fonts.dart';
 
 part 'cms_page.dart';
+part 'contact_leads.dart';
 part 'administration_rbac.dart';
 part 'brand_assets.dart';
 part 'backups_panel.dart';
@@ -250,6 +251,8 @@ class Api {
       add('/api/v1/dashboard');
     } else if (path.startsWith('/api/v1/cms')) {
       add('/api/v1/cms');
+    } else if (path.startsWith('/api/v1/contact/inquiries')) {
+      add('/api/v1/contact/inquiries');
     } else if (path.startsWith('/api/v1/backups')) {
       add('/api/v1/backups');
       add('/api/v1/system-health');
@@ -488,6 +491,9 @@ class _HimateAppState extends State<HimateApp> {
     if (_can('cms.read')) {
       paths.add('/api/v1/cms/pages');
       paths.add('/api/v1/cms/media');
+    }
+    if (_can('contact.read')) {
+      paths.add(Uri(path: '/api/v1/contact/inquiries', queryParameters: const {'limit': '25', 'offset': '0'}).toString());
     }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read')) {
       if (_can('health.read')) paths.add('/api/v1/system-health/snapshot');
@@ -1457,7 +1463,7 @@ class _ShellState extends State<Shell> {
     if (can('partners.read')) indexes.add(1);
     if (can('billing.read')) indexes.add(2);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(3);
-    if (can('cms.read')) indexes.add(4);
+    if (can('cms.read') || can('contact.read')) indexes.add(4);
     if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(5);
     if (can('administration.read') || can('audit.read')) indexes.add(6);
     if (indexes.isEmpty) indexes.add(0);
