@@ -89,9 +89,16 @@ func start22SHA512Hex(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func start22CanonicalJSON(value any) []byte {
+	var buffer bytes.Buffer
+	encoder:=json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err:=encoder.Encode(value);err!=nil{return nil}
+	return bytes.TrimSpace(buffer.Bytes())
+}
+
 func start22DataChecksum(data map[string]any) string {
-	raw, _ := json.Marshal(data)
-	return start22SHA512Hex(raw)
+	return start22SHA512Hex(start22CanonicalJSON(data))
 }
 
 func start22AggregateChecksum(values []string) string {
