@@ -197,7 +197,8 @@ test "$impact_retention" -ge "1"
 echo ok
 
 printf 'legal hold synchronizes to downstream Impact and blocks purge... '
-hold_code="$(status "$COOKIE_JAR" POST "/api/v1/connectors/start22/retention" -H 'Content-Type: application/json' -d "{"action":"SET_LEGAL_HOLD","record_id":$record_id,"legal_hold":true}")"
+hold_payload="$(printf '{"action":"SET_LEGAL_HOLD","record_id":%s,"legal_hold":true}' "$record_id")"
+hold_code="$(status "$COOKIE_JAR" POST "/api/v1/connectors/start22/retention" -H 'Content-Type: application/json' -d "$hold_payload")"
 test "$hold_code" = "200"
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT legal_hold FROM connector.data_records WHERE id=$record_id")" = "t"
 impact_hold_count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM impact.metric_values WHERE source_ref='connector:data_record:$record_id' AND legal_hold=TRUE")"
