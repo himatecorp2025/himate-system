@@ -159,3 +159,57 @@ func TestDesignValidationWithoutMediaLookup(t *testing.T) {
 		t.Fatal("unsafe navigation URL should fail")
 	}
 }
+
+func TestSEOKeywordNormalizationAndAudit(t *testing.T) {
+	keywords := normalizeKeywords([]string{" Culture ", "culture", "Arts", "digital platform"}, 30)
+	if len(keywords) != 3 || keywords[0] != "Culture" || keywords[1] != "Arts" {
+		t.Fatalf("unexpected normalized keywords: %#v", keywords)
+	}
+	if err := validateKeywords([]string{"arts", "culture"}, 24); err != nil {
+		t.Fatalf("valid keywords rejected: %v", err)
+	}
+
+	page := pageRow{ID: "page_1", PageKey: "landing", Name: "Landing", Locale: "en_US"}
+	version := versionRow{
+		VersionNo: 2,
+		State: "DRAFT",
+		SEO: jsonBytes(seoInput{
+			Title: "HIMATE culture platform for arts organizations",
+			MetaDescription: "HIMATE connects arts and cultural organizations with a secure digital platform for programs, partnerships, evidence, reporting and measurable community impact.",
+			Canonical: "https://www.himate.com/landing",
+			Keywords: []string{"culture", "arts", "digital platform"},
+		}),
+		Sections: jsonBytes([]sectionInput{
+			{ID: "hero", ComponentType: "HERO", Heading: "Culture connects people", Body: "Arts organizations use the HIMATE digital platform to connect programs, partners, communities and evidence for measurable cultural impact.", Visible: true, SortOrder: 10, Settings: map[string]any{}},
+		}),
+	}
+	result := auditSEOPage(page, version, defaultSiteSEO())
+	score, ok := result["score"].(int)
+	if !ok || score <= 0 || score > 100 {
+		t.Fatalf("unexpected SEO score: %#v", result["score"])
+	}
+	effective, ok := result["effective_keywords"].([]string)
+	if !ok || len(effective) < 3 {
+		t.Fatalf("expected combined SEO keywords: %#v", result["effective_keywords"])
+	}
+	if result["locale"] != "en_US" {
+		t.Fatalf("unexpected locale: %#v", result["locale"])
+	}
+}
+
+func TestSiteSEOValidationAndLanguageSelection(t *testing.T) {
+	a := &app{}
+	settings := defaultSiteSEO()
+	settings.GlobalKeywordsEN = []string{"arts", "culture", "HIMATE"}
+	settings.GlobalKeywordsHU = []string{"művészet", "kultúra", "HIMATE"}
+	if err := a.validateSiteSEO(context.Background(), settings); err != nil {
+		t.Fatalf("default SEO settings must validate: %v", err)
+	}
+	if got := seoLocaleKeywords(settings, "hu_HU"); len(got) != 3 || got[0] != "művészet" {
+		t.Fatalf("unexpected Hungarian keywords: %#v", got)
+	}
+	settings.OrganizationURL = "http://example.com"
+	if err := a.validateSiteSEO(context.Background(), settings); err == nil {
+		t.Fatal("non-HTTPS organization URL must be rejected")
+	}
+}
