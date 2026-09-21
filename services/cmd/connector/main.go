@@ -473,20 +473,28 @@ func (a *app) metrics(w http.ResponseWriter,r *http.Request){
 func (a *app) summary(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET");return }
 	rows,err:=a.db.Query(`SELECT s.partner_id,s.environment,s.reported_version,s.health,s.last_seen_at,s.last_metric_sync_at,s.last_error,
-		EXISTS(SELECT 1 FROM connector.credentials c WHERE c.partner_id=s.partner_id AND c.active=TRUE)
-		FROM connector.partner_state s ORDER BY s.partner_id`)
+		s.protocol_version,s.sync_status,s.last_data_sync_at,s.last_reconciliation_at,
+		EXISTS(SELECT 1 FROM connector.credentials c WHERE c.partner_id=s.partner_id AND c.environment=s.environment AND c.active=TRUE)
+		FROM connector.partner_state s ORDER BY s.partner_id,s.environment`)
 	if err!=nil { common.APIError(w,500,"DB","Could not load connector summary");return }
 	defer rows.Close()
 	items:=[]map[string]any{}
 	for rows.Next(){
-		var p,e,v,h,lastErr string
-		var seen,metrics sql.NullTime
+		var p,e,v,h,lastErr,protocol,syncStatus string
+		var seen,metrics,dataSync,reconciled sql.NullTime
 		var credentialActive bool
-		if rows.Scan(&p,&e,&v,&h,&seen,&metrics,&lastErr,&credentialActive)==nil {
-			var s,m any
-			if seen.Valid{s=seen.Time.UTC()}
-			if metrics.Valid{m=metrics.Time.UTC()}
-			items=append(items,map[string]any{"partner_id":p,"environment":e,"reported_version":v,"health":h,"last_seen_at":s,"last_metric_sync_at":m,"last_error":lastErr,"credential_active":credentialActive})
+		if rows.Scan(&p,&e,&v,&h,&seen,&metrics,&lastErr,&protocol,&syncStatus,&dataSync,&reconciled,&credentialActive)==nil {
+			var seenValue,metricValue,dataValue,reconcileValue any
+			if seen.Valid{seenValue=seen.Time.UTC()}
+			if metrics.Valid{metricValue=metrics.Time.UTC()}
+			if dataSync.Valid{dataValue=dataSync.Time.UTC()}
+			if reconciled.Valid{reconcileValue=reconciled.Time.UTC()}
+			items=append(items,map[string]any{
+				"partner_id":p,"environment":e,"reported_version":v,"health":h,
+				"protocol_version":protocol,"sync_status":syncStatus,
+				"last_seen_at":seenValue,"last_metric_sync_at":metricValue,"last_data_sync_at":dataValue,
+				"last_reconciliation_at":reconcileValue,"last_error":lastErr,"credential_active":credentialActive,
+			})
 		}
 	}
 	common.JSON(w,200,map[string]any{"items":items})
