@@ -16,6 +16,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 part 'cms_page.dart';
 part 'contact_leads.dart';
+part 'design_guide.dart';
 part 'administration_rbac.dart';
 part 'brand_assets.dart';
 part 'backups_panel.dart';
