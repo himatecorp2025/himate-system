@@ -208,7 +208,7 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
     final email = TextEditingController(text: editing ? '${user['email'] ?? ''}' : '');
     final password = TextEditingController();
     final selected = <String>{..._roleKeys(user?['roles'])};
-    final editingSystemOwner = editing && user?['system_owner'] == true;
+    final editingSystemOwner = editing && user!['system_owner'] == true;
     if (!editing && selected.isEmpty) selected.add('operations_admin');
     var active = editing ? user['active'] == true : true;
     String? dialogError;
