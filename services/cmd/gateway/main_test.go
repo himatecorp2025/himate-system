@@ -129,6 +129,13 @@ func TestSTART19RolePermissionMatrix(t *testing.T) {
 		{"reporting_admin", "evidence.approve", true},
 		{"reporting_admin", "billing.read", false},
 		{"reporting_admin", "administration.read", false},
+		{"marketing_admin", "cms.read", true},
+		{"marketing_admin", "cms.write", true},
+		{"marketing_admin", "cms.approve", true},
+		{"marketing_admin", "contact.read", true},
+		{"marketing_admin", "contact.write", true},
+		{"marketing_admin", "billing.read", false},
+		{"marketing_admin", "administration.read", false},
 	}
 	for _, tc := range tests {
 		u := user{Roles: []string{tc.role}}
@@ -158,6 +165,10 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		{http.MethodPatch, "/api/v1/evidence/ev_1", "evidence.approve"},
 		{http.MethodPost, "/api/v1/cms/pages/page_1/publish", "cms.approve"},
 		{http.MethodPost, "/api/v1/cms/pages/page_1/rollback", "cms.approve"},
+		{http.MethodPut, "/api/v1/cms/design/draft", "cms.write"},
+		{http.MethodPost, "/api/v1/cms/design/publish", "cms.approve"},
+		{http.MethodGet, "/api/v1/contact/inquiries", "contact.read"},
+		{http.MethodPatch, "/api/v1/contact/inquiries/inq_1", "contact.write"},
 		{http.MethodGet, "/api/v1/admin/users", "administration.read"},
 		{http.MethodPost, "/api/v1/admin/users", "administration.approve"},
 		{http.MethodPatch, "/api/v1/admin/users/usr_1", "administration.approve"},
@@ -196,6 +207,8 @@ func TestAuditResourceClassification(t *testing.T) {
 		{"/api/v1/billing/partners/ptr_456/terms", "billing", "ptr_456"},
 		{"/api/v1/connectors/ptr_789/credential", "connectors", "ptr_789"},
 		{"/api/v1/cms/pages/page_1/publish", "cms", ""},
+		{"/api/v1/cms/design/publish", "cms", ""},
+		{"/api/v1/contact/inquiries/inq_1", "contact", ""},
 		{"/api/v1/impact/values?partner_id=ptr_900", "impact", "ptr_900"},
 		{"/api/v1/modules/demo", "catalog", ""},
 	}
@@ -454,6 +467,22 @@ func TestProfileAuditActions(t *testing.T) {
 		req := httptest.NewRequest(tc.method, "https://himate.example"+tc.path, nil)
 		if got := auditAction(req); got != tc.want {
 			t.Fatalf("%s %s: expected %s, got %s", tc.method, tc.path, tc.want, got)
+		}
+	}
+}
+
+func TestPublicLocaleNormalization(t *testing.T) {
+	tests := map[string]string{
+		"": "en_US",
+		"en": "en_US",
+		"en-US": "en_US",
+		"hu": "hu_HU",
+		"hu_HU": "hu_HU",
+		"hu-HU": "hu_HU",
+	}
+	for value, want := range tests {
+		if got := normalizePublicLocale(value); got != want {
+			t.Fatalf("%q => %q, want %q", value, got, want)
 		}
 	}
 }
