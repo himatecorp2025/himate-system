@@ -846,6 +846,118 @@ class HimateI18n {
     'YOU': 'TE',
   };
 
+
+  static const Map<String, String> _completionHu = <String, String>{
+    '2 · Commercial & license evidence': '2 · Kereskedelmi és licencbizonyíték',
+    '3 · System & environment': '3 · Rendszer és környezet',
+    '4 · Module preset': '4 · Modulkészlet',
+    'A single premium workspace for every organization connected to the HIMATE ecosystem.': 'Egyetlen prémium munkaterület a HIMATE ökoszisztémához kapcsolódó minden szervezet számára.',
+    'Active modules': 'Aktív modulok',
+    'Administrator / contact email *': 'Adminisztrátor / kapcsolattartó e-mail *',
+    'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.': 'Az összesített értékek az egyes mérőszám-definíciók SUM, LATEST vagy AVERAGE szabályát követik.',
+    'Billing email': 'Számlázási e-mail',
+    'Business, commercial, evidence, system identity, environment and module preset are captured before provisioning can begin.': 'A provisioning megkezdése előtt rögzítjük az üzleti, kereskedelmi, bizonyítéki, rendszeridentitási, környezeti és modul-előbeállítási adatokat.',
+    'Category name': 'Kategória neve',
+    'Changing the production hostname resets DNS/TLS verification and launch readiness.': 'A production hosztnév módosítása visszaállítja a DNS/TLS-ellenőrzést és az indítási készültséget.',
+    'Commercial evidence requires an attached storage URL or persistent document reference.': 'A kereskedelmi bizonyítékhoz csatolt tárolási URL vagy tartós dokumentumhivatkozás szükséges.',
+    'Complete the required Evidence fields.': 'Töltsd ki a kötelező bizonyítékmezőket.',
+    'Connector, environment, provisioning and platform-version state aggregated per partner.': 'Partnerenként összesített connector-, környezet-, provisioning- és platformverzió-állapot.',
+    'Contact email': 'Kapcsolattartói e-mail',
+    'Control entitlement, partner visibility and 30-day pricing without removing the underlying module code or data.': 'A jogosultság, partnerláthatóság és 30 napos árazás kezelése az alapul szolgáló modulkód vagy adatok eltávolítása nélkül.',
+    'Create a category for partner organizations that do not fit the default structure.': 'Hozz létre kategóriát azoknak a partnerszervezeteknek, amelyek nem illenek az alapértelmezett struktúrába.',
+    'Create a new partner workspace': 'Új partner-munkaterület létrehozása',
+    'Create a stable impact metric used consistently across partners and reporting periods.': 'Hozz létre stabil hatásmérőszámot, amely következetesen használható partnerek és jelentési időszakok között.',
+    'Create a stable module key and place the new capability inside an existing HIMATE menu group.': 'Hozz létre stabil modulkulcsot, és helyezd az új képességet egy meglévő HIMATE menücsoportba.',
+    'Create metric': 'Mérőszám létrehozása',
+    'Create metric definitions under Impact & Reports, then record partner values manually or through the Connector Protocol.': 'Hozz létre mérőszám-definíciókat a Hatás és jelentések alatt, majd rögzíts partnerértékeket kézzel vagy a Connector Protocolon keresztül.',
+    'Create production environment': 'Production környezet létrehozása',
+    'Current and scheduled control areas for this partner.': 'A partner aktuális és ütemezett vezérlési területei.',
+    'Current recurring': 'Aktuális ismétlődő díj',
+    'Current step': 'Aktuális lépés',
+    'Current total': 'Aktuális összesen',
+    'Custom modules': 'Egyedi modulok',
+    'Database, media and configuration are captured, encrypted and copied to the configured offsite provider.': 'Az adatbázis, a média és a konfiguráció rögzítésre, titkosításra és a beállított külső szolgáltatóhoz másolásra kerül.',
+    'Defaults to partner display name': 'Alapértelmezetten a partner megjelenített neve',
+    'Display name': 'Megjelenített név',
+    'Display name *': 'Megjelenített név *',
+    'Display name and administrator email are required.': 'A megjelenített név és az adminisztrátori e-mail megadása kötelező.',
+    'Edit environment': 'Környezet szerkesztése',
+    'Encrypted partner database, media and configuration restore points with offsite replication, retention and mandatory restore verification.': 'Titkosított partneradatbázis-, média- és konfigurációs visszaállítási pontok külső replikációval, megőrzéssel és kötelező helyreállítás-ellenőrzéssel.',
+    'Environment configuration': 'Környezeti konfiguráció',
+    'Environment status': 'Környezet állapota',
+    'Every successful restore point automatically queues a real restore test from the offsite copy.': 'Minden sikeres visszaállítási pont automatikusan valódi helyreállítási tesztet állít sorba a külső másolatból.',
+    'Evidence integrity check failed: $e': 'A bizonyíték integritás-ellenőrzése sikertelen: $e',
+    'Evidence is partner-scoped, checksum-backed and explicitly verified before it can support VERIFIED_DOCUMENT provenance.': 'A bizonyíték partnerhez kötött, ellenőrzőösszeggel védett, és explicit ellenőrzés szükséges, mielőtt VERIFIED_DOCUMENT eredetet támogathat.',
+    'Evidence name': 'Bizonyíték neve',
+    'External report': 'Külső jelentés',
+    'Extra modules': 'Extra modulok',
+    'Generate a report to freeze impact metrics, data sources and Evidence references into a reproducible snapshot.': 'Készíts jelentést a hatásmérőszámok, adatforrások és bizonyítékhivatkozások reprodukálható pillanatképbe rögzítéséhez.',
+    'Global and partner metrics, auditable Evidence and reproducible PDF reporting.': 'Globális és partnerszintű mérőszámok, auditálható bizonyítékok és reprodukálható PDF-jelentések.',
+    'Global search will be activated in a later functional cycle.': 'A globális keresés egy későbbi funkcionális ciklusban aktiválódik.',
+    'Hostname': 'Hosztnév',
+    'Hostname / runtime': 'Hosztnév / futtatókörnyezet',
+    'Initial environment': 'Kezdeti környezet',
+    'Latest version': 'Legutóbbi verzió',
+    'Leave empty for global metric': 'Hagyd üresen globális mérőszámhoz',
+    'Manage hostname, platform release and deployment/environment state.': 'Hosztnév, platformkiadás és telepítési/környezeti állapot kezelése.',
+    'Metrics, Evidence and reproducible reports.': 'Mérőszámok, bizonyítékok és reprodukálható jelentések.',
+    'Module catalog, pricing foundations and HIMATE issuer data — governed from one place.': 'Modulkatalógus, árazási alapok és HIMATE kibocsátói adatok — egy helyről irányítva.',
+    'Modules outside the base package contribute to recurring fees.': 'Az alapcsomagon kívüli modulok növelik az ismétlődő díjakat.',
+    'New metric definition': 'Új mérőszám-definíció',
+    'New restore point': 'Új visszaállítási pont',
+    'Next cycle': 'Következő ciklus',
+    'No Evidence yet': 'Még nincs bizonyíték',
+    'No impact observations have been recorded yet.': 'Még nincs rögzített hatásmegfigyelés.',
+    'No metric link': 'Nincs mérőszám-kapcsolat',
+    'No modules match the current catalog filters.': 'Egy modul sem felel meg az aktuális katalógusszűrőknek.',
+    'No partner environments': 'Nincsenek partnerkörnyezetek',
+    'No partners match the current filters. Create a new partner or adjust the filters.': 'Egy partner sem felel meg az aktuális szűrőknek. Hozz létre új partnert, vagy módosítsd a szűrőket.',
+    'No service-health snapshot is available yet.': 'Még nincs elérhető szolgáltatásállapot-pillanatkép.',
+    'Optional — current admin is used automatically': 'Opcionális — az aktuális adminisztrátort automatikusan használjuk',
+    'Optional · default title follows report type': 'Opcionális · az alapértelmezett cím a jelentéstípust követi',
+    'Partner records': 'Partnerrekordok',
+    'Partner-scoped impact metrics retain period, aggregation and provenance for auditable reporting.': 'A partnerhez kötött hatásmérőszámok megőrzik az időszakot, aggregációt és eredetet az auditálható jelentésekhez.',
+    'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.': 'Partnerhez kötött bizonyíték mérőszám-/időszak-kapcsolattal, ellenőrzési állapottal és SHA-256 integritással.',
+    'Permissions are additive when multiple roles are assigned.': 'Több szerepkör hozzárendelésekor a jogosultságok összeadódnak.',
+    'Persistent evidence reference / URL': 'Tartós bizonyítékhivatkozás / URL',
+    'Platform version': 'Platformverzió',
+    'Preview created. The raw preview token is returned once and opened in a new tab.': 'Az előnézet létrejött. A nyers előnézeti token egyszer jelenik meg, és új lapon nyílik meg.',
+    'Production requires an explicit public hostname. DNS and TLS must verify before launch.': 'A production környezethez explicit nyilvános hosztnév szükséges. Indítás előtt a DNS-nek és TLS-nek ellenőrzöttnek kell lennie.',
+    'Provision a partner first. The backup service will then capture its isolated database, media namespace and configuration state.': 'Előbb provisionálj egy partnert. A mentési szolgáltatás ezután rögzíti az elkülönített adatbázist, média-névteret és konfigurációs állapotot.',
+    'Provision a staging environment first. Production can then be configured here with an explicit public hostname.': 'Előbb provisionálj staging környezetet. Ezután itt konfigurálható a production explicit nyilvános hosztnévvel.',
+    'Provisioning will create the isolated partner database, base configuration and staging environment.': 'A provisioning létrehozza az elkülönített partneradatbázist, alapkonfigurációt és staging környezetet.',
+    'Provisioning, partner environments, connectors, backups and central health across the containerized HIMATE control plane.': 'Provisioning, partnerkörnyezetek, connectorok, biztonsági mentések és központi állapot a konténerizált HIMATE vezérlősíkján.',
+    'Record verified metric': 'Ellenőrzött mérőszám rögzítése',
+    'Record verified value': 'Ellenőrzött érték rögzítése',
+    'Recorded in commercial price history': 'Rögzítve a kereskedelmi ártörténetben',
+    'Recorded in module, price and subscription history': 'Rögzítve a modul-, ár- és előfizetési előzményekben',
+    'Register the license invoice, receipt, contract, or payment evidence before marking the license paid.': 'A licenc kifizetettként jelölése előtt rögzítsd a licencszámlát, bizonylatot, szerződést vagy fizetési bizonyítékot.',
+    'Register the production environment after staging validation and before launch.': 'A staging ellenőrzése után és az indítás előtt regisztráld a production környezetet.',
+    'Report ID': 'Jelentésazonosító',
+    'Required for contracts, invoices, receipts and payment evidence': 'Szerződésekhez, számlákhoz, bizonylatokhoz és fizetési bizonyítékhoz kötelező',
+    'Required for traceability when status changes': 'Állapotváltozáskor a nyomon követhetőséghez kötelező',
+    'Retention and scheduling are partner-scoped. Expired restore points are removed from the offsite provider.': 'A megőrzés és ütemezés partnerhez kötött. A lejárt visszaállítási pontokat eltávolítjuk a külső szolgáltatótól.',
+    'Save configuration': 'Konfiguráció mentése',
+    'Save environment': 'Környezet mentése',
+    'Save module': 'Modul mentése',
+    'Save new draft version': 'Új vázlatverzió mentése',
+    'Saving creates a new immutable DRAFT version. Publishing requires a fresh PREVIEW version.': 'A mentés új, megváltoztathatatlan DRAFT verziót hoz létre. A publikáláshoz friss PREVIEW verzió szükséges.',
+    'Search by actor, path, request ID, resource or partner. Filters are server-side and pagination keeps the audit page fast as history grows.': 'Keresés végrehajtó, útvonal, kérésazonosító, erőforrás vagy partner szerint. A szűrés szerveroldali, a lapozás pedig növekvő előzmények mellett is gyorsan tartja az auditoldalt.',
+    'Set metric baseline': 'Mérőszám bázisértékének beállítása',
+    'STAGING · required first environment': 'STAGING · kötelező első környezet',
+    'System name': 'Rendszernév',
+    'The backend will re-check runtime health and all launch gates before committing LIVE.': 'A backend az élesítés előtt újra ellenőrzi a futtatókörnyezet állapotát és minden indítási kaput.',
+    'The durable scheduler queues a restore point when the interval is due.': 'A tartós ütemező visszaállítási pontot állít sorba az időköz esedékességekor.',
+    'The report freezes metrics, sources and Evidence references into a reproducible snapshot before PDF rendering.': 'A jelentés a PDF-renderelés előtt reprodukálható pillanatképbe rögzíti a mérőszámokat, forrásokat és bizonyítékhivatkozásokat.',
+    'The verified reference catalog stays centrally governed while custom modules can be added without changing the partner data model.': 'Az ellenőrzött referenciakatalógus központilag irányított marad, miközben egyedi modulok adhatók hozzá a partner adatmodell módosítása nélkül.',
+    'The workspace is ready. The latest background health snapshot will appear automatically when available.': 'A munkaterület kész. A legfrissebb háttér-állapotpillanatkép automatikusan megjelenik, amint elérhető.',
+    'This changes the environment from READY FOR LAUNCH to LIVE and records the launch actor.': 'Ez READY FOR LAUNCH állapotból LIVE állapotba viszi a környezetet, és rögzíti az élesítést végző személyt.',
+    'This observation will use VERIFIED_DOCUMENT provenance and is cryptographically tied to the selected Evidence record.': 'Ez a megfigyelés VERIFIED_DOCUMENT eredetet használ, és kriptográfiailag a kiválasztott bizonyítékrekordhoz kötött.',
+    'Title, file, partner, metric, URL…': 'Cím, fájl, partner, mérőszám, URL…',
+    'Verified metric': 'Ellenőrzött mérőszám',
+    'Versioned marketing content and publishing workflow.': 'Verziózott marketingtartalom és publikálási munkafolyamat.',
+  };
+
   static const Map<String, String> _designHu = <String, String>{
     'Design Guide': 'Arculati útmutató',
     'Global website brand controls for logo, colors, typography, buttons and bilingual navigation.': 'Globális weboldal-arculati beállítások logóhoz, színekhez, tipográfiához, gombokhoz és kétnyelvű navigációhoz.',
@@ -905,7 +1017,7 @@ class HimateI18n {
 
   static String literal(String locale, String value) {
     if (locale != 'hu_HU' || value.trim().isEmpty) return value;
-    final exact = _literalHu[value] ?? _extendedHu[value] ?? _designHu[value];
+    final exact = _literalHu[value] ?? _extendedHu[value] ?? _completionHu[value] ?? _designHu[value];
     if (exact != null) return exact;
 
     String countLabel(String suffix, String translatedSuffix) {
@@ -921,6 +1033,8 @@ class HimateI18n {
       [' reports', 'jelentés'],
       [' metrics', 'mérőszám'],
       [' leads', 'érdeklődő'],
+      [' records', 'rekord'],
+      [' shown', 'megjelenítve'],
     ]) {
       final translated = countLabel(pair[0], pair[1]);
       if (translated.isNotEmpty) return translated;
@@ -951,6 +1065,17 @@ class HimateI18n {
       final translated = countLabel(pair[0], pair[1]);
       if (translated.isNotEmpty) return translated;
     }
+    if (value.startsWith('Environment: ') && value.contains(' · Version: ')) {
+      final parts = value.substring('Environment: '.length).split(' · Version: ');
+      if (parts.length == 2) return 'Környezet: ${parts[0]} · Verzió: ${parts[1]}';
+    }
+    if (value.startsWith('Evidence integrity: ')) {
+      return 'Bizonyíték integritása: ${value.substring('Evidence integrity: '.length)}';
+    }
+    if (value.startsWith('Showing ') && value.contains(' of ')) {
+      final body = value.substring('Showing '.length).split(' of ');
+      if (body.length == 2) return '${body[0]} / ${body[1]} megjelenítve';
+    }
     if (value.startsWith('Assigned: ')) {
       return 'Felelős: ${value.substring('Assigned: '.length)}';
     }
@@ -965,11 +1090,7 @@ class HimateI18n {
       if (body.length == 2) return '${body[0]} / ${body[1]} oldal';
     }
 
-    var translated = value;
-    for (final entry in _fallbackHu.entries) {
-      translated = translated.replaceAll(entry.key, entry.value);
-    }
-    return translated;
+    return value;
   }
 
   static String text(String locale, String key) {
