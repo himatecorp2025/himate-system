@@ -25,6 +25,8 @@ part 'backups_panel.dart';
 part 'domains_deployments.dart';
 part 'localization.dart';
 part 'profile_account.dart';
+part 'module_control_plane.dart';
+part 'notifications_panel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -270,6 +272,8 @@ class Api {
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
       add('/api/v1/audit');
+    } else if (path.startsWith('/api/v1/notifications')) {
+      add('/api/v1/notifications');
     } else if (path.startsWith('/api/v1/auth')) {
       if (path.endsWith('/logout')) {
         clearCache();
@@ -299,6 +303,12 @@ class Api {
 
   Future<Map<String, dynamic>> patch(String path, Map<String, dynamic> body) async {
     final result = await request('PATCH', path, body);
+    _invalidateMutation(path);
+    return result;
+  }
+
+  Future<Map<String, dynamic>> delete(String path) async {
+    final result = await request('DELETE', path);
     _invalidateMutation(path);
     return result;
   }
@@ -351,6 +361,8 @@ class Api {
       response = await client.put(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
     } else if (method == 'PATCH') {
       response = await client.patch(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
+    } else if (method == 'DELETE') {
+      response = await client.delete(uri, headers: headers).timeout(timeout);
     } else {
       response = await client.get(uri, headers: headers).timeout(timeout);
     }
@@ -1431,11 +1443,12 @@ class _ShellState extends State<Shell> {
   int selected = 0;
   bool collapsed = false;
 
-  static const int navCount = 7;
+  static const int navCount = 8;
 
   List<NavSpec> navFor(BuildContext context) => <NavSpec>[
     NavSpec(tr(context,'nav.dashboard'), Icons.dashboard_outlined, tr(context,'nav.dashboardSub')),
     NavSpec(tr(context,'nav.partners'), Icons.groups_2_outlined, tr(context,'nav.partnersSub')),
+    const NavSpec('Modules', Icons.hub_outlined, 'Registry, dependencies & partner usage'),
     NavSpec(tr(context,'nav.finance'), Icons.account_balance_wallet_outlined, tr(context,'nav.financeSub')),
     NavSpec(tr(context,'nav.impact'), Icons.show_chart_rounded, tr(context,'nav.impactSub')),
     NavSpec(tr(context,'nav.website'), Icons.campaign_outlined, tr(context,'nav.websiteSub')),
@@ -1469,11 +1482,12 @@ class _ShellState extends State<Shell> {
     final indexes = <int>[];
     if (can('dashboard.read')) indexes.add(0);
     if (can('partners.read')) indexes.add(1);
-    if (can('billing.read')) indexes.add(2);
-    if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(3);
-    if (can('cms.read') || can('contact.read')) indexes.add(4);
-    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(5);
-    if (can('administration.read') || can('audit.read')) indexes.add(6);
+    if (can('catalog.read')) indexes.add(2);
+    if (can('billing.read')) indexes.add(3);
+    if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(4);
+    if (can('cms.read') || can('contact.read')) indexes.add(5);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(6);
+    if (can('administration.read') || can('audit.read')) indexes.add(7);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
   }
@@ -1482,11 +1496,12 @@ class _ShellState extends State<Shell> {
     switch (index) {
       case 0: return DashboardPage(api: widget.api);
       case 1: return PartnersPage(api: widget.api);
-      case 2: return FinancePage(api: widget.api);
-      case 3: return ImpactPage(api: widget.api);
-      case 4: return WebsiteMarketingPage(api: widget.api);
-      case 5: return SystemPage(api: widget.api);
-      case 6: return AdministrationPage(api: widget.api, user: widget.user);
+      case 2: return ModuleControlPlanePage(api: widget.api);
+      case 3: return FinancePage(api: widget.api);
+      case 4: return ImpactPage(api: widget.api);
+      case 5: return WebsiteMarketingPage(api: widget.api);
+      case 6: return SystemPage(api: widget.api);
+      case 7: return AdministrationPage(api: widget.api, user: widget.user);
       default: return const SizedBox.shrink();
     }
   }
@@ -1521,7 +1536,7 @@ class _ShellState extends State<Shell> {
               titleSpacing: 12,
               title: const HimateLogo(width: 170),
               actions: [
-                _TopIconButton(icon: Icons.notifications_none_rounded, onTap: () {}),
+                NotificationCenterButton(api: widget.api),
                 PopupMenuButton<String>(
                   tooltip: tr(context,'account'),
                   onSelected: (value) => accountAction(context,value),
@@ -1601,7 +1616,7 @@ class _ShellState extends State<Shell> {
                           else
                             const Spacer(),
                           const SizedBox(width: 18),
-                          _TopIconButton(icon: Icons.notifications_none_rounded, hasDot: true, onTap: () {}),
+                          NotificationCenterButton(api: widget.api),
                           const SizedBox(width: 8),
                           PopupMenuButton<String>(
                             tooltip: tr(context,'account'),
