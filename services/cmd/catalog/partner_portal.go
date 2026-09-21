@@ -1,0 +1,273 @@
+package main
+
+import (
+	"database/sql"
+	"fmt"
+	"himate.local/services/internal/common"
+	"net/http"
+	"strings"
+	"time"
+)
+
+type portalModule struct {
+	Key             string
+	Label           string
+	Description     string
+	GroupKey        string
+	GroupLabel      string
+	Status          string
+	IncludedInBase  bool
+	PartnerPrice    float64
+	Currency        string
+	LatestVersion   string
+	Availability    string
+	ActivatedAt     any
+	Relationships   []map[string]any
+	CanActivate     bool
+	Blockers        []string
+}
+
+func (a *app) partnerPortal(w http.ResponseWriter, r *http.Request) {
+	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/partner-portal/"), "/")
+	parts := strings.Split(raw, "/")
+	if len(parts) < 2 || parts[0] == "" || parts[1] != "modules" {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Partner portal catalog route not found")
+		return
+	}
+	partnerID := parts[0]
+	if len(parts) == 2 {
+		if r.Method != http.MethodGet {
+			common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
+			return
+		}
+		a.partnerPortalModules(w, partnerID)
+		return
+	}
+	if len(parts) == 4 && parts[3] == "activate" {
+		if r.Method != http.MethodPost {
+			common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+			return
+		}
+		a.partnerPortalActivate(w, r, partnerID, parts[2])
+		return
+	}
+	common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Partner portal catalog route not found")
+}
+
+func (a *app) loadPartnerPortalModules(partnerID string) ([]portalModule, error) {
+	if err := a.ensurePartnerModules(partnerID); err != nil {
+		return nil, err
+	}
+	rows, err := a.db.Query(`
+		SELECT m.module_key,m.label,m.description,m.group_key,g.label,pm.status,pm.included_in_base,
+			COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),m.currency,m.latest_version,m.availability,pm.activated_at
+		FROM catalog.partner_modules pm
+		JOIN catalog.modules m ON m.module_key=pm.module_key
+		JOIN catalog.module_groups g ON g.group_key=m.group_key
+		LEFT JOIN LATERAL (
+			SELECT ph.new_price FROM catalog.price_history ph
+			WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
+			ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
+		) ep ON TRUE
+		WHERE pm.partner_id=$1
+		ORDER BY g.sort_order,m.label`, partnerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	modules := []portalModule{}
+	active := map[string]bool{}
+	index := map[string]int{}
+	for rows.Next() {
+		var item portalModule
+		var activated sql.NullTime
+		if err := rows.Scan(&item.Key,&item.Label,&item.Description,&item.GroupKey,&item.GroupLabel,&item.Status,&item.IncludedInBase,
+			&item.PartnerPrice,&item.Currency,&item.LatestVersion,&item.Availability,&activated); err != nil {
+			return nil, err
+		}
+		if activated.Valid { item.ActivatedAt = activated.Time.UTC() }
+		item.Relationships = []map[string]any{}
+		item.Blockers = []string{}
+		active[item.Key] = item.Status == "ACTIVE"
+		index[item.Key] = len(modules)
+		modules = append(modules, item)
+	}
+	if err := rows.Err(); err != nil { return nil, err }
+
+	relRows, err := a.db.Query(`
+		SELECT r.module_key,r.target_module_key,m.label,r.relation_type,r.note
+		FROM catalog.module_relationships r
+		JOIN catalog.modules m ON m.module_key=r.target_module_key
+		WHERE r.relation_type IN ('REQUIRES','OPTIONAL_DEPENDENCY','INTEGRATES_WITH','CONFLICTS_WITH','REPLACES')
+		ORDER BY r.module_key,r.relation_type,m.label`)
+	if err != nil { return nil, err }
+	defer relRows.Close()
+	for relRows.Next() {
+		var key,target,label,relation,note string
+		if relRows.Scan(&key,&target,&label,&relation,&note) != nil { continue }
+		i, ok := index[key]
+		if !ok { continue }
+		modules[i].Relationships = append(modules[i].Relationships, map[string]any{
+			"target_module_key": target, "target_label": label, "relation_type": relation, "note": note,
+			"target_active": active[target],
+		})
+		if relation == "REQUIRES" && !active[target] {
+			modules[i].Blockers = append(modules[i].Blockers, "Requires "+label)
+		}
+		if relation == "CONFLICTS_WITH" && active[target] {
+			modules[i].Blockers = append(modules[i].Blockers, "Conflicts with active "+label)
+		}
+	}
+	if err := relRows.Err(); err != nil { return nil, err }
+
+	for i := range modules {
+		if modules[i].Availability != "ACTIVE" {
+			modules[i].Blockers = append(modules[i].Blockers, "Module is not currently available")
+		}
+		if modules[i].Status == "MAINTENANCE" {
+			modules[i].Blockers = append(modules[i].Blockers, "Module is restricted by HIMATE maintenance")
+		}
+		modules[i].CanActivate = modules[i].Status != "ACTIVE" && len(modules[i].Blockers) == 0
+	}
+	return modules, nil
+}
+
+func portalModuleMap(item portalModule) map[string]any {
+	return map[string]any{
+		"key": item.Key, "label": item.Label, "description": item.Description,
+		"group_key": item.GroupKey, "group_label": item.GroupLabel,
+		"status": item.Status, "included_in_base": item.IncludedInBase,
+		"partner_price": item.PartnerPrice, "currency": item.Currency,
+		"latest_version": item.LatestVersion, "availability": item.Availability,
+		"activated_at": item.ActivatedAt, "relationships": item.Relationships,
+		"can_activate": item.CanActivate, "activation_blockers": item.Blockers,
+	}
+}
+
+func (a *app) partnerPortalModules(w http.ResponseWriter, partnerID string) {
+	modules, err := a.loadPartnerPortalModules(partnerID)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load partner portal modules")
+		return
+	}
+	items := make([]map[string]any, 0, len(modules))
+	activeCount := 0
+	availableCount := 0
+	for _, item := range modules {
+		if item.Status == "ACTIVE" { activeCount++ }
+		if item.CanActivate { availableCount++ }
+		items = append(items, portalModuleMap(item))
+	}
+	common.JSON(w, http.StatusOK, map[string]any{
+		"partner_id": partnerID, "items": items, "count": len(items),
+		"active_count": activeCount, "available_count": availableCount,
+	})
+}
+
+func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, partnerID, key string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Module not found")
+		return
+	}
+	if err := a.ensurePartnerModules(partnerID); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not initialize partner module state")
+		return
+	}
+	tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not start module activation")
+		return
+	}
+	defer tx.Rollback()
+
+	var status, availability, label string
+	var visible bool
+	if err := tx.QueryRow(`
+		SELECT pm.status,m.availability,m.label,pm.visible
+		FROM catalog.partner_modules pm
+		JOIN catalog.modules m ON m.module_key=pm.module_key
+		WHERE pm.partner_id=$1 AND pm.module_key=$2
+		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&label,&visible); err != nil {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Module not found")
+		return
+	}
+	if status == "ACTIVE" {
+		tx.Rollback()
+		a.onePartnerModule(w, partnerID, key)
+		return
+	}
+	if status == "MAINTENANCE" {
+		common.APIError(w, http.StatusConflict, "MODULE_MAINTENANCE", "Module is restricted by HIMATE maintenance")
+		return
+	}
+	if availability != "ACTIVE" {
+		common.APIError(w, http.StatusConflict, "MODULE_UNAVAILABLE", "Module is not currently available")
+		return
+	}
+
+	rows, err := tx.Query(`
+		SELECT r.target_module_key,m.label,r.relation_type,pm.status
+		FROM catalog.module_relationships r
+		JOIN catalog.modules m ON m.module_key=r.target_module_key
+		LEFT JOIN catalog.partner_modules pm ON pm.partner_id=$1 AND pm.module_key=r.target_module_key
+		WHERE r.module_key=$2 AND r.relation_type IN ('REQUIRES','CONFLICTS_WITH')`, partnerID, key)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not validate module relationships")
+		return
+	}
+	blockers := []string{}
+	for rows.Next() {
+		var target,targetLabel,relation string
+		var targetStatus sql.NullString
+		if rows.Scan(&target,&targetLabel,&relation,&targetStatus) != nil { continue }
+		isActive := targetStatus.Valid && targetStatus.String == "ACTIVE"
+		if relation == "REQUIRES" && !isActive {
+			blockers = append(blockers, "Requires "+targetLabel)
+		}
+		if relation == "CONFLICTS_WITH" && isActive {
+			blockers = append(blockers, "Conflicts with active "+targetLabel)
+		}
+		_ = target
+	}
+	rows.Close()
+	if len(blockers) > 0 {
+		common.APIError(w, http.StatusConflict, "MODULE_DEPENDENCY_BLOCKED", strings.Join(blockers, "; "))
+		return
+	}
+
+	now := time.Now().UTC()
+	if _, err = tx.Exec(`UPDATE catalog.partner_modules SET status='ACTIVE',visible=TRUE,activated_at=$3,updated_at=NOW()
+		WHERE partner_id=$1 AND module_key=$2`, partnerID, key, now); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not activate module")
+		return
+	}
+	actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+	if actor == "" { actor = "partner-portal" }
+	reason := "Partner Portal activation"
+	if _, err = tx.Exec(`INSERT INTO catalog.partner_module_history(partner_id,module_key,field_name,old_value,new_value,effective_at,actor,reason)
+		VALUES($1,$2,'status',$3,'ACTIVE',$4,$5,$6)`,partnerID,key,status,now,actor,reason); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not record module activation history")
+		return
+	}
+	if !visible {
+		if _, err = tx.Exec(`INSERT INTO catalog.partner_module_history(partner_id,module_key,field_name,old_value,new_value,effective_at,actor,reason)
+			VALUES($1,$2,'visible','false','true',$3,$4,$5)`,partnerID,key,now,actor,reason); err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not record module visibility history")
+			return
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not commit module activation")
+		return
+	}
+
+	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key))
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Module activated but could not be reloaded")
+		return
+	}
+	item["activation_message"] = fmt.Sprintf("%s activated", label)
+	common.JSON(w, http.StatusOK, item)
+}
