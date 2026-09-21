@@ -79,6 +79,16 @@ curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$owner_a_pa
 curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$owner_b_payload" "$BASE_URL/api/v1/partners/$partner_b_id/portal-users" >/dev/null
 echo ok
 
+printf 'identity email cannot cross from Partner Portal into HIMATE administration... '
+admin_collision_payload="$(python3 - "$PARTNER_A_PASSWORD" <<'PY'
+import json,sys
+print(json.dumps({"name":"Collision Attempt","email":"ci-start222-owner-a@example.com","password":sys.argv[1],"roles":["operations_admin"]}))
+PY
+)"
+test "$(status "$OWNER_COOKIE" POST "/api/v1/admin/users" -H 'Content-Type: application/json' -d "$admin_collision_payload")" = "409"
+grep -q 'EMAIL_EXISTS' "$BODY"
+echo ok
+
 printf 'partner sessions carry immutable tenant scope... '
 partner_login "$PARTNER_A_COOKIE" "ci-start222-owner-a@example.com" "$PARTNER_A_PASSWORD" >/dev/null
 partner_login "$PARTNER_B_COOKIE" "ci-start222-owner-b@example.com" "$PARTNER_B_PASSWORD" >/dev/null
