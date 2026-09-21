@@ -80,13 +80,25 @@ func start223BillingMigration() common.Migration {
 	}
 }
 
-func (a *app) emitBillingEvent(ctx context.Context, eventKey, partnerID, moduleKey, eventType string, effectiveAt time.Time, payload map[string]any) error {
+type billingEventExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func emitBillingEventWith(ctx context.Context, execer billingEventExecer, eventKey, partnerID, moduleKey, eventType string, effectiveAt time.Time, payload map[string]any) error {
 	raw, _ := json.Marshal(payload)
-	_, err := a.db.ExecContext(ctx, `INSERT INTO billing.billing_events(event_key,partner_id,module_key,event_type,effective_at,payload)
+	_, err := execer.ExecContext(ctx, `INSERT INTO billing.billing_events(event_key,partner_id,module_key,event_type,effective_at,payload)
 		VALUES($1,$2,NULLIF($3,''),$4,$5,$6::jsonb)
 		ON CONFLICT(event_key) DO NOTHING`,
 		eventKey, partnerID, moduleKey, eventType, effectiveAt.UTC(), string(raw))
 	return err
+}
+
+func (a *app) emitBillingEvent(ctx context.Context, eventKey, partnerID, moduleKey, eventType string, effectiveAt time.Time, payload map[string]any) error {
+	return emitBillingEventWith(ctx, a.db, eventKey, partnerID, moduleKey, eventType, effectiveAt, payload)
+}
+
+func emitBillingEventTx(ctx context.Context, tx *sql.Tx, eventKey, partnerID, moduleKey, eventType string, effectiveAt time.Time, payload map[string]any) error {
+	return emitBillingEventWith(ctx, tx, eventKey, partnerID, moduleKey, eventType, effectiveAt, payload)
 }
 
 func (a *app) modulePriceAt(ctx context.Context, partnerID, moduleKey string, at time.Time, fallbackPrice float64, fallbackIncluded bool, fallbackCurrency string) (float64, bool, string, error) {
