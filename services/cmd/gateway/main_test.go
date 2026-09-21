@@ -221,41 +221,49 @@ func TestRememberSessionUsesRequestedTTL(t *testing.T) {
 	}
 }
 
-func TestBrandLogoFallsBackToFlutterBundle(t *testing.T) {
+func TestBrandAssetServesThroughStaticWebRoot(t *testing.T) {
 	root := t.TempDir()
-	assetDir := filepath.Join(root, "assets", "assets")
-	if err := os.MkdirAll(assetDir, 0o700); err != nil { t.Fatal(err) }
-	body := []byte("RIFF-fallback-WEBP")
-	if err := os.WriteFile(filepath.Join(assetDir, "himate_logo_master_v2.webp"), body, 0o600); err != nil { t.Fatal(err) }
+	brandDir := filepath.Join(root, "brand")
+	if err := os.MkdirAll(brandDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("RIFF-current-HIMATE-WEBP")
+	if err := os.WriteFile(filepath.Join(brandDir, "himate_identity_wordmark_2026.webp"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	a := &app{webDir: root}
-	req := httptest.NewRequest(http.MethodGet, "/art/himate_logo_master_v2.webp", nil)
+	req := httptest.NewRequest(http.MethodGet, "/brand/himate_identity_wordmark_2026.webp", nil)
 	rec := httptest.NewRecorder()
-	a.brandLogo(rec, req)
+	a.web().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK { t.Fatalf("expected logo 200, got %d", rec.Code) }
-	if rec.Body.String() != string(body) { t.Fatalf("unexpected fallback body %q", rec.Body.String()) }
-	if got := rec.Header().Get("X-Himate-Logo-Source"); !strings.Contains(got, "assets") {
-		t.Fatalf("expected Flutter bundle fallback source, got %q", got)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected brand asset 200, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "image/webp" {
+		t.Fatalf("expected image/webp, got %q", got)
+	}
+	if rec.Body.String() != string(body) {
+		t.Fatalf("unexpected brand asset body %q", rec.Body.String())
 	}
 }
 
-func TestBrandLogoRouteServesVersionedAsset(t *testing.T) {
-	root := t.TempDir()
-	art := filepath.Join(root, "art")
-	if err := os.MkdirAll(art, 0o700); err != nil { t.Fatal(err) }
-	body := []byte("RIFF-test-webp")
-	if err := os.WriteFile(filepath.Join(art, "himate_logo_master_v2.webp"), body, 0o600); err != nil { t.Fatal(err) }
-
-	a := &app{webDir: root}
-	req := httptest.NewRequest(http.MethodGet, "/art/himate_logo_master_v2.webp", nil)
-	rec := httptest.NewRecorder()
-	a.brandLogo(rec, req)
-
-	if rec.Code != http.StatusOK { t.Fatalf("expected logo 200, got %d", rec.Code) }
-	if got := rec.Header().Get("Content-Type"); got != "image/webp" { t.Fatalf("expected image/webp, got %q", got) }
-	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") { t.Fatalf("expected no-store, got %q", got) }
-	if rec.Body.String() != string(body) { t.Fatalf("unexpected logo body %q", rec.Body.String()) }
+func TestLegacyLogoRoutesAreGone(t *testing.T) {
+	a := &app{webDir: t.TempDir()}
+	for _, path := range []string{
+		"/art/himate_logo_master_v2.webp",
+		"/art/himate_logo_master_v4.webp",
+		"/brand/himate-logo-v3.webp",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			a.web().ServeHTTP(rec, req)
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("%s: expected 404, got %d", path, rec.Code)
+			}
+		})
+	}
 }
 
 func TestGatewayLivenessDoesNotDependOnPrivateServices(t *testing.T) {
