@@ -620,7 +620,7 @@ func permissionResource(r *http.Request) string {
 		return "administration"
 	case strings.HasPrefix(path, "/api/v1/partners/") && strings.Contains(path, "/modules"):
 		return "catalog"
-	case path == "/api/v1/modules", path == "/api/v1/module-groups", strings.HasPrefix(path, "/api/v1/modules/"):
+	case path == "/api/v1/modules", path == "/api/v1/module-groups", strings.HasPrefix(path, "/api/v1/modules/"), strings.HasPrefix(path, "/api/v1/module-groups/"):
 		return "catalog"
 	case path == "/api/v1/partner-categories", path == "/api/v1/partners", strings.HasPrefix(path, "/api/v1/partners/"):
 		return "partners"
@@ -922,7 +922,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/"):
 		a.serveProxy(w, r, "partners")
-	case r.URL.Path == "/api/v1/modules", r.URL.Path == "/api/v1/module-groups", strings.HasPrefix(r.URL.Path, "/api/v1/modules/"):
+	case r.URL.Path == "/api/v1/modules", r.URL.Path == "/api/v1/module-groups", strings.HasPrefix(r.URL.Path, "/api/v1/modules/"), strings.HasPrefix(r.URL.Path, "/api/v1/module-groups/"):
 		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/billing/"):
 		a.serveProxy(w, r, "billing")
