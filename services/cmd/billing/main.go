@@ -333,12 +333,12 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 500, "DB", "Could not load initial license")
 		return
 	}
-	evidenceCount, err := a.commercialEvidenceCount(r.Context(), id)
+	evidenceCount, invoiceCount, paymentEvidenceCount, err := a.commercialEvidenceBreakdown(r.Context(), id)
 	if err != nil {
-		common.APIError(w, 500, "DB", "Could not verify license evidence")
+		common.APIError(w, 500, "DB", "Could not verify commercial evidence")
 		return
 	}
-	paid := x.Status == "PAID" && evidenceCount > 0
+	paid := x.Status == "PAID" && paymentEvidenceCount > 0
 	agreementStatus := "DRAFT"
 	_ = a.db.QueryRow(`SELECT status FROM billing.commercial_agreements WHERE partner_id=$1`, id).Scan(&agreementStatus)
 	reference, referenceErr := a.referencePartner(r.Context(), id)
@@ -347,15 +347,17 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	waived := reference && x.Status == "WAIVED" && x.Waived && strings.TrimSpace(x.WaiverReason) != ""
-	allowed := (agreementStatus == "AGREED" && paid) || waived
+	allowed := (agreementStatus == "AGREED" && invoiceCount > 0 && paid) || waived
 	reason := ""
 	if !allowed {
 		if agreementStatus != "AGREED" && !waived {
 			reason = "Commercial agreement is not confirmed"
+		} else if invoiceCount == 0 && !waived {
+			reason = "Activation fee invoice evidence is missing"
+		} else if paymentEvidenceCount == 0 && !waived {
+			reason = "Payment evidence or receipt is missing"
 		} else if x.Status != "PAID" && !x.Waived {
 			reason = "Initial license payment is not verified"
-		} else if x.Status == "PAID" && evidenceCount == 0 {
-			reason = "Commercial payment evidence is missing"
 		} else {
 			reason = "Initial license gate is incomplete"
 		}
@@ -366,6 +368,8 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		"agreement_status": agreementStatus,
 		"payment_status": x.Status,
 		"evidence_count": evidenceCount,
+		"invoice_evidence_count": invoiceCount,
+		"payment_evidence_count": paymentEvidenceCount,
 		"waived": x.Waived,
 		"reason": reason,
 	})
@@ -594,13 +598,13 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 			}
 			if next.VerifiedBy == "" { next.VerifiedBy = strings.TrimSpace(r.Header.Get("X-Himate-User-ID")) }
 			if next.VerifiedBy == "" { common.APIError(w, 400, "VALIDATION", "Paid license requires verification"); return }
-			evidenceCount, err := a.commercialEvidenceCount(r.Context(), id)
+			_, _, paymentEvidenceCount, err := a.commercialEvidenceBreakdown(r.Context(), id)
 			if err != nil {
-				common.APIError(w, 500, "DB", "Could not verify license evidence")
+				common.APIError(w, 500, "DB", "Could not verify payment evidence")
 				return
 			}
-			if evidenceCount == 0 {
-				common.APIError(w, 409, "LICENSE_EVIDENCE_REQUIRED", "Register an invoice, receipt, contract, or payment evidence before marking the initial license paid")
+			if paymentEvidenceCount == 0 {
+				common.APIError(w, 409, "PAYMENT_EVIDENCE_REQUIRED", "Register payment evidence or a receipt before marking the activation license paid")
 				return
 			}
 		}
