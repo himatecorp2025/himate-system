@@ -280,8 +280,11 @@ func (a *app) migrate(ctx context.Context) error {
 	email := strings.ToLower(strings.TrimSpace(os.Getenv("HIMATE_BOOTSTRAP_ADMIN_EMAIL")))
 	password := os.Getenv("HIMATE_BOOTSTRAP_ADMIN_PASSWORD")
 	name := common.Env("HIMATE_BOOTSTRAP_ADMIN_NAME", "HIMATE Administrator")
-	if !strings.Contains(email, "@") || len(password) < 12 {
-		return errors.New("HIMATE_BOOTSTRAP_ADMIN_EMAIL and a 12+ character HIMATE_BOOTSTRAP_ADMIN_PASSWORD are required")
+	if !validEmail(email) {
+		return errors.New("a valid HIMATE_BOOTSTRAP_ADMIN_EMAIL is required")
+	}
+	if message := passwordPolicyError(password); message != "" {
+		return fmt.Errorf("HIMATE_BOOTSTRAP_ADMIN_PASSWORD: %s", message)
 	}
 	hashed, err := hashPassword(password)
 	if err != nil {
@@ -1411,8 +1414,8 @@ func (a *app) profilePassword(w http.ResponseWriter, r *http.Request, actor user
 	if !verifyPassword(actor.PasswordHash,in.CurrentPassword) {
 		common.APIError(w,403,"CURRENT_PASSWORD","Current password is incorrect");return
 	}
-	if len(in.NewPassword)<12 {
-		common.APIError(w,400,"VALIDATION","New password must be at least 12 characters");return
+	if message:=passwordPolicyError(in.NewPassword);message!="" {
+		common.APIError(w,400,"VALIDATION",message);return
 	}
 	if subtle.ConstantTimeCompare([]byte(in.CurrentPassword),[]byte(in.NewPassword))==1 {
 		common.APIError(w,400,"VALIDATION","New password must be different");return
@@ -1449,6 +1452,29 @@ func validEmail(value string) bool {
 	value = strings.TrimSpace(value)
 	at := strings.LastIndex(value, "@")
 	return at > 0 && at < len(value)-3 && strings.Contains(value[at+1:], ".")
+}
+
+func passwordPolicyError(password string) string {
+	if len([]rune(password)) < 12 {
+		return "Password must be at least 12 characters and include lowercase, uppercase, a number and a special character"
+	}
+	var hasLower, hasUpper, hasDigit, hasSpecial bool
+	for _, r := range password {
+		switch {
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			hasSpecial = true
+		}
+	}
+	if !hasLower || !hasUpper || !hasDigit || !hasSpecial {
+		return "Password must be at least 12 characters and include lowercase, uppercase, a number and a special character"
+	}
+	return ""
 }
 
 func (a *app) adminRoles(w http.ResponseWriter, r *http.Request) {
@@ -1494,7 +1520,7 @@ func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
 		in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 		if len(in.Name) < 2 || len(in.Name) > 120 { common.APIError(w,400,"VALIDATION","Name must be 2-120 characters"); return }
 		if !validEmail(in.Email) { common.APIError(w,400,"VALIDATION","A valid email is required"); return }
-		if len(in.Password) < 12 { common.APIError(w,400,"VALIDATION","Password must be at least 12 characters"); return }
+		if message:=passwordPolicyError(in.Password); message!="" { common.APIError(w,400,"VALIDATION",message); return }
 		roles, err := normalizeRoles(in.Roles)
 		if err != nil { common.APIError(w,400,"VALIDATION",err.Error()); return }
 		if containsRole(roles,"platform_admin") { common.APIError(w,409,"OWNER_ROLE_RESERVED","Platform Admin is reserved for the HIMATE system owner"); return }
@@ -1576,7 +1602,7 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
 
 	hash := current.PasswordHash
 	if in.Password != nil {
-		if len(*in.Password) < 12 { common.APIError(w,400,"VALIDATION","Password must be at least 12 characters"); return }
+		if message:=passwordPolicyError(*in.Password); message!="" { common.APIError(w,400,"VALIDATION",message); return }
 		hash, err = hashPassword(*in.Password)
 		if err != nil { common.APIError(w,500,"PASSWORD","Could not secure password"); return }
 	}
