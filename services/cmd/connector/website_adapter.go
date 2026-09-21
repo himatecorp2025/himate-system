@@ -107,6 +107,31 @@ func validAdapterCapabilities(values []string) ([]string,error) {
 	return out,nil
 }
 
+func adapterSensitiveConfigKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	for _, part := range []string{"password","secret","token","authorization","cookie","api_key","apikey","payment","invoice","bank","card"} {
+		if strings.Contains(key, part) { return true }
+	}
+	return false
+}
+
+func validateAdapterConfigValue(value any) error {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			if adapterSensitiveConfigKey(key) {
+				return fmt.Errorf("adapter config contains sensitive key %s", key)
+			}
+			if err := validateAdapterConfigValue(item); err != nil { return err }
+		}
+	case []any:
+		for _, item := range typed {
+			if err := validateAdapterConfigValue(item); err != nil { return err }
+		}
+	}
+	return nil
+}
+
 func (a *app) websiteAdapterAdmin(w http.ResponseWriter,r *http.Request,partnerID string) {
 	environment:=normalizeEnvironment(r.URL.Query().Get("environment"))
 	if environment=="" { environment="PRODUCTION" }
@@ -143,9 +168,15 @@ func (a *app) websiteAdapterAdmin(w http.ResponseWriter,r *http.Request,partnerI
 		enabled:=true
 		if in.Enabled!=nil { enabled=*in.Enabled }
 		if in.Config==nil { in.Config=map[string]any{} }
+		if err:=validateAdapterConfigValue(in.Config);err!=nil {
+			common.APIError(w,400,"SENSITIVE_CONFIG",err.Error());return
+		}
 		domainsRaw,_:=json.Marshal(domains)
 		capsRaw,_:=json.Marshal(capabilities)
 		configRaw,_:=json.Marshal(in.Config)
+		if len(configRaw)>16*1024 {
+			common.APIError(w,400,"VALIDATION","adapter config exceeds 16 KiB");return
+		}
 		actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 		_,err=a.db.Exec(`INSERT INTO connector.website_adapters(
 				partner_id,environment,adapter_type,site_base_url,allowed_domains,capabilities,privacy_mode,enabled,config,updated_by
@@ -287,6 +318,16 @@ func (a *app) commercialState(w http.ResponseWriter,r *http.Request) {
 		desired["config"]=config
 	}
 
+	publicAdapter:=map[string]any{
+		"environment":adapter["environment"],
+		"adapter_type":adapter["adapter_type"],
+		"site_base_url":adapter["site_base_url"],
+		"allowed_domains":adapter["allowed_domains"],
+		"capabilities":adapter["capabilities"],
+		"privacy_mode":adapter["privacy_mode"],
+		"enabled":adapter["enabled"],
+		"config":adapter["config"],
+	}
 	common.JSON(w,200,map[string]any{
 		"partner_id":cred.PartnerID,"environment":cred.Environment,
 		"contract_version":"START-22.3",
@@ -296,7 +337,7 @@ func (a *app) commercialState(w http.ResponseWriter,r *http.Request) {
 			"staging_domain":partner["staging_domain"],
 			"website":partner["website"],
 		},
-		"adapter":adapter,
+		"adapter":publicAdapter,
 		"entitlements":entitlements,
 		"active_module_count":activeCount,
 		"service_cycle":map[string]any{
