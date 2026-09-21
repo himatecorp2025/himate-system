@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -211,4 +212,67 @@ func (a *app) start22DecryptData(envelope start22EncryptedEnvelope, partnerID, e
 		return nil, errors.New("decrypted START-22 payload is empty")
 	}
 	return data, nil
+}
+
+
+func (a *app) start22EncryptLegacyPlaintext(ctx context.Context) error {
+	rows, err := a.db.QueryContext(ctx, `SELECT id,partner_id,environment,dataset_key,idempotency_key,data
+		FROM connector.data_records
+		WHERE data_ciphertext IS NULL AND data <> '{}'::jsonb
+		ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type legacyRecord struct {
+		ID             int64
+		PartnerID      string
+		Environment    string
+		DatasetKey     string
+		IdempotencyKey string
+		DataRaw        []byte
+	}
+	records := []legacyRecord{}
+	for rows.Next() {
+		var record legacyRecord
+		if err := rows.Scan(&record.ID,&record.PartnerID,&record.Environment,&record.DatasetKey,&record.IdempotencyKey,&record.DataRaw); err != nil {
+			return err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(records) == 0 {
+		return nil
+	}
+
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, record := range records {
+		var data map[string]any
+		if err := json.Unmarshal(record.DataRaw, &data); err != nil || data == nil {
+			return fmt.Errorf("legacy START-22 record %d has invalid JSON", record.ID)
+		}
+		envelope, err := a.start22EncryptData(data, record.PartnerID, record.Environment, record.DatasetKey, record.IdempotencyKey)
+		if err != nil {
+			return fmt.Errorf("encrypt legacy START-22 record %d: %w", record.ID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE connector.data_records SET
+			data='{}'::jsonb,
+			data_ciphertext=$2,
+			data_nonce=$3,
+			wrapped_data_key=$4,
+			key_nonce=$5,
+			data_key_version=$6
+			WHERE id=$1`,
+			record.ID,envelope.Ciphertext,envelope.DataNonce,envelope.WrappedKey,envelope.KeyNonce,envelope.KeyVersion); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
