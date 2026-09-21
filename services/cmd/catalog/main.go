@@ -516,9 +516,13 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 	}
 	effectiveAt := time.Now().UTC()
 	if strings.TrimSpace(in.PriceEffectiveAt) != "" {
-		parsed, parseErr := time.Parse(time.RFC3339, strings.TrimSpace(in.PriceEffectiveAt))
+		rawEffectiveAt := strings.TrimSpace(in.PriceEffectiveAt)
+		parsed, parseErr := time.Parse(time.RFC3339, rawEffectiveAt)
 		if parseErr != nil {
-			common.APIError(w, 400, "VALIDATION", "price_effective_at must be RFC3339")
+			parsed, parseErr = time.Parse("2006-01-02", rawEffectiveAt)
+		}
+		if parseErr != nil {
+			common.APIError(w, 400, "VALIDATION", "price_effective_at must be RFC3339 or YYYY-MM-DD")
 			return
 		}
 		effectiveAt = parsed.UTC()
