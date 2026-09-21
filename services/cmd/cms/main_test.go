@@ -128,6 +128,12 @@ func TestLocaleNormalizationAndDefaultDesign(t *testing.T) {
 	design := defaultSiteDesign()
 	if design.Navy != "#06172C" || design.Gold != "#D7AE62" { t.Fatalf("unexpected brand defaults: %+v", design) }
 	if len(design.Navigation) != 6 { t.Fatalf("expected six default navigation items, got %d", len(design.Navigation)) }
+
+	other := defaultSiteDesign()
+	design.Navigation[2].LabelHU = "Módosított"
+	if other.Navigation[2].LabelHU != "Programok" {
+		t.Fatal("default Design Guide states must not share navigation backing storage")
+	}
 }
 
 func TestDesignValidationWithoutMediaLookup(t *testing.T) {
