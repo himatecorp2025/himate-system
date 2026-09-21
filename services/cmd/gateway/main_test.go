@@ -520,3 +520,28 @@ func TestPublishedSEOHeadRendering(t *testing.T) {
 		}
 	}
 }
+
+func TestGlobalSEOFallbackRendering(t *testing.T) {
+	doc := "<html lang=\"en\"><head><title>Static Modules</title><meta name=\"description\" content=\"Static description\"></head><body></body></html>"
+	settings := publicSEOSettings{
+		Locale:                "hu_HU",
+		Version:               3,
+		GlobalKeywords:        []string{"művészet", "kultúra", "HIMATE"},
+		OrganizationName:      "HIMATE System",
+		OrganizationURL:       "https://www.himate.com",
+		DefaultOGImageAssetID: "cms_media_123",
+	}
+	rendered := renderGlobalSEOHTML(doc, settings)
+	for _, required := range []string{
+		"name=\"keywords\" content=\"művészet, kultúra, HIMATE\"",
+		"property=\"og:image\" content=\"/public/v1/cms/media/cms_media_123\"",
+		"application/ld+json",
+		"data-himate-seo=\"organization\"",
+		"\"@type\":\"Organization\"",
+		"\"name\":\"HIMATE System\"",
+	} {
+		if !strings.Contains(rendered, required) {
+			t.Fatalf("global SEO fallback output missing %q: %s", required, rendered)
+		}
+	}
+}
