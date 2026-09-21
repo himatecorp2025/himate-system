@@ -823,3 +823,146 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
     );
   }
 }
+
+class CompanySettingsPanel extends StatefulWidget {
+  const CompanySettingsPanel({required this.api, required this.currentUser, super.key});
+  final Api api;
+  final Map<String, dynamic> currentUser;
+  @override
+  State<CompanySettingsPanel> createState() => _CompanySettingsPanelState();
+}
+
+class _CompanySettingsPanelState extends State<CompanySettingsPanel> {
+  Map<String, dynamic>? profile;
+  bool loading = false;
+  String? error;
+  bool get canManage => widget.currentUser['system_owner'] == true;
+
+  @override
+  void initState() { super.initState(); if (canManage) load(); }
+
+  Future<void> load() async {
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final data = await widget.api.get('/api/v1/billing/profile', force: true);
+      if (mounted) setState(() { profile = data; loading = false; });
+    } catch (e) {
+      if (mounted) setState(() { error = e.toString(); loading = false; });
+    }
+  }
+
+  Future<void> edit() async {
+    final current = profile ?? <String, dynamic>{};
+    final legal = TextEditingController(text: '${current['legal_name'] ?? ''}');
+    final registration = TextEditingController(text: '${current['registration_number'] ?? ''}');
+    final address = TextEditingController(text: '${current['address'] ?? ''}');
+    final tax = TextEditingController(text: '${current['tax_id'] ?? ''}');
+    final contact = TextEditingController(text: '${current['contact_name'] ?? ''}');
+    final email = TextEditingController(text: '${current['email'] ?? ''}');
+    final phone = TextEditingController(text: '${current['phone'] ?? ''}');
+    final bank = TextEditingController(text: '${current['bank_name'] ?? ''}');
+    final bankAddress = TextEditingController(text: '${current['bank_address'] ?? ''}');
+    final account = TextEditingController(text: '${current['account_number'] ?? ''}');
+    final iban = TextEditingController(text: '${current['iban'] ?? ''}');
+    final swift = TextEditingController(text: '${current['swift'] ?? ''}');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: 'HIMATE company settings',
+        subtitle: 'Authoritative issuer and company identity used across billing and commercial records.',
+        icon: Icons.corporate_fare_outlined,
+        width: 820,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ResponsiveFieldPair(
+            first: TextField(controller: legal, decoration: InputDecoration(labelText: uiLiteral('Legal company name'))),
+            second: TextField(controller: registration, decoration: InputDecoration(labelText: uiLiteral('Registration number'))),
+          ),
+          const SizedBox(height: 12),
+          ResponsiveFieldPair(
+            first: TextField(controller: tax, decoration: InputDecoration(labelText: uiLiteral('Tax / VAT ID'))),
+            second: TextField(controller: contact, decoration: InputDecoration(labelText: uiLiteral('Billing contact'))),
+          ),
+          const SizedBox(height: 12),
+          TextField(controller: address, decoration: InputDecoration(labelText: uiLiteral('Registered address'))),
+          const SizedBox(height: 12),
+          ResponsiveFieldPair(
+            first: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Company / billing email'))),
+            second: TextField(controller: phone, decoration: InputDecoration(labelText: uiLiteral('Phone'))),
+          ),
+          const SizedBox(height: 18),
+          const _DialogSectionLabel('BANKING'),
+          const SizedBox(height: 10),
+          ResponsiveFieldPair(
+            first: TextField(controller: bank, decoration: InputDecoration(labelText: uiLiteral('Bank name'))),
+            second: TextField(controller: bankAddress, decoration: InputDecoration(labelText: uiLiteral('Bank address'))),
+          ),
+          const SizedBox(height: 12),
+          TextField(controller: account, decoration: InputDecoration(labelText: uiLiteral('Account number'))),
+          const SizedBox(height: 12),
+          ResponsiveFieldPair(
+            first: TextField(controller: iban, decoration: InputDecoration(labelText: uiLiteral('IBAN'))),
+            second: TextField(controller: swift, decoration: InputDecoration(labelText: uiLiteral('SWIFT / BIC'))),
+          ),
+        ]),
+        primaryLabel: 'Save company settings',
+        onPrimary: () => Navigator.pop(dialogContext, true),
+      ),
+    );
+
+    if (ok == true) {
+      try {
+        final updated = await widget.api.put('/api/v1/billing/profile', {
+          'legal_name': legal.text.trim(), 'registration_number': registration.text.trim(),
+          'address': address.text.trim(), 'tax_id': tax.text.trim(),
+          'contact_name': contact.text.trim(), 'email': email.text.trim(), 'phone': phone.text.trim(),
+          'bank_name': bank.text.trim(), 'bank_address': bankAddress.text.trim(),
+          'account_number': account.text.trim(), 'iban': iban.text.trim(), 'swift': swift.text.trim(),
+        });
+        if (mounted) {
+          setState(() => profile = updated);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: LText('HIMATE company settings updated.'), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess));
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LText(e.toString()), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger));
+      }
+    }
+    for (final controller in [legal,registration,address,tax,contact,email,phone,bank,bankAddress,account,iban,swift]) { controller.dispose(); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!canManage) return const SizedBox.shrink();
+    if (loading && profile == null) return const Padding(padding: EdgeInsets.symmetric(vertical: 22), child: Center(child: CircularProgressIndicator()));
+    if (error != null && profile == null) return _MessageCard(icon: Icons.error_outline_rounded, title: 'Company settings unavailable', message: error!);
+    final data = profile ?? <String, dynamic>{};
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _SectionHeader(
+        title: 'HIMATE Company',
+        subtitle: 'Issuer identity, billing contact and banking details used by the HIMATE control plane.',
+        trailing: FilledButton.icon(onPressed: edit, icon: const Icon(Icons.edit_outlined), label: const LText('Edit company')),
+      ),
+      const SizedBox(height: 10),
+      LayoutBuilder(builder: (context, constraints) {
+        final width = constraints.maxWidth < 760 ? constraints.maxWidth : (constraints.maxWidth - 12) / 2;
+        return Wrap(spacing: 12, runSpacing: 12, children: [
+          SizedBox(width: width, child: _InfoCard(title: 'Corporate identity', icon: Icons.corporate_fare_outlined, children: [
+            _DefinitionRow(label: 'Legal name', value: '${data['legal_name'] ?? '—'}'),
+            _DefinitionRow(label: 'Registration', value: '${data['registration_number'] ?? '—'}'),
+            _DefinitionRow(label: 'Tax / VAT', value: '${data['tax_id'] ?? '—'}'),
+            _DefinitionRow(label: 'Address', value: '${data['address'] ?? '—'}'),
+            _DefinitionRow(label: 'Contact', value: '${data['contact_name'] ?? '—'}'),
+            _DefinitionRow(label: 'Email', value: '${data['email'] ?? '—'}'),
+          ])),
+          SizedBox(width: width, child: _InfoCard(title: 'Banking', icon: Icons.account_balance_outlined, children: [
+            _DefinitionRow(label: 'Bank', value: '${data['bank_name'] ?? '—'}'),
+            _DefinitionRow(label: 'Bank address', value: '${data['bank_address'] ?? '—'}'),
+            _DefinitionRow(label: 'Account', value: '${data['account_number'] ?? '—'}'),
+            _DefinitionRow(label: 'IBAN', value: '${data['iban'] ?? '—'}'),
+            _DefinitionRow(label: 'SWIFT / BIC', value: '${data['swift'] ?? '—'}'),
+          ])),
+        ]);
+      }),
+    ]);
+  }
+}
