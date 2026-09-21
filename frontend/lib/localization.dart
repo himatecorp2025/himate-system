@@ -20,6 +20,66 @@ String himateLocaleCode(Locale locale) =>
 String tr(BuildContext context, String key) =>
     HimateI18n.text(himateLocaleCode(Localizations.localeOf(context)), key);
 
+
+class LText extends StatelessWidget {
+  const LText(
+    this.data, {
+    super.key,
+    this.style,
+    this.strutStyle,
+    this.textAlign,
+    this.textDirection,
+    this.locale,
+    this.softWrap,
+    this.overflow,
+    this.textScaler,
+    this.maxLines,
+    this.semanticsLabel,
+    this.textWidthBasis,
+    this.textHeightBehavior,
+    this.selectionColor,
+  });
+
+  final String data;
+  final TextStyle? style;
+  final StrutStyle? strutStyle;
+  final TextAlign? textAlign;
+  final TextDirection? textDirection;
+  final Locale? locale;
+  final bool? softWrap;
+  final TextOverflow? overflow;
+  final TextScaler? textScaler;
+  final int? maxLines;
+  final String? semanticsLabel;
+  final TextWidthBasis? textWidthBasis;
+  final TextHeightBehavior? textHeightBehavior;
+  final Color? selectionColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final code = himateLocaleCode(Localizations.localeOf(context));
+    return material.Text(
+      HimateI18n.literal(code, data),
+      style: style,
+      strutStyle: strutStyle,
+      textAlign: textAlign,
+      textDirection: textDirection,
+      locale: locale,
+      softWrap: softWrap,
+      overflow: overflow,
+      textScaler: textScaler,
+      maxLines: maxLines,
+      semanticsLabel: semanticsLabel,
+      textWidthBasis: textWidthBasis,
+      textHeightBehavior: textHeightBehavior,
+      selectionColor: selectionColor,
+    );
+  }
+}
+
+String uiLiteralFor(BuildContext context, String value) =>
+    HimateI18n.literal(himateLocaleCode(Localizations.localeOf(context)), value);
+
 class HimateI18n {
   static const Map<String, Map<String, String>> _values = {
     'en_US': {
@@ -133,6 +193,647 @@ class HimateI18n {
       'nav.adminSub': 'Szerepkörök és kontroll',
     },
   };
+
+
+  static const Map<String, String> _literalHu = <String, String>{
+    'Dashboard': 'Irányítópult',
+    'Partners': 'Partnerek',
+    'Partner': 'Partner',
+    'Licensing & Finance': 'Licencelés és pénzügy',
+    'Impact & Reports': 'Hatás és jelentések',
+    'Website & Marketing': 'Weboldal és marketing',
+    'System & Operations': 'Rendszer és üzemeltetés',
+    'Administration': 'Adminisztráció',
+    'Welcome to HIMATE System': 'Üdvözlünk a HIMATE Systemben',
+    'Manage partners, programs and cultural impact — all in one place.': 'Kezeld egy helyen a partnereket, programokat és a kulturális hatást.',
+    'Manage partners, programs, and cultural impact — all in one place.': 'Kezeld egy helyen a partnereket, programokat és a kulturális hatást.',
+    'Active Partners': 'Aktív partnerek',
+    'Active Programs': 'Aktív programok',
+    'Revenue (YTD)': 'Bevétel (YTD)',
+    'People Reached': 'Elért emberek',
+    'Recent Activity': 'Legutóbbi tevékenység',
+    'Program Impact': 'Programhatás',
+    'This Year': 'Idén',
+    'View all': 'Összes megtekintése',
+    'New partner registered': 'Új partner regisztrálva',
+    'Program updated': 'Program frissítve',
+    'Payment received': 'Fizetés beérkezett',
+    'New user added': 'Új felhasználó hozzáadva',
+    'Partner activity': 'Partnertevékenység',
+    'Module catalog activity': 'Modulkatalógus-tevékenység',
+    'Billing activity': 'Pénzügyi tevékenység',
+    'Administration activity': 'Adminisztrációs tevékenység',
+    'Partner portfolio': 'Partnerportfólió',
+    'New Partner': 'Új partner',
+    'Search partners...': 'Partnerek keresése...',
+    'All categories': 'Minden kategória',
+    'All lifecycle states': 'Minden életciklus-állapot',
+    'All health states': 'Minden egészségi állapot',
+    'Reference partner': 'Referenciapartner',
+    'Reference partners': 'Referenciapartnerek',
+    'Live partners': 'Élő partnerek',
+    'Prospects': 'Érdeklődők',
+    'Partner could not be opened': 'A partner nem nyitható meg',
+    'Partner workspace unavailable': 'A partner munkaterülete nem érhető el',
+    'Open workspace': 'Munkaterület megnyitása',
+    'Partner Health': 'Partnerállapot',
+    'Company Data': 'Cégadatok',
+    'Company data': 'Cégadatok',
+    'Finance & Documents': 'Pénzügy és dokumentumok',
+    'Partner Modules': 'Partnermodulok',
+    'Statistics': 'Statisztikák',
+    'System & Environment': 'Rendszer és környezet',
+    'Commercial terms': 'Kereskedelmi feltételek',
+    'Commercial Rules': 'Kereskedelmi szabályok',
+    'Commercial evidence and internal invoice records for this partner.': 'A partner kereskedelmi bizonyítékai és belső számlarekordjai.',
+    'Legal name': 'Hivatalos cégnév',
+    'Brand / DBA': 'Márkanév / DBA',
+    'Registration number': 'Cégjegyzékszám',
+    'Tax ID': 'Adóazonosító',
+    'Primary contact': 'Elsődleges kapcsolattartó',
+    'Primary email': 'Elsődleges e-mail',
+    'Finance contact': 'Pénzügyi kapcsolattartó',
+    'Finance email': 'Pénzügyi e-mail',
+    'Technical contact': 'Technikai kapcsolattartó',
+    'Technical email': 'Technikai e-mail',
+    'Marketing contact': 'Marketing kapcsolattartó',
+    'Marketing email': 'Marketing e-mail',
+    'Country': 'Ország',
+    'State / region': 'Állam / régió',
+    'City': 'Város',
+    'Postal code': 'Irányítószám',
+    'Address line 1': 'Cím 1. sor',
+    'Address line 2': 'Cím 2. sor',
+    'Website': 'Weboldal',
+    'Phone': 'Telefon',
+    'Notes': 'Megjegyzések',
+    'Edit partner': 'Partner szerkesztése',
+    'Save changes': 'Módosítások mentése',
+    'Lifecycle': 'Életciklus',
+    'Lifecycle change reason': 'Életciklus-váltás indoka',
+    'Module catalog': 'Modulkatalógus',
+    'Canonical Module Catalog': 'Kanonikus modulkatalógus',
+    'Search module catalog...': 'Keresés a modulkatalógusban...',
+    'Search modules...': 'Modulok keresése...',
+    'All groups': 'Minden csoport',
+    'Availability': 'Elérhetőség',
+    'Add custom module': 'Egyedi modul hozzáadása',
+    'Add module': 'Modul hozzáadása',
+    'Create module': 'Modul létrehozása',
+    'Module name': 'Modul neve',
+    'Module name *': 'Modul neve *',
+    'Stable technical key': 'Stabil technikai kulcs',
+    'Stable key *': 'Stabil kulcs *',
+    'Menu group': 'Menücsoport',
+    'Description': 'Leírás',
+    'Default monthly price (USD)': 'Alap havi ár (USD)',
+    'Default 30-day price': 'Alap 30 napos ár',
+    'Visibility is separate from module code existence.': 'A láthatóság független a modul kódjának létezésétől.',
+    'Module state': 'Modulállapot',
+    'Visible for partner': 'Partner számára látható',
+    'Included in base package': 'Alapcsomag része',
+    'Partner 30-day price': 'Partner 30 napos ára',
+    'Change reason': 'Módosítás indoka',
+    'Price effective at': 'Ár érvényességének kezdete',
+    'Cancel at period end': 'Lemondás az időszak végén',
+    'Billing profile': 'Számlázási profil',
+    'Edit billing profile': 'Számlázási profil szerkesztése',
+    'Bank name': 'Bank neve',
+    'Bank address': 'Bank címe',
+    'Account number': 'Bankszámlaszám',
+    'IBAN': 'IBAN',
+    'SWIFT / BIC': 'SWIFT / BIC',
+    'Save billing profile': 'Számlázási profil mentése',
+    'Activation fee': 'Aktiválási díj',
+    'Activation fee · USD': 'Aktiválási díj · USD',
+    'Activation fee waived': 'Aktiválási díj elengedve',
+    'Base monthly fee': 'Alap havi díj',
+    'Base monthly fee · USD': 'Alap havi díj · USD',
+    'Annual increase %': 'Éves emelés %',
+    'Service activation / anchor date': 'Szolgáltatás aktiválási / horgonydátuma',
+    'License status': 'Licenc állapota',
+    'License paid': 'Licenc kifizetve',
+    'Paid amount': 'Kifizetett összeg',
+    'Payment date': 'Fizetés dátuma',
+    'Payment reference': 'Fizetési hivatkozás',
+    'Payment evidence': 'Fizetési bizonyíték',
+    'Document name *': 'Dokumentum neve *',
+    'Document type': 'Dokumentumtípus',
+    'Storage URL / reference': 'Tárolási URL / hivatkozás',
+    'Register document': 'Dokumentum rögzítése',
+    'Invoices': 'Számlák',
+    'Documents': 'Dokumentumok',
+    'Impact Summary': 'Hatásösszesítő',
+    'Metric Definitions': 'Mérőszám-definíciók',
+    'New metric': 'Új mérőszám',
+    'Metric key': 'Mérőszám kulcsa',
+    'Unit': 'Mértékegység',
+    'Aggregation': 'Aggregáció',
+    'Scope': 'Hatókör',
+    'Baseline': 'Bázisérték',
+    'Baseline value': 'Bázisérték',
+    'Baseline period start': 'Bázisidőszak kezdete',
+    'Baseline period end': 'Bázisidőszak vége',
+    'Set baseline': 'Bázisérték beállítása',
+    'Save baseline': 'Bázisérték mentése',
+    'Record impact value': 'Hatásérték rögzítése',
+    'Record value': 'Érték rögzítése',
+    'Numeric value': 'Számérték',
+    'Period start': 'Időszak kezdete',
+    'Period end': 'Időszak vége',
+    'Source reference': 'Forráshivatkozás',
+    'Evidence': 'Bizonyíték',
+    'Evidence Library': 'Bizonyítéktár',
+    'Upload Evidence': 'Bizonyíték feltöltése',
+    'Create evidence': 'Bizonyíték létrehozása',
+    'Evidence title *': 'Bizonyíték címe *',
+    'Evidence type': 'Bizonyíték típusa',
+    'Linked metric': 'Kapcsolt mérőszám',
+    'Verification': 'Ellenőrzés',
+    'Verified': 'Ellenőrzött',
+    'Unverified': 'Nem ellenőrzött',
+    'Rejected': 'Elutasított',
+    'Uploaded': 'Feltöltve',
+    'Uploaded by': 'Feltöltötte',
+    'Verified by': 'Ellenőrizte',
+    'Download': 'Letöltés',
+    'Preview': 'Előnézet',
+    'Reports': 'Jelentések',
+    'Generate Report': 'Jelentés készítése',
+    'Generate PDF report': 'PDF-jelentés készítése',
+    'Report type': 'Jelentés típusa',
+    'Report title': 'Jelentés címe',
+    'Partner Impact Report': 'Partnerhatás-jelentés',
+    'Multi-Partner Report': 'Többpartneres jelentés',
+    'HIMATE Global Impact Report': 'HIMATE globális hatásjelentés',
+    'Queue report': 'Jelentés sorba állítása',
+    'Download PDF': 'PDF letöltése',
+    'Regenerate snapshot': 'Pillanatkép újragenerálása',
+    'HIMATE CMS': 'HIMATE CMS',
+    'CMS Pages': 'CMS-oldalak',
+    'Media Assets': 'Médiaelemek',
+    'Upload media': 'Média feltöltése',
+    'New CMS page': 'Új CMS-oldal',
+    'Create draft': 'Vázlat létrehozása',
+    'Edit draft': 'Vázlat szerkesztése',
+    'Publish': 'Publikálás',
+    'Published': 'Publikálva',
+    'Draft': 'Vázlat',
+    'Version history ·': 'Verzióelőzmények ·',
+    'Audit': 'Audit',
+    'Page key': 'Oldalkulcs',
+    'Admin page name *': 'Adminoldal neve *',
+    'Slug *': 'Slug *',
+    'SEO title': 'SEO-cím',
+    'SEO title * for publish': 'SEO-cím * publikáláshoz',
+    'Meta description': 'Meta leírás',
+    'Meta description * for publish': 'Meta leírás * publikáláshoz',
+    'Canonical HTTPS URL': 'Kanonikus HTTPS URL',
+    'Canonical HTTPS URL * for publish': 'Kanonikus HTTPS URL * publikáláshoz',
+    'Open Graph title': 'Open Graph cím',
+    'Open Graph description': 'Open Graph leírás',
+    'Open Graph image': 'Open Graph kép',
+    'Noindex': 'Noindex',
+    'Content sections': 'Tartalmi szekciók',
+    'Add section': 'Szekció hozzáadása',
+    'Section ID *': 'Szekcióazonosító *',
+    'Component type': 'Komponenstípus',
+    'Heading * when visible': 'Címsor * ha látható',
+    'Body': 'Törzsszöveg',
+    'Media asset': 'Médiaelem',
+    'CTA label': 'CTA felirat',
+    'CTA URL': 'CTA URL',
+    'Visible': 'Látható',
+    'Move up': 'Mozgatás felfelé',
+    'Move down': 'Mozgatás lefelé',
+    'Remove from draft': 'Eltávolítás a vázlatból',
+    'Contact Leads': 'Kapcsolati érdeklődők',
+    'Contact lead': 'Kapcsolati érdeklődő',
+    'Search leads': 'Érdeklődők keresése',
+    'Lead status': 'Érdeklődő állapota',
+    'All statuses': 'Minden állapot',
+    'Assigned to': 'Felelős',
+    'Name or team': 'Név vagy csapat',
+    'Name, organization, email or message': 'Név, szervezet, e-mail vagy üzenet',
+    'Inquiry': 'Megkeresés',
+    'Internal follow-up note': 'Belső utánkövetési jegyzet',
+    'Record next step, outcome or context': 'Rögzítsd a következő lépést, eredményt vagy kontextust',
+    'Save lead': 'Érdeklődő mentése',
+    'No contact leads': 'Nincsenek kapcsolati érdeklődők',
+    'New website inquiries will appear here automatically.': 'Az új weboldali megkeresések automatikusan itt jelennek meg.',
+    'Contact Leads unavailable': 'A kapcsolati érdeklődők nem érhetők el',
+    'Website inquiries stored in HIMATE with follow-up status, owner and internal notes.': 'A weboldali megkeresések utánkövetési állapottal, felelőssel és belső jegyzetekkel kerülnek a HIMATE-be.',
+    'Email contact': 'E-mail küldése',
+    'Contact lead updated.': 'A kapcsolati érdeklődő frissítve.',
+    'System Health': 'Rendszerállapot',
+    'Service Health': 'Szolgáltatásállapot',
+    'Architecture': 'Architektúra',
+    'Containerization': 'Konténerizáció',
+    'Horizontal scaling': 'Horizontális skálázás',
+    'Private services': 'Privát szolgáltatások',
+    'Public ingress': 'Nyilvános belépési pont',
+    'Partner databases': 'Partner-adatbázisok',
+    'Persistence': 'Perzisztencia',
+    'Operational Controls': 'Üzemeltetési vezérlők',
+    'Provisioning': 'Provisioning',
+    'Provisioning Engine': 'Provisioning motor',
+    'Environments': 'Környezetek',
+    'Environment': 'Környezet',
+    'Connector': 'Connector',
+    'Integrations': 'Integrációk',
+    'Domains & Deployments': 'Domainek és telepítések',
+    'Deployment': 'Telepítés',
+    'Deployment status': 'Telepítési állapot',
+    'Production environment': 'Éles környezet',
+    'Production hostname': 'Éles hosztnév',
+    'Production hostname *': 'Éles hosztnév *',
+    'Verify DNS/TLS': 'DNS/TLS ellenőrzése',
+    'Deploy': 'Telepítés',
+    'Launch production': 'Éles indítás',
+    'Go LIVE': 'Élesítés',
+    'Backups & Recoverability': 'Biztonsági mentések és helyreállíthatóság',
+    'Backup policy': 'Mentési szabályzat',
+    'Automatic backups': 'Automatikus mentések',
+    'Automatic backups enabled': 'Automatikus mentés engedélyezve',
+    'Retention days': 'Megőrzési napok',
+    'Max restore points': 'Maximális visszaállítási pontok',
+    'Automatic backup interval (hours)': 'Automatikus mentési időköz (óra)',
+    'Save policy': 'Szabályzat mentése',
+    'Create restore point': 'Visszaállítási pont létrehozása',
+    'Run restore test': 'Visszaállítási teszt futtatása',
+    'Restore test': 'Visszaállítási teszt',
+    'Restore tested': 'Visszaállítás tesztelve',
+    'Offsite provider': 'Külső mentési szolgáltató',
+    'Roles & Permissions': 'Szerepkörök és jogosultságok',
+    'Role Matrix': 'Szerepkörmátrix',
+    'Administrators': 'Adminisztrátorok',
+    'Add administrator': 'Adminisztrátor hozzáadása',
+    'Create administrator': 'Adminisztrátor létrehozása',
+    'Edit administrator access': 'Adminisztrátori hozzáférés szerkesztése',
+    'Full name': 'Teljes név',
+    'Email address': 'E-mail-cím',
+    'Temporary password': 'Ideiglenes jelszó',
+    'New password (optional)': 'Új jelszó (opcionális)',
+    'Roles': 'Szerepkörök',
+    'Active account': 'Aktív fiók',
+    'Effective permissions': 'Tényleges jogosultságok',
+    'Administrative Event Stream': 'Adminisztratív eseménynapló',
+    'Search audit history': 'Keresés az auditnaplóban',
+    'All methods': 'Minden metódus',
+    'All outcomes': 'Minden eredmény',
+    'All resources': 'Minden erőforrás',
+    'Actor': 'Végrehajtó',
+    'Request ID': 'Kérésazonosító',
+    'Resource': 'Erőforrás',
+    'Outcome': 'Eredmény',
+    'Duration': 'Időtartam',
+    'HTTP status': 'HTTP-állapot',
+    'Status': 'Állapot',
+    'State': 'Állapot',
+    'Health': 'Állapot',
+    'Healthy': 'Egészséges',
+    'Warning': 'Figyelmeztetés',
+    'Offline': 'Offline',
+    'Error': 'Hiba',
+    'Success': 'Siker',
+    'Active': 'Aktív',
+    'Inactive': 'Inaktív',
+    'Maintenance': 'Karbantartás',
+    'Not licensed': 'Nincs licencelve',
+    'Configure': 'Konfigurálás',
+    'Apply': 'Alkalmazás',
+    'Next': 'Tovább',
+    'Previous': 'Vissza',
+    'Refresh': 'Frissítés',
+    'Close': 'Bezárás',
+    'Cancel': 'Mégse',
+    'Copy': 'Másolás',
+    'Edit access': 'Hozzáférés szerkesztése',
+    'Open URL': 'URL megnyitása',
+    'Search anywhere...': 'Keresés bárhol...',
+    'Search Evidence': 'Bizonyíték keresése',
+    'No administrators found': 'Nem található adminisztrátor',
+    'No matching audit events': 'Nincs egyező auditesemény',
+    'No partner data': 'Nincs partneradat',
+    'No module data': 'Nincs moduladat',
+    'No impact data': 'Nincs hatásadat',
+    'No reports yet': 'Még nincs jelentés',
+    'No CMS pages yet': 'Még nincs CMS-oldal',
+    'No CMS media yet': 'Még nincs CMS-média',
+    'No service health data': 'Nincs szolgáltatásállapot-adat',
+    'No environment yet': 'Még nincs környezet',
+    'No connector credential yet': 'Még nincs Connector-hitelesítő adat',
+    'No documents registered': 'Nincs regisztrált dokumentum',
+    'No invoice records yet': 'Még nincs számlarekord',
+    'You are already signed in.': 'Már be vagy jelentkezve.',
+    'Continue to the HIMATE administration platform.': 'Folytatás a HIMATE adminisztrációs platformra.',
+    'Open admin platform': 'Adminplatform megnyitása',
+    'Workspace prepared': 'Munkaterület előkészítve',
+    'Good morning,': 'Jó reggelt,',
+    'Good afternoon,': 'Jó napot,',
+    'Good evening,': 'Jó estét,',
+    'PLATFORM OPERATIONS': 'PLATFORMÜZEMELTETÉS',
+    'WEBSITE & MARKETING': 'WEBOLDAL ÉS MARKETING',
+    'COMMERCIAL CONTROL': 'KERESKEDELMI VEZÉRLÉS',
+    'IMPACT CONTROL': 'HATÁSVEZÉRLÉS',
+    'ADMINISTRATION': 'ADMINISZTRÁCIÓ',
+    'NEW PARTNER': 'ÚJ PARTNER',
+    'READY': 'KÉSZ',
+    'FAILED': 'SIKERTELEN',
+    'QUEUED': 'SORBAN',
+    'DEPLOYING': 'TELEPÍTÉS FOLYAMATBAN',
+    'DEPLOYED': 'TELEPÍTVE',
+    'NOT DEPLOYED': 'NINCS TELEPÍTVE',
+    'UNAVAILABLE': 'NEM ELÉRHETŐ',
+    'DEPRECATED': 'KIVEZETETT',
+    'SUSPENDED': 'FELFÜGGESZTVE',
+    'TESTING': 'TESZTELÉS',
+    'LIVE': 'ÉLES',
+  };
+
+  static const Map<String, String> _fallbackHu = <String, String>{
+    'Partner workspace': 'Partner munkaterület',
+    'partner workspace': 'partner munkaterület',
+    'Partner environments': 'Partnerkörnyezetek',
+    'partner environments': 'partnerkörnyezetek',
+    'Website inquiries': 'Weboldali megkeresések',
+    'website inquiries': 'weboldali megkeresések',
+    'Contact leads': 'Kapcsolati érdeklődők',
+    'contact leads': 'kapcsolati érdeklődők',
+    'Restore point': 'Visszaállítási pont',
+    'restore point': 'visszaállítási pont',
+    'Restore test': 'Visszaállítási teszt',
+    'restore test': 'visszaállítási teszt',
+    'Evidence': 'Bizonyíték',
+    'evidence': 'bizonyíték',
+    'Reports': 'Jelentések',
+    'reports': 'jelentések',
+    'Report': 'Jelentés',
+    'report': 'jelentés',
+    'Metrics': 'Mérőszámok',
+    'metrics': 'mérőszámok',
+    'Metric': 'Mérőszám',
+    'metric': 'mérőszám',
+    'Modules': 'Modulok',
+    'modules': 'modulok',
+    'Module': 'Modul',
+    'module': 'modul',
+    'Environment': 'Környezet',
+    'environment': 'környezet',
+    'Deployment': 'Telepítés',
+    'deployment': 'telepítés',
+    'Configuration': 'Konfiguráció',
+    'configuration': 'konfiguráció',
+    'Status': 'Állapot',
+    'status': 'állapot',
+    'Health': 'Állapot',
+    'health': 'állapot',
+    'Version': 'Verzió',
+    'version': 'verzió',
+    'Created': 'Létrehozva',
+    'created': 'létrehozva',
+    'Updated': 'Frissítve',
+    'updated': 'frissítve',
+    'Current': 'Aktuális',
+    'current': 'aktuális',
+    'Next': 'Következő',
+    'next': 'következő',
+    'Previous': 'Előző',
+    'previous': 'előző',
+    'Search': 'Keresés',
+    'search': 'keresés',
+    'Name': 'Név',
+    'name': 'név',
+    'Email': 'E-mail',
+    'email': 'e-mail',
+    'Organization': 'Szervezet',
+    'organization': 'szervezet',
+    'Message': 'Üzenet',
+    'message': 'üzenet',
+    'Assigned': 'Felelős',
+    'assigned': 'felelős',
+    'Records': 'Rekordok',
+    'records': 'rekordok',
+    'Record': 'Rekord',
+    'record': 'rekord',
+  };
+
+  static String literal(String locale, String value) {
+    if (locale != 'hu_HU' || value.trim().isEmpty) return value;
+    final exact = _literalHu[value];
+    if (exact != null) return exact;
+
+    final partnerCount = RegExp(r'^(\\d+) partners
+    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
+  }
+
+  static String dateTime(String locale, DateTime value) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
+  }
+
+  static String currency(String locale, num value, {String currency = 'USD'}) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
+  }
+}
+
+
+bool himatePasswordMeetsPolicy(String value) {
+  if (value.runes.length < 12) return false;
+  return RegExp(r'[a-z]').hasMatch(value) &&
+      RegExp(r'[A-Z]').hasMatch(value) &&
+      RegExp(r'[0-9]').hasMatch(value) &&
+      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+}
+
+String? himatePasswordPolicyMessage(String locale, String value) =>
+    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
+).firstMatch(value);
+    if (partnerCount != null) return '${partnerCount.group(1)} partner';
+    final roleCount = RegExp(r'^(\\d+) roles
+    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
+  }
+
+  static String dateTime(String locale, DateTime value) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
+  }
+
+  static String currency(String locale, num value, {String currency = 'USD'}) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
+  }
+}
+
+
+bool himatePasswordMeetsPolicy(String value) {
+  if (value.runes.length < 12) return false;
+  return RegExp(r'[a-z]').hasMatch(value) &&
+      RegExp(r'[A-Z]').hasMatch(value) &&
+      RegExp(r'[0-9]').hasMatch(value) &&
+      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+}
+
+String? himatePasswordPolicyMessage(String locale, String value) =>
+    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
+).firstMatch(value);
+    if (roleCount != null) return '${roleCount.group(1)} szerepkör';
+    final serviceCount = RegExp(r'^(\\d+) services
+    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
+  }
+
+  static String dateTime(String locale, DateTime value) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
+  }
+
+  static String currency(String locale, num value, {String currency = 'USD'}) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
+  }
+}
+
+
+bool himatePasswordMeetsPolicy(String value) {
+  if (value.runes.length < 12) return false;
+  return RegExp(r'[a-z]').hasMatch(value) &&
+      RegExp(r'[A-Z]').hasMatch(value) &&
+      RegExp(r'[0-9]').hasMatch(value) &&
+      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+}
+
+String? himatePasswordPolicyMessage(String locale, String value) =>
+    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
+).firstMatch(value);
+    if (serviceCount != null) return '${serviceCount.group(1)} szolgáltatás';
+    final reportCount = RegExp(r'^(\\d+) reports
+    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
+  }
+
+  static String dateTime(String locale, DateTime value) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
+  }
+
+  static String currency(String locale, num value, {String currency = 'USD'}) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
+  }
+}
+
+
+bool himatePasswordMeetsPolicy(String value) {
+  if (value.runes.length < 12) return false;
+  return RegExp(r'[a-z]').hasMatch(value) &&
+      RegExp(r'[A-Z]').hasMatch(value) &&
+      RegExp(r'[0-9]').hasMatch(value) &&
+      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+}
+
+String? himatePasswordPolicyMessage(String locale, String value) =>
+    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
+).firstMatch(value);
+    if (reportCount != null) return '${reportCount.group(1)} jelentés';
+    final metricCount = RegExp(r'^(\\d+) metrics
+    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
+  }
+
+  static String dateTime(String locale, DateTime value) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
+  }
+
+  static String currency(String locale, num value, {String currency = 'USD'}) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
+  }
+}
+
+
+bool himatePasswordMeetsPolicy(String value) {
+  if (value.runes.length < 12) return false;
+  return RegExp(r'[a-z]').hasMatch(value) &&
+      RegExp(r'[A-Z]').hasMatch(value) &&
+      RegExp(r'[0-9]').hasMatch(value) &&
+      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+}
+
+String? himatePasswordPolicyMessage(String locale, String value) =>
+    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
+).firstMatch(value);
+    if (metricCount != null) return '${metricCount.group(1)} mérőszám';
+    final leadCount = RegExp(r'^(\\d+) leads
+    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
+  }
+
+  static String dateTime(String locale, DateTime value) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
+  }
+
+  static String currency(String locale, num value, {String currency = 'USD'}) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
+  }
+}
+
+
+bool himatePasswordMeetsPolicy(String value) {
+  if (value.runes.length < 12) return false;
+  return RegExp(r'[a-z]').hasMatch(value) &&
+      RegExp(r'[A-Z]').hasMatch(value) &&
+      RegExp(r'[0-9]').hasMatch(value) &&
+      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+}
+
+String? himatePasswordPolicyMessage(String locale, String value) =>
+    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
+).firstMatch(value);
+    if (leadCount != null) return '${leadCount.group(1)} érdeklődő';
+    final pageCount = RegExp(r'^Page (\\d+) of (\\d+)
+    final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return _values[normalized]?[key] ?? _values['en_US']?[key] ?? key;
+  }
+
+  static String dateTime(String locale, DateTime value) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.DateFormat.yMMMd(tag).add_Hm().format(value.toLocal());
+  }
+
+  static String currency(String locale, num value, {String currency = 'USD'}) {
+    final tag = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
+    return intl.NumberFormat.simpleCurrency(locale: tag, name: currency).format(value);
+  }
+}
+
+
+bool himatePasswordMeetsPolicy(String value) {
+  if (value.runes.length < 12) return false;
+  return RegExp(r'[a-z]').hasMatch(value) &&
+      RegExp(r'[A-Z]').hasMatch(value) &&
+      RegExp(r'[0-9]').hasMatch(value) &&
+      RegExp(r'[^A-Za-z0-9\\s]').hasMatch(value);
+}
+
+String? himatePasswordPolicyMessage(String locale, String value) =>
+    himatePasswordMeetsPolicy(value) ? null : HimateI18n.text(locale, 'passwordPolicy');
+).firstMatch(value);
+    if (pageCount != null) return '${pageCount.group(1)} / ${pageCount.group(2)} oldal';
+    if (value.startsWith('Assigned: ')) return 'Felelős: ${value.substring(10)}';
+
+    var translated = value;
+    for (final entry in _fallbackHu.entries) {
+      translated = translated.replaceAll(entry.key, entry.value);
+    }
+    return translated;
+  }
 
   static String text(String locale, String key) {
     final normalized = locale == 'hu_HU' ? 'hu_HU' : 'en_US';
