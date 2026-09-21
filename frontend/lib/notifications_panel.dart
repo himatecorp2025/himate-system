@@ -27,7 +27,7 @@ class _NotificationCenterButtonState extends State<NotificationCenterButton> {
 
   Future<void> refreshCount() async {
     try {
-      final data = await widget.api.get('/api/v1/notifications?limit=1', force: true);
+      final data = await widget.api.get('/api/v1/notifications?limit=100', force: true);
       if (mounted) setState(() => unread = (data['unread_count'] as num?)?.toInt() ?? 0);
     } catch (_) {
       // Notification availability must never block core navigation.
