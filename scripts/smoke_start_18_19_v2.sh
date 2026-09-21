@@ -18,9 +18,9 @@ BOOTSTRAP_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=
 BOOTSTRAP_PASSWORD="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_PASSWORD"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_PASSWORD=")))')"
 test -n "$BOOTSTRAP_EMAIL"
 test "${#BOOTSTRAP_PASSWORD}" -ge 12
-OPS_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
-FIN_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
-REPORT_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+OPS_PASSWORD="$(python3 -c 'import secrets; print("Aa1!"+secrets.token_urlsafe(24))')"
+FIN_PASSWORD="$(python3 -c 'import secrets; print("Bb2!"+secrets.token_urlsafe(24))')"
+REPORT_PASSWORD="$(python3 -c 'import secrets; print("Cc3!"+secrets.token_urlsafe(24))')"
 
 json_field() {
   python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
@@ -91,7 +91,7 @@ echo ok
 
 printf 'role catalog exposes START-19 matrix... '
 roles="$(curl -fsS -b "$PLATFORM_COOKIE" "$BASE_URL/api/v1/admin/roles")"
-printf '%s' "$roles" | python3 -c 'import json,sys; d=json.load(sys.stdin); m={x["key"]:x for x in d["items"]}; assert set(m)=={"platform_admin","operations_admin","finance_admin","reporting_admin"}; assert "*" in m["platform_admin"]["permissions"]; assert "billing.approve" in m["finance_admin"]["permissions"]; assert "provisioning.approve" in m["operations_admin"]["permissions"]; assert "evidence.approve" in m["reporting_admin"]["permissions"]; assert "billing.write" not in m["operations_admin"]["permissions"]'
+printf '%s' "$roles" | python3 -c 'import json,sys; d=json.load(sys.stdin); m={x["key"]:x for x in d["items"]}; assert set(m)=={"platform_admin","operations_admin","finance_admin","reporting_admin","marketing_admin"}; assert "*" in m["platform_admin"]["permissions"]; assert "billing.approve" in m["finance_admin"]["permissions"]; assert "provisioning.approve" in m["operations_admin"]["permissions"]; assert "evidence.approve" in m["reporting_admin"]["permissions"]; assert "cms.approve" in m["marketing_admin"]["permissions"]; assert "contact.write" in m["marketing_admin"]["permissions"]; assert "billing.write" not in m["marketing_admin"]["permissions"]; assert "billing.write" not in m["operations_admin"]["permissions"]'
 echo ok
 
 printf 'create scoped administrators... '
