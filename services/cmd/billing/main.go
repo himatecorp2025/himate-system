@@ -978,6 +978,16 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 			common.APIError(w, 500, "DB", "Could not record subscription history")
 			return
 		}
+		eventType := "MODULE_CANCELLATION_WITHDRAWN"
+		if nextCancel { eventType = "MODULE_CANCELLATION_SCHEDULED" }
+		eventKey := fmt.Sprintf("%s:%s:%s:%s", eventType, id, moduleKey, dateOnly(periodEnd).Format("2006-01-02"))
+		if err = emitBillingEventTx(r.Context(), tx, eventKey, id, moduleKey, eventType, time.Now().UTC(), map[string]any{
+			"period_end_exclusive": dateOnly(periodEnd).Format("2006-01-02"),
+			"actor": actor, "reason": reason,
+		}); err != nil {
+			common.APIError(w, 500, "DB", "Could not record billing event")
+			return
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		common.APIError(w, 500, "DB", "Could not commit subscription update")
