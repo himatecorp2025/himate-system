@@ -73,17 +73,34 @@ hu_page="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' \
   "$BASE_URL/api/v1/cms/pages")"
 hu_id="$(printf '%s' "$hu_page" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["page"]["locale"]=="hu_HU"; print(d["page"]["id"])')"
 test -n "$hu_id"
+
+curl -fsS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/v1/cms/pages/$en_id/preview" >/dev/null
+curl -fsS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/v1/cms/pages/$en_id/publish" >/dev/null
 curl -fsS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/v1/cms/pages/$hu_id/preview" >/dev/null
 curl -fsS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/v1/cms/pages/$hu_id/publish" >/dev/null
+
+printf 'published bilingual CMS variants carry effective SEO... '
+en_public="$(curl -fsS "$BASE_URL/public/v1/cms/pages/business-locale-ci?locale=en_US")"
+printf '%s' "$en_public" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["locale"]=="en_US"; assert d["seo"]["title"]=="HIMATE cultural platform for arts organizations"; assert "arts organizations" in d["seo"]["keywords"]; assert "culture" in d["seo"]["keywords"]; assert d["seo"]["json_ld"]["inLanguage"]=="en-US"; assert d["alternates"]["en_US"]=="https://www.himate.com/business-locale-ci"; assert d["alternates"]["hu_HU"]=="https://www.himate.com/hu/business-locale-ci"; assert d["sections"][0]["heading"].startswith("Culture connects")'
 hu_public="$(curl -fsS "$BASE_URL/public/v1/cms/pages/business-locale-ci?locale=hu_HU")"
-printf '%s' "$hu_public" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["locale"]=="hu_HU"; assert d["seo"]["title"]=="HIMATE magyar oldal"; assert d["sections"][0]["heading"]=="Magyar tartalom"'
-en_code="$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE_URL/public/v1/cms/pages/business-locale-ci?locale=en_US")"
-test "$en_code" = "404"
+printf '%s' "$hu_public" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["locale"]=="hu_HU"; assert d["seo"]["title"].startswith("HIMATE kulturális platform"); assert "kulturális platform" in d["seo"]["keywords"]; assert "kultúra" in d["seo"]["keywords"]; assert d["seo"]["json_ld"]["inLanguage"]=="hu-HU"; assert d["alternates"]["en_US"]=="https://www.himate.com/business-locale-ci"; assert d["alternates"]["hu_HU"]=="https://www.himate.com/hu/business-locale-ci"; assert d["sections"][0]["heading"].startswith("A kultúra")'
 echo ok
 
-printf 'localized manifest isolates locale... '
+printf 'automatic SEO audit scores bilingual CMS drafts... '
+seo_audit="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/cms/seo/audit")"
+printf '%s' "$seo_audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); rows=[x for x in d["items"] if x["page_key"]=="business_locale_ci"]; assert len(rows)==2,rows; assert {x["locale"] for x in rows}=={"en_US","hu_HU"}; assert all(isinstance(x["score"],int) and 0<=x["score"]<=100 for x in rows); assert all(isinstance(x["suggested_keywords"],list) for x in rows); assert d["summary"]["pages"]>=2'
+echo ok
+
+printf 'localized manifests isolate language while both variants remain published... '
+en_manifest="$(curl -fsS "$BASE_URL/public/v1/cms/manifest?locale=en_US")"
 hu_manifest="$(curl -fsS "$BASE_URL/public/v1/cms/manifest?locale=hu_HU")"
-printf '%s' "$hu_manifest" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if i["slug"]=="business-locale-ci"); assert x["locale"]=="hu_HU"; assert x["title"]=="HIMATE magyar oldal"'
+printf '%s' "$en_manifest" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if i["slug"]=="business-locale-ci"); assert x["locale"]=="en_US"; assert x["canonical"]=="https://www.himate.com/business-locale-ci"'
+printf '%s' "$hu_manifest" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if i["slug"]=="business-locale-ci"); assert x["locale"]=="hu_HU"; assert x["canonical"]=="https://www.himate.com/hu/business-locale-ci"'
 echo ok
 
+printf 'SEO settings mutations reach central audit... '
+sleep 1
+seo_events="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/audit/events?resource=cms&limit=100")"
+printf '%s' "$seo_events" | python3 -c 'import json,sys; d=json.load(sys.stdin); actions={x["action"] for x in d["items"]}; assert "SEO_SETTINGS_DRAFT_SAVED" in actions; assert "SEO_SETTINGS_PUBLISHED" in actions'
+echo ok
 echo "HIMATE pre-START-22 business completion smoke passed"
