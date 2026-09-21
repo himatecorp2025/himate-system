@@ -1083,7 +1083,7 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 			resp.Body.Close()
 		}
 	}
-	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "containerized-microservices-start-20", "checked_at": checkedAt, "services": services})
+	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "containerized-microservices-start-22", "checked_at": checkedAt, "services": services})
 }
 
 func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
