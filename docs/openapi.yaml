@@ -1,16 +1,20 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.4.0-start-09-13
+  version: 0.7.0-pre-start-21
   description: >
-    Authenticated REST contract for the START-01 through START-13 HIMATE
-    control-plane surface. Partner business databases remain isolated behind
-    connector/API contracts; provisioning never copies partner business data.
+    Authenticated REST contract for the START-01 through START-20 HIMATE
+    control-plane surface plus the Pre-START-21 identity/profile correction.
+    Partner business databases remain isolated behind connector/API contracts;
+    provider deployment is isolated behind the Runtime adapter service.
 servers:
   - url: /
 tags:
   - name: Health
   - name: Authentication
+  - name: Profile
+  - name: Administration
+  - name: Audit
   - name: Partners
   - name: Modules
   - name: Billing
@@ -70,6 +74,118 @@ paths:
       responses:
         "200": {description: Current administrator}
         "401": {description: Authentication required}
+  /api/v1/profile:
+    get:
+      tags: [Profile]
+      summary: Current user's profile and effective access
+      responses:
+        "200": {description: Current profile}
+        "401": {description: Authentication required}
+    patch:
+      tags: [Profile]
+      summary: Update current user's personal profile and locale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string, minLength: 2, maxLength: 120}
+                preferred_locale: {type: string, enum: [en_US, hu_HU]}
+                timezone: {type: string}
+                job_title: {type: string, maxLength: 120}
+                phone: {type: string, maxLength: 50}
+      responses:
+        "200": {description: Updated profile}
+        "400": {description: Validation error}
+        "401": {description: Authentication required}
+  /api/v1/profile/password:
+    post:
+      tags: [Profile]
+      summary: Change current user's password and rotate session version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: {type: string, format: password}
+                new_password: {type: string, format: password, minLength: 12}
+      responses:
+        "200": {description: Password changed and current session refreshed}
+        "400": {description: Password validation error}
+        "403": {description: Current password is incorrect}
+  /api/v1/admin/roles:
+    get:
+      tags: [Administration]
+      summary: List HIMATE role definitions and permissions
+      responses:
+        "200": {description: Role catalog}
+  /api/v1/admin/users:
+    get:
+      tags: [Administration]
+      summary: List HIMATE administration users
+      responses:
+        "200": {description: User list}
+        "403": {description: System owner required}
+    post:
+      tags: [Administration]
+      summary: Create a role-scoped HIMATE user
+      description: System-owner only. The platform_admin/system-owner authority is not delegable here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, roles]
+              properties:
+                name: {type: string}
+                email: {type: string, format: email}
+                password: {type: string, format: password, minLength: 12}
+                roles:
+                  type: array
+                  items:
+                    type: string
+                    enum: [operations_admin, finance_admin, reporting_admin]
+      responses:
+        "201": {description: User created}
+        "403": {description: System owner required}
+        "409": {description: Duplicate email or reserved owner role}
+  /api/v1/admin/users/{userId}:
+    patch:
+      tags: [Administration]
+      summary: Update user identity, roles, active state or temporary password
+      parameters:
+        - {name: userId, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: User updated}
+        "403": {description: System owner required}
+        "409": {description: Owner protection or continuity guard}
+  /api/v1/audit/events:
+    get:
+      tags: [Audit]
+      summary: Query immutable governance audit events
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: actor_id, in: query, schema: {type: string}}
+        - {name: resource, in: query, schema: {type: string}}
+        - {name: action, in: query, schema: {type: string}}
+        - {name: correlation_id, in: query, schema: {type: string}}
+        - {name: method, in: query, schema: {type: string}}
+        - {name: outcome, in: query, schema: {type: string}}
+        - {name: partner_id, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+      responses:
+        "200":
+          description: Paginated immutable audit events including semantic action, correlation and redacted old/new state
+        "400": {description: Invalid time filter}
   /api/v1/dashboard/summary:
     get:
       tags: [Health]
