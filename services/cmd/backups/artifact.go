@@ -128,9 +128,11 @@ func (a *app) pgEnvironment(database string)([]string,error){
 
 func runCommand(ctx context.Context,env []string,name string,args ...string)error{
 	cmd:=exec.CommandContext(ctx,name,args...);cmd.Env=env
-	var stderr bytes.Buffer;cmd.Stderr=io.LimitWriter(&stderr,8192)
+	var stderr bytes.Buffer;cmd.Stderr=&stderr
 	if err:=cmd.Run();err!=nil{
-		msg:=strings.TrimSpace(stderr.String());if msg!=""{return fmt.Errorf("%s failed: %s",name,msg)}
+		msg:=strings.TrimSpace(stderr.String())
+		if len(msg)>8192{msg=msg[:8192]}
+		if msg!=""{return fmt.Errorf("%s failed: %s",name,msg)}
 		return fmt.Errorf("%s failed",name)
 	}
 	return nil
