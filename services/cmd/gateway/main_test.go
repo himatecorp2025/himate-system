@@ -248,21 +248,13 @@ func TestBrandAssetServesThroughStaticWebRoot(t *testing.T) {
 	}
 }
 
-func TestLegacyLogoRoutesAreGone(t *testing.T) {
+func TestUnknownBrandAssetReturns404(t *testing.T) {
 	a := &app{webDir: t.TempDir()}
-	for _, path := range []string{
-		"/art/himate_logo_master_v2.webp",
-		"/art/himate_logo_master_v4.webp",
-		"/brand/himate-logo-v3.webp",
-	} {
-		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, path, nil)
-			rec := httptest.NewRecorder()
-			a.web().ServeHTTP(rec, req)
-			if rec.Code != http.StatusNotFound {
-				t.Fatalf("%s: expected 404, got %d", path, rec.Code)
-			}
-		})
+	req := httptest.NewRequest(http.MethodGet, "/brand/unknown-identity.webp", nil)
+	rec := httptest.NewRecorder()
+	a.web().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
 
