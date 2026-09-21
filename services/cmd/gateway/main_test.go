@@ -169,6 +169,9 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		{http.MethodPost, "/api/v1/cms/design/publish", "cms.approve"},
 		{http.MethodGet, "/api/v1/contact/inquiries", "contact.read"},
 		{http.MethodPatch, "/api/v1/contact/inquiries/inq_1", "contact.write"},
+		{http.MethodGet, "/api/v1/cms/seo/audit", "cms.read"},
+		{http.MethodPut, "/api/v1/cms/seo/draft", "cms.write"},
+		{http.MethodPost, "/api/v1/cms/seo/publish", "cms.approve"},
 		{http.MethodGet, "/api/v1/admin/users", "administration.read"},
 		{http.MethodPost, "/api/v1/admin/users", "administration.approve"},
 		{http.MethodPatch, "/api/v1/admin/users/usr_1", "administration.approve"},
@@ -483,6 +486,37 @@ func TestPublicLocaleNormalization(t *testing.T) {
 	for value, want := range tests {
 		if got := normalizePublicLocale(value); got != want {
 			t.Fatalf("%q => %q, want %q", value, got, want)
+		}
+	}
+}
+
+func TestPublishedSEOHeadRendering(t *testing.T) {
+	doc := "<html lang=\"en\"><head><title>Static title</title><meta name=\"description\" content=\"static\"><meta name=\"robots\" content=\"index,follow\"></head><body></body></html>"
+	page := publicCMSPage{
+		Locale: "hu_HU",
+		SEO: publicCMSSEO{
+			Title: "HIMATE magyar SEO oldal",
+			MetaDescription: "Magyar SEO leírás a szerveroldali renderelés teszteléséhez.",
+			Canonical: "https://www.himate.com/seo-test-hu",
+			Keywords: []string{"kultúra", "művészet", "HIMATE"},
+			JSONLD: map[string]any{"@context":"https://schema.org","@type":"WebPage","inLanguage":"hu-HU"},
+		},
+		Alternates: map[string]string{
+			"en_US": "https://www.himate.com/seo-test",
+			"hu_HU": "https://www.himate.com/seo-test-hu",
+		},
+	}
+	rendered := renderPublishedCMSHTML(doc, page, "https://www.himate.com/seo-test-hu")
+	for _, required := range []string{
+		"<html lang=\"hu\">",
+		"name=\"keywords\" content=\"kultúra, művészet, HIMATE\"",
+		"application/ld+json",
+		"hreflang=\"en-US\"",
+		"hreflang=\"hu-HU\"",
+		"hreflang=\"x-default\"",
+	} {
+		if !strings.Contains(rendered, required) {
+			t.Fatalf("rendered SEO head missing %q: %s", required, rendered)
 		}
 	}
 }
