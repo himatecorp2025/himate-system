@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -114,6 +116,22 @@ func (a *app) start22Summary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *app) start22ImpactRetention(ctx context.Context,sourceRef,action string,legalHold *bool) error {
+	if strings.TrimSpace(a.impactHost)=="" { return nil }
+	payload:=map[string]any{"source_ref":sourceRef,"action":action}
+	if legalHold!=nil { payload["legal_hold"]=*legalHold }
+	raw,_:=json.Marshal(payload)
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+a.impactHost+"/internal/v1/impact/retention",bytes.NewReader(raw))
+	if err!=nil{return err}
+	req.Header.Set("Content-Type","application/json")
+	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	resp,err:=a.client.Do(req)
+	if err!=nil{return err}
+	defer resp.Body.Close()
+	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("Impact retention returned %d",resp.StatusCode)}
+	return nil
+}
+
 func (a *app) start22Retention(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -164,20 +182,39 @@ func (a *app) start22Retention(w http.ResponseWriter, r *http.Request) {
 				common.APIError(w,http.StatusBadRequest,"VALIDATION","record_id and legal_hold are required")
 				return
 			}
+			var sourceRef string
+			if err:=a.db.QueryRowContext(r.Context(),`SELECT 'connector:data_record:'||id::text FROM connector.data_records WHERE id=$1`,in.RecordID).Scan(&sourceRef);err!=nil{
+				common.APIError(w,http.StatusNotFound,"NOT_FOUND","Connector data record not found")
+				return
+			}
+			if err:=a.start22ImpactRetention(r.Context(),sourceRef,"SET_LEGAL_HOLD",in.LegalHold);err!=nil{
+				common.APIError(w,http.StatusBadGateway,"IMPACT_RETENTION","Could not synchronize Impact legal hold")
+				return
+			}
 			result,err:=a.db.ExecContext(r.Context(),`UPDATE connector.data_records SET legal_hold=$2 WHERE id=$1`,in.RecordID,*in.LegalHold)
 			if err!=nil {
 				common.APIError(w,http.StatusInternalServerError,"DB","Could not update legal hold")
 				return
 			}
 			affected,_:=result.RowsAffected()
-			if affected!=1 {
-				common.APIError(w,http.StatusNotFound,"NOT_FOUND","Connector data record not found")
-				return
-			}
-			common.JSON(w,http.StatusOK,map[string]any{"action":in.Action,"record_id":in.RecordID,"legal_hold":*in.LegalHold})
+			common.JSON(w,http.StatusOK,map[string]any{"action":in.Action,"record_id":in.RecordID,"legal_hold":*in.LegalHold,"affected":affected})
 		case "PRIVACY_DELETE":
 			if in.RecordID<=0 {
 				common.APIError(w,http.StatusBadRequest,"VALIDATION","record_id is required")
+				return
+			}
+			var sourceRef string
+			var legalHold bool
+			if err:=a.db.QueryRowContext(r.Context(),`SELECT 'connector:data_record:'||id::text,legal_hold FROM connector.data_records WHERE id=$1`,in.RecordID).Scan(&sourceRef,&legalHold);err!=nil{
+				common.APIError(w,http.StatusNotFound,"NOT_FOUND","Connector data record not found")
+				return
+			}
+			if legalHold{
+				common.APIError(w,http.StatusConflict,"LEGAL_HOLD","Record is under legal hold")
+				return
+			}
+			if err:=a.start22ImpactRetention(r.Context(),sourceRef,"PRIVACY_DELETE",nil);err!=nil{
+				common.APIError(w,http.StatusBadGateway,"IMPACT_RETENTION","Could not synchronize Impact privacy deletion")
 				return
 			}
 			result,err:=a.db.ExecContext(r.Context(),`UPDATE connector.data_records SET privacy_delete_requested=TRUE WHERE id=$1 AND legal_hold=FALSE`,in.RecordID)
