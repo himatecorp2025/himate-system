@@ -136,6 +136,30 @@ Permissions use `resource.read`, `resource.write` and `resource.approve`. Approv
 
 User administration is additionally gated by `system_owner`, so a normal role assignment cannot accidentally delegate owner authority.
 
+## Internal Control Plane completion (START-22.1)
+
+START-22.1 keeps the existing microservice topology and completes the internal control plane rather than creating a second administration backend.
+
+The Catalog service is the authoritative Module Control Plane. Module records now include business metadata plus source repository/path/ref/commit, artifact identity, version compatibility and a machine-readable manifest. Directed module relations are persisted independently from partner entitlements, allowing dependency and integration topology to be inspected without coupling it to one partner. Module-to-Impact metric mappings provide the contract later used by the Partner Portal to display module-specific results.
+
+Identity keeps the built-in HIMATE roles as protected system roles while adding database-backed custom roles. Effective permissions are resolved by the Gateway on every authenticated request. Custom roles cannot obtain wildcard authority or System Owner approval authority, and only the System Owner can manage HIMATE users and custom role definitions.
+
+Notifications is a dedicated private microservice. Control-plane audit events are selectively projected into permission-scoped notification events. Read/unread state is per administrator; the notification service does not become an authorization source and never replaces the Gateway audit log.
+
+The administration frontend and future Partner Portal reuse the same domain APIs. START-22.1 does not add partner-login identity or partner self-service; those are intentionally reserved for START-22.2.
+
+```text
+HIMATE Admin SPA
+      |
+      v
+Gateway / Identity / RBAC
+      |
+      +--> Catalog --------> module registry / relationships / impact mapping
+      +--> Billing --------> HIMATE issuer + partner commercial state
+      +--> Notifications --> permission-scoped feed/read state
+      +--> existing Partners / Impact / CMS / Operations services
+```
+
 ## Domains and provider deployments (START-20)
 
 `environments` owns the business deployment/lifecycle state machine. `runtime` owns provider-specific deployment mechanics.
