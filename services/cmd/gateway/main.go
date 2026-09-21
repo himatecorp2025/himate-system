@@ -486,6 +486,15 @@ var roleDefinitions = []roleDefinition{
 			"reports.read", "reports.write", "reports.approve",
 		},
 	},
+	{
+		Key: "marketing_admin", Label: "Marketing Admin",
+		Description: "Website content, published design settings and inbound contact-lead management.",
+		Permissions: []string{
+			"dashboard.read",
+			"cms.read", "cms.write", "cms.approve",
+			"contact.read", "contact.write",
+		},
+	},
 }
 
 func roleDefinitionByKey(key string) (roleDefinition, bool) {
@@ -571,6 +580,8 @@ func permissionResource(r *http.Request) string {
 		return "partners"
 	case strings.HasPrefix(path, "/api/v1/billing/"):
 		return "billing"
+	case path == "/api/v1/contact/inquiries", strings.HasPrefix(path, "/api/v1/contact/inquiries/"):
+		return "contact"
 	case strings.HasPrefix(path, "/api/v1/provisioning/"):
 		return "provisioning"
 	case path == "/api/v1/environments", strings.HasPrefix(path, "/api/v1/environments/"):
@@ -716,6 +727,8 @@ func auditAction(r *http.Request) string {
 		return "ENVIRONMENT_LAUNCH"
 	case strings.HasPrefix(path, "/api/v1/evidence/") && r.Method == http.MethodPatch:
 		return "EVIDENCE_VERIFICATION_CHANGED"
+	case strings.HasPrefix(path, "/api/v1/contact/inquiries/") && r.Method == http.MethodPatch:
+		return "CONTACT_LEAD_UPDATED"
 	case strings.Contains(path, "/license") && r.Method == http.MethodPut:
 		return "LICENSE_CHANGED"
 	case path == "/api/v1/backups" && r.Method == http.MethodPost:
@@ -834,6 +847,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/billing/"):
 		a.serveProxy(w, r, "billing")
+	case r.URL.Path == "/api/v1/contact/inquiries", strings.HasPrefix(r.URL.Path, "/api/v1/contact/inquiries/"):
+		a.serveProxy(w, r, "contact")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/provisioning/"):
 		a.serveProxy(w, r, "provisioning")
 	case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, "/api/v1/environments/"):
@@ -876,6 +891,8 @@ func auditResource(r *http.Request) (string, string) {
 		if len(parts) > 1 { partnerID = parts[1] }
 	case "cms":
 		resource = "cms"
+	case "contact":
+		resource = "contact"
 	case "impact":
 		resource = "impact"
 	case "evidence":
