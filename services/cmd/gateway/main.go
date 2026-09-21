@@ -668,6 +668,8 @@ func requiredPermission(r *http.Request) string {
 
 	path := r.URL.Path
 	switch {
+	case resource == "notifications":
+		action = "read"
 	case resource == "administration" && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions:
 		action = "approve"
 	case resource == "cms" && (strings.HasSuffix(path, "/publish") || strings.HasSuffix(path, "/rollback")):
