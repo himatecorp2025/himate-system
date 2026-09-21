@@ -120,6 +120,63 @@ services:
         value: /data/partners
 
   - type: pserv
+    name: himate-backups
+    runtime: docker
+    dockerfilePath: ./services/docker/backups.Dockerfile
+    dockerContext: .
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: PARTNER_DATABASE_ADMIN_URL
+        sync: false
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: HIMATE_BACKUP_ENCRYPTION_KEY_B64
+        sync: false
+      - key: HIMATE_BACKUP_PROVIDER
+        value: s3
+      - key: HIMATE_BACKUP_WORKERS
+        value: "2"
+      - key: HIMATE_BACKUP_S3_ENDPOINT
+        sync: false
+      - key: HIMATE_BACKUP_S3_BUCKET
+        sync: false
+      - key: HIMATE_BACKUP_S3_REGION
+        value: us-east-1
+      - key: HIMATE_BACKUP_S3_ACCESS_KEY
+        sync: false
+      - key: HIMATE_BACKUP_S3_SECRET_KEY
+        sync: false
+      - key: HIMATE_BACKUP_S3_SESSION_TOKEN
+        sync: false
+      - key: STORAGE_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-storage
+          property: hostport
+      - key: ENVIRONMENTS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-environments
+          property: hostport
+      - key: CONNECTOR_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-connector
+          property: hostport
+      - key: PARTNERS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-partners
+          property: hostport
+
+  - type: pserv
     name: himate-runtime
     runtime: docker
     dockerfilePath: ./services/docker/runtime.Dockerfile
@@ -428,6 +485,11 @@ services:
           type: pserv
           name: himate-runtime
           property: hostport
+      - key: BACKUPS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-backups
+          property: hostport
 
   - type: web
     name: himate
@@ -441,7 +503,7 @@ services:
       - key: HIMATE_ENV
         value: production
       - key: HIMATE_APP_VERSION
-        value: 0.6.0-start-20
+        value: 0.7.0-start-21
       - key: COOKIE_SECURE
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS
@@ -532,6 +594,11 @@ services:
         fromService:
           type: pserv
           name: himate-runtime
+          property: hostport
+      - key: BACKUPS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-backups
           property: hostport
 
   - type: cron

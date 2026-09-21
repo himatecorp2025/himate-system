@@ -119,10 +119,10 @@ jobs:
       - name: Validate Render Blueprint bindings
         run: |
           grep -q 'healthCheckPath: /api/v1/live' render.yaml
-          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT EVIDENCE_HOSTPORT REPORTS_HOSTPORT CMS_HOSTPORT STORAGE_HOSTPORT PARTNER_RUNTIME_HOSTPORT; do
+          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT EVIDENCE_HOSTPORT REPORTS_HOSTPORT CMS_HOSTPORT STORAGE_HOSTPORT BACKUPS_HOSTPORT PARTNER_RUNTIME_HOSTPORT; do
             grep -q "key: $key" render.yaml || { echo "Missing Render binding: $key"; exit 1; }
           done
-          for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-cms himate-storage himate-runtime; do
+          for service in himate-partners himate-catalog himate-billing himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-cms himate-storage himate-backups himate-runtime; do
             grep -q "name: $service" render.yaml || { echo "Missing Render service: $service"; exit 1; }
           done
           grep -q 'key: HIMATE_RUNTIME_PROVIDER' render.yaml
@@ -132,6 +132,14 @@ jobs:
           grep -q 'https://api.render.com/v1' render.yaml
           grep -q 'key: HIMATE_RENDER_SERVICE_ID' render.yaml
           grep -q 'HIMATE_RUNTIME_PROVIDER: local' docker-compose.yml
+          grep -q 'key: HIMATE_BACKUP_PROVIDER' render.yaml
+          grep -q 'value: s3' render.yaml
+          grep -q 'key: HIMATE_BACKUP_ENCRYPTION_KEY_B64' render.yaml
+          grep -q 'key: HIMATE_BACKUP_S3_ENDPOINT' render.yaml
+          grep -q 'key: HIMATE_BACKUP_S3_BUCKET' render.yaml
+          grep -q 'key: HIMATE_BACKUP_S3_ACCESS_KEY' render.yaml
+          grep -q 'key: HIMATE_BACKUP_S3_SECRET_KEY' render.yaml
+          grep -q 'HIMATE_BACKUP_PROVIDER: local' docker-compose.yml
       - name: Validate Docker Compose topology
         run: docker compose config --quiet
       - name: Build and start containerized microservices
