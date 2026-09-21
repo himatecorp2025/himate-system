@@ -2,6 +2,8 @@
 
 This release gate closes the four business-completeness gaps identified after the START-01–20 audit. It does not redefine START-21 backups/recovery or begin the next numbered START block.
 
+**Release evidence:** code candidate `71021f43639784ae62245ebcb61fedddfe3a2277` · GitHub Actions run `35604704099` · Go, Flutter and full Docker Compose/START regression gates all passed.
+
 ## 1. SEO complexity / SEO & Keywords
 
 - [x] Website & Marketing exposes a dedicated responsive SEO & Keywords workspace.
@@ -39,7 +41,7 @@ This release gate closes the four business-completeness gaps identified after th
 - [x] Login, profile and navigation key-based translations remain available in both languages.
 - [x] Legacy hard-coded admin Text widgets now pass through a locale-aware rendering layer.
 - [x] Form labels, hints, helper text and tooltips use the same locale-aware layer.
-- [x] Core Partner, Finance, Impact, Evidence, Reports, CMS, Operations, Backups, Administration, Contact Leads and Design Guide terminology has Hungarian coverage.
+- [x] Core Partner, Finance, Impact, Evidence, Reports, CMS, Operations, Backups, Administration, Contact Leads, SEO & Keywords and Design Guide terminology has Hungarian coverage.
 - [x] Public marketing pages resolve language from explicit ?lang, persisted preference/cookie, then browser language.
 - [x] Public pages provide an EN/HU language switch without changing the approved page layout.
 - [x] The source-controlled public English content has Hungarian translation coverage.
@@ -77,24 +79,24 @@ This release gate closes the four business-completeness gaps identified after th
 
 This correction is accepted only when the branch CI proves all of the following on the same candidate commit:
 
-- [ ] Go vet.
-- [ ] Go unit tests.
-- [ ] Go race tests.
-- [ ] Go build for all commands.
-- [ ] Flutter analyze.
-- [ ] Flutter Chrome tests.
-- [ ] Flutter release web build.
-- [ ] OpenAPI contract verification.
-- [ ] Docker Compose topology/build/start/health.
-- [ ] START-01–08 smoke.
-- [ ] START-09–13 smoke.
-- [ ] START-14–15 smoke.
-- [ ] START-16 smoke.
-- [ ] START-17 smoke.
-- [ ] START-18–19 smoke.
-- [ ] START-20 smoke.
-- [ ] Profile/owner/locale/password smoke.
-- [ ] Pre-START-22 business completion smoke.
-- [ ] START-21 backup/recovery regression smoke.
+- [x] Go vet.
+- [x] Go unit tests.
+- [x] Go race tests.
+- [x] Go build for all commands.
+- [x] Flutter analyze.
+- [x] Flutter Chrome tests.
+- [x] Flutter release web build.
+- [x] OpenAPI contract verification.
+- [x] Docker Compose topology/build/start/health.
+- [x] START-01–08 smoke.
+- [x] START-09–13 smoke.
+- [x] START-14–15 smoke.
+- [x] START-16 smoke.
+- [x] START-17 smoke.
+- [x] START-18–19 smoke.
+- [x] START-20 smoke.
+- [x] Profile/owner/locale/password smoke.
+- [x] Pre-START-22 business completion smoke.
+- [x] START-21 backup/recovery regression smoke.
 
-The business-completion smoke must prove global SEO draft/publish/public delivery, combined bilingual page/global keywords, automatic SEO audit, structured SEO output, an actual public inquiry appearing in authenticated Contact Leads, lead workflow persistence and audit, Design Guide draft/publish/public delivery, and independent published English/Hungarian CMS variants.
+The business-completion smoke proves global SEO draft/publish/public delivery, safe publication of the default Open Graph media asset, global SEO injection into source-controlled fallback pages, combined bilingual page/global keywords, automatic SEO audit, structured SEO output, an actual public inquiry appearing in authenticated Contact Leads, lead workflow persistence and audit, Design Guide draft/publish/public delivery, and independent published English/Hungarian CMS variants.
