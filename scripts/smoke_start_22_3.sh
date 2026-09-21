@@ -51,7 +51,7 @@ curl -fsS -c "$COOKIE" -H 'Content-Type: application/json' -d "$payload" "$BASE_
 echo ok
 
 printf 'create START-22.3 commercial partner and module... '
-partner="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"display_name":"START 22.3 Commercial Partner","legal_name":"START 22.3 Commercial Partner LLC","brand_name":"START 22.3","contact_name":"Commercial Owner","contact_email":"start223-commercial@example.com","country":"US","primary_domain":"start223.example.com","website":"https://start223.example.com"}'   "$BASE_URL/api/v1/partners")"
+partner="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"display_name":"START 22.3 Commercial Partner","legal_name":"START 22.3 Commercial Partner LLC","brand_name":"START 22.3","contact_name":"Commercial Owner","contact_email":"start223-commercial@example.com","country":"US","primary_domain":"start223.example.com"}'   "$BASE_URL/api/v1/partners")"
 partner_id="$(printf '%s' "$partner" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 test -n "$partner_id"
 curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"group_key":"ci_223","label":"CI START 22.3","sort_order":93}'   "$BASE_URL/api/v1/module-groups" >/dev/null
@@ -96,7 +96,7 @@ echo ok
 printf 'module activation backfills 30-day snapshots from authoritative activation date... '
 module_payload="$(python3 - "$PREV30" <<'PY'
 import json,sys
-print(json.dumps({"status":"ACTIVE","visible":True,"included_in_base":False,"partner_price":50,"price_effective_at":sys.argv[1],"reason":"START-22.3 initial module price"}))
+print(json.dumps({"status":"ACTIVE","visible":True,"included_in_base":False,"partner_price":50,"price_effective_at":sys.argv[1]+"T00:00:00Z","reason":"START-22.3 initial module price"}))
 PY
 )"
 curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$module_payload" "$BASE_URL/api/v1/partners/$partner_id/modules/ci.commercial_snapshot" >/dev/null
@@ -114,7 +114,7 @@ echo ok
 printf 'current period price is immutable after a catalog price change... '
 price_change="$(python3 - "$TODAY" <<'PY'
 import json,sys
-print(json.dumps({"partner_price":90,"price_effective_at":sys.argv[1],"reason":"START-22.3 next-period price"}))
+print(json.dumps({"partner_price":90,"price_effective_at":sys.argv[1]+"T00:00:00Z","reason":"START-22.3 next-period price"}))
 PY
 )"
 curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$price_change" "$BASE_URL/api/v1/partners/$partner_id/modules/ci.commercial_snapshot" >/dev/null
