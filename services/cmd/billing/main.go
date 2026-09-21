@@ -187,6 +187,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS contact_name TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`,
 		}},
+		start223BillingMigration(),
 	}); err != nil {
 		return err
 	}
@@ -386,6 +387,12 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 		a.terms(w, r, id)
 	case "license":
 		a.license(w, r, id)
+	case "agreement":
+		a.agreement(w, r, id)
+	case "commercial-status":
+		a.commercialStatus(w, r, id)
+	case "events":
+		a.billingEvents(w, r, id)
 	case "summary":
 		a.summary(w, r, id)
 	case "documents":
