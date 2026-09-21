@@ -119,3 +119,37 @@ func TestCMSContentBounds(t *testing.T) {
 		t.Fatal("more than 100 sections must be rejected")
 	}
 }
+
+func TestLocaleNormalizationAndDefaultDesign(t *testing.T) {
+	if got := normalizeLocale("hu_HU"); got != "hu_HU" { t.Fatalf("hungarian locale: %q", got) }
+	for _, value := range []string{"", "en_US", "de_DE", "hu"} {
+		if got := normalizeLocale(value); got != "en_US" { t.Fatalf("locale %q normalized to %q", value, got) }
+	}
+	design := defaultSiteDesign()
+	if design.Navy != "#06172C" || design.Gold != "#D7AE62" { t.Fatalf("unexpected brand defaults: %+v", design) }
+	if len(design.Navigation) != 6 { t.Fatalf("expected six default navigation items, got %d", len(design.Navigation)) }
+}
+
+func TestDesignValidationWithoutMediaLookup(t *testing.T) {
+	a := &app{}
+	valid := defaultSiteDesign()
+	if err := a.validateSiteDesign(context.Background(), valid); err != nil {
+		t.Fatalf("default design must validate: %v", err)
+	}
+	badColor := valid
+	badColor.Navy = "navy"
+	if err := a.validateSiteDesign(context.Background(), badColor); err == nil {
+		t.Fatal("invalid color should fail")
+	}
+	badFont := valid
+	badFont.HeadingFont = "Untrusted Remote Font"
+	if err := a.validateSiteDesign(context.Background(), badFont); err == nil {
+		t.Fatal("unsupported font should fail")
+	}
+	badURL := valid
+	badURL.Navigation = append([]navigationItem(nil), valid.Navigation...)
+	badURL.Navigation[0].URL = "javascript:alert(1)"
+	if err := a.validateSiteDesign(context.Background(), badURL); err == nil {
+		t.Fatal("unsafe navigation URL should fail")
+	}
+}
