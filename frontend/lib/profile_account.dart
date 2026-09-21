@@ -93,8 +93,9 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
       setState(() => error = HimateI18n.text(locale, 'passwordsMismatch'));
       return;
     }
-    if (newPassword.text.length < 12) {
-      setState(() => error = HimateI18n.text(locale, 'passwordMin'));
+    final policyMessage = himatePasswordPolicyMessage(locale, newPassword.text);
+    if (policyMessage != null) {
+      setState(() => error = policyMessage);
       return;
     }
     setState(() { changingPassword = true; error = null; success = null; });
@@ -218,7 +219,7 @@ class _AccountProfileDialogState extends State<_AccountProfileDialog> {
               ),
               const SizedBox(height: 10),
               ResponsiveFieldPair(
-                first: TextField(controller: newPassword, obscureText: true, decoration: InputDecoration(labelText: t('newPassword'))),
+                first: TextField(controller: newPassword, obscureText: true, decoration: InputDecoration(labelText: t('newPassword'), helperText: t('passwordPolicy'))),
                 second: TextField(controller: confirmPassword, obscureText: true, decoration: InputDecoration(labelText: t('confirmPassword'))),
               ),
               const SizedBox(height: 10),
