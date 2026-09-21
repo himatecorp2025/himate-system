@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -13,6 +14,7 @@ import (
 	"fmt"
 	"himate.local/services/internal/common"
 	"html"
+	"io"
 	"mime"
 	"net/http"
 	"net/http/httputil"
@@ -56,23 +58,28 @@ type loginState struct {
 }
 
 type auditEvent struct {
-	ActorID    string
-	ActorName  string
-	ActorRoles []string
-	RequestID  string
-	Method     string
-	Path       string
-	Resource   string
-	PartnerID  string
-	Status     int
-	Outcome    string
-	DurationMS int64
-	CreatedAt  time.Time
+	ActorID       string
+	ActorName     string
+	ActorRoles    []string
+	RequestID     string
+	CorrelationID string
+	Action        string
+	Method        string
+	Path          string
+	Resource      string
+	PartnerID     string
+	Status        int
+	Outcome       string
+	OldState      any
+	NewState      any
+	DurationMS    int64
+	CreatedAt     time.Time
 }
 
 type auditResponseWriter struct {
 	http.ResponseWriter
 	status int
+	body   bytes.Buffer
 }
 
 func (w *auditResponseWriter) WriteHeader(status int) {
@@ -82,6 +89,11 @@ func (w *auditResponseWriter) WriteHeader(status int) {
 
 func (w *auditResponseWriter) Write(p []byte) (int, error) {
 	if w.status == 0 { w.status = http.StatusOK }
+	if w.body.Len() < 65536 {
+		remaining := 65536 - w.body.Len()
+		if len(p) < remaining { remaining = len(p) }
+		if remaining > 0 { _, _ = w.body.Write(p[:remaining]) }
+	}
 	return w.ResponseWriter.Write(p)
 }
 
@@ -228,6 +240,19 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE identity.users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
 			`CREATE INDEX IF NOT EXISTS identity_users_roles_idx ON identity.users USING gin(roles)`,
 			`CREATE INDEX IF NOT EXISTS identity_users_name_idx ON identity.users(lower(name),lower(email))`,
+		}},
+		{Version: 4, Name: "audit-integrity-and-state", Statements: []string{
+			`ALTER TABLE identity.audit_events ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.audit_events ADD COLUMN IF NOT EXISTS correlation_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.audit_events ADD COLUMN IF NOT EXISTS old_state JSONB NOT NULL DEFAULT '{}'::jsonb`,
+			`ALTER TABLE identity.audit_events ADD COLUMN IF NOT EXISTS new_state JSONB NOT NULL DEFAULT '{}'::jsonb`,
+			`UPDATE identity.audit_events SET action=UPPER(resource||'_'||method) WHERE action=''`,
+			`UPDATE identity.audit_events SET correlation_id=request_id WHERE correlation_id='' AND request_id<>''`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_action_idx ON identity.audit_events(action,created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS identity_audit_correlation_idx ON identity.audit_events(correlation_id) WHERE correlation_id<>''`,
+			`CREATE OR REPLACE FUNCTION identity.reject_audit_mutation() RETURNS trigger LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION 'identity.audit_events is append-only'; RETURN OLD; END; $`,
+			`DROP TRIGGER IF EXISTS identity_audit_append_only ON identity.audit_events`,
+			`CREATE TRIGGER identity_audit_append_only BEFORE UPDATE OR DELETE ON identity.audit_events FOR EACH ROW EXECUTE FUNCTION identity.reject_audit_mutation()`,
 		}},
 	}); err != nil {
 		return err
@@ -561,6 +586,117 @@ func requiredPermission(r *http.Request) string {
 	return resource + "." + action
 }
 
+
+func auditSensitiveKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	for _, part := range []string{"password","token","secret","authorization","cookie","credential","api_key","apikey"} {
+		if strings.Contains(key, part) { return true }
+	}
+	return false
+}
+
+func sanitizeAuditValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, item := range typed {
+			if auditSensitiveKey(key) {
+				out[key] = "[REDACTED]"
+				continue
+			}
+			out[key] = sanitizeAuditValue(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed { out[i] = sanitizeAuditValue(item) }
+		return out
+	default:
+		return value
+	}
+}
+
+func captureAuditRequest(r *http.Request) any {
+	if r == nil || r.Body == nil || !strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+		return map[string]any{}
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 65537))
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	if err != nil {
+		return map[string]any{"capture_error": "request body unavailable"}
+	}
+	if len(raw) > 65536 {
+		return map[string]any{"truncated": true}
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return map[string]any{}
+	}
+	var decoded any
+	if json.Unmarshal(raw, &decoded) != nil {
+		return map[string]any{}
+	}
+	return sanitizeAuditValue(decoded)
+}
+
+func decodeAuditState(raw []byte) any {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return map[string]any{}
+	}
+	var decoded any
+	if json.Unmarshal(raw, &decoded) != nil {
+		return map[string]any{}
+	}
+	return sanitizeAuditValue(decoded)
+}
+
+func auditAction(r *http.Request) string {
+	path := r.URL.Path
+	switch {
+	case path == "/api/v1/admin/users" && r.Method == http.MethodPost:
+		return "ADMIN_USER_CREATED"
+	case strings.HasPrefix(path, "/api/v1/admin/users/") && r.Method == http.MethodPatch:
+		return "ADMIN_USER_UPDATED"
+	case strings.HasSuffix(path, "/publish"):
+		return "CMS_PAGE_PUBLISHED"
+	case strings.HasSuffix(path, "/rollback"):
+		return "CMS_PAGE_ROLLBACK_PUBLISHED"
+	case strings.HasSuffix(path, "/run") && strings.Contains(path, "/provisioning/"):
+		return "PROVISIONING_RUN"
+	case strings.HasSuffix(path, "/verify-domain"):
+		return "DOMAIN_VERIFIED"
+	case strings.HasSuffix(path, "/deploy") && strings.Contains(path, "/environments/"):
+		return "ENVIRONMENT_DEPLOY"
+	case strings.HasSuffix(path, "/launch") && strings.Contains(path, "/environments/"):
+		return "ENVIRONMENT_LAUNCH"
+	case strings.HasPrefix(path, "/api/v1/evidence/") && r.Method == http.MethodPatch:
+		return "EVIDENCE_VERIFICATION_CHANGED"
+	case strings.Contains(path, "/license") && r.Method == http.MethodPut:
+		return "LICENSE_CHANGED"
+	}
+	resource, _ := auditResource(r)
+	resource = strings.ToUpper(strings.ReplaceAll(resource, "-", "_"))
+	if resource == "" { resource = "API" }
+	return resource + "_" + strings.ToUpper(r.Method)
+}
+
+func auditUserState(u user) map[string]any {
+	return map[string]any{
+		"id":u.ID,"name":u.Name,"email":u.Email,"roles":append([]string(nil),u.Roles...),"active":u.Active,
+		"permissions":permissionsForRoles(u.Roles),
+	}
+}
+
+func (a *app) auditOldState(r *http.Request) any {
+	if r == nil { return map[string]any{} }
+	if r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") {
+		id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/"), "/")
+		if id != "" && !strings.Contains(id, "/") {
+			if u, err := a.findUser("id", id); err == nil { return auditUserState(u) }
+		}
+	}
+	return map[string]any{}
+}
+
 func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	u, err := a.auth(r)
 	if err != nil {
@@ -575,6 +711,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 	if mutating {
 		started := time.Now()
+		requestState := captureAuditRequest(r)
+		oldState := a.auditOldState(r)
 		recorder := &auditResponseWriter{ResponseWriter: w}
 		w = recorder
 		defer func() {
@@ -583,12 +721,18 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			resource, partnerID := auditResource(r)
 			outcome := "SUCCESS"
 			if status >= 400 { outcome = "FAILED" }
+			newState := decodeAuditState(recorder.body.Bytes())
+			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
+				newState = requestState
+			}
 			a.enqueueAudit(auditEvent{
 				ActorID: u.ID, ActorName: u.Name, ActorRoles: append([]string(nil), u.Roles...),
 				RequestID: strings.TrimSpace(r.Header.Get("X-Request-ID")),
+				CorrelationID: strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
+				Action: auditAction(r),
 				Method: r.Method, Path: r.URL.Path, Resource: resource, PartnerID: partnerID,
-				Status: status, Outcome: outcome, DurationMS: time.Since(started).Milliseconds(),
-				CreatedAt: time.Now().UTC(),
+				Status: status, Outcome: outcome, OldState: oldState, NewState: newState,
+				DurationMS: time.Since(started).Milliseconds(), CreatedAt: time.Now().UTC(),
 			})
 		}()
 	}
@@ -703,11 +847,13 @@ func (a *app) persistAudit(event auditEvent) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	roles, _ := json.Marshal(event.ActorRoles)
+	oldState, _ := json.Marshal(sanitizeAuditValue(event.OldState))
+	newState, _ := json.Marshal(sanitizeAuditValue(event.NewState))
 	_, _ = a.db.ExecContext(ctx, `INSERT INTO identity.audit_events(
-		actor_id,actor_name,actor_roles,request_id,method,path,resource,partner_id,status,outcome,duration_ms,created_at
-	) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-		event.ActorID,event.ActorName,string(roles),event.RequestID,event.Method,event.Path,event.Resource,event.PartnerID,
-		event.Status,event.Outcome,event.DurationMS,event.CreatedAt)
+		actor_id,actor_name,actor_roles,request_id,correlation_id,action,method,path,resource,partner_id,status,outcome,old_state,new_state,duration_ms,created_at
+	) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16)`,
+		event.ActorID,event.ActorName,string(roles),event.RequestID,event.CorrelationID,event.Action,event.Method,event.Path,event.Resource,event.PartnerID,
+		event.Status,event.Outcome,string(oldState),string(newState),event.DurationMS,event.CreatedAt)
 }
 
 func auditLimit(value string, fallback, max int) int {
@@ -731,13 +877,25 @@ func (a *app) auditEvents(w http.ResponseWriter, r *http.Request) {
 	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
 		args = append(args, "%"+q+"%")
 		n := len(args)
-		where = append(where, fmt.Sprintf("(actor_name ILIKE $%d OR actor_id ILIKE $%d OR path ILIKE $%d OR resource ILIKE $%d OR request_id ILIKE $%d OR partner_id ILIKE $%d)", n,n,n,n,n,n))
+		where = append(where, fmt.Sprintf("(actor_name ILIKE $%d OR actor_id ILIKE $%d OR path ILIKE $%d OR resource ILIKE $%d OR request_id ILIKE $%d OR correlation_id ILIKE $%d OR action ILIKE $%d OR partner_id ILIKE $%d)", n,n,n,n,n,n,n,n))
 	}
 	if actorID := strings.TrimSpace(r.URL.Query().Get("actor_id")); actorID != "" { add("actor_id=$%d", actorID) }
 	if resource := strings.TrimSpace(r.URL.Query().Get("resource")); resource != "" { add("resource=$%d", resource) }
+	if action := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("action"))); action != "" { add("action=$%d", action) }
+	if correlationID := strings.TrimSpace(r.URL.Query().Get("correlation_id")); correlationID != "" { add("correlation_id=$%d", correlationID) }
 	if method := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("method"))); method != "" { add("method=$%d", method) }
 	if outcome := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("outcome"))); outcome != "" { add("outcome=$%d", outcome) }
 	if partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id")); partnerID != "" { add("partner_id=$%d", partnerID) }
+	if raw := strings.TrimSpace(r.URL.Query().Get("from")); raw != "" {
+		value, err := time.Parse(time.RFC3339, raw)
+		if err != nil { common.APIError(w,400,"VALIDATION","from must be RFC3339"); return }
+		add("created_at >= $%d", value.UTC())
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("to")); raw != "" {
+		value, err := time.Parse(time.RFC3339, raw)
+		if err != nil { common.APIError(w,400,"VALIDATION","to must be RFC3339"); return }
+		add("created_at <= $%d", value.UTC())
+	}
 
 	whereSQL := strings.Join(where, " AND ")
 	var total int
@@ -746,7 +904,7 @@ func (a *app) auditEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	queryArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := a.db.Query(`SELECT id,actor_id,actor_name,actor_roles,request_id,method,path,resource,partner_id,status,outcome,duration_ms,created_at
+	rows, err := a.db.Query(`SELECT id,actor_id,actor_name,actor_roles,request_id,correlation_id,action,method,path,resource,partner_id,status,outcome,old_state,new_state,duration_ms,created_at
 		FROM identity.audit_events WHERE `+whereSQL+` ORDER BY created_at DESC,id DESC LIMIT $`+strconv.Itoa(len(args)+1)+` OFFSET $`+strconv.Itoa(len(args)+2), queryArgs...)
 	if err != nil {
 		common.APIError(w,500,"DB","Could not load audit events")
@@ -756,18 +914,23 @@ func (a *app) auditEvents(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	for rows.Next() {
 		var id int64
-		var actorID,actorName,requestID,method,path,resource,partnerID,outcome string
-		var rolesRaw []byte
+		var actorID,actorName,requestID,correlationID,action,method,path,resource,partnerID,outcome string
+		var rolesRaw,oldRaw,newRaw []byte
 		var status int
 		var duration int64
 		var created time.Time
-		if rows.Scan(&id,&actorID,&actorName,&rolesRaw,&requestID,&method,&path,&resource,&partnerID,&status,&outcome,&duration,&created) != nil { continue }
+		if rows.Scan(&id,&actorID,&actorName,&rolesRaw,&requestID,&correlationID,&action,&method,&path,&resource,&partnerID,&status,&outcome,&oldRaw,&newRaw,&duration,&created) != nil { continue }
 		var roles []string
+		var oldState,newState any
 		_ = json.Unmarshal(rolesRaw,&roles)
+		_ = json.Unmarshal(oldRaw,&oldState)
+		_ = json.Unmarshal(newRaw,&newState)
 		items = append(items,map[string]any{
-			"id":id,"actor_id":actorID,"actor_name":actorName,"actor_roles":roles,"request_id":requestID,
+			"id":id,"actor_id":actorID,"actor_name":actorName,"actor_roles":roles,
+			"request_id":requestID,"correlation_id":correlationID,"action":action,
 			"method":method,"path":path,"resource":resource,"partner_id":partnerID,"status":status,
-			"outcome":outcome,"duration_ms":duration,"created_at":created.UTC(),
+			"outcome":outcome,"old_state":oldState,"new_state":newState,
+			"duration_ms":duration,"created_at":created.UTC(),
 		})
 	}
 	common.JSON(w,200,map[string]any{
@@ -1817,6 +1980,14 @@ func securityHeaders(next http.Handler) http.Handler {
 		if requestID != "" {
 			r.Header.Set("X-Request-ID", requestID)
 			w.Header().Set("X-Request-ID", requestID)
+		}
+		correlationID := strings.TrimSpace(r.Header.Get("X-Correlation-ID"))
+		if correlationID == "" && requestID != "" {
+			correlationID = "corr_" + requestID
+		}
+		if correlationID != "" {
+			r.Header.Set("X-Correlation-ID", correlationID)
+			w.Header().Set("X-Correlation-ID", correlationID)
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")

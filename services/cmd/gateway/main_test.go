@@ -350,3 +350,61 @@ func TestRenderPublishedCMSHTML(t *testing.T) {
 		t.Fatalf("hidden CMS section remained in server-rendered HTML: %s", got)
 	}
 }
+
+
+func TestAuditSanitization(t *testing.T) {
+	input := map[string]any{
+		"name": "safe",
+		"password": "super-secret",
+		"nested": map[string]any{
+			"api_token": "token-value",
+			"value": "visible",
+		},
+	}
+	got := sanitizeAuditValue(input).(map[string]any)
+	if got["password"] != "[REDACTED]" {
+		t.Fatalf("password was not redacted: %#v", got)
+	}
+	nested := got["nested"].(map[string]any)
+	if nested["api_token"] != "[REDACTED]" || nested["value"] != "visible" {
+		t.Fatalf("nested audit sanitization failed: %#v", nested)
+	}
+}
+
+func TestAuditActionClassification(t *testing.T) {
+	cases := []struct {
+		method string
+		path   string
+		want   string
+	}{
+		{http.MethodPost, "/api/v1/admin/users", "ADMIN_USER_CREATED"},
+		{http.MethodPatch, "/api/v1/admin/users/usr_1", "ADMIN_USER_UPDATED"},
+		{http.MethodPost, "/api/v1/cms/pages/page_1/publish", "CMS_PAGE_PUBLISHED"},
+		{http.MethodPost, "/api/v1/environments/env_1/deploy", "ENVIRONMENT_DEPLOY"},
+		{http.MethodPost, "/api/v1/environments/env_1/launch", "ENVIRONMENT_LAUNCH"},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(tc.method, "https://himate.example"+tc.path, nil)
+		if got := auditAction(req); got != tc.want {
+			t.Fatalf("%s %s: expected %s, got %s", tc.method, tc.path, tc.want, got)
+		}
+	}
+}
+
+func TestSecurityHeadersAddsCorrelationID(t *testing.T) {
+	var gotRequestID, gotCorrelationID string
+	handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRequestID = r.Header.Get("X-Request-ID")
+		gotCorrelationID = r.Header.Get("X-Correlation-ID")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "https://himate.example/api/v1/health", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if gotRequestID == "" || gotCorrelationID == "" {
+		t.Fatalf("request tracing headers missing: request=%q correlation=%q", gotRequestID, gotCorrelationID)
+	}
+	if rec.Header().Get("X-Correlation-ID") != gotCorrelationID {
+		t.Fatalf("correlation ID was not returned to the client")
+	}
+}
