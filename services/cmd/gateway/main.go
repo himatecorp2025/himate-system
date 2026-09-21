@@ -161,6 +161,7 @@ func main() {
 			"storage":      os.Getenv("STORAGE_HOSTPORT"),
 			"backups":      os.Getenv("BACKUPS_HOSTPORT"),
 			"partner-runtime": os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
+			"notifications":   os.Getenv("NOTIFICATIONS_HOSTPORT"),
 		},
 	}
 	if len(a.secret) < 32 || len(a.internalToken) < 24 {
@@ -479,7 +480,7 @@ var roleDefinitions = []roleDefinition{
 			"environments.read", "environments.write", "environments.approve",
 			"connectors.read", "connectors.write", "connectors.approve",
 			"backups.read", "backups.write", "backups.approve",
-			"health.read",
+			"health.read", "notifications.read",
 		},
 	},
 	{
@@ -487,7 +488,7 @@ var roleDefinitions = []roleDefinition{
 		Description: "Partner commercial terms, licenses, subscriptions, billing and finance data.",
 		Permissions: []string{
 			"dashboard.read", "partners.read", "catalog.read",
-			"billing.read", "billing.write", "billing.approve",
+			"billing.read", "billing.write", "billing.approve", "notifications.read",
 		},
 	},
 	{
@@ -497,7 +498,7 @@ var roleDefinitions = []roleDefinition{
 			"dashboard.read", "partners.read",
 			"impact.read", "impact.write", "impact.approve",
 			"evidence.read", "evidence.write", "evidence.approve",
-			"reports.read", "reports.write", "reports.approve",
+			"reports.read", "reports.write", "reports.approve", "notifications.read",
 		},
 	},
 	{
@@ -506,7 +507,7 @@ var roleDefinitions = []roleDefinition{
 		Permissions: []string{
 			"dashboard.read",
 			"cms.read", "cms.write", "cms.approve",
-			"contact.read", "contact.write",
+			"contact.read", "contact.write", "notifications.read",
 		},
 	},
 }
@@ -611,6 +612,8 @@ func permissionResource(r *http.Request) string {
 		return "dashboard"
 	case path == "/api/v1/audit/events":
 		return "audit"
+	case path == "/api/v1/notifications", strings.HasPrefix(path, "/api/v1/notifications/"):
+		return "notifications"
 	case path == "/api/v1/admin/roles", strings.HasPrefix(path, "/api/v1/admin/roles/"), path == "/api/v1/admin/users", strings.HasPrefix(path, "/api/v1/admin/users/"):
 		return "administration"
 	case strings.HasPrefix(path, "/api/v1/partners/") && strings.Contains(path, "/modules"):
@@ -764,6 +767,18 @@ func auditAction(r *http.Request) string {
 		return "PROFILE_PASSWORD_CHANGED"
 	case path == "/api/v1/admin/users" && r.Method == http.MethodPost:
 		return "ADMIN_USER_CREATED"
+	case path == "/api/v1/admin/roles" && r.Method == http.MethodPost:
+		return "ADMIN_ROLE_CREATED"
+	case strings.HasPrefix(path, "/api/v1/admin/roles/") && r.Method == http.MethodPatch:
+		return "ADMIN_ROLE_UPDATED"
+	case path == "/api/v1/modules" && r.Method == http.MethodPost:
+		return "MODULE_CREATED"
+	case strings.HasPrefix(path, "/api/v1/modules/") && r.Method == http.MethodPatch:
+		return "MODULE_UPDATED"
+	case strings.Contains(path, "/relationships") && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
+		return "MODULE_RELATIONSHIP_CHANGED"
+	case strings.Contains(path, "/impact-metrics") && r.Method == http.MethodPut:
+		return "MODULE_IMPACT_MAPPING_CHANGED"
 	case strings.HasPrefix(path, "/api/v1/admin/users/") && r.Method == http.MethodPatch:
 		return "ADMIN_USER_UPDATED"
 	case strings.HasSuffix(path, "/publish"):
@@ -852,7 +867,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
 				newState = requestState
 			}
-			a.enqueueAudit(auditEvent{
+			event := auditEvent{
 				ActorID: u.ID, ActorName: u.Name, ActorRoles: append([]string(nil), u.Roles...),
 				RequestID: strings.TrimSpace(r.Header.Get("X-Request-ID")),
 				CorrelationID: strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
@@ -860,7 +875,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 				Method: r.Method, Path: r.URL.Path, Resource: resource, PartnerID: partnerID,
 				Status: status, Outcome: outcome, OldState: oldState, NewState: newState,
 				DurationMS: time.Since(started).Milliseconds(), CreatedAt: time.Now().UTC(),
-			})
+			}
+			a.enqueueAudit(event)
+			if resource != "notifications" { go a.emitNotification(event) }
 		}()
 	}
 	required := requiredPermission(r)
@@ -888,6 +905,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.adminUser(w, r, u)
 	case r.URL.Path == "/api/v1/audit/events" && r.Method == http.MethodGet:
 		a.auditEvents(w, r)
+	case r.URL.Path == "/api/v1/notifications" || strings.HasPrefix(r.URL.Path, "/api/v1/notifications/"):
+		r.Header.Set("X-Himate-Permissions", strings.Join(a.permissionsForRoles(u.Roles), ","))
+		a.serveProxy(w, r, "notifications")
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
 		a.partnerPortfolioMetrics(w, r)
 	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
@@ -965,6 +985,8 @@ func auditResource(r *http.Request) (string, string) {
 		if len(parts) > 2 && parts[1] == "policies" { partnerID = parts[2] }
 	case "modules", "module-groups":
 		resource = "catalog"
+	case "notifications":
+		resource = "notifications"
 	case "partner-categories":
 		resource = "partners"
 	}
@@ -998,6 +1020,47 @@ func (a *app) persistAudit(event auditEvent) {
 	) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16)`,
 		event.ActorID,event.ActorName,string(roles),event.RequestID,event.CorrelationID,event.Action,event.Method,event.Path,event.Resource,event.PartnerID,
 		event.Status,event.Outcome,string(oldState),string(newState),event.DurationMS,event.CreatedAt)
+}
+
+func notificationDescriptor(event auditEvent) (severity,title,message,audience,deepLink string,boolValue bool) {
+	if event.Outcome=="FAILED" {
+		switch event.Resource {
+		case "environments","backups","connectors","provisioning":
+			return "WARNING", strings.ReplaceAll(strings.Title(strings.ToLower(event.Action)),"_"," "), "A protected operation failed. Review the audit trail for details.", event.Resource+".read", "/app", true
+		default:
+			return "","","","","",false
+		}
+	}
+	switch event.Action {
+	case "ADMIN_USER_CREATED": return "INFO","Administrator created",event.ActorName+" created a HIMATE administrator.","administration.read","/app",true
+	case "ADMIN_USER_UPDATED": return "INFO","Administrator access changed",event.ActorName+" updated administrator access.","administration.read","/app",true
+	case "ADMIN_ROLE_CREATED": return "INFO","Custom role created",event.ActorName+" created a custom access role.","administration.read","/app",true
+	case "ADMIN_ROLE_UPDATED": return "INFO","Custom role updated",event.ActorName+" changed a custom access role.","administration.read","/app",true
+	case "MODULE_CREATED": return "INFO","Module created",event.ActorName+" added a module to the HIMATE registry.","catalog.read","/app",true
+	case "MODULE_UPDATED","MODULE_RELATIONSHIP_CHANGED","MODULE_IMPACT_MAPPING_CHANGED":
+		return "INFO","Module registry changed",event.ActorName+" updated module control-plane configuration.","catalog.read","/app",true
+	case "LICENSE_CHANGED": return "INFO","Commercial terms changed","Partner licensing/payment state was updated.","billing.read","/app",true
+	case "ENVIRONMENT_DEPLOY": return "INFO","Deployment started","A partner environment deployment was requested.","environments.read","/app",true
+	case "ENVIRONMENT_LAUNCH": return "INFO","Production launch requested","A partner production launch was requested.","environments.read","/app",true
+	case "BACKUP_RESTORE_POINT_QUEUED","BACKUP_RESTORE_TEST_QUEUED": return "INFO","Backup operation queued","A recoverability operation was queued.","backups.read","/app",true
+	case "SEO_SETTINGS_PUBLISHED": return "INFO","SEO settings published","Published SEO settings changed.","cms.read","/app",true
+	}
+	if event.Resource=="partners" && event.Method==http.MethodPost { return "INFO","Partner created","A new partner record was registered.","partners.read","/app",true }
+	return "","","","","",false
+}
+
+func (a *app) emitNotification(event auditEvent) {
+	host:=strings.TrimSpace(a.hosts["notifications"]);if host==""{return}
+	severity,title,message,audience,deepLink,ok:=notificationDescriptor(event);if !ok{return}
+	body,_:=json.Marshal(map[string]any{
+		"event_type":event.Action,"severity":severity,"title":title,"message":message,"resource":event.Resource,
+		"partner_id":event.PartnerID,"deep_link":deepLink,"audience_permission":audience,
+		"metadata":map[string]any{"actor_id":event.ActorID,"actor_name":event.ActorName,"request_id":event.RequestID,"correlation_id":event.CorrelationID},
+	})
+	ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);defer cancel()
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+host+"/internal/v1/notifications/events",bytes.NewReader(body));if err!=nil{return}
+	req.Header.Set("Content-Type","application/json");req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	resp,err:=a.client.Do(req);if err==nil&&resp!=nil{resp.Body.Close()}
 }
 
 func auditLimit(value string, fallback, max int) int {
