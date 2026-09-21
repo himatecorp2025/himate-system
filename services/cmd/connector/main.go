@@ -23,6 +23,7 @@ type app struct {
 	internalToken string
 	impactHost string
 	client *http.Client
+	dataKeyring start22Keyring
 }
 
 type credential struct {
@@ -37,21 +38,25 @@ func main() {
 	db,err:=common.OpenDB()
 	if err!=nil { log.Error("database","error",err); os.Exit(1) }
 	defer db.Close()
+	dataKeyring,err:=start22LoadKeyringFromEnv()
+	if err!=nil { log.Error("START-22 data encryption","error",err); os.Exit(1) }
 	a:=&app{
 		db:db,
 		internalToken:os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		impactHost:os.Getenv("IMPACT_HOSTPORT"),
 		client:&http.Client{Timeout:6*time.Second},
+		dataKeyring:dataKeyring,
 	}
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second)
 	defer cancel()
 	if err:=a.migrate(ctx);err!=nil { log.Error("migration","error",err);os.Exit(1) }
 	if err:=start22ValidateRegistry();err!=nil { log.Error("START-22 registry","error",err);os.Exit(1) }
+	if err:=a.start22EncryptLegacyPlaintext(ctx);err!=nil { log.Error("START-22 data encryption migration","error",err);os.Exit(1) }
 	go a.start22RetentionLoop()
 
 	publicMux:=http.NewServeMux()
 	publicMux.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){
-		common.JSON(w,200,map[string]any{"status":"ok","service":"connector","time":time.Now().UTC()})
+		common.JSON(w,200,map[string]any{"status":"ok","service":"connector","time":time.Now().UTC(),"data_encryption":start22EncryptionAlgorithm,"data_key_version":a.dataKeyring.ActiveVersion})
 	})
 	publicMux.HandleFunc("/connector/v1/heartbeat",a.heartbeat)
 	publicMux.HandleFunc("/connector/v1/state",a.state)
@@ -201,6 +206,15 @@ func (a *app) migrate(ctx context.Context) error {
 				UNIQUE(partner_id,environment,reconciliation_id)
 			)`,
 			`CREATE INDEX IF NOT EXISTS connector_reconciliation_partner_idx ON connector.reconciliations(partner_id,environment,checked_at DESC)`,
+		}},
+		{Version:5,Name:"start-22-encrypted-retained-data",Statements:[]string{
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS data_ciphertext BYTEA`,
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS data_nonce BYTEA`,
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS wrapped_data_key BYTEA`,
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS key_nonce BYTEA`,
+			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS data_key_version TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE connector.data_records ALTER COLUMN data SET DEFAULT '{}'::jsonb`,
+			`CREATE INDEX IF NOT EXISTS connector_records_key_version_idx ON connector.data_records(data_key_version) WHERE data_key_version<>''`,
 		}},
 	})
 }
