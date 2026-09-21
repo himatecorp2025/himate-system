@@ -69,6 +69,7 @@ func main() {
 	mux.HandleFunc("/api/v1/impact/values", a.values)
 	mux.HandleFunc("/api/v1/impact/baselines", a.baselines)
 	mux.HandleFunc("/api/v1/impact/summary", a.summary)
+	mux.HandleFunc("/internal/v1/impact/definitions/ensure", a.ensureSystemDefinition)
 	mux.HandleFunc("/internal/v1/impact/ingest", a.ingest)
 	mux.HandleFunc("/internal/v1/impact/summary", a.summary)
 	common.Run(log, "impact", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
@@ -131,6 +132,53 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE impact.metric_baselines ADD COLUMN IF NOT EXISTS evidence_id TEXT NOT NULL DEFAULT ''`,
 			`CREATE INDEX IF NOT EXISTS impact_values_evidence_idx ON impact.metric_values(evidence_id) WHERE evidence_id<>''`,
 		}},
+	})
+}
+
+func (a *app) ensureSystemDefinition(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+		return
+	}
+	var in struct {
+		MetricKey   string `json:"metric_key"`
+		Label       string `json:"label"`
+		Description string `json:"description"`
+		Unit        string `json:"unit"`
+		Aggregation string `json:"aggregation"`
+		Scope       string `json:"scope"`
+	}
+	if common.Decode(r, &in) != nil {
+		common.APIError(w, http.StatusBadRequest, "JSON", "Invalid metric definition")
+		return
+	}
+	in.MetricKey = strings.TrimSpace(in.MetricKey)
+	in.Label = strings.TrimSpace(in.Label)
+	in.Description = strings.TrimSpace(in.Description)
+	in.Unit = strings.TrimSpace(in.Unit)
+	in.Aggregation = strings.ToUpper(strings.TrimSpace(in.Aggregation))
+	in.Scope = strings.ToUpper(strings.TrimSpace(in.Scope))
+	if in.Unit == "" { in.Unit = "count" }
+	if in.Aggregation == "" { in.Aggregation = "LATEST" }
+	if in.Scope == "" { in.Scope = "PARTNER" }
+	if !metricKeyPattern.MatchString(in.MetricKey) || in.Label == "" ||
+		!aggregationValues[in.Aggregation] || !scopeValues[in.Scope] {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", "Invalid system metric definition")
+		return
+	}
+	_, err := a.db.Exec(`INSERT INTO impact.metric_definitions(metric_key,label,description,unit,aggregation,scope,active,system)
+		VALUES($1,$2,$3,$4,$5,$6,TRUE,TRUE)
+		ON CONFLICT(metric_key) DO UPDATE SET
+			label=EXCLUDED.label,description=EXCLUDED.description,unit=EXCLUDED.unit,
+			aggregation=EXCLUDED.aggregation,scope=EXCLUDED.scope,active=TRUE,system=TRUE,updated_at=NOW()`,
+		in.MetricKey,in.Label,in.Description,in.Unit,in.Aggregation,in.Scope)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not ensure system metric definition")
+		return
+	}
+	common.JSON(w,http.StatusOK,map[string]any{
+		"metric_key":in.MetricKey,"label":in.Label,"unit":in.Unit,
+		"aggregation":in.Aggregation,"scope":in.Scope,"active":true,"system":true,
 	})
 }
 
