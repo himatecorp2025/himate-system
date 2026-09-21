@@ -189,17 +189,18 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 }
 
 func TestSTART19NormalizeRoles(t *testing.T) {
-	roles, err := normalizeRoles([]string{"finance_admin", "finance_admin", "reporting_admin"})
+	a := &app{}
+	roles, err := a.normalizeRoles([]string{"finance_admin", "finance_admin", "reporting_admin"})
 	if err != nil {
 		t.Fatalf("unexpected normalize error: %v", err)
 	}
 	if len(roles) != 2 || roles[0] != "finance_admin" || roles[1] != "reporting_admin" {
 		t.Fatalf("unexpected normalized roles: %#v", roles)
 	}
-	if _, err := normalizeRoles([]string{"root"}); err == nil {
+	if _, err := a.normalizeRoles([]string{"root"}); err == nil {
 		t.Fatal("unknown role must be rejected")
 	}
-	if _, err := normalizeRoles(nil); err == nil {
+	if _, err := a.normalizeRoles(nil); err == nil {
 		t.Fatal("empty roles must be rejected")
 	}
 }
@@ -218,6 +219,7 @@ func TestAuditResourceClassification(t *testing.T) {
 		{"/api/v1/contact/inquiries/inq_1", "contact", ""},
 		{"/api/v1/impact/values?partner_id=ptr_900", "impact", "ptr_900"},
 		{"/api/v1/modules/demo", "catalog", ""},
+		{"/api/v1/notifications/read-all", "notifications", ""},
 	}
 	for _, tc := range tests {
 		req := httptest.NewRequest(http.MethodPost, tc.path, nil)
