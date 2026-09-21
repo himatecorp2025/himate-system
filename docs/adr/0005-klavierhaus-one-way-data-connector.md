@@ -59,6 +59,8 @@ Signed START-22 requests include a timestamp, credential-scoped nonce, SHA-512 b
 
 Payloads are bounded to 1 MiB and 250 items. Data values are bounded scalar values under the field allowlist.
 
+Accepted Connector business payloads are encrypted at rest using AES-256-GCM envelope encryption. Each retained record receives a random 256-bit data-encryption key and independent nonce. The record key is itself wrapped with a versioned runtime-only AES-256 master key; only ciphertext, nonces, wrapped key material and key version are stored. The active master key is supplied as a deployment secret and previous key versions may be retained in the service keyring for controlled rotation. Plaintext payload JSON is not retained in PostgreSQL.
+
 ## Retention
 
 All accepted START-22 Connector data uses the HIMATE product policy `HIMATE_7Y`:
