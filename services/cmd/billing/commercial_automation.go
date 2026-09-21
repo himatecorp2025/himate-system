@@ -341,7 +341,7 @@ func (a *app) commercialStatus(w http.ResponseWriter, r *http.Request, partnerID
 		nextAction = "CONFIRM_COMMERCIAL_AGREEMENT"
 	case invoiceCount == 0:
 		nextAction = "REGISTER_ACTIVATION_INVOICE"
-	case evidenceCount == 0:
+	case paymentEvidenceCount == 0:
 		nextAction = "REGISTER_PAYMENT_EVIDENCE"
 	case license.Status != "PAID":
 		nextAction = "VERIFY_ACTIVATION_PAYMENT"
@@ -371,7 +371,7 @@ func (a *app) commercialStatus(w http.ResponseWriter, r *http.Request, partnerID
 		"workflow": []map[string]any{
 			{"key":"COMMERCIAL_AGREEMENT","complete":agreementStatus=="AGREED" || waived},
 			{"key":"ACTIVATION_FEE_INVOICE","complete":invoiceCount>0 || waived},
-			{"key":"PAYMENT_EVIDENCE","complete":evidenceCount>0 || waived},
+			{"key":"PAYMENT_EVIDENCE","complete":paymentEvidenceCount>0 || waived},
 			{"key":"PAYMENT_VERIFIED","complete":paymentVerified || waived},
 			{"key":"LICENSE_PAID","complete":license.Status=="PAID" || waived},
 			{"key":"PROVISIONING_ALLOWED","complete":provisioningAllowed},
