@@ -37,7 +37,7 @@ smoke = read("scripts/smoke_start_23_8.sh")
 # Release contract. Later START-23.x phases must preserve the START-23.8
 # guarantees, so this historical guard accepts any release at or beyond 23.8.
 def release_phase(text: str):
-    match = re.search(r"0\\.8\\.\\d+-start-(23\\.\\d+)", text)
+    match = re.search(r"0\.8\.\d+-start-(23\.\d+)", text)
     require(match is not None, "START-23.x release identifier is missing")
     return tuple(int(x) for x in match.group(1).split("."))
 
