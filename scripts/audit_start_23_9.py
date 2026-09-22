@@ -65,6 +65,10 @@ for token in (
     'a.hasPermission(actor,"administration.read")',
     'a.hasPermission(actor,"audit.read")',
     "cacheable:=year==time.Now().UTC().Year()",
+    "dashboardPayloadForActor",
+    'a.hasPermission(actor,"billing.read")',
+    'a.hasPermission(actor,"impact.read")',
+    '"authorized":false',
 ):
     require(token in gateway, f"Gateway START-23.9 contract missing {token!r}")
 
@@ -84,6 +88,10 @@ for token in (
     "_dashboardMoney",
     "_ImpactChartPainter",
     "Live audit feed",
+    "billingAuthorized=billing['authorized']!=false",
+    "impactAuthorized=impact['authorized']!=false",
+    "Billing permission required",
+    "Impact permission required",
 ):
     require(token in frontend, f"Flutter START-23.9 wiring missing {token!r}")
 
