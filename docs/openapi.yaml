@@ -393,6 +393,58 @@ paths:
         "200": {description: Tenant Portal user updated}
         "403": {description: Cross-role authority denied}
         "409": {description: Last-owner continuity guard}
+  /partner/api/v1/design:
+    get:
+      tags: [Partner Portal]
+      summary: Read the own-tenant design catalog, active profile and effective visual theme
+      description: Theme state is independent from CMS content, modules, billing and workflow state.
+      responses:
+        "200": {description: Catalog plus partner-owned profiles and active_profile_id}
+        "403": {description: design.read permission required}
+  /partner/api/v1/design/media:
+    get:
+      tags: [Partner Portal]
+      summary: List own-tenant brand assets
+      responses:
+        "200": {description: Tenant-owned checksum-backed design media}
+    post:
+      tags: [Partner Portal]
+      summary: Upload an own-tenant brand asset
+      description: PNG/JPEG/WebP only; stored through CMS Storage with tenant ownership and SHA-256 integrity.
+      responses:
+        "201": {description: Tenant-owned design media created}
+        "403": {description: design.write permission required}
+  /partner/api/v1/design/profiles:
+    post:
+      tags: [Partner Portal]
+      summary: Create an own-tenant custom design profile
+      description: Stores visual tokens and brand asset IDs only; content and business mechanics are not part of the profile.
+      responses:
+        "201": {description: Partner design profile created}
+        "403": {description: design.write permission required}
+  /partner/api/v1/design/profiles/{profileId}:
+    parameters:
+      - {name: profileId, in: path, required: true, schema: {type: string}}
+    put:
+      tags: [Partner Portal]
+      summary: Update an own-tenant custom design profile
+      description: Catalog-owned profiles are immutable to partner users.
+      responses:
+        "200": {description: Partner design profile updated}
+        "403": {description: Cross-tenant or catalog profile edit denied}
+  /partner/api/v1/design/profiles/{profileId}/activate:
+    parameters:
+      - {name: profileId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Partner Portal]
+      summary: Activate a catalog or own-tenant design profile
+      description: >
+        Changes only cms.design_scope_state.active_profile_id. Content, partner
+        data, module state, billing, workflows and application mechanics remain unchanged.
+      responses:
+        "200": {description: Active design changed with content_binding/mechanics_binding unchanged}
+        "403": {description: design.write permission required}
+        "404": {description: Profile is neither visible catalog design nor own-tenant design}
   /api/v1/dashboard/summary:
     get:
       tags: [Health]
@@ -1873,6 +1925,19 @@ paths:
       responses:
         "200": {description: Desktop/tablet/mobile preview wrapper or raw full website HTML}
         "404": {description: Design preview token invalid or expired}
+  /public/v1/cms/partner-design/{partnerId}:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [CMS Public]
+      security: []
+      summary: Resolve the active visual theme for a partner website/runtime
+      description: >
+        Returns the active catalog/custom profile and visual tokens independently
+        from CMS content and business APIs, enabling theme swaps without content migration.
+      responses:
+        "200": {description: Active partner design profile and effective visual theme}
+        "404": {description: Partner design scope not found}
   /public/v1/cms/pages/{slug}:
     parameters:
       - {name: slug, in: path, required: true, schema: {type: string}}
