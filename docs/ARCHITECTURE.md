@@ -301,6 +301,16 @@ The architecture also records three cross-service closure constraints for START-
 
 START-24 Security Acceptance is therefore downstream of START-23.12, not immediately downstream of START-23.
 
+## Partner × Module commercial control plane (START-23.2)
+
+START-23.2 keeps service ownership explicit: Catalog owns module definitions, partner assignment, configured recurring prices, activation fees and effective-dated commercial history; Billing owns immutable 30-day subscription periods and invoice snapshots.
+
+The administration Modules surface joins two read models without duplicating ownership. Catalog exposes the partner-by-module commercial matrix, while Billing exposes current subscription periods. For each subscription boundary Billing performs one authenticated batched internal quote request to Catalog so the displayed next-period price is resolved from the same point-in-time price history used by billing logic rather than guessed by Flutter.
+
+Module registry defaults now include a one-time activation fee. Each partner assignment can override both recurring price and activation fee with effective dates and actor/reason history. Current paid-period snapshots remain immutable when configured future prices change.
+
+The legacy module create/edit path in Licensing & Finance has been removed so the Modules control plane is the only administrative registry owner. Normal cancellation is intentionally not finalized here: START-23.3 will unify admin and Partner Portal cancellation behind one Billing-owned period-end state machine.
+
 ## Backups and verified recovery (START-21)
 
 Backup orchestration is isolated in the private `backups` microservice. It does not run long backup or restore work inside Gateway requests.

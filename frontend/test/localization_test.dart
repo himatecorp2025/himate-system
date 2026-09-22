@@ -54,6 +54,27 @@ void main() {
     }
   });
 
+  test('START-23.2 commercial control-plane labels are localized', () {
+    for (final value in <String>[
+      'Partner × Module Commercial Matrix',
+      'View by partner',
+      'View by module',
+      'Commercial history',
+      'Activation date',
+      'Next billing date',
+      'Next billing price',
+      'Price source',
+      'Activation fee source',
+      'Partner activation fee',
+    ]) {
+      expect(
+        HimateI18n.literal('hu_HU', value),
+        isNot(value),
+        reason: 'Missing Hungarian START-23.2 translation for $value',
+      );
+    }
+  });
+
   test('START-23 dynamic CMS and commercial messages are localized', () {
     expect(HimateI18n.literal('hu_HU', 'Section 4'), 'Szekció 4');
     expect(HimateI18n.literal('hu_HU', 'Version 12'), 'Verzió 12');

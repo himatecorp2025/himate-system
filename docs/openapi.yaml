@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.5-start-23.1
+  version: 0.8.6-start-23.2
   description: >
     Authenticated REST contract for the START-01 through START-22.3 HIMATE
     control-plane surface. Partner business databases remain isolated behind
@@ -555,6 +555,14 @@ paths:
       summary: Read partner entitlement usage for a module
       responses:
         "200": {description: Partner usage and status counts}
+  /api/v1/module-commercial-matrix:
+    get:
+      tags: [Modules]
+      summary: Partner × Module commercial control-plane matrix
+      parameters:
+        - {name: partner_ids, in: query, required: true, schema: {type: string}, description: Comma-separated partner IDs, maximum 200}
+      responses:
+        "200": {description: Effective recurring prices, activation fees, assignment state and scheduled commercial changes}
   /api/v1/partners/{partnerId}/modules:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -572,12 +580,22 @@ paths:
         schema: {type: string}
     patch:
       tags: [Modules]
-      summary: Update partner module state, visibility, package inclusion or price
+      summary: Update partner module state, visibility, package inclusion, recurring price or activation fee
       description: >
-        Pricing accepts an optional RFC3339 or YYYY-MM-DD price_effective_at.
+        Recurring pricing accepts an optional RFC3339 or YYYY-MM-DD price_effective_at.
+        Partner-specific one-time activation fees accept activation_fee_effective_at.
         Historical changes retain actor, reason, old value and new value.
       responses:
         "200": {description: Updated partner module}
+  /api/v1/partners/{partnerId}/modules/{moduleKey}/commercial-history:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Modules]
+      summary: Partner-module commercial and entitlement change history
+      responses:
+        "200": {description: Effective-dated old/new values, actor and reason}
   /api/v1/billing/profile:
     get:
       tags: [Billing]
@@ -720,6 +738,15 @@ paths:
         never recalculated from the current Catalog price.
       responses:
         "200": {description: Invoices with immutable itemized line items}
+  /api/v1/billing/subscription-matrix:
+    get:
+      tags: [Billing]
+      summary: Batched current subscriptions and exact next-period commercial quotes
+      parameters:
+        - {name: partner_ids, in: query, required: true, schema: {type: string}, description: Comma-separated partner IDs, maximum 200}
+      responses:
+        "200": {description: Current immutable period state plus next billing date and point-in-time next-period price}
+        "502": {description: Catalog point-in-time pricing could not be resolved}
   /api/v1/billing/partners/{partnerId}/subscriptions:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}

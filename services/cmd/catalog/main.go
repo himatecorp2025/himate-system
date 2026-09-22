@@ -100,8 +100,10 @@ func main() {
 	mux.HandleFunc("/api/v1/module-groups/", a.groupByKey)
 	mux.HandleFunc("/api/v1/modules", a.modules)
 	mux.HandleFunc("/api/v1/modules/", a.moduleByKey)
+	mux.HandleFunc("/api/v1/module-commercial-matrix", a.commercialMatrix)
 	mux.HandleFunc("/api/v1/partners/", a.partnerModules)
 	mux.HandleFunc("/internal/v1/partners/", a.partnerModules)
+	mux.HandleFunc("/internal/v1/module-price-quotes", a.internalModulePriceQuotes)
 	mux.HandleFunc("/internal/v1/partner-portal/", a.partnerPortal)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	common.Run(log, "catalog", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
@@ -179,6 +181,21 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS module_impact_metric_idx ON catalog.module_impact_metrics(metric_key)`,
 		}},
+		{Version: 5, Name: "partner-module-commercial-control", Statements: []string{
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS default_activation_fee NUMERIC(12,2) NOT NULL DEFAULT 0`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS activation_fee_override NUMERIC(12,2)`,
+			`CREATE TABLE IF NOT EXISTS catalog.activation_fee_history(
+				id BIGSERIAL PRIMARY KEY,
+				partner_id TEXT NOT NULL,
+				module_key TEXT NOT NULL,
+				old_fee NUMERIC(12,2),
+				new_fee NUMERIC(12,2) NOT NULL,
+				effective_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				actor TEXT NOT NULL DEFAULT '',
+				reason TEXT NOT NULL DEFAULT ''
+			)`,
+			`CREATE INDEX IF NOT EXISTS activation_fee_history_lookup ON catalog.activation_fee_history(partner_id,module_key,effective_at DESC,id DESC)`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -250,7 +267,7 @@ func (a *app) groupByKey(w http.ResponseWriter, r *http.Request) {
 func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT m.module_key,m.label,m.group_key,g.label,m.description,m.default_monthly_price,m.currency,m.version,m.latest_version,
+		rows, err := a.db.Query(`SELECT m.module_key,m.label,m.group_key,g.label,m.description,m.default_monthly_price,m.default_activation_fee,m.currency,m.version,m.latest_version,
 			m.last_updated_at,m.system,m.availability,m.module_type,m.owner_team,m.source_repository,m.source_path,m.source_ref,m.source_commit,
 			m.artifact_type,m.artifact_reference,m.min_platform_version,m.manifest,
 			(SELECT COUNT(*) FROM catalog.module_relationships mr WHERE mr.module_key=m.module_key),
@@ -262,10 +279,10 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		items := []map[string]any{}
 		for rows.Next() {
 			var k,l,g,gl,d,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
-			var p float64; var t time.Time; var sys bool; var manifestRaw []byte; var relCount,usageCount,metricCount int
-			if rows.Scan(&k,&l,&g,&gl,&d,&p,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
+			var p,activationFee float64; var t time.Time; var sys bool; var manifestRaw []byte; var relCount,usageCount,metricCount int
+			if rows.Scan(&k,&l,&g,&gl,&d,&p,&activationFee,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
 				manifest:=map[string]any{}; _=json.Unmarshal(manifestRaw,&manifest)
-				items=append(items,map[string]any{"key":k,"label":l,"group_key":g,"group_label":gl,"description":d,"default_monthly_price":p,"currency":currency,
+				items=append(items,map[string]any{"key":k,"label":l,"group_key":g,"group_label":gl,"description":d,"default_monthly_price":p,"default_activation_fee":activationFee,"currency":currency,
 					"version":v,"latest_version":lv,"last_updated_at":t,"system":sys,"availability":availability,"module_type":moduleType,"owner_team":owner,
 					"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,"artifact_type":artifactType,"artifact_reference":artifactRef,
 					"min_platform_version":minPlatform,"manifest":manifest,"relationship_count":relCount,"active_partner_count":usageCount,"impact_metric_count":metricCount})
@@ -292,6 +309,7 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 			ArtifactReference string `json:"artifact_reference"`
 			MinPlatformVersion string `json:"min_platform_version"`
 			DefaultMonthlyPrice float64 `json:"default_monthly_price"`
+			DefaultActivationFee float64 `json:"default_activation_fee"`
 			Manifest map[string]any `json:"manifest"`
 		}
 		if common.Decode(r,&in)!=nil || !moduleKeyPattern.MatchString(in.Key) || strings.TrimSpace(in.Label)=="" || strings.TrimSpace(in.GroupKey)=="" {
@@ -299,18 +317,18 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.Currency==""{in.Currency="USD"}; if in.Version==""{in.Version="1.0.0"}; if in.LatestVersion==""{in.LatestVersion=in.Version}
 		if in.Availability==""{in.Availability="ACTIVE"}; in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
-		if !availabilityValues[in.Availability] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
+		if !availabilityValues[in.Availability] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
 		manifest,_:=json.Marshal(in.Manifest); if len(manifest)==0{manifest=[]byte("{}")}
 		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
-			module_key,label,group_key,description,default_monthly_price,currency,version,latest_version,system,availability,module_type,owner_team,
+			module_key,label,group_key,description,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
 			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb)`,
-			in.Key,strings.TrimSpace(in.Label),in.GroupKey,strings.TrimSpace(in.Description),in.DefaultMonthlyPrice,in.Currency,in.Version,in.LatestVersion,
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,FALSE,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)`,
+			in.Key,strings.TrimSpace(in.Label),in.GroupKey,strings.TrimSpace(in.Description),in.DefaultMonthlyPrice,in.DefaultActivationFee,in.Currency,in.Version,in.LatestVersion,
 			in.Availability,in.ModuleType,strings.TrimSpace(in.OwnerTeam),strings.TrimSpace(in.SourceRepository),strings.TrimSpace(in.SourcePath),
 			strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.SourceCommit),strings.TrimSpace(in.ArtifactType),strings.TrimSpace(in.ArtifactReference),
 			strings.TrimSpace(in.MinPlatformVersion),string(manifest))
 		if err!=nil{common.APIError(w,409,"CONFLICT","Module could not be created");return}
-		common.JSON(w,201,map[string]any{"key":in.Key,"label":strings.TrimSpace(in.Label),"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,
+		common.JSON(w,201,map[string]any{"key":in.Key,"label":strings.TrimSpace(in.Label),"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,"default_activation_fee":in.DefaultActivationFee,
 			"currency":in.Currency,"version":in.Version,"latest_version":in.LatestVersion,"availability":in.Availability,"module_type":in.ModuleType,"system":false})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
@@ -347,28 +365,29 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		ArtifactReference *string `json:"artifact_reference"`
 		MinPlatformVersion *string `json:"min_platform_version"`
 		DefaultMonthlyPrice *float64 `json:"default_monthly_price"`
+		DefaultActivationFee *float64 `json:"default_activation_fee"`
 		Manifest map[string]any `json:"manifest"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
 	var label,description,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
-	var price float64; var manifestRaw []byte
-	if err:=a.db.QueryRow(`SELECT label,description,group_key,default_monthly_price,availability,latest_version,module_type,owner_team,source_repository,source_path,
+	var price,activationFee float64; var manifestRaw []byte
+	if err:=a.db.QueryRow(`SELECT label,description,group_key,default_monthly_price,default_activation_fee,availability,latest_version,module_type,owner_team,source_repository,source_path,
 		source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest FROM catalog.modules WHERE module_key=$1`,key).
-		Scan(&label,&description,&groupKey,&price,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
+		Scan(&label,&description,&groupKey,&price,&activationFee,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
 		common.APIError(w,404,"NOT_FOUND","Module not found");return
 	}
 	set:=func(dst *string,src *string){if src!=nil{*dst=strings.TrimSpace(*src)}}
 	set(&label,in.Label);set(&description,in.Description);set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
 	set(&repo,in.SourceRepository);set(&path,in.SourcePath);set(&ref,in.SourceRef);set(&commit,in.SourceCommit);set(&artifactType,in.ArtifactType);set(&artifactRef,in.ArtifactReference);set(&minPlatform,in.MinPlatformVersion)
-	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}
-	if label==""||price<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid module update");return}
+	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
+	if label==""||price<0||activationFee<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid module update");return}
 	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
-	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,description=$3,group_key=$4,default_monthly_price=$5,availability=$6,latest_version=$7,module_type=$8,
-		owner_team=$9,source_repository=$10,source_path=$11,source_ref=$12,source_commit=$13,artifact_type=$14,artifact_reference=$15,min_platform_version=$16,manifest=$17::jsonb,last_updated_at=NOW()
-		WHERE module_key=$1`,key,label,description,groupKey,price,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
+	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,description=$3,group_key=$4,default_monthly_price=$5,default_activation_fee=$6,availability=$7,latest_version=$8,module_type=$9,
+		owner_team=$10,source_repository=$11,source_path=$12,source_ref=$13,source_commit=$14,artifact_type=$15,artifact_reference=$16,min_platform_version=$17,manifest=$18::jsonb,last_updated_at=NOW()
+		WHERE module_key=$1`,key,label,description,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
 		common.APIError(w,409,"CONFLICT","Module could not be updated");return
 	}
-	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"group_key":groupKey,"default_monthly_price":price,"availability":availability,
+	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"group_key":groupKey,"default_monthly_price":price,"default_activation_fee":activationFee,"availability":availability,
 		"latest_version":latestVersion,"module_type":moduleType,"owner_team":owner,"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,
 		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform})
 }
@@ -426,14 +445,20 @@ func (a *app) moduleImpactMetrics(w http.ResponseWriter,r *http.Request,key stri
 
 func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
-	rows,err:=a.db.Query(`SELECT partner_id,status,visible,included_in_base,COALESCE(price_override,0),activated_at,updated_at FROM catalog.partner_modules WHERE module_key=$1 ORDER BY partner_id`,key)
-	if err!=nil{common.APIError(w,500,"DB","Could not load module usage");return};defer rows.Close()
-	items:=[]map[string]any{};counts:=map[string]int{};for rows.Next(){var partner,status string;var visible,included bool;var price float64;var activated sql.NullTime;var updated time.Time
-		if rows.Scan(&partner,&status,&visible,&included,&price,&activated,&updated)==nil{counts[status]++;var activatedAt any;if activated.Valid{activatedAt=activated.Time}
-			items=append(items,map[string]any{"partner_id":partner,"status":status,"visible":visible,"included_in_base":included,"price_override":price,"activated_at":activatedAt,"updated_at":updated})}}
+	rows,err:=a.db.Query(partnerModuleSelect+` WHERE pm.module_key=$1 ORDER BY pm.partner_id`,key)
+	if err!=nil{common.APIError(w,500,"DB","Could not load module usage");return}
+	defer rows.Close()
+	items:=[]map[string]any{}
+	counts:=map[string]int{}
+	for rows.Next(){
+		item,scanErr:=scanPartnerModule(rows)
+		if scanErr!=nil{common.APIError(w,500,"DB","Could not decode module usage");return}
+		counts[fmt.Sprint(item["status"])]++
+		items=append(items,item)
+	}
+	if err:=rows.Err();err!=nil{common.APIError(w,500,"DB","Could not load complete module usage");return}
 	common.JSON(w,200,map[string]any{"items":items,"count":len(items),"status_counts":counts})
 }
-
 
 func (a *app) ensurePartnerModules(partnerID string) error {
 	_, err := a.db.Exec(`INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base) SELECT $1,module_key,'NOT_LICENSED',FALSE,FALSE FROM catalog.modules ON CONFLICT(partner_id,module_key) DO NOTHING`, partnerID)
@@ -478,6 +503,14 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		a.partnerModulePriceAt(w, r, partnerID, parts[2])
 		return
 	}
+	if len(parts) == 4 && parts[3] == "commercial-history" {
+		if r.Method != http.MethodGet {
+			common.APIError(w, 405, "METHOD", "Use GET")
+			return
+		}
+		a.partnerModuleCommercialHistory(w, partnerID, parts[2])
+		return
+	}
 	if len(parts) == 2 {
 		if r.Method != http.MethodGet {
 			common.APIError(w, 405, "METHOD", "Use GET")
@@ -495,8 +528,10 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		Status         *string  `json:"status"`
 		Visible        *bool    `json:"visible"`
 		IncludedInBase *bool    `json:"included_in_base"`
-		PartnerPrice     *float64 `json:"partner_price"`
-		PriceEffectiveAt string   `json:"price_effective_at"`
+		PartnerPrice         *float64 `json:"partner_price"`
+		PriceEffectiveAt     string   `json:"price_effective_at"`
+		PartnerActivationFee *float64 `json:"partner_activation_fee"`
+		ActivationFeeEffectiveAt string `json:"activation_fee_effective_at"`
 		Reason           string   `json:"reason"`
 	}
 	if common.Decode(r, &in) != nil {
@@ -613,11 +648,97 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		}
 		if err = recordHistory("partner_price", oldValue, *in.PartnerPrice, effectiveAt); err != nil { common.APIError(w, 500, "DB", "Could not save module history"); return }
 	}
+	if in.PartnerActivationFee != nil {
+		if *in.PartnerActivationFee < 0 {
+			common.APIError(w, 400, "VALIDATION", "Activation fee cannot be negative")
+			return
+		}
+		activationEffectiveAt := time.Now().UTC()
+		if strings.TrimSpace(in.ActivationFeeEffectiveAt) != "" {
+			rawEffectiveAt := strings.TrimSpace(in.ActivationFeeEffectiveAt)
+			parsed, parseErr := time.Parse(time.RFC3339, rawEffectiveAt)
+			if parseErr != nil {
+				parsed, parseErr = time.Parse("2006-01-02", rawEffectiveAt)
+			}
+			if parseErr != nil {
+				common.APIError(w, 400, "VALIDATION", "activation_fee_effective_at must be RFC3339 or YYYY-MM-DD")
+				return
+			}
+			activationEffectiveAt = parsed.UTC()
+		}
+		var oldFee float64
+		if err = tx.QueryRow(`
+			SELECT COALESCE(
+				(SELECT ah.new_fee FROM catalog.activation_fee_history ah
+				 WHERE ah.partner_id=pm.partner_id AND ah.module_key=pm.module_key AND ah.effective_at<=NOW()
+				 ORDER BY ah.effective_at DESC,ah.id DESC LIMIT 1),
+				pm.activation_fee_override,m.default_activation_fee)
+			FROM catalog.partner_modules pm
+			JOIN catalog.modules m ON m.module_key=pm.module_key
+			WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key).Scan(&oldFee); err != nil {
+			common.APIError(w, 404, "NOT_FOUND", "Module not found")
+			return
+		}
+		if !activationEffectiveAt.After(time.Now().UTC()) {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET activation_fee_override=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerActivationFee); err != nil {
+				common.APIError(w, 500, "DB", "Could not update activation fee")
+				return
+			}
+		}
+		if _, err = tx.Exec(`INSERT INTO catalog.activation_fee_history(partner_id,module_key,old_fee,new_fee,effective_at,actor,reason)
+			VALUES($1,$2,$3,$4,$5,$6,$7)`, partnerID, key, oldFee, *in.PartnerActivationFee, activationEffectiveAt, actor, reason); err != nil {
+			common.APIError(w, 500, "DB", "Could not save activation-fee history")
+			return
+		}
+		if err = recordHistory("partner_activation_fee", oldFee, *in.PartnerActivationFee, activationEffectiveAt); err != nil {
+			common.APIError(w, 500, "DB", "Could not save module history")
+			return
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		common.APIError(w, 500, "DB", "Could not commit module update")
 		return
 	}
 	a.onePartnerModule(w, partnerID, key)
+}
+
+func (a *app) partnerModuleCommercialHistory(w http.ResponseWriter, partnerID, key string) {
+	rows, err := a.db.Query(`
+		SELECT field_name,old_value,new_value,effective_at,actor,reason
+		FROM catalog.partner_module_history
+		WHERE partner_id=$1 AND module_key=$2
+		ORDER BY effective_at DESC,id DESC
+		LIMIT 250`, partnerID, key)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not load partner-module commercial history")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var field string
+		var oldValue, newValue sql.NullString
+		var effectiveAt time.Time
+		var actor, reason string
+		if err := rows.Scan(&field, &oldValue, &newValue, &effectiveAt, &actor, &reason); err != nil {
+			common.APIError(w, 500, "DB", "Could not decode partner-module commercial history")
+			return
+		}
+		var oldOut, newOut any
+		if oldValue.Valid { oldOut = oldValue.String }
+		if newValue.Valid { newOut = newValue.String }
+		items = append(items, map[string]any{
+			"field": field, "old_value": oldOut, "new_value": newOut,
+			"effective_at": effectiveAt.UTC(), "actor": actor, "reason": reason,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		common.APIError(w, 500, "DB", "Could not load complete partner-module commercial history")
+		return
+	}
+	common.JSON(w, 200, map[string]any{
+		"partner_id": partnerID, "module_key": key, "items": items, "count": len(items),
+	})
 }
 
 func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billable bool) {
@@ -651,21 +772,11 @@ func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billab
 	common.JSON(w, 200, out)
 }
 
-func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partnerID, key string) {
-	rawAt := strings.TrimSpace(r.URL.Query().Get("at"))
-	at := time.Now().UTC()
-	if rawAt != "" {
-		parsed, err := time.Parse("2006-01-02", rawAt)
-		if err != nil {
-			common.APIError(w, 400, "VALIDATION", "at must be YYYY-MM-DD")
-			return
-		}
-		at = parsed.UTC()
-	}
+func (a *app) resolvePartnerModulePriceAt(ctx context.Context, partnerID, key string, at time.Time) (float64, string, bool, error) {
 	var price float64
 	var currency string
 	var included bool
-	err := a.db.QueryRow(`
+	err := a.db.QueryRowContext(ctx, `
 		SELECT
 			COALESCE(
 				(SELECT ph.new_price FROM catalog.price_history ph
@@ -691,6 +802,21 @@ func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partn
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
 		WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key, at).Scan(&price, &currency, &included)
+	return price, currency, included, err
+}
+
+func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partnerID, key string) {
+	rawAt := strings.TrimSpace(r.URL.Query().Get("at"))
+	at := time.Now().UTC()
+	if rawAt != "" {
+		parsed, err := time.Parse("2006-01-02", rawAt)
+		if err != nil {
+			common.APIError(w, 400, "VALIDATION", "at must be YYYY-MM-DD")
+			return
+		}
+		at = parsed.UTC()
+	}
+	price, currency, included, err := a.resolvePartnerModulePriceAt(r.Context(), partnerID, key, at)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			common.APIError(w, 404, "NOT_FOUND", "Partner module not found")
@@ -706,6 +832,49 @@ func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partn
 	})
 }
 
+func (a *app) internalModulePriceQuotes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, 405, "METHOD", "Use POST")
+		return
+	}
+	var in struct {
+		Items []struct {
+			PartnerID string `json:"partner_id"`
+			ModuleKey string `json:"module_key"`
+			At        string `json:"at"`
+		} `json:"items"`
+	}
+	if common.Decode(r, &in) != nil || len(in.Items) == 0 || len(in.Items) > 2000 {
+		common.APIError(w, 400, "VALIDATION", "One to 2000 price quote items are required")
+		return
+	}
+	items := make([]map[string]any, 0, len(in.Items))
+	for _, item := range in.Items {
+		partnerID := strings.TrimSpace(item.PartnerID)
+		moduleKey := strings.TrimSpace(item.ModuleKey)
+		at, err := time.Parse("2006-01-02", strings.TrimSpace(item.At))
+		if partnerID == "" || moduleKey == "" || err != nil {
+			common.APIError(w, 400, "VALIDATION", "Each quote requires partner_id, module_key and YYYY-MM-DD at")
+			return
+		}
+		price, currency, included, err := a.resolvePartnerModulePriceAt(r.Context(), partnerID, moduleKey, at.UTC())
+		if err != nil {
+			if err == sql.ErrNoRows {
+				common.APIError(w, 404, "NOT_FOUND", "Partner-module quote target not found")
+			} else {
+				common.APIError(w, 500, "DB", "Could not resolve partner-module price quote")
+			}
+			return
+		}
+		items = append(items, map[string]any{
+			"partner_id": partnerID, "module_key": moduleKey, "at": at.Format("2006-01-02"),
+			"price": price, "currency": currency, "included_in_base": included,
+			"source": "CATALOG_EFFECTIVE_PRICE_HISTORY",
+		})
+	}
+	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
+}
+
 func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key string) {
 	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key))
 	if err != nil {
@@ -713,6 +882,64 @@ func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key string) {
 		return
 	}
 	common.JSON(w, 200, item)
+}
+
+func splitPartnerIDs(raw string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range strings.Split(raw, ",") {
+		id := strings.TrimSpace(value)
+		if id == "" || seen[id] { continue }
+		seen[id] = true
+		out = append(out, id)
+		if len(out) >= 200 { break }
+	}
+	return out
+}
+
+func (a *app) commercialMatrix(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, 405, "METHOD", "Use GET")
+		return
+	}
+	ids := splitPartnerIDs(r.URL.Query().Get("partner_ids"))
+	if len(ids) == 0 {
+		common.JSON(w, 200, map[string]any{"items": []map[string]any{}, "count": 0})
+		return
+	}
+	for _, id := range ids {
+		if err := a.ensurePartnerModules(id); err != nil {
+			common.APIError(w, 500, "DB", "Could not initialize partner module matrix")
+			return
+		}
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := partnerModuleSelect + ` WHERE pm.partner_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY pm.partner_id,g.sort_order,m.label`
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not load partner-module commercial matrix")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		item, scanErr := scanPartnerModule(rows)
+		if scanErr != nil {
+			common.APIError(w, 500, "DB", "Could not decode partner-module commercial matrix")
+			return
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		common.APIError(w, 500, "DB", "Could not load complete partner-module commercial matrix")
+		return
+	}
+	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
 }
 
 func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
@@ -761,18 +988,74 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 }
 
 
-const partnerModuleSelect = `SELECT pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,m.default_monthly_price,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),m.currency,m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at FROM catalog.partner_modules pm JOIN catalog.modules m ON m.module_key=pm.module_key JOIN catalog.module_groups g ON g.group_key=m.group_key LEFT JOIN LATERAL (SELECT ph.new_price FROM catalog.price_history ph WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW() ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1) ep ON TRUE`
+const partnerModuleSelect = `SELECT
+	pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,
+	m.default_monthly_price,pm.price_override,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),
+	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
+	np.new_price,np.effective_at,
+	m.default_activation_fee,pm.activation_fee_override,COALESCE(eaf.new_fee,pm.activation_fee_override,m.default_activation_fee),
+	CASE WHEN eaf.new_fee IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.activation_fee_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
+	naf.new_fee,naf.effective_at,
+	m.currency,m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at
+	FROM catalog.partner_modules pm
+	JOIN catalog.modules m ON m.module_key=pm.module_key
+	JOIN catalog.module_groups g ON g.group_key=m.group_key
+	LEFT JOIN LATERAL (
+		SELECT ph.new_price FROM catalog.price_history ph
+		WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
+		ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
+	) ep ON TRUE
+	LEFT JOIN LATERAL (
+		SELECT ph.new_price,ph.effective_at FROM catalog.price_history ph
+		WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at>NOW()
+		ORDER BY ph.effective_at ASC,ph.id ASC LIMIT 1
+	) np ON TRUE
+	LEFT JOIN LATERAL (
+		SELECT ah.new_fee FROM catalog.activation_fee_history ah
+		WHERE ah.partner_id=pm.partner_id AND ah.module_key=pm.module_key AND ah.effective_at<=NOW()
+		ORDER BY ah.effective_at DESC,ah.id DESC LIMIT 1
+	) eaf ON TRUE
+	LEFT JOIN LATERAL (
+		SELECT ah.new_fee,ah.effective_at FROM catalog.activation_fee_history ah
+		WHERE ah.partner_id=pm.partner_id AND ah.module_key=pm.module_key AND ah.effective_at>NOW()
+		ORDER BY ah.effective_at ASC,ah.id ASC LIMIT 1
+	) naf ON TRUE`
 
 type scanner interface{ Scan(...any) error }
 
+func nullableFloat(v sql.NullFloat64) any {
+	if !v.Valid { return nil }
+	return v.Float64
+}
+
+func nullableTime(v sql.NullTime) any {
+	if !v.Valid { return nil }
+	return v.Time.UTC()
+}
+
 func scanPartnerModule(s scanner) (map[string]any, error) {
-	var id, k, l, g, gl, st, currency, v, lv, availability string
+	var id, k, l, g, gl, st, currency, v, lv, availability, priceSource, activationSource string
 	var vis, inc bool
-	var def, price float64
+	var defPrice, price, defaultActivationFee, activationFee float64
+	var priceOverride, nextPrice, activationOverride, nextActivationFee sql.NullFloat64
+	var nextPriceAt, nextActivationFeeAt, activated sql.NullTime
 	var t time.Time
-	var activated sql.NullTime
-	err := s.Scan(&id, &k, &l, &g, &gl, &st, &vis, &inc, &def, &price, &currency, &v, &lv, &t, &availability, &activated)
-	var activatedAt any
-	if activated.Valid { activatedAt = activated.Time.UTC() }
-	return map[string]any{"partner_id": id, "key": k, "label": l, "group_key": g, "group_label": gl, "status": st, "visible": vis, "included_in_base": inc, "default_monthly_price": def, "partner_price": price, "currency": currency, "version": v, "latest_version": lv, "last_updated_at": t, "availability": availability, "activated_at": activatedAt}, err
+	err := s.Scan(
+		&id,&k,&l,&g,&gl,&st,&vis,&inc,
+		&defPrice,&priceOverride,&price,&priceSource,&nextPrice,&nextPriceAt,
+		&defaultActivationFee,&activationOverride,&activationFee,&activationSource,&nextActivationFee,&nextActivationFeeAt,
+		&currency,&v,&lv,&t,&availability,&activated,
+	)
+	return map[string]any{
+		"partner_id": id, "key": k, "label": l, "group_key": g, "group_label": gl,
+		"status": st, "visible": vis, "included_in_base": inc,
+		"default_monthly_price": defPrice, "price_override": nullableFloat(priceOverride),
+		"partner_price": price, "price_source": priceSource,
+		"next_partner_price": nullableFloat(nextPrice), "next_price_effective_at": nullableTime(nextPriceAt),
+		"default_activation_fee": defaultActivationFee, "activation_fee_override": nullableFloat(activationOverride),
+		"partner_activation_fee": activationFee, "activation_fee_source": activationSource,
+		"next_partner_activation_fee": nullableFloat(nextActivationFee), "next_activation_fee_effective_at": nullableTime(nextActivationFeeAt),
+		"currency": currency, "version": v, "latest_version": lv, "last_updated_at": t,
+		"availability": availability, "activated_at": nullableTime(activated),
+	}, err
 }

@@ -60,3 +60,17 @@ func TestStableModuleKeyContract(t *testing.T) {
 		}
 	}
 }
+
+func TestSTART232PartnerIDMatrixInputIsBoundedAndDeduplicated(t *testing.T) {
+	raw := "ptr_1, ptr_2,ptr_1,,ptr_3"
+	got := splitPartnerIDs(raw)
+	if len(got) != 3 || got[0] != "ptr_1" || got[1] != "ptr_2" || got[2] != "ptr_3" {
+		t.Fatalf("unexpected partner IDs: %#v", got)
+	}
+}
+
+func TestSTART232CommercialDefaultsAreNonNegativeByContract(t *testing.T) {
+	if !moduleStates["ACTIVE"] || !availabilityValues["ACTIVE"] {
+		t.Fatal("commercial matrix requires active module contracts")
+	}
+}

@@ -160,6 +160,50 @@ func TestExpiredSubscriptionDisablesCatalogEntitlement(t *testing.T) {
 	}
 }
 
+func TestSTART232CatalogPriceQuotesBatch(t *testing.T) {
+	const token = "0123456789abcdefghijklmnop"
+	var gotMethod, gotPath, gotToken string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotToken = r.Header.Get("X-Himate-Internal-Token")
+		var in struct {
+			Items []map[string]string `json:"items"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			t.Fatalf("decode quote request: %v", err)
+		}
+		if len(in.Items) != 1 || in.Items[0]["partner_id"] != "ptr_232" || in.Items[0]["module_key"] != "ci.start232" || in.Items[0]["at"] != "2026-10-22" {
+			t.Fatalf("unexpected quote request: %#v", in.Items)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[{"partner_id":"ptr_232","module_key":"ci.start232","at":"2026-10-22","price":91.25,"currency":"USD","included_in_base":false}],"count":1}`))
+	}))
+	defer server.Close()
+
+	a := &app{
+		catalogHost: strings.TrimPrefix(server.URL, "http://"),
+		token: token,
+		client: server.Client(),
+	}
+	quotes, err := a.catalogPriceQuotes(context.Background(), []map[string]string{{
+		"partner_id":"ptr_232","module_key":"ci.start232","at":"2026-10-22",
+	}})
+	if err != nil {
+		t.Fatalf("catalogPriceQuotes failed: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/internal/v1/module-price-quotes" {
+		t.Fatalf("unexpected catalog quote request %s %s", gotMethod, gotPath)
+	}
+	if gotToken != token {
+		t.Fatal("internal service credential missing")
+	}
+	quote, ok := quotes[quoteKey("ptr_232", "ci.start232")]
+	if !ok || quote.Price != 91.25 || quote.Currency != "USD" || quote.Included {
+		t.Fatalf("unexpected quote: %#v", quote)
+	}
+}
+
 func TestSTART223ModulePriceAtUsesPeriodStartContract(t *testing.T) {
 	const token = "0123456789abcdefghijklmnop"
 	var gotPath, gotAt, gotToken string
