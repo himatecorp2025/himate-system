@@ -24,9 +24,9 @@ type offsiteProvider interface {
 	Delete(context.Context,string) error
 }
 
-type localOffsite struct{root string}
+type localOffsite struct{root,name string}
 
-func (p *localOffsite)Name()string{return "local"}
+func (p *localOffsite)Name()string{if strings.TrimSpace(p.name)!=""{return p.name};return "local"}
 
 func cleanObjectKey(key string)(string,error){
 	key=strings.Trim(strings.TrimSpace(key),"/")
@@ -160,11 +160,18 @@ func (p *s3Offsite)Delete(ctx context.Context,key string)error{
 }
 
 func newOffsiteProvider(client *http.Client)(offsiteProvider,error){
-	switch strings.ToLower(strings.TrimSpace(common.Env("HIMATE_BACKUP_PROVIDER","local"))){
-	case "local":
+	providerName:=strings.ToLower(strings.TrimSpace(common.Env("HIMATE_BACKUP_PROVIDER","local")))
+	switch providerName{
+	case "local","render_disk":
 		root:=common.Env("HIMATE_BACKUP_OFFSITE_ROOT","/offsite")
+		if !filepath.IsAbs(root)||filepath.Clean(root)=="/"{return nil,fmt.Errorf("HIMATE_BACKUP_OFFSITE_ROOT must be an absolute non-root path")}
 		if err:=os.MkdirAll(root,0700);err!=nil{return nil,err}
-		return &localOffsite{root:root},nil
+		probe,err:=os.CreateTemp(root,".himate-backup-write-test-*");if err!=nil{return nil,fmt.Errorf("backup storage root is not writable: %w",err)}
+		probeName:=probe.Name()
+		if err:=probe.Chmod(0600);err!=nil{_ = probe.Close();_ = os.Remove(probeName);return nil,err}
+		if err:=probe.Close();err!=nil{_ = os.Remove(probeName);return nil,err}
+		if err:=os.Remove(probeName);err!=nil{return nil,err}
+		return &localOffsite{root:root,name:providerName},nil
 	case "s3":
 		endpoint,err:=validateS3Endpoint(os.Getenv("HIMATE_BACKUP_S3_ENDPOINT"));if err!=nil{return nil,err}
 		bucket:=strings.TrimSpace(os.Getenv("HIMATE_BACKUP_S3_BUCKET"))
