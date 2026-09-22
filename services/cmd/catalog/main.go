@@ -582,8 +582,8 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if old != *in.Status {
-			if old == "ACTIVE" && *in.Status == "NOT_LICENSED" && !internal {
-				common.APIError(w, 409, "BILLING_LIFECYCLE_REQUIRED", "Active paid-period modules must be cancelled through Billing and remain active until the period end")
+			if *in.Status == "NOT_LICENSED" && old != "NOT_LICENSED" && !internal {
+				common.APIError(w, 409, "BILLING_LIFECYCLE_REQUIRED", "Module deactivation is Billing-owned; schedule period-end cancellation through Billing")
 				return
 			}
 			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET
