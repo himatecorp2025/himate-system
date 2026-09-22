@@ -905,7 +905,8 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 					return fmt.Errorf("expire subscription %s/%s: %w", id, key, err)
 				}
 				if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-					SET auto_renew=FALSE,payment_status='INACTIVE',updated_at=NOW()
+					SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',lifecycle_state='INACTIVE',
+					cancellation_effective_at=period_end,updated_at=NOW()
 					WHERE partner_id=$1 AND module_key=$2`, id, key); err != nil {
 					return err
 				}
@@ -926,7 +927,8 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 			if snapErr != nil { return fmt.Errorf("reactivation snapshot %s/%s: %w", id, key, snapErr) }
 			if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
 					currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
-					auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()
+					auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',lifecycle_state='ACTIVE',
+					cancellation_requested_at=NULL,cancellation_effective_at=NULL,cancellation_requested_by='',cancellation_reason='',updated_at=NOW()
 				WHERE partner_id=$1 AND module_key=$2`,
 				id, key, currency, activation, start, end, snapshotPrice); err != nil {
 				return err
@@ -959,7 +961,8 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 
 		if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
 				currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
-				auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',updated_at=NOW()
+				auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',lifecycle_state='ACTIVE',
+				cancellation_requested_at=NULL,cancellation_effective_at=NULL,cancellation_requested_by='',cancellation_reason='',updated_at=NOW()
 			WHERE partner_id=$1 AND module_key=$2`,
 			id, key, currency, activation, existingStart, existingEnd, currentPrice); err != nil {
 			return err
@@ -968,7 +971,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 
 	if len(activeKeys) == 0 {
 		_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-			SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',updated_at=NOW()
+			SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',lifecycle_state='INACTIVE',updated_at=NOW()
 			WHERE partner_id=$1 AND payment_status<>'INACTIVE'`, id)
 		return err
 	}
@@ -1138,20 +1141,30 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) subscriptions(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
-	rows, err := a.db.Query(`SELECT module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status,updated_at FROM billing.module_subscriptions WHERE partner_id=$1 ORDER BY module_key`, id)
+	rows, err := a.db.Query(`SELECT module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status,
+		lifecycle_state,cancellation_requested_at,cancellation_effective_at,cancellation_requested_by,cancellation_reason,updated_at
+		FROM billing.module_subscriptions WHERE partner_id=$1 ORDER BY module_key`, id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load subscriptions"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		var key, currency, payment string
+		var key, currency, payment, lifecycle, cancellationRequestedBy, cancellationReason string
 		var activation, start, end, updated time.Time
+		var cancellationRequestedAt, cancellationEffectiveAt sql.NullTime
 		var price float64
 		var renew, cancel bool
-		if rows.Scan(&key, &currency, &activation, &start, &end, &price, &renew, &cancel, &payment, &updated) == nil {
+		if rows.Scan(&key, &currency, &activation, &start, &end, &price, &renew, &cancel, &payment,
+			&lifecycle,&cancellationRequestedAt,&cancellationEffectiveAt,&cancellationRequestedBy,&cancellationReason,&updated) == nil {
 			items = append(items, map[string]any{
 				"module_key": key, "currency": currency, "activation_date": activation.Format("2006-01-02"),
 				"period_start": start.Format("2006-01-02"), "period_end_exclusive": end.Format("2006-01-02"),
-				"price": price, "auto_renew": renew, "cancel_at_period_end": cancel, "payment_status": payment, "updated_at": updated,
+				"price": price, "auto_renew": renew, "cancel_at_period_end": cancel, "payment_status": payment,
+				"lifecycle_state": lifecycle,
+				"cancellation_requested_at": nullableTimeValue(cancellationRequestedAt),
+				"cancellation_effective_at": nullableDateValue(cancellationEffectiveAt),
+				"cancellation_requested_by": cancellationRequestedBy,
+				"cancellation_reason": cancellationReason,
+				"updated_at": updated,
 			})
 		}
 	}
@@ -1186,10 +1199,10 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 
 	var oldRenew, oldCancel bool
 	var periodEnd time.Time
-	var paymentStatus string
-	if err = tx.QueryRow(`SELECT auto_renew,cancel_at_period_end,period_end,payment_status
+	var paymentStatus, oldLifecycle string
+	if err = tx.QueryRow(`SELECT auto_renew,cancel_at_period_end,period_end,payment_status,lifecycle_state
 		FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2 FOR UPDATE`, id, moduleKey).
-		Scan(&oldRenew, &oldCancel, &periodEnd, &paymentStatus); err != nil {
+		Scan(&oldRenew, &oldCancel, &periodEnd, &paymentStatus, &oldLifecycle); err != nil {
 		if err == sql.ErrNoRows {
 			common.APIError(w, 404, "NOT_FOUND", "Subscription not found; activate the module first")
 		} else {
@@ -1197,29 +1210,45 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 		}
 		return
 	}
+	if paymentStatus == "INACTIVE" || oldLifecycle == "INACTIVE" {
+		common.APIError(w, 409, "SUBSCRIPTION_INACTIVE", "Reactivate the module before changing renewal")
+		return
+	}
 
 	nextCancel := *in.CancelAtPeriodEnd
 	nextRenew := !nextCancel
-	if paymentStatus == "INACTIVE" && !nextCancel {
-		common.APIError(w, 409, "SUBSCRIPTION_INACTIVE", "Reactivate the module before enabling renewal")
-		return
+	nextLifecycle := "ACTIVE"
+	if nextCancel { nextLifecycle = "CANCEL_PENDING" }
+	actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+	if actor == "" { actor = "unknown" }
+	reason := strings.TrimSpace(in.Reason)
+	if reason == "" {
+		if nextCancel { reason = "Cancel at current period end" } else { reason = "Cancellation withdrawn" }
 	}
-	if oldCancel != nextCancel || oldRenew != nextRenew {
-		if _, err = tx.Exec(`UPDATE billing.module_subscriptions
-			SET auto_renew=$3,cancel_at_period_end=$4,updated_at=NOW()
-			WHERE partner_id=$1 AND module_key=$2`, id, moduleKey, nextRenew, nextCancel); err != nil {
+
+	if oldCancel != nextCancel || oldRenew != nextRenew || oldLifecycle != nextLifecycle {
+		if nextCancel {
+			_, err = tx.Exec(`UPDATE billing.module_subscriptions
+				SET auto_renew=FALSE,cancel_at_period_end=TRUE,lifecycle_state='CANCEL_PENDING',
+					cancellation_requested_at=NOW(),cancellation_effective_at=period_end,
+					cancellation_requested_by=$3,cancellation_reason=$4,updated_at=NOW()
+				WHERE partner_id=$1 AND module_key=$2`, id, moduleKey, actor, reason)
+		} else {
+			_, err = tx.Exec(`UPDATE billing.module_subscriptions
+				SET auto_renew=TRUE,cancel_at_period_end=FALSE,lifecycle_state='ACTIVE',
+					cancellation_requested_at=NULL,cancellation_effective_at=NULL,
+					cancellation_requested_by='',cancellation_reason='',updated_at=NOW()
+				WHERE partner_id=$1 AND module_key=$2`, id, moduleKey)
+		}
+		if err != nil {
 			common.APIError(w, 500, "DB", "Could not update subscription")
 			return
 		}
-		actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
-		reason := strings.TrimSpace(in.Reason)
-		if reason == "" {
-			if nextCancel { reason = "Cancel at current period end" } else { reason = "Cancellation withdrawn" }
-		}
 		if _, err = tx.Exec(`INSERT INTO billing.subscription_history(
-				partner_id,module_key,old_auto_renew,new_auto_renew,old_cancel_at_period_end,new_cancel_at_period_end,actor,reason
-			) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-			id, moduleKey, oldRenew, nextRenew, oldCancel, nextCancel, actor, reason); err != nil {
+				partner_id,module_key,old_auto_renew,new_auto_renew,old_cancel_at_period_end,new_cancel_at_period_end,
+				old_lifecycle_state,new_lifecycle_state,period_end,actor,reason
+			) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			id, moduleKey, oldRenew, nextRenew, oldCancel, nextCancel, oldLifecycle, nextLifecycle, dateOnly(periodEnd), actor, reason); err != nil {
 			common.APIError(w, 500, "DB", "Could not record subscription history")
 			return
 		}
@@ -1228,7 +1257,7 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 		eventKey := fmt.Sprintf("%s:%s:%s:%s", eventType, id, moduleKey, dateOnly(periodEnd).Format("2006-01-02"))
 		if err = emitBillingEventTx(r.Context(), tx, eventKey, id, moduleKey, eventType, time.Now().UTC(), map[string]any{
 			"period_end_exclusive": dateOnly(periodEnd).Format("2006-01-02"),
-			"actor": actor, "reason": reason,
+			"lifecycle_state": nextLifecycle, "actor": actor, "reason": reason,
 		}); err != nil {
 			common.APIError(w, 500, "DB", "Could not record billing event")
 			return
@@ -1240,11 +1269,11 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 	}
 	common.JSON(w, 200, map[string]any{
 		"partner_id": id, "module_key": moduleKey, "auto_renew": nextRenew,
-		"cancel_at_period_end": nextCancel, "period_end_exclusive": periodEnd.Format("2006-01-02"),
-		"payment_status": paymentStatus,
+		"cancel_at_period_end": nextCancel, "period_end_exclusive": dateOnly(periodEnd).Format("2006-01-02"),
+		"payment_status": paymentStatus, "lifecycle_state": nextLifecycle,
+		"cancellation_effective_at": func() any { if nextCancel { return dateOnly(periodEnd).Format("2006-01-02") }; return nil }(),
 	})
 }
-
 
 func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 	switch r.Method {
