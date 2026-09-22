@@ -177,6 +177,35 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
     }
   }
 
+  Future<void> createPreview(String viewport) async {
+    if (!await saveDraft(quiet: true)) return;
+    if (mounted) setState(() => saving = true);
+    try {
+      final response = await widget.api.post('/api/v1/cms/design/preview');
+      final pathKey = switch (viewport) {
+        'tablet' => 'tablet_path',
+        'mobile' => 'mobile_path',
+        _ => 'desktop_path',
+      };
+      final path = (response[pathKey] ?? response['preview_path'] ?? '').toString();
+      if (path.isEmpty) throw StateError('Design preview returned no preview path.');
+      html.window.open(path, '_blank');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: LText('${viewport[0].toUpperCase()}${viewport.substring(1)} website preview opened.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: LText(e.toString()), backgroundColor: brandDanger),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
   Future<void> publish() async {
     if (!await saveDraft(quiet: true)) return;
     if (mounted) setState(() => saving = true);
@@ -456,6 +485,21 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
               onPressed: saving ? null : () => saveDraft(),
               icon: const Icon(Icons.save_outlined),
               label: const LText('Save design draft'),
+            ),
+            OutlinedButton.icon(
+              onPressed: saving ? null : () => createPreview('desktop'),
+              icon: const Icon(Icons.desktop_windows_outlined),
+              label: const LText('Desktop preview'),
+            ),
+            OutlinedButton.icon(
+              onPressed: saving ? null : () => createPreview('tablet'),
+              icon: const Icon(Icons.tablet_mac_outlined),
+              label: const LText('Tablet preview'),
+            ),
+            OutlinedButton.icon(
+              onPressed: saving ? null : () => createPreview('mobile'),
+              icon: const Icon(Icons.phone_iphone_outlined),
+              label: const LText('Mobile preview'),
             ),
             FilledButton.icon(
               onPressed: saving ? null : publish,
