@@ -32,6 +32,12 @@ type terms struct {
 	ActivationFeeWaived   bool
 	ActivationFeeReason   string
 	BaseMonthlyFee        float64
+	MinimumMonthlyCommitment float64
+	QuoteReference        string
+	CommercialConfigured  bool
+	TermsVersion          int
+	ContractedAt          sql.NullTime
+	PricingModel          string
 	AnnualIncreasePercent float64
 	CycleDays             int
 	InvoiceDay            int
@@ -208,14 +214,15 @@ func (a *app) migrate(ctx context.Context) error {
 		start223BillingImmutabilityMigration(),
 		start233BillingLifecycleMigration(),
 		start234BillingPaymentMigration(),
+		start23111BillingCommercialModelMigration(),
 	}); err != nil {
 		return err
 	}
 
 	if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.partner_terms(
-		partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date
-	) VALUES('ptr_000001','USD',0,TRUE,'Existing reference partner; activation fee not applicable',2000,10,30,1,'2026-01-01','2026-01-01')
-	ON CONFLICT(partner_id) DO NOTHING`); err != nil {
+		partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,minimum_monthly_commitment,quote_reference,commercial_configured,terms_version,contracted_at,pricing_model,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date
+	) VALUES('ptr_000001','USD',0,TRUE,'Existing reference partner; activation fee not applicable',2000,1500,'REFERENCE-PARTNER',TRUE,1,NOW(),'INDIVIDUAL_QUOTE',10,30,1,'2026-01-01','2026-01-01')
+	ON CONFLICT(partner_id) DO UPDATE SET minimum_monthly_commitment=GREATEST(billing.partner_terms.minimum_monthly_commitment,1500),commercial_configured=TRUE,quote_reference=CASE WHEN billing.partner_terms.quote_reference='' THEN 'REFERENCE-PARTNER' ELSE billing.partner_terms.quote_reference END,contracted_at=COALESCE(billing.partner_terms.contracted_at,NOW())`); err != nil {
 		return err
 	}
 	_, err := a.db.ExecContext(ctx, `INSERT INTO billing.initial_licenses(
@@ -286,9 +293,9 @@ func (a *app) ensureTerms(id string) (terms, error) {
 		return terms{}, err
 	}
 	var t terms
-	err := a.db.QueryRow(`SELECT partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date,updated_at
+	err := a.db.QueryRow(`SELECT partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,minimum_monthly_commitment,quote_reference,commercial_configured,terms_version,contracted_at,pricing_model,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date,updated_at
 		FROM billing.partner_terms WHERE partner_id=$1`, id).
-		Scan(&t.PartnerID, &t.Currency, &t.ActivationFee, &t.ActivationFeeWaived, &t.ActivationFeeReason, &t.BaseMonthlyFee, &t.AnnualIncreasePercent, &t.CycleDays, &t.InvoiceDay, &t.PriceEffectiveFrom, &t.ServiceAnchorDate, &t.UpdatedAt)
+		Scan(&t.PartnerID, &t.Currency, &t.ActivationFee, &t.ActivationFeeWaived, &t.ActivationFeeReason, &t.BaseMonthlyFee,&t.MinimumMonthlyCommitment,&t.QuoteReference,&t.CommercialConfigured,&t.TermsVersion,&t.ContractedAt,&t.PricingModel, &t.AnnualIncreasePercent, &t.CycleDays, &t.InvoiceDay, &t.PriceEffectiveFrom, &t.ServiceAnchorDate, &t.UpdatedAt)
 	return t, err
 }
 
@@ -522,6 +529,8 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			ActivationFeeWaived   *bool    `json:"activation_fee_waived"`
 			ActivationFeeReason   *string  `json:"activation_fee_reason"`
 			BaseMonthlyFee        *float64 `json:"base_monthly_fee"`
+			MinimumMonthlyCommitment *float64 `json:"minimum_monthly_commitment"`
+			QuoteReference        *string  `json:"quote_reference"`
 			AnnualIncreasePercent *float64 `json:"annual_increase_percent"`
 			PriceEffectiveFrom    *string  `json:"price_effective_from"`
 			ServiceAnchorDate     *string  `json:"service_anchor_date"`
@@ -538,6 +547,8 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 		if in.ActivationFeeWaived != nil { next.ActivationFeeWaived = *in.ActivationFeeWaived }
 		if in.ActivationFeeReason != nil { next.ActivationFeeReason = strings.TrimSpace(*in.ActivationFeeReason) }
 		if in.BaseMonthlyFee != nil { next.BaseMonthlyFee = *in.BaseMonthlyFee }
+		if in.MinimumMonthlyCommitment != nil { next.MinimumMonthlyCommitment = *in.MinimumMonthlyCommitment }
+		if in.QuoteReference != nil { next.QuoteReference = strings.TrimSpace(*in.QuoteReference) }
 		if in.AnnualIncreasePercent != nil { next.AnnualIncreasePercent = *in.AnnualIncreasePercent }
 		if in.PriceEffectiveFrom != nil {
 			p, e := time.Parse("2006-01-02", strings.TrimSpace(*in.PriceEffectiveFrom))
@@ -550,25 +561,33 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			next.ServiceAnchorDate = p
 		}
 		if next.Currency == "" { next.Currency = "USD" }
-		if next.ActivationFee < 0 || next.BaseMonthlyFee < 0 || next.AnnualIncreasePercent < 0 {
+		if next.ActivationFee < 0 || next.BaseMonthlyFee < 0 || next.MinimumMonthlyCommitment < 0 || next.AnnualIncreasePercent < 0 {
 			common.APIError(w, 400, "VALIDATION", "Commercial amounts cannot be negative")
 			return
 		}
-		if !next.ActivationFeeWaived && next.Currency == "USD" && next.ActivationFee < 13000 {
-			common.APIError(w, 400, "VALIDATION", "New partner activation fee must be at least USD 13,000 unless explicitly waived")
+		if next.Currency=="USD" && next.MinimumMonthlyCommitment < 1500 {
+			common.APIError(w,400,"MINIMUM_MONTHLY_COMMITMENT","USD minimum monthly commitment cannot be below 1500")
 			return
 		}
+		next.CommercialConfigured=true
+		next.TermsVersion=current.TermsVersion+1
+		next.PricingModel="INDIVIDUAL_QUOTE"
 
 		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
 		if err != nil { common.APIError(w, 500, "DB", "Could not start terms update"); return }
 		defer tx.Rollback()
-		_, err = tx.Exec(`UPDATE billing.partner_terms SET currency=$2,activation_fee=$3,activation_fee_waived=$4,activation_fee_reason=$5,base_monthly_fee=$6,annual_increase_percent=$7,cycle_days=30,invoice_day=1,price_effective_from=$8,service_anchor_date=$9,updated_at=NOW() WHERE partner_id=$1`,
-			id, next.Currency, next.ActivationFee, next.ActivationFeeWaived, next.ActivationFeeReason, next.BaseMonthlyFee, next.AnnualIncreasePercent, next.PriceEffectiveFrom, next.ServiceAnchorDate)
+		_, err = tx.Exec(`UPDATE billing.partner_terms SET currency=$2,activation_fee=$3,activation_fee_waived=$4,activation_fee_reason=$5,base_monthly_fee=$6,minimum_monthly_commitment=$7,quote_reference=$8,commercial_configured=TRUE,terms_version=$9,contracted_at=COALESCE(contracted_at,NOW()),pricing_model='INDIVIDUAL_QUOTE',annual_increase_percent=$10,cycle_days=30,invoice_day=1,price_effective_from=$11,service_anchor_date=$12,updated_at=NOW() WHERE partner_id=$1`,
+			id, next.Currency, next.ActivationFee, next.ActivationFeeWaived, next.ActivationFeeReason, next.BaseMonthlyFee,next.MinimumMonthlyCommitment,next.QuoteReference,next.TermsVersion, next.AnnualIncreasePercent, next.PriceEffectiveFrom, next.ServiceAnchorDate)
 		if err != nil { common.APIError(w, 500, "DB", "Could not update terms"); return }
 
 		actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 		reason := strings.TrimSpace(in.Reason)
 		if reason == "" { reason = "HIMATE administrator commercial update" }
+		if _,err=tx.Exec(`INSERT INTO billing.partner_terms_history(partner_id,terms_version,currency,activation_fee,activation_fee_waived,base_monthly_fee,minimum_monthly_commitment,annual_increase_percent,price_effective_from,service_anchor_date,quote_reference,pricing_model,actor,reason)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'INDIVIDUAL_QUOTE',$12,$13)`,
+			id,next.TermsVersion,next.Currency,next.ActivationFee,next.ActivationFeeWaived,next.BaseMonthlyFee,next.MinimumMonthlyCommitment,next.AnnualIncreasePercent,next.PriceEffectiveFrom,next.ServiceAnchorDate,next.QuoteReference,actor,reason);err!=nil{
+			common.APIError(w,500,"DB","Could not save commercial terms history");return
+		}
 		if current.BaseMonthlyFee != next.BaseMonthlyFee || !sameDate(current.PriceEffectiveFrom, next.PriceEffectiveFrom) || current.Currency != next.Currency {
 			if _, err = tx.Exec(`INSERT INTO billing.base_fee_history(partner_id,currency,old_price,new_price,old_effective_from,new_effective_from,actor,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
 				id, next.Currency, current.BaseMonthlyFee, next.BaseMonthlyFee, current.PriceEffectiveFrom, next.PriceEffectiveFrom, actor, reason); err != nil {
@@ -590,7 +609,9 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			id, "", "COMMERCIAL_TERMS_UPDATED", termsEventAt, map[string]any{
 				"currency": next.Currency, "activation_fee": next.ActivationFee,
 				"activation_fee_waived": next.ActivationFeeWaived,
-				"base_30_day_fee": next.BaseMonthlyFee, "price_effective_from": next.PriceEffectiveFrom.Format("2006-01-02"),
+				"base_30_day_fee": next.BaseMonthlyFee, "minimum_monthly_commitment":next.MinimumMonthlyCommitment,
+				"quote_reference":next.QuoteReference,"terms_version":next.TermsVersion,"pricing_model":"INDIVIDUAL_QUOTE",
+				"price_effective_from": next.PriceEffectiveFrom.Format("2006-01-02"),
 				"actor": actor, "reason": reason,
 			}); err != nil {
 			common.APIError(w, 500, "DB", "Could not record commercial terms event")
@@ -606,11 +627,18 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 
 func sameDate(a, b time.Time) bool { return a.Format("2006-01-02") == b.Format("2006-01-02") }
 
+func nullableTermsTime(v sql.NullTime) any {
+	if !v.Valid{return nil}
+	return v.Time.UTC()
+}
+
 func termsMap(t terms) map[string]any {
 	return map[string]any{
 		"partner_id": t.PartnerID, "currency": t.Currency, "activation_fee": t.ActivationFee,
 		"activation_fee_waived": t.ActivationFeeWaived, "activation_fee_reason": t.ActivationFeeReason,
-		"base_monthly_fee": t.BaseMonthlyFee, "annual_increase_percent": t.AnnualIncreasePercent,
+		"base_monthly_fee": t.BaseMonthlyFee,"minimum_monthly_commitment":t.MinimumMonthlyCommitment,
+		"quote_reference":t.QuoteReference,"commercial_configured":t.CommercialConfigured,"terms_version":t.TermsVersion,"pricing_model":t.PricingModel,
+		"contracted_at":nullableTermsTime(t.ContractedAt),"annual_increase_percent": t.AnnualIncreasePercent,
 		"annual_increase_month": 1, "annual_increase_day": 1, "cycle_days": 30, "invoice_day": 1,
 		"price_effective_from": t.PriceEffectiveFrom.Format("2006-01-02"), "service_anchor_date": t.ServiceAnchorDate.Format("2006-01-02"),
 		"updated_at": t.UpdatedAt,
