@@ -140,6 +140,8 @@ func main(){
 	mux.HandleFunc("/public/v1/cms/seo",a.publicSEOSettings)
 	mux.HandleFunc("/preview/v1/cms/pages/",a.previewPage)
 	mux.HandleFunc("/preview/v1/cms/media/",a.previewMedia)
+	mux.HandleFunc("/preview/v1/cms/design",a.previewDesign)
+	mux.HandleFunc("/preview/v1/cms/design/media/",a.previewDesignMedia)
 	common.Run(log,"cms",common.Env("PORT","10000"),common.InternalAuth(a.token,mux))
 }
 
@@ -241,6 +243,10 @@ func (a *app)migrate(ctx context.Context)error{
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				published_at TIMESTAMPTZ
 			)`,
+		}},
+		{Version:6,Name:"start-23-8-design-preview-token",Statements:[]string{
+			`ALTER TABLE cms.site_design ADD COLUMN IF NOT EXISTS preview_token_hash TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE cms.site_design ADD COLUMN IF NOT EXISTS preview_token_issued_at TIMESTAMPTZ`,
 		}},
 	})
 }
@@ -532,7 +538,12 @@ func (a *app)promotePreview(w http.ResponseWriter,r *http.Request,p pageRow){
 	if _,err=tx.ExecContext(r.Context(),`UPDATE cms.pages SET preview_version_id=$2,preview_token_hash=$3,preview_token_issued_at=NOW(),updated_at=NOW() WHERE id=$1`,p.ID,v.ID,tokenHash(rawToken));err!=nil{common.APIError(w,500,"DB","Could not activate preview version");return}
 	if err=a.auditTx(r.Context(),tx,p.ID,v.ID,"PREVIEW_CREATED",actor(r),correlationID(r),map[string]any{"draft_version_id":draft.ID},decodeVersion(v));err!=nil{common.APIError(w,500,"DB","Could not audit CMS preview");return}
 	if err=tx.Commit();err!=nil{common.APIError(w,500,"DB","Could not commit CMS preview");return}
-	common.JSON(w,201,map[string]any{"preview":decodeVersion(v),"preview_token":rawToken,"preview_path":"/preview/v1/cms/pages/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken)})
+	common.JSON(w,201,map[string]any{
+		"preview":decodeVersion(v),
+		"preview_token":rawToken,
+		"preview_path":"/preview/v1/cms/pages/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken),
+		"preview_html_path":"/cms-preview/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken),
+	})
 }
 
 func (a *app)rotatePreviewToken(w http.ResponseWriter,r *http.Request,p pageRow){
@@ -542,7 +553,11 @@ func (a *app)rotatePreviewToken(w http.ResponseWriter,r *http.Request,p pageRow)
 	if _,err:=a.db.ExecContext(r.Context(),`UPDATE cms.pages SET preview_token_hash=$2,preview_token_issued_at=NOW(),updated_at=NOW() WHERE id=$1`,p.ID,tokenHash(rawToken));err!=nil{common.APIError(w,500,"DB","Could not rotate preview token");return}
 	_ = a.audit(r.Context(),p.ID,p.PreviewVersionID,"PREVIEW_TOKEN_ROTATED",actor(r),correlationID(r),map[string]any{},map[string]any{"preview_version_id":p.PreviewVersionID})
 	v,_:=a.getVersion(p.PreviewVersionID)
-	common.JSON(w,200,map[string]any{"preview_token":rawToken,"preview_path":"/preview/v1/cms/pages/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken)})
+	common.JSON(w,200,map[string]any{
+		"preview_token":rawToken,
+		"preview_path":"/preview/v1/cms/pages/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken),
+		"preview_html_path":"/cms-preview/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken),
+	})
 }
 
 func (a *app)publishedConflict(ctx context.Context,pageID string,in versionInput)error{
