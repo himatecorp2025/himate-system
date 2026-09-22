@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
+. scripts/payment_test_helpers.sh
+
 BASE_URL="${1:-http://127.0.0.1:8080}"
 TMP_ROOT="${TMPDIR:-/tmp}"
 COOKIE="$TMP_ROOT/himate-223-owner.txt"
@@ -76,19 +78,15 @@ echo ok
 printf 'agreement and activation invoice are recorded explicitly... '
 curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json'   -d '{"status":"AGREED","agreement_reference":"contract://start223/signed-001","note":"START-22.3 acceptance agreement"}'   "$BASE_URL/api/v1/billing/partners/$partner_id/agreement" >/dev/null
 curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"kind":"INVOICE","name":"Activation Fee Invoice","storage_url":"evidence://start223/activation-invoice-001","note":"START-22.3 activation invoice","mime_type":"application/pdf","sha256":"","size_bytes":0}'   "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
-no_payment_evidence="$(status "$COOKIE" PUT "/api/v1/billing/partners/$partner_id/license" -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"paid_amount":13000,"payment_date":"'"$TODAY"'","payment_reference":"PAY-START223-001","verified_by":"start223-ci","note":"Should fail before payment evidence","waived":false,"waiver_reason":""}')"
-test "$no_payment_evidence" = "409"
-grep -q 'PAYMENT_EVIDENCE_REQUIRED' "$BODY"
+manual_paid="$(status "$COOKIE" PUT "/api/v1/billing/partners/$partner_id/license" -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"paid_amount":13000,"payment_date":"'"$TODAY"'","payment_reference":"PAY-START223-001","verified_by":"start223-ci","note":"Manual PAID must be rejected","waived":false,"waiver_reason":""}')"
+test "$manual_paid" = "409"
+grep -q 'PROVIDER_MANAGED_PAYMENT' "$BODY"
 echo ok
 
-printf 'payment evidence unlocks PAID license and provisioning gate... '
-curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"kind":"PAYMENT_EVIDENCE","name":"Activation payment receipt","storage_url":"evidence://start223/payment-001","note":"Verified bank receipt","mime_type":"application/pdf","sha256":"","size_bytes":0}'   "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
-license_payload="$(python3 - "$TODAY" <<'PY'
-import json,sys
-print(json.dumps({"currency":"USD","required_amount":13000,"paid_amount":13000,"payment_date":sys.argv[1],"payment_reference":"PAY-START223-001","verified_by":"start223-ci","note":"Verified START-22.3 activation payment","waived":False,"waiver_reason":""}))
-PY
-)"
-curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$license_payload" "$BASE_URL/api/v1/billing/partners/$partner_id/license" >/dev/null
+printf 'provider-backed payment unlocks PAID license and provisioning gate... '
+curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"kind":"PAYMENT_EVIDENCE","name":"Activation payment receipt","storage_url":"evidence://start223/payment-001","note":"Verified provider receipt","mime_type":"application/pdf","sha256":"","size_bytes":0}'   "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
+curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"note":"START-23.4 provider-backed activation payment","waived":false,"waiver_reason":""}' "$BASE_URL/api/v1/billing/partners/$partner_id/license" >/dev/null
+provider_pay_activation "$BASE_URL" "$COOKIE" "$partner_id" "start223"
 ready="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/commercial-status")"
 printf '%s' "$ready" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["provisioning_allowed"] is True; assert d["payment"]["status"]=="PAID"; assert d["evidence"]["invoice_count"]>=1; assert d["evidence"]["payment_evidence_count"]>=1; assert all(x["complete"] is True for x in d["workflow"])'
 echo ok
