@@ -769,8 +769,8 @@
       "localization_state": "PARTIAL",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.3",
-      "e2e_proof": "scripts/smoke_start_23_3.sh: direct admin ACTIVE -> NOT_LICENSED bypass rejected; Billing owns period-end deactivation",
-      "notes": "Commercial price/fee editing remains Catalog-owned. Active paid-period deactivation is Billing-owned and cannot be bypassed by admin Catalog mutation."
+      "e2e_proof": "scripts/smoke_start_23_3.sh: direct ACTIVE -> NOT_LICENSED and indirect ACTIVE -> MAINTENANCE -> NOT_LICENSED admin bypasses rejected; Billing owns period-end deactivation",
+      "notes": "Commercial price/fee editing remains Catalog-owned. Any external transition into NOT_LICENSED from a live or maintenance entitlement is rejected; Billing owns final period-end deactivation."
     },
     {
       "id": "PART-MODULE-CANCEL",
