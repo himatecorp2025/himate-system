@@ -11,11 +11,19 @@ class ModuleControlPlanePage extends StatefulWidget {
 class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> groups = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> commercialRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> subscriptionRows = <Map<String, dynamic>>[];
   bool loading = false;
   String? error;
   String query = '';
   String groupFilter = 'ALL';
   String typeFilter = 'ALL';
+  String commercialQuery = '';
+  String commercialPartnerFilter = 'ALL';
+  String commercialModuleFilter = 'ALL';
+  String commercialStatusFilter = 'ALL';
+  int commercialShown = 120;
 
   static const moduleTypes = <String>[
     'CORE','FEATURE','INTEGRATION','REPORTING','WEBSITE','FINANCE','INFRASTRUCTURE',
@@ -38,11 +46,29 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       final responses = await Future.wait([
         widget.api.get('/api/v1/modules', force: true),
         widget.api.get('/api/v1/module-groups', force: true),
+        widget.api.get('/api/v1/partners?limit=200&offset=0&core_only=true', force: true),
       ]);
+      final partnerItems = items(responses[2]);
+      final partnerIDs = partnerItems.map((p) => s(p['id'])).where((id) => id.isNotEmpty).toList();
+      Map<String, dynamic> matrix = <String, dynamic>{'items': <Map<String, dynamic>>[]};
+      Map<String, dynamic> subscriptions = <String, dynamic>{'items': <Map<String, dynamic>>[]};
+      if (partnerIDs.isNotEmpty) {
+        final encoded = Uri.encodeQueryComponent(partnerIDs.join(','));
+        final commercial = await Future.wait([
+          widget.api.get('/api/v1/module-commercial-matrix?partner_ids=$encoded', force: true),
+          widget.api.get('/api/v1/billing/subscription-matrix?partner_ids=$encoded', force: true),
+        ]);
+        matrix = commercial[0];
+        subscriptions = commercial[1];
+      }
       if (!mounted) return;
       setState(() {
         modules = items(responses[0]);
         groups = items(responses[1]);
+        partners = partnerItems;
+        commercialRows = items(matrix);
+        subscriptionRows = items(subscriptions);
+        commercialShown = 120;
         loading = false;
       });
     } catch (e) {
@@ -69,6 +95,189 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           (groupFilter == 'ALL' || s(module['group_key']) == groupFilter) &&
           (typeFilter == 'ALL' || s(module['module_type']) == typeFilter);
     }).toList();
+  }
+
+  String partnerName(String partnerID) {
+    for (final partner in partners) {
+      if (s(partner['id']) == partnerID) {
+        final display = s(partner['display_name']).trim();
+        return display.isEmpty ? partnerID : display;
+      }
+    }
+    return partnerID;
+  }
+
+  Map<String, dynamic>? commercialSubscription(String partnerID, String moduleKey) {
+    for (final item in subscriptionRows) {
+      if (s(item['partner_id']) == partnerID && s(item['module_key']) == moduleKey) return item;
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> get filteredCommercialRows {
+    final q = commercialQuery.trim().toLowerCase();
+    return commercialRows.where((row) {
+      final partnerID = s(row['partner_id']);
+      final moduleKey = s(row['key']);
+      final text = [
+        partnerName(partnerID), partnerID, s(row['label']), moduleKey, s(row['group_label']),
+      ].join(' ').toLowerCase();
+      return (q.isEmpty || text.contains(q)) &&
+          (commercialPartnerFilter == 'ALL' || partnerID == commercialPartnerFilter) &&
+          (commercialModuleFilter == 'ALL' || moduleKey == commercialModuleFilter) &&
+          (commercialStatusFilter == 'ALL' || s(row['status']) == commercialStatusFilter);
+    }).toList();
+  }
+
+  Future<void> editCommercialAssignment(Map<String, dynamic> row) async {
+    final partnerID = s(row['partner_id']);
+    final moduleKey = s(row['key']);
+    bool visible = row['visible'] == true;
+    bool included = row['included_in_base'] == true;
+    final recurring = TextEditingController(text: number(row['partner_price']).toStringAsFixed(2));
+    final activation = TextEditingController(text: number(row['partner_activation_fee']).toStringAsFixed(2));
+    final recurringEffective = TextEditingController();
+    final activationEffective = TextEditingController();
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: partnerName(partnerID) + ' · ' + s(row['label']),
+          subtitle: 'Partner-specific commercial pricing. Current paid-period snapshots remain immutable.',
+          icon: Icons.price_change_outlined,
+          width: 760,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _RuleStrip(items: [
+              _RuleItem(Icons.toggle_on_outlined, 'Entitlement', _humanize(s(row['status']))),
+              _RuleItem(Icons.sell_outlined, 'Default 30-day price', money(row['default_monthly_price'])),
+              _RuleItem(Icons.bolt_outlined, 'Default activation fee', money(row['default_activation_fee'])),
+            ]),
+            const SizedBox(height: 14),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: visible,
+              onChanged: (value) => setLocal(() => visible = value),
+              title: const LText('Visible to partner'),
+            ),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: included,
+              onChanged: (value) => setLocal(() => included = value),
+              title: const LText('Included in base service'),
+              subtitle: const LText('Included modules remain visible in the commercial matrix but add no recurring module fee.'),
+            ),
+            const SizedBox(height: 8),
+            ResponsiveFieldPair(
+              first: TextField(
+                controller: recurring,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: uiLiteral('Partner 30-day price')),
+              ),
+              second: TextField(
+                controller: recurringEffective,
+                decoration: InputDecoration(labelText: uiLiteral('Price effective at'), hintText: uiLiteral('Optional RFC3339 timestamp')),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(
+                controller: activation,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: uiLiteral('Partner activation fee')),
+              ),
+              second: TextField(
+                controller: activationEffective,
+                decoration: InputDecoration(labelText: uiLiteral('Activation fee effective at'), hintText: uiLiteral('Optional RFC3339 timestamp')),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reason,
+              decoration: InputDecoration(labelText: uiLiteral('Change reason'), hintText: uiLiteral('Recorded in partner-module commercial history')),
+            ),
+          ]),
+          primaryLabel: 'Save commercial terms',
+          onPrimary: () => Navigator.pop(dialogContext, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      final recurringValue = double.tryParse(recurring.text);
+      final activationValue = double.tryParse(activation.text);
+      if (recurringValue == null || recurringValue < 0 || activationValue == null || activationValue < 0) {
+        notify('Commercial prices must be zero or greater.', failure: true);
+      } else {
+        try {
+          await widget.api.patch('/api/v1/partners/$partnerID/modules/$moduleKey', {
+            'visible': visible,
+            'included_in_base': included,
+            'partner_price': recurringValue,
+            'price_effective_at': recurringEffective.text.trim(),
+            'partner_activation_fee': activationValue,
+            'activation_fee_effective_at': activationEffective.text.trim(),
+            'reason': reason.text.trim(),
+          });
+          await load();
+          if (mounted) notify('Partner-module commercial terms updated.');
+        } catch (e) {
+          if (mounted) notify(e.toString(), failure: true);
+        }
+      }
+    }
+    for (final controller in [recurring, activation, recurringEffective, activationEffective, reason]) {
+      controller.dispose();
+    }
+  }
+
+  Widget commercialCard(Map<String, dynamic> row) {
+    final partnerID = s(row['partner_id']);
+    final moduleKey = s(row['key']);
+    final subscription = commercialSubscription(partnerID, moduleKey);
+    final configuredNext = row['next_partner_price'] ?? row['partner_price'];
+    final nextAt = s(row['next_price_effective_at']).trim();
+    final currentPeriod = subscription == null
+        ? 'Not started'
+        : s(subscription['period_start']) + ' → ' + s(subscription['period_end_exclusive']);
+    final renewalState = subscription == null
+        ? 'No subscription'
+        : subscription['cancel_at_period_end'] == true
+            ? 'Cancels at period end'
+            : subscription['auto_renew'] == true
+                ? 'Auto-renew'
+                : 'No renewal';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              LText(partnerName(partnerID), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13)),
+              const SizedBox(height: 3),
+              LText(s(row['label']) + ' · ' + moduleKey, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+            ])),
+            _StatusPill(label: s(row['status'])),
+          ]),
+          const SizedBox(height: 12),
+          _DefinitionRow(label: 'Current period price', value: subscription == null ? '—' : money(subscription['price'])),
+          _DefinitionRow(label: 'Configured 30-day price', value: row['included_in_base'] == true ? 'Included' : money(row['partner_price'])),
+          _DefinitionRow(label: 'Next configured price', value: money(configuredNext) + (nextAt.isEmpty ? '' : ' · ' + HimateI18n.date(HimateI18n.activeLocale, DateTime.tryParse(nextAt)))),
+          _DefinitionRow(label: 'Activation fee', value: money(row['partner_activation_fee'])),
+          _DefinitionRow(label: 'Current period', value: currentPeriod),
+          _DefinitionRow(label: 'Renewal', value: renewalState),
+          _DefinitionRow(label: 'Partner visibility', value: row['visible'] == true ? 'Visible' : 'Hidden'),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => editCommercialAssignment(row),
+              icon: const Icon(Icons.price_change_outlined, size: 17),
+              label: const LText('Edit commercial pricing'),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 
   Future<void> addGroup() async {
@@ -117,6 +326,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final key = TextEditingController(text: s(module?['key']));
     final description = TextEditingController(text: s(module?['description']));
     final price = TextEditingController(text: number(module?['default_monthly_price']).toStringAsFixed(2));
+    final activationFee = TextEditingController(text: number(module?['default_activation_fee']).toStringAsFixed(2));
     final owner = TextEditingController(text: s(module?['owner_team']));
     final repo = TextEditingController(text: s(module?['source_repository']));
     final path = TextEditingController(text: s(module?['source_path']));
@@ -164,7 +374,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             const SizedBox(height: 12),
             ResponsiveFieldPair(
               first: TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Default 30-day price'))),
-              second: DropdownButtonFormField<String>(
+              second: TextField(controller: activationFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Default activation fee'))),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
                 value: availability,
                 decoration: InputDecoration(labelText: uiLiteral('Availability')),
                 items: const [
@@ -174,7 +387,6 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 ],
                 onChanged: (value) { if (value != null) setLocal(() => availability = value); },
               ),
-            ),
             const SizedBox(height: 12),
             TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Description'))),
             const SizedBox(height: 18),
@@ -221,6 +433,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               if (!editing) 'version': latestVersion.text.trim().isEmpty ? '1.0.0' : latestVersion.text.trim(),
               'latest_version': latestVersion.text.trim().isEmpty ? '1.0.0' : latestVersion.text.trim(),
               'default_monthly_price': double.tryParse(price.text) ?? 0,
+              'default_activation_fee': double.tryParse(activationFee.text) ?? 0,
               'availability': availability,
               'module_type': type,
               'owner_team': owner.text.trim(),
@@ -237,7 +450,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         ),
       ),
     );
-    for (final controller in [label,key,description,price,owner,repo,path,sourceRef,commit,artifactType,artifactReference,latestVersion,minPlatform]) {
+    for (final controller in [label,key,description,price,activationFee,owner,repo,path,sourceRef,commit,artifactType,artifactReference,latestVersion,minPlatform]) {
       controller.dispose();
     }
     return result;
@@ -534,6 +747,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           _DefinitionRow(label: 'Group', value: s(module['group_label']).isEmpty ? s(module['group_key']) : s(module['group_label'])),
           _DefinitionRow(label: 'Type', value: _humanize(s(module['module_type']).isEmpty ? 'FEATURE' : s(module['module_type']))),
           _DefinitionRow(label: 'Default 30-day price', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['default_monthly_price']).toStringAsFixed(2)),
+          _DefinitionRow(label: 'Default activation fee', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['default_activation_fee']).toStringAsFixed(2)),
           _DefinitionRow(label: 'Latest version', value: s(module['latest_version']).isEmpty ? '—' : s(module['latest_version'])),
           _DefinitionRow(label: 'Owner', value: s(module['owner_team']).isEmpty ? '—' : s(module['owner_team'])),
           const SizedBox(height: 8),
@@ -568,7 +782,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     return Content(
       eyebrow: 'MODULE CONTROL PLANE',
       title: 'Modules',
-      subtitle: 'Authoritative registry, source identity, releases, dependencies, impact mapping and partner usage.',
+      subtitle: 'Authoritative registry plus partner-by-partner commercial pricing, activation fees, subscription periods, dependencies and usage.',
       actions: [
         OutlinedButton.icon(onPressed: loading ? null : addGroup, icon: const Icon(Icons.category_outlined), label: const LText('Add group')),
         FilledButton.icon(onPressed: loading || groups.isEmpty ? null : addModule, icon: const Icon(Icons.add_box_outlined), label: const LText('Add module')),
@@ -583,6 +797,102 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 Kpi(label: 'Relationships', value: relations.toString(), note: partnerUsage.toString() + ' active partner assignments', icon: Icons.account_tree_outlined, accent: brandGold),
               ]),
               const SizedBox(height: 22),
+              _SectionHeader(
+                title: 'Partner × Module Commercial Matrix',
+                subtitle: 'Authoritative partner assignment, recurring price, activation fee and current subscription period in one control plane.',
+                trailing: _MiniCounter(label: filteredCommercialRows.length.toString() + ' assignments'),
+              ),
+              const SizedBox(height: 12),
+              _FilterSurface(
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final search = TextField(
+                    onChanged: (value) => setState(() { commercialQuery = value; commercialShown = 120; }),
+                    decoration: InputDecoration(hintText: uiLiteral('Search partner or module...'), prefixIcon: Icon(Icons.search_rounded)),
+                  );
+                  final partner = DropdownButtonFormField<String>(
+                    value: commercialPartnerFilter,
+                    decoration: InputDecoration(labelText: uiLiteral('Partner')),
+                    items: [
+                      const DropdownMenuItem(value: 'ALL', child: LText('All partners')),
+                      for (final item in partners)
+                        DropdownMenuItem(value: s(item['id']), child: LText(partnerName(s(item['id'])))),
+                    ],
+                    onChanged: (value) => setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; }),
+                  );
+                  final module = DropdownButtonFormField<String>(
+                    value: commercialModuleFilter,
+                    decoration: InputDecoration(labelText: uiLiteral('Module')),
+                    items: [
+                      const DropdownMenuItem(value: 'ALL', child: LText('All modules')),
+                      for (final item in modules)
+                        DropdownMenuItem(value: s(item['key']), child: LText(s(item['label']))),
+                    ],
+                    onChanged: (value) => setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; }),
+                  );
+                  final status = DropdownButtonFormField<String>(
+                    value: commercialStatusFilter,
+                    decoration: InputDecoration(labelText: uiLiteral('State')),
+                    items: const [
+                      DropdownMenuItem(value: 'ALL', child: LText('All states')),
+                      DropdownMenuItem(value: 'ACTIVE', child: LText('Active')),
+                      DropdownMenuItem(value: 'NOT_LICENSED', child: LText('Not licensed')),
+                      DropdownMenuItem(value: 'MAINTENANCE', child: LText('Maintenance')),
+                    ],
+                    onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
+                  );
+                  if (constraints.maxWidth < 760) {
+                    return Column(children: [
+                      search,
+                      const SizedBox(height: 10),
+                      partner,
+                      const SizedBox(height: 10),
+                      module,
+                      const SizedBox(height: 10),
+                      status,
+                    ]);
+                  }
+                  return Column(children: [
+                    Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: partner)]),
+                    const SizedBox(height: 10),
+                    Row(children: [Expanded(child: module), const SizedBox(width: 10), Expanded(child: status)]),
+                  ]);
+                }),
+              ),
+              const SizedBox(height: 12),
+              Builder(builder: (context) {
+                final rows = filteredCommercialRows;
+                if (rows.isEmpty) {
+                  return const _MessageCard(
+                    icon: Icons.price_change_outlined,
+                    title: 'No partner-module assignments found',
+                    message: 'Adjust the filters or create partners/modules to populate the commercial matrix.',
+                  );
+                }
+                final visibleRows = rows.take(commercialShown).toList();
+                return Column(children: [
+                  LayoutBuilder(builder: (context, constraints) {
+                    final width = constraints.maxWidth < 680
+                        ? constraints.maxWidth
+                        : constraints.maxWidth < 1120
+                            ? (constraints.maxWidth - 12) / 2
+                            : (constraints.maxWidth - 24) / 3;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [for (final row in visibleRows) SizedBox(width: width, child: commercialCard(row))],
+                    );
+                  }),
+                  if (visibleRows.length < rows.length) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() => commercialShown += 120),
+                      icon: const Icon(Icons.expand_more_rounded),
+                      label: LText('Show more · ' + (rows.length - visibleRows.length).toString() + ' remaining'),
+                    ),
+                  ],
+                ]);
+              }),
+              const SizedBox(height: 26),
               _SectionHeader(
                 title: 'Module Registry',
                 subtitle: 'Source code remains versioned in Git; HIMATE stores the authoritative identity, source pointer, release and commercial metadata.',
