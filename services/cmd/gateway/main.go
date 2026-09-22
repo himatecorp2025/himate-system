@@ -1705,7 +1705,8 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	if err!=nil { common.APIError(w,http.StatusBadRequest,"VALIDATION",err.Error());return }
 
 	activity,activityErr:=a.dashboardRecentActivity(actor,6)
-	cacheable:=year==time.Now().UTC().Year()
+	refresh:=strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")),"true")
+	cacheable:=year==time.Now().UTC().Year() && !refresh
 
 	// The shared cache intentionally excludes permission-scoped recent activity.
 	// This prevents one administrator's visible audit domains from leaking to another.
