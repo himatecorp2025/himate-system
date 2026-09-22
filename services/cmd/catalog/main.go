@@ -359,6 +359,9 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 			Version string `json:"version"`
 			LatestVersion string `json:"latest_version"`
 			Availability string `json:"availability"`
+			PublicationStatus string `json:"publication_status"`
+			ImplementationState string `json:"implementation_state"`
+			LegacyReference string `json:"legacy_reference"`
 			ModuleType string `json:"module_type"`
 			OwnerTeam string `json:"owner_team"`
 			SourceRepository string `json:"source_repository"`
@@ -381,20 +384,25 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		if descEN==""{descEN=legacyDesc}; if descHU==""{descHU=legacyDesc}
 		if labelEN==""||labelHU==""{common.APIError(w,400,"VALIDATION","English and Hungarian module labels are required");return}
 		if in.Currency==""{in.Currency="USD"}; if in.Version==""{in.Version="1.0.0"}; if in.LatestVersion==""{in.LatestVersion=in.Version}
-		if in.Availability==""{in.Availability="ACTIVE"}; in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
-		if !availabilityValues[in.Availability] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
+		if in.Availability==""{in.Availability="ACTIVE"}
+		in.PublicationStatus=strings.ToUpper(strings.TrimSpace(in.PublicationStatus)); if in.PublicationStatus==""{in.PublicationStatus="UNPUBLISHED"}
+		in.ImplementationState=strings.ToUpper(strings.TrimSpace(in.ImplementationState)); if in.ImplementationState==""{in.ImplementationState="IN_DEVELOPMENT"}
+		in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
+		if !availabilityValues[in.Availability] || !publicationStates[in.PublicationStatus] || !implementationStates[in.ImplementationState] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
+		if in.PublicationStatus=="PUBLISHED" && in.ImplementationState!="READY" { common.APIError(w,409,"MODULE_NOT_READY","Only READY modules can be published");return }
 		manifest,_:=json.Marshal(in.Manifest); if len(manifest)==0{manifest=[]byte("{}")}
 		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
 			module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
-			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest)
-			VALUES($1,$2,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11,FALSE,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb)`,
+			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest,publication_status,implementation_state,legacy_reference)
+			VALUES($1,$2,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11,FALSE,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23,$24,$25)`,
 			in.Key,labelEN,labelHU,in.GroupKey,descEN,descHU,in.DefaultMonthlyPrice,in.DefaultActivationFee,in.Currency,in.Version,in.LatestVersion,
 			in.Availability,in.ModuleType,strings.TrimSpace(in.OwnerTeam),strings.TrimSpace(in.SourceRepository),strings.TrimSpace(in.SourcePath),
 			strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.SourceCommit),strings.TrimSpace(in.ArtifactType),strings.TrimSpace(in.ArtifactReference),
-			strings.TrimSpace(in.MinPlatformVersion),string(manifest))
+			strings.TrimSpace(in.MinPlatformVersion),string(manifest),in.PublicationStatus,in.ImplementationState,strings.TrimSpace(in.LegacyReference))
 		if err!=nil{common.APIError(w,409,"CONFLICT","Module could not be created");return}
 		common.JSON(w,201,map[string]any{"key":in.Key,"label":common.Localized(labelEN,labelHU,common.RequestLocale(r)),"label_en":labelEN,"label_hu":labelHU,"description_en":descEN,"description_hu":descHU,"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,"default_activation_fee":in.DefaultActivationFee,
-			"currency":in.Currency,"version":in.Version,"latest_version":in.LatestVersion,"availability":in.Availability,"module_type":in.ModuleType,"system":false})
+			"currency":in.Currency,"version":in.Version,"latest_version":in.LatestVersion,"availability":in.Availability,"publication_status":in.PublicationStatus,
+			"implementation_state":in.ImplementationState,"legacy_reference":strings.TrimSpace(in.LegacyReference),"module_type":in.ModuleType,"pricing_authority":"PARTNER_CONTRACT","system":false})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
@@ -424,6 +432,9 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		DescriptionHU *string `json:"description_hu"`
 		GroupKey *string `json:"group_key"`
 		Availability *string `json:"availability"`
+		PublicationStatus *string `json:"publication_status"`
+		ImplementationState *string `json:"implementation_state"`
+		LegacyReference *string `json:"legacy_reference"`
 		LatestVersion *string `json:"latest_version"`
 		ModuleType *string `json:"module_type"`
 		OwnerTeam *string `json:"owner_team"`
@@ -439,11 +450,11 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		Manifest map[string]any `json:"manifest"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-	var labelEN,labelHU,descEN,descHU,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+	var labelEN,labelHU,descEN,descHU,groupKey,availability,publicationStatus,implementationState,legacyReference,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
 	var price,activationFee float64; var manifestRaw []byte
-	if err:=a.db.QueryRow(`SELECT label_en,label_hu,description_en,description_hu,group_key,default_monthly_price,default_activation_fee,availability,latest_version,module_type,owner_team,source_repository,source_path,
+	if err:=a.db.QueryRow(`SELECT label_en,label_hu,description_en,description_hu,group_key,default_monthly_price,default_activation_fee,availability,publication_status,implementation_state,legacy_reference,latest_version,module_type,owner_team,source_repository,source_path,
 		source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest FROM catalog.modules WHERE module_key=$1`,key).
-		Scan(&labelEN,&labelHU,&descEN,&descHU,&groupKey,&price,&activationFee,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
+		Scan(&labelEN,&labelHU,&descEN,&descHU,&groupKey,&price,&activationFee,&availability,&publicationStatus,&implementationState,&legacyReference,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
 		common.APIError(w,404,"NOT_FOUND","Module not found");return
 	}
 	if in.Label!=nil{legacy:=strings.TrimSpace(*in.Label);if in.LabelEN==nil{labelEN=legacy};if in.LabelHU==nil{labelHU=legacy}}
@@ -453,21 +464,24 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 	if in.DescriptionEN!=nil{descEN=strings.TrimSpace(*in.DescriptionEN)}
 	if in.DescriptionHU!=nil{descHU=strings.TrimSpace(*in.DescriptionHU)}
 	set:=func(dst *string,src *string){if src!=nil{*dst=strings.TrimSpace(*src)}}
-	set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
+	set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&publicationStatus,in.PublicationStatus);set(&implementationState,in.ImplementationState);set(&legacyReference,in.LegacyReference);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
 	set(&repo,in.SourceRepository);set(&path,in.SourcePath);set(&ref,in.SourceRef);set(&commit,in.SourceCommit);set(&artifactType,in.ArtifactType);set(&artifactRef,in.ArtifactReference);set(&minPlatform,in.MinPlatformVersion)
-	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
-	if labelEN==""||labelHU==""||price<0||activationFee<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid bilingual module update");return}
+	availability=strings.ToUpper(availability);publicationStatus=strings.ToUpper(publicationStatus);implementationState=strings.ToUpper(implementationState);moduleType=strings.ToUpper(moduleType)
+	if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
+	if labelEN==""||labelHU==""||price<0||activationFee<0||!availabilityValues[availability]||!publicationStates[publicationStatus]||!implementationStates[implementationState]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid bilingual module update");return}
+	if publicationStatus=="PUBLISHED" && implementationState!="READY"{common.APIError(w,409,"MODULE_NOT_READY","Only READY modules can be published");return}
 	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
 	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,label_en=$2,label_hu=$3,description=$4,description_en=$4,description_hu=$5,group_key=$6,
 		default_monthly_price=$7,default_activation_fee=$8,availability=$9,latest_version=$10,module_type=$11,owner_team=$12,source_repository=$13,source_path=$14,
-		source_ref=$15,source_commit=$16,artifact_type=$17,artifact_reference=$18,min_platform_version=$19,manifest=$20::jsonb,last_updated_at=NOW()
-		WHERE module_key=$1`,key,labelEN,labelHU,descEN,descHU,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
+		source_ref=$15,source_commit=$16,artifact_type=$17,artifact_reference=$18,min_platform_version=$19,manifest=$20::jsonb,publication_status=$21,implementation_state=$22,legacy_reference=$23,last_updated_at=NOW()
+		WHERE module_key=$1`,key,labelEN,labelHU,descEN,descHU,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw),publicationStatus,implementationState,legacyReference);err!=nil{
 		common.APIError(w,409,"CONFLICT","Module could not be updated");return
 	}
 	common.JSON(w,200,map[string]any{
 		"key":key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
 		"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
 		"group_key":groupKey,"default_monthly_price":price,"default_activation_fee":activationFee,"availability":availability,
+		"publication_status":publicationStatus,"implementation_state":implementationState,"legacy_reference":legacyReference,"pricing_authority":"PARTNER_CONTRACT",
 		"latest_version":latestVersion,"module_type":moduleType,"owner_team":owner,"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,
 		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform,
 	})
