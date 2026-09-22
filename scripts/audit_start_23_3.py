@@ -34,8 +34,8 @@ for token in required_billing:
 
 if 'BILLING_LIFECYCLE_REQUIRED' not in catalog:
     errors.append("Catalog does not block external ACTIVE -> NOT_LICENSED bypass")
-if 'old == "ACTIVE" && *in.Status == "NOT_LICENSED" && !internal' not in catalog:
-    errors.append("Catalog bypass guard is not restricted to external admin mutation")
+if '*in.Status == "NOT_LICENSED" && old != "NOT_LICENSED" && !internal' not in catalog:
+    errors.append("Catalog does not block all external transitions into NOT_LICENSED")
 
 if 'fmt.Sprint(target["status"])!="ACTIVE"' in portal:
     errors.append("Partner Portal still gates cancellation on Catalog ACTIVE status")
