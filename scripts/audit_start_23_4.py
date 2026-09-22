@@ -31,6 +31,7 @@ required_payments = [
     "payments.webhook_events",
     "PAYMENT_AMOUNT_MISMATCH",
     "WEBHOOK_EVENT_CONFLICT",
+    "RETRYABLE",
     "PROCESSED",
     "/internal/v1/payments/settlements",
 ]
@@ -44,6 +45,8 @@ for token in [
     "LICENSE_PAID",
     "INVOICE_PAID",
     "queueInvoiceCollection",
+    "retryPendingInvoiceCollections",
+    "COLLECTION_PENDING",
     "collectActivationLicense",
     "/internal/v1/payments/settlements",
 ]:
