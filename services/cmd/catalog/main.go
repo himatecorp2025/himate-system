@@ -582,6 +582,10 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if old != *in.Status {
+			if old == "ACTIVE" && *in.Status == "NOT_LICENSED" && !internal {
+				common.APIError(w, 409, "BILLING_LIFECYCLE_REQUIRED", "Active paid-period modules must be cancelled through Billing and remain active until the period end")
+				return
+			}
 			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET
 					status=$3,
 					activated_at=CASE WHEN $3='ACTIVE' THEN NOW() ELSE activated_at END,
