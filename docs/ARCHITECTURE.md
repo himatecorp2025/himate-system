@@ -309,7 +309,13 @@ The administration Modules surface joins two read models without duplicating own
 
 Module registry defaults now include a one-time activation fee. Each partner assignment can override both recurring price and activation fee with effective dates and actor/reason history. Current paid-period snapshots remain immutable when configured future prices change.
 
-The legacy module create/edit path in Licensing & Finance has been removed so the Modules control plane is the only administrative registry owner. Normal cancellation is intentionally not finalized here: START-23.3 will unify admin and Partner Portal cancellation behind one Billing-owned period-end state machine.
+The legacy module create/edit path in Licensing & Finance has been removed so the Modules control plane is the only administrative registry owner. Normal cancellation is intentionally not finalized here: START-23.3 makes Billing authoritative for module-subscription lifecycle. Each subscription has an explicit `ACTIVE`, `CANCEL_PENDING` or `INACTIVE` state. Admin and Partner Portal cancellation commands converge on the same Billing mutation and append the same subscription-history/Billing-event trail.
+
+Catalog remains authoritative for assignment metadata, visibility and commercial configuration, but cannot externally terminate an active paid-period entitlement. An external `ACTIVE -> NOT_LICENSED` request is rejected; after the exact 30-day period boundary the Billing cycle uses the private internal Catalog path to complete deactivation. This preserves paid access and immutable period pricing while preventing an admin UI or API caller from bypassing the commercial lifecycle.
+
+The subscription read model suppresses next-period quotes for `CANCEL_PENDING` and `INACTIVE` subscriptions. Therefore UI surfaces cannot display a misleading next renewal after cancellation is scheduled. Cancellation may be withdrawn before period end, returning the subscription to `ACTIVE`.
+
+The Render Blueprint's daily `himate-30day-invoice-cycle` job executes the same Billing lifecycle engine. Daily execution is intentionally independent of partner base-fee dates: each module boundary is evaluated, missed-run catch-up is deterministic from immutable snapshots, and repeated execution at the same boundary is idempotent.
 
 ## Backups and verified recovery (START-21)
 
