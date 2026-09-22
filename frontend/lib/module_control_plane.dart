@@ -314,11 +314,13 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         : s(subscription['period_start']) + ' → ' + s(subscription['period_end_exclusive']);
     final renewalState = subscription == null
         ? 'No subscription'
-        : subscription['cancel_at_period_end'] == true
-            ? 'Cancels at period end'
-            : subscription['auto_renew'] == true
-                ? 'Auto-renew'
-                : 'No renewal';
+        : s(subscription['lifecycle_state']).isNotEmpty
+            ? _humanize(s(subscription['lifecycle_state']))
+            : subscription['cancel_at_period_end'] == true
+                ? 'Cancels at period end'
+                : subscription['auto_renew'] == true
+                    ? 'Auto-renew'
+                    : 'No renewal';
     final primaryTitle = commercialPerspective == 'MODULE' ? s(row['label']) : partnerName(partnerID);
     final secondaryTitle = commercialPerspective == 'MODULE'
         ? partnerName(partnerID) + ' · ' + partnerID
@@ -356,7 +358,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           _DefinitionRow(label: 'Next configured price', value: commercialMoney(configuredNext, currency) + (nextAtLabel.isEmpty ? '' : ' · ' + nextAtLabel)),
           _DefinitionRow(label: 'Activation fee', value: commercialMoney(row['partner_activation_fee'], currency)),
           _DefinitionRow(label: 'Activation fee source', value: _humanize(s(row['activation_fee_source']))),
-          _DefinitionRow(label: 'Renewal', value: renewalState),
+          _DefinitionRow(label: 'Subscription lifecycle', value: renewalState),
+          if (subscription?['cancellation_effective_at'] != null)
+            _DefinitionRow(label: 'Cancellation effective', value: s(subscription?['cancellation_effective_at'])),
           _DefinitionRow(label: 'Partner visibility', value: row['visible'] == true ? 'Visible' : 'Hidden'),
           const SizedBox(height: 10),
           ResponsiveActionBar(
