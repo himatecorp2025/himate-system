@@ -641,7 +641,7 @@ class _HimateAppState extends State<HimateApp> {
         backgroundColor: brandNavyDeep,
         body: Center(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             children: [
               BrandMark(size: 42),
               SizedBox(height: 16),
@@ -6247,7 +6247,7 @@ class BrandDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.fromLTRB(22, 20, 18, 18),
+                padding: EdgeInsets.fromLTRB(phone ? 16 : 22, phone ? 14 : 20, phone ? 10 : 18, phone ? 12 : 18),
                 decoration: const BoxDecoration(
                   border: Border(bottom: BorderSide(color: brandMist)),
                 ),
@@ -6255,19 +6255,19 @@ class BrandDialog extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 42,
-                      height: 42,
+                      width: phone ? 36 : 42,
+                      height: phone ? 36 : 42,
                       decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(11)),
-                      child: Icon(icon, color: brandGold, size: 21),
+                      child: Icon(icon, color: brandGold, size: phone ? 19 : 21),
                     ),
-                    const SizedBox(width: 13),
+                    SizedBox(width: phone ? 10 : 13),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          LText(title, style: Theme.of(context).textTheme.titleLarge),
+                          LText(title, style: phone ? Theme.of(context).textTheme.titleMedium : Theme.of(context).textTheme.titleLarge),
                           const SizedBox(height: 4),
-                          LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12, height: 1.4)),
+                          LText(subtitle, style: TextStyle(color: brandTextSoft, fontSize: phone ? 11 : 12, height: 1.4)),
                         ],
                       ),
                     ),
@@ -6277,12 +6277,12 @@ class BrandDialog extends StatelessWidget {
               ),
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(22),
+                  padding: EdgeInsets.all(phone ? 16 : 22),
                   child: child,
                 ),
               ),
               Container(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
+                padding: EdgeInsets.fromLTRB(phone ? 14 : 20, phone ? 10 : 14, phone ? 14 : 20, phone ? 12 : 18),
                 decoration: const BoxDecoration(border: Border(top: BorderSide(color: brandMist))),
                 child: ResponsiveActionBar(
                   breakpoint: 480,
