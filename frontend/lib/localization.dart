@@ -1052,9 +1052,161 @@ class HimateI18n {
     'Page key': 'Oldalkulcs',
   };
 
+  static const Map<String, String> _start23Hu = <String, String>{
+    'Active role': 'Aktív szerepkör',
+    'Commercial control': 'Kereskedelmi kontroll',
+    'Company / billing email': 'Cég / számlázási e-mail',
+    'Create role': 'Szerepkör létrehozása',
+    'Custom roles': 'Egyedi szerepkörök',
+    'Deactivate only after the role is removed from all administrators.': 'Csak akkor deaktiváld, ha a szerepkört minden adminisztrátortól eltávolítottad.',
+    'Edit company': 'Cégadatok szerkesztése',
+    'Edit role': 'Szerepkör szerkesztése',
+    'Finance': 'Pénzügy',
+    'Full control': 'Teljes hozzáférés',
+    'HIMATE company settings updated.': 'A HIMATE cégbeállításai frissítve.',
+    'Legal company name': 'Hivatalos cégnév',
+    'Operations': 'Üzemeltetés',
+    'Permission matrix': 'Jogosultsági mátrix',
+    'Platform': 'Platform',
+    'Read, write and approval permissions are enforced by the backend. administration.approve and System Owner authority cannot be delegated through a custom role.': 'Az olvasási, írási és jóváhagyási jogosultságokat a backend kényszeríti ki. Az administration.approve és a Rendszertulajdonos jogosultsága nem delegálható egyedi szerepkörrel.',
+    'Registered address': 'Bejegyzett cím',
+    'Role name *': 'Szerepkör neve *',
+    'Stable role key *': 'Stabil szerepkörkulcs *',
+    'Tax / VAT ID': 'Adó / ÁFA-azonosító',
+    'Technical operations': 'Technikai üzemeltetés',
+    'Every successful restore point automatically queues a real restore test from the durable stored copy.': 'Minden sikeres visszaállítási pont automatikusan valódi visszaállítási tesztet indít a tartósan tárolt példányból.',
+    'Backup storage': 'Biztonsági mentés tárhelye',
+    'Encrypted partner database, media and configuration restore points with durable storage, retention and mandatory restore verification.': 'Titkosított partner-adatbázis-, média- és konfigurációs visszaállítási pontok tartós tárolással, megőrzéssel és kötelező visszaállítás-ellenőrzéssel.',
+    'Retention and scheduling are partner-scoped. Expired restore points are removed from durable backup storage.': 'A megőrzés és az ütemezés partnerhez kötött. A lejárt visszaállítási pontokat eltávolítjuk a tartós biztonsági mentés tárhelyéről.',
+    'DRAFT → PREVIEW → PUBLISHED': 'VÁZLAT → ELŐNÉZET → PUBLIKÁLT',
+    'Every edit creates a new version': 'Minden szerkesztés új verziót hoz létre',
+    'Public boundary': 'Nyilvános határ',
+    'Published content only': 'Csak publikált tartalom',
+    'Published history remains restorable': 'A publikált előzmények visszaállíthatók maradnak',
+    'Rollback': 'Visszaállítás',
+    'Versioning': 'Verziókezelés',
+    'Workflow': 'Munkafolyamat',
+    'AGREED required for new partners': 'Új partnereknél AGREED állapot szükséges',
+    'Adapter type': 'Adapter típusa',
+    'Aggregated/minimized data only': 'Csak aggregált/minimalizált adatok',
+    'Agreed': 'Elfogadva',
+    'Agreement': 'Megállapodás',
+    'Agreement note': 'Megállapodási megjegyzés',
+    'Agreement reference': 'Megállapodási hivatkozás',
+    'Agreement status': 'Megállapodás állapota',
+    'Agreement transition is recorded as a billing event': 'A megállapodás állapotváltása számlázási eseményként kerül rögzítésre',
+    'Allowed domains': 'Engedélyezett domainek',
+    'An AGREED commercial agreement requires a persistent agreement reference.': 'Az AGREED kereskedelmi megállapodáshoz tartós megállapodási hivatkozás szükséges.',
+    'Commercial agreement updated.': 'A kereskedelmi megállapodás frissítve.',
+    'Commercial state changes will appear here as immutable billing events.': 'A kereskedelmi állapot változásai itt megváltoztathatatlan számlázási eseményekként jelennek meg.',
+    'Commercial-state access fails closed when disabled.': 'A kereskedelmi állapot elérése letiltáskor biztonságosan zár.',
+    'Connector credential binds the partner identity': 'A Connector hitelesítőadata a partnerazonossághoz kötött',
+    'Credential-bound tenant isolation': 'Hitelesítőadathoz kötött tenant-izoláció',
+    'Custom API adapter': 'Egyedi API-adapter',
+    'Domain binding': 'Domain-hozzárendelés',
+    'Enabled': 'Engedélyezve',
+    'Entitlements + aggregated results': 'Jogosultságok + aggregált eredmények',
+    'Existing site stays intact': 'A meglévő weboldal változatlan marad',
+    'Generic HTTP / REST': 'Általános HTTP / REST',
+    'Partner Website Adapter': 'Partner weboldal-adapter',
+    'Partner Website Adapter updated.': 'A partner weboldal-adapter frissítve.',
+    'Partner website base URL': 'Partner weboldal alap-URL-je',
+    'Primary partner domain must be allowed': 'Az elsődleges partnerdomaint engedélyezni kell',
+    'Privacy': 'Adatvédelem',
+    'Provisioning gate': 'Provisioning kapu',
+    'Signed contract / persistent document reference': 'Aláírt szerződés / tartós dokumentumhivatkozás',
+    'Tenant scope': 'Tenant-hatókör',
+    'Website base URL and at least one allowed domain are required.': 'A weboldal alap-URL-je és legalább egy engedélyezett domain szükséges.',
+    'WordPress adapter': 'WordPress-adapter',
+    '30 days from activation date': '30 nap az aktiválás dátumától',
+    'Activation invoice': 'Aktiválási számla',
+    'Activation-fee invoice reference *': 'Aktiválási díj számlahivatkozása *',
+    'Active portal access': 'Aktív portál-hozzáférés',
+    'Admin': 'Adminisztrátor',
+    'Agreement + PAID license + evidence are required': 'Megállapodás + PAID licenc + bizonyíték szükséges',
+    'Asynchronous queue': 'Aszinkron várólista',
+    'Billing': 'Számlázás',
+    'Capture': 'Rögzítés',
+    'Commercial agreement reference *': 'Kereskedelmi megállapodás hivatkozása *',
+    'Content-sniffed · max 20 MiB · SHA-256': 'Tartalomellenőrzött · max. 20 MiB · SHA-256',
+    'Display name, administrator email, commercial agreement and activation invoice reference are required.': 'A megjelenítési név, az adminisztrátori e-mail, a kereskedelmi megállapodás és az aktiválási számla hivatkozása kötelező.',
+    'Edit portal user': 'Portálfelhasználó szerkesztése',
+    'Every 30 days': '30 naponta',
+    'Explicit commercial agreement is required': 'Kifejezett kereskedelmi megállapodás szükséges',
+    'Frozen before PDF generation': 'PDF-generálás előtt rögzítve',
+    'January 1': 'Január 1.',
+    'Mutating admin API calls': 'Módosító admin API-hívások',
+    'Owner': 'Tulajdonos',
+    'Partner Portal role': 'Partner Portal szerepkör',
+    'Payment evidence name': 'Fizetési bizonyíték neve',
+    'Payment evidence reference / URL': 'Fizetési bizonyíték hivatkozása / URL-je',
+    'Persistent invoice URL / document reference': 'Tartós számla-URL / dokumentumhivatkozás',
+    'Persistent invoice reference is recorded': 'A tartós számlahivatkozás rögzítésre kerül',
+    'Register payment evidence or a receipt before marking the activation license paid.': 'Az aktiválási licenc kifizetettként jelölése előtt rögzíts fizetési bizonyítékot vagy bizonylatot.',
+    'Reproducible': 'Reprodukálható',
+    'Service cycle': 'Szolgáltatási ciklus',
+    'Signed contract / agreement reference': 'Aláírt szerződés / megállapodási hivatkozás',
+    'URL evidence is referenced, never fetched': 'Az URL-bizonyíték csak hivatkozásként szerepel, a rendszer nem tölti le',
+    'URL safety': 'URL-biztonság',
+    'Validation': 'Ellenőrzés',
+    'Viewer': 'Megtekintő',
+    'Write path': 'Írási útvonal',
+    'Add group': 'Csoport hozzáadása',
+    'Add relation': 'Kapcsolat hozzáadása',
+    'Artifact reference / image digest': 'Artifact-hivatkozás / image digest',
+    'Artifact type': 'Artifact típusa',
+    'Branch / tag': 'Branch / tag',
+    'Commit SHA': 'Commit SHA',
+    'Edit': 'Szerkesztés',
+    'Edit metrics': 'Mérőszámok szerkesztése',
+    'Git repository': 'Git repository',
+    'Group': 'Csoport',
+    'Group name *': 'Csoport neve *',
+    'Manage': 'Kezelés',
+    'Metric keys': 'Mérőszámkulcsok',
+    'Minimum platform version': 'Minimális platformverzió',
+    'Module group': 'Modulcsoport',
+    'Module type': 'Modultípus',
+    'Owner / team': 'Tulajdonos / csapat',
+    'Relationship': 'Kapcsolat',
+    'Relationship note': 'Kapcsolati megjegyzés',
+    'Search modules, source or owner...': 'Keresés modul, forrás vagy tulajdonos szerint...',
+    'Sort order': 'Rendezési sorrend',
+    'Source path': 'Forrásútvonal',
+    'Stable group key *': 'Stabil csoportkulcs *',
+    'Stable module key *': 'Stabil modulkulcs *',
+    'Target module': 'Célmodul',
+    'Control-plane events that match your permissions.': 'A jogosultságaidnak megfelelő control-plane események.',
+    'Mark all read': 'Összes megjelölése olvasottként',
+    'Notifications': 'Értesítések',
+    'Unread only': 'Csak olvasatlan',
+    'Access is restricted to your organization. Tenant scope is enforced by HIMATE.': 'A hozzáférés a saját szervezetedre korlátozott. A tenant-hatókört a HIMATE kényszeríti ki.',
+    'Activate module': 'Modul aktiválása',
+    'Add user': 'Felhasználó hozzáadása',
+    'Back': 'Vissza',
+    'Continue renewal': 'Megújítás folytatása',
+    'Edit profile': 'Profil szerkesztése',
+    'Logo URL': 'Logó URL',
+    'Partner Portal': 'Partner Portal',
+    'Password': 'Jelszó',
+    'Portal role': 'Portálszerepkör',
+    'Remember me': 'Maradjak bejelentkezve',
+    'Your modules, results, billing and company workspace.': 'A moduljaid, eredményeid, számlázásod és vállalati munkaterületed.',
+    'Schema.org WebPage JSON-LD': 'Schema.org WebPage JSON-LD',
+    'hreflang': 'hreflang',
+    'Responsive & Functional QA': 'Reszponzív és funkcionális QA',
+    'Phone': 'Telefon',
+    'Tablet': 'Tablet',
+    'Laptop': 'Laptop',
+    'Desktop': 'Asztali gép',
+    'Long-data safe': 'Hosszú adatokra felkészítve',
+    'Touch safe': 'Érintésre optimalizálva',
+  };
+
+
   static String literal(String locale, String value) {
     if (locale != 'hu_HU' || value.trim().isEmpty) return value;
-    final exact = _literalHu[value] ?? _extendedHu[value] ?? _completionHu[value] ?? _seoHu[value] ?? _start22Hu[value] ?? _designHu[value];
+    final exact = _literalHu[value] ?? _extendedHu[value] ?? _completionHu[value] ?? _seoHu[value] ?? _start22Hu[value] ?? _designHu[value] ?? _start23Hu[value];
     if (exact != null) return exact;
 
     String countLabel(String suffix, String translatedSuffix) {
@@ -1079,6 +1231,27 @@ class HimateI18n {
       if (translated.isNotEmpty) return translated;
     }
 
+    if (value.startsWith('CMS audit · ')) {
+      return 'CMS-audit · ${value.substring('CMS audit · '.length)}';
+    }
+    if (value.startsWith('Edit CMS draft · ')) {
+      return 'CMS-vázlat szerkesztése · ${value.substring('Edit CMS draft · '.length)}';
+    }
+    if (value.startsWith('Version history · ')) {
+      return 'Verzióelőzmények · ${value.substring('Version history · '.length)}';
+    }
+    if (value.startsWith('Section ')) {
+      return 'Szekció ${value.substring('Section '.length)}';
+    }
+    if (value.startsWith('Version ')) {
+      return 'Verzió ${value.substring('Version '.length)}';
+    }
+    if (value.startsWith('Agreement could not be updated: ')) {
+      return 'A megállapodás nem frissíthető: ${value.substring('Agreement could not be updated: '.length)}';
+    }
+    if (value.startsWith('Website adapter could not be updated: ')) {
+      return 'A weboldal-adapter nem frissíthető: ${value.substring('Website adapter could not be updated: '.length)}';
+    }
     if (value.startsWith('New Partner wizard failed: ')) {
       return 'Az új partner varázsló sikertelen: ${value.substring('New Partner wizard failed: '.length)}';
     }
