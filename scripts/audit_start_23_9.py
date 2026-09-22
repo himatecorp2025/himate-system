@@ -83,8 +83,14 @@ for stale in (
 ):
     require(stale not in frontend, f"stale Dashboard/search placeholder remains: {stale!r}")
 
+require(frontend.count("onPressed: () => unawaited(openGlobalSearch(context))") >= 2,
+        "global search is not exposed on both compact shell layouts")
+require("onTap: () => unawaited(openGlobalSearch(context))" in frontend,
+        "desktop global search field is not wired to the shared opener")
+
 for token in (
     "_GlobalSearchDialog",
+    "openGlobalSearch",
     "'/api/v1/search'",
     "people_reached_ytd",
     "_dashboardMoney",
