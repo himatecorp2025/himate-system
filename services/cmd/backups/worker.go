@@ -84,6 +84,9 @@ func (a *app) queueRestoreTestRecord(point restorePoint,actor string)(restoreTes
 }
 
 func (a *app) runSchedulerOnce() int {
+	var locked bool
+	if err:=a.db.QueryRow(`SELECT pg_try_advisory_lock(2310001)`).Scan(&locked);err!=nil||!locked{return 0}
+	defer a.db.Exec(`SELECT pg_advisory_unlock(2310001)`)
 	rows,err:=a.db.Query(`SELECT partner_id,schedule_hours FROM backups.policies WHERE enabled=TRUE`)
 	if err!=nil{return 0}
 	type due struct{id string;hours int};items:=[]due{}
