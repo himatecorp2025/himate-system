@@ -2055,7 +2055,61 @@
       "target_phase": "23.8",
       "e2e_proof": "scripts/smoke_start_23_8.sh: public partner theme read returns activated profile and visual tokens",
       "notes": "Partner website/runtime consumers can resolve the active theme independently from content and business APIs, enabling skin swaps without content migration."
+    },
+    {
+      "id": "MODULE-REGISTRY-LIFECYCLE-23-11-1",
+      "surface": "modules.registry",
+      "ui": "Manage truthful module implementation and publication lifecycle",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/module_control_plane.dart",
+      "source_token": "publication_status",
+      "method": "POST/PATCH",
+      "api_pattern": "/api/v1/modules + /api/v1/modules/{moduleKey}",
+      "backend_service": "catalog",
+      "persistence": "catalog.modules publication/implementation/legacy fields + primary navigation groups",
+      "audit": "central gateway mutation audit + START-23.11.1 acceptance",
+      "localization_state": "BILINGUAL_PERSISTED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.1",
+      "e2e_proof": "scripts/smoke_start_23_11_1.sh: canonical 38 registry -> publish-before-ready rejection -> READY -> PUBLISHED",
+      "notes": "Canonical modules remain LEGACY_REFERENCE until individually rebuilt. Distribution: Finance 3, Technical 16, Marketing 8, Website & Events 11."
+    },
+    {
+      "id": "PARTNER-COMMERCIAL-TERMS-23-11-1",
+      "surface": "partner.commercial_terms",
+      "ui": "Configure partner-specific activation fee, base fee, minimum commitment and quote reference",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/main.dart",
+      "source_token": "minimum_monthly_commitment",
+      "method": "PUT/GET",
+      "api_pattern": "/api/v1/billing/partners/{partnerId}/terms + /api/v1/billing/partners/{partnerId}/terms-history",
+      "backend_service": "billing",
+      "persistence": "billing.partner_terms + billing.partner_terms_history + billing.base_fee_history + billing.initial_licenses",
+      "audit": "billing events + versioned terms snapshots + central gateway mutation audit",
+      "localization_state": "PARTIAL",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.1",
+      "e2e_proof": "scripts/smoke_start_23_11_1.sh: USD 1499 rejection -> negotiated activation/base/minimum/quote -> versioned readback",
+      "notes": "USD 1500 is the minimum monthly commitment. Activation fees are partner-specific; the former fixed USD 13000 floor is removed. Invoice-cycle semantics remain START-23.11.2."
+    },
+    {
+      "id": "PARTNER-MODULE-CONTRACT-PRICING-23-11-1",
+      "surface": "modules.commercial_matrix",
+      "ui": "Persist contract-authoritative partner-module recurring and activation pricing",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/module_control_plane.dart",
+      "source_token": "quote_reference",
+      "method": "PATCH/GET",
+      "api_pattern": "/api/v1/partners/{partnerId}/modules/{moduleKey} + /api/v1/module-commercial-matrix",
+      "backend_service": "catalog",
+      "persistence": "catalog.partner_modules + price_history + activation_fee_history + partner_module_history",
+      "audit": "central gateway mutation audit + effective-dated contract history",
+      "localization_state": "PARTIAL",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.1",
+      "e2e_proof": "scripts/smoke_start_23_11_1.sh: same module -> distinct Partner A/B quote references and prices",
+      "notes": "Catalog prices are reference-only. PARTNER_CONTRACT is the pricing authority; unpublished modules remain invisible and non-activatable to Partner Portal."
     }
   ],
-  "completed_through": "23.10"
+  "completed_through": "23.11.1"
 }
