@@ -110,32 +110,57 @@ void main() {
   });
 
   testWidgets('brand dialog survives phone height long copy and text scaling', (tester) async {
-    await pumpAt(
-      tester,
-      const Size(320, 568),
-      BrandDialog(
-        title: 'Very long configuration dialog title that must remain readable',
-        subtitle: 'Long explanatory copy must wrap without forcing the dialog outside the viewport.',
-        icon: Icons.tune_rounded,
-        primaryLabel: 'Save configuration changes',
-        onPrimary: () {},
-        child: Column(
-          children: [
-            for (var i = 0; i < 10; i++) ...[
-              TextField(
-                decoration: InputDecoration(
-                  labelText: 'Long field label number $i',
-                  helperText: 'Long helper text used by the responsive QA viewport matrix.',
+    const size = Size(320, 568);
+    await tester.binding.setSurfaceSize(size);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const openKey = Key('start23-open-dialog');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: size,
+            textScaler: TextScaler.linear(1.3),
+          ),
+          child: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  key: openKey,
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => BrandDialog(
+                      title: 'Very long configuration dialog title that must remain readable',
+                      subtitle: 'Long explanatory copy must wrap without forcing the dialog outside the viewport.',
+                      icon: Icons.tune_rounded,
+                      primaryLabel: 'Save configuration changes',
+                      onPrimary: () {},
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < 10; i++) ...[
+                            TextField(
+                              decoration: InputDecoration(
+                                labelText: 'Long field label number $i',
+                                helperText: 'Long helper text used by the responsive QA viewport matrix.',
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  child: const Text('Open dialog'),
                 ),
               ),
-              const SizedBox(height: 10),
-            ],
-          ],
+            ),
+          ),
         ),
       ),
-      textScale: 1.3,
     );
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.tap(find.byKey(openKey));
+    await tester.pumpAndSettle();
 
     expect(find.text('Save configuration changes'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
