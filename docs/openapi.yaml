@@ -453,6 +453,8 @@ paths:
         Aggregates partner/module counts, Billing-paid YTD revenue, the authoritative
         People Reached Impact metric, a 12-month trend and permission-filtered recent
         audit activity. Revenue is grouped by original currency with no implicit FX conversion.
+        Billing analytics require billing.read; Impact analytics require impact.read. Restricted
+        domains return an explicit authorized=false marker without sensitive values.
       parameters:
         - {name: year, in: query, schema: {type: integer, minimum: 2000, maximum: 2100}}
         - {name: refresh, in: query, schema: {type: boolean}, description: Bypass the shared current-year Dashboard cache}
