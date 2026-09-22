@@ -24,7 +24,7 @@ Admin and Partner Portal both schedule or withdraw cancellation through:
 
 Partner Portal may wrap that route, but must not implement an independent state machine.
 
-Catalog must reject an external admin attempt to change an active paid module directly to `NOT_LICENSED` with `BILLING_LIFECYCLE_REQUIRED`. Billing may perform the final internal Catalog deactivation after the paid period closes.
+Catalog must reject any external admin transition from a live or maintenance entitlement into `NOT_LICENSED` with `BILLING_LIFECYCLE_REQUIRED`. This includes the indirect `ACTIVE -> MAINTENANCE -> NOT_LICENSED` bypass. Billing may perform the final internal Catalog deactivation after the paid period closes.
 
 ## Period-end behavior
 
@@ -65,15 +65,16 @@ The daily cadence is intentional: each run evaluates all module period boundarie
 
 1. active module creates a Billing subscription;
 2. direct admin `ACTIVE -> NOT_LICENSED` is rejected;
-3. admin cancellation schedules `CANCEL_PENDING`;
-4. Catalog remains active before period end;
-5. Partner Portal can withdraw the same cancellation;
-6. Partner Portal can schedule it again through the same Billing authority;
-7. a Billing cycle executed at the exact period end changes the lifecycle to `INACTIVE`;
-8. Catalog becomes `NOT_LICENSED` only after Billing expiry;
-9. no renewal period is created;
-10. re-running the cycle is idempotent;
-11. subscription history and Billing events retain lifecycle evidence.
+3. `ACTIVE -> MAINTENANCE -> NOT_LICENSED` cannot bypass Billing;
+4. admin cancellation schedules `CANCEL_PENDING`;
+5. the current entitlement is not deactivated before period end;
+6. Partner Portal can withdraw the same cancellation even while Catalog is in maintenance;
+7. Partner Portal can schedule it again through the same Billing authority;
+8. a Billing cycle executed at the exact period end changes the lifecycle to `INACTIVE`;
+9. Catalog becomes `NOT_LICENSED` only after Billing expiry;
+10. no renewal period is created;
+11. re-running the cycle is idempotent;
+12. subscription history and Billing events retain lifecycle evidence.
 
 ## Definition of Done
 
