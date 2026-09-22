@@ -1770,7 +1770,7 @@ class _ShellState extends State<Shell> {
                                         final resource = '${result['resource'] ?? 'workspace'}';
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
-                                            content: LText('Result belongs to the $resource workspace.'),
+                                            content: LText('${uiLiteral('Result workspace')}: $resource'),
                                             behavior: SnackBarBehavior.floating,
                                           ),
                                         );
@@ -2449,12 +2449,13 @@ class _ActivityPanel extends StatelessWidget {
   static String titleFor(String action) {
     final value=action.trim();
     if(value.isEmpty)return uiLiteral('System activity');
-    return value
+    final humanized=value
         .toLowerCase()
         .split('_')
         .where((part)=>part.isNotEmpty)
         .map((part)=>part[0].toUpperCase()+part.substring(1))
         .join(' ');
+    return uiLiteral(humanized);
   }
 
   static IconData iconFor(String resource) {
