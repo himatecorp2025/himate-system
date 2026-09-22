@@ -49,12 +49,7 @@ PY
 category_id="$(printf '%s' "$category" | json_field id)"
 test -n "$category_id"
 categories="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partner-categories")"
-printf '%s' "$categories" | python3 - "$category_id" "$CATEGORY_NAME" <<'PY'
-import json,sys
-d=json.load(sys.stdin)
-cid,name=sys.argv[1],sys.argv[2]
-assert any(str(x.get("id"))==cid and x.get("name")==name for x in d.get("items",[])), d
-PY
+printf '%s' "$categories" | python3 -c 'import json,sys; d=json.load(sys.stdin); cid,name=sys.argv[1],sys.argv[2]; assert any(str(x.get("id"))==cid and x.get("name")==name for x in d.get("items",[])), d' "$category_id" "$CATEGORY_NAME"
 echo ok
 
 printf 'module group and module create/update mutations persist... '
@@ -85,14 +80,7 @@ curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$module_pay
 patch_payload='{"label":"START 23.1 Canary Module Updated","description":"Mutation readback verified","default_monthly_price":31.23,"availability":"ACTIVE","latest_version":"1.0.1"}'
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$patch_payload" "$BASE_URL/api/v1/modules/$MODULE_KEY" >/dev/null
 modules="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/modules")"
-printf '%s' "$modules" | python3 - "$MODULE_KEY" <<'PY'
-import json,sys
-d=json.load(sys.stdin); key=sys.argv[1]
-m=next(x for x in d["items"] if x["key"]==key)
-assert m["label"]=="START 23.1 Canary Module Updated",m
-assert abs(float(m["default_monthly_price"])-31.23)<0.001,m
-assert m["latest_version"]=="1.0.1",m
-PY
+printf '%s' "$modules" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; m=next(x for x in d["items"] if x["key"]==key); assert m["label"]=="START 23.1 Canary Module Updated",m; assert abs(float(m["default_monthly_price"])-31.23)<0.001,m; assert m["latest_version"]=="1.0.1",m' "$MODULE_KEY"
 echo ok
 
 printf 'custom role mutation persists... '
@@ -108,13 +96,7 @@ PY
 )"
 curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$role_payload" "$BASE_URL/api/v1/admin/roles" >/dev/null
 roles="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/admin/roles")"
-printf '%s' "$roles" | python3 - "$ROLE_KEY" <<'PY'
-import json,sys
-d=json.load(sys.stdin); key=sys.argv[1]
-r=next(x for x in d["items"] if x["key"]==key)
-assert r["active"] is True,r
-assert "dashboard.read" in r["permissions"],r
-PY
+printf '%s' "$roles" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; r=next(x for x in d["items"] if x["key"]==key); assert r["active"] is True,r; assert "dashboard.read" in r["permissions"],r' "$ROLE_KEY"
 echo ok
 
 printf 'administrator create, login, authorization and suspension are enforced... '
@@ -132,13 +114,7 @@ created_user="$(curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json'
 user_id="$(printf '%s' "$created_user" | json_field id)"
 test -n "$user_id"
 users="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/admin/users")"
-printf '%s' "$users" | python3 - "$user_id" "$ROLE_KEY" <<'PY'
-import json,sys
-d=json.load(sys.stdin); uid,key=sys.argv[1],sys.argv[2]
-u=next(x for x in d["items"] if x["id"]==uid)
-assert key in u["roles"],u
-assert u["active"] is True,u
-PY
+printf '%s' "$users" | python3 -c 'import json,sys; d=json.load(sys.stdin); uid,key=sys.argv[1],sys.argv[2]; u=next(x for x in d["items"] if x["id"]==uid); assert key in u["roles"],u; assert u["active"] is True,u' "$user_id" "$ROLE_KEY"
 
 canary_login="$(python3 - "$ADMIN_EMAIL" "$ADMIN_PASSWORD" <<'PY'
 import json,sys
@@ -222,11 +198,7 @@ lead_read="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/contact/inquiries/$l
 printf '%s' "$lead_read" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lead_status"]=="CONTACTED"; assert d["assigned_to"]=="START-23.1 CI"'
 sleep 1
 audit="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/audit/events?action=CONTACT_LEAD_UPDATED&limit=100")"
-printf '%s' "$audit" | python3 - "$lead_id" <<'PY'
-import json,sys
-d=json.load(sys.stdin); lead_id=sys.argv[1]
-assert any(x.get("action")=="CONTACT_LEAD_UPDATED" and x.get("resource")=="contact" for x in d.get("items",[])),d
-PY
+printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); lead_id=sys.argv[1]; assert any(x.get("action")=="CONTACT_LEAD_UPDATED" and x.get("resource")=="contact" for x in d.get("items",[])),d' "$lead_id"
 echo ok
 
 echo "HIMATE START-23.1 mutation canary passed: writes, persistence readback, authorization and audit were exercised."
