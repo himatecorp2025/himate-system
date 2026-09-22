@@ -51,7 +51,7 @@ terms="$(python3 - "$PREV30" <<'PY'
 import json,sys
 print(json.dumps({
   "currency":"USD","activation_fee":13000,"activation_fee_waived":False,"activation_fee_reason":"",
-  "base_monthly_fee":125,"annual_increase_percent":10,
+  "base_monthly_fee":125,"annual_increase_percent":0,
   "price_effective_from":sys.argv[1],"service_anchor_date":sys.argv[1],
   "reason":"START-23.4 provider-backed acceptance"
 }))
