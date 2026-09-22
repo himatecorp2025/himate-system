@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.6-start-23.2
+  version: 0.8.7-start-23.3
   description: >
     Authenticated REST contract for the START-01 through START-22.3 HIMATE
     control-plane surface. Partner business databases remain isolated behind
@@ -299,7 +299,7 @@ paths:
       - {name: moduleKey, in: path, required: true, schema: {type: string}}
     patch:
       tags: [Partner Portal]
-      summary: Schedule or withdraw end-of-period cancellation for an own active module
+      summary: Schedule or withdraw end-of-period cancellation through the authoritative Billing lifecycle
       responses:
         "200": {description: Subscription renewal state updated}
         "409": {description: Subscription state does not allow the requested change}
@@ -741,11 +741,11 @@ paths:
   /api/v1/billing/subscription-matrix:
     get:
       tags: [Billing]
-      summary: Batched current subscriptions and exact next-period commercial quotes
+      summary: Batched authoritative subscription lifecycle and exact renewal-period commercial quotes
       parameters:
         - {name: partner_ids, in: query, required: true, schema: {type: string}, description: Comma-separated partner IDs, maximum 200}
       responses:
-        "200": {description: Current immutable period state plus next billing date and point-in-time next-period price}
+        "200": {description: Current immutable period plus ACTIVE/CANCEL_PENDING/INACTIVE lifecycle; next-period quote is present only for an actively renewing subscription}
         "502": {description: Catalog point-in-time pricing could not be resolved}
   /api/v1/billing/partners/{partnerId}/subscriptions:
     parameters:
@@ -764,8 +764,8 @@ paths:
         schema: {type: string}
     patch:
       tags: [Billing]
-      summary: Schedule or withdraw end-of-period cancellation
-      description: Cancellation preserves the current 30-day period and prevents the next renewal.
+      summary: Authoritatively schedule or withdraw end-of-period cancellation
+      description: Billing owns the ACTIVE/CANCEL_PENDING/INACTIVE lifecycle. Cancellation preserves the current immutable 30-day period, prevents renewal, and becomes INACTIVE only when the Billing cycle closes the exact period boundary.
       requestBody:
         required: true
         content:
@@ -777,7 +777,7 @@ paths:
                 cancel_at_period_end: {type: boolean}
                 reason: {type: string}
       responses:
-        "200": {description: Subscription updated}
+        "200": {description: Subscription updated with lifecycle_state and cancellation_effective_at}
         "404": {description: Subscription not found}
         "409": {description: Inactive subscription must be reactivated at module level}
   /api/v1/public/contact:
