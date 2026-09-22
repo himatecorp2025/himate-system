@@ -323,7 +323,7 @@ paths:
   /partner/api/v1/modules:
     get:
       tags: [Partner Portal]
-      summary: Own active and available modules with effective tenant price and dependency blockers
+      summary: Own published modules with contracted tenant price and dependency blockers
       responses:
         "200": {description: Tenant module catalog}
   /partner/api/v1/modules/{moduleKey}/activate:
@@ -332,10 +332,10 @@ paths:
     post:
       tags: [Partner Portal]
       summary: Activate an eligible module for the authenticated tenant
-      description: Backend enforces availability, REQUIRES and CONFLICTS_WITH relationships. Global price, source and dependency metadata are immutable to partners.
+      description: Backend enforces PUBLISHED + partner-specific commercial configuration, availability, REQUIRES and CONFLICTS_WITH relationships. Catalog reference prices, source and dependency metadata are immutable to partners.
       responses:
         "200": {description: Module activated and billing synchronized}
-        "409": {description: Dependency, conflict, maintenance or availability gate blocked activation}
+        "409": {description: Unpublished, unconfigured commercial terms, dependency, conflict, maintenance or availability gate blocked activation}
   /partner/api/v1/modules/{moduleKey}/subscription:
     parameters:
       - {name: moduleKey, in: path, required: true, schema: {type: string}}
