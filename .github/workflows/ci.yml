@@ -45,6 +45,10 @@ jobs:
           grep -q '^  /api/v1/billing/partners/{partnerId}/agreement:' ../docs/openapi.yaml
           grep -q '^  /api/v1/billing/partners/{partnerId}/commercial-status:' ../docs/openapi.yaml
           grep -q '^  /api/v1/billing/partners/{partnerId}/events:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/partners/{partnerId}/license/collect:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/payments/partners/{partnerId}/profile:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/payments/partners/{partnerId}/attempts:' ../docs/openapi.yaml
+          grep -q '^  /webhooks/stripe:' ../docs/openapi.yaml
           grep -q '^  /api/v1/connectors/{partnerId}/website-adapter:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/commercial-state:' ../docs/openapi.yaml
           grep -q 'HMAC-SHA-512' ../docs/openapi.yaml
