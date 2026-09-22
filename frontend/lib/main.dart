@@ -3762,7 +3762,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 decoration: InputDecoration(labelText: uiLiteral('Module state')),
                 items: [
                   const DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
-                  if ('${module['status']}' != 'ACTIVE')
+                  if ('${module['status']}' == 'NOT_LICENSED')
                     const DropdownMenuItem(value: 'NOT_LICENSED', child: LText('NOT LICENSED')),
                   const DropdownMenuItem(value: 'MAINTENANCE', child: LText('MAINTENANCE')),
                 ],
