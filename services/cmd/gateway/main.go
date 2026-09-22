@@ -3214,13 +3214,16 @@ func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filenam
 		}
 		w.Header().Set("X-Himate-SSR", "static-fallback")
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Length", strconv.Itoa(len([]byte(doc))))
-	if r.Method == http.MethodHead {
-		w.WriteHeader(http.StatusOK)
-		return
+	designCtx, designCancel := context.WithTimeout(r.Context(), 1200*time.Millisecond)
+	design, designErr := a.fetchPublishedDesign(designCtx)
+	designCancel()
+	if designErr == nil && design.Version > 0 {
+		doc = renderSiteDesignHTML(doc, design.Design, locale, r.URL.Path, func(id string) string {
+			return "/public/v1/cms/media/"+url.PathEscape(id)
+		})
+		w.Header().Set("X-Himate-Design", "published")
 	}
-	_, _ = w.Write([]byte(doc))
+	writeHTMLResponse(w, r, doc, http.StatusOK)
 }
 
 func (a *app) robots(w http.ResponseWriter, r *http.Request) {
@@ -3325,6 +3328,11 @@ func (a *app) web() http.Handler {
 			}
 		}
 
+		slug := strings.Trim(strings.TrimSpace(r.URL.Path), "/")
+		if slug != "" && !strings.Contains(slug, "/") && a.serveDynamicCMSPage(w, r, slug) {
+			return
+		}
+
 		if strings.HasPrefix(r.URL.Path, "/assets/") ||
 			strings.HasPrefix(r.URL.Path, "/canvaskit/") ||
 			strings.HasSuffix(r.URL.Path, ".js") ||
@@ -3364,7 +3372,12 @@ func securityHeaders(next http.Handler) http.Handler {
 			w.Header().Set("X-Correlation-ID", correlationID)
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
+		designPreviewFrame := r.URL.Path == "/design-preview"
+		if designPreviewFrame {
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		} else {
+			w.Header().Set("X-Frame-Options", "DENY")
+		}
 		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -3388,7 +3401,11 @@ func securityHeaders(next http.Handler) http.Handler {
 		} else if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".json") || strings.HasSuffix(path, ".wasm") {
 			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		}
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
+		if designPreviewFrame {
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'self'")
+		} else {
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
