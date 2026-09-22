@@ -178,6 +178,8 @@ PY
 curl -fsS -c "$REPORT_COOKIE" -H 'Content-Type: application/json' -d "$report_login" "$BASE_URL/api/v1/auth/login" >/dev/null
 restricted="$(curl -fsS -b "$REPORT_COOKIE" "$BASE_URL/api/v1/search?q=$STAMP&limit=5")"
 printf '%s' "$restricted" | python3 -c 'import json,sys; d=json.load(sys.stdin); resources={x["resource"] for x in d["items"]}; assert "partners" in resources,d; forbidden={"catalog","cms","contact","administration","audit"}; assert not (resources & forbidden),(resources & forbidden,d)'
+restricted_dashboard="$(curl -fsS -b "$REPORT_COOKIE" "$BASE_URL/api/v1/dashboard/summary?year=$YEAR&refresh=true")"
+printf '%s' "$restricted_dashboard" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["billing"]["authorized"] is False,d["billing"]; assert d["billing"]["items"]==[],d["billing"]; assert d["impact"]["authorized"] is True,d["impact"]; assert "people_reached_ytd" in d["impact"],d["impact"]'
 test "$(status "$REPORT_COOKIE" GET "/api/v1/search?q=x")" = "400"
 grep -q 'Search query must contain at least 2 characters' "$BODY"
 echo ok
