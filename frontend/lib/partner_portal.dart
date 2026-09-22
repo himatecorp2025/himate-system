@@ -1104,8 +1104,15 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     decoration: const BoxDecoration(color: brandWhite, border: Border(bottom: BorderSide(color: brandMist))),
                     child: Row(children: [
-                      LText('${company['display_name'] ?? 'Partner'}', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13)),
-                      const Spacer(),
+                      Expanded(
+                        child: LText(
+                          '${company['display_name'] ?? 'Partner'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
                       IconButton(onPressed: load, tooltip: 'Refresh', icon: const Icon(Icons.refresh_rounded)),
                     ]),
                   ),
