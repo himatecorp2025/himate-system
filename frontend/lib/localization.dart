@@ -1187,7 +1187,7 @@ class HimateI18n {
     'Continue renewal': 'Megújítás folytatása',
     'Edit profile': 'Profil szerkesztése',
     'Logo URL': 'Logó URL',
-    'Partner Portal': 'Partner Portal',
+    'Partner Portal': 'Partnerportál',
     'Password': 'Jelszó',
     'Portal role': 'Portálszerepkör',
     'Remember me': 'Maradjak bejelentkezve',
