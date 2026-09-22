@@ -168,6 +168,7 @@ void main() {
       // collapses Flutter render exceptions into a generic failed-test line.
       // ignore: avoid_print
       print('START23_BRAND_DIALOG_EXCEPTION: $dialogException');
+      debugDumpRenderTree();
       fail('BrandDialog produced a render exception: $dialogException');
     }
 
