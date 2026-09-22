@@ -48,9 +48,9 @@ type partnerClaims struct {
 
 var partnerRolePermissions = map[string][]string{
 	"owner":   {"*"},
-	"admin":   {"dashboard.read","company.read","company.write","modules.read","modules.write","billing.read","impact.read","users.read","users.write"},
-	"billing": {"dashboard.read","company.read","modules.read","modules.write","billing.read","impact.read"},
-	"viewer":  {"dashboard.read","company.read","modules.read","billing.read","impact.read"},
+	"admin":   {"dashboard.read","company.read","company.write","modules.read","modules.write","billing.read","impact.read","users.read","users.write","design.read","design.write"},
+	"billing": {"dashboard.read","company.read","modules.read","modules.write","billing.read","impact.read","design.read"},
+	"viewer":  {"dashboard.read","company.read","modules.read","billing.read","impact.read","design.read"},
 }
 
 func partnerPortalMigration() common.Migration {
@@ -247,6 +247,10 @@ func partnerAuditAction(r *http.Request)string{
 	case strings.Contains(path,"/subscription")&&r.Method==http.MethodPatch:return "PARTNER_SUBSCRIPTION_UPDATED"
 	case path=="/partner/api/v1/users"&&r.Method==http.MethodPost:return "PARTNER_USER_CREATED"
 	case strings.HasPrefix(path,"/partner/api/v1/users/")&&r.Method==http.MethodPatch:return "PARTNER_USER_UPDATED"
+	case path=="/partner/api/v1/design/media"&&r.Method==http.MethodPost:return "PARTNER_DESIGN_MEDIA_UPLOADED"
+	case path=="/partner/api/v1/design/profiles"&&r.Method==http.MethodPost:return "PARTNER_THEME_PROFILE_CREATED"
+	case strings.HasSuffix(path,"/activate")&&strings.HasPrefix(path,"/partner/api/v1/design/profiles/")&&r.Method==http.MethodPost:return "PARTNER_THEME_ACTIVATED"
+	case strings.HasPrefix(path,"/partner/api/v1/design/profiles/")&&r.Method==http.MethodPut:return "PARTNER_THEME_PROFILE_UPDATED"
 	default:return "PARTNER_PORTAL_"+strings.ToUpper(r.Method)
 	}
 }
@@ -301,6 +305,15 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 		if a.requirePartnerPermission(w,u,permission){a.partnerUsers(w,r,u)}
 	case strings.HasPrefix(path,"/users/")&&r.Method==http.MethodPatch:
 		if a.requirePartnerPermission(w,u,"users.write"){a.partnerUserUpdate(w,r,u)}
+	case path=="/design"&&r.Method==http.MethodGet:
+		if a.requirePartnerPermission(w,u,"design.read"){a.partnerDesign(w,r,u)}
+	case path=="/design/media"&&(r.Method==http.MethodGet||r.Method==http.MethodPost):
+		permission:="design.read";if r.Method==http.MethodPost{permission="design.write"}
+		if a.requirePartnerPermission(w,u,permission){a.partnerDesignMedia(w,r,u)}
+	case path=="/design/profiles"&&r.Method==http.MethodPost:
+		if a.requirePartnerPermission(w,u,"design.write"){a.partnerDesign(w,r,u)}
+	case strings.HasPrefix(path,"/design/profiles/")&&(r.Method==http.MethodPut||r.Method==http.MethodPost):
+		if a.requirePartnerPermission(w,u,"design.write"){a.partnerDesign(w,r,u)}
 	default:
 		common.APIError(w,404,"NOT_FOUND","Partner Portal endpoint not found")
 	}
@@ -360,6 +373,47 @@ func (a *app) partnerCompany(w http.ResponseWriter,r *http.Request,u partnerUser
 	if err!=nil{writeInternalError(w,err,"Company data could not be updated");return}
 	delete(out,"notes")
 	common.JSON(w,200,out)
+}
+
+func (a *app) partnerDesign(w http.ResponseWriter,r *http.Request,u partnerUser){
+	suffix:=strings.TrimPrefix(r.URL.Path,"/partner/api/v1/design")
+	upstream:="/internal/v1/cms/partner-design/"+url.PathEscape(u.PartnerID)+suffix
+	if r.Method==http.MethodGet{
+		var out map[string]any
+		if err:=a.internalGET(r.Context(),a.hosts["cms"],upstream,&out);err!=nil{writeInternalError(w,err,"Partner design data is temporarily unavailable");return}
+		common.JSON(w,200,out);return
+	}
+	if r.Method!=http.MethodPost&&r.Method!=http.MethodPut{common.APIError(w,405,"METHOD","Use GET, POST or PUT");return}
+	var payload map[string]any
+	if common.Decode(r,&payload)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	var out map[string]any
+	err:=a.internalJSON(r.Context(),r.Method,a.hosts["cms"],upstream,payload,map[string]string{
+		"X-Himate-User-ID":u.ID,
+		"X-Himate-Correlation-ID":strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
+	},&out)
+	if err!=nil{writeInternalError(w,err,"Partner design could not be updated");return}
+	status:=200;if r.Method==http.MethodPost&&suffix=="/profiles"{status=201}
+	common.JSON(w,status,out)
+}
+
+func (a *app) partnerDesignMedia(w http.ResponseWriter,r *http.Request,u partnerUser){
+	upstream:="/internal/v1/cms/partner-media/"+url.PathEscape(u.PartnerID)
+	if r.Method==http.MethodGet{
+		var out map[string]any
+		if err:=a.internalGET(r.Context(),a.hosts["cms"],upstream,&out);err!=nil{writeInternalError(w,err,"Partner design media is temporarily unavailable");return}
+		common.JSON(w,200,out);return
+	}
+	if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use GET or POST");return}
+	host:=strings.TrimSpace(a.hosts["cms"]);if host==""{common.APIError(w,502,"UPSTREAM","CMS service is not configured");return}
+	req,err:=http.NewRequestWithContext(r.Context(),http.MethodPost,"http://"+host+upstream,io.LimitReader(r.Body,66<<20))
+	if err!=nil{common.APIError(w,500,"REQUEST","Could not prepare design media upload");return}
+	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	req.Header.Set("X-Himate-User-ID",u.ID)
+	req.Header.Set("X-Correlation-ID",strings.TrimSpace(r.Header.Get("X-Correlation-ID")))
+	req.Header.Set("Content-Type",r.Header.Get("Content-Type"))
+	resp,err:=a.client.Do(req);if err!=nil{common.APIError(w,502,"UPSTREAM","Partner design media upload failed");return};defer resp.Body.Close()
+	for _,key:=range []string{"Content-Type","Content-Length"}{if value:=resp.Header.Get(key);value!=""{w.Header().Set(key,value)}}
+	w.WriteHeader(resp.StatusCode);_,_=io.Copy(w,io.LimitReader(resp.Body,2<<20))
 }
 
 func anyItems(value any) []map[string]any {
