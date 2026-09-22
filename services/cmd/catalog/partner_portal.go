@@ -19,6 +19,7 @@ type portalModule struct {
 	EntitlementState string
 	IncludedInBase  bool
 	CommercialConfigured bool
+	CommercialReady bool
 	QuoteReference  string
 	PartnerPrice    float64
 	Currency        string
@@ -63,7 +64,9 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 	}
 	rows, err := a.db.Query(`
 		SELECT m.module_key,m.label_en,m.label_hu,m.description_en,m.description_hu,m.group_key,g.label_en,g.label_hu,pm.status,pm.entitlement_state,pm.included_in_base,
-			pm.commercial_configured,pm.quote_reference,
+			pm.commercial_configured,
+			(pm.commercial_configured=TRUE AND (pm.included_in_base=TRUE OR pm.price_override IS NOT NULL OR ep.new_price IS NOT NULL)),
+			pm.quote_reference,
 			CASE WHEN pm.commercial_configured THEN COALESCE(ep.new_price,pm.price_override,0) ELSE 0 END,
 			COALESCE(NULLIF(pm.contract_currency,''),m.currency),m.latest_version,m.availability,pm.activated_at
 		FROM catalog.partner_modules pm
@@ -89,7 +92,7 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 		var labelEN,labelHU,descEN,descHU,groupEN,groupHU string
 		var activated sql.NullTime
 		if err := rows.Scan(&item.Key,&labelEN,&labelHU,&descEN,&descHU,&item.GroupKey,&groupEN,&groupHU,&item.Status,&item.EntitlementState,&item.IncludedInBase,
-			&item.CommercialConfigured,&item.QuoteReference,&item.PartnerPrice,&item.Currency,&item.LatestVersion,&item.Availability,&activated); err != nil {
+			&item.CommercialConfigured,&item.CommercialReady,&item.QuoteReference,&item.PartnerPrice,&item.Currency,&item.LatestVersion,&item.Availability,&activated); err != nil {
 			return nil, err
 		}
 		item.Label = common.Localized(labelEN,labelHU,locale)
@@ -138,8 +141,8 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 		if modules[i].Status == "MAINTENANCE" {
 			modules[i].Blockers = append(modules[i].Blockers, "Module is restricted by HIMATE maintenance")
 		}
-		if !modules[i].CommercialConfigured {
-			modules[i].Blockers = append(modules[i].Blockers, "Partner-specific commercial terms are not configured")
+		if !modules[i].CommercialReady {
+			modules[i].Blockers = append(modules[i].Blockers, "Partner-specific commercial terms are not ready")
 		}
 		modules[i].CanActivate = modules[i].Status != "ACTIVE" && len(modules[i].Blockers) == 0
 	}
@@ -172,7 +175,7 @@ func portalModuleMap(item portalModule) map[string]any {
 		"key": item.Key, "label": item.Label, "description": item.Description,
 		"group_key": item.GroupKey, "group_label": item.GroupLabel,
 		"status": item.Status, "entitlement_state": item.EntitlementState, "included_in_base": item.IncludedInBase,
-		"commercial_configured":item.CommercialConfigured,"quote_reference":item.QuoteReference,
+		"commercial_configured":item.CommercialConfigured,"commercial_ready":item.CommercialReady,"quote_reference":item.QuoteReference,
 		"partner_price": item.PartnerPrice, "currency": item.Currency,
 		"latest_version": item.LatestVersion, "availability": item.Availability,
 		"activated_at": item.ActivatedAt, "relationships": item.Relationships,
@@ -198,13 +201,17 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	defer tx.Rollback()
 
 	var status, availability, publicationStatus, labelEN, labelHU string
-	var visible,commercialConfigured bool
+	var visible,commercialConfigured,commercialReady bool
 	if err := tx.QueryRow(`
-		SELECT pm.status,m.availability,m.publication_status,m.label_en,m.label_hu,pm.visible,pm.commercial_configured
+		SELECT pm.status,m.availability,m.publication_status,m.label_en,m.label_hu,pm.visible,pm.commercial_configured,
+			(pm.commercial_configured=TRUE AND (pm.included_in_base=TRUE OR pm.price_override IS NOT NULL OR EXISTS (
+				SELECT 1 FROM catalog.price_history ph
+				WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
+			)))
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
 		WHERE pm.partner_id=$1 AND pm.module_key=$2
-		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&publicationStatus,&labelEN,&labelHU,&visible,&commercialConfigured); err != nil {
+		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&publicationStatus,&labelEN,&labelHU,&visible,&commercialConfigured,&commercialReady); err != nil {
 		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Module not found")
 		return
 	}
@@ -212,8 +219,8 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 		common.APIError(w,http.StatusConflict,"MODULE_UNPUBLISHED","Module is not published for partner use")
 		return
 	}
-	if !commercialConfigured {
-		common.APIError(w,http.StatusConflict,"COMMERCIAL_TERMS_REQUIRED","Partner-specific module commercial terms must be configured before activation")
+	if !commercialConfigured || !commercialReady {
+		common.APIError(w,http.StatusConflict,"COMMERCIAL_TERMS_REQUIRED","Partner-specific module commercial terms must include an explicit partner price or base-package inclusion before activation")
 		return
 	}
 	if status == "ACTIVE" {
