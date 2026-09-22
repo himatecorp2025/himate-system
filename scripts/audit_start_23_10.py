@@ -106,6 +106,12 @@ for token in (
 require('case path == "/api/v1/backups", strings.HasPrefix(path, "/api/v1/backups/"):' in gateway,
         "Gateway does not permission-scope backup operations")
 require('return "backups"' in gateway, "Gateway backup RBAC resource is missing")
+for token in (
+    "func auditPartnerIDFromState",
+    "partnerID = auditPartnerIDFromState(newState)",
+    "partnerID = auditPartnerIDFromState(requestState)",
+):
+    require(token in gateway, f"tenant-scoped operational audit enrichment missing {token!r}")
 
 for token in (
     "No website rewrite",
