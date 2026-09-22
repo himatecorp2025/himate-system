@@ -468,6 +468,31 @@ All participating services use the shared `services/internal/common/locale.go` c
 
 Flutter sends `X-Himate-Locale` on API requests and invalidates API cache when locale changes so cached dynamic records cannot leak across language switches. Authorization, billing and entitlement semantics never depend on localized strings.
 
+## START-23.6 identity and administration boundary
+
+Identity remains owned by Gateway's `identity` schema. START-23.6 adds a server-side password-recovery contract without introducing a third-party identity dependency:
+
+```text
+reset request
+  -> cryptographically random 32-byte token
+  -> SHA-256 token hash persisted in identity.password_reset_tokens
+  -> runtime SMTP delivery in production
+  -> one-time confirmation
+  -> password hash replacement
+  -> identity.users.session_version + 1
+  -> every prior administrator session becomes invalid
+```
+
+Reset-token plaintext exists only long enough to be delivered to the user. The database stores only the hash, expiry and used-state. Production fails closed when SMTP/reset-link configuration is unavailable. Local/CI can surface the token only while `HIMATE_ENV != production` so the real one-time flow can be acceptance-tested deterministically.
+
+Administrator authorization continues to use database-backed roles on every request. Email, role, active-status and password changes rotate `session_version`; system-owner and last-Platform-Admin protections remain authoritative. Custom-role permission changes do not require re-login because effective permissions are resolved from the current role definition.
+
+Partner Portal identities retain a separate cookie/session namespace and tenant claim. Their existing role/status/password mutations also rotate the Partner Portal session version.
+
+No SSO provider is configured in this phase. Consequently the former non-functional SSO button is absent from the login surface. Provider-specific SSO must not reappear as UI until the corresponding backend authentication boundary exists.
+
+The same START-23.6 acceptance also proves existing service ownership rather than duplicating data: Partners owns partner profile/lifecycle, Billing owns the HIMATE company profile, Contact owns persisted leads, Notifications owns per-user read state, and Gateway owns administrator/profile identity.
+
 ## Deployment topology
 
 Local/CI uses `docker-compose.yml`, the Runtime `local` deployment provider and a separate local backup volume. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled. The isolated `himate-payments` private service owns payment-provider connectivity and receives Stripe credentials only as runtime secrets. Production Backups uses the `render_disk` provider with a dedicated `/offsite` Render persistent disk and the runtime-injected AES-256 encryption key. No AWS/S3 endpoint or credential is required by the current production topology.
