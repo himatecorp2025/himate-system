@@ -275,6 +275,16 @@ DNS verification uses resolver lookups. TLS verification performs a real TLS con
 
 ADR-0003 records the provider boundary.
 
+## Responsive and Functional QA boundary (START-23)
+
+START-23 does not introduce a new service or business-data authority. It hardens the existing Flutter administration and Partner Portal presentation layer while preserving the accepted microservice/API boundaries.
+
+The shared responsive layer now provides explicit mobile/tablet/desktop shell modes, compact-login fallback for short viewports, adaptive form/action/dialog primitives, bounded long-data presentation and 1/2/4-column KPI behavior. Administrative collection surfaces remain card-oriented rather than introducing raw non-responsive data tables.
+
+The automated viewport matrix covers 320×568, 390×844, 768×1024, 1024×768, 1366×768 and 1440×900, with 1.3× text scaling on small phones. Functional QA reuses the authoritative APIs through the Gateway and adds a route-matrix smoke over the primary workspace read surfaces, pagination, empty results and a controlled 404 state.
+
+START-23 keeps the post-START-22.3 privacy/credential-boundary and concurrent-load audits mandatory. It does not replace START-24 Security Acceptance.
+
 ## Backups and verified recovery (START-21)
 
 Backup orchestration is isolated in the private `backups` microservice. It does not run long backup or restore work inside Gateway requests.
