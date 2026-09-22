@@ -949,7 +949,8 @@ func (a *app) resolvePartnerModulePriceAt(ctx context.Context, partnerID, key st
 				(SELECT ph.old_price FROM catalog.price_history ph
 				 WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at>$3 AND ph.old_price IS NOT NULL
 				 ORDER BY ph.effective_at ASC,ph.id ASC LIMIT 1),
-				pm.price_override
+				pm.price_override,
+				CASE WHEN pm.included_in_base THEN 0 END
 			),
 			COALESCE(
 				(SELECT ph.currency FROM catalog.price_history ph
