@@ -9,7 +9,8 @@ portal = (root / "services/cmd/catalog/partner_portal.go").read_text()
 billing = (root / "services/cmd/billing/main.go").read_text()
 automation = (root / "services/cmd/billing/commercial_automation.go").read_text()
 frontend = (root / "frontend/lib/module_control_plane.dart").read_text()
-main_ui = (root / "frontend/lib/main.dart").read_text()\nlocalization = (root / "frontend/lib/localization.dart").read_text()
+main_ui = (root / "frontend/lib/main.dart").read_text()
+localization = (root / "frontend/lib/localization.dart").read_text()
 matrix = json.loads((root / "docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
 
 def require(condition, message):
