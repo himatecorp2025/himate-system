@@ -2305,6 +2305,8 @@ type publicNavigationItem struct {
 
 type publicSiteDesign struct {
 	LogoMediaAssetID string                 `json:"logo_media_asset_id"`
+	Assets           map[string]string      `json:"assets"`
+	LayoutKey        string                 `json:"layout_key"`
 	Navy             string                 `json:"navy"`
 	Gold             string                 `json:"gold"`
 	Background       string                 `json:"background"`
@@ -2994,8 +2996,33 @@ func renderSiteDesignHTML(doc string, design publicSiteDesign, locale, currentPa
 	if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
 		doc = doc[:headEnd] + style + "<!-- HIMATE DESIGN:PUBLISHED_OR_PREVIEW -->" + doc[headEnd:]
 	}
-	if id := strings.TrimSpace(design.LogoMediaAssetID); id != "" {
-		doc = strings.ReplaceAll(doc, "/brand/himate_identity_wordmark_2026.webp", html.EscapeString(logoURL(id)))
+	headerID := strings.TrimSpace(design.Assets["header_wordmark"])
+	if headerID == "" {
+		headerID = strings.TrimSpace(design.LogoMediaAssetID)
+	}
+	footerID := strings.TrimSpace(design.Assets["footer_wordmark"])
+	if footerID == "" {
+		footerID = headerID
+	}
+	const defaultWordmark = "/brand/himate_identity_wordmark_2026.webp"
+	if headerID != "" {
+		doc = strings.Replace(doc, defaultWordmark, html.EscapeString(logoURL(headerID)), 1)
+	}
+	if footerID != "" {
+		if footer := strings.Index(strings.ToLower(doc), "<footer"); footer >= 0 {
+			before, after := doc[:footer], doc[footer:]
+			after = strings.Replace(after, defaultWordmark, html.EscapeString(logoURL(footerID)), 1)
+			doc = before + after
+		}
+	}
+	if faviconID := strings.TrimSpace(design.Assets["favicon"]); faviconID != "" {
+		doc = strings.ReplaceAll(doc, "/brand/himate_identity_favicon_32.png", html.EscapeString(logoURL(faviconID)))
+	}
+	if appIconID := strings.TrimSpace(design.Assets["app_icon"]); appIconID != "" {
+		if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+			tag := "<link rel=\"apple-touch-icon\" href=\""+html.EscapeString(logoURL(appIconID))+"\">"
+			doc = doc[:headEnd] + tag + doc[headEnd:]
+		}
 	}
 	doc = replaceNavContents(doc, "links", designNavigationHTML(design, locale, currentPath, false))
 	doc = replaceNavContents(doc, "footer-links", designNavigationHTML(design, locale, currentPath, true))
