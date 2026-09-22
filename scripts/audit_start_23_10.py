@@ -38,7 +38,7 @@ def phase_tuple(raw: str):
     return tuple(int(x) for x in value.split("."))
 
 def release_phase(text: str):
-    match = re.search(r"0\\.8\\.\\d+-start-23\\.([0-9]+(?:\\.[0-9]+)*)", text)
+    match = re.search(r"0\.8\.\d+-start-23\.([0-9]+(?:\.[0-9]+)*)", text)
     return phase_tuple(match.group(1)) if match else ()
 
 for name, text in (("Compose", compose), ("Render", render), ("OpenAPI", openapi)):
