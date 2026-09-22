@@ -6230,71 +6230,162 @@ class BrandDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final viewport = MediaQuery.sizeOf(context);
-    final phone = viewport.width < 520;
+    final mediaPhone = viewport.width < 520;
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.symmetric(horizontal: phone ? 10 : 20, vertical: phone ? 12 : 24),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: mediaPhone ? 10 : 20,
+        vertical: mediaPhone ? 12 : 24,
+      ),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: width, maxHeight: viewport.height * (phone ? .94 : .88)),
-        child: Container(
-          decoration: BoxDecoration(
-            color: brandWhite,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: brandMist),
-            boxShadow: [BoxShadow(color: brandNavy.withOpacity(.16), blurRadius: 44, offset: const Offset(0, 20))],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              Container(
-                padding: EdgeInsets.fromLTRB(phone ? 16 : 22, phone ? 14 : 20, phone ? 10 : 18, phone ? 12 : 18),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: brandMist)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: phone ? 36 : 42,
-                      height: phone ? 36 : 42,
-                      decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(11)),
-                      child: Icon(icon, color: brandGold, size: phone ? 19 : 21),
+        constraints: BoxConstraints(
+          maxWidth: width,
+          maxHeight: viewport.height * (mediaPhone ? .94 : .88),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 520;
+
+            final header = Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                compact ? 16 : 22,
+                compact ? 14 : 20,
+                compact ? 10 : 18,
+                compact ? 12 : 18,
+              ),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: brandMist)),
+              ),
+              child: compact
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: brandGold.withOpacity(.12),
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              child: Icon(icon, color: brandGold, size: 19),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        LText(title, style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        LText(
+                          subtitle,
+                          style: const TextStyle(
+                            color: brandTextSoft,
+                            fontSize: 11,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: brandGold.withOpacity(.12),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(icon, color: brandGold, size: 21),
+                        ),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              LText(title, style: Theme.of(context).textTheme.titleLarge),
+                              const SizedBox(height: 4),
+                              LText(
+                                subtitle,
+                                style: const TextStyle(
+                                  color: brandTextSoft,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: phone ? 10 : 13),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          LText(title, style: phone ? Theme.of(context).textTheme.titleMedium : Theme.of(context).textTheme.titleLarge),
-                          const SizedBox(height: 4),
-                          LText(subtitle, style: TextStyle(color: brandTextSoft, fontSize: phone ? 11 : 12, height: 1.4)),
-                        ],
-                      ),
+            );
+
+            final footer = Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                compact ? 14 : 20,
+                compact ? 10 : 14,
+                compact ? 14 : 20,
+                compact ? 12 : 18,
+              ),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: brandMist)),
+              ),
+              child: ResponsiveActionBar(
+                breakpoint: 480,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const LText('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: onPrimary,
+                    child: LText(primaryLabel),
+                  ),
+                ],
+              ),
+            );
+
+            return Container(
+              decoration: BoxDecoration(
+                color: brandWhite,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: brandMist),
+                boxShadow: [
+                  BoxShadow(
+                    color: brandNavy.withOpacity(.16),
+                    blurRadius: 44,
+                    offset: const Offset(0, 20),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  header,
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(compact ? 16 : 22),
+                      child: child,
                     ),
-                    IconButton(onPressed: () => Navigator.pop(context, false), icon: const Icon(Icons.close_rounded)),
-                  ],
-                ),
+                  ),
+                  footer,
+                ],
               ),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.all(phone ? 16 : 22),
-                  child: child,
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.fromLTRB(phone ? 14 : 20, phone ? 10 : 14, phone ? 14 : 20, phone ? 12 : 18),
-                decoration: const BoxDecoration(border: Border(top: BorderSide(color: brandMist))),
-                child: ResponsiveActionBar(
-                  breakpoint: 480,
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const LText('Cancel')),
-                    FilledButton(onPressed: onPrimary, child: LText(primaryLabel)),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
