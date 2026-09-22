@@ -148,7 +148,9 @@ func (a *app) migrate(ctx context.Context) error {
 				provider_event_id TEXT PRIMARY KEY,
 				event_type TEXT NOT NULL,
 				payload_sha256 TEXT NOT NULL,
-				processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+				status TEXT NOT NULL DEFAULT 'RECEIVED',
+				received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				processed_at TIMESTAMPTZ
 			)`,
 		}},
 	})
@@ -377,13 +379,23 @@ func (a *app) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sum := sha256.Sum256(raw)
-	res, err := a.db.Exec(`INSERT INTO payments.webhook_events(provider_event_id,event_type,payload_sha256) VALUES($1,$2,$3) ON CONFLICT(provider_event_id) DO NOTHING`,
-		event.ID, event.Type, hex.EncodeToString(sum[:]))
+	payloadHash := hex.EncodeToString(sum[:])
+	res, err := a.db.Exec(`INSERT INTO payments.webhook_events(provider_event_id,event_type,payload_sha256,status)
+		VALUES($1,$2,$3,'RECEIVED') ON CONFLICT(provider_event_id) DO NOTHING`, event.ID, event.Type, payloadHash)
 	if err != nil { common.APIError(w, 500, "DB", "Could not persist webhook event"); return }
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
-		common.JSON(w, 200, map[string]any{"status":"duplicate","event_id":event.ID})
-		return
+		var status, existingHash string
+		if err := a.db.QueryRow(`SELECT status,payload_sha256 FROM payments.webhook_events WHERE provider_event_id=$1`,event.ID).Scan(&status,&existingHash); err != nil {
+			common.APIError(w,500,"DB","Could not inspect webhook retry");return
+		}
+		if existingHash != payloadHash {
+			common.APIError(w,409,"WEBHOOK_EVENT_CONFLICT","Provider event ID was reused with a different payload");return
+		}
+		if status == "PROCESSED" {
+			common.JSON(w, 200, map[string]any{"status":"duplicate","event_id":event.ID})
+			return
+		}
 	}
 	if event.Type != "payment_intent.succeeded" && event.Type != "payment_intent.payment_failed" {
 		common.JSON(w, 200, map[string]any{"status":"ignored","event_id":event.ID})
@@ -394,6 +406,17 @@ func (a *app) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		common.APIError(w, 409, "ATTEMPT_NOT_FOUND", "Webhook does not match a payment attempt")
 		return
+	}
+	if event.Data.Object.ID != "" && x.ProviderPaymentID != "" && event.Data.Object.ID != x.ProviderPaymentID {
+		common.APIError(w,409,"PAYMENT_ID_MISMATCH","Webhook payment does not match the original provider attempt")
+		return
+	}
+	if event.Type == "payment_intent.succeeded" {
+		received := float64(event.Data.Object.AmountReceived) / 100.0
+		if event.Data.Object.AmountReceived <= 0 || math.Abs(received-x.Amount) > 0.005 || !strings.EqualFold(event.Data.Object.Currency,x.Currency) {
+			common.APIError(w,409,"PAYMENT_AMOUNT_MISMATCH","Webhook amount or currency does not match the original attempt")
+			return
+		}
 	}
 	status := "SUCCEEDED"
 	failureCode, failureMessage := "", ""
@@ -418,6 +441,9 @@ func (a *app) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if err := a.settleBilling(r.Context(), x, status, providerPaymentID, event.ID, failureCode, failureMessage); err != nil {
 		common.APIError(w, 502, "BILLING_SETTLEMENT", "Payment was verified but billing settlement failed")
 		return
+	}
+	if _,err:=a.db.Exec(`UPDATE payments.webhook_events SET status='PROCESSED',processed_at=NOW() WHERE provider_event_id=$1`,event.ID);err!=nil{
+		common.APIError(w,500,"DB","Could not finalize webhook processing state");return
 	}
 	common.JSON(w, 200, map[string]any{"status":"processed","event_id":event.ID,"attempt_id":x.ID,"payment_status":status})
 }
