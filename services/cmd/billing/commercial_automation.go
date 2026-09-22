@@ -574,3 +574,43 @@ func (a *app) attachInvoiceItems(ctx context.Context, invoiceID, partnerID, curr
 	}
 	return moduleTotal, nil
 }
+
+
+func start23111BillingCommercialModelMigration() common.Migration {
+	return common.Migration{
+		Version: 9,
+		Name: "start-23-11-1-individual-commercial-terms",
+		Statements: []string{
+			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS minimum_monthly_commitment NUMERIC(12,2) NOT NULL DEFAULT 1500`,
+			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS quote_reference TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS commercial_configured BOOLEAN NOT NULL DEFAULT FALSE`,
+			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS terms_version INTEGER NOT NULL DEFAULT 1`,
+			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS contracted_at TIMESTAMPTZ`,
+			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS pricing_model TEXT NOT NULL DEFAULT 'INDIVIDUAL_QUOTE'`,
+			`ALTER TABLE billing.partner_terms ALTER COLUMN activation_fee SET DEFAULT 0`,
+			`ALTER TABLE billing.initial_licenses ALTER COLUMN required_amount SET DEFAULT 0`,
+			`CREATE TABLE IF NOT EXISTS billing.partner_terms_history(
+				id BIGSERIAL PRIMARY KEY,
+				partner_id TEXT NOT NULL,
+				terms_version INTEGER NOT NULL,
+				currency TEXT NOT NULL,
+				activation_fee NUMERIC(12,2) NOT NULL,
+				activation_fee_waived BOOLEAN NOT NULL,
+				base_monthly_fee NUMERIC(12,2) NOT NULL,
+				minimum_monthly_commitment NUMERIC(12,2) NOT NULL,
+				annual_increase_percent NUMERIC(6,2) NOT NULL,
+				price_effective_from DATE NOT NULL,
+				service_anchor_date DATE NOT NULL,
+				quote_reference TEXT NOT NULL DEFAULT '',
+				pricing_model TEXT NOT NULL DEFAULT 'INDIVIDUAL_QUOTE',
+				actor TEXT NOT NULL DEFAULT '',
+				reason TEXT NOT NULL DEFAULT '',
+				changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(partner_id,terms_version)
+			)`,
+			`CREATE INDEX IF NOT EXISTS billing_partner_terms_history_lookup ON billing.partner_terms_history(partner_id,terms_version DESC)`,
+			`UPDATE billing.partner_terms SET minimum_monthly_commitment=1500 WHERE minimum_monthly_commitment<1500 AND currency='USD'`,
+			`UPDATE billing.partner_terms SET commercial_configured=TRUE,quote_reference=CASE WHEN quote_reference='' THEN 'REFERENCE-PARTNER' ELSE quote_reference END,contracted_at=COALESCE(contracted_at,updated_at) WHERE partner_id='ptr_000001'`,
+		},
+	}
+}
