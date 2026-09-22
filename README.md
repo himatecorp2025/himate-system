@@ -58,11 +58,11 @@ HIMATE is the central control plane for separately deployed arts-sector partner 
 ### START-21 — Encrypted backups and verified recovery
 - dedicated private `backups` microservice owns backup orchestration, retention and restore verification
 - restore points include the isolated partner PostgreSQL database, partner media namespace and redacted configuration state
-- restore artifacts are encrypted with chunked AES-256-GCM before offsite storage
-- CI/development uses an isolated local offsite adapter; production uses an S3-compatible HTTPS adapter with AWS SigV4
+- restore artifacts are encrypted with chunked AES-256-GCM before durable backup storage
+- CI/development uses an isolated local adapter; production uses the `render_disk` adapter backed by a dedicated Render persistent disk
 - backup jobs and partner-scoped retention/scheduling policies are durable in PostgreSQL
 - every successful restore point automatically queues a mandatory restore test
-- restore verification re-downloads the offsite artifact, validates ciphertext/component checksums, restores PostgreSQL into a scratch database and validates media/configuration integrity
+- restore verification re-opens the durable backup artifact, validates ciphertext/component checksums, restores PostgreSQL into a scratch database and validates media/configuration integrity
 - recoverability is VERIFIED only when the latest restore point is READY and its latest restore test PASSED
 - Gateway RBAC/audit, System Health and the System & Operations UI include backup/recoverability controls
 
@@ -124,7 +124,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Backups / recoverability service
 - Runtime / deployment-provider adapter service
 - PostgreSQL control-plane database plus isolated partner databases
-- isolated CI/development offsite backup volume; S3-compatible offsite provider in production
+- isolated CI/development backup volume; dedicated Render persistent backup disk in production
 
 ## Security and performance baseline
 - HttpOnly SameSite=Strict administrator session cookie; Secure in production
@@ -143,7 +143,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - START-22 retained Connector payloads encrypted at rest with AES-256-GCM envelope encryption
 - Partner Portal role namespace is non-interoperable with HIMATE administrator roles
 - server-paginated partner reads and bounded page-level aggregation
-- encrypted offsite restore artifacts with mandatory restore verification
+- encrypted durable restore artifacts with mandatory restore verification
 - Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–22 smoke tests in CI
 
 
