@@ -60,7 +60,11 @@ require("next.Required < 13000" not in billing, "obsolete USD 13,000 license act
 require("setCatalogEntitlementState" in billing and '"entitlement_state"' in billing, "Billing-to-Catalog entitlement synchronization is missing")
 require('"quote_reference":t.QuoteReference' in billing, "partner quote reference is not exposed")
 require("termsHistory" in billing and "partner_terms_history" in billing, "versioned commercial history readback is missing")
+require("billing_partner_terms_history_append_only" in automation and "reject_partner_terms_history_mutation" in automation,
+        "commercial terms history must be append-only at database level")
 require("SELECT terms_version FROM billing.partner_terms WHERE partner_id=$1 FOR UPDATE" in billing, "commercial terms concurrent update lock is missing")
+require("publication_status'] ?? 'UNPUBLISHED" in main_ui and "== 'PUBLISHED'" in main_ui,
+        "new-partner module preset must be restricted to published modules")
 
 for token in [
     "Publication status",
