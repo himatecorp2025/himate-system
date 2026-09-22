@@ -260,14 +260,14 @@ func (a *app) groups(w http.ResponseWriter, r *http.Request) {
 	locale:=common.RequestLocale(r)
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT group_key,label_en,label_hu,sort_order FROM catalog.module_groups ORDER BY sort_order,lower(label_en)`)
+		rows, err := a.db.Query(`SELECT group_key,label_en,label_hu,sort_order,is_primary_navigation FROM catalog.module_groups ORDER BY sort_order,lower(label_en)`)
 		if err != nil { common.APIError(w,500,"DB","Could not load module groups"); return }
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var k,en,hu string; var s int
-			if rows.Scan(&k,&en,&hu,&s)==nil {
-				items=append(items,map[string]any{"group_key":k,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":s})
+			var k,en,hu string; var s int; var primary bool
+			if rows.Scan(&k,&en,&hu,&s,&primary)==nil {
+				items=append(items,map[string]any{"group_key":k,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":s,"is_primary_navigation":primary})
 			}
 		}
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items),"locale":locale})
@@ -322,7 +322,7 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		rows, err := a.db.Query(`SELECT m.module_key,m.label_en,m.label_hu,m.group_key,g.label_en,g.label_hu,m.description_en,m.description_hu,m.default_monthly_price,m.default_activation_fee,m.currency,m.version,m.latest_version,
 			m.last_updated_at,m.system,m.availability,m.module_type,m.owner_team,m.source_repository,m.source_path,m.source_ref,m.source_commit,
-			m.artifact_type,m.artifact_reference,m.min_platform_version,m.manifest,
+			m.artifact_type,m.artifact_reference,m.min_platform_version,m.manifest,m.publication_status,m.implementation_state,m.legacy_reference,
 			(SELECT COUNT(*) FROM catalog.module_relationships mr WHERE mr.module_key=m.module_key),
 			(SELECT COUNT(*) FROM catalog.partner_modules pm WHERE pm.module_key=m.module_key AND pm.status='ACTIVE'),
 			(SELECT COUNT(*) FROM catalog.module_impact_metrics mm WHERE mm.module_key=m.module_key)
@@ -331,15 +331,17 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var k,labelEN,labelHU,g,groupEN,groupHU,descEN,descHU,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+			var k,labelEN,labelHU,g,groupEN,groupHU,descEN,descHU,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,publicationStatus,implementationState,legacyReference string
 			var p,activationFee float64; var t time.Time; var sys bool; var manifestRaw []byte; var relCount,usageCount,metricCount int
-			if rows.Scan(&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&descEN,&descHU,&p,&activationFee,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
+			if rows.Scan(&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&descEN,&descHU,&p,&activationFee,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&publicationStatus,&implementationState,&legacyReference,&relCount,&usageCount,&metricCount)==nil {
 				manifest:=map[string]any{}; _=json.Unmarshal(manifestRaw,&manifest)
 				locale:=common.RequestLocale(r)
 				items=append(items,map[string]any{"key":k,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,"group_key":g,"group_label":common.Localized(groupEN,groupHU,locale),"group_label_en":groupEN,"group_label_hu":groupHU,"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,"default_monthly_price":p,"default_activation_fee":activationFee,"currency":currency,
 					"version":v,"latest_version":lv,"last_updated_at":t,"system":sys,"availability":availability,"module_type":moduleType,"owner_team":owner,
 					"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,"artifact_type":artifactType,"artifact_reference":artifactRef,
-					"min_platform_version":minPlatform,"manifest":manifest,"relationship_count":relCount,"active_partner_count":usageCount,"impact_metric_count":metricCount})
+					"min_platform_version":minPlatform,"manifest":manifest,"publication_status":publicationStatus,"implementation_state":implementationState,"legacy_reference":legacyReference,
+					"reference_monthly_price":p,"reference_activation_fee":activationFee,"pricing_authority":"PARTNER_CONTRACT",
+					"relationship_count":relCount,"active_partner_count":usageCount,"impact_metric_count":metricCount})
 			}
 		}
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
