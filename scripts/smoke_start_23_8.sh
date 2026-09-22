@@ -4,12 +4,14 @@ set -eu
 BASE_URL="${1:-http://127.0.0.1:8080}"
 TMP_ROOT="${TMPDIR:-/tmp}"
 COOKIE="$TMP_ROOT/himate-start238-owner.txt"
+PARTNER_A_COOKIE="$TMP_ROOT/himate-start238-partner-a.txt"
+PARTNER_B_COOKIE="$TMP_ROOT/himate-start238-partner-b.txt"
 BODY="$TMP_ROOT/himate-start238-body.txt"
 HEADERS="$TMP_ROOT/himate-start238-headers.txt"
 PNG="$TMP_ROOT/himate-start238.png"
 MEDIA_OUT="$TMP_ROOT/himate-start238-media.png"
-rm -f "$COOKIE" "$BODY" "$HEADERS" "$PNG" "$MEDIA_OUT"
-trap 'rm -f "$COOKIE" "$BODY" "$HEADERS" "$PNG" "$MEDIA_OUT"' EXIT
+rm -f "$COOKIE" "$PARTNER_A_COOKIE" "$PARTNER_B_COOKIE" "$BODY" "$HEADERS" "$PNG" "$MEDIA_OUT"
+trap 'rm -f "$COOKIE" "$PARTNER_A_COOKIE" "$PARTNER_B_COOKIE" "$BODY" "$HEADERS" "$PNG" "$MEDIA_OUT"' EXIT
 
 COMPOSE_JSON="$(docker compose config --format json)"
 OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
@@ -186,11 +188,20 @@ if grep -q 'SECOND PUBLISHED SECTION 238' "$BODY"; then exit 1; fi
 echo ok
 
 printf 'save Design Guide draft and verify authoritative readback... '
-design_payload="$(python3 - "$SLUG" <<'PY'
+design_payload="$(python3 - "$SLUG" "$media_id" <<'PY'
 import json,sys
-slug=sys.argv[1]
+slug,media=sys.argv[1:]
 print(json.dumps({
- "logo_media_asset_id":"",
+ "logo_media_asset_id":media if False else "",
+ "assets":{
+   "header_wordmark":media,
+   "footer_wordmark":media,
+   "favicon":media,
+   "app_icon":media,
+   "login_logo":media,
+   "email_logo":media
+ },
+ "layout_key":"modern_grid",
  "navy":"#123456",
  "gold":"#C59A42",
  "background":"#F2EFE8",
@@ -208,7 +219,7 @@ PY
 )"
 curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$design_payload" "$BASE_URL/api/v1/cms/design/draft" >/dev/null
 design_read="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/cms/design")"
-printf '%s' "$design_read" | python3 -c 'import json,sys; d=json.load(sys.stdin)["draft"]; assert d["navy"]=="#123456"; assert d["button_radius"]==17; assert d["navigation"][0]["label_en"]=="Culture Lab 238"'
+printf '%s' "$design_read" | python3 -c 'import json,sys; d=json.load(sys.stdin)["draft"]; assert d["navy"]=="#123456"; assert d["button_radius"]==17; assert d["layout_key"]=="modern_grid"; assert d["assets"]["favicon"]==sys.argv[1]; assert d["assets"]["login_logo"]==sys.argv[1]; assert d["assets"]["email_logo"]==sys.argv[1]; assert d["navigation"][0]["label_en"]=="Culture Lab 238"' "$media_id"
 echo ok
 
 printf 'desktop/tablet/mobile Design preview renders the real website... '
@@ -231,6 +242,9 @@ grep -q 'data-himate-design' "$BODY"
 grep -q -- '--navy:#123456' "$BODY"
 grep -q 'Culture Lab 238' "$BODY"
 grep -q 'border-radius:17px' "$BODY"
+grep -q 'rel="icon"' "$BODY"
+grep -q 'apple-touch-icon' "$BODY"
+grep -q "/public/v1/cms/media/$media_id" "$BODY"
 echo ok
 
 printf 'publish Design Guide and prove public initial HTML mutation... '
