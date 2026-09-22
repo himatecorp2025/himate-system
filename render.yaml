@@ -538,7 +538,7 @@ services:
       - key: HIMATE_ENV
         value: production
       - key: HIMATE_APP_VERSION
-        value: 0.8.6-start-23.2
+        value: 0.8.7-start-23.3
       - key: COOKIE_SECURE
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS
