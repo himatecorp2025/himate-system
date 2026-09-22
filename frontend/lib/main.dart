@@ -6244,7 +6244,7 @@ class BrandDialog extends StatelessWidget {
             boxShadow: [BoxShadow(color: brandNavy.withOpacity(.16), blurRadius: 44, offset: const Offset(0, 20))],
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             children: [
               Container(
                 padding: EdgeInsets.fromLTRB(phone ? 16 : 22, phone ? 14 : 20, phone ? 10 : 18, phone ? 12 : 18),
