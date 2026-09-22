@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–23.6 implementation status
+## START-01–23.7 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -146,7 +146,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Partner Portal role namespace is non-interoperable with HIMATE administrator roles
 - server-paginated partner reads and bounded page-level aggregation
 - encrypted durable restore artifacts with mandatory restore verification
-- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–23.6 smoke tests in CI
+- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–23.7 smoke tests in CI
 
 
 ### START-22.1 — Internal Control Plane Completion
@@ -258,6 +258,19 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.10-start-23.6`
 - START-23.6 acceptance is `docs/START-23.6_ACCEPTANCE.md`, `scripts/audit_start_23_6.py` and `scripts/smoke_start_23_6.sh`
 
+### START-23.7 — Evidence, Impact & Reproducible Reporting
+- commercial Billing documents now require same-partner, file-backed HIMATE Evidence references instead of arbitrary storage URLs
+- Billing performs a fresh Storage SHA-256/byte-size integrity check through the Evidence service before accepting invoice/contract/payment evidence
+- Partner Workspace uploads commercial files to Evidence/Storage before linking them to Billing
+- Impact definition, observation, baseline and module-to-metric mapping workflows have full mutation/readback proof
+- URL/declaration and real multipart file Evidence have end-to-end create/preview/download/integrity/verification proof
+- VERIFIED_DOCUMENT observations require verified file Evidence bound to the same partner and metric
+- report creation freezes an immutable snapshot, persists snapshot/PDF SHA-256 values and links included Evidence
+- report regeneration renders only from the stored snapshot and does not reread later live metric changes
+- historical START-22.3 and START-23.4 fixtures now use real file-backed Evidence objects
+- release contract version is `0.8.11-start-23.7`
+- START-23.7 acceptance is `docs/START-23.7_ACCEPTANCE.md`, `scripts/audit_start_23_7.py` and `scripts/smoke_start_23_7.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -281,10 +294,11 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.4_ACCEPTANCE.md`
 - `docs/START-23.5_ACCEPTANCE.md`
 - `docs/START-23.6_ACCEPTANCE.md`
+- `docs/START-23.7_ACCEPTANCE.md`
 - `docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. The START-23.1–23.6 cross-phase closure audit is now an enforced CI gate and must remain green during START-23.7 and later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
