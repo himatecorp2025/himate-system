@@ -1,5 +1,7 @@
 # START-23 Acceptance — Responsive & Functional QA
 
+> **Historical acceptance note (START-23.1):** START-23 remains the accepted responsive/layout regression baseline, but its GET-oriented functional route matrix is no longer sufficient evidence of product completion. START-23.1 supersedes the functional-completion interpretation with the machine-readable mutation contract in `docs/START-23.1_FUNCTIONAL_MATRIX.json`. START-24 is blocked until START-23.12.
+
 ## Scope
 
 START-23 is a final-readiness quality gate over the completed START-01–22.3 system. It does not add a new business domain. Its purpose is to make the existing administration, Partner Portal and public/control-plane flows behave reliably across supported viewport sizes and common UI states before START-24 Security Acceptance.

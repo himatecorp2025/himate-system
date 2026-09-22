@@ -26,7 +26,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.4-start-23' ../docs/openapi.yaml
+          grep -q 'version: 0.8.5-start-23.1' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
@@ -54,6 +54,9 @@ jobs:
           test -s ../docs/START-22.2_ACCEPTANCE.md
           test -s ../docs/START-22.3_ACCEPTANCE.md
           test -s ../docs/START-23_ACCEPTANCE.md
+          test -s ../docs/START-23.1_ACCEPTANCE.md
+          test -s ../docs/START-23.1_FUNCTIONAL_MATRIX.json
+          test -s ../docs/START-23.1_SURFACE_INVENTORY.md
           test -s ../docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md
           test -s ../docs/adr/0005-klavierhaus-one-way-data-connector.md
       - run: go build ./cmd/...
@@ -74,6 +77,8 @@ jobs:
       - run: flutter test --platform chrome
       - name: Run START-23 responsive and bilingual frontend audit
         run: python3 ../scripts/audit_start_23_frontend.py
+      - name: Run START-23.1 functional-contract audit
+        run: python3 ../scripts/audit_start_23_1_contract.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -273,6 +278,8 @@ jobs:
         run: sh scripts/audit_load_start_01_22_3.sh http://127.0.0.1:8080
       - name: Run START-23 responsive and functional route-matrix smoke
         run: sh scripts/smoke_start_23.sh http://127.0.0.1:8080
+      - name: Run START-23.1 mutation acceptance canary
+        run: sh scripts/smoke_start_23_1_mutation_canary.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
