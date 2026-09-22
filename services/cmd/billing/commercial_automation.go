@@ -609,11 +609,11 @@ func start23111BillingCommercialModelMigration() common.Migration {
 				UNIQUE(partner_id,terms_version)
 			)`,
 			`CREATE INDEX IF NOT EXISTS billing_partner_terms_history_lookup ON billing.partner_terms_history(partner_id,terms_version DESC)`,
-			`CREATE OR REPLACE FUNCTION billing.reject_partner_terms_history_mutation() RETURNS trigger LANGUAGE plpgsql AS $
+			`CREATE OR REPLACE FUNCTION billing.reject_partner_terms_history_mutation() RETURNS trigger LANGUAGE plpgsql AS $fn$
 			BEGIN
 				RAISE EXCEPTION 'billing.partner_terms_history is append-only';
 				RETURN OLD;
-			END; $`,
+			END; $fn$`,
 			`DROP TRIGGER IF EXISTS billing_partner_terms_history_append_only ON billing.partner_terms_history`,
 			`CREATE TRIGGER billing_partner_terms_history_append_only
 				BEFORE UPDATE OR DELETE ON billing.partner_terms_history
