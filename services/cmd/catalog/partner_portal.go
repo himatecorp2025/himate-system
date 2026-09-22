@@ -69,7 +69,7 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 			WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
 			ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
 		) ep ON TRUE
-		WHERE pm.partner_id=$1
+		WHERE pm.partner_id=$1 AND m.publication_status='PUBLISHED'
 		ORDER BY g.sort_order,m.label_en`, partnerID)
 	if err != nil {
 		return nil, err
@@ -188,15 +188,19 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	}
 	defer tx.Rollback()
 
-	var status, availability, labelEN, labelHU string
+	var status, availability, publicationStatus, labelEN, labelHU string
 	var visible bool
 	if err := tx.QueryRow(`
-		SELECT pm.status,m.availability,m.label_en,m.label_hu,pm.visible
+		SELECT pm.status,m.availability,m.publication_status,m.label_en,m.label_hu,pm.visible
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
 		WHERE pm.partner_id=$1 AND pm.module_key=$2
-		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&labelEN,&labelHU,&visible); err != nil {
+		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&publicationStatus,&labelEN,&labelHU,&visible); err != nil {
 		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Module not found")
+		return
+	}
+	if publicationStatus != "PUBLISHED" {
+		common.APIError(w,http.StatusConflict,"MODULE_UNPUBLISHED","Module is not published for partner use")
 		return
 	}
 	if status == "ACTIVE" {
