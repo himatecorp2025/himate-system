@@ -607,6 +607,8 @@ class _HimateAppState extends State<HimateApp> {
 
   Widget loginPage() => LoginPage(
         onLogin: login,
+        onRequestPasswordReset: requestPasswordReset,
+        onConfirmPasswordReset: confirmPasswordReset,
         localeCode: effectiveLocaleCode,
         onLocaleChanged: setAnonymousLocale,
       );
@@ -633,6 +635,17 @@ class _HimateAppState extends State<HimateApp> {
         navigatorKey.currentState?.pushNamed(target);
       });
     }
+  }
+
+  Future<void> requestPasswordReset(String email) async {
+    await api.post('/api/v1/auth/password-reset/request', {'email': email.trim()});
+  }
+
+  Future<void> confirmPasswordReset(String token, String newPassword) async {
+    await api.post('/api/v1/auth/password-reset/confirm', {
+      'token': token.trim(),
+      'new_password': newPassword,
+    });
   }
 
   Future<void> logout() async {
@@ -817,11 +830,15 @@ class _SignedInRedirect extends StatelessWidget {
 class LoginPage extends StatefulWidget {
   const LoginPage({
     required this.onLogin,
+    required this.onRequestPasswordReset,
+    required this.onConfirmPasswordReset,
     required this.localeCode,
     required this.onLocaleChanged,
     super.key,
   });
   final Future<void> Function(String email, String password, bool remember) onLogin;
+  final Future<void> Function(String email) onRequestPasswordReset;
+  final Future<void> Function(String token, String newPassword) onConfirmPasswordReset;
   final String localeCode;
   final ValueChanged<String> onLocaleChanged;
 
@@ -836,6 +853,119 @@ class _LoginPageState extends State<LoginPage> {
   bool obscure = true;
   bool remember = true;
   String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    final token = Uri.base.queryParameters['reset_token']?.trim() ?? '';
+    if (token.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(showResetPassword(token));
+      });
+    }
+  }
+
+  Future<void> forgotPassword() async {
+    final controller = TextEditingController(text: email.text.trim());
+    final submitted = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: LText(tr(dialogContext, 'resetRequestTitle')),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LText(tr(dialogContext, 'resetRequestBody')),
+              const SizedBox(height: 18),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.emailAddress,
+                autofocus: true,
+                decoration: InputDecoration(labelText: tr(dialogContext, 'emailAddress')),
+                onSubmitted: (value) => Navigator.of(dialogContext).pop(value.trim()),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const LText('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: LText(tr(dialogContext, 'resetSend')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (submitted == null || submitted.isEmpty || !mounted) return;
+    try {
+      await widget.onRequestPasswordReset(submitted);
+      if (!mounted) return;
+      info(tr(context, 'resetSent'));
+    } catch (e) {
+      if (!mounted) return;
+      info(e.toString());
+    }
+  }
+
+  Future<void> showResetPassword(String token) async {
+    final first = TextEditingController();
+    final second = TextEditingController();
+    final values = await showDialog<List<String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: LText(tr(dialogContext, 'resetNewPasswordTitle')),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: first,
+                obscureText: true,
+                autofocus: true,
+                decoration: InputDecoration(labelText: tr(dialogContext, 'resetNewPassword')),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: second,
+                obscureText: true,
+                decoration: InputDecoration(labelText: tr(dialogContext, 'resetConfirmPassword')),
+                onSubmitted: (_) => Navigator.of(dialogContext).pop([first.text, second.text]),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const LText('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop([first.text, second.text]),
+            child: LText(tr(dialogContext, 'resetConfirmAction')),
+          ),
+        ],
+      ),
+    );
+    first.dispose();
+    second.dispose();
+    if (values == null || values.length != 2 || !mounted) return;
+    if (values[0] != values[1]) {
+      info(tr(context, 'resetMismatch'));
+      return;
+    }
+    try {
+      await widget.onConfirmPasswordReset(token, values[0]);
+      if (!mounted) return;
+      html.window.history.replaceState(null, 'HIMATE', '/login');
+      password.clear();
+      info(tr(context, 'resetDone'));
+    } catch (e) {
+      if (!mounted) return;
+      info(e.toString());
+    }
+  }
 
   @override
   void dispose() {
@@ -908,8 +1038,7 @@ class _LoginPageState extends State<LoginPage> {
                         onTogglePassword: () => setState(() => obscure = !obscure),
                         onRemember: (v) => setState(() => remember = v ?? true),
                         onSubmit: submit,
-                        onForgot: () => info(tr(context, 'recoveryPending')),
-                        onSso: () => info(tr(context, 'ssoPending')),
+                        onForgot: forgotPassword,
                       )
                     : _DesktopLoginComposition(
                         email: email,
@@ -921,8 +1050,7 @@ class _LoginPageState extends State<LoginPage> {
                         onTogglePassword: () => setState(() => obscure = !obscure),
                         onRemember: (v) => setState(() => remember = v ?? true),
                         onSubmit: submit,
-                        onForgot: () => info('Password recovery will be connected in the security phase.'),
-                        onSso: () => info(tr(context, 'ssoPending')),
+                        onForgot: forgotPassword,
                       ),
               ),
             ],
@@ -977,12 +1105,11 @@ class _DesktopLoginComposition extends StatelessWidget {
     required this.onRemember,
     required this.onSubmit,
     required this.onForgot,
-    required this.onSso,
   });
   final TextEditingController email, password;
   final bool busy, obscure, remember;
   final String? error;
-  final VoidCallback onTogglePassword, onSubmit, onForgot, onSso;
+  final VoidCallback onTogglePassword, onSubmit, onForgot;
   final ValueChanged<bool?> onRemember;
 
   @override
@@ -1058,7 +1185,6 @@ class _DesktopLoginComposition extends StatelessWidget {
                   onRemember: onRemember,
                   onSubmit: onSubmit,
                   onForgot: onForgot,
-                  onSso: onSso,
                 ),
               ),
             ),
@@ -1081,12 +1207,11 @@ class _CompactLoginComposition extends StatelessWidget {
     required this.onRemember,
     required this.onSubmit,
     required this.onForgot,
-    required this.onSso,
   });
   final TextEditingController email, password;
   final bool busy, obscure, remember;
   final String? error;
-  final VoidCallback onTogglePassword, onSubmit, onForgot, onSso;
+  final VoidCallback onTogglePassword, onSubmit, onForgot;
   final ValueChanged<bool?> onRemember;
 
   @override
@@ -1125,7 +1250,6 @@ class _CompactLoginComposition extends StatelessWidget {
                 onRemember: onRemember,
                 onSubmit: onSubmit,
                 onForgot: onForgot,
-                onSso: onSso,
               ),
             ),
           ),
@@ -1168,13 +1292,12 @@ class _LoginCard extends StatelessWidget {
     required this.onRemember,
     required this.onSubmit,
     required this.onForgot,
-    required this.onSso,
   });
 
   final TextEditingController email, password;
   final bool busy, obscure, remember;
   final String? error;
-  final VoidCallback onTogglePassword, onSubmit, onForgot, onSso;
+  final VoidCallback onTogglePassword, onSubmit, onForgot;
   final ValueChanged<bool?> onRemember;
 
   @override
@@ -1267,19 +1390,6 @@ class _LoginCard extends StatelessWidget {
                       const Icon(Icons.arrow_forward_rounded, size: 21),
                     ]),
             ),
-          ),
-          const SizedBox(height: 18),
-          Row(children: [
-            const Expanded(child: Divider(color: brandMist)),
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: LText('or continue with', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 13.0))),
-            const Expanded(child: Divider(color: brandMist)),
-          ]),
-          const SizedBox(height: 18),
-          OutlinedButton.icon(
-            onPressed: onSso,
-            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-            icon: const Icon(Icons.account_balance_outlined, size: 21),
-            label: LText('Sign in with SSO', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
           ),
           const SizedBox(height: 24),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
