@@ -513,8 +513,10 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		Status         *string  `json:"status"`
 		Visible        *bool    `json:"visible"`
 		IncludedInBase *bool    `json:"included_in_base"`
-		PartnerPrice     *float64 `json:"partner_price"`
-		PriceEffectiveAt string   `json:"price_effective_at"`
+		PartnerPrice         *float64 `json:"partner_price"`
+		PriceEffectiveAt     string   `json:"price_effective_at"`
+		PartnerActivationFee *float64 `json:"partner_activation_fee"`
+		ActivationFeeEffectiveAt string `json:"activation_fee_effective_at"`
 		Reason           string   `json:"reason"`
 	}
 	if common.Decode(r, &in) != nil {
@@ -631,6 +633,53 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		}
 		if err = recordHistory("partner_price", oldValue, *in.PartnerPrice, effectiveAt); err != nil { common.APIError(w, 500, "DB", "Could not save module history"); return }
 	}
+	if in.PartnerActivationFee != nil {
+		if *in.PartnerActivationFee < 0 {
+			common.APIError(w, 400, "VALIDATION", "Activation fee cannot be negative")
+			return
+		}
+		activationEffectiveAt := time.Now().UTC()
+		if strings.TrimSpace(in.ActivationFeeEffectiveAt) != "" {
+			rawEffectiveAt := strings.TrimSpace(in.ActivationFeeEffectiveAt)
+			parsed, parseErr := time.Parse(time.RFC3339, rawEffectiveAt)
+			if parseErr != nil {
+				parsed, parseErr = time.Parse("2006-01-02", rawEffectiveAt)
+			}
+			if parseErr != nil {
+				common.APIError(w, 400, "VALIDATION", "activation_fee_effective_at must be RFC3339 or YYYY-MM-DD")
+				return
+			}
+			activationEffectiveAt = parsed.UTC()
+		}
+		var oldFee float64
+		if err = tx.QueryRow(`
+			SELECT COALESCE(
+				(SELECT ah.new_fee FROM catalog.activation_fee_history ah
+				 WHERE ah.partner_id=pm.partner_id AND ah.module_key=pm.module_key AND ah.effective_at<=NOW()
+				 ORDER BY ah.effective_at DESC,ah.id DESC LIMIT 1),
+				pm.activation_fee_override,m.default_activation_fee)
+			FROM catalog.partner_modules pm
+			JOIN catalog.modules m ON m.module_key=pm.module_key
+			WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key).Scan(&oldFee); err != nil {
+			common.APIError(w, 404, "NOT_FOUND", "Module not found")
+			return
+		}
+		if !activationEffectiveAt.After(time.Now().UTC()) {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET activation_fee_override=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerActivationFee); err != nil {
+				common.APIError(w, 500, "DB", "Could not update activation fee")
+				return
+			}
+		}
+		if _, err = tx.Exec(`INSERT INTO catalog.activation_fee_history(partner_id,module_key,old_fee,new_fee,effective_at,actor,reason)
+			VALUES($1,$2,$3,$4,$5,$6,$7)`, partnerID, key, oldFee, *in.PartnerActivationFee, activationEffectiveAt, actor, reason); err != nil {
+			common.APIError(w, 500, "DB", "Could not save activation-fee history")
+			return
+		}
+		if err = recordHistory("partner_activation_fee", oldFee, *in.PartnerActivationFee, activationEffectiveAt); err != nil {
+			common.APIError(w, 500, "DB", "Could not save module history")
+			return
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		common.APIError(w, 500, "DB", "Could not commit module update")
 		return
@@ -733,6 +782,64 @@ func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key string) {
 	common.JSON(w, 200, item)
 }
 
+func splitPartnerIDs(raw string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range strings.Split(raw, ",") {
+		id := strings.TrimSpace(value)
+		if id == "" || seen[id] { continue }
+		seen[id] = true
+		out = append(out, id)
+		if len(out) >= 200 { break }
+	}
+	return out
+}
+
+func (a *app) commercialMatrix(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, 405, "METHOD", "Use GET")
+		return
+	}
+	ids := splitPartnerIDs(r.URL.Query().Get("partner_ids"))
+	if len(ids) == 0 {
+		common.JSON(w, 200, map[string]any{"items": []map[string]any{}, "count": 0})
+		return
+	}
+	for _, id := range ids {
+		if err := a.ensurePartnerModules(id); err != nil {
+			common.APIError(w, 500, "DB", "Could not initialize partner module matrix")
+			return
+		}
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := partnerModuleSelect + ` WHERE pm.partner_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY pm.partner_id,g.sort_order,m.label`
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not load partner-module commercial matrix")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		item, scanErr := scanPartnerModule(rows)
+		if scanErr != nil {
+			common.APIError(w, 500, "DB", "Could not decode partner-module commercial matrix")
+			return
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		common.APIError(w, 500, "DB", "Could not load complete partner-module commercial matrix")
+		return
+	}
+	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
+}
+
 func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, 405, "METHOD", "Use GET")
@@ -779,18 +886,74 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 }
 
 
-const partnerModuleSelect = `SELECT pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,m.default_monthly_price,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),m.currency,m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at FROM catalog.partner_modules pm JOIN catalog.modules m ON m.module_key=pm.module_key JOIN catalog.module_groups g ON g.group_key=m.group_key LEFT JOIN LATERAL (SELECT ph.new_price FROM catalog.price_history ph WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW() ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1) ep ON TRUE`
+const partnerModuleSelect = `SELECT
+	pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,
+	m.default_monthly_price,pm.price_override,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),
+	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
+	np.new_price,np.effective_at,
+	m.default_activation_fee,pm.activation_fee_override,COALESCE(eaf.new_fee,pm.activation_fee_override,m.default_activation_fee),
+	CASE WHEN eaf.new_fee IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.activation_fee_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
+	naf.new_fee,naf.effective_at,
+	m.currency,m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at
+	FROM catalog.partner_modules pm
+	JOIN catalog.modules m ON m.module_key=pm.module_key
+	JOIN catalog.module_groups g ON g.group_key=m.group_key
+	LEFT JOIN LATERAL (
+		SELECT ph.new_price FROM catalog.price_history ph
+		WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
+		ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
+	) ep ON TRUE
+	LEFT JOIN LATERAL (
+		SELECT ph.new_price,ph.effective_at FROM catalog.price_history ph
+		WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at>NOW()
+		ORDER BY ph.effective_at ASC,ph.id ASC LIMIT 1
+	) np ON TRUE
+	LEFT JOIN LATERAL (
+		SELECT ah.new_fee FROM catalog.activation_fee_history ah
+		WHERE ah.partner_id=pm.partner_id AND ah.module_key=pm.module_key AND ah.effective_at<=NOW()
+		ORDER BY ah.effective_at DESC,ah.id DESC LIMIT 1
+	) eaf ON TRUE
+	LEFT JOIN LATERAL (
+		SELECT ah.new_fee,ah.effective_at FROM catalog.activation_fee_history ah
+		WHERE ah.partner_id=pm.partner_id AND ah.module_key=pm.module_key AND ah.effective_at>NOW()
+		ORDER BY ah.effective_at ASC,ah.id ASC LIMIT 1
+	) naf ON TRUE`
 
 type scanner interface{ Scan(...any) error }
 
+func nullableFloat(v sql.NullFloat64) any {
+	if !v.Valid { return nil }
+	return v.Float64
+}
+
+func nullableTime(v sql.NullTime) any {
+	if !v.Valid { return nil }
+	return v.Time.UTC()
+}
+
 func scanPartnerModule(s scanner) (map[string]any, error) {
-	var id, k, l, g, gl, st, currency, v, lv, availability string
+	var id, k, l, g, gl, st, currency, v, lv, availability, priceSource, activationSource string
 	var vis, inc bool
-	var def, price float64
+	var defPrice, price, defaultActivationFee, activationFee float64
+	var priceOverride, nextPrice, activationOverride, nextActivationFee sql.NullFloat64
+	var nextPriceAt, nextActivationFeeAt, activated sql.NullTime
 	var t time.Time
-	var activated sql.NullTime
-	err := s.Scan(&id, &k, &l, &g, &gl, &st, &vis, &inc, &def, &price, &currency, &v, &lv, &t, &availability, &activated)
-	var activatedAt any
-	if activated.Valid { activatedAt = activated.Time.UTC() }
-	return map[string]any{"partner_id": id, "key": k, "label": l, "group_key": g, "group_label": gl, "status": st, "visible": vis, "included_in_base": inc, "default_monthly_price": def, "partner_price": price, "currency": currency, "version": v, "latest_version": lv, "last_updated_at": t, "availability": availability, "activated_at": activatedAt}, err
+	err := s.Scan(
+		&id,&k,&l,&g,&gl,&st,&vis,&inc,
+		&defPrice,&priceOverride,&price,&priceSource,&nextPrice,&nextPriceAt,
+		&defaultActivationFee,&activationOverride,&activationFee,&activationSource,&nextActivationFee,&nextActivationFeeAt,
+		&currency,&v,&lv,&t,&availability,&activated,
+	)
+	return map[string]any{
+		"partner_id": id, "key": k, "label": l, "group_key": g, "group_label": gl,
+		"status": st, "visible": vis, "included_in_base": inc,
+		"default_monthly_price": defPrice, "price_override": nullableFloat(priceOverride),
+		"partner_price": price, "price_source": priceSource,
+		"next_partner_price": nullableFloat(nextPrice), "next_price_effective_at": nullableTime(nextPriceAt),
+		"default_activation_fee": defaultActivationFee, "activation_fee_override": nullableFloat(activationOverride),
+		"partner_activation_fee": activationFee, "activation_fee_source": activationSource,
+		"next_partner_activation_fee": nullableFloat(nextActivationFee), "next_activation_fee_effective_at": nullableTime(nextActivationFeeAt),
+		"currency": currency, "version": v, "latest_version": lv, "last_updated_at": t,
+		"availability": availability, "activated_at": nullableTime(activated),
+	}, err
 }
