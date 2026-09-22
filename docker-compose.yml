@@ -243,6 +243,7 @@ services:
       CATALOG_HOSTPORT: catalog:10000
       BILLING_HOSTPORT: billing:10000
       PARTNERS_HOSTPORT: partners:10000
+      CMS_HOSTPORT: cms:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -253,6 +254,8 @@ services:
       billing:
         condition: service_started
       partners:
+        condition: service_started
+      cms:
         condition: service_started
 
   provisioning:
