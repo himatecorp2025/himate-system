@@ -80,15 +80,17 @@ type navigationItem struct {
 	SortOrder int `json:"sort_order"`
 }
 type siteDesign struct {
-	LogoMediaAssetID string `json:"logo_media_asset_id"`
-	Navy string `json:"navy"`
-	Gold string `json:"gold"`
-	Background string `json:"background"`
-	TextColor string `json:"text_color"`
-	HeadingFont string `json:"heading_font"`
-	BodyFont string `json:"body_font"`
-	ButtonRadius int `json:"button_radius"`
-	Navigation []navigationItem `json:"navigation"`
+	LogoMediaAssetID string            `json:"logo_media_asset_id"`
+	Assets           map[string]string `json:"assets"`
+	LayoutKey        string            `json:"layout_key"`
+	Navy             string            `json:"navy"`
+	Gold             string            `json:"gold"`
+	Background       string            `json:"background"`
+	TextColor        string            `json:"text_color"`
+	HeadingFont      string            `json:"heading_font"`
+	BodyFont         string            `json:"body_font"`
+	ButtonRadius     int               `json:"button_radius"`
+	Navigation       []navigationItem  `json:"navigation"`
 }
 
 type pageRow struct {
