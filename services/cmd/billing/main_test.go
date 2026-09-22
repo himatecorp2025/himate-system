@@ -297,3 +297,24 @@ func TestSTART233CancellationBoundaryRemainsExclusive(t *testing.T) {
 		t.Fatal("cancellation must become effective at the exact period boundary")
 	}
 }
+
+func TestSTART23112CalendarMonthMigrationContract(t *testing.T) {
+	m := start23112CalendarMonthBillingMigration()
+	if m.Version != 10 {
+		t.Fatalf("expected migration version 10 got %d", m.Version)
+	}
+	joined := strings.Join(m.Statements, "\n")
+	for _, token := range []string{
+		"billing_cycle_model",
+		"CALENDAR_MONTH",
+		"LEGACY_30_DAY",
+		"minimum_commitment_adjustment",
+		"billing_invoice_date_model_unique",
+		"billing_invoice_period_model_unique",
+		"pricing_effective_at",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("START-23.11.2 migration missing %q", token)
+		}
+	}
+}
