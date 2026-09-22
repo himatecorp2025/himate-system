@@ -381,8 +381,18 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
   Future<Map<String, dynamic>?> _roleDialog({Map<String, dynamic>? role}) async {
     final editing = role != null;
     final key = TextEditingController(text: editing ? '${role['key'] ?? ''}' : '');
-    final label = TextEditingController(text: editing ? '${role['label'] ?? ''}' : '');
-    final description = TextEditingController(text: editing ? '${role['description'] ?? ''}' : '');
+    final labelEN = TextEditingController(text: editing
+        ? ('${role['label_en'] ?? ''}'.trim().isEmpty ? '${role['label'] ?? ''}' : '${role['label_en'] ?? ''}')
+        : '');
+    final labelHU = TextEditingController(text: editing
+        ? ('${role['label_hu'] ?? ''}'.trim().isEmpty ? '${role['label'] ?? ''}' : '${role['label_hu'] ?? ''}')
+        : '');
+    final descriptionEN = TextEditingController(text: editing
+        ? ('${role['description_en'] ?? ''}'.trim().isEmpty ? '${role['description'] ?? ''}' : '${role['description_en'] ?? ''}')
+        : '');
+    final descriptionHU = TextEditingController(text: editing
+        ? ('${role['description_hu'] ?? ''}'.trim().isEmpty ? '${role['description'] ?? ''}' : '${role['description_hu'] ?? ''}')
+        : '');
     final selected = <String>{..._roleKeys(role?['permissions'])};
     var active = editing ? role['active'] != false : true;
     String? dialogError;
@@ -392,19 +402,26 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: editing ? 'Edit custom role' : 'Create custom role',
-          subtitle: 'Custom roles are additive and remain subordinate to the protected System Owner boundary.',
+          subtitle: 'Custom roles keep one stable role key and independent English/Hungarian display metadata.',
           icon: Icons.rule_folder_outlined,
-          width: 820,
+          width: 860,
           primaryLabel: editing ? 'Save role' : 'Create role',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const _DialogSectionLabel('BILINGUAL ROLE IDENTITY'),
+              const SizedBox(height: 10),
               ResponsiveFieldPair(
-                first: TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Role name *'))),
-                second: TextField(controller: key, readOnly: editing, decoration: InputDecoration(labelText: uiLiteral('Stable role key *'), hintText: uiLiteral('finance_assistant'))),
+                first: TextField(controller: labelEN, decoration: InputDecoration(labelText: uiLiteral('English role name *'))),
+                second: TextField(controller: labelHU, decoration: InputDecoration(labelText: uiLiteral('Hungarian role name *'))),
               ),
               const SizedBox(height: 12),
-              TextField(controller: description, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Description'))),
+              TextField(controller: key, readOnly: editing, decoration: InputDecoration(labelText: uiLiteral('Stable role key *'), hintText: uiLiteral('finance_assistant'))),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: descriptionEN, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('English description'))),
+                second: TextField(controller: descriptionHU, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Hungarian description'))),
+              ),
               const SizedBox(height: 18),
               const _DialogSectionLabel('PERMISSION MATRIX'),
               const SizedBox(height: 8),
@@ -451,10 +468,11 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
           ),
           onPrimary: () {
             final cleanKey = key.text.trim().toLowerCase();
-            final cleanLabel = label.text.trim();
+            final cleanLabelEN = labelEN.text.trim();
+            final cleanLabelHU = labelHU.text.trim();
             String? validation;
-            if (cleanLabel.length < 2) {
-              validation = 'Enter a role name.';
+            if (cleanLabelEN.length < 2 || cleanLabelHU.length < 2) {
+              validation = 'Enter both English and Hungarian role names.';
             } else if (!editing && !RegExp(r'^[a-z][a-z0-9_]{2,63}$').hasMatch(cleanKey)) {
               validation = 'Use a stable key such as finance_assistant.';
             } else if (selected.isEmpty) {
@@ -466,8 +484,10 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
             }
             Navigator.pop(dialogContext, <String, dynamic>{
               if (!editing) 'key': cleanKey,
-              'label': cleanLabel,
-              'description': description.text.trim(),
+              'label_en': cleanLabelEN,
+              'label_hu': cleanLabelHU,
+              'description_en': descriptionEN.text.trim(),
+              'description_hu': descriptionHU.text.trim(),
               'permissions': selected.toList()..sort(),
               if (editing) 'active': active,
             });
@@ -477,8 +497,10 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
     );
 
     key.dispose();
-    label.dispose();
-    description.dispose();
+    labelEN.dispose();
+    labelHU.dispose();
+    descriptionEN.dispose();
+    descriptionHU.dispose();
     return result;
   }
 
