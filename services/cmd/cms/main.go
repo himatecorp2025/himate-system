@@ -144,6 +144,9 @@ func main(){
 	mux.HandleFunc("/preview/v1/cms/media/",a.previewMedia)
 	mux.HandleFunc("/preview/v1/cms/design",a.previewDesign)
 	mux.HandleFunc("/preview/v1/cms/design/media/",a.previewDesignMedia)
+	mux.HandleFunc("/internal/v1/cms/partner-design/",a.partnerDesignInternal)
+	mux.HandleFunc("/internal/v1/cms/partner-media/",a.partnerMediaInternal)
+	mux.HandleFunc("/public/v1/cms/partner-design/",a.publicPartnerDesign)
 	common.Run(log,"cms",common.Env("PORT","10000"),common.InternalAuth(a.token,mux))
 }
 
@@ -249,6 +252,40 @@ func (a *app)migrate(ctx context.Context)error{
 		{Version:6,Name:"start-23-8-design-preview-token",Statements:[]string{
 			`ALTER TABLE cms.site_design ADD COLUMN IF NOT EXISTS preview_token_hash TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE cms.site_design ADD COLUMN IF NOT EXISTS preview_token_issued_at TIMESTAMPTZ`,
+		}},
+		{Version:7,Name:"start-23-8-tenant-design-profiles",Statements:[]string{
+			`ALTER TABLE cms.media_assets ADD COLUMN IF NOT EXISTS owner_type TEXT NOT NULL DEFAULT 'PLATFORM'`,
+			`ALTER TABLE cms.media_assets ADD COLUMN IF NOT EXISTS owner_id TEXT NOT NULL DEFAULT '_platform'`,
+			`CREATE INDEX IF NOT EXISTS cms_media_owner_idx ON cms.media_assets(owner_type,owner_id,created_at DESC)`,
+			`CREATE TABLE IF NOT EXISTS cms.design_profiles(
+				id TEXT PRIMARY KEY,
+				owner_type TEXT NOT NULL CHECK(owner_type IN ('CATALOG','PARTNER')),
+				owner_id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				description TEXT NOT NULL DEFAULT '',
+				theme JSONB NOT NULL DEFAULT '{}'::jsonb,
+				catalog_visible BOOLEAN NOT NULL DEFAULT FALSE,
+				created_by TEXT NOT NULL DEFAULT '',
+				updated_by TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(owner_type,owner_id,name)
+			)`,
+			`CREATE INDEX IF NOT EXISTS cms_design_profiles_owner_idx ON cms.design_profiles(owner_type,owner_id,updated_at DESC)`,
+			`CREATE TABLE IF NOT EXISTS cms.design_scope_state(
+				scope_type TEXT NOT NULL CHECK(scope_type IN ('PARTNER')),
+				scope_id TEXT NOT NULL,
+				active_profile_id TEXT NOT NULL REFERENCES cms.design_profiles(id),
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				PRIMARY KEY(scope_type,scope_id)
+			)`,
+			`INSERT INTO cms.design_profiles(id,owner_type,owner_id,name,description,theme,catalog_visible,created_by,updated_by)
+			 VALUES
+			 ('theme_classic_editorial','CATALOG','_catalog','Classic Editorial','Editorial typography with restrained HIMATE-style spacing','{"layout_key":"classic_editorial","navy":"#06172C","gold":"#D7AE62","background":"#F8F9FB","text_color":"#1F2937","heading_font":"Cormorant Garamond","body_font":"Inter","button_radius":6,"assets":{}}'::jsonb,TRUE,'system','system'),
+			 ('theme_modern_grid','CATALOG','_catalog','Modern Grid','Contemporary grid-led visual family','{"layout_key":"modern_grid","navy":"#10233F","gold":"#C99A45","background":"#F4F6F8","text_color":"#182230","heading_font":"Inter","body_font":"Inter","button_radius":12,"assets":{}}'::jsonb,TRUE,'system','system'),
+			 ('theme_minimal','CATALOG','_catalog','Minimal','Minimal high-contrast visual family','{"layout_key":"minimal","navy":"#111827","gold":"#B8893C","background":"#FFFFFF","text_color":"#111827","heading_font":"Georgia","body_font":"Arial","button_radius":2,"assets":{}}'::jsonb,TRUE,'system','system')
+			 ON CONFLICT(id) DO NOTHING`,
 		}},
 	})
 }
