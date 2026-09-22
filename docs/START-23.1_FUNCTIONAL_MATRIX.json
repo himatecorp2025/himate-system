@@ -767,9 +767,9 @@
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
       "current_state": "SEMANTIC_GAP",
-      "target_phase": "23.2",
+      "target_phase": "23.3",
       "e2e_proof": "required: matrix visibility + per-partner price",
-      "notes": ""
+      "notes": "Commercial price/fee editing is covered by MODULE-COMMERCIAL-MATRIX-EDIT in START-23.2. Direct entitlement-state semantics remain blocked until START-23.3 unifies cancellation."
     },
     {
       "id": "PART-MODULE-CANCEL",
@@ -931,42 +931,6 @@
       "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
       "target_phase": "23.7",
       "e2e_proof": "required: mapping -> Connector/Impact visibility",
-      "notes": ""
-    },
-    {
-      "id": "FINANCE-LEGACY-MODULE-CREATE",
-      "surface": "finance",
-      "ui": "Legacy custom module create path",
-      "kind": "mutation",
-      "frontend_file": "frontend/lib/main.dart",
-      "source_token": "await widget.api.post('/api/v1/modules'",
-      "method": "POST",
-      "api_pattern": "/api/v1/modules",
-      "backend_service": "catalog",
-      "persistence": "catalog.modules",
-      "audit": "central gateway mutation audit",
-      "localization_state": "MISSING_DYNAMIC_MODEL",
-      "current_state": "DUPLICATE_CONTROL_PATH",
-      "target_phase": "23.2",
-      "e2e_proof": "required: consolidate into Modules control plane",
-      "notes": ""
-    },
-    {
-      "id": "FINANCE-LEGACY-MODULE-EDIT",
-      "surface": "finance",
-      "ui": "Legacy catalog module edit path",
-      "kind": "mutation",
-      "frontend_file": "frontend/lib/main.dart",
-      "source_token": "await widget.api.patch('/api/v1/modules/${module['key']}'",
-      "method": "PATCH",
-      "api_pattern": "/api/v1/modules/{moduleKey}",
-      "backend_service": "catalog",
-      "persistence": "catalog.modules",
-      "audit": "central gateway mutation audit",
-      "localization_state": "MISSING_DYNAMIC_MODEL",
-      "current_state": "DUPLICATE_CONTROL_PATH",
-      "target_phase": "23.2",
-      "e2e_proof": "required: consolidate into Modules control plane",
       "notes": ""
     },
     {
@@ -1868,6 +1832,24 @@
       "target_phase": "23.6",
       "e2e_proof": "existing scripts/smoke_business_completion.sh public inquiry -> admin readback",
       "notes": "Public form mutation must remain included in functional inventory."
+    },
+    {
+      "id": "MODULE-COMMERCIAL-MATRIX-EDIT",
+      "surface": "modules.usage",
+      "ui": "Edit partner-specific recurring price, activation fee, visibility and base-package inclusion from the commercial matrix",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/module_control_plane.dart",
+      "source_token": "'/api/v1/partners/$partnerID/modules/$moduleKey'",
+      "method": "PATCH",
+      "api_pattern": "/api/v1/partners/{partnerId}/modules/{moduleKey}",
+      "backend_service": "catalog + billing read model",
+      "persistence": "catalog.partner_modules + price_history + activation_fee_history + partner_module_history",
+      "audit": "central gateway mutation audit + catalog commercial history",
+      "localization_state": "PARTIAL",
+      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "target_phase": "23.2",
+      "e2e_proof": "required: scripts/smoke_start_23_2.sh commercial matrix write/readback/history",
+      "notes": "START-23.2 authoritative commercial edit path. Subscription cancellation semantics remain START-23.3."
     }
   ]
 }

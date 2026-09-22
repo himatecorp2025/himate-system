@@ -103,6 +103,7 @@ func main() {
 	mux.HandleFunc("/api/v1/module-commercial-matrix", a.commercialMatrix)
 	mux.HandleFunc("/api/v1/partners/", a.partnerModules)
 	mux.HandleFunc("/internal/v1/partners/", a.partnerModules)
+	mux.HandleFunc("/internal/v1/module-price-quotes", a.internalModulePriceQuotes)
 	mux.HandleFunc("/internal/v1/partner-portal/", a.partnerPortal)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	common.Run(log, "catalog", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
@@ -502,6 +503,14 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		a.partnerModulePriceAt(w, r, partnerID, parts[2])
 		return
 	}
+	if len(parts) == 4 && parts[3] == "commercial-history" {
+		if r.Method != http.MethodGet {
+			common.APIError(w, 405, "METHOD", "Use GET")
+			return
+		}
+		a.partnerModuleCommercialHistory(w, partnerID, parts[2])
+		return
+	}
 	if len(parts) == 2 {
 		if r.Method != http.MethodGet {
 			common.APIError(w, 405, "METHOD", "Use GET")
@@ -693,6 +702,45 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 	a.onePartnerModule(w, partnerID, key)
 }
 
+func (a *app) partnerModuleCommercialHistory(w http.ResponseWriter, partnerID, key string) {
+	rows, err := a.db.Query(`
+		SELECT field_name,old_value,new_value,effective_at,actor,reason
+		FROM catalog.partner_module_history
+		WHERE partner_id=$1 AND module_key=$2
+		ORDER BY effective_at DESC,id DESC
+		LIMIT 250`, partnerID, key)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not load partner-module commercial history")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var field string
+		var oldValue, newValue sql.NullString
+		var effectiveAt time.Time
+		var actor, reason string
+		if err := rows.Scan(&field, &oldValue, &newValue, &effectiveAt, &actor, &reason); err != nil {
+			common.APIError(w, 500, "DB", "Could not decode partner-module commercial history")
+			return
+		}
+		var oldOut, newOut any
+		if oldValue.Valid { oldOut = oldValue.String }
+		if newValue.Valid { newOut = newValue.String }
+		items = append(items, map[string]any{
+			"field": field, "old_value": oldOut, "new_value": newOut,
+			"effective_at": effectiveAt.UTC(), "actor": actor, "reason": reason,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		common.APIError(w, 500, "DB", "Could not load complete partner-module commercial history")
+		return
+	}
+	common.JSON(w, 200, map[string]any{
+		"partner_id": partnerID, "module_key": key, "items": items, "count": len(items),
+	})
+}
+
 func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billable bool) {
 	q := partnerModuleSelect + ` WHERE pm.partner_id=$1`
 	if billable {
@@ -724,21 +772,11 @@ func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billab
 	common.JSON(w, 200, out)
 }
 
-func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partnerID, key string) {
-	rawAt := strings.TrimSpace(r.URL.Query().Get("at"))
-	at := time.Now().UTC()
-	if rawAt != "" {
-		parsed, err := time.Parse("2006-01-02", rawAt)
-		if err != nil {
-			common.APIError(w, 400, "VALIDATION", "at must be YYYY-MM-DD")
-			return
-		}
-		at = parsed.UTC()
-	}
+func (a *app) resolvePartnerModulePriceAt(ctx context.Context, partnerID, key string, at time.Time) (float64, string, bool, error) {
 	var price float64
 	var currency string
 	var included bool
-	err := a.db.QueryRow(`
+	err := a.db.QueryRowContext(ctx, `
 		SELECT
 			COALESCE(
 				(SELECT ph.new_price FROM catalog.price_history ph
@@ -764,6 +802,21 @@ func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partn
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
 		WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key, at).Scan(&price, &currency, &included)
+	return price, currency, included, err
+}
+
+func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partnerID, key string) {
+	rawAt := strings.TrimSpace(r.URL.Query().Get("at"))
+	at := time.Now().UTC()
+	if rawAt != "" {
+		parsed, err := time.Parse("2006-01-02", rawAt)
+		if err != nil {
+			common.APIError(w, 400, "VALIDATION", "at must be YYYY-MM-DD")
+			return
+		}
+		at = parsed.UTC()
+	}
+	price, currency, included, err := a.resolvePartnerModulePriceAt(r.Context(), partnerID, key, at)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			common.APIError(w, 404, "NOT_FOUND", "Partner module not found")
@@ -777,6 +830,49 @@ func (a *app) partnerModulePriceAt(w http.ResponseWriter, r *http.Request, partn
 		"price": price, "currency": currency, "included_in_base": included,
 		"source": "CATALOG_EFFECTIVE_PRICE_HISTORY",
 	})
+}
+
+func (a *app) internalModulePriceQuotes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, 405, "METHOD", "Use POST")
+		return
+	}
+	var in struct {
+		Items []struct {
+			PartnerID string `json:"partner_id"`
+			ModuleKey string `json:"module_key"`
+			At        string `json:"at"`
+		} `json:"items"`
+	}
+	if common.Decode(r, &in) != nil || len(in.Items) == 0 || len(in.Items) > 2000 {
+		common.APIError(w, 400, "VALIDATION", "One to 2000 price quote items are required")
+		return
+	}
+	items := make([]map[string]any, 0, len(in.Items))
+	for _, item := range in.Items {
+		partnerID := strings.TrimSpace(item.PartnerID)
+		moduleKey := strings.TrimSpace(item.ModuleKey)
+		at, err := time.Parse("2006-01-02", strings.TrimSpace(item.At))
+		if partnerID == "" || moduleKey == "" || err != nil {
+			common.APIError(w, 400, "VALIDATION", "Each quote requires partner_id, module_key and YYYY-MM-DD at")
+			return
+		}
+		price, currency, included, err := a.resolvePartnerModulePriceAt(r.Context(), partnerID, moduleKey, at.UTC())
+		if err != nil {
+			if err == sql.ErrNoRows {
+				common.APIError(w, 404, "NOT_FOUND", "Partner-module quote target not found")
+			} else {
+				common.APIError(w, 500, "DB", "Could not resolve partner-module price quote")
+			}
+			return
+		}
+		items = append(items, map[string]any{
+			"partner_id": partnerID, "module_key": moduleKey, "at": at.Format("2006-01-02"),
+			"price": price, "currency": currency, "included_in_base": included,
+			"source": "CATALOG_EFFECTIVE_PRICE_HISTORY",
+		})
+	}
+	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
 }
 
 func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key string) {

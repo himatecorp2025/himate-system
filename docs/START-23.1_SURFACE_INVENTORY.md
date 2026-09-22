@@ -7,9 +7,9 @@ This document is generated from the authoritative machine-readable matrix. It en
 ## Inventory summary
 
 - surfaces: **53**
-- functional contracts: **88**
-- mutation contracts: **75**
-- explicit blockers/gaps: **25**
+- functional contracts: **87**
+- mutation contracts: **74**
+- explicit blockers/gaps: **23**
 
 ## Status interpretation
 
@@ -86,7 +86,7 @@ Entitlement, visibility, per-partner price, 30-day subscription and cancellation
 
 | Contract | UI / behavior | Kind | Backend | State | Closure |
 |---|---|---|---|---|---|
-| `PART-MODULE-EDIT` | Edit partner module entitlement and price | mutation | catalog | `SEMANTIC_GAP` | START-23.2 |
+| `PART-MODULE-EDIT` | Edit partner module entitlement and price | mutation | catalog | `SEMANTIC_GAP` | START-23.3 |
 | `PART-MODULE-CANCEL` | Schedule module cancellation | mutation | billing | `SEMANTIC_GAP` | START-23.3 |
 | `MODULE-CANCELLATION-CONSISTENCY` | Admin and Partner Portal use one cancellation command | automation | catalog + billing | `SEMANTIC_GAP` | START-23.3 |
 
@@ -173,7 +173,9 @@ Module-to-metric mappings
 
 Partner usage visibility
 
-Read-only/supporting surface. No independent mutation is currently registered for this surface; read-path behavior remains covered by the broader route/regression suites.
+| Contract | UI / behavior | Kind | Backend | State | Closure |
+|---|---|---|---|---|---|
+| `MODULE-COMMERCIAL-MATRIX-EDIT` | Edit partner-specific recurring price, activation fee, visibility and base-package inclusion from the commercial matrix | mutation | catalog + billing read model | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
 
 ## 19. Licensing & Finance
 
@@ -182,8 +184,6 @@ Issuer/bank profile and commercial overview
 | Contract | UI / behavior | Kind | Backend | State | Closure |
 |---|---|---|---|---|---|
 | `BILLING-PROFILE` | Edit HIMATE billing profile | mutation | billing | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.6 |
-| `FINANCE-LEGACY-MODULE-CREATE` | Legacy custom module create path | mutation | catalog | `DUPLICATE_CONTROL_PATH` | START-23.2 |
-| `FINANCE-LEGACY-MODULE-EDIT` | Legacy catalog module edit path | mutation | catalog | `DUPLICATE_CONTROL_PATH` | START-23.2 |
 
 ## 20. Impact & Reports / Metrics
 

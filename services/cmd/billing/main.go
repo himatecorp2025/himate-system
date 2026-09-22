@@ -997,6 +997,51 @@ func parsePartnerIDs(raw string) []string {
 	return out
 }
 
+type catalogPriceQuote struct {
+	Price    float64
+	Currency string
+	Included bool
+}
+
+func quoteKey(partnerID, moduleKey string) string { return partnerID + "\x00" + moduleKey }
+
+func (a *app) catalogPriceQuotes(ctx context.Context, requests []map[string]string) (map[string]catalogPriceQuote, error) {
+	out := map[string]catalogPriceQuote{}
+	if len(requests) == 0 { return out, nil }
+	if strings.TrimSpace(a.catalogHost) == "" || len(strings.TrimSpace(a.token)) < 24 {
+		return nil, fmt.Errorf("catalog service credential is not configured")
+	}
+	body, err := json.Marshal(map[string]any{"items": requests})
+	if err != nil { return nil, err }
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"http://"+a.catalogHost+"/internal/v1/module-price-quotes", bytes.NewReader(body))
+	if err != nil { return nil, err }
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.token)
+	resp, err := a.client.Do(req)
+	if err != nil { return nil, err }
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("catalog price quote returned status %d", resp.StatusCode)
+	}
+	var payload struct {
+		Items []struct {
+			PartnerID string  `json:"partner_id"`
+			ModuleKey string  `json:"module_key"`
+			Price     float64 `json:"price"`
+			Currency  string  `json:"currency"`
+			Included  bool    `json:"included_in_base"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil { return nil, err }
+	for _, item := range payload.Items {
+		out[quoteKey(item.PartnerID, item.ModuleKey)] = catalogPriceQuote{
+			Price: item.Price, Currency: item.Currency, Included: item.Included,
+		}
+	}
+	return out, nil
+}
+
 func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, 405, "METHOD", "Use GET")
@@ -1013,8 +1058,12 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = id
 	}
-	query := `SELECT partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status,updated_at
-		FROM billing.module_subscriptions WHERE partner_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY partner_id,module_key`
+	query := `SELECT s.partner_id,s.module_key,s.currency,s.activation_date,s.period_start,s.period_end,s.price,
+		s.auto_renew,s.cancel_at_period_end,s.payment_status,s.updated_at,COALESCE(ps.included_in_base,FALSE)
+		FROM billing.module_subscriptions s
+		LEFT JOIN billing.module_period_snapshots ps
+			ON ps.partner_id=s.partner_id AND ps.module_key=s.module_key AND ps.period_start=s.period_start
+		WHERE s.partner_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY s.partner_id,s.module_key`
 	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		common.APIError(w, 500, "DB", "Could not load subscription matrix")
@@ -1022,27 +1071,46 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	items := []map[string]any{}
+	quoteRequests := []map[string]string{}
 	for rows.Next() {
 		var partnerID, key, currency, payment string
 		var activation, start, end, updated time.Time
 		var price float64
-		var renew, cancel bool
-		if err := rows.Scan(&partnerID, &key, &currency, &activation, &start, &end, &price, &renew, &cancel, &payment, &updated); err != nil {
+		var renew, cancel, currentIncluded bool
+		if err := rows.Scan(&partnerID, &key, &currency, &activation, &start, &end, &price, &renew, &cancel, &payment, &updated, &currentIncluded); err != nil {
 			common.APIError(w, 500, "DB", "Could not decode subscription matrix")
 			return
 		}
 		items = append(items, map[string]any{
 			"partner_id": partnerID, "module_key": key, "currency": currency,
 			"activation_date": activation.Format("2006-01-02"),
-			"period_start": start.Format("2006-01-02"),
-			"period_end_exclusive": end.Format("2006-01-02"),
-			"price": price, "auto_renew": renew, "cancel_at_period_end": cancel,
+			"period_start": start.Format("2006-01-02"), "period_end_exclusive": end.Format("2006-01-02"),
+			"price": price, "current_period_included_in_base": currentIncluded,
+			"auto_renew": renew, "cancel_at_period_end": cancel,
 			"payment_status": payment, "updated_at": updated,
+		})
+		quoteRequests = append(quoteRequests, map[string]string{
+			"partner_id": partnerID, "module_key": key, "at": dateOnly(end).Format("2006-01-02"),
 		})
 	}
 	if err := rows.Err(); err != nil {
 		common.APIError(w, 500, "DB", "Could not load complete subscription matrix")
 		return
+	}
+	quotes, err := a.catalogPriceQuotes(r.Context(), quoteRequests)
+	if err != nil {
+		common.APIError(w, 502, "CATALOG", "Could not resolve next-period module pricing")
+		return
+	}
+	for _, item := range items {
+		key := quoteKey(fmt.Sprint(item["partner_id"]), fmt.Sprint(item["module_key"]))
+		if quote, ok := quotes[key]; ok {
+			item["next_billing_date"] = item["period_end_exclusive"]
+			item["next_period_price"] = quote.Price
+			item["next_period_currency"] = quote.Currency
+			item["next_period_included_in_base"] = quote.Included
+			item["next_period_price_source"] = "CATALOG_EFFECTIVE_PRICE_HISTORY"
+		}
 	}
 	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
 }

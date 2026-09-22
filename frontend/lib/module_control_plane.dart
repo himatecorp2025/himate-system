@@ -23,6 +23,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   String commercialPartnerFilter = 'ALL';
   String commercialModuleFilter = 'ALL';
   String commercialStatusFilter = 'ALL';
+  String commercialPerspective = 'PARTNER';
   int commercialShown = 120;
 
   static const moduleTypes = <String>[
@@ -121,7 +122,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
 
   List<Map<String, dynamic>> get filteredCommercialRows {
     final q = commercialQuery.trim().toLowerCase();
-    return commercialRows.where((row) {
+    final rows = commercialRows.where((row) {
       final partnerID = s(row['partner_id']);
       final moduleKey = s(row['key']);
       final text = [
@@ -132,9 +133,72 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           (commercialModuleFilter == 'ALL' || moduleKey == commercialModuleFilter) &&
           (commercialStatusFilter == 'ALL' || s(row['status']) == commercialStatusFilter);
     }).toList();
+    rows.sort((a, b) {
+      final aPartner = partnerName(s(a['partner_id'])).toLowerCase();
+      final bPartner = partnerName(s(b['partner_id'])).toLowerCase();
+      final aModule = s(a['label']).toLowerCase();
+      final bModule = s(b['label']).toLowerCase();
+      if (commercialPerspective == 'MODULE') {
+        final moduleCompare = aModule.compareTo(bModule);
+        return moduleCompare != 0 ? moduleCompare : aPartner.compareTo(bPartner);
+      }
+      final partnerCompare = aPartner.compareTo(bPartner);
+      return partnerCompare != 0 ? partnerCompare : aModule.compareTo(bModule);
+    });
+    return rows;
   }
 
-  Future<void> editCommercialAssignment(Map<String, dynamic> row) async {
+  Future<void> showCommercialHistory(Map<String, dynamic> row) async {
+    final partnerID = s(row['partner_id']);
+    final moduleKey = s(row['key']);
+    try {
+      final response = await widget.api.get(
+        '/api/v1/partners/$partnerID/modules/$moduleKey/commercial-history',
+        force: true,
+      );
+      final history = items(response);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => BrandDialog(
+          title: partnerName(partnerID) + ' · ' + s(row['label']),
+          subtitle: 'Commercial and entitlement changes are retained with actor, effective time and reason.',
+          icon: Icons.history_rounded,
+          width: 760,
+          primaryLabel: 'Close',
+          onPrimary: () => Navigator.pop(dialogContext),
+          child: history.isEmpty
+              ? const _MessageCard(
+                  icon: Icons.history_toggle_off_outlined,
+                  title: 'No commercial history yet',
+                  message: 'The first partner-specific change will appear here.',
+                )
+              : Column(
+                  children: [
+                    for (final event in history) ...[
+                      _InfoCard(
+                        title: _humanize(s(event['field'])),
+                        icon: Icons.history_rounded,
+                        children: [
+                          _DefinitionRow(label: 'Previous value', value: s(event['old_value']).isEmpty ? '—' : s(event['old_value'])),
+                          _DefinitionRow(label: 'New value', value: s(event['new_value']).isEmpty ? '—' : s(event['new_value'])),
+                          _DefinitionRow(label: 'Effective at', value: s(event['effective_at'])),
+                          _DefinitionRow(label: 'Actor', value: s(event['actor']).isEmpty ? '—' : s(event['actor'])),
+                          _DefinitionRow(label: 'Reason', value: s(event['reason']).isEmpty ? '—' : s(event['reason'])),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  Future<void> editCommercialAssignment(Map<String, dynamic> row) async {  Future<void> editCommercialAssignment(Map<String, dynamic> row) async {
     final partnerID = s(row['partner_id']);
     final moduleKey = s(row['key']);
     bool visible = row['visible'] == true;
@@ -243,6 +307,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final nextAt = s(row['next_price_effective_at']).trim();
     final nextAtLabel = nextAt.isEmpty ? '' : (nextAt.length >= 10 ? nextAt.substring(0, 10) : nextAt);
     final currency = s(row['currency']);
+    final currentIncluded = subscription?['current_period_included_in_base'] == true;
+    final nextIncluded = subscription?['next_period_included_in_base'] == true;
     final currentPeriod = subscription == null
         ? 'Not started'
         : s(subscription['period_start']) + ' → ' + s(subscription['period_end_exclusive']);
@@ -253,34 +319,60 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             : subscription['auto_renew'] == true
                 ? 'Auto-renew'
                 : 'No renewal';
+    final primaryTitle = commercialPerspective == 'MODULE' ? s(row['label']) : partnerName(partnerID);
+    final secondaryTitle = commercialPerspective == 'MODULE'
+        ? partnerName(partnerID) + ' · ' + partnerID
+        : s(row['label']) + ' · ' + moduleKey;
+    final currentPeriodPrice = subscription == null
+        ? '—'
+        : currentIncluded
+            ? 'Included'
+            : commercialMoney(subscription['price'], s(subscription['currency']));
+    final nextBillingPrice = subscription == null || subscription['next_period_price'] == null
+        ? '—'
+        : nextIncluded
+            ? 'Included'
+            : commercialMoney(subscription['next_period_price'], s(subscription['next_period_currency']));
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              LText(partnerName(partnerID), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13)),
+              LText(primaryTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13)),
               const SizedBox(height: 3),
-              LText(s(row['label']) + ' · ' + moduleKey, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+              LText(secondaryTitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
             ])),
             _StatusPill(label: s(row['status'])),
           ]),
           const SizedBox(height: 12),
-          _DefinitionRow(label: 'Current period price', value: subscription == null ? '—' : commercialMoney(subscription['price'], s(subscription['currency']))),
+          _DefinitionRow(label: 'Activation date', value: s(row['activated_at']).isEmpty ? '—' : s(row['activated_at'])),
+          _DefinitionRow(label: 'Current period', value: currentPeriod),
+          _DefinitionRow(label: 'Current period price', value: currentPeriodPrice),
+          _DefinitionRow(label: 'Next billing date', value: subscription == null ? '—' : s(subscription['next_billing_date'])),
+          _DefinitionRow(label: 'Next billing price', value: nextBillingPrice),
           _DefinitionRow(label: 'Configured 30-day price', value: row['included_in_base'] == true ? 'Included' : commercialMoney(row['partner_price'], currency)),
+          _DefinitionRow(label: 'Price source', value: _humanize(s(row['price_source']))),
           _DefinitionRow(label: 'Next configured price', value: commercialMoney(configuredNext, currency) + (nextAtLabel.isEmpty ? '' : ' · ' + nextAtLabel)),
           _DefinitionRow(label: 'Activation fee', value: commercialMoney(row['partner_activation_fee'], currency)),
-          _DefinitionRow(label: 'Current period', value: currentPeriod),
+          _DefinitionRow(label: 'Activation fee source', value: _humanize(s(row['activation_fee_source']))),
           _DefinitionRow(label: 'Renewal', value: renewalState),
           _DefinitionRow(label: 'Partner visibility', value: row['visible'] == true ? 'Visible' : 'Hidden'),
           const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => editCommercialAssignment(row),
-              icon: const Icon(Icons.price_change_outlined, size: 17),
-              label: const LText('Edit commercial pricing'),
-            ),
+          ResponsiveActionBar(
+            breakpoint: 520,
+            actions: [
+              OutlinedButton.icon(
+                onPressed: () => showCommercialHistory(row),
+                icon: const Icon(Icons.history_rounded, size: 17),
+                label: const LText('Commercial history'),
+              ),
+              FilledButton.icon(
+                onPressed: () => editCommercialAssignment(row),
+                icon: const Icon(Icons.price_change_outlined, size: 17),
+                label: const LText('Edit commercial pricing'),
+              ),
+            ],
           ),
         ]),
       ),
@@ -849,8 +941,24 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     ],
                     onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
                   );
+                  final perspective = Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        selected: commercialPerspective == 'PARTNER',
+                        label: const LText('View by partner'),
+                        onSelected: (_) => setState(() => commercialPerspective = 'PARTNER'),
+                      ),
+                      ChoiceChip(
+                        selected: commercialPerspective == 'MODULE',
+                        label: const LText('View by module'),
+                        onSelected: (_) => setState(() => commercialPerspective = 'MODULE'),
+                      ),
+                    ],
+                  );
                   if (constraints.maxWidth < 760) {
-                    return Column(children: [
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       search,
                       const SizedBox(height: 10),
                       partner,
@@ -858,12 +966,16 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                       module,
                       const SizedBox(height: 10),
                       status,
+                      const SizedBox(height: 10),
+                      perspective,
                     ]);
                   }
-                  return Column(children: [
+                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: partner)]),
                     const SizedBox(height: 10),
                     Row(children: [Expanded(child: module), const SizedBox(width: 10), Expanded(child: status)]),
+                    const SizedBox(height: 10),
+                    perspective,
                   ]);
                 }),
               ),
