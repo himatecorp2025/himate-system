@@ -299,9 +299,9 @@
       "persistence": "identity users + server session",
       "audit": "AUTH_LOGIN",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "E2E_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: browser login + /auth/me",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: sign in -> /api/v1/auth/me session readback",
       "notes": ""
     },
     {
@@ -317,28 +317,28 @@
       "persistence": "server session",
       "audit": "AUTH_LOGOUT",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "E2E_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: logout invalidates session",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: logout -> cleared session -> /auth/me returns 401",
       "notes": ""
     },
     {
       "id": "AUTH-FORGOT",
       "surface": "auth.admin",
       "ui": "Forgot password",
-      "kind": "placeholder",
+      "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
       "source_token": "Password recovery will be connected",
-      "method": "NONE",
-      "api_pattern": "NONE",
-      "backend_service": "MISSING",
-      "persistence": "MISSING",
-      "audit": "MISSING",
-      "localization_state": "PARTIAL",
-      "current_state": "PLACEHOLDER",
+      "method": "POST",
+      "api_pattern": "/api/v1/auth/password-reset/request + /api/v1/auth/password-reset/confirm",
+      "backend_service": "gateway/identity",
+      "persistence": "identity.password_reset_tokens + identity.users.session_version",
+      "audit": "PASSWORD_RESET_REQUESTED + PASSWORD_RESET_COMPLETED",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: tokenized reset flow",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_6.sh: request one-time reset token -> confirm -> old sessions invalid -> token replay rejected",
+      "notes": "Reset tokens are random, stored only as SHA-256 hashes, one-time-use, expiring, rate-limited, and rotate session_version on success."
     },
     {
       "id": "AUTH-SSO",
@@ -353,10 +353,10 @@
       "persistence": "MISSING",
       "audit": "MISSING",
       "localization_state": "PARTIAL",
-      "current_state": "PLACEHOLDER",
+      "current_state": "CONTROL_HIDDEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: configured OIDC or hidden control",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_6.sh: unconfigured SSO control removed from login UI",
+      "notes": "No OIDC provider is configured for START-23.6; the non-functional SSO control is deliberately absent from the login UI."
     },
     {
       "id": "DASH-REVENUE",
@@ -479,9 +479,9 @@
       "persistence": "partners.partners",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: create -> read -> edit",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: create -> read -> profile edit -> readback",
       "notes": ""
     },
     {
@@ -551,9 +551,9 @@
       "persistence": "partners.partners",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: lifecycle state-machine test",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: PROSPECT -> LICENSE_PENDING state-machine transition",
       "notes": ""
     },
     {
@@ -605,9 +605,9 @@
       "persistence": "identity.partner_users",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: create -> tenant login",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: create partner owner -> tenant login -> /partner/auth/me",
       "notes": ""
     },
     {
@@ -623,9 +623,9 @@
       "persistence": "identity.partner_users",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: role/status -> session invalidation",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: role/status mutation -> prior partner session invalidated",
       "notes": ""
     },
     {
@@ -695,9 +695,9 @@
       "persistence": "partners.partners",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: update -> reload",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: partner profile PATCH -> authoritative reload",
       "notes": ""
     },
     {
@@ -803,9 +803,9 @@
       "persistence": "billing.company_profile",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: update -> reload",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: company profile PUT -> GET readback -> restore",
       "notes": ""
     },
     {
@@ -821,9 +821,9 @@
       "persistence": "billing.company_profile",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: identical authoritative profile",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: Administration and Finance use the same authoritative billing profile endpoint",
       "notes": ""
     },
     {
@@ -1109,9 +1109,9 @@
       "persistence": "identity.custom_roles",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: create -> permission enforcement",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: create custom role -> assign user -> backend permission enforcement",
       "notes": ""
     },
     {
@@ -1127,9 +1127,9 @@
       "persistence": "identity.custom_roles",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: update -> session permission effect",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: edit permissions -> existing session sees changed authorization",
       "notes": ""
     },
     {
@@ -1145,9 +1145,9 @@
       "persistence": "identity.users + role assignments",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: create -> login -> authorization",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: create administrator -> login -> permission enforcement",
       "notes": ""
     },
     {
@@ -1163,10 +1163,10 @@
       "persistence": "identity.users + role assignments",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: edit/suspend -> session invalidation",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_6.sh: suspend administrator -> active session invalidated -> new login denied",
+      "notes": "Auth-affecting email/role/status/password changes rotate session_version; system-owner and last-platform-admin protections remain enforced."
     },
     {
       "id": "BACKUP-CREATE",
@@ -1397,9 +1397,9 @@
       "persistence": "contact.inquiries",
       "audit": "CONTACT_LEAD_UPDATED + gateway audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "existing business completion mutation smoke",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: public contact -> lead workflow PATCH -> readback",
       "notes": ""
     },
     {
@@ -1523,9 +1523,9 @@
       "persistence": "notifications delivery/read state",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: unread count decrements",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: mark notification read -> unread state/count readback",
       "notes": ""
     },
     {
@@ -1541,9 +1541,9 @@
       "persistence": "notifications delivery/read state",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: all unread cleared",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: read-all -> unread_count=0",
       "notes": ""
     },
     {
@@ -1685,9 +1685,9 @@
       "persistence": "identity.users",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "existing profile smoke + locale proof",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: profile PATCH -> GET readback -> restore",
       "notes": ""
     },
     {
@@ -1703,9 +1703,9 @@
       "persistence": "identity password hash + session version",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "required: old sessions invalidated",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: password change -> session_version rotation -> old credential/session invalidation",
       "notes": ""
     },
     {
@@ -1829,9 +1829,9 @@
       "persistence": "contact.inquiries",
       "audit": "public ingestion + CONTACT_LEAD_UPDATED on admin workflow",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "existing scripts/smoke_business_completion.sh public inquiry -> admin readback",
+      "e2e_proof": "scripts/smoke_start_23_6.sh: public contact POST -> persisted Contact Leads readback",
       "notes": "Public form mutation must remain included in functional inventory."
     },
     {
@@ -1961,5 +1961,5 @@
       "notes": "Commercial editor cannot write provider-managed paid fields directly."
     }
   ],
-  "completed_through": "23.5"
+  "completed_through": "23.6"
 }
