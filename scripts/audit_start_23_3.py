@@ -25,6 +25,7 @@ required_billing = [
     "SUBSCRIPTION_INACTIVE",
     "MODULE_CANCELLATION_SCHEDULED",
     "MODULE_CANCELLATION_WITHDRAWN",
+    "MODULE_CANCELLATION_EFFECTIVE",
 ]
 for token in required_billing:
     if token not in billing and token not in commercial:
