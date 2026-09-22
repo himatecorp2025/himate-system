@@ -1593,12 +1593,15 @@ func (a *app) dashboardAnalytics(w http.ResponseWriter, r *http.Request) {
 			SELECT currency, paid_amount::numeric AS amount, 'ACTIVATION'::text AS kind
 			FROM billing.initial_licenses
 			WHERE status='PAID'
+			  AND provider_payment_id<>''
 			  AND payment_date >= make_date($1,1,1)
 			  AND payment_date < make_date($1+1,1,1)
 			UNION ALL
 			SELECT currency, total::numeric AS amount, 'INVOICE'::text AS kind
 			FROM billing.invoices
 			WHERE status='PAID'
+			  AND provider_status='SUCCEEDED'
+			  AND provider_payment_id<>''
 			  AND paid_at >= make_date($1,1,1)::timestamptz
 			  AND paid_at < make_date($1+1,1,1)::timestamptz
 		)
