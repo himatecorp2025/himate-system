@@ -103,7 +103,7 @@ The Flutter Dashboard must:
 - show real People Reached data;
 - render the Impact chart from the API-provided 12-month series;
 - render Recent Activity from the audit-backed payload;
-- expose an active global-search dialog from the top bar;
+- expose the active global-search dialog from desktop, tablet and mobile shell controls;
 - remove the START-23.1 placeholder texts and hardcoded chart/activity fixtures.
 
 Partner search results may deep-link directly into the Partner Workspace. Other results identify their authoritative workspace without inventing unsupported deep routes.
