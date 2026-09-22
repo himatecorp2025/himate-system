@@ -23,8 +23,8 @@ HIMATE Gateway / Identity
   +-- private CMS Service
   +-- private Storage Service
   +-- private Backups Service
-  |       +-- Local offsite adapter (CI/dev)
-  |       +-- S3-compatible offsite adapter (production)
+  |       +-- Local filesystem adapter (CI/dev)
+  |       +-- Render persistent-disk adapter (production)
   +-- private Runtime / Deployment Provider Service
   |       +-- Local adapter (CI/dev)
   |       +-- Render adapter (production)
@@ -291,13 +291,13 @@ Partner/env/connector config -------+          v
                                       chunked AES-256-GCM
                                                |
                                                v
-                                     Offsite provider adapter
+                                     Backup storage adapter
                                       |                 |
-                                      | local           | S3-compatible
+                                      | local           | render_disk
                                       v                 v
-                                    CI/dev          production
+                                    CI/dev       Render persistent disk
                                               
-Offsite restore point
+Durable restore point
        |
        +--> ciphertext hash + AES-GCM authentication
        +--> manifest/component checksum verification
@@ -311,7 +311,7 @@ Offsite restore point
 
 Restore-point and restore-test queues are durable PostgreSQL state. Workers use `FOR UPDATE SKIP LOCKED`, so process restarts do not lose queued work and multiple workers do not claim the same job.
 
-Every successful restore point automatically queues a restore test against the **offsite copy**. A partner is reported `VERIFIED` only when the latest restore point is `READY` and its corresponding restore test is `PASSED`.
+Every successful restore point automatically queues a restore test against the **durable stored copy**. A partner is reported `VERIFIED` only when the latest restore point is `READY` and its corresponding restore test is `PASSED`.
 
 Restore artifacts contain:
 - the isolated partner database in PostgreSQL custom dump format,
@@ -319,11 +319,11 @@ Restore artifacts contain:
 - partner/environment/connector configuration with secret-bearing keys recursively removed,
 - a manifest containing component SHA-256 hashes and byte sizes.
 
-Artifacts are encrypted with chunked AES-256-GCM. The encryption key is runtime-secret configuration. CI/development uses a separate local offsite Docker volume; production uses the S3-compatible HTTPS adapter with SigV4 credentials. The application/storage disk is not treated as a production offsite boundary.
+Artifacts are encrypted with chunked AES-256-GCM. The encryption key is runtime-secret configuration. CI/development uses a separate local Docker volume; production uses the `render_disk` adapter on a dedicated Render persistent disk mounted only into the Backups service. The backup disk is separate from the HIMATE application/storage disk. This keeps backup artifacts isolated at the service/disk level while intentionally remaining inside the Render provider failure domain.
 
-Partner backup policy persists retention days, maximum restore-point count, automatic interval and enabled state. Pruning deletes the remote object before metadata is marked `EXPIRED`.
+Partner backup policy persists retention days, maximum restore-point count, automatic interval and enabled state. Pruning deletes the stored backup artifact before metadata is marked `EXPIRED`.
 
-ADR-0004 records the backup/offsite/restore-verification boundary.
+ADR-0004 records the backup-storage/restore-verification boundary and the Render-native production amendment.
 
 ## Provisioning and data isolation
 
@@ -371,6 +371,6 @@ Evidence is validated and SHA-256 checked. PDF report jobs freeze immutable snap
 
 ## Deployment topology
 
-Local/CI uses `docker-compose.yml`, the Runtime `local` deployment provider and a separate local backup offsite volume. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled. Production Backups uses an S3-compatible HTTPS offsite provider and runtime-injected encryption/storage credentials.
+Local/CI uses `docker-compose.yml`, the Runtime `local` deployment provider and a separate local backup volume. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled. Production Backups uses the `render_disk` provider with a dedicated `/offsite` Render persistent disk and the runtime-injected AES-256 encryption key. No AWS/S3 endpoint or credential is required by the current production topology.
 
 The Render Runtime service is configured for the `render` provider and receives `RENDER_API_KEY` / optional default service ID as secrets. Provider credentials never live in source control.
