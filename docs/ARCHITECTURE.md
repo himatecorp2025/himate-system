@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–23.6
+# HIMATE control-plane architecture — START-01–23.7
 
 ```text
 Browser / Admin / Partner Portal / Search crawler
@@ -64,6 +64,8 @@ HIMATE intentionally retains the independently deployable Go-service topology in
 Each domain is an independently buildable Go binary and Docker image. The public Gateway is the administrative/browser ingress. Private control-plane services require the shared internal service credential. Runtime images are non-root/distroless where applicable.
 
 The HIMATE services currently share the control-plane PostgreSQL instance while owning domain schemas. Partner business databases remain physically isolated.
+
+START-23.7 makes the Evidence boundary authoritative for commercial file proof: the Partner Workspace uploads bytes through Evidence to Storage, while Billing accepts commercial document references only after Evidence confirms same-partner ownership, file backing and a fresh SHA-256/size integrity check. Reports freeze Impact/Evidence state into immutable snapshots and regenerate PDFs only from those persisted snapshots.
 
 ### Scaling model
 The topology permits independent horizontal/vertical scaling of the hot services, isolates provider failures, and prevents partner-runtime operations from requiring a Gateway rebuild. HTTP clients use connection pooling and explicit timeouts.
