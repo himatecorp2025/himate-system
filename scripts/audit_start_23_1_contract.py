@@ -251,11 +251,16 @@ if errors:
     raise SystemExit("START-23.1 functional-contract audit failed:\n- " + "\n- ".join(errors))
 
 mutation_count = sum(1 for item in contracts if item.get("kind") == "mutation")
+closed_states = {
+    "SOURCE_COMPLETE_PROD_UNVERIFIED",
+    "PROD_PROVEN",
+    "MUTATION_PROVEN_PROD_UNVERIFIED",
+    "CONTROL_HIDDEN_PROD_UNVERIFIED",
+}
 blocker_count = sum(
     1
     for item in contracts
-    if item.get("current_state")
-    not in {"SOURCE_COMPLETE_PROD_UNVERIFIED", "PROD_PROVEN"}
+    if item.get("current_state") not in closed_states
 )
 print(
     "START-23.1 functional-contract audit passed: "
