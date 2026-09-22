@@ -1025,6 +1025,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       case 'Results': return resultsPage();
       case 'Billing': return billingPage();
       case 'Company': return companyPage();
+      case 'Design': return designPage();
       case 'Users': return usersPage();
       default: return overview();
     }
