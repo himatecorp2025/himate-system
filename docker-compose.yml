@@ -361,7 +361,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.8.9-start-23.5
+      HIMATE_APP_VERSION: 0.8.10-start-23.6
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456
@@ -369,6 +369,13 @@ services:
       HIMATE_BOOTSTRAP_ADMIN_EMAIL: admin@example.com
       HIMATE_BOOTSTRAP_ADMIN_PASSWORD: Local-Development1!Password
       HIMATE_SESSION_TTL_HOURS: 8
+      HIMATE_PASSWORD_RESET_TTL_MINUTES: 30
+      HIMATE_PASSWORD_RESET_BASE_URL: http://127.0.0.1:8080
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       COOKIE_SECURE: "false"
       PARTNERS_HOSTPORT: partners:10000
       CATALOG_HOSTPORT: catalog:10000
