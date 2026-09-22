@@ -825,6 +825,50 @@ func (a *app) setCatalogModuleNotLicensed(ctx context.Context, partnerID, module
 	return nil
 }
 
+func (a *app) expireDueCancellations(ctx context.Context, at time.Time) error {
+	today := dateOnly(at)
+	rows, err := a.db.QueryContext(ctx, `SELECT partner_id,module_key,period_start,period_end
+		FROM billing.module_subscriptions
+		WHERE lifecycle_state='CANCEL_PENDING' AND cancel_at_period_end=TRUE AND period_end <= $1
+		ORDER BY period_end,partner_id,module_key`, today)
+	if err != nil { return err }
+	defer rows.Close()
+	type due struct {
+		partnerID, moduleKey string
+		start, end time.Time
+	}
+	items := []due{}
+	for rows.Next() {
+		var item due
+		if err := rows.Scan(&item.partnerID,&item.moduleKey,&item.start,&item.end); err != nil { return err }
+		items = append(items,item)
+	}
+	if err := rows.Err(); err != nil { return err }
+
+	for _, item := range items {
+		if err := a.closeModulePeriod(ctx,item.partnerID,item.moduleKey,item.start,item.end,true); err != nil { return err }
+		if err := a.setCatalogModuleNotLicensed(ctx,item.partnerID,item.moduleKey); err != nil {
+			return fmt.Errorf("expire subscription %s/%s: %w",item.partnerID,item.moduleKey,err)
+		}
+		result, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
+			SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',lifecycle_state='INACTIVE',
+				cancellation_effective_at=period_end,updated_at=NOW()
+			WHERE partner_id=$1 AND module_key=$2 AND lifecycle_state='CANCEL_PENDING'`,
+			item.partnerID,item.moduleKey)
+		if err != nil { return err }
+		changed, _ := result.RowsAffected()
+		if changed > 0 {
+			eventKey := fmt.Sprintf("MODULE_CANCELLATION_EFFECTIVE:%s:%s:%s",item.partnerID,item.moduleKey,dateOnly(item.end).Format("2006-01-02"))
+			if err := a.emitBillingEvent(ctx,eventKey,item.partnerID,item.moduleKey,"MODULE_CANCELLATION_EFFECTIVE",dateOnly(item.end),map[string]any{
+				"period_start":dateOnly(item.start).Format("2006-01-02"),
+				"period_end_exclusive":dateOnly(item.end).Format("2006-01-02"),
+				"lifecycle_state":"INACTIVE",
+			}); err != nil { return err }
+		}
+	}
+	return nil
+}
+
 func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods []map[string]any, now time.Time) error {
 	today := dateOnly(now)
 	activeKeys := make([]string, 0, len(mods))
@@ -969,23 +1013,11 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		}
 	}
 
-	if len(activeKeys) == 0 {
-		_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-			SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',lifecycle_state='INACTIVE',updated_at=NOW()
-			WHERE partner_id=$1 AND payment_status<>'INACTIVE'`, id)
-		return err
-	}
-	args := make([]any, 0, len(activeKeys)+1)
-	args = append(args, id)
-	placeholders := make([]string, len(activeKeys))
-	for i, key := range activeKeys {
-		args = append(args, key)
-		placeholders[i] = fmt.Sprintf("$%d", i+2)
-	}
-	_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-		SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',lifecycle_state='INACTIVE',updated_at=NOW()
-		WHERE partner_id=$1 AND module_key NOT IN (`+strings.Join(placeholders, ",")+`) AND payment_status<>'INACTIVE'`, args...)
-	return err
+	// START-23.3: Catalog absence is not a subscription-lifecycle command.
+	// Billing changes ACTIVE/CANCEL_PENDING/INACTIVE only through activation,
+	// cancellation withdrawal/scheduling, or the exact period-end processor.
+	_ = activeKeys
+	return nil
 }
 
 func nullableTimeValue(v sql.NullTime) any {
@@ -1415,6 +1447,7 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		var id string
 		if rows.Scan(&id) == nil { ids = append(ids, id) }
 	}
+	if err := a.expireDueCancellations(ctx, at); err != nil { return err }
 	for _, id := range ids {
 		t, err := a.ensureTerms(id)
 		if err != nil { return err }
