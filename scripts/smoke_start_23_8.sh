@@ -244,7 +244,11 @@ grep -q 'Culture Lab 238' "$BODY"
 grep -q 'border-radius:17px' "$BODY"
 grep -q 'rel="icon"' "$BODY"
 grep -q 'apple-touch-icon' "$BODY"
-grep -q "/public/v1/cms/media/$media_id" "$BODY"
+grep -q "/preview/v1/cms/design/media/$media_id?token=" "$BODY"
+if grep -q "/public/v1/cms/media/$media_id" "$BODY"; then
+  echo "Design preview leaked draft brand asset through public media path" >&2
+  exit 1
+fi
 echo ok
 
 printf 'publish Design Guide and prove public initial HTML mutation... '
