@@ -1396,18 +1396,26 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 
 func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
-	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,status,provider_status,created_at FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC`, id)
+	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,status,provider_status,
+		payment_attempt_id,provider,provider_payment_id,paid_at,payment_failure_code,payment_failure_message,created_at
+		FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC`, id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load invoices"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		var invoiceID, currency, status, provider string
+		var invoiceID, currency, status, providerStatus, attemptID, provider, providerPaymentID, failureCode, failureMessage string
 		var invoiceDate, start, end, created time.Time
+		var paidAt sql.NullTime
 		var base, module, total float64
-		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &status, &provider, &created) == nil {
+		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &status, &providerStatus,
+			&attemptID, &provider, &providerPaymentID, &paidAt, &failureCode, &failureMessage, &created) == nil {
+			var paid any
+			if paidAt.Valid { paid = paidAt.Time }
 			items = append(items, map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
-				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": provider, "created_at": created,
+				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": providerStatus,
+				"payment_attempt_id": attemptID, "provider": provider, "provider_payment_id": providerPaymentID, "paid_at": paid,
+				"payment_failure_code": failureCode, "payment_failure_message": failureMessage, "created_at": created,
 				"items": a.invoiceItemsFor(invoiceID),
 			})
 		}
