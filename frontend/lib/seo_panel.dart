@@ -492,25 +492,22 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
           },
         ),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: LText(
-                publishedAt == null
-                    ? 'SEO settings have not been published yet'
-                    : 'SEO published ${HimateI18n.dateTime(HimateI18n.activeLocale, publishedAt!)}',
-                style: const TextStyle(
-                  color: brandTextSoft,
-                  fontSize: 10.5,
-                ),
-              ),
+        ResponsiveActionBar(
+          leading: LText(
+            publishedAt == null
+                ? 'SEO settings have not been published yet'
+                : 'SEO published ${HimateI18n.dateTime(HimateI18n.activeLocale, publishedAt!)}',
+            style: const TextStyle(
+              color: brandTextSoft,
+              fontSize: 10.5,
             ),
+          ),
+          actions: [
             OutlinedButton.icon(
               onPressed: saving ? null : () => saveDraft(),
               icon: const Icon(Icons.save_outlined),
               label: const LText('Save SEO draft'),
             ),
-            const SizedBox(width: 10),
             FilledButton.icon(
               onPressed: saving ? null : publish,
               icon: const Icon(Icons.publish_outlined),

@@ -256,20 +256,24 @@ class _NotificationCenterPanelState extends State<NotificationCenterPanel> {
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(children: [
-          _MiniCounter(label: unreadCount.toString() + ' unread'),
-          const Spacer(),
-          FilterChip(
-            selected: unreadOnly,
-            label: const LText('Unread only'),
-            onSelected: (value) {
-              setState(() => unreadOnly = value);
-              load();
-            },
-          ),
-          const SizedBox(width: 8),
-          TextButton(onPressed: unreadCount > 0 ? markAllRead : null, child: const LText('Mark all read')),
-        ]),
+        child: Wrap(
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _MiniCounter(label: unreadCount.toString() + ' unread'),
+            FilterChip(
+              selected: unreadOnly,
+              label: const LText('Unread only'),
+              onSelected: (value) {
+                setState(() => unreadOnly = value);
+                load();
+              },
+            ),
+            TextButton(onPressed: unreadCount > 0 ? markAllRead : null, child: const LText('Mark all read')),
+          ],
+        ),
       ),
       Expanded(
         child: loading

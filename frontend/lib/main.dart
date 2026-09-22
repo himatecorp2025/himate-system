@@ -641,7 +641,7 @@ class _HimateAppState extends State<HimateApp> {
         backgroundColor: brandNavyDeep,
         body: Center(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             children: [
               BrandMark(size: 42),
               SizedBox(height: 16),
@@ -873,7 +873,7 @@ class _LoginPageState extends State<LoginPage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 820;
+          final compact = useCompactLoginForSize(Size(constraints.maxWidth, constraints.maxHeight));
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -1433,6 +1433,17 @@ ShellLayoutMode shellLayoutForWidth(double width) {
   if (width < 980) return ShellLayoutMode.tablet;
   return ShellLayoutMode.desktop;
 }
+
+bool useCompactLoginForSize(Size size) => size.width < 820 || size.height < 720;
+
+int responsiveGridColumnsForWidth(double width) {
+  if (width < 620) return 1;
+  if (width < 980) return 2;
+  return 4;
+}
+
+bool shouldStackContentActions(double width, int actionCount) =>
+    width < 920 || (actionCount > 2 && width < 1180);
 
 class Shell extends StatefulWidget {
   const Shell({required this.api, required this.user, required this.onUserChanged, required this.onLogout, super.key});
@@ -6141,6 +6152,63 @@ class ResponsiveFieldPair extends StatelessWidget {
 }
 
 
+class ResponsiveActionBar extends StatelessWidget {
+  const ResponsiveActionBar({
+    required this.actions,
+    this.leading,
+    this.breakpoint = 620,
+    this.gap = 10,
+    super.key,
+  });
+
+  final Widget? leading;
+  final List<Widget> actions;
+  final double breakpoint;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (leading != null) ...[
+                leading!,
+                SizedBox(height: gap),
+              ],
+              for (var i = 0; i < actions.length; i++) ...[
+                SizedBox(width: double.infinity, child: actions[i]),
+                if (i < actions.length - 1) SizedBox(height: gap),
+              ],
+            ],
+          );
+        }
+        return Row(
+          children: [
+            if (leading != null) Expanded(child: leading!),
+            if (leading != null && actions.isNotEmpty) SizedBox(width: gap),
+            if (actions.isNotEmpty)
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: actions,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+
 class BrandDialog extends StatelessWidget {
   const BrandDialog({
     required this.title,
@@ -6161,84 +6229,163 @@ class BrandDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final mediaPhone = viewport.width < 520;
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: mediaPhone ? 10 : 20,
+        vertical: mediaPhone ? 12 : 24,
+      ),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: width, maxHeight: MediaQuery.of(context).size.height * .88),
-        child: Container(
-          decoration: BoxDecoration(
-            color: brandWhite,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: brandMist),
-            boxShadow: [BoxShadow(color: brandNavy.withOpacity(.16), blurRadius: 44, offset: const Offset(0, 20))],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(22, 20, 18, 18),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: brandMist)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(11)),
-                      child: Icon(icon, color: brandGold, size: 21),
+        constraints: BoxConstraints(
+          maxWidth: width,
+          maxHeight: viewport.height * (mediaPhone ? .94 : .88),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 520;
+
+            final header = Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                compact ? 16 : 22,
+                compact ? 14 : 20,
+                compact ? 10 : 18,
+                compact ? 12 : 18,
+              ),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: brandMist)),
+              ),
+              child: compact
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: brandGold.withOpacity(.12),
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              child: Icon(icon, color: brandGold, size: 19),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        LText(title, style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        LText(
+                          subtitle,
+                          style: const TextStyle(
+                            color: brandTextSoft,
+                            fontSize: 11,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: brandGold.withOpacity(.12),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(icon, color: brandGold, size: 21),
+                        ),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              LText(title, style: Theme.of(context).textTheme.titleLarge),
+                              const SizedBox(height: 4),
+                              LText(
+                                subtitle,
+                                style: const TextStyle(
+                                  color: brandTextSoft,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          LText(title, style: Theme.of(context).textTheme.titleLarge),
-                          const SizedBox(height: 4),
-                          LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12, height: 1.4)),
-                        ],
-                      ),
+            );
+
+            final footer = Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                compact ? 14 : 20,
+                compact ? 10 : 14,
+                compact ? 14 : 20,
+                compact ? 12 : 18,
+              ),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: brandMist)),
+              ),
+              child: ResponsiveActionBar(
+                breakpoint: 480,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const LText('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: onPrimary,
+                    child: LText(primaryLabel),
+                  ),
+                ],
+              ),
+            );
+
+            return Container(
+              decoration: BoxDecoration(
+                color: brandWhite,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: brandMist),
+                boxShadow: [
+                  BoxShadow(
+                    color: brandNavy.withOpacity(.16),
+                    blurRadius: 44,
+                    offset: const Offset(0, 20),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  header,
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(compact ? 16 : 22),
+                      child: child,
                     ),
-                    IconButton(onPressed: () => Navigator.pop(context, false), icon: const Icon(Icons.close_rounded)),
-                  ],
-                ),
+                  ),
+                  footer,
+                ],
               ),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(22),
-                  child: child,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
-                decoration: const BoxDecoration(border: Border(top: BorderSide(color: brandMist))),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final actions = [
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const LText('Cancel')),
-                      FilledButton(onPressed: onPrimary, child: LText(primaryLabel)),
-                    ];
-                    if (constraints.maxWidth < 420) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(width: double.infinity, child: actions[1]),
-                          const SizedBox(height: 8),
-                          SizedBox(width: double.infinity, child: actions[0]),
-                        ],
-                      );
-                    }
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [actions[0], const SizedBox(width: 8), actions[1]],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -6269,14 +6416,17 @@ class _MiniCounter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: brandNavy.withOpacity(.055),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: brandNavy.withOpacity(.07)),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: brandNavy.withOpacity(.055),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: brandNavy.withOpacity(.07)),
+        ),
+        child: LText(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
       ),
-      child: LText(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -6295,10 +6445,13 @@ class _StatusPill extends StatelessWidget {
             : value.contains('SUSPENDED') || value.contains('ARCHIVED')
                 ? brandDanger
                 : brandSteel;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99), border: Border.all(color: tone.withOpacity(.15))),
-      child: LText(_humanize(label), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .25)),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99), border: Border.all(color: tone.withOpacity(.15))),
+        child: LText(_humanize(label), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .25)),
+      ),
     );
   }
 }
@@ -6574,15 +6727,23 @@ class _SectionHeader extends StatelessWidget {
     if (trailing == null) return copy;
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 620) {
+        if (constraints.maxWidth < 760) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [copy, const SizedBox(height: 10), trailing!],
+            children: [
+              copy,
+              const SizedBox(height: 10),
+              SizedBox(width: double.infinity, child: trailing!),
+            ],
           );
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.end,
-          children: [Expanded(child: copy), const SizedBox(width: 12), trailing!],
+          children: [
+            Expanded(child: copy),
+            const SizedBox(width: 12),
+            Flexible(child: Align(alignment: Alignment.centerRight, child: trailing!)),
+          ],
         );
       },
     );
@@ -6737,16 +6898,42 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     child: Padding(
       padding: const EdgeInsets.all(18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(icon, color: brandGold, size: 19)),
-          const SizedBox(width: 10),
-          Expanded(child: LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
-          if (action != null) action!,
-        ]),
-        const SizedBox(height: 14),
-        ...children,
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final titleBlock = Row(
+                children: [
+                  Container(width: 36, height: 36, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(icon, color: brandGold, size: 19)),
+                  const SizedBox(width: 10),
+                  Expanded(child: LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+                ],
+              );
+              if (action == null) return titleBlock;
+              if (constraints.maxWidth < 460) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    titleBlock,
+                    const SizedBox(height: 10),
+                    Align(alignment: Alignment.centerLeft, child: action!),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: titleBlock),
+                  const SizedBox(width: 10),
+                  Flexible(child: Align(alignment: Alignment.centerRight, child: action!)),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          ...children,
+        ],
+      ),
     ),
   );
 }
@@ -6759,11 +6946,33 @@ class _DefinitionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Row(children: [
-      Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5))),
-      const SizedBox(width: 12),
-      Flexible(child: LText(value, textAlign: TextAlign.right, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: brandNavy, fontSize: emphasis ? 13 : 11, fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600))),
-    ]),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final valueStyle = TextStyle(
+          color: brandNavy,
+          fontSize: emphasis ? 13 : 11,
+          fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600,
+        );
+        if (constraints.maxWidth < 360) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+              const SizedBox(height: 3),
+              LText(value, maxLines: 4, overflow: TextOverflow.ellipsis, style: valueStyle),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5))),
+            const SizedBox(width: 12),
+            Flexible(child: LText(value, textAlign: TextAlign.right, maxLines: 3, overflow: TextOverflow.ellipsis, style: valueStyle)),
+          ],
+        );
+      },
+    ),
   );
 }
 
@@ -6778,22 +6987,50 @@ class _RuleStrip extends StatelessWidget {
   final List<_RuleItem> items;
 
   @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    children: [
-      for (final item in items)
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(color: brandNavy.withOpacity(.04), borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(item.icon, color: brandGold, size: 15),
-            const SizedBox(width: 7),
-            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
-          ]),
-        ),
-    ],
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final narrow = constraints.maxWidth < 520;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final item in items)
+            SizedBox(
+              width: narrow ? constraints.maxWidth : null,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                decoration: BoxDecoration(color: brandNavy.withOpacity(.04), borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
+                child: Row(
+                  mainAxisSize: narrow ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    Icon(item.icon, color: brandGold, size: 15),
+                    const SizedBox(width: 7),
+                    if (narrow)
+                      Expanded(
+                        child: Wrap(
+                          children: [
+                            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 300),
+                        child: Wrap(
+                          children: [
+                            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
+    },
   );
 }
 
@@ -7084,7 +7321,7 @@ class _OperationsControlsCard extends StatelessWidget {
       _DefinitionRow(label: 'Private services', value: 'Internal network only'),
       _DefinitionRow(label: 'Partner databases', value: 'Separate from HIMATE control plane'),
       _DefinitionRow(label: 'Connector model', value: 'Pre-defined API exchange'),
-      _DefinitionRow(label: 'Backups / restore', value: 'Scheduled for START-21'),
+      _DefinitionRow(label: 'Backups / restore', value: 'Encrypted · restore verified'),
     ],
   );
 }
@@ -7101,6 +7338,7 @@ class Content extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 760;
+        final stackActions = shouldStackContentActions(constraints.maxWidth, actions.length);
         final padding = constraints.maxWidth < 520 ? 16.0 : constraints.maxWidth < 1050 ? 22.0 : 28.0;
         final header = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -7121,10 +7359,33 @@ class Content extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (narrow)
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [header, if (actions.isNotEmpty) ...[const SizedBox(height: 16), Wrap(spacing: 9, runSpacing: 9, children: actions)]])
+                if (narrow || stackActions)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      header,
+                      if (actions.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Wrap(spacing: 9, runSpacing: 9, children: actions),
+                      ],
+                    ],
+                  )
                 else
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: header), if (actions.isNotEmpty) ...[const SizedBox(width: 20), Wrap(spacing: 9, runSpacing: 9, children: actions)]]),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: header),
+                      if (actions.isNotEmpty) ...[
+                        const SizedBox(width: 20),
+                        Flexible(
+                          child: Align(
+                            alignment: Alignment.topRight,
+                            child: Wrap(alignment: WrapAlignment.end, spacing: 9, runSpacing: 9, children: actions),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 const SizedBox(height: 22),
                 child,
               ],
@@ -7145,7 +7406,7 @@ class ResponsiveKpiGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth < 620 ? 1 : constraints.maxWidth < 980 ? 2 : 4;
+        final columns = responsiveGridColumnsForWidth(constraints.maxWidth);
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         return Wrap(
           spacing: gap,
@@ -7251,15 +7512,34 @@ class _MessageCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     child: Padding(
       padding: const EdgeInsets.all(24),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(width: 46, height: 46, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(11)), child: Icon(icon, color: brandGold, size: 22)),
-        const SizedBox(width: 15),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 16)),
-          const SizedBox(height: 6),
-          LText(message, style: const TextStyle(color: brandTextSoft, height: 1.45)),
-        ])),
-      ]),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final copy = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 6),
+              LText(message, style: const TextStyle(color: brandTextSoft, height: 1.45)),
+            ],
+          );
+          final mark = Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(11)),
+            child: Icon(icon, color: brandGold, size: 22),
+          );
+          if (constraints.maxWidth < 360) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [mark, const SizedBox(height: 12), copy],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [mark, const SizedBox(width: 15), Expanded(child: copy)],
+          );
+        },
+      ),
     ),
   );
 }

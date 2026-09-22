@@ -581,17 +581,18 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
         _SectionHeader(
           title: 'Roles & Permissions',
           subtitle: 'Backend-enforced RBAC. Read, write and approval rights are checked before each protected administration API request.',
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
+          trailing: Wrap(
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               _MiniCounter(label: '${users.length} admins'),
-              const SizedBox(width: 8),
               OutlinedButton.icon(
                 onPressed: createRole,
                 icon: const Icon(Icons.rule_folder_outlined),
                 label: const LText('Create role'),
               ),
-              const SizedBox(width: 8),
               FilledButton.icon(
                 onPressed: roles.isEmpty ? null : createUser,
                 icon: const Icon(Icons.person_add_alt_1_rounded),

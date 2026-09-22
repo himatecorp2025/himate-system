@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–22.3 implementation status
+## START-01–23 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -183,6 +183,17 @@ The architecture remains microservice/container based. It is **not** being colla
 - no partner website rewrite; existing sites integrate through Connector Protocol endpoints
 - Partner Workspace shows commercial readiness, billing events and website-adapter configuration
 
+### START-23 — Responsive & Functional QA
+- full desktop/tablet/mobile responsive quality gate across the existing administration and Partner Portal surfaces
+- explicit small-phone, phone, tablet, compact-laptop, laptop and desktop viewport matrix
+- short-height login fallback, responsive header/action/dialog behavior and adaptive 1/2/4-column KPI layouts
+- long partner/company/domain/status values are bounded or allowed to wrap without horizontal overflow
+- record-card policy remains the responsive alternative to raw administrative data tables
+- critical English/Hungarian consistency gaps from START-22.3 and the Render-native backup correction are closed
+- dedicated functional route-matrix smoke covers every primary workspace plus empty, pagination and failure states
+- existing privacy and concurrent-load audits remain mandatory regression gates
+- START-24 Security Acceptance remains a separate final gate
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -199,7 +210,8 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-22.1_ACCEPTANCE.md`
 - `docs/START-22.2_ACCEPTANCE.md`
 - `docs/START-22.3_ACCEPTANCE.md`
+- `docs/START-23_ACCEPTANCE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-22.2 remain protected by their historical acceptance suites. START-22.3 additionally requires `docs/START-22.3_ACCEPTANCE.md` and `scripts/smoke_start_22_3.sh`. Commercial Automation & Partner Website Integration is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the complete START-01–22.2 regression and the dedicated immutable-pricing/itemized-invoice/connector smoke are all green. Development stops after this merge for the requested full-system audit before START-23.
+START-22 through START-22.3 remain protected by their historical acceptance suites. START-23 additionally requires `docs/START-23_ACCEPTANCE.md`, the responsive viewport/browser tests, `scripts/audit_start_23_frontend.py`, and `scripts/smoke_start_23.sh`. START-23 is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the complete START-01–22.3 regression, privacy/load audits and the dedicated responsive/functional QA gates are green. After merge, development pauses for a short closure audit before START-24 Security Acceptance.
