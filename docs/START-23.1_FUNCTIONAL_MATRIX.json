@@ -380,7 +380,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.9",
       "e2e_proof": "scripts/smoke_start_23_9.sh: provider-backed PAID ledger -> dashboard revenue YTD readback",
-      "notes": "Revenue YTD includes provider-settled PAID activation licenses and PAID recurring invoices, grouped by original currency with no implicit FX conversion."
+      "notes": "Revenue YTD includes provider-settled PAID activation licenses and PAID recurring invoices, grouped by original currency with no implicit FX conversion. Gateway response shaping requires billing.read; otherwise the KPI is explicitly restricted with no financial value returned."
     },
     {
       "id": "DASH-PEOPLE",
@@ -398,7 +398,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.9",
       "e2e_proof": "scripts/smoke_start_23_9.sh: authoritative attendee metric mutation -> People Reached YTD readback",
-      "notes": "People Reached is explicitly defined as klavierhaus.events.attendance.attendee_count, preserving the metric's configured aggregation semantics."
+      "notes": "People Reached is explicitly defined as klavierhaus.events.attendance.attendee_count, preserving the metric's configured aggregation semantics. Gateway response shaping requires impact.read; otherwise Impact values/trend are omitted behind an explicit restricted marker."
     },
     {
       "id": "DASH-CHART",
@@ -416,7 +416,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.9",
       "e2e_proof": "scripts/smoke_start_23_9.sh: monthly attendee observations -> 12-month dashboard trend readback",
-      "notes": "The chart uses the same authoritative People Reached metric and returns a 12-month series for the selected UTC calendar year."
+      "notes": "The chart uses the same authoritative People Reached metric and returns a 12-month series for the selected UTC calendar year. Gateway response shaping requires impact.read; otherwise Impact values/trend are omitted behind an explicit restricted marker."
     },
     {
       "id": "DASH-ACTIVITY",
