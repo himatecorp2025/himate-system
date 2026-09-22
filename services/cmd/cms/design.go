@@ -23,8 +23,25 @@ var designFonts = map[string]bool{
 	"Arial":              true,
 }
 
+var designLayouts = map[string]bool{
+	"classic_editorial": true,
+	"modern_grid":       true,
+	"minimal":           true,
+}
+
+var designAssetSlots = map[string]bool{
+	"header_wordmark": true,
+	"footer_wordmark": true,
+	"favicon":         true,
+	"app_icon":        true,
+	"login_logo":      true,
+	"email_logo":      true,
+}
+
 func defaultSiteDesign() siteDesign {
 	return siteDesign{
+		Assets:       map[string]string{},
+		LayoutKey:    "classic_editorial",
 		Navy:         "#06172C",
 		Gold:         "#D7AE62",
 		Background:   "#F8F9FB",
@@ -45,6 +62,28 @@ func defaultSiteDesign() siteDesign {
 
 func normalizeSiteDesign(in siteDesign) siteDesign {
 	in.LogoMediaAssetID = strings.TrimSpace(in.LogoMediaAssetID)
+	in.LayoutKey = strings.TrimSpace(in.LayoutKey)
+	if in.LayoutKey == "" {
+		in.LayoutKey = "classic_editorial"
+	}
+	if in.Assets == nil {
+		in.Assets = map[string]string{}
+	}
+	normalizedAssets := map[string]string{}
+	for slot, mediaID := range in.Assets {
+		slot = strings.TrimSpace(slot)
+		mediaID = strings.TrimSpace(mediaID)
+		if slot != "" && mediaID != "" {
+			normalizedAssets[slot] = mediaID
+		}
+	}
+	if in.LogoMediaAssetID != "" && normalizedAssets["header_wordmark"] == "" {
+		normalizedAssets["header_wordmark"] = in.LogoMediaAssetID
+	}
+	if in.LogoMediaAssetID == "" {
+		in.LogoMediaAssetID = normalizedAssets["header_wordmark"]
+	}
+	in.Assets = normalizedAssets
 	in.Navy = strings.ToUpper(strings.TrimSpace(in.Navy))
 	in.Gold = strings.ToUpper(strings.TrimSpace(in.Gold))
 	in.Background = strings.ToUpper(strings.TrimSpace(in.Background))
@@ -73,6 +112,17 @@ func (a *app) validateSiteDesign(ctx context.Context, in siteDesign) error {
 	}
 	if !designFonts[in.HeadingFont] || !designFonts[in.BodyFont] {
 		return fmt.Errorf("unsupported design font")
+	}
+	if !designLayouts[in.LayoutKey] {
+		return fmt.Errorf("unsupported design layout")
+	}
+	for slot, mediaID := range in.Assets {
+		if !designAssetSlots[slot] {
+			return fmt.Errorf("unsupported design asset slot %q", slot)
+		}
+		if mediaID != "" && !a.mediaExists(ctx, mediaID) {
+			return fmt.Errorf("design asset %q does not exist", slot)
+		}
 	}
 	if in.ButtonRadius < 0 || in.ButtonRadius > 40 {
 		return fmt.Errorf("button radius must be between 0 and 40")
@@ -319,7 +369,16 @@ func (a *app) previewDesignMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/preview/v1/cms/design/media/"), "/")
 	draft, _, err := a.designPreviewDraft(strings.TrimSpace(r.URL.Query().Get("token")))
-	if err != nil || id == "" || strings.TrimSpace(draft.LogoMediaAssetID) != id {
+	allowed := strings.TrimSpace(draft.LogoMediaAssetID) == id
+	if !allowed {
+		for _, mediaID := range draft.Assets {
+			if strings.TrimSpace(mediaID) == id {
+				allowed = true
+				break
+			}
+		}
+	}
+	if err != nil || id == "" || !allowed {
 		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Design preview media not found")
 		return
 	}
