@@ -789,8 +789,11 @@ paths:
       summary: Register commercial document metadata
       description: >
         Commercial evidence types (CONTRACT, INVOICE, RECEIPT and
-        PAYMENT_EVIDENCE) require a non-empty persistent storage URL or
-        document reference before they can satisfy the initial-license gate.
+        PAYMENT_EVIDENCE) require a same-partner file-backed HIMATE Evidence
+        reference in evidence://<evidence-id> form. Billing performs a fresh
+        Evidence/Storage SHA-256 and byte-size integrity verification and uses
+        the authoritative MIME/hash/size metadata instead of trusting client
+        values before the document can satisfy the initial-license gate.
       requestBody:
         required: true
         content:
@@ -811,7 +814,8 @@ paths:
                 size_bytes: {type: integer, minimum: 0}
       responses:
         "201": {description: Document registered}
-        "400": {description: Validation failed or evidence reference missing}
+        "400": {description: Basic document validation failed}
+        "409": {description: Commercial Evidence reference is missing, cross-partner, not file-backed or fails fresh storage integrity verification}
   /api/v1/billing/partners/{partnerId}/invoices:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
