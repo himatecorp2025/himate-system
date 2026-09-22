@@ -1,12 +1,14 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.7-start-23.3
+  version: 0.8.8-start-23.4
   description: >
-    Authenticated REST contract for the START-01 through START-22.3 HIMATE
+    Authenticated REST contract for the START-01 through START-23.4 HIMATE
     control-plane surface. Partner business databases remain isolated behind
-    connector/API contracts; provider deployment is isolated behind the Runtime
-    adapter service; encrypted backup/recovery is isolated behind Backups.
+    connector/API contracts; deployment remains isolated behind Runtime;
+    encrypted backup/recovery remains isolated behind Backups; payment-provider
+    access is isolated behind the Payments adapter while Billing remains the
+    financial source of truth.
 servers:
   - url: /
 tags:
@@ -20,6 +22,7 @@ tags:
   - name: Partners
   - name: Modules
   - name: Billing
+  - name: Payments
   - name: Contact
   - name: Provisioning
   - name: Environments
@@ -669,19 +672,58 @@ paths:
       - {$ref: "#/components/parameters/PartnerId"}
     get:
       tags: [Billing]
-      summary: Initial license state
+      summary: Initial activation-license state
       responses:
-        "200": {description: Initial license}
+        "200": {description: Initial license including provider-settled paid state}
     put:
       tags: [Billing]
-      summary: Update initial license payment state
+      summary: Configure activation-license commercial state
       description: >
-        PAID requires payment date, reference, verifier and registered
-        PAYMENT_EVIDENCE or RECEIPT. Provisioning additionally requires an
-        AGREED commercial agreement and activation-fee INVOICE evidence.
+        Administrator may configure currency, required amount, waiver and note.
+        paid_amount, payment_date, payment_reference and verified_by are
+        provider-managed and are rejected if supplied by an administrator.
       responses:
-        "200": {description: Updated initial license}
-        "409": {description: License evidence required}
+        "200": {description: Updated activation-license configuration}
+        "409": {description: Provider-managed payment fields cannot be written manually}
+  /api/v1/billing/partners/{partnerId}/license/collect:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    post:
+      tags: [Billing, Payments]
+      summary: Start idempotent provider collection for the activation license
+      description: >
+        Requires Billing approval authority. Billing resolves the authoritative
+        amount/currency and asks Payments to create the provider attempt.
+        The license remains unpaid until a verified provider webhook settles it.
+      responses:
+        "201": {description: Payment attempt created or returned idempotently}
+        "409": {description: License waived/already paid or payment profile not ready}
+        "502": {description: Payment provider service unavailable}
+  /api/v1/payments/partners/{partnerId}/profile:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Payments]
+      summary: Read provider payment profile
+      responses:
+        "200": {description: Provider customer/payment-method readiness and autopay state}
+    put:
+      tags: [Payments]
+      summary: Configure provider customer, saved payment method and autopay
+      description: >
+        Provider secrets never pass through this route. Only provider object
+        identifiers and the autopay preference are persisted.
+      responses:
+        "200": {description: Updated payment profile}
+        "409": {description: Autopay requested without a ready payment method}
+  /api/v1/payments/partners/{partnerId}/attempts:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Payments]
+      summary: Read persisted payment attempts and reconciliation state
+      responses:
+        "200": {description: Provider attempts including purpose, amount, provider ID and status}
   /api/v1/billing/partners/{partnerId}/summary:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -780,6 +822,26 @@ paths:
         "200": {description: Subscription updated with lifecycle_state and cancellation_effective_at}
         "404": {description: Subscription not found}
         "409": {description: Inactive subscription must be reactivated at module level}
+  /webhooks/stripe:
+    post:
+      tags: [Payments]
+      security: []
+      summary: Receive signed Stripe PaymentIntent webhooks
+      description: >
+        Signature verification uses the exact raw request body, Stripe-Signature
+        and the runtime endpoint secret. Successful events must match the
+        persisted attempt payment ID, amount and currency before Billing
+        settlement is requested. Exact processed-event retries are idempotent.
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema: {type: string}
+      responses:
+        "200": {description: Event processed, ignored or recognized as an exact duplicate}
+        "400": {description: Signature or payload invalid}
+        "409": {description: Attempt/payment/amount mismatch or event-ID payload conflict}
+        "502": {description: Provider event verified but Billing settlement temporarily failed}
   /api/v1/public/contact:
     post:
       tags: [Public]
