@@ -615,7 +615,12 @@ func (a *app) attachInvoiceItems(ctx context.Context, invoiceID, partnerID, curr
 			})
 		}
 	}
-	return moduleTotal, adjustment, nil
+	var persistedAdjustment float64
+	if err = a.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM billing.invoice_items
+		WHERE invoice_id=$1 AND item_type='MINIMUM_COMMITMENT' AND billing_model='CALENDAR_MONTH'`, invoiceID).Scan(&persistedAdjustment); err != nil {
+		return 0, 0, err
+	}
+	return moduleTotal, persistedAdjustment, nil
 }
 
 
