@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–22.3
+# HIMATE control-plane architecture — START-01–23.6
 
 ```text
 Browser / Admin / Partner Portal / Search crawler
@@ -12,6 +12,7 @@ HIMATE Gateway / Identity
   +-- private Partner Service
   +-- private Catalog Service
   +-- private Billing Service
+  +-- private Payments Service
   +-- private Contact Service
   +-- private Provisioning Engine
   +-- private Environments Service
@@ -28,12 +29,14 @@ HIMATE Gateway / Identity
   +-- private Runtime / Deployment Provider Service
   |       +-- Local adapter (CI/dev)
   |       +-- Render adapter (production)
+  +-- private Notifications Service
   |
   +-- HIMATE PostgreSQL control-plane database
   |    +-- identity (admin + isolated partner identities)
   |    +-- partners
   |    +-- catalog
   |    +-- billing
+  |    +-- payments
   |    +-- contact
   |    +-- provisioning
   |    +-- environments
@@ -46,6 +49,7 @@ HIMATE Gateway / Identity
   |    +-- storage
   |    +-- backups
   |    +-- runtime
+  |    +-- notifications
   |
   +-- isolated partner PostgreSQL databases
        +-- Partner A DB + partner-scoped DB role
