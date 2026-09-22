@@ -206,11 +206,7 @@ echo ok
 
 printf 'authoritative HIMATE company profile mutates, reloads and restores... '
 company_before="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
-company_changed="$(printf '%s' "$company_before" | python3 - "$STAMP" <<'PY'
-import json,sys
-d=json.load(sys.stdin); d["contact_name"]="START 23.6 Acceptance "+sys.argv[1]; print(json.dumps(d))
-PY
-)"
+company_changed="$(printf '%s' "$company_before" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["contact_name"]="START 23.6 Acceptance "+sys.argv[1]; print(json.dumps(d))' "$STAMP")"
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_changed" "$BASE_URL/api/v1/billing/profile" >/dev/null
 company_after="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
 printf '%s' "$company_after" | python3 - "$STAMP" <<'PY'
