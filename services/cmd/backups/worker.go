@@ -83,25 +83,30 @@ func (a *app) queueRestoreTestRecord(point restorePoint,actor string)(restoreTes
 	if err==nil{a.signal()};return test,err
 }
 
-func (a *app) scheduler(){
-	ticker:=time.NewTicker(time.Minute);defer ticker.Stop()
-	run:=func(){
-		rows,err:=a.db.Query(`SELECT partner_id,schedule_hours FROM backups.policies WHERE enabled=TRUE`);if err!=nil{return}
-		type due struct{id string;hours int};items:=[]due{}
-		for rows.Next(){var item due;if rows.Scan(&item.id,&item.hours)==nil{items=append(items,item)}};rows.Close()
-		now:=time.Now().UTC()
-		for _,item:=range items{
-			var latest sql.NullTime
-			_ = a.db.QueryRow(`SELECT MAX(created_at) FROM backups.restore_points
-				WHERE partner_id=$1 AND status IN('QUEUED','RUNNING','READY')`,item.id).Scan(&latest)
-			if latest.Valid&&now.Sub(latest.Time)<time.Duration(item.hours)*time.Hour{continue}
-			if _,err:=a.queueBackup(item.id,"scheduler");err==nil{
-				_,_=a.db.Exec(`UPDATE backups.policies SET last_scheduled_at=NOW(),updated_at=NOW() WHERE partner_id=$1`,item.id)
-			}
+func (a *app) runSchedulerOnce() int {
+	rows,err:=a.db.Query(`SELECT partner_id,schedule_hours FROM backups.policies WHERE enabled=TRUE`)
+	if err!=nil{return 0}
+	type due struct{id string;hours int};items:=[]due{}
+	for rows.Next(){var item due;if rows.Scan(&item.id,&item.hours)==nil{items=append(items,item)}};rows.Close()
+	now:=time.Now().UTC()
+	queued:=0
+	for _,item:=range items{
+		var latest sql.NullTime
+		_ = a.db.QueryRow(`SELECT MAX(created_at) FROM backups.restore_points
+			WHERE partner_id=$1 AND status IN('QUEUED','RUNNING','READY')`,item.id).Scan(&latest)
+		if latest.Valid&&now.Sub(latest.Time)<time.Duration(item.hours)*time.Hour{continue}
+		if _,err:=a.queueBackup(item.id,"scheduler");err==nil{
+			_,_=a.db.Exec(`UPDATE backups.policies SET last_scheduled_at=NOW(),updated_at=NOW() WHERE partner_id=$1`,item.id)
+			queued++
 		}
 	}
-	run()
-	for range ticker.C{run()}
+	return queued
+}
+
+func (a *app) scheduler(){
+	ticker:=time.NewTicker(time.Minute);defer ticker.Stop()
+	a.runSchedulerOnce()
+	for range ticker.C{a.runSchedulerOnce()}
 }
 
 func (a *app) prunePartner(ctx context.Context,partnerID string)(int,error){
