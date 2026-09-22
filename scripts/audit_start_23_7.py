@@ -23,6 +23,7 @@ frontend = read("frontend/lib/main.dart")
 compose = read("docker-compose.yml")
 render = read("render.yaml")
 ci = read(".github/workflows/ci.yml")
+openapi = read("docs/openapi.yaml")
 matrix = json.loads(read("docs/START-23.1_FUNCTIONAL_MATRIX.json"))
 helper = read("scripts/evidence_test_helpers.sh")
 smoke223 = read("scripts/smoke_start_22_3.sh")
@@ -46,6 +47,21 @@ for token in ("EVIDENCE_HOSTPORT: evidence:10000",):
     require(token in compose, f"Compose Billing Evidence binding missing {token!r}")
 require("name: himate-billing" in render and "key: EVIDENCE_HOSTPORT" in render and "name: himate-evidence" in render,
         "Render Billing Evidence binding missing")
+
+require("0.8.11-start-23.7" in compose, "Compose release version is not START-23.7")
+require("0.8.11-start-23.7" in render, "Render release version is not START-23.7")
+require("version: 0.8.11-start-23.7" in openapi, "OpenAPI release version is not START-23.7")
+for path in (
+    "/api/v1/billing/partners/{partnerId}/documents:",
+    "/api/v1/evidence:",
+    "/api/v1/evidence/{evidenceId}/integrity:",
+    "/api/v1/reports:",
+    "/api/v1/reports/{reportId}/regenerate:",
+    "/api/v1/modules/{moduleKey}/impact-metrics:",
+):
+    require(path in openapi, f"OpenAPI missing {path}")
+require("same-partner file-backed HIMATE Evidence" in openapi,
+        "OpenAPI does not document the START-23.7 commercial Evidence boundary")
 
 # Historical acceptance can no longer inject fabricated commercial evidence.
 require(". scripts/evidence_test_helpers.sh" in smoke223, "START-22.3 does not use real Evidence helper")
