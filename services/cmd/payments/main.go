@@ -159,11 +159,19 @@ func (a *app) migrate(ctx context.Context) error {
 func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/payments/partners/"), "/")
 	parts := strings.Split(raw, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] != "profile" {
+	if len(parts) != 2 || parts[0] == "" {
 		common.APIError(w, 404, "NOT_FOUND", "Payment route not found")
 		return
 	}
 	partnerID := parts[0]
+	if parts[1] == "attempts" {
+		a.listAttempts(w,r,partnerID)
+		return
+	}
+	if parts[1] != "profile" {
+		common.APIError(w, 404, "NOT_FOUND", "Payment route not found")
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		p, err := a.ensureProfile(partnerID)
@@ -199,6 +207,22 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or PUT")
 	}
+}
+
+func (a *app) listAttempts(w http.ResponseWriter, r *http.Request, partnerID string) {
+	if r.Method != http.MethodGet { common.APIError(w,405,"METHOD","Use GET");return }
+	rows,err:=a.db.Query(`SELECT id,partner_id,invoice_id,purpose,amount,currency,provider,provider_payment_id,status,failure_code,failure_message,idempotency_key,created_at,updated_at
+		FROM payments.attempts WHERE partner_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100`,partnerID)
+	if err!=nil{common.APIError(w,500,"DB","Could not load payment attempts");return}
+	defer rows.Close()
+	items:=[]map[string]any{}
+	for rows.Next(){
+		var x attempt
+		if rows.Scan(&x.ID,&x.PartnerID,&x.InvoiceID,&x.Purpose,&x.Amount,&x.Currency,&x.Provider,&x.ProviderPaymentID,&x.Status,&x.FailureCode,&x.FailureMessage,&x.IdempotencyKey,&x.CreatedAt,&x.UpdatedAt)==nil{
+			items=append(items,attemptMap(x))
+		}
+	}
+	common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
 }
 
 func (a *app) ensureProfile(partnerID string) (paymentProfile, error) {
