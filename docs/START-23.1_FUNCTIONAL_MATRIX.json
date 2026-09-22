@@ -268,7 +268,7 @@
     {
       "id": "automation.billing",
       "name": "Automation / Billing",
-      "scope": "30-day invoice cycle and subscription expiry"
+      "scope": "Calendar-month invoice cycle, full-month/no-proration charging, minimum commitment and subscription expiry"
     },
     {
       "id": "automation.payments",
@@ -2109,7 +2109,25 @@
       "target_phase": "23.11.1",
       "e2e_proof": "scripts/smoke_start_23_11_1.sh: same module -> distinct Partner A/B quote references and prices",
       "notes": "Catalog prices are reference-only. PARTNER_CONTRACT is the pricing authority; unpublished modules remain invisible and non-activatable to Partner Portal."
+    },
+    {
+      "id": "CALENDAR-MONTH-BILLING-23-11-2",
+      "surface": "automation.billing",
+      "ui": "Calendar-month billing, no-proration charging and minimum monthly commitment",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/main.dart",
+      "source_token": "Calendar month · full monthly charge · no proration",
+      "method": "POST/GET/PATCH",
+      "api_pattern": "/internal/v1/invoices/run + /api/v1/billing/partners/{partnerId}/summary + /subscriptions",
+      "backend_service": "billing",
+      "persistence": "billing.module_subscriptions + module_period_snapshots + invoice_items + invoices + billing_events",
+      "audit": "immutable calendar-month ledger + START-23.11.2 acceptance",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.2",
+      "e2e_proof": "scripts/smoke_start_23_11_2.sh: mid-month activation -> full monthly item -> month-boundary cancellation -> next-month-day-1 invoice -> minimum commitment",
+      "notes": "CALENDAR_MONTH is authoritative for new recurring evidence. Historical 30-day rows remain retained as LEGACY_30_DAY and are not rewritten."
     }
   ],
-  "completed_through": "23.11.1"
+  "completed_through": "23.11.2"
 }
