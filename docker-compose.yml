@@ -46,6 +46,7 @@ services:
       CATALOG_HOSTPORT: catalog:10000
       PARTNERS_HOSTPORT: partners:10000
       PAYMENTS_HOSTPORT: payments:10000
+      EVIDENCE_HOSTPORT: evidence:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,6 +55,8 @@ services:
       partners:
         condition: service_started
       payments:
+        condition: service_started
+      evidence:
         condition: service_started
 
   payments:
