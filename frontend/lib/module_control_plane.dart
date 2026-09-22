@@ -715,12 +715,14 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                                 SizedBox(
                                   width: width,
                                   child: _InfoCard(
-                                    title: s(item['partner_id']),
+                                    title: partnerName(s(item['partner_id'])),
                                     icon: Icons.business_outlined,
                                     children: [
-                                      _DefinitionRow(label: 'Status', value: s(item['status'])),
+                                      _DefinitionRow(label: 'Partner ID', value: s(item['partner_id'])),
+                                      _DefinitionRow(label: 'Status', value: _humanize(s(item['status']))),
                                       _DefinitionRow(label: 'Included in base', value: item['included_in_base'] == true ? 'Yes' : 'No'),
-                                      _DefinitionRow(label: 'Price override', value: money(item['price_override'])),
+                                      _DefinitionRow(label: 'Configured 30-day price', value: commercialMoney(item['partner_price'], s(item['currency']))),
+                                      _DefinitionRow(label: 'Activation fee', value: commercialMoney(item['partner_activation_fee'], s(item['currency']))),
                                     ],
                                   ),
                                 ),
