@@ -704,8 +704,9 @@ func requiredPermission(r *http.Request) string {
 		action = "approve"
 	case resource == "evidence" && r.Method == http.MethodPatch:
 		action = "approve"
-	case resource == "billing" && r.Method == http.MethodPut &&
-		(strings.Contains(path, "/license") || strings.Contains(path, "/agreement") || strings.Contains(path, "/payments/")):
+	case resource == "billing" &&
+		((r.Method == http.MethodPut && (strings.Contains(path, "/license") || strings.Contains(path, "/agreement") || strings.Contains(path, "/payments/"))) ||
+		 (r.Method == http.MethodPost && strings.HasSuffix(path, "/license/collect"))):
 		action = "approve"
 	}
 	return resource + "." + action
