@@ -853,6 +853,12 @@ func (a *app)publicMedia(w http.ResponseWriter,r *http.Request){
 			published->>'logo_media_asset_id'=$1
 			OR EXISTS(SELECT 1 FROM jsonb_each_text(COALESCE(published->'assets','{}'::jsonb)) AS asset WHERE asset.value=$1)
 		))
+		OR EXISTS(
+			SELECT 1 FROM cms.design_scope_state s
+			JOIN cms.design_profiles p ON p.id=s.active_profile_id
+			CROSS JOIN LATERAL jsonb_each_text(COALESCE(p.theme->'assets','{}'::jsonb)) AS asset
+			WHERE s.scope_type='PARTNER' AND asset.value=$1
+		)
 		OR EXISTS(SELECT 1 FROM cms.seo_settings WHERE id=1 AND published->>'default_og_image_asset_id'=$1)`,id).Scan(&exists)
 	if !exists{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
