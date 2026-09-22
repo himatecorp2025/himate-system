@@ -194,8 +194,8 @@ print(json.dumps({
 PY
 )"
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$base_payload" "$BASE_URL/api/v1/partners/$partner_a_id/modules/$UNCONFIGURED_KEY" >/dev/null
-base_price="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$partner_a_id/modules/$UNCONFIGURED_KEY/price-at?at=$today")"
-printf '%s' "$base_price" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["included_in_base"] is True,d; assert d["price"]==0,d'
+# price-at is an internal Catalog/Billing contract. Partner-facing zero extra fee is
+# asserted through the authenticated Partner Portal projection instead of a public route.
 base_portal="$(curl -fsS -b "$PORTAL_COOKIE" "$BASE_URL/partner/api/v1/modules")"
 printf '%s' "$base_portal" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; m=next(x for x in d["items"] if x["key"]==key); assert m["included_in_base"] is True,m; assert m["commercial_ready"] is True,m; assert m["partner_price"]==0,m; assert m["can_activate"] is True,m' "$UNCONFIGURED_KEY"
 echo ok
