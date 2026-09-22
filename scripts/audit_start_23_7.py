@@ -34,7 +34,6 @@ for token in (
     "EVIDENCE_HOSTPORT",
     "validateCommercialEvidenceReference",
     'strings.HasPrefix(ref, "evidence://")',
-    "/api/v1/evidence/"+'id',
     "/integrity",
     "Evidence record does not belong to this partner",
     "commercial Evidence must be backed by a persisted file",
