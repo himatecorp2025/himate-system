@@ -34,6 +34,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
 
   String s(dynamic value) => value == null ? '' : value.toString();
 
+  String commercialMoney(dynamic value, String currency) {
+    final code = currency.trim().isEmpty ? 'USD' : currency.trim().toUpperCase();
+    return code + ' ' + number(value).toStringAsFixed(2);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -236,6 +241,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final subscription = commercialSubscription(partnerID, moduleKey);
     final configuredNext = row['next_partner_price'] ?? row['partner_price'];
     final nextAt = s(row['next_price_effective_at']).trim();
+    final nextAtLabel = nextAt.isEmpty ? '' : (nextAt.length >= 10 ? nextAt.substring(0, 10) : nextAt);
+    final currency = s(row['currency']);
     final currentPeriod = subscription == null
         ? 'Not started'
         : s(subscription['period_start']) + ' → ' + s(subscription['period_end_exclusive']);
@@ -259,10 +266,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             _StatusPill(label: s(row['status'])),
           ]),
           const SizedBox(height: 12),
-          _DefinitionRow(label: 'Current period price', value: subscription == null ? '—' : money(subscription['price'])),
-          _DefinitionRow(label: 'Configured 30-day price', value: row['included_in_base'] == true ? 'Included' : money(row['partner_price'])),
-          _DefinitionRow(label: 'Next configured price', value: money(configuredNext) + (nextAt.isEmpty ? '' : ' · ' + HimateI18n.date(HimateI18n.activeLocale, DateTime.tryParse(nextAt)))),
-          _DefinitionRow(label: 'Activation fee', value: money(row['partner_activation_fee'])),
+          _DefinitionRow(label: 'Current period price', value: subscription == null ? '—' : commercialMoney(subscription['price'], s(subscription['currency']))),
+          _DefinitionRow(label: 'Configured 30-day price', value: row['included_in_base'] == true ? 'Included' : commercialMoney(row['partner_price'], currency)),
+          _DefinitionRow(label: 'Next configured price', value: commercialMoney(configuredNext, currency) + (nextAtLabel.isEmpty ? '' : ' · ' + nextAtLabel)),
+          _DefinitionRow(label: 'Activation fee', value: commercialMoney(row['partner_activation_fee'], currency)),
           _DefinitionRow(label: 'Current period', value: currentPeriod),
           _DefinitionRow(label: 'Renewal', value: renewalState),
           _DefinitionRow(label: 'Partner visibility', value: row['visible'] == true ? 'Visible' : 'Hidden'),
