@@ -36,10 +36,10 @@ if "ResponsiveActionBar(" not in design:
     errors.append("Design Guide save/publish actions are not using ResponsiveActionBar")
 if cms.count("ResponsiveActionBar(") < 2:
     errors.append("CMS editor header/footer controls are not fully responsive")
-if "Mark all read" in notifications and "child: Row(children: [" in notifications[
-    notifications.find("Mark all read") - 700 : notifications.find("Mark all read") + 100
-]:
-    errors.append("Notification filter controls still use a fixed Row")
+if "WrapAlignment.end" not in notifications or "Mark all read" not in notifications:
+    errors.append("Notification filter controls are not using the responsive wrapping toolbar")
+if "ResponsiveActionBar(" not in (LIB / "seo_panel.dart").read_text():
+    errors.append("SEO save/publish actions are not using ResponsiveActionBar")
 if "overflow: TextOverflow.ellipsis" not in portal or "company['display_name']" not in portal:
     errors.append("Partner Portal long organization name protection is missing")
 
