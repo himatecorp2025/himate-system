@@ -239,3 +239,36 @@ func TestSTART223ModulePriceAtUsesPeriodStartContract(t *testing.T) {
 		t.Fatalf("unexpected historical price contract: price=%v included=%v currency=%s", price, included, currency)
 	}
 }
+
+
+func TestSTART233LifecycleMigrationContract(t *testing.T) {
+	m := start233BillingLifecycleMigration()
+	if m.Version != 7 {
+		t.Fatalf("expected migration version 7 got %d", m.Version)
+	}
+	joined := strings.Join(m.Statements, "\n")
+	for _, token := range []string{
+		"lifecycle_state",
+		"CANCEL_PENDING",
+		"cancellation_requested_at",
+		"cancellation_effective_at",
+		"cancellation_requested_by",
+		"cancellation_reason",
+		"old_lifecycle_state",
+		"new_lifecycle_state",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("START-23.3 migration missing %q", token)
+		}
+	}
+}
+
+func TestSTART233CancellationBoundaryRemainsExclusive(t *testing.T) {
+	end := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	if cancellationExpired(true, end, end.Add(-time.Second)) {
+		t.Fatal("paid access must remain valid until the exclusive period boundary")
+	}
+	if !cancellationExpired(true, end, end) {
+		t.Fatal("cancellation must become effective at the exact period boundary")
+	}
+}
