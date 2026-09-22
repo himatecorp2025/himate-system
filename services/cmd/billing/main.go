@@ -108,6 +108,7 @@ func main() {
 	mux.HandleFunc("/internal/v1/invoices/run", a.runEndpoint)
 	mux.HandleFunc("/internal/v1/payments/settlements", a.paymentSettlement)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
+	mux.HandleFunc("/internal/v1/analytics/dashboard", a.dashboardAnalytics)
 	mux.HandleFunc("/internal/v1/partners/", a.internalPartnerRoutes)
 	common.Run(log, "billing", common.Env("PORT", "10000"), common.InternalAuth(a.token, mux))
 }
@@ -1569,6 +1570,81 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		a.queueInvoiceCollection(ctx, invoiceID, id, t.Currency, total)
 	}
 	return nil
+}
+
+func (a *app) dashboardAnalytics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
+		return
+	}
+	year := time.Now().UTC().Year()
+	if raw := strings.TrimSpace(r.URL.Query().Get("year")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 2000 || parsed > 2100 {
+			common.APIError(w, http.StatusBadRequest, "VALIDATION", "year must be between 2000 and 2100")
+			return
+		}
+		year = parsed
+	}
+
+	rows, err := a.db.Query(`
+		WITH revenue AS (
+			SELECT currency, paid_amount::numeric AS amount, 'ACTIVATION'::text AS kind
+			FROM billing.initial_licenses
+			WHERE status='PAID'
+			  AND payment_date >= make_date($1,1,1)
+			  AND payment_date < make_date($1+1,1,1)
+			UNION ALL
+			SELECT currency, total::numeric AS amount, 'INVOICE'::text AS kind
+			FROM billing.invoices
+			WHERE status='PAID'
+			  AND paid_at >= make_date($1,1,1)::timestamptz
+			  AND paid_at < make_date($1+1,1,1)::timestamptz
+		)
+		SELECT currency,
+			COALESCE(SUM(amount),0),
+			COALESCE(SUM(amount) FILTER (WHERE kind='ACTIVATION'),0),
+			COALESCE(SUM(amount) FILTER (WHERE kind='INVOICE'),0),
+			COUNT(*) FILTER (WHERE kind='ACTIVATION'),
+			COUNT(*) FILTER (WHERE kind='INVOICE')
+		FROM revenue
+		GROUP BY currency
+		ORDER BY currency`, year)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate billing analytics")
+		return
+	}
+	defer rows.Close()
+
+	items := []map[string]any{}
+	for rows.Next() {
+		var currency string
+		var total, activation, recurring float64
+		var activationCount, invoiceCount int
+		if err := rows.Scan(&currency, &total, &activation, &recurring, &activationCount, &invoiceCount); err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not read billing analytics")
+			return
+		}
+		items = append(items, map[string]any{
+			"currency": currency,
+			"revenue_ytd": math.Round(total*100) / 100,
+			"activation_revenue_ytd": math.Round(activation*100) / 100,
+			"recurring_revenue_ytd": math.Round(recurring*100) / 100,
+			"paid_activation_count": activationCount,
+			"paid_invoice_count": invoiceCount,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate billing analytics")
+		return
+	}
+	common.JSON(w, http.StatusOK, map[string]any{
+		"year": year,
+		"items": items,
+		"count": len(items),
+		"source": "BILLING_PAID_LEDGER",
+		"currency_policy": "NO_FX_CONVERSION",
+	})
 }
 
 func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
