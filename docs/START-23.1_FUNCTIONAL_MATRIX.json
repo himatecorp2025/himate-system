@@ -1850,6 +1850,24 @@
       "target_phase": "23.5",
       "e2e_proof": "required: locale switch returns correct dynamic labels",
       "notes": "Module groups/modules/categories/metric definitions are currently single-label models."
+    },
+    {
+      "id": "PUBLIC-CONTACT",
+      "surface": "public.contact",
+      "ui": "Submit public contact inquiry",
+      "kind": "mutation",
+      "frontend_file": "frontend/web/contact.html",
+      "source_token": "fetch('/api/v1/public/contact'",
+      "method": "POST",
+      "api_pattern": "/api/v1/public/contact",
+      "backend_service": "contact",
+      "persistence": "contact.inquiries",
+      "audit": "public ingestion + CONTACT_LEAD_UPDATED on admin workflow",
+      "localization_state": "PARTIAL",
+      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "target_phase": "23.6",
+      "e2e_proof": "existing scripts/smoke_business_completion.sh public inquiry -> admin readback",
+      "notes": "Public form mutation must remain included in functional inventory."
     }
   ]
 }
