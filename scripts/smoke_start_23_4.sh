@@ -22,6 +22,13 @@ import sys
 print((date.fromisoformat(sys.argv[1])-timedelta(days=30)).isoformat())
 PY
 )"
+NEXT_MONTH="$(python3 - "$TODAY" <<'PY'
+from datetime import date
+import sys
+d=date.fromisoformat(sys.argv[1])
+print(date(d.year+1,1,1).isoformat() if d.month==12 else date(d.year,d.month+1,1).isoformat())
+PY
+)"
 
 status() {
   cookie="$1"; method="$2"; path="$3"; shift 3
@@ -107,10 +114,10 @@ ready="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partne
 printf '%s' "$ready" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["provisioning_allowed"] is True,d'
 echo ok
 
-printf 'daily billing cycle creates recurring invoice and automatic charge attempt... '
-docker compose exec -T billing /app/service --run-invoice-cycle "$TODAY"
+printf 'calendar-month billing cycle creates recurring invoice and automatic charge attempt... '
+docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT_MONTH"
 invoices="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/invoices")"
-invoice_id="$(printf '%s' "$invoices" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if abs(float(i["total"])-125)<0.01); assert x["status"]!="PAID",x; print(x["id"])')"
+invoice_id="$(printf '%s' "$invoices" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if abs(float(i["total"])-1500)<0.01); assert x["billing_model"]=="CALENDAR_MONTH",x; assert x["minimum_commitment_adjustment"]==1375,x; assert x["status"]!="PAID",x; print(x["id"])')"
 attempts="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/payments/partners/$partner_id/attempts")"
 invoice_attempt="$(printf '%s' "$attempts" | python3 -c 'import json,sys; d=json.load(sys.stdin); invoice=sys.argv[1]; x=next(i for i in d["items"] if i["purpose"]=="INVOICE" and i["invoice_id"]==invoice); assert x["status"]=="PROCESSING",x; print(json.dumps(x,separators=(",",":")))' "$invoice_id")"
 echo ok
