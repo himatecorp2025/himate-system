@@ -8924,7 +8924,7 @@ func renderPreviewCMSHTML(doc string, page publicCMSPage, requestURL, slug, toke
 	designCtx, designCancel := context.WithTimeout(r.Context(), 1200*time.Millisecond)
 	design, designErr := a.fetchPublishedDesign(designCtx)
 	designCancel()
-	if designErr == nil {
+	if designErr == nil && design.Version > 0 {
 		doc = renderSiteDesignHTML(doc, design.Design, locale, r.URL.Path, func(id string) string {
 			return "/public/v1/cms/media/"+url.PathEscape(id)
 		})
@@ -8963,13 +8963,16 @@ func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filenam
 		}
 		w.Header().Set("X-Himate-SSR", "static-fallback")
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Length", strconv.Itoa(len([]byte(doc))))
-	if r.Method == http.MethodHead {
-		w.WriteHeader(http.StatusOK)
-		return
+	designCtx, designCancel := context.WithTimeout(r.Context(), 1200*time.Millisecond)
+	design, designErr := a.fetchPublishedDesign(designCtx)
+	designCancel()
+	if designErr == nil && design.Version > 0 {
+		doc = renderSiteDesignHTML(doc, design.Design, locale, r.URL.Path, func(id string) string {
+			return "/public/v1/cms/media/"+url.PathEscape(id)
+		})
+		w.Header().Set("X-Himate-Design", "published")
 	}
-	_, _ = w.Write([]byte(doc))
+	writeHTMLResponse(w, r, doc, http.StatusOK)
 }
 
 func (a *app) robots(w http.ResponseWriter, r *http.Request) {
