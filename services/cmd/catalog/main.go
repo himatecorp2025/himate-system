@@ -556,7 +556,9 @@ func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 }
 
 func (a *app) ensurePartnerModules(partnerID string) error {
-	_, err := a.db.Exec(`INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base) SELECT $1,module_key,'NOT_LICENSED',FALSE,FALSE FROM catalog.modules ON CONFLICT(partner_id,module_key) DO NOTHING`, partnerID)
+	_, err := a.db.Exec(`INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,entitlement_state,commercial_configured,contract_currency)
+		SELECT $1,module_key,'NOT_LICENSED',FALSE,FALSE,'INACTIVE',FALSE,currency FROM catalog.modules
+		ON CONFLICT(partner_id,module_key) DO NOTHING`, partnerID)
 	return err
 }
 
@@ -620,14 +622,17 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 	}
 	key := parts[2]
 	var in struct {
-		Status         *string  `json:"status"`
-		Visible        *bool    `json:"visible"`
-		IncludedInBase *bool    `json:"included_in_base"`
+		Status           *string  `json:"status"`
+		EntitlementState *string  `json:"entitlement_state"`
+		Visible          *bool    `json:"visible"`
+		IncludedInBase   *bool    `json:"included_in_base"`
 		PartnerPrice         *float64 `json:"partner_price"`
 		PriceEffectiveAt     string   `json:"price_effective_at"`
 		PartnerActivationFee *float64 `json:"partner_activation_fee"`
 		ActivationFeeEffectiveAt string `json:"activation_fee_effective_at"`
-		Reason           string   `json:"reason"`
+		ContractCurrency   *string  `json:"contract_currency"`
+		QuoteReference     *string  `json:"quote_reference"`
+		Reason             string   `json:"reason"`
 	}
 	if common.Decode(r, &in) != nil {
 		common.APIError(w, 400, "JSON", "Invalid request")
@@ -666,7 +671,12 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	if in.Status != nil && in.EntitlementState != nil {
+		common.APIError(w,400,"VALIDATION","Use either status or entitlement_state in one request, not both")
+		return
+	}
 	if in.Status != nil {
+		*in.Status=strings.ToUpper(strings.TrimSpace(*in.Status))
 		if !moduleStates[*in.Status] {
 			common.APIError(w, 400, "VALIDATION", "Invalid module state")
 			return
@@ -681,11 +691,16 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 				common.APIError(w, 409, "BILLING_LIFECYCLE_REQUIRED", "Module deactivation is Billing-owned; schedule period-end cancellation through Billing")
 				return
 			}
+			nextEntitlement:=old
+			if *in.Status=="ACTIVE"{nextEntitlement="ACTIVE"}else if *in.Status=="NOT_LICENSED"{nextEntitlement="INACTIVE"}else{
+				_ = tx.QueryRow(`SELECT entitlement_state FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&nextEntitlement)
+			}
 			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET
 					status=$3,
+					entitlement_state=$4,
 					activated_at=CASE WHEN $3='ACTIVE' THEN NOW() ELSE activated_at END,
 					updated_at=NOW()
-				WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.Status); err != nil {
+				WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.Status,nextEntitlement); err != nil {
 				common.APIError(w, 500, "DB", "Could not update module state")
 				return
 			}
@@ -693,6 +708,30 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 				common.APIError(w, 500, "DB", "Could not save module history")
 				return
 			}
+		}
+	}
+	if in.EntitlementState != nil {
+		nextState:=strings.ToUpper(strings.TrimSpace(*in.EntitlementState))
+		if !entitlementStates[nextState] { common.APIError(w,400,"VALIDATION","Invalid entitlement state"); return }
+		var oldState,oldStatus string
+		if err=tx.QueryRow(`SELECT entitlement_state,status FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&oldState,&oldStatus);err!=nil{
+			common.APIError(w,404,"NOT_FOUND","Module not found");return
+		}
+		if nextState=="CANCEL_PENDING" && !internal {
+			common.APIError(w,409,"BILLING_LIFECYCLE_REQUIRED","Cancellation pending state is Billing-owned")
+			return
+		}
+		if nextState=="INACTIVE" && oldState!="INACTIVE" && !internal {
+			common.APIError(w,409,"BILLING_LIFECYCLE_REQUIRED","Module deactivation is Billing-owned; schedule period-end cancellation through Billing")
+			return
+		}
+		nextStatus:=oldStatus
+		if nextState=="ACTIVE"{nextStatus="ACTIVE"}else if nextState=="INACTIVE"{nextStatus="NOT_LICENSED"}
+		if oldState!=nextState{
+			if _,err=tx.Exec(`UPDATE catalog.partner_modules SET entitlement_state=$3,status=$4,activated_at=CASE WHEN $3='ACTIVE' THEN COALESCE(activated_at,NOW()) ELSE activated_at END,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`,partnerID,key,nextState,nextStatus);err!=nil{
+				common.APIError(w,500,"DB","Could not update entitlement state");return
+			}
+			if err=recordHistory("entitlement_state",oldState,nextState,time.Now().UTC());err!=nil{common.APIError(w,500,"DB","Could not save module history");return}
 		}
 	}
 	if in.Visible != nil {
@@ -706,11 +745,28 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			if err = recordHistory("visible", old, *in.Visible, time.Now().UTC()); err != nil { common.APIError(w, 500, "DB", "Could not save module history"); return }
 		}
 	}
+	if in.ContractCurrency != nil || in.QuoteReference != nil {
+		var oldCurrency,oldQuote string
+		if err=tx.QueryRow(`SELECT contract_currency,quote_reference FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&oldCurrency,&oldQuote);err!=nil{
+			common.APIError(w,404,"NOT_FOUND","Module not found");return
+		}
+		nextCurrency:=oldCurrency;nextQuote:=oldQuote
+		if in.ContractCurrency!=nil{nextCurrency=strings.ToUpper(strings.TrimSpace(*in.ContractCurrency))}
+		if in.QuoteReference!=nil{nextQuote=strings.TrimSpace(*in.QuoteReference)}
+		if nextCurrency==""{common.APIError(w,400,"VALIDATION","contract_currency is required");return}
+		if oldCurrency!=nextCurrency || oldQuote!=nextQuote{
+			if _,err=tx.Exec(`UPDATE catalog.partner_modules SET contract_currency=$3,quote_reference=$4,commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,NOW()),updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`,partnerID,key,nextCurrency,nextQuote);err!=nil{
+				common.APIError(w,500,"DB","Could not update partner commercial reference");return
+			}
+			if oldCurrency!=nextCurrency{if err=recordHistory("contract_currency",oldCurrency,nextCurrency,time.Now().UTC());err!=nil{common.APIError(w,500,"DB","Could not save module history");return}}
+			if oldQuote!=nextQuote{if err=recordHistory("quote_reference",oldQuote,nextQuote,time.Now().UTC());err!=nil{common.APIError(w,500,"DB","Could not save module history");return}}
+		}
+	}
 	if in.IncludedInBase != nil {
 		var old bool
 		_ = tx.QueryRow(`SELECT included_in_base FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`, partnerID, key).Scan(&old)
 		if old != *in.IncludedInBase {
-			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET included_in_base=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.IncludedInBase); err != nil {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET included_in_base=$3,commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,NOW()),updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.IncludedInBase); err != nil {
 				common.APIError(w, 500, "DB", "Could not update base package")
 				return
 			}
@@ -736,12 +792,14 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !effectiveAt.After(time.Now().UTC()) {
-			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET price_override=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerPrice); err != nil {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET price_override=$3,commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,$4),updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerPrice,effectiveAt); err != nil {
 				common.APIError(w, 500, "DB", "Could not update price")
 				return
 			}
 		}
-		if _, err = tx.Exec(`INSERT INTO catalog.price_history(partner_id,module_key,old_price,new_price,effective_at,actor,reason) VALUES($1,$2,$3,$4,$5,$6,$7)`, partnerID, key, oldValue, *in.PartnerPrice, effectiveAt, actor, reason); err != nil {
+		var contractCurrency,quoteReference string
+		_ = tx.QueryRow(`SELECT contract_currency,quote_reference FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&contractCurrency,&quoteReference)
+		if _, err = tx.Exec(`INSERT INTO catalog.price_history(partner_id,module_key,old_price,new_price,effective_at,actor,reason,currency,quote_reference) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, partnerID, key, oldValue, *in.PartnerPrice, effectiveAt, actor, reason,contractCurrency,quoteReference); err != nil {
 			common.APIError(w, 500, "DB", "Could not save price history")
 			return
 		}
@@ -779,13 +837,15 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !activationEffectiveAt.After(time.Now().UTC()) {
-			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET activation_fee_override=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerActivationFee); err != nil {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET activation_fee_override=$3,commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,$4),updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerActivationFee,activationEffectiveAt); err != nil {
 				common.APIError(w, 500, "DB", "Could not update activation fee")
 				return
 			}
 		}
-		if _, err = tx.Exec(`INSERT INTO catalog.activation_fee_history(partner_id,module_key,old_fee,new_fee,effective_at,actor,reason)
-			VALUES($1,$2,$3,$4,$5,$6,$7)`, partnerID, key, oldFee, *in.PartnerActivationFee, activationEffectiveAt, actor, reason); err != nil {
+		var activationCurrency,activationQuoteReference string
+		_ = tx.QueryRow(`SELECT contract_currency,quote_reference FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&activationCurrency,&activationQuoteReference)
+		if _, err = tx.Exec(`INSERT INTO catalog.activation_fee_history(partner_id,module_key,old_fee,new_fee,effective_at,actor,reason,currency,quote_reference)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, partnerID, key, oldFee, *in.PartnerActivationFee, activationEffectiveAt, actor, reason,activationCurrency,activationQuoteReference); err != nil {
 			common.APIError(w, 500, "DB", "Could not save activation-fee history")
 			return
 		}
