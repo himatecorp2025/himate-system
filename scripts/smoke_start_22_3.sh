@@ -139,7 +139,7 @@ sub_next="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_i
 printf '%s' "$sub_next" | python3 -c 'import json,sys; d=json.load(sys.stdin); s=next(x for x in d["items"] if x["module_key"]=="ci.commercial_snapshot"); assert s["price"]==90,s; assert str(s["period_start"])[:10]==sys.argv[1],s' "$NEXT_MONTH"
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT price_snapshot FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND billing_model='CALENDAR_MONTH' AND period_start='$NEXT_MONTH'::date")" = "90.00"
 invoice_next="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/invoices")"
-printf '%s' "$invoice_next" | python3 -c 'import json,sys; d=json.load(sys.stdin); inv=next(x for x in d["items"] if str(x["service_period_end_exclusive"])[:10]==sys.argv[1]); mods=[i for i in inv["items"] if i["item_type"]=="MODULE" and i["module_key"]=="ci.commercial_snapshot"]; assert len(mods)==1,inv; assert mods[0]["amount"]==50,mods' "$MONTH_AFTER_NEXT"
+printf '%s' "$invoice_next" | python3 -c 'import json,sys; d=json.load(sys.stdin); inv=next(x for x in d["items"] if str(x["service_period_end_exclusive"])[:10]==sys.argv[1]); mods=[i for i in inv["items"] if i["item_type"]=="MODULE" and i["module_key"]=="ci.commercial_snapshot"]; assert len(mods)==1,inv; assert mods[0]["amount"]==90,mods' "$MONTH_AFTER_NEXT"
 echo ok
 
 printf 'period-end cancellation emits an immutable billing event... '
