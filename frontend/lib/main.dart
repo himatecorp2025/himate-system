@@ -2811,8 +2811,10 @@ class _PartnersPageState extends State<PartnersPage> {
     final contactEmail = TextEditingController();
     final primaryDomain = TextEditingController();
     final country = TextEditingController(text: 'United States');
-    final activationFee = TextEditingController(text: '13000');
-    final baseMonthlyFee = TextEditingController(text: '250');
+    final activationFee = TextEditingController(text: '0');
+    final baseMonthlyFee = TextEditingController(text: '0');
+    final minimumMonthlyCommitment = TextEditingController(text: '1500');
+    final quoteReference = TextEditingController();
     final providerCustomerId = TextEditingController();
     final paymentMethodId = TextEditingController();
     final agreementReference = TextEditingController();
@@ -2881,8 +2883,13 @@ class _PartnersPageState extends State<PartnersPage> {
                   content: Column(
                     children: [
                       ResponsiveFieldPair(
-                        first: TextField(controller: activationFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Activation fee · USD'))),
-                        second: TextField(controller: baseMonthlyFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Base monthly fee · USD'))),
+                        first: TextField(controller: activationFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Individual activation fee · USD'))),
+                        second: TextField(controller: baseMonthlyFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Individual base monthly fee · USD'))),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: minimumMonthlyCommitment, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Minimum monthly commitment · USD'))),
+                        second: TextField(controller: quoteReference, decoration: InputDecoration(labelText: uiLiteral('Quote / offer reference'), hintText: uiLiteral('Partner-specific offer reference'))),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -3029,8 +3036,9 @@ class _PartnersPageState extends State<PartnersPage> {
           'primary_domain': primaryDomain.text.trim(),
         });
         final partnerId = '${created['id']}';
-        final fee = double.tryParse(activationFee.text) ?? 13000;
+        final fee = double.tryParse(activationFee.text) ?? 0;
         final monthly = double.tryParse(baseMonthlyFee.text) ?? 0;
+        final minimumMonthly = double.tryParse(minimumMonthlyCommitment.text) ?? 1500;
         final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
 
         await widget.api.put('/api/v1/billing/partners/$partnerId/terms', {
@@ -3039,6 +3047,8 @@ class _PartnersPageState extends State<PartnersPage> {
           'activation_fee_waived': false,
           'activation_fee_reason': '',
           'base_monthly_fee': monthly,
+          'minimum_monthly_commitment': minimumMonthly,
+          'quote_reference': quoteReference.text.trim(),
           'annual_increase_percent': 10,
           'price_effective_from': today,
           'service_anchor_date': today,
@@ -3163,7 +3173,7 @@ class _PartnersPageState extends State<PartnersPage> {
 
     for (final controller in [
       displayName, legalName, contactName, contactEmail, primaryDomain, country,
-      activationFee, baseMonthlyFee, providerCustomerId, paymentMethodId, agreementReference,
+      activationFee, baseMonthlyFee, minimumMonthlyCommitment, quoteReference, providerCustomerId, paymentMethodId, agreementReference,
       evidenceName, systemName, release,
     ]) {
       controller.dispose();
