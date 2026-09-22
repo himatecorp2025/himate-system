@@ -34,7 +34,8 @@ ci = read(".github/workflows/ci.yml")
 smoke = read("scripts/smoke_start_23_10.sh")
 
 def phase_tuple(raw: str):
-    return tuple(int(x) for x in raw.split("."))
+    value = raw[3:] if raw.startswith("23.") else raw
+    return tuple(int(x) for x in value.split("."))
 
 def release_phase(text: str):
     match = re.search(r"0\\.8\\.\\d+-start-23\\.([0-9]+(?:\\.[0-9]+)*)", text)
