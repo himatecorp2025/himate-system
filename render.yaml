@@ -125,6 +125,10 @@ services:
     dockerfilePath: ./services/docker/backups.Dockerfile
     dockerContext: .
     autoDeploy: false
+    disk:
+      name: himate-backups-offsite
+      mountPath: /offsite
+      sizeGB: 10
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -140,21 +144,11 @@ services:
       - key: HIMATE_BACKUP_ENCRYPTION_KEY_B64
         sync: false
       - key: HIMATE_BACKUP_PROVIDER
-        value: s3
+        value: render_disk
+      - key: HIMATE_BACKUP_OFFSITE_ROOT
+        value: /offsite
       - key: HIMATE_BACKUP_WORKERS
         value: "2"
-      - key: HIMATE_BACKUP_S3_ENDPOINT
-        sync: false
-      - key: HIMATE_BACKUP_S3_BUCKET
-        sync: false
-      - key: HIMATE_BACKUP_S3_REGION
-        value: us-east-1
-      - key: HIMATE_BACKUP_S3_ACCESS_KEY
-        sync: false
-      - key: HIMATE_BACKUP_S3_SECRET_KEY
-        sync: false
-      - key: HIMATE_BACKUP_S3_SESSION_TOKEN
-        sync: false
       - key: STORAGE_HOSTPORT
         fromService:
           type: pserv
