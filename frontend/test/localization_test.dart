@@ -32,6 +32,41 @@ void main() {
     expect(HimateI18n.literal('en_US', 'Contact Leads'), 'Contact Leads');
   });
 
+  test('START-23 bilingual QA covers critical control-plane surfaces', () {
+    for (final value in <String>[
+      'Create role',
+      'Add administrator',
+      'Commercial agreement reference *',
+      'Partner Website Adapter',
+      'Backup storage',
+      'Notifications',
+      'Partner Portal',
+      'Activate module',
+      'Edit CMS draft · Example page',
+      'CMS audit · Example page',
+      'Version history · Example page',
+    ]) {
+      expect(
+        HimateI18n.literal('hu_HU', value),
+        isNot(value),
+        reason: 'Missing Hungarian START-23 translation for $value',
+      );
+    }
+  });
+
+  test('START-23 dynamic CMS and commercial messages are localized', () {
+    expect(HimateI18n.literal('hu_HU', 'Section 4'), 'Szekció 4');
+    expect(HimateI18n.literal('hu_HU', 'Version 12'), 'Verzió 12');
+    expect(
+      HimateI18n.literal('hu_HU', 'Agreement could not be updated: timeout'),
+      startsWith('A megállapodás nem frissíthető:'),
+    );
+    expect(
+      HimateI18n.literal('hu_HU', 'Website adapter could not be updated: timeout'),
+      startsWith('A weboldal-adapter nem frissíthető:'),
+    );
+  });
+
   test('password policy requires every complexity class', () {
     expect(himatePasswordMeetsPolicy('Strong-Password1!'), isTrue);
     expect(himatePasswordMeetsPolicy('alllowercase123!'), isFalse);
