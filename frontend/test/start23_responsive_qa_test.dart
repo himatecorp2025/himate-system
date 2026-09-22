@@ -28,10 +28,6 @@ Future<void> pumpAt(
 }
 
 void main() {
-  tearDown(() async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-  });
-
   test('START-23 breakpoints cover phone tablet laptop and desktop', () {
     expect(shellLayoutForWidth(320), ShellLayoutMode.mobile);
     expect(shellLayoutForWidth(390), ShellLayoutMode.mobile);
