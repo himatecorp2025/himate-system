@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import re
+import json
 
 root = Path(__file__).resolve().parents[1]
 catalog = (root / "services/cmd/catalog/main.go").read_text()
@@ -9,6 +10,7 @@ billing = (root / "services/cmd/billing/main.go").read_text()
 automation = (root / "services/cmd/billing/commercial_automation.go").read_text()
 frontend = (root / "frontend/lib/module_control_plane.dart").read_text()
 main_ui = (root / "frontend/lib/main.dart").read_text()
+matrix = json.loads((root / "docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
 
 def require(condition, message):
     if not condition:
@@ -53,7 +55,9 @@ for token in [
 
 require("next.MinimumMonthlyCommitment < 1500" in billing, "USD 1500 minimum commitment guard is missing")
 require("next.ActivationFee < 0" in billing, "activation fee must reject negative values")
-require("ActivationFee < 13000" not in billing, "obsolete USD 13,000 activation-fee floor is still enforced")
+require("ActivationFee < 13000" not in billing, "obsolete USD 13,000 terms activation-fee floor is still enforced")
+require("next.Required < 13000" not in billing, "obsolete USD 13,000 license activation-fee floor is still enforced")
+require("setCatalogEntitlementState" in billing and '"entitlement_state"' in billing, "Billing-to-Catalog entitlement synchronization is missing")
 require('"quote_reference":t.QuoteReference' in billing, "partner quote reference is not exposed")
 require("termsHistory" in billing and "partner_terms_history" in billing, "versioned commercial history readback is missing")
 require("SELECT terms_version FROM billing.partner_terms WHERE partner_id=$1 FOR UPDATE" in billing, "commercial terms concurrent update lock is missing")
@@ -72,5 +76,21 @@ for token in [
     "Quote / offer reference",
 ]:
     require(token in main_ui, f"partner commercial UI missing: {token}")
+
+require(matrix.get("completed_through") == "23.11.1", "functional matrix completed_through must be 23.11.1")
+surface_ids = {item["id"] for item in matrix.get("surfaces", [])}
+bad_surface_refs = [(item.get("id"), item.get("surface")) for item in matrix.get("contracts", []) if item.get("surface") not in surface_ids]
+require(not bad_surface_refs, f"functional matrix has invalid surface references: {bad_surface_refs}")
+phase_contracts = {item["id"]: item for item in matrix.get("contracts", []) if item.get("target_phase") == "23.11.1"}
+for contract_id in [
+    "MODULE-REGISTRY-LIFECYCLE-23-11-1",
+    "PARTNER-COMMERCIAL-TERMS-23-11-1",
+    "PARTNER-MODULE-CONTRACT-PRICING-23-11-1",
+]:
+    require(contract_id in phase_contracts, f"functional matrix missing 23.11.1 contract: {contract_id}")
+    require(phase_contracts[contract_id].get("current_state") == "MUTATION_PROVEN_PROD_UNVERIFIED", f"{contract_id} must be mutation-proven")
+portal_activation = next(item for item in matrix["contracts"] if item["id"] == "PORTAL-MODULE-ACTIVATE")
+require(portal_activation.get("current_state") == "PARTIAL_PRODUCT", "full Partner Portal module activation must remain open after 23.11.1")
+require(portal_activation.get("target_phase") == "23.11", "Partner Portal activation target phase must remain later 23.11 scope")
 
 print("HIMATE START-23.11.1 module registry and individual commercial model audit passed")
