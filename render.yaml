@@ -260,21 +260,6 @@ services:
           type: pserv
           name: himate-impact
           property: hostport
-      - key: CATALOG_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-catalog
-          property: hostport
-      - key: BILLING_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-billing
-          property: hostport
-      - key: PARTNERS_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-partners
-          property: hostport
       - key: EVIDENCE_HOSTPORT
         fromService:
           type: pserv
@@ -364,6 +349,21 @@ services:
         fromService:
           type: pserv
           name: himate-impact
+          property: hostport
+      - key: CATALOG_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-catalog
+          property: hostport
+      - key: BILLING_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-billing
+          property: hostport
+      - key: PARTNERS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-partners
           property: hostport
 
   - type: pserv
