@@ -692,8 +692,12 @@ func start23112CalendarMonthBillingMigration() common.Migration {
 			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS minimum_commitment_adjustment NUMERIC(12,2) NOT NULL DEFAULT 0`,
 			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'LEGACY_30_DAY'`,
 			`ALTER TABLE billing.invoices ALTER COLUMN billing_model SET DEFAULT 'CALENDAR_MONTH'`,
-			`CREATE INDEX IF NOT EXISTS billing_invoice_calendar_period_idx
-				ON billing.invoices(partner_id,billing_model,service_period_start,service_period_end)`,
+			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS billing_invoices_partner_id_invoice_date_key`,
+			`DROP INDEX IF EXISTS billing.billing_invoice_period_unique`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_date_model_unique
+				ON billing.invoices(partner_id,invoice_date,billing_model)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_period_model_unique
+				ON billing.invoices(partner_id,service_period_start,service_period_end,billing_model)`,
 			`CREATE OR REPLACE FUNCTION billing.guard_invoice_item_mutation() RETURNS trigger LANGUAGE plpgsql AS $fn$
 			BEGIN
 				IF TG_OP='DELETE' THEN
