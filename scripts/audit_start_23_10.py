@@ -94,9 +94,12 @@ for token in (
 ):
     require(token in connector, f"Connector credential/website contract missing {token!r}")
 for token in (
-    "verify-domain",
-    "/deploy",
-    "/launch",
+    'case "verify-domain":',
+    'case "deploy":',
+    'case "launch":',
+    "a.verifyDomain(w,r,id)",
+    "a.deployEnvironment(w,r,id)",
+    "a.launchEnvironment(w,r,id)",
 ):
     require(token in environments, f"Environment action contract missing {token!r}")
 
