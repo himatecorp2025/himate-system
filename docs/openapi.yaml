@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.9-start-23.5
+  version: 0.8.10-start-23.6
   description: >
-    Authenticated REST contract for the START-01 through START-23.5 HIMATE
+    Authenticated REST contract for the START-01 through START-23.6 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -76,6 +76,43 @@ paths:
       summary: End administrator session
       responses:
         "204": {description: Session ended}
+  /api/v1/auth/password-reset/request:
+    post:
+      tags: [Authentication]
+      summary: Request a one-time administrator password reset link
+      description: Always returns a generic acceptance message for valid email syntax so account existence is not disclosed. Production delivery requires runtime SMTP and reset-base-URL configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: {type: string, format: email}
+      responses:
+        "202": {description: Reset request accepted without account enumeration}
+        "400": {description: Invalid email syntax}
+        "429": {description: Password-reset request rate limit exceeded}
+        "503": {description: Production reset delivery is unavailable}
+  /api/v1/auth/password-reset/confirm:
+    post:
+      tags: [Authentication]
+      summary: Consume a one-time reset token and replace the administrator password
+      description: Tokens are stored only as SHA-256 hashes, expire automatically, are one-time-use, and password reset rotates the session version so all previously issued sessions become invalid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token: {type: string, minLength: 20}
+                new_password: {type: string, format: password, minLength: 12}
+      responses:
+        "200": {description: Password reset completed and prior sessions invalidated}
+        "400": {description: Invalid or expired token or password-policy violation}
   /api/v1/auth/me:
     get:
       tags: [Authentication]
