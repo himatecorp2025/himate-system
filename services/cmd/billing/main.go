@@ -487,6 +487,8 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 	switch section {
 	case "terms":
 		a.terms(w, r, id)
+	case "terms-history":
+		a.termsHistory(w, r, id)
 	case "license":
 		a.license(w, r, id)
 	case "agreement":
@@ -576,6 +578,15 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
 		if err != nil { common.APIError(w, 500, "DB", "Could not start terms update"); return }
 		defer tx.Rollback()
+		var lockedVersion int
+		if err=tx.QueryRow(`SELECT terms_version FROM billing.partner_terms WHERE partner_id=$1 FOR UPDATE`,id).Scan(&lockedVersion);err!=nil{
+			common.APIError(w,500,"DB","Could not lock commercial terms");return
+		}
+		if lockedVersion!=current.TermsVersion{
+			common.APIError(w,409,"COMMERCIAL_TERMS_CHANGED","Commercial terms changed concurrently; reload before saving")
+			return
+		}
+		next.TermsVersion=lockedVersion+1
 		_, err = tx.Exec(`UPDATE billing.partner_terms SET currency=$2,activation_fee=$3,activation_fee_waived=$4,activation_fee_reason=$5,base_monthly_fee=$6,minimum_monthly_commitment=$7,quote_reference=$8,commercial_configured=TRUE,terms_version=$9,contracted_at=COALESCE(contracted_at,NOW()),pricing_model='INDIVIDUAL_QUOTE',annual_increase_percent=$10,cycle_days=30,invoice_day=1,price_effective_from=$11,service_anchor_date=$12,updated_at=NOW() WHERE partner_id=$1`,
 			id, next.Currency, next.ActivationFee, next.ActivationFeeWaived, next.ActivationFeeReason, next.BaseMonthlyFee,next.MinimumMonthlyCommitment,next.QuoteReference,next.TermsVersion, next.AnnualIncreasePercent, next.PriceEffectiveFrom, next.ServiceAnchorDate)
 		if err != nil { common.APIError(w, 500, "DB", "Could not update terms"); return }
@@ -623,6 +634,34 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or PUT")
 	}
+}
+
+func (a *app) termsHistory(w http.ResponseWriter,r *http.Request,id string){
+	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+	rows,err:=a.db.Query(`SELECT terms_version,currency,activation_fee,activation_fee_waived,base_monthly_fee,minimum_monthly_commitment,annual_increase_percent,
+		price_effective_from,service_anchor_date,quote_reference,pricing_model,actor,reason,changed_at
+		FROM billing.partner_terms_history WHERE partner_id=$1 ORDER BY terms_version DESC LIMIT 250`,id)
+	if err!=nil{common.APIError(w,500,"DB","Could not load commercial terms history");return}
+	defer rows.Close()
+	items:=[]map[string]any{}
+	for rows.Next(){
+		var version int
+		var currency,quote,pricingModel,actor,reason string
+		var activation,base,minimum,uplift float64
+		var waived bool
+		var priceEffective,anchor,changed time.Time
+		if err:=rows.Scan(&version,&currency,&activation,&waived,&base,&minimum,&uplift,&priceEffective,&anchor,&quote,&pricingModel,&actor,&reason,&changed);err!=nil{
+			common.APIError(w,500,"DB","Could not decode commercial terms history");return
+		}
+		items=append(items,map[string]any{
+			"terms_version":version,"currency":currency,"activation_fee":activation,"activation_fee_waived":waived,
+			"base_monthly_fee":base,"minimum_monthly_commitment":minimum,"annual_increase_percent":uplift,
+			"price_effective_from":priceEffective.Format("2006-01-02"),"service_anchor_date":anchor.Format("2006-01-02"),
+			"quote_reference":quote,"pricing_model":pricingModel,"actor":actor,"reason":reason,"changed_at":changed.UTC(),
+		})
+	}
+	if err:=rows.Err();err!=nil{common.APIError(w,500,"DB","Could not load complete commercial terms history");return}
+	common.JSON(w,200,map[string]any{"partner_id":id,"items":items,"count":len(items)})
 }
 
 func sameDate(a, b time.Time) bool { return a.Format("2006-01-02") == b.Format("2006-01-02") }
