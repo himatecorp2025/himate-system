@@ -609,6 +609,15 @@ func start23111BillingCommercialModelMigration() common.Migration {
 				UNIQUE(partner_id,terms_version)
 			)`,
 			`CREATE INDEX IF NOT EXISTS billing_partner_terms_history_lookup ON billing.partner_terms_history(partner_id,terms_version DESC)`,
+			`CREATE OR REPLACE FUNCTION billing.reject_partner_terms_history_mutation() RETURNS trigger LANGUAGE plpgsql AS $
+			BEGIN
+				RAISE EXCEPTION 'billing.partner_terms_history is append-only';
+				RETURN OLD;
+			END; $`,
+			`DROP TRIGGER IF EXISTS billing_partner_terms_history_append_only ON billing.partner_terms_history`,
+			`CREATE TRIGGER billing_partner_terms_history_append_only
+				BEFORE UPDATE OR DELETE ON billing.partner_terms_history
+				FOR EACH ROW EXECUTE FUNCTION billing.reject_partner_terms_history_mutation()`,
 			`UPDATE billing.partner_terms SET minimum_monthly_commitment=1500 WHERE minimum_monthly_commitment<1500 AND currency='USD'`,
 			`UPDATE billing.partner_terms SET commercial_configured=TRUE,quote_reference=CASE WHEN quote_reference='' THEN 'REFERENCE-PARTNER' ELSE quote_reference END,contracted_at=COALESCE(contracted_at,updated_at) WHERE partner_id='ptr_000001'`,
 		},
