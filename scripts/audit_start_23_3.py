@@ -46,6 +46,8 @@ if "Paid-period deactivation is Billing-managed" not in admin_ui:
     errors.append("Admin UI does not explain Billing-owned deactivation")
 if "DropdownMenuItem(value: 'NOT_LICENSED'" not in admin_ui:
     errors.append("Admin UI lost inactive-state support instead of guarding only active deactivation")
+if "if ('${module['status']}' == 'NOT_LICENSED')" not in admin_ui:
+    errors.append("Admin UI can still offer NOT_LICENSED as a transition from a live or maintenance entitlement")
 
 if "Subscription lifecycle" not in modules_ui or "cancellation_effective_at" not in modules_ui:
     errors.append("Modules commercial matrix does not expose Billing lifecycle state")
