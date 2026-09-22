@@ -530,14 +530,14 @@
       "source_token": "'/api/v1/billing/partners/$partnerId/documents'",
       "method": "POST",
       "api_pattern": "/api/v1/billing/partners/{partnerId}/documents",
-      "backend_service": "billing",
-      "persistence": "billing.documents",
+      "backend_service": "evidence + storage + billing",
+      "persistence": "evidence.items + storage object + billing.documents",
       "audit": "billing events + gateway audit",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: real file-backed commercial document",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_7.sh: fake Evidence rejected -> real PDF Evidence -> Billing invoice readback with authoritative SHA/size",
+      "notes": "Commercial Billing documents are accepted only through same-partner file-backed Evidence references with fresh SHA-256/size integrity validation."
     },
     {
       "id": "PART-WIZ-LIFECYCLE",
@@ -746,14 +746,14 @@
       "source_token": "'/api/v1/billing/partners/${partner['id']}/documents'",
       "method": "POST",
       "api_pattern": "/api/v1/billing/partners/{partnerId}/documents",
-      "backend_service": "billing",
-      "persistence": "billing.documents",
+      "backend_service": "evidence + storage + billing",
+      "persistence": "evidence.items + storage object + billing.documents",
       "audit": "billing events + gateway audit",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: upload binary -> Evidence/Storage -> Billing link",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_7.sh: multipart binary -> Evidence/Storage -> integrity -> Billing evidence:// link",
+      "notes": "Commercial Billing documents are accepted only through same-partner file-backed Evidence references with fresh SHA-256/size integrity validation."
     },
     {
       "id": "PART-MODULE-EDIT",
@@ -930,9 +930,9 @@
       "persistence": "catalog.module_impact_metrics",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: mapping -> Connector/Impact visibility",
+      "e2e_proof": "scripts/smoke_start_23_7.sh: PUT module metric mapping -> GET readback",
       "notes": ""
     },
     {
@@ -948,9 +948,9 @@
       "persistence": "impact.metric_definitions",
       "audit": "central gateway mutation audit",
       "localization_state": "MISSING_DYNAMIC_MODEL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: create -> list -> use",
+      "e2e_proof": "scripts/smoke_start_23_7.sh: bilingual definition create -> localized definition readback",
       "notes": ""
     },
     {
@@ -966,9 +966,9 @@
       "persistence": "impact.observations",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: record -> summary/report",
+      "e2e_proof": "scripts/smoke_start_23_7.sh: MANUAL observation -> impact summary/readback",
       "notes": ""
     },
     {
@@ -984,9 +984,9 @@
       "persistence": "impact.baselines",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: baseline -> summary",
+      "e2e_proof": "scripts/smoke_start_23_7.sh: baseline PUT -> summary baseline + delta",
       "notes": ""
     },
     {
@@ -1002,9 +1002,9 @@
       "persistence": "evidence records",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: create -> verify -> report",
+      "e2e_proof": "scripts/smoke_start_23_7.sh: URL + PARTNER_DECLARATION metadata create/readback",
       "notes": ""
     },
     {
@@ -1020,10 +1020,10 @@
       "persistence": "evidence records + storage object + SHA-256",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: real PDF/image upload -> preview -> download -> integrity",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_7.sh: real PDF upload -> Storage -> preview/download -> SHA-256 integrity",
+      "notes": "Multipart upload is content-sniffed, bounded, stored through Storage, and integrity-rechecked from current bytes."
     },
     {
       "id": "EVIDENCE-VERIFY",
@@ -1038,9 +1038,9 @@
       "persistence": "evidence records",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: verification -> status",
+      "e2e_proof": "scripts/smoke_start_23_7.sh: PATCH VERIFIED -> verifier readback",
       "notes": ""
     },
     {
@@ -1056,9 +1056,9 @@
       "persistence": "impact.observations + evidence linkage",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: evidence -> verified observation",
+      "e2e_proof": "scripts/smoke_start_23_7.sh: verified file Evidence -> VERIFIED_DOCUMENT observation with evidence linkage",
       "notes": ""
     },
     {
@@ -1074,9 +1074,9 @@
       "persistence": "reports.jobs + immutable snapshot + PDF object",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: create -> READY -> PDF download",
+      "e2e_proof": "scripts/smoke_start_23_7.sh: report QUEUED -> READY -> frozen snapshot hash -> real PDF download/hash",
       "notes": ""
     },
     {
@@ -1092,10 +1092,10 @@
       "persistence": "reports.jobs + PDF object",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
-      "e2e_proof": "required: regenerate from stored snapshot",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_7.sh: mutate live metric after snapshot -> regenerate -> unchanged snapshot/PDF SHA-256",
+      "notes": "Regeneration renders exclusively from the persisted immutable snapshot and must not reread live business data."
     },
     {
       "id": "ADMIN-ROLE-CREATE",
@@ -1962,5 +1962,5 @@
       "notes": "Commercial editor cannot write provider-managed paid fields directly."
     }
   ],
-  "completed_through": "23.6"
+  "completed_through": "23.7"
 }

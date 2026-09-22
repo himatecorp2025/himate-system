@@ -2,6 +2,7 @@
 set -eu
 
 . scripts/payment_test_helpers.sh
+. scripts/evidence_test_helpers.sh
 
 BASE_URL="${1:-http://127.0.0.1:8080}"
 TMP_ROOT="${TMPDIR:-/tmp}"
@@ -51,8 +52,8 @@ PY
 )"
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$terms" "$BASE_URL/api/v1/billing/partners/$partner_id/terms" >/dev/null
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d '{"status":"AGREED","agreement_reference":"contract://start234/signed","note":"START-23.4 acceptance"}' "$BASE_URL/api/v1/billing/partners/$partner_id/agreement" >/dev/null
-curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d '{"kind":"INVOICE","name":"Activation invoice","storage_url":"evidence://start234/activation-invoice","note":"START-23.4","mime_type":"application/pdf","sha256":"","size_bytes":0}' "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
-curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d '{"kind":"PAYMENT_EVIDENCE","name":"Provider payment evidence","storage_url":"evidence://start234/payment","note":"START-23.4 provider evidence","mime_type":"application/pdf","sha256":"","size_bytes":0}' "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
+register_billing_evidence_document "$OWNER_COOKIE" "$partner_id" "INVOICE" "INVOICE" "Activation invoice" "start234-invoice" >/dev/null
+register_billing_evidence_document "$OWNER_COOKIE" "$partner_id" "PAYMENT_EVIDENCE" "OTHER" "Provider payment evidence" "start234-payment" >/dev/null
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"note":"Provider-backed activation license","waived":false,"waiver_reason":""}' "$BASE_URL/api/v1/billing/partners/$partner_id/license" >/dev/null
 echo ok
 

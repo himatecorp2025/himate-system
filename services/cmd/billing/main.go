@@ -19,8 +19,9 @@ type app struct {
 	catalogHost  string
 	partnersHost string
 	paymentsHost string
+	evidenceHost string
 	token        string
-	client      *http.Client
+	client       *http.Client
 }
 
 type terms struct {
@@ -67,6 +68,7 @@ func main() {
 		catalogHost: os.Getenv("CATALOG_HOSTPORT"),
 		partnersHost: os.Getenv("PARTNERS_HOSTPORT"),
 		paymentsHost: os.Getenv("PAYMENTS_HOSTPORT"),
+		evidenceHost: os.Getenv("EVIDENCE_HOSTPORT"),
 		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		client: &http.Client{Timeout: 8 * time.Second},
 	}
@@ -306,6 +308,68 @@ func isCommercialEvidenceKind(kind string) bool {
 	default:
 		return false
 	}
+}
+
+type commercialEvidenceReference struct {
+	ID                 string `json:"id"`
+	PartnerID          string `json:"partner_id"`
+	EvidenceType       string `json:"evidence_type"`
+	OriginalFilename   string `json:"original_filename"`
+	MIMEType           string `json:"mime_type"`
+	SHA256             string `json:"sha256"`
+	SizeBytes          int64  `json:"size_bytes"`
+	VerificationStatus string `json:"verification_status"`
+	VerifiedBy         string `json:"verified_by"`
+	HasFile            bool   `json:"has_file"`
+}
+
+func (a *app) validateCommercialEvidenceReference(ctx context.Context, partnerID, storageReference string) (commercialEvidenceReference, error) {
+	var out commercialEvidenceReference
+	ref := strings.TrimSpace(storageReference)
+	if !strings.HasPrefix(ref, "evidence://") {
+		return out, fmt.Errorf("commercial documents require an evidence:// reference backed by HIMATE Evidence storage")
+	}
+	id := strings.TrimSpace(strings.TrimPrefix(ref, "evidence://"))
+	if id == "" || strings.ContainsAny(id, "/?#") || len(id) > 128 {
+		return out, fmt.Errorf("invalid Evidence reference")
+	}
+	if strings.TrimSpace(a.evidenceHost) == "" {
+		return out, fmt.Errorf("Evidence service is not configured")
+	}
+	get := func(path string, dst any) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.evidenceHost+path, nil)
+		if err != nil { return err }
+		req.Header.Set("X-Himate-Internal-Token", a.token)
+		resp, err := a.client.Do(req)
+		if err != nil { return err }
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("Evidence service returned status %d", resp.StatusCode)
+		}
+		return json.NewDecoder(resp.Body).Decode(dst)
+	}
+	if err := get("/api/v1/evidence/"+id, &out); err != nil {
+		return out, fmt.Errorf("Evidence record is unavailable: %w", err)
+	}
+	if out.ID != id || out.PartnerID != partnerID {
+		return out, fmt.Errorf("Evidence record does not belong to this partner")
+	}
+	if !out.HasFile || strings.TrimSpace(out.SHA256) == "" || out.SizeBytes <= 0 {
+		return out, fmt.Errorf("commercial Evidence must be backed by a persisted file")
+	}
+	var integrity struct {
+		Valid     bool   `json:"valid"`
+		Status    string `json:"status"`
+		SHA256    string `json:"sha256"`
+		SizeBytes int64  `json:"size_bytes"`
+	}
+	if err := get("/api/v1/evidence/"+id+"/integrity", &integrity); err != nil {
+		return out, fmt.Errorf("Evidence integrity could not be verified: %w", err)
+	}
+	if !integrity.Valid || integrity.Status != "VALID" || integrity.SHA256 != out.SHA256 || integrity.SizeBytes != out.SizeBytes {
+		return out, fmt.Errorf("Evidence file failed SHA-256 integrity verification")
+	}
+	return out, nil
 }
 
 func (a *app) commercialEvidenceCount(ctx context.Context, partnerID string) (int, error) {
@@ -1353,15 +1417,24 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 		}
 		kind := strings.ToUpper(strings.TrimSpace(in.Kind))
 		storageReference := strings.TrimSpace(in.StorageURL)
-		if isCommercialEvidenceKind(kind) && storageReference == "" {
-			common.APIError(w, 400, "EVIDENCE_REFERENCE_REQUIRED", "Commercial evidence requires an attached storage URL or persistent document reference")
-			return
-		}
 		if len(storageReference) > 2048 {
 			common.APIError(w, 400, "VALIDATION", "Document storage reference is too long")
 			return
 		}
 		if in.SizeBytes < 0 { common.APIError(w, 400, "VALIDATION", "Document size cannot be negative"); return }
+		if isCommercialEvidenceKind(kind) {
+			evidence, err := a.validateCommercialEvidenceReference(r.Context(), id, storageReference)
+			if err != nil {
+				common.APIError(w, 409, "EVIDENCE_REFERENCE_INVALID", err.Error())
+				return
+			}
+			in.MIMEType = evidence.MIMEType
+			in.SHA256 = evidence.SHA256
+			in.SizeBytes = evidence.SizeBytes
+			if strings.TrimSpace(in.VerifiedBy) == "" && evidence.VerificationStatus == "VERIFIED" {
+				in.VerifiedBy = evidence.VerifiedBy
+			}
+		}
 		uploadedBy := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 		var docID int64
 		var created time.Time

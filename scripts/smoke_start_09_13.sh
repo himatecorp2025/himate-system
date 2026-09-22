@@ -2,6 +2,7 @@
 set -eu
 
 . scripts/payment_test_helpers.sh
+. scripts/evidence_test_helpers.sh
 
 BASE_URL="${1:-http://127.0.0.1:8080}"
 COOKIE_JAR="${TMPDIR:-/tmp}/himate-start-09-13-cookies.txt"
@@ -50,7 +51,7 @@ echo ok
 printf 'prepare paid license gate... '
 curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json'   -d '{"currency":"USD","activation_fee":13000,"activation_fee_waived":false,"activation_fee_reason":"","base_monthly_fee":250,"annual_increase_percent":10,"price_effective_from":"2026-09-20","service_anchor_date":"2026-09-20","reason":"START-09 CI commercial setup"}'   "$BASE_URL/api/v1/billing/partners/$partner_id/terms" >/dev/null
 
-curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"kind":"PAYMENT_EVIDENCE","name":"START-09 CI receipt","storage_url":"ci://start09/receipt.pdf","note":"Ephemeral CI evidence","mime_type":"application/pdf","sha256":"ci-start09","size_bytes":1}'   "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
+register_billing_evidence_document "$COOKIE_JAR" "$partner_id" "PAYMENT_EVIDENCE" "OTHER" "START-09 CI receipt" "start09-payment" >/dev/null
 
 curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"note":"START-23.4 provider-backed historical START-09 acceptance","waived":false,"waiver_reason":""}' "$BASE_URL/api/v1/billing/partners/$partner_id/license" >/dev/null
 provider_pay_activation "$BASE_URL" "$COOKIE_JAR" "$partner_id" "start0913"
@@ -139,7 +140,7 @@ printf 'cross-tenant database isolation... '
 created2="$(curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' -d '{"display_name":"START 09 Isolation Partner","legal_name":"START 09 Isolation Partner LLC","category_id":"cat_006","lifecycle":"PROSPECT","contact_name":"Isolation Admin","contact_email":"isolation@example.com","country":"United States"}' "$BASE_URL/api/v1/partners")"
 partner2_id="$(printf '%s' "$created2" | json_field id)"
 curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","activation_fee":13000,"activation_fee_waived":false,"base_monthly_fee":250,"annual_increase_percent":10,"price_effective_from":"2026-09-20","service_anchor_date":"2026-09-20","reason":"Isolation CI"}' "$BASE_URL/api/v1/billing/partners/$partner2_id/terms" >/dev/null
-curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' -d '{"kind":"PAYMENT_EVIDENCE","name":"Isolation receipt","storage_url":"ci://start09/isolation.pdf","mime_type":"application/pdf","sha256":"ci-isolation","size_bytes":1}' "$BASE_URL/api/v1/billing/partners/$partner2_id/documents" >/dev/null
+register_billing_evidence_document "$COOKIE_JAR" "$partner2_id" "PAYMENT_EVIDENCE" "OTHER" "Isolation receipt" "start09-isolation" >/dev/null
 curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"note":"START-23.4 provider-backed isolation acceptance","waived":false,"waiver_reason":""}' "$BASE_URL/api/v1/billing/partners/$partner2_id/license" >/dev/null
 provider_pay_activation "$BASE_URL" "$COOKIE_JAR" "$partner2_id" "start0913-isolation"
 curl -fsS -b "$COOKIE_JAR" -X PATCH -H 'Content-Type: application/json' -d '{"lifecycle":"LICENSE_PENDING","reason":"Isolation CI"}' "$BASE_URL/api/v1/partners/$partner2_id" >/dev/null
