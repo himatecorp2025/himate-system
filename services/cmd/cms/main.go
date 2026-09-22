@@ -812,7 +812,10 @@ func (a *app)publicMedia(w http.ResponseWriter,r *http.Request){
 	id:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/public/v1/cms/media/"),"/")
 	var exists bool;_ = a.db.QueryRow(`SELECT
 		EXISTS(SELECT 1 FROM cms.published_media_refs WHERE media_id=$1)
-		OR EXISTS(SELECT 1 FROM cms.site_design WHERE id=1 AND published->>'logo_media_asset_id'=$1)
+		OR EXISTS(SELECT 1 FROM cms.site_design WHERE id=1 AND (
+			published->>'logo_media_asset_id'=$1
+			OR EXISTS(SELECT 1 FROM jsonb_each_text(COALESCE(published->'assets','{}'::jsonb)) AS asset WHERE asset.value=$1)
+		))
 		OR EXISTS(SELECT 1 FROM cms.seo_settings WHERE id=1 AND published->>'default_og_image_asset_id'=$1)`,id).Scan(&exists)
 	if !exists{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
