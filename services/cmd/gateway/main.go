@@ -2802,7 +2802,7 @@ func renderGlobalSEOHTML(doc string, settings publicSEOSettings) string {
 	return doc
 }
 
-func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) string {
+func renderCMSHTML(doc string, page publicCMSPage, requestURL string, mediaURL cmsMediaURL, marker string) string {
 	if normalizePublicLocale(page.Locale) == "hu_HU" {
 		doc = strings.Replace(doc, "<html lang=\"en\">", "<html lang=\"hu\">", 1)
 	}
@@ -2816,7 +2816,7 @@ func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) s
 	}
 	doc = replaceHeadTag(doc, "rel=\"canonical\"", "<link rel=\"canonical\" href=\""+html.EscapeString(canonical)+"\">")
 	robots := "index,follow"
-	if page.SEO.NoIndex {
+	if page.SEO.NoIndex || marker == "PREVIEW" {
 		robots = "noindex,nofollow"
 	}
 	doc = replaceHeadTag(doc, "name=\"robots\"", "<meta name=\"robots\" content=\""+robots+"\">")
@@ -2839,7 +2839,7 @@ func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) s
 	}
 	doc = replaceHeadTag(doc, "property=\"og:url\"", "<meta property=\"og:url\" content=\""+html.EscapeString(canonical)+"\">")
 	if mediaID := strings.TrimSpace(page.SEO.OGImageAssetID); mediaID != "" {
-		doc = replaceHeadTag(doc, "property=\"og:image\"", "<meta property=\"og:image\" content=\"/public/v1/cms/media/"+url.PathEscape(mediaID)+"\">")
+		doc = replaceHeadTag(doc, "property=\"og:image\"", "<meta property=\"og:image\" content=\""+html.EscapeString(mediaURL(mediaID))+"\">")
 	}
 	if len(page.SEO.JSONLD) > 0 {
 		if raw, err := json.Marshal(page.SEO.JSONLD); err == nil {
@@ -2849,7 +2849,7 @@ func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) s
 			}
 		}
 	}
-	if len(page.Alternates) > 0 {
+	if marker != "PREVIEW" && len(page.Alternates) > 0 {
 		var alternateTags strings.Builder
 		if href := strings.TrimSpace(page.Alternates["en_US"]); href != "" {
 			alternateTags.WriteString("<link rel=\"alternate\" hreflang=\"en-US\" href=\""+html.EscapeString(href)+"\">")
@@ -2867,13 +2867,32 @@ func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) s
 	for _, id := range page.HiddenSections {
 		doc = removeMarketingSection(doc, id)
 	}
+	hasDynamic := false
 	for _, section := range page.Sections {
-		doc = renderMarketingSection(doc, section)
+		if _, _, ok := marketingSectionBounds(doc, section.ID); !ok {
+			hasDynamic = true
+		}
+		doc = renderMarketingSection(doc, section, mediaURL)
+	}
+	if hasDynamic {
+		doc = injectDynamicCMSStyles(doc)
 	}
 	if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
-		doc = doc[:headEnd] + "<!-- HIMATE SSR:PUBLISHED -->" + doc[headEnd:]
+		doc = doc[:headEnd] + "<!-- HIMATE SSR:"+marker+" -->" + doc[headEnd:]
 	}
 	return doc
+}
+
+func renderPublishedCMSHTML(doc string, page publicCMSPage, requestURL string) string {
+	return renderCMSHTML(doc, page, requestURL, func(id string) string {
+		return "/public/v1/cms/media/"+url.PathEscape(id)
+	}, "PUBLISHED")
+}
+
+func renderPreviewCMSHTML(doc string, page publicCMSPage, requestURL, slug, token string) string {
+	return renderCMSHTML(doc, page, requestURL, func(id string) string {
+		return "/preview/v1/cms/media/"+url.PathEscape(id)+"?slug="+url.QueryEscape(slug)+"&token="+url.QueryEscape(token)
+	}, "PREVIEW")
 }
 
 func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filename, slug string) {
