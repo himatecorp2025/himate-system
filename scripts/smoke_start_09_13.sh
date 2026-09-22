@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
+. scripts/payment_test_helpers.sh
+
 BASE_URL="${1:-http://127.0.0.1:8080}"
 COOKIE_JAR="${TMPDIR:-/tmp}/himate-start-09-13-cookies.txt"
 BODY="${TMPDIR:-/tmp}/himate-start-09-13-body.json"
@@ -50,7 +52,9 @@ curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json'   -d '{"cu
 
 curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json'   -d '{"kind":"PAYMENT_EVIDENCE","name":"START-09 CI receipt","storage_url":"ci://start09/receipt.pdf","note":"Ephemeral CI evidence","mime_type":"application/pdf","sha256":"ci-start09","size_bytes":1}'   "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
 
-curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json'   -d '{"currency":"USD","required_amount":13000,"paid_amount":13000,"payment_date":"2026-09-20","payment_reference":"START09-CI-PAID","verified_by":"ci-smoke","note":"CI verified","waived":false,"waiver_reason":""}'   "$BASE_URL/api/v1/billing/partners/$partner_id/license" | grep -q '"status":"PAID"'
+curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"note":"START-23.4 provider-backed historical START-09 acceptance","waived":false,"waiver_reason":""}' "$BASE_URL/api/v1/billing/partners/$partner_id/license" >/dev/null
+provider_pay_activation "$BASE_URL" "$COOKIE_JAR" "$partner_id" "start0913"
+curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/billing/partners/$partner_id/license" | grep -q '"status":"PAID"'
 curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/partners/$partner_id" | grep -q '"lifecycle":"READY_TO_PROVISION"'
 echo ok
 
