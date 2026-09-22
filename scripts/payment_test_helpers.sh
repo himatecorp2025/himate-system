@@ -51,7 +51,12 @@ provider_pay_activation() {
   customer="cus_ci_$suffix"
   method="pm_ci_$suffix"
 
-  curl -fsS -b "$cookie" -X PUT -H 'Content-Type: application/json'     -d "{"provider_customer_id":"$customer","payment_method_id":"$method","autopay_enabled":true}"     "$base_url/api/v1/payments/partners/$partner_id/profile" >/dev/null
+  profile_payload="$(python3 - "$customer" "$method" <<'PY'
+import json,sys
+print(json.dumps({"provider_customer_id":sys.argv[1],"payment_method_id":sys.argv[2],"autopay_enabled":True},separators=(",",":")))
+PY
+)"
+  curl -fsS -b "$cookie" -X PUT -H 'Content-Type: application/json' -d "$profile_payload" "$base_url/api/v1/payments/partners/$partner_id/profile" >/dev/null
   attempt="$(curl -fsS -b "$cookie" -X POST -H 'Content-Type: application/json' -d '{}'     "$base_url/api/v1/billing/partners/$partner_id/license/collect")"
   provider_success_webhook "$base_url" "$attempt" "evt_activation_$suffix" "$customer" "$method" >/dev/null
 }
