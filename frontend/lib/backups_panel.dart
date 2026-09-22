@@ -128,7 +128,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
           title: 'Create restore point',
-          subtitle: 'Database, media and configuration are captured, encrypted and copied to the configured offsite provider.',
+          subtitle: 'Database, media and configuration are captured, encrypted and copied to the configured durable backup storage.',
           icon: Icons.backup_outlined,
           primaryLabel: 'Start backup',
           onPrimary: () => Navigator.pop(dialogContext, selected),
@@ -147,7 +147,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
               ),
               const SizedBox(height: 12),
               const LText(
-                'Every successful restore point automatically queues a real restore test from the offsite copy.',
+                'Every successful restore point automatically queues a real restore test from the durable stored copy.',
                 style: TextStyle(color: brandTextSoft, fontSize: 11, height: 1.45),
               ),
             ],
@@ -192,7 +192,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       if (testId.isEmpty) {
         throw StateError('Backup service did not return a restore-test identifier.');
       }
-      _notify('Restore test $testId queued from the offsite copy.');
+      _notify('Restore test $testId queued from the durable stored copy.');
       await _pollRestoreTest(partnerId, testId);
     } catch (e) {
       _notify(e.toString(), failure: true);
@@ -281,7 +281,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
           title: 'Backup policy',
-          subtitle: 'Retention and scheduling are partner-scoped. Expired restore points are removed from the offsite provider.',
+          subtitle: 'Retention and scheduling are partner-scoped. Expired restore points are removed from durable backup storage.',
           icon: Icons.policy_outlined,
           primaryLabel: 'Save policy',
           onPrimary: () {
@@ -416,7 +416,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
             _DefinitionRow(label: 'Backup completed', value: _date(item['latest_backup_at'])),
             _DefinitionRow(label: 'Restore test', value: restoreStatus),
             _DefinitionRow(label: 'Restore tested', value: _date(item['latest_restore_test_at'])),
-            _DefinitionRow(label: 'Offsite provider', value: _value(item['provider'], fallback: provider)),
+            _DefinitionRow(label: 'Backup storage', value: _value(item['provider'], fallback: provider)),
             _DefinitionRow(label: 'Retention', value: '${item['retention_days'] ?? 30} days'),
             _DefinitionRow(label: 'Restore-point limit', value: '${item['max_restore_points'] ?? 30}'),
             _DefinitionRow(label: 'Automatic interval', value: '${item['schedule_hours'] ?? 24} hours'),
@@ -474,7 +474,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       children: [
         _SectionHeader(
           title: 'Backups & Recoverability',
-          subtitle: 'Encrypted partner database, media and configuration restore points with offsite replication, retention and mandatory restore verification.',
+          subtitle: 'Encrypted partner database, media and configuration restore points with durable storage, retention and mandatory restore verification.',
           trailing: Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -497,7 +497,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
         const SizedBox(height: 12),
         _RuleStrip(items: [
           _RuleItem(Icons.storage_outlined, 'Partners', '${partnerIds.length} tracked'),
-          _RuleItem(Icons.cloud_done_outlined, 'Offsite', provider.isEmpty ? 'not configured' : provider.toUpperCase()),
+          _RuleItem(Icons.cloud_done_outlined, 'Storage', provider.isEmpty ? 'not configured' : provider.toUpperCase()),
           _RuleItem(Icons.verified_outlined, 'Recoverable', '$verified verified'),
           _RuleItem(failed > 0 ? Icons.error_outline_rounded : Icons.sync_rounded, failed > 0 ? 'Failed' : 'In progress', failed > 0 ? '$failed failed' : '$active active'),
         ]),
