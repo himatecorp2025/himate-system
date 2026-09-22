@@ -726,7 +726,8 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 		if in.Waived != nil { next.Waived = *in.Waived }
 		if in.WaiverReason != nil { next.WaiverReason = strings.TrimSpace(*in.WaiverReason) }
 		if next.Required < 0 || next.Paid < 0 { common.APIError(w, 400, "VALIDATION", "License amounts cannot be negative"); return }
-		if !next.Waived && next.Currency == "USD" && next.Required < 13000 { common.APIError(w, 400, "VALIDATION", "Initial license must be at least USD 13,000 unless waived"); return }
+		// START-23.11.1: activation/license fees are partner-specific contract terms.
+		// There is intentionally no platform-wide minimum activation fee.
 
 		status := current.Status
 		if next.Waived {
