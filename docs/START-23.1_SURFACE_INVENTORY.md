@@ -7,13 +7,13 @@ This document is generated from the authoritative machine-readable matrix. It en
 ## Inventory summary
 
 - surfaces: **53**
-- functional contracts: **87**
+- functional contracts: **89**
 - mutation contracts: **74**
 - explicit blockers/gaps: **23**
 
 ## Status interpretation
 
-A source-complete route is not a product PASS. `SOURCE_COMPLETE_PROD_UNVERIFIED` means implementation exists but the full UI → API → backend → persistence → readback → audit → EN/HU → failure-state → E2E chain is still not accepted.
+A source-complete route is not a product PASS. `SOURCE_COMPLETE_PROD_UNVERIFIED` means implementation exists but production mutation proof is still required. `MUTATION_PROVEN_PROD_UNVERIFIED` means automated mutation/persistence/readback evidence exists, while final production acceptance remains reserved for START-23.12.
 
 ## 1. Admin authentication
 
@@ -65,8 +65,8 @@ Partner, commercial terms, agreement, evidence, license and provisioning capture
 | Contract | UI / behavior | Kind | Backend | State | Closure |
 |---|---|---|---|---|---|
 | `PART-CREATE` | Create partner | mutation | partners | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.6 |
-| `PART-WIZ-TERMS` | New Partner commercial terms | mutation | billing | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
-| `PART-WIZ-AGREEMENT` | New Partner agreement | mutation | billing | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
+| `PART-WIZ-TERMS` | New Partner commercial terms | mutation | billing | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
+| `PART-WIZ-AGREEMENT` | New Partner agreement | mutation | billing | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
 | `PART-WIZ-INVOICE` | New Partner activation invoice reference | mutation | billing | `PARTIAL_PRODUCT` | START-23.7 |
 | `PART-WIZ-LIFECYCLE` | Advance lifecycle | mutation | partners | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.6 |
 | `PART-WIZ-PROVISION` | Provisioning job | mutation | provisioning | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.10 |
@@ -96,9 +96,9 @@ Terms, agreement, activation license, commercial status and billing events
 
 | Contract | UI / behavior | Kind | Backend | State | Closure |
 |---|---|---|---|---|---|
-| `PART-TERMS-EDIT` | Edit partner terms | mutation | billing | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
+| `PART-TERMS-EDIT` | Edit partner terms | mutation | billing | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
 | `PART-LICENSE-EDIT` | Register initial license/payment | mutation | billing | `PARTIAL_PRODUCT` | START-23.4 |
-| `AGREEMENT-EDIT` | Edit commercial agreement | mutation | billing | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
+| `AGREEMENT-EDIT` | Edit commercial agreement | mutation | billing | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
 
 ## 10. Partner Workspace / Finance & Documents
 
@@ -148,8 +148,8 @@ Groups, modules, metadata, pricing and availability
 | Contract | UI / behavior | Kind | Backend | State | Closure |
 |---|---|---|---|---|---|
 | `MODULE-CREATE-GROUP` | Add module group | mutation | catalog | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.5 |
-| `MODULE-CREATE` | Create module | mutation | catalog | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
-| `MODULE-EDIT` | Edit module | mutation | catalog | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
+| `MODULE-CREATE` | Create module | mutation | catalog | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
+| `MODULE-EDIT` | Edit module | mutation | catalog | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
 | `DYNAMIC-BILINGUAL-MODEL` | Dynamic business records support EN/HU | data_model | catalog + partners + impact + identity | `MISSING_DATA_MODEL` | START-23.5 |
 
 ## 16. Modules / Relationships
@@ -158,8 +158,8 @@ Requires, conflicts, dependencies and notes
 
 | Contract | UI / behavior | Kind | Backend | State | Closure |
 |---|---|---|---|---|---|
-| `MODULE-REL-CREATE` | Add module relationship | mutation | catalog | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
-| `MODULE-REL-DELETE` | Delete module relationship | mutation | catalog | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
+| `MODULE-REL-CREATE` | Add module relationship | mutation | catalog | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
+| `MODULE-REL-DELETE` | Delete module relationship | mutation | catalog | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
 
 ## 17. Modules / Impact mappings
 
@@ -175,7 +175,9 @@ Partner usage visibility
 
 | Contract | UI / behavior | Kind | Backend | State | Closure |
 |---|---|---|---|---|---|
-| `MODULE-COMMERCIAL-MATRIX-EDIT` | Edit partner-specific recurring price, activation fee, visibility and base-package inclusion from the commercial matrix | mutation | catalog + billing read model | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.2 |
+| `MODULE-COMMERCIAL-MATRIX-EDIT` | Edit partner-specific recurring price, activation fee, visibility and base-package inclusion from the commercial matrix | mutation | catalog + billing read model | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
+| `MODULE-COMMERCIAL-MATRIX-READ` | Read Partner × Module commercial matrix and exact next-period billing state | read | catalog + billing | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
+| `MODULE-COMMERCIAL-HISTORY` | Read partner-module commercial history | read | catalog | `MUTATION_PROVEN_PROD_UNVERIFIED` | START-23.2 |
 
 ## 19. Licensing & Finance
 
