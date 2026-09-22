@@ -547,7 +547,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               LText(sourceRepo.isEmpty ? 'Source not linked' : sourceRepo + (sourcePath.isEmpty ? '' : ' · ' + sourcePath), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
             ]),
           ),
-          const Spacer(),
+          const SizedBox(height: 18),
           Row(children: [
             Expanded(child: OutlinedButton.icon(onPressed: () => editModule(module), icon: const Icon(Icons.edit_outlined, size: 17), label: const LText('Edit'))),
             const SizedBox(width: 8),
@@ -624,7 +624,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 LayoutBuilder(builder: (context, constraints) {
                   final width = constraints.maxWidth < 650 ? constraints.maxWidth : constraints.maxWidth < 1050 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
                   return Wrap(spacing: 12, runSpacing: 12, children: [
-                    for (final module in filtered) SizedBox(width: width, height: 390, child: moduleCard(module)),
+                    for (final module in filtered) SizedBox(width: width, child: moduleCard(module)),
                   ]);
                 }),
               if (loading) ...[
