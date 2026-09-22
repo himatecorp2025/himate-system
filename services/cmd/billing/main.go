@@ -911,6 +911,32 @@ func (a *app) setCatalogModuleNotLicensed(ctx context.Context, partnerID, module
 	return nil
 }
 
+func (a *app) setCatalogEntitlementState(ctx context.Context, partnerID, moduleKey, state, actor, reason string) error {
+	if strings.TrimSpace(a.catalogHost) == "" || len(strings.TrimSpace(a.token)) < 24 {
+		return fmt.Errorf("catalog service credential is not configured")
+	}
+	body, err := json.Marshal(map[string]any{
+		"entitlement_state": strings.ToUpper(strings.TrimSpace(state)),
+		"reason": strings.TrimSpace(reason),
+	})
+	if err != nil { return err }
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch,
+		"http://"+a.catalogHost+"/internal/v1/partners/"+partnerID+"/modules/"+moduleKey,
+		bytes.NewReader(body))
+	if err != nil { return err }
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.token)
+	if strings.TrimSpace(actor)=="" { actor="billing" }
+	req.Header.Set("X-Himate-User-ID", actor)
+	resp, err := a.client.Do(req)
+	if err != nil { return err }
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("catalog entitlement state update returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (a *app) expireDueCancellations(ctx context.Context, at time.Time) error {
 	today := dateOnly(at)
 	rows, err := a.db.QueryContext(ctx, `SELECT partner_id,module_key,period_start,period_end
@@ -1401,6 +1427,10 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 	}
 	if err = tx.Commit(); err != nil {
 		common.APIError(w, 500, "DB", "Could not commit subscription update")
+		return
+	}
+	if err = a.setCatalogEntitlementState(r.Context(),id,moduleKey,nextLifecycle,actor,reason); err != nil {
+		common.APIError(w,502,"CATALOG_SYNC_FAILED","Subscription was updated but module entitlement synchronization is pending; retry the same request")
 		return
 	}
 	common.JSON(w, 200, map[string]any{
