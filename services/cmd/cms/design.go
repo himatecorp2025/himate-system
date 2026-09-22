@@ -192,6 +192,42 @@ func (a *app) designAction(w http.ResponseWriter, r *http.Request) {
 		_ = a.audit(r.Context(), "", "", "DESIGN_DRAFT_SAVED", actor(r), correlationID(r), oldDraft, in)
 		draft, published, nextVersion, updatedBy, updatedAt, publishedAt, _ := a.readSiteDesign()
 		common.JSON(w, http.StatusOK, designPayload(draft, published, nextVersion, updatedBy, updatedAt, publishedAt))
+	case "preview":
+		if r.Method != http.MethodPost {
+			common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+			return
+		}
+		draft, published, version, _, _, _, err := a.readSiteDesign()
+		if err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not load site design")
+			return
+		}
+		if err := a.validateSiteDesign(r.Context(), draft); err != nil {
+			common.APIError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+			return
+		}
+		rawToken := randomToken()
+		if rawToken == "" {
+			common.APIError(w, http.StatusInternalServerError, "TOKEN", "Could not create design preview token")
+			return
+		}
+		query := "INSERT INTO cms.site_design(id,draft,published,version,updated_by,updated_at,preview_token_hash,preview_token_issued_at) " +
+			"VALUES(1,$1::jsonb,$2::jsonb,$3,$4,NOW(),$5,NOW()) " +
+			"ON CONFLICT(id) DO UPDATE SET preview_token_hash=EXCLUDED.preview_token_hash,preview_token_issued_at=NOW()," +
+			"updated_by=EXCLUDED.updated_by,updated_at=NOW()"
+		if _, err = a.db.ExecContext(r.Context(), query, string(jsonBytes(draft)), string(jsonBytes(published)), version, actor(r), tokenHash(rawToken)); err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not create design preview")
+			return
+		}
+		_ = a.audit(r.Context(), "", "", "DESIGN_PREVIEW_CREATED", actor(r), correlationID(r), map[string]any{}, map[string]any{"version": version})
+		common.JSON(w, http.StatusCreated, map[string]any{
+			"preview_token": rawToken,
+			"preview_path": "/design-preview?token=" + url.QueryEscape(rawToken) + "&viewport=desktop",
+			"desktop_path": "/design-preview?token=" + url.QueryEscape(rawToken) + "&viewport=desktop",
+			"tablet_path": "/design-preview?token=" + url.QueryEscape(rawToken) + "&viewport=tablet",
+			"mobile_path": "/design-preview?token=" + url.QueryEscape(rawToken) + "&viewport=mobile",
+			"expires_in_seconds": 1800,
+		})
 	case "publish":
 		if r.Method != http.MethodPost {
 			common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
@@ -221,6 +257,79 @@ func (a *app) designAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Design action not found")
 	}
+}
+
+func (a *app) designPreviewDraft(rawToken string) (siteDesign, time.Time, error) {
+	var draftRaw []byte
+	var storedHash string
+	var issuedAt sql.NullTime
+	err := a.db.QueryRow("SELECT draft,preview_token_hash,preview_token_issued_at FROM cms.site_design WHERE id=1").
+		Scan(&draftRaw, &storedHash, &issuedAt)
+	if err != nil {
+		return siteDesign{}, time.Time{}, err
+	}
+	if !issuedAt.Valid || time.Since(issuedAt.Time) > 30*time.Minute || time.Until(issuedAt.Time) > time.Minute {
+		return siteDesign{}, time.Time{}, fmt.Errorf("design preview token expired")
+	}
+	if !tokenMatches(strings.TrimSpace(rawToken), storedHash) {
+		return siteDesign{}, time.Time{}, fmt.Errorf("invalid design preview token")
+	}
+	draft := defaultSiteDesign()
+	if len(draftRaw) > 2 {
+		if err := json.Unmarshal(draftRaw, &draft); err != nil {
+			return siteDesign{}, time.Time{}, err
+		}
+	}
+	draft = normalizeSiteDesign(draft)
+	if err := a.validateSiteDesign(context.Background(), draft); err != nil {
+		return siteDesign{}, time.Time{}, err
+	}
+	return draft, issuedAt.Time.UTC(), nil
+}
+
+func (a *app) previewDesign(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	rawToken := strings.TrimSpace(r.URL.Query().Get("token"))
+	draft, issuedAt, err := a.designPreviewDraft(rawToken)
+	if err != nil {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Design preview not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	common.JSON(w, http.StatusOK, map[string]any{
+		"design": draft,
+		"issued_at": issuedAt,
+		"expires_at": issuedAt.Add(30*time.Minute),
+	})
+}
+
+func (a *app) previewDesignMedia(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/preview/v1/cms/design/media/"), "/")
+	draft, _, err := a.designPreviewDraft(strings.TrimSpace(r.URL.Query().Get("token")))
+	if err != nil || id == "" || strings.TrimSpace(draft.LogoMediaAssetID) != id {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Design preview media not found")
+		return
+	}
+	media, err := a.getMedia(id)
+	if err != nil {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Design preview media not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	a.serveMedia(w, r, media, true)
 }
 
 func (a *app) publicDesign(w http.ResponseWriter, r *http.Request) {
