@@ -2803,7 +2803,9 @@ class _PartnersPageState extends State<PartnersPage> {
     }
 
     final moduleResponse = await widget.api.get('/api/v1/modules', force: true);
-    final availableModules = items(moduleResponse);
+    final availableModules = items(moduleResponse)
+        .where((module) => '${module['publication_status'] ?? 'UNPUBLISHED'}' == 'PUBLISHED')
+        .toList();
 
     final displayName = TextEditingController();
     final legalName = TextEditingController();
