@@ -1621,6 +1621,26 @@ class _ShellState extends State<Shell> {
     }
   }
 
+  Future<void> openGlobalSearch(BuildContext context) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _GlobalSearchDialog(api: widget.api),
+    );
+    if (!context.mounted || result == null) return;
+    final deepLink = '${result['deep_link'] ?? ''}'.trim();
+    if (deepLink.startsWith('/app/partners/')) {
+      Navigator.of(context).pushNamed(deepLink);
+      return;
+    }
+    final resource = '${result['resource'] ?? 'workspace'}';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: LText('${uiLiteral('Result workspace')}: $resource'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   bool can(String permission) {
     final roles = widget.user['roles'];
     if (roles is List && roles.map((e) => e.toString()).contains('platform_admin')) return true;
@@ -1688,6 +1708,11 @@ class _ShellState extends State<Shell> {
               titleSpacing: 12,
               title: const HimateLogo(width: 170),
               actions: [
+                IconButton(
+                  tooltip: uiLiteral('Global search'),
+                  onPressed: () => unawaited(openGlobalSearch(context)),
+                  icon: const Icon(Icons.search_rounded),
+                ),
                 NotificationCenterButton(api: widget.api),
                 PopupMenuButton<String>(
                   tooltip: tr(context,'account'),
@@ -1757,32 +1782,20 @@ class _ShellState extends State<Shell> {
                                   constraints: const BoxConstraints(maxWidth: 420),
                                   child: TextField(
                                     readOnly: true,
-                                    onTap: () async {
-                                      final result = await showDialog<Map<String, dynamic>>(
-                                        context: context,
-                                        builder: (_) => _GlobalSearchDialog(api: widget.api),
-                                      );
-                                      if (!context.mounted || result == null) return;
-                                      final deepLink = '${result['deep_link'] ?? ''}'.trim();
-                                      if (deepLink.startsWith('/app/partners/')) {
-                                        Navigator.of(context).pushNamed(deepLink);
-                                      } else {
-                                        final resource = '${result['resource'] ?? 'workspace'}';
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: LText('${uiLiteral('Result workspace')}: $resource'),
-                                            behavior: SnackBarBehavior.floating,
-                                          ),
-                                        );
-                                      }
-                                    },
+                                    onTap: () => unawaited(openGlobalSearch(context)),
                                     decoration: InputDecoration(isDense: true, hintText: uiLiteral('Search anywhere...'), prefixIcon: Icon(Icons.search_rounded, size: 19)),
                                   ),
                                 ),
                               ),
                             )
-                          else
+                          else ...[
                             const Spacer(),
+                            IconButton(
+                              tooltip: uiLiteral('Global search'),
+                              onPressed: () => unawaited(openGlobalSearch(context)),
+                              icon: const Icon(Icons.search_rounded),
+                            ),
+                          ],
                           const SizedBox(width: 18),
                           NotificationCenterButton(api: widget.api),
                           const SizedBox(width: 8),
