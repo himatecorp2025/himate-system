@@ -20,6 +20,9 @@ seo = read("services/cmd/cms/seo.go")
 gateway = read("services/cmd/gateway/main.go")
 cms_ui = read("frontend/lib/cms_page.dart")
 design_ui = read("frontend/lib/design_guide.dart")
+partner_design_ui = read("frontend/lib/partner_design.dart")
+partner_portal = read("services/cmd/gateway/partner_portal.go")
+themes = read("services/cmd/cms/themes.go")
 seo_ui = read("frontend/lib/seo_panel.dart")
 matrix = json.loads(read("docs/START-23.1_FUNCTIONAL_MATRIX.json"))
 ci = read(".github/workflows/ci.yml")
@@ -82,6 +85,50 @@ require('designErr == nil && design.Version > 0' in gateway,
 require('html.EscapeString(section.Heading)' in gateway and 'html.EscapeString(section.Body)' in gateway,
         "dynamic CMS section text is not HTML-escaped")
 
+# Multi-surface assets and tenant theme separation.
+for token in (
+    "header_wordmark",
+    "footer_wordmark",
+    "favicon",
+    "app_icon",
+    "login_logo",
+    "email_logo",
+    "designLayouts",
+    "designAssetSlots",
+):
+    require(token in design or token in cms, f"Design asset/layout contract missing {token!r}")
+
+for token in (
+    "cms.design_profiles",
+    "cms.design_scope_state",
+    "PARTNER_THEME_ACTIVATED",
+    '"content_binding": "UNCHANGED"',
+    '"mechanics_binding": "UNCHANGED"',
+    "owner_type='PARTNER'",
+):
+    require(token in themes or token in cms, f"Tenant theme contract missing {token!r}")
+
+for token in (
+    "/partner/api/v1/design",
+    "design.read",
+    "design.write",
+    "partnerDesignMedia",
+):
+    require(token in partner_portal, f"Partner Portal design API missing {token!r}")
+
+for token in (
+    "Upload brand asset",
+    "New custom design",
+    "Content stays unchanged",
+    "System logic stays unchanged",
+    "/partner/api/v1/design/profiles",
+    "/partner/api/v1/design/media",
+):
+    require(token in partner_design_ui, f"Partner Design UI missing {token!r}")
+
+require("assets" in design_ui and "layout_key" in design_ui,
+        "HIMATE Design Guide does not expose multi-surface assets and layout family")
+
 # Admin UI uses real previews instead of raw JSON.
 for token in (
     "preview_html_path",
@@ -106,7 +153,7 @@ for token in (
     require(token in seo, f"CMS SEO enrichment missing {token!r}")
 for token in (
     "renderGlobalSEOHTML",
-    'data-himate-seo=\"organization\"',
+    'data-himate-seo=\\\"organization\\\"',
     "page.SEO.JSONLD",
 ):
     require(token in gateway, f"Gateway SEO initial-HTML path missing {token!r}")
@@ -134,7 +181,7 @@ for path in (
 completed = tuple(int(x) for x in str(matrix.get("completed_through", "0")).split("."))
 require(completed >= (23, 8), "functional matrix is not completed through START-23.8")
 rows = [x for x in matrix.get("contracts", []) if x.get("target_phase") == "23.8"]
-require(len(rows) == 12, f"expected 12 START-23.8 contracts, found {len(rows)}")
+require(len(rows) == 17, f"expected 17 START-23.8 contracts, found {len(rows)}")
 for row in rows:
     require(row.get("current_state") == "MUTATION_PROVEN_PROD_UNVERIFIED",
             f"{row.get('id')} is not mutation-proven")
@@ -157,4 +204,4 @@ for token in (
 ):
     require(token in ci, f"CI does not retain required gate {token}")
 
-print("START-23.8 static audit passed: 12/12 CMS, Design & SEO contracts closed")
+print("START-23.8 static audit passed: 17/17 CMS, Design, SEO & tenant-theme contracts closed")
