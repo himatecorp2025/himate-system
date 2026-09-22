@@ -60,7 +60,7 @@ Partner-module commercial configuration persists independently for every partner
 - effective-dated price/activation-fee history
 - explicit `commercial_configured` marker
 
-Catalog-level default prices remain reference values only. API responses identify `PARTNER_CONTRACT` as the pricing authority and label catalog fallback values as reference-only.
+Catalog-level default prices remain reference values only. API responses identify `PARTNER_CONTRACT` as the pricing authority and label catalog fallback values as reference-only. Billing-facing price resolution never falls back to a catalog reference price: an add-on must have an effective partner price or be explicitly included in the base service. Partner Portal exposes this derived state as `commercial_ready` and fails closed when it is false.
 
 ## Concurrency and audit
 
@@ -104,6 +104,7 @@ The smoke proves:
 9. unpublished-module Partner Portal invisibility and activation rejection,
 10. READY → PUBLISHED exposure without replacing partner-specific contractual pricing,
 11. published modules without partner-specific commercial configuration fail closed,
-12. Partner Portal activation writes ACTIVE entitlement and Billing cancellation synchronizes CANCEL_PENDING/ACTIVE back to Catalog without overriding operational maintenance state.
+12. Partner Portal activation writes ACTIVE entitlement and Billing cancellation synchronizes CANCEL_PENDING/ACTIVE back to Catalog without overriding operational maintenance state,
+13. Billing-facing price resolution rejects unconfigured partner modules instead of using catalog reference pricing.
 
 START-23.11.2 must not begin automatically after this phase; it remains a separate development and acceptance boundary.
