@@ -1656,12 +1656,12 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		base := effectiveBaseFee(t, start)
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
 		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,minimum_commitment_adjustment,billing_model)
-			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7,0,'CALENDAR_MONTH') ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
+			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7,0,'CALENDAR_MONTH') ON CONFLICT(partner_id,service_period_start,service_period_end,billing_model) DO NOTHING`,
 			invoiceID, id, at, start, end, t.Currency, base)
 		if err != nil { return err }
 		inserted, _ := result.RowsAffected()
 		if err := a.db.QueryRowContext(ctx, `SELECT id,base_fee FROM billing.invoices
-			WHERE partner_id=$1 AND service_period_start=$2 AND service_period_end=$3`,
+			WHERE partner_id=$1 AND service_period_start=$2 AND service_period_end=$3 AND billing_model='CALENDAR_MONTH'`,
 			id, start, end).Scan(&invoiceID, &base); err != nil { return err }
 		if inserted == 0 {
 			var finalized bool
