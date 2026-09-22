@@ -1788,14 +1788,14 @@ class _ShellState extends State<Shell> {
                                 ),
                               ),
                             )
-                          else ...[
+                          else
                             const Spacer(),
+                          if (tablet)
                             IconButton(
                               tooltip: uiLiteral('Global search'),
                               onPressed: () => unawaited(openGlobalSearch(context)),
                               icon: const Icon(Icons.search_rounded),
                             ),
-                          ],
                           const SizedBox(width: 18),
                           NotificationCenterButton(api: widget.api),
                           const SizedBox(width: 8),
