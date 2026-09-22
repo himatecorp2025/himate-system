@@ -583,14 +583,14 @@
       "source_token": "'/api/v1/billing/partners/$partnerId/license'",
       "method": "PUT",
       "api_pattern": "/api/v1/billing/partners/{partnerId}/license",
-      "backend_service": "billing",
-      "persistence": "billing.initial_license",
-      "audit": "billing events + gateway audit",
+      "backend_service": "billing + payments",
+      "persistence": "billing.initial_licenses + payments.partner_profiles + payments.attempts + billing.payment_settlements",
+      "audit": "billing events + gateway audit + provider reconciliation",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.4",
-      "e2e_proof": "required: payment-provider-backed PAID transition",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_4.sh: manual PAID rejected -> provider attempt -> signed webhook -> Billing PAID",
+      "notes": "New Partner wizard configures provider profile and starts provider-backed collection; provisioning remains gated until verified settlement."
     },
     {
       "id": "PART-PORTALUSER-CREATE",
@@ -727,14 +727,14 @@
       "source_token": "'/api/v1/billing/partners/${partner['id']}/license'",
       "method": "PUT",
       "api_pattern": "/api/v1/billing/partners/{partnerId}/license",
-      "backend_service": "billing",
-      "persistence": "billing.initial_license",
-      "audit": "billing events + gateway audit",
+      "backend_service": "billing + payments",
+      "persistence": "billing.initial_licenses + payments.partner_profiles + payments.attempts + billing.payment_settlements",
+      "audit": "billing events + gateway audit + provider reconciliation",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.4",
-      "e2e_proof": "required: payment provider state transition",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_4.sh: provider profile + activation collection + signed webhook readback",
+      "notes": "Admin may configure required amount/waiver, but paid fields are provider-managed and manual PAID transitions are rejected."
     },
     {
       "id": "PART-DOCUMENT-REGISTER",
@@ -1771,14 +1771,14 @@
       "source_token": "provider_status",
       "method": "SCHEDULE+WEBHOOK",
       "api_pattern": "payment provider adapter",
-      "backend_service": "MISSING",
-      "persistence": "billing payment attempts + provider reconciliation required",
-      "audit": "payment events required",
+      "backend_service": "payments + billing",
+      "persistence": "payments.partner_profiles + payments.attempts + payments.webhook_events + billing.payment_settlements + billing.invoices",
+      "audit": "provider attempts + signed webhook evidence + billing events",
       "localization_state": "N/A",
-      "current_state": "MISSING_BACKEND_INTEGRATION",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.4",
-      "e2e_proof": "required: test charge -> signed webhook -> invoice PAID",
-      "notes": "No payment-provider integration exists in current repository."
+      "e2e_proof": "scripts/smoke_start_23_4.sh: idempotent charge -> signed webhook -> invoice PAID + duplicate delivery",
+      "notes": "Payments is an isolated provider adapter. Production uses Stripe runtime secrets; CI uses the deterministic mock adapter through the same persisted webhook/settlement path."
     },
     {
       "id": "MODULE-CANCELLATION-CONSISTENCY",
