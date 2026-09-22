@@ -162,18 +162,9 @@ void main() {
     await tester.tap(find.byKey(openKey));
     await tester.pumpAndSettle();
 
-    final dialogException = tester.takeException();
-    if (dialogException != null) {
-      // Keep this message explicit: Chrome's compact test reporter otherwise
-      // collapses Flutter render exceptions into a generic failed-test line.
-      // ignore: avoid_print
-      print('START23_BRAND_DIALOG_EXCEPTION: $dialogException');
-      debugDumpRenderTree();
-      fail('BrandDialog produced a render exception: $dialogException');
-    }
-
     expect(find.text('Save configuration changes'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('content header and action matrix has no overflow', (tester) async {
