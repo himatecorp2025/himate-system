@@ -215,12 +215,12 @@ func (a *app) migrate(ctx context.Context) error {
 	}
 
 	for _, g := range seedGroups {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups(group_key,label,label_en,label_hu,sort_order) VALUES($1,$2,$2,$2,$3) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN label_hu='' THEN EXCLUDED.label_hu ELSE label_hu END,sort_order=EXCLUDED.sort_order`, g.Key, g.Label, g.Order); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order) VALUES($1,$2,$2,$2,$3) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,sort_order=EXCLUDED.sort_order`, g.Key, g.Label, g.Order); err != nil {
 			return err
 		}
 	}
 	for _, m := range seedModules {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified reference module','Klavierhaus verified reference module','Klavierhaus verified reference module',TRUE,'ACTIVE') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN label_hu='' THEN EXCLUDED.label_hu ELSE label_hu END,group_key=EXCLUDED.group_key,system=TRUE`, m.Key, m.Label, m.Group); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified reference module','Klavierhaus verified reference module','Klavierhaus verified reference module',TRUE,'ACTIVE') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,group_key=EXCLUDED.group_key,system=TRUE`, m.Key, m.Label, m.Group); err != nil {
 			return err
 		}
 		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW()) ON CONFLICT(partner_id,module_key) DO NOTHING`, m.Key); err != nil {
