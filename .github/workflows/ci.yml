@@ -53,6 +53,7 @@ jobs:
           test -s ../docs/START-22.1_ACCEPTANCE.md
           test -s ../docs/START-22.2_ACCEPTANCE.md
           test -s ../docs/START-22.3_ACCEPTANCE.md
+          test -s ../docs/START-23_ACCEPTANCE.md
           test -s ../docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md
           test -s ../docs/adr/0005-klavierhaus-one-way-data-connector.md
       - run: go build ./cmd/...
@@ -71,6 +72,8 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test --platform chrome
+      - name: Run START-23 responsive and bilingual frontend audit
+        run: python3 ../scripts/audit_start_23_frontend.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -113,6 +116,7 @@ jobs:
           test -s lib/notifications_panel.dart
           test -s lib/partner_portal.dart
           test -s lib/commercial_automation_ui.dart
+          test -s test/start23_responsive_qa_test.dart
           grep -q 'start223CommercialWorkflowPanel' lib/commercial_automation_ui.dart
           grep -q 'start223WebsiteAdapterPanel' lib/commercial_automation_ui.dart
           grep -q 'Commercial agreement reference' lib/main.dart
@@ -267,6 +271,8 @@ jobs:
         run: sh scripts/audit_privacy_start_01_22_3.sh http://127.0.0.1:8080
       - name: Run post-START-22.3 concurrent load audit
         run: sh scripts/audit_load_start_01_22_3.sh http://127.0.0.1:8080
+      - name: Run START-23 responsive and functional route-matrix smoke
+        run: sh scripts/smoke_start_23.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
