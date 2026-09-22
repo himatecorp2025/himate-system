@@ -22,6 +22,11 @@ START-23.8 closes exactly these functional-matrix contracts:
 - `DESIGN-PREVIEW`
 - `SEO-DRAFT`
 - `SEO-PUBLISH`
+- `PARTNER-DESIGN-MEDIA`
+- `PARTNER-DESIGN-PROFILE-CREATE`
+- `PARTNER-DESIGN-PROFILE-UPDATE`
+- `PARTNER-DESIGN-ACTIVATE`
+- `PARTNER-DESIGN-PUBLIC`
 
 No START-23.9+ product scope is included.
 
@@ -188,6 +193,111 @@ The published design affects:
 - footer navigation;
 - locale-specific navigation labels.
 
+## Multi-surface brand asset contract
+
+The Design Guide is not limited to one generic logo field.
+
+START-23.8 defines independent visual asset slots:
+
+- `header_wordmark`
+- `footer_wordmark`
+- `favicon`
+- `app_icon`
+- `login_logo`
+- `email_logo`
+
+The legacy `logo_media_asset_id` remains backward-compatible and maps to the header wordmark when no explicit slot exists.
+
+Published asset behavior must be real, not configuration-only:
+
+- header/footer wordmarks are rendered independently;
+- favicon replaces the browser icon;
+- app icon provides the application/touch icon;
+- login logo is consumed by the Flutter login surface;
+- email logo is consumed by system email HTML with the header wordmark as fallback;
+- every published design asset remains protected by CMS media publication rules.
+
+The Design Guide also persists a `layout_key`. START-23.8 supports the layout families `classic_editorial`, `modern_grid` and `minimal`.
+
+## Partner / tenant theme architecture
+
+The visual theme system is a separate domain from content and business mechanics.
+
+A theme profile contains only:
+
+- layout family;
+- visual colors;
+- typography;
+- button radius;
+- brand asset slot references.
+
+It must never contain or copy:
+
+- CMS text or page content;
+- module configuration;
+- module subscription state;
+- billing state;
+- partner company data;
+- workflow state;
+- business rules or application mechanics.
+
+### Design catalog
+
+CMS persists reusable catalog themes in `cms.design_profiles` with `owner_type=CATALOG`.
+
+START-23.8 seeds:
+
+- Classic Editorial;
+- Modern Grid;
+- Minimal.
+
+The catalog model is intentionally independent from commercial package enforcement. A later package/entitlement rule may restrict which profiles or how many profiles a partner may select without changing the profile/content architecture.
+
+### Partner-owned custom profiles
+
+A partner may own custom profiles with `owner_type=PARTNER`.
+
+Partner users can:
+
+- list catalog plus own profiles;
+- upload tenant-owned visual media;
+- create a custom profile;
+- edit only their own custom profile;
+- activate a visible catalog profile or their own profile.
+
+A partner can never edit a catalog profile.
+
+### Tenant media boundary
+
+Partner theme media is stored in CMS/Storage with explicit `owner_type=PARTNER` and `owner_id=<partnerId>`.
+
+A custom partner theme may reference only media owned by the same partner.
+
+Cross-tenant media reuse must fail closed.
+
+Inactive partner theme media is not public merely because it exists. Media becomes public only when referenced by the active partner theme.
+
+### Logic-preserving theme activation
+
+The active design is represented by one pointer:
+
+`cms.design_scope_state.active_profile_id`
+
+Theme activation changes this pointer only.
+
+It must not update content, modules, company data, billing, workflow state or mechanics.
+
+The activation audit explicitly records:
+
+- `content_binding=UNCHANGED`
+- `mechanics_binding=UNCHANGED`
+
+The public/runtime read model is:
+
+`GET /public/v1/cms/partner-design/{partnerId}`
+
+This allows a partner website or runtime to resolve the active skin independently from all content/business APIs. Therefore a design can be swapped without migrating content or application logic.
+
 ## SEO contract
 
 ### Draft
@@ -233,6 +343,10 @@ No JavaScript execution may be required for these tags to exist.
 - desktop/tablet/mobile design preview paths and admin controls;
 - published SEO rendering path;
 - START-23.8 matrix closure;
+- independent brand asset slots and layout families;
+- tenant-owned theme profiles and media ownership;
+- partner theme activation pointer with unchanged content/mechanics bindings;
+- Partner Portal Design read/write permission boundary;
 - START-23.1–23.6 cross-phase guard remains active;
 - START-23.7 audit remains active;
 - CI executes START-23.8 static and Compose gates.
@@ -267,7 +381,17 @@ No JavaScript execution may be required for these tags to exist.
 24. SEO publish inserts Organization JSON-LD;
 25. static fallback page receives published global SEO;
 26. immutable page version history and CMS audit preserve the workflow;
-27. global Design/SEO fixture values are restored after the smoke.
+27. global Design/SEO fixture values are restored after the smoke;
+28. two isolated partner design tenants are created;
+29. partner theme catalog exposes the three reusable visual families;
+30. partner-owned image upload is checksum-backed and private before activation;
+31. partner-owned custom theme creation and editing persist;
+32. a second tenant cannot reference the first tenant's brand asset;
+33. catalog theme activation changes only the active-profile pointer;
+34. custom theme activation changes the public partner-theme read model;
+35. company and module fingerprints are identical before and after both theme changes;
+36. active partner theme assets become public only after activation;
+37. partner theme create/edit/activate/media mutations are centrally audited with the authenticated tenant scope.
 
 ## Release contract
 
@@ -286,6 +410,6 @@ START-23.8 is complete only when:
 - START-23.8 static audit passes;
 - complete historical Docker Compose regression remains green;
 - START-23.8 mutation smoke passes;
-- all 12 START-23.8 functional-matrix contracts are closed;
+- all 17 START-23.8 functional-matrix contracts are closed;
 - pull request is merged into `develop`;
 - the merge commit's `develop` push CI is green.
