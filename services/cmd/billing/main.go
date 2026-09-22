@@ -1663,6 +1663,18 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		if err := a.db.QueryRowContext(ctx, `SELECT id,base_fee FROM billing.invoices
 			WHERE partner_id=$1 AND service_period_start=$2 AND service_period_end=$3`,
 			id, start, end).Scan(&invoiceID, &base); err != nil { return err }
+		if inserted == 0 {
+			var finalized bool
+			if err := a.db.QueryRowContext(ctx, `SELECT EXISTS(
+				SELECT 1 FROM billing.billing_events WHERE event_key=$1
+			)`, "INVOICE_GENERATED:"+invoiceID).Scan(&finalized); err != nil { return err }
+			if finalized {
+				var persistedTotal float64
+				if err := a.db.QueryRowContext(ctx, `SELECT total FROM billing.invoices WHERE id=$1`, invoiceID).Scan(&persistedTotal); err != nil { return err }
+				a.queueInvoiceCollection(ctx, invoiceID, id, t.Currency, persistedTotal)
+				continue
+			}
+		}
 		moduleTotal, adjustment, err := a.attachInvoiceItems(ctx, invoiceID, id, t.Currency, start, end, base, t.MinimumMonthlyCommitment)
 		if err != nil { return err }
 		total := math.Round((base+moduleTotal+adjustment)*100)/100
