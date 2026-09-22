@@ -284,6 +284,213 @@ audit="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/cms/pages/$page_en_id/audit")"
 printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); actions={x["action"] for x in d["items"]}; required={"PAGE_CREATED","DRAFT_SAVED","PREVIEW_CREATED","PUBLISHED","ROLLBACK_PUBLISHED"}; assert required<=actions,(required-actions,actions)'
 echo ok
 
+printf 'create two isolated partner design tenants... '
+PARTNER_A_PASSWORD="$(python3 -c 'import secrets; print("Pta8!"+secrets.token_urlsafe(24))')"
+PARTNER_B_PASSWORD="$(python3 -c 'import secrets; print("Ptb8!"+secrets.token_urlsafe(24))')"
+partner_a_payload="$(python3 - "$STAMP" <<'PY'
+import json,sys
+stamp=sys.argv[1]
+print(json.dumps({
+  "display_name":"START 23.8 Design Tenant A "+stamp,
+  "legal_name":"START 23.8 Design Tenant A LLC",
+  "brand_name":"Theme Tenant A",
+  "contact_name":"Theme Owner A",
+  "contact_email":"theme-owner-a-"+stamp+"@example.com",
+  "country":"US"
+}))
+PY
+)"
+partner_b_payload="$(python3 - "$STAMP" <<'PY'
+import json,sys
+stamp=sys.argv[1]
+print(json.dumps({
+  "display_name":"START 23.8 Design Tenant B "+stamp,
+  "legal_name":"START 23.8 Design Tenant B LLC",
+  "brand_name":"Theme Tenant B",
+  "contact_name":"Theme Owner B",
+  "contact_email":"theme-owner-b-"+stamp+"@example.com",
+  "country":"US"
+}))
+PY
+)"
+partner_a="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$partner_a_payload" "$BASE_URL/api/v1/partners")"
+partner_b="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$partner_b_payload" "$BASE_URL/api/v1/partners")"
+partner_a_id="$(printf '%s' "$partner_a" | json_field id)"
+partner_b_id="$(printf '%s' "$partner_b" | json_field id)"
+test -n "$partner_a_id"
+test -n "$partner_b_id"
+test "$partner_a_id" != "$partner_b_id"
+echo ok
+
+printf 'bootstrap and authenticate tenant-scoped partner owners... '
+partner_a_email="ci-start238-owner-a-$STAMP@example.com"
+partner_b_email="ci-start238-owner-b-$STAMP@example.com"
+owner_a_payload="$(python3 - "$partner_a_email" "$PARTNER_A_PASSWORD" <<'PY'
+import json,sys
+print(json.dumps({"name":"START 23.8 Theme Owner A","email":sys.argv[1],"password":sys.argv[2],"role":"owner"}))
+PY
+)"
+owner_b_payload="$(python3 - "$partner_b_email" "$PARTNER_B_PASSWORD" <<'PY'
+import json,sys
+print(json.dumps({"name":"START 23.8 Theme Owner B","email":sys.argv[1],"password":sys.argv[2],"role":"owner"}))
+PY
+)"
+curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$owner_a_payload" "$BASE_URL/api/v1/partners/$partner_a_id/portal-users" >/dev/null
+curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$owner_b_payload" "$BASE_URL/api/v1/partners/$partner_b_id/portal-users" >/dev/null
+login_a="$(python3 - "$partner_a_email" "$PARTNER_A_PASSWORD" <<'PY'
+import json,sys
+print(json.dumps({"email":sys.argv[1],"password":sys.argv[2],"remember":False}))
+PY
+)"
+login_b="$(python3 - "$partner_b_email" "$PARTNER_B_PASSWORD" <<'PY'
+import json,sys
+print(json.dumps({"email":sys.argv[1],"password":sys.argv[2],"remember":False}))
+PY
+)"
+curl -fsS -c "$PARTNER_A_COOKIE" -H 'Content-Type: application/json' -d "$login_a" "$BASE_URL/partner/api/v1/auth/login" >/dev/null
+curl -fsS -c "$PARTNER_B_COOKIE" -H 'Content-Type: application/json' -d "$login_b" "$BASE_URL/partner/api/v1/auth/login" >/dev/null
+me_a="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/auth/me")"
+printf '%s' "$me_a" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["partner_id"]==sys.argv[1]; assert "*" in d["permissions"]' "$partner_a_id"
+echo ok
+
+printf 'partner design catalog starts with selectable visual-only themes... '
+design_a_initial="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/design")"
+printf '%s' "$design_a_initial" | python3 -c 'import json,sys; d=json.load(sys.stdin); ids={x["id"] for x in d["profiles"]}; assert {"theme_classic_editorial","theme_modern_grid","theme_minimal"}<=ids; assert d["active_profile_id"]=="theme_classic_editorial"; assert d["content_binding"]=="UNCHANGED"; assert d["mechanics_binding"]=="UNCHANGED"'
+echo ok
+
+printf 'capture partner content and mechanics fingerprint before any theme switch... '
+company_before="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/company")"
+modules_before="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/modules")"
+company_fp_before="$(printf '%s' "$company_before" | python3 -c 'import json,sys,hashlib; d=json.load(sys.stdin); keep={k:d.get(k) for k in ("id","display_name","legal_name","brand_name","lifecycle","country","city","primary_domain")}; print(hashlib.sha256(json.dumps(keep,sort_keys=True,separators=(",",":")).encode()).hexdigest())')"
+modules_fp_before="$(printf '%s' "$modules_before" | python3 -c 'import json,sys,hashlib; d=json.load(sys.stdin); rows=sorted((str(x.get("key","")),str(x.get("status","")),bool(x.get("visible_to_partner",True)),bool(x.get("included_in_base",False))) for x in d.get("items",[])); print(hashlib.sha256(json.dumps(rows,separators=(",",":")).encode()).hexdigest())')"
+test -n "$company_fp_before"
+test -n "$modules_fp_before"
+echo ok
+
+printf 'tenant A uploads checksum-backed partner-owned brand asset... '
+partner_media="$(curl -fsS -b "$PARTNER_A_COOKIE" -F 'alt_text=START 23.8 partner theme asset' -F "file=@$PNG;type=image/png;filename=partner-theme.png" "$BASE_URL/partner/api/v1/design/media")"
+partner_media_id="$(printf '%s' "$partner_media" | json_field id)"
+test -n "$partner_media_id"
+printf '%s' "$partner_media" | python3 -c 'import json,sys,re; d=json.load(sys.stdin); assert d["mime_type"]=="image/png"; assert re.fullmatch(r"[0-9a-f]{64}",d["sha256"])'
+private_partner_media="$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE_URL/public/v1/cms/media/$partner_media_id")"
+test "$private_partner_media" = "404"
+echo ok
+
+printf 'tenant A creates and edits a custom visual-only theme profile... '
+custom_theme_payload="$(python3 - "$partner_media_id" <<'PY'
+import json,sys
+media=sys.argv[1]
+print(json.dumps({
+  "name":"START 23.8 Custom Grid",
+  "description":"Tenant A custom theme; content and mechanics are external bindings.",
+  "theme":{
+    "layout_key":"modern_grid",
+    "navy":"#17365D",
+    "gold":"#C99A45",
+    "background":"#F4F6F8",
+    "text_color":"#182230",
+    "heading_font":"Inter",
+    "body_font":"Inter",
+    "button_radius":14,
+    "assets":{
+      "header_wordmark":media,
+      "footer_wordmark":media,
+      "favicon":media,
+      "app_icon":media,
+      "login_logo":media,
+      "email_logo":media
+    }
+  }
+},separators=(",",":")))
+PY
+)"
+custom_profile="$(curl -fsS -b "$PARTNER_A_COOKIE" -H 'Content-Type: application/json' -d "$custom_theme_payload" "$BASE_URL/partner/api/v1/design/profiles")"
+custom_profile_id="$(printf '%s' "$custom_profile" | json_field id)"
+test -n "$custom_profile_id"
+updated_theme_payload="$(python3 - "$partner_media_id" <<'PY'
+import json,sys
+media=sys.argv[1]
+print(json.dumps({
+  "name":"START 23.8 Custom Grid Updated",
+  "description":"Updated tenant theme with the same external content/mechanics bindings.",
+  "theme":{
+    "layout_key":"modern_grid",
+    "navy":"#17365D",
+    "gold":"#D2A84A",
+    "background":"#F4F6F8",
+    "text_color":"#182230",
+    "heading_font":"Inter",
+    "body_font":"Inter",
+    "button_radius":16,
+    "assets":{
+      "header_wordmark":media,
+      "footer_wordmark":media,
+      "favicon":media,
+      "app_icon":media,
+      "login_logo":media,
+      "email_logo":media
+    }
+  }
+},separators=(",",":")))
+PY
+)"
+updated_profile="$(curl -fsS -b "$PARTNER_A_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$updated_theme_payload" "$BASE_URL/partner/api/v1/design/profiles/$custom_profile_id")"
+printf '%s' "$updated_profile" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["name"]=="START 23.8 Custom Grid Updated"; assert d["theme"]["gold"]=="#D2A84A"; assert d["theme"]["button_radius"]==16'
+echo ok
+
+printf 'tenant B cannot reference tenant A brand asset in its own theme... '
+cross_tenant_payload="$(python3 - "$partner_media_id" <<'PY'
+import json,sys
+print(json.dumps({
+  "name":"Illegal Cross Tenant Theme",
+  "description":"Must fail",
+  "theme":{
+    "layout_key":"minimal",
+    "navy":"#111827",
+    "gold":"#B8893C",
+    "background":"#FFFFFF",
+    "text_color":"#111827",
+    "heading_font":"Georgia",
+    "body_font":"Arial",
+    "button_radius":2,
+    "assets":{"header_wordmark":sys.argv[1]}
+  }
+}))
+PY
+)"
+cross_tenant_code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$PARTNER_B_COOKIE" -H 'Content-Type: application/json' -d "$cross_tenant_payload" "$BASE_URL/partner/api/v1/design/profiles")"
+test "$cross_tenant_code" = "400"
+grep -q 'does not belong to this partner' "$BODY"
+echo ok
+
+printf 'catalog theme activation changes only the active design pointer... '
+catalog_activation="$(curl -fsS -b "$PARTNER_A_COOKIE" -H 'Content-Type: application/json' -d '{}' "$BASE_URL/partner/api/v1/design/profiles/theme_minimal/activate")"
+printf '%s' "$catalog_activation" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["active_profile_id"]=="theme_minimal"; assert d["content_binding"]=="UNCHANGED"; assert d["mechanics_binding"]=="UNCHANGED"'
+public_minimal="$(curl -fsS "$BASE_URL/public/v1/cms/partner-design/$partner_a_id")"
+printf '%s' "$public_minimal" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["profile_id"]=="theme_minimal"; assert d["theme"]["layout_key"]=="minimal"'
+echo ok
+
+printf 'custom theme activation preserves content and mechanical state... '
+custom_activation="$(curl -fsS -b "$PARTNER_A_COOKIE" -H 'Content-Type: application/json' -d '{}' "$BASE_URL/partner/api/v1/design/profiles/$custom_profile_id/activate")"
+printf '%s' "$custom_activation" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["active_profile_id"]==sys.argv[1]; assert d["content_binding"]=="UNCHANGED"; assert d["mechanics_binding"]=="UNCHANGED"' "$custom_profile_id"
+company_after="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/company")"
+modules_after="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/modules")"
+company_fp_after="$(printf '%s' "$company_after" | python3 -c 'import json,sys,hashlib; d=json.load(sys.stdin); keep={k:d.get(k) for k in ("id","display_name","legal_name","brand_name","lifecycle","country","city","primary_domain")}; print(hashlib.sha256(json.dumps(keep,sort_keys=True,separators=(",",":")).encode()).hexdigest())')"
+modules_fp_after="$(printf '%s' "$modules_after" | python3 -c 'import json,sys,hashlib; d=json.load(sys.stdin); rows=sorted((str(x.get("key","")),str(x.get("status","")),bool(x.get("visible_to_partner",True)),bool(x.get("included_in_base",False))) for x in d.get("items",[])); print(hashlib.sha256(json.dumps(rows,separators=(",",":")).encode()).hexdigest())')"
+test "$company_fp_after" = "$company_fp_before"
+test "$modules_fp_after" = "$modules_fp_before"
+public_custom="$(curl -fsS "$BASE_URL/public/v1/cms/partner-design/$partner_a_id")"
+printf '%s' "$public_custom" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["profile_id"]==sys.argv[1]; assert d["theme"]["layout_key"]=="modern_grid"; assert d["theme"]["assets"]["favicon"]==sys.argv[2]' "$custom_profile_id" "$partner_media_id"
+curl -fsS "$BASE_URL/public/v1/cms/media/$partner_media_id" -o "$MEDIA_OUT"
+cmp "$PNG" "$MEDIA_OUT"
+echo ok
+
+printf 'partner theme mutations are centrally audited with tenant scope... '
+sleep 1
+partner_design_audit="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/audit/events?partner_id=$partner_a_id&limit=100")"
+printf '%s' "$partner_design_audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); actions={x["action"] for x in d["items"]}; required={"PARTNER_DESIGN_MEDIA_UPLOADED","PARTNER_THEME_PROFILE_CREATED","PARTNER_THEME_PROFILE_UPDATED","PARTNER_THEME_ACTIVATED"}; assert required<=actions,(required-actions,actions); assert all(x["partner_id"]==sys.argv[1] for x in d["items"])' "$partner_a_id"
+echo ok
+
 printf 'restore prior published Design and SEO values for later acceptance phases... '
 design_restore="$(printf '%s' "$design_before" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["published"],separators=(",",":")))' )"
 seo_restore="$(printf '%s' "$seo_before" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["published"],separators=(",",":")))' )"
