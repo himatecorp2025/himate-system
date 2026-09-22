@@ -8,6 +8,7 @@ create_pdf_evidence() {
   evidence_type="$3"
   title="$4"
   tag="$5"
+  metric_key="${6:-}"
 
   tmp_root="${TMPDIR:-/tmp}"
   pdf="$tmp_root/himate-evidence-${tag}-$$.pdf"
