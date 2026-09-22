@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–23.8
+# HIMATE control-plane architecture — START-01–23.11.1
 
 ```text
 Browser / Admin / Partner Portal / Search crawler
@@ -529,3 +529,14 @@ Backup scheduling uses one shared due-policy implementation for both the backgro
 
 START-23.10 provides containerized mutation proof and production configuration proof. External live Render deployment plus public DNS/TLS evidence remains intentionally reserved for START-23.12 production acceptance.
 
+
+
+## START-23.11.1 module and commercial authority boundaries
+
+Catalog owns module identity, dependency metadata, implementation state and publication state. A catalog module may be a truthful legacy reference without being published. `PUBLISHED` is allowed only after the implementation reaches `READY`; Partner Portal reads and activation exclude unpublished modules.
+
+Partner entitlement is a separate tenant-scoped state. The compatibility `status` field remains available for earlier phases, while `entitlement_state` explicitly models `INACTIVE`, `ACTIVE` and Billing-owned `CANCEL_PENDING`. Operational maintenance/availability remains independent from both publication and commercial entitlement.
+
+Catalog-level monetary values are reference/list values only. The charging authority is the partner contract. Billing owns partner-level negotiated activation fee, base service fee, minimum monthly commitment, quote reference and terms versions; Catalog owns partner-module negotiated recurring and activation prices with effective-dated history. The quote/currency reference is carried into price history so later billing can prove which commercial agreement authorized a charge.
+
+For USD contracts the current platform policy floor is a 1,500 minimum monthly commitment. Activation/license fees have no global fixed floor and are negotiated per partner. START-23.11.1 stores these terms but deliberately leaves invoice timing, full-period charging and no-proration behavior to START-23.11.2.

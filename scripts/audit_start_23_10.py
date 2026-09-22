@@ -33,9 +33,16 @@ acceptance = read("docs/START-23.10_ACCEPTANCE.md")
 ci = read(".github/workflows/ci.yml")
 smoke = read("scripts/smoke_start_23_10.sh")
 
-require("0.8.14-start-23.10" in compose, "Compose release is not START-23.10")
-require("0.8.14-start-23.10" in render, "Render release is not START-23.10")
-require("version: 0.8.14-start-23.10" in openapi, "OpenAPI release is not START-23.10")
+def phase_tuple(raw: str):
+    value = raw[3:] if raw.startswith("23.") else raw
+    return tuple(int(x) for x in value.split("."))
+
+def release_phase(text: str):
+    match = re.search(r"0\.8\.\d+-start-23\.([0-9]+(?:\.[0-9]+)*)", text)
+    return phase_tuple(match.group(1)) if match else ()
+
+for name, text in (("Compose", compose), ("Render", render), ("OpenAPI", openapi)):
+    require(release_phase(text) >= (10,), f"{name} release predates START-23.10")
 
 for token in (
     'defaultProvider: strings.ToLower(strings.TrimSpace(common.Env("HIMATE_RUNTIME_PROVIDER", "local")))',
@@ -123,7 +130,7 @@ for token in (
 
 rows = [x for x in matrix.get("contracts", []) if x.get("target_phase") == "23.10"]
 require(len(rows) == 11, f"expected 11 START-23.10 contracts, found {len(rows)}")
-require(str(matrix.get("completed_through")) == "23.10", "functional matrix is not completed through START-23.10")
+require(phase_tuple(str(matrix.get("completed_through", "0"))) >= (10,), "functional matrix is not completed through START-23.10")
 prod_ids = {"BACKUP-CREATE", "BACKUP-RESTORE-TEST"}
 for row in rows:
     require(row.get("localization_state") == "COMPLETE", f"{row.get('id')} localization is incomplete")

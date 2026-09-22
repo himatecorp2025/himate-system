@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.14-start-23.10
+  version: 0.8.15-start-23.11.1
   description: >
-    Authenticated REST contract for the START-01 through START-23.10 HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.1 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -323,7 +323,11 @@ paths:
   /partner/api/v1/modules:
     get:
       tags: [Partner Portal]
-      summary: Own active and available modules with effective tenant price and dependency blockers
+      summary: Own published modules with contracted tenant price and dependency blockers
+      description: >
+        Unpublished modules are hidden. commercial_ready is true only when the partner
+        has an explicit effective recurring price or the module is explicitly included
+        in the base service; catalog reference prices are never charging authority.
       responses:
         "200": {description: Tenant module catalog}
   /partner/api/v1/modules/{moduleKey}/activate:
@@ -332,10 +336,10 @@ paths:
     post:
       tags: [Partner Portal]
       summary: Activate an eligible module for the authenticated tenant
-      description: Backend enforces availability, REQUIRES and CONFLICTS_WITH relationships. Global price, source and dependency metadata are immutable to partners.
+      description: Backend enforces PUBLISHED + commercial_ready, availability, REQUIRES and CONFLICTS_WITH relationships. Catalog reference prices, source and dependency metadata are immutable to partners.
       responses:
         "200": {description: Module activated and billing synchronized}
-        "409": {description: Dependency, conflict, maintenance or availability gate blocked activation}
+        "409": {description: Unpublished, unconfigured commercial terms, dependency, conflict, maintenance or availability gate blocked activation}
   /partner/api/v1/modules/{moduleKey}/subscription:
     parameters:
       - {name: moduleKey, in: path, required: true, schema: {type: string}}
@@ -620,7 +624,7 @@ paths:
         "200": {description: Canonical and custom modules}
     post:
       tags: [Modules]
-      summary: Create custom module with bilingual label/description metadata
+      summary: Create module registry entry with bilingual metadata, implementation state and publication state
       responses:
         "201": {description: Module created}
         "409": {description: Stable key conflict}
@@ -632,7 +636,7 @@ paths:
         schema: {type: string}
     patch:
       tags: [Modules]
-      summary: Update bilingual catalog metadata or availability
+      summary: Update catalog metadata, implementation state, publication state or availability
       responses:
         "200": {description: Updated catalog module}
   /api/v1/modules/{moduleKey}/relationships:
@@ -692,9 +696,12 @@ paths:
       - {$ref: "#/components/parameters/PartnerId"}
     get:
       tags: [Modules]
-      summary: Partner module entitlements and effective prices
+      summary: Partner module entitlements and contract pricing
+      description: >
+        Catalog prices are reference values only. Partner charging authority is the
+        partner-specific contract/quote configuration.
       responses:
-        "200": {description: Partner modules}
+        "200": {description: Partner modules, lifecycle state and contract pricing}
   /api/v1/partners/{partnerId}/modules/{moduleKey}:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -704,11 +711,14 @@ paths:
         schema: {type: string}
     patch:
       tags: [Modules]
-      summary: Update partner module state, visibility, package inclusion, recurring price or activation fee
+      summary: Update partner module entitlement and individual contract pricing
       description: >
-        Recurring pricing accepts an optional RFC3339 or YYYY-MM-DD price_effective_at.
-        Partner-specific one-time activation fees accept activation_fee_effective_at.
-        Historical changes retain actor, reason, old value and new value.
+        Partner-specific commercial configuration includes contract currency,
+        quote_reference, base-package inclusion, recurring module price and module
+        activation fee. Recurring pricing accepts an optional RFC3339 or YYYY-MM-DD
+        price_effective_at. Partner-specific one-time activation fees accept
+        activation_fee_effective_at. Historical changes retain actor, reason, old
+        value, new value, contract currency and quote reference.
       responses:
         "200": {description: Updated partner module}
   /api/v1/partners/{partnerId}/modules/{moduleKey}/commercial-history:
@@ -741,12 +751,24 @@ paths:
         "200": {description: Commercial terms}
     put:
       tags: [Billing]
-      summary: Update partner commercial terms
+      summary: Update partner-specific commercial terms
       description: >
-        Records base-fee history and the activation-date anchor for the 30-day
-        service cycle.
+        Persists negotiated activation fee, base fee, minimum monthly commitment,
+        quote reference and a monotonic terms version. USD contracts enforce the
+        HIMATE minimum monthly commitment of 1,500 while activation fees remain
+        individually negotiated. START-23.11.1 does not change invoice-cycle semantics.
       responses:
-        "200": {description: Updated terms}
+        "200": {description: Updated individual commercial terms}
+        "400": {description: Invalid amount or USD minimum commitment below 1,500}
+        "409": {description: Commercial terms changed concurrently}
+  /api/v1/billing/partners/{partnerId}/terms-history:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Read versioned partner commercial-term snapshots
+      responses:
+        "200": {description: Descending partner commercial-term versions with actor and reason}
   /api/v1/billing/partners/{partnerId}/agreement:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}

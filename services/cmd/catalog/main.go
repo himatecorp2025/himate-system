@@ -21,12 +21,10 @@ type seedGroup struct {
 }
 
 var seedGroups = []seedGroup{
-	{"workshop", "Workshop", 1},
-	{"finance_invoicing", "Finance & Invoicing", 2},
-	{"technical", "Technical Operations", 3},
-	{"marketing", "Marketing", 4},
-	{"website_events", "Website & Events", 5},
-	{"communication", "Communication", 6},
+	{"finance_invoicing", "Finance & Invoicing", 1},
+	{"technical", "Technical Operations", 2},
+	{"marketing", "Marketing", 3},
+	{"website_events", "Website & Events", 4},
 }
 
 var seedModules = []seedModule{
@@ -48,7 +46,7 @@ var seedModules = []seedModule{
 	{"settings", "Settings", "technical"},
 	{"system_integrations", "System Activation & Integrations", "technical"},
 	{"users", "Users", "technical"},
-	{"workshop_workflow", "Workshop Workflow", "workshop"},
+	{"workshop_workflow", "Workshop Workflow", "technical"},
 	{"marketing_overview", "Campaign Overview", "marketing"},
 	{"customer_inbox", "Customer Inbox", "marketing"},
 	{"website_reviews", "Reviews", "marketing"},
@@ -71,6 +69,9 @@ var seedModules = []seedModule{
 }
 
 var moduleStates = map[string]bool{"ACTIVE": true, "NOT_LICENSED": true, "MAINTENANCE": true}
+var publicationStates = map[string]bool{"UNPUBLISHED": true, "PUBLISHED": true}
+var implementationStates = map[string]bool{"LEGACY_REFERENCE": true, "IN_DEVELOPMENT": true, "READY": true}
+var entitlementStates = map[string]bool{"INACTIVE": true, "ACTIVE": true, "CANCEL_PENDING": true}
 var availabilityValues = map[string]bool{"ACTIVE": true, "UNAVAILABLE": true, "DEPRECATED": true}
 var moduleTypes = map[string]bool{"CORE": true, "FEATURE": true, "INTEGRATION": true, "REPORTING": true, "WEBSITE": true, "FINANCE": true, "INFRASTRUCTURE": true}
 var relationshipTypes = map[string]bool{"REQUIRES": true, "OPTIONAL_DEPENDENCY": true, "INTEGRATES_WITH": true, "EXTENDS": true, "CONFLICTS_WITH": true, "REPLACES": true}
@@ -210,20 +211,45 @@ func (a *app) migrate(ctx context.Context) error {
 			`UPDATE catalog.modules SET description_en=description WHERE description_en=''`,
 			`UPDATE catalog.modules SET description_hu=description WHERE description_hu=''`,
 		}},
+		{Version: 7, Name: "start-23-11-1-module-registry-commercial-model", Statements: []string{
+			`ALTER TABLE catalog.module_groups ADD COLUMN IF NOT EXISTS is_primary_navigation BOOLEAN NOT NULL DEFAULT FALSE`,
+			`UPDATE catalog.module_groups SET is_primary_navigation=FALSE`,
+			`UPDATE catalog.module_groups SET is_primary_navigation=TRUE WHERE group_key IN ('finance_invoicing','technical','marketing','website_events')`,
+			`UPDATE catalog.modules SET group_key='technical' WHERE module_key='workshop_workflow' AND group_key='workshop'`,
+			`DELETE FROM catalog.module_groups g WHERE g.group_key IN ('workshop','communication') AND NOT EXISTS (SELECT 1 FROM catalog.modules m WHERE m.group_key=g.group_key)`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'UNPUBLISHED'`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS implementation_state TEXT NOT NULL DEFAULT 'IN_DEVELOPMENT'`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS legacy_reference TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS entitlement_state TEXT NOT NULL DEFAULT 'INACTIVE'`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS commercial_configured BOOLEAN NOT NULL DEFAULT FALSE`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS contract_currency TEXT NOT NULL DEFAULT 'USD'`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS quote_reference TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS commercial_effective_at TIMESTAMPTZ`,
+			`ALTER TABLE catalog.price_history ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD'`,
+			`ALTER TABLE catalog.price_history ADD COLUMN IF NOT EXISTS quote_reference TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.activation_fee_history ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD'`,
+			`ALTER TABLE catalog.activation_fee_history ADD COLUMN IF NOT EXISTS quote_reference TEXT NOT NULL DEFAULT ''`,
+			`UPDATE catalog.partner_modules SET entitlement_state=CASE WHEN status='ACTIVE' THEN 'ACTIVE' ELSE 'INACTIVE' END WHERE entitlement_state='INACTIVE'`,
+			`UPDATE catalog.partner_modules SET commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,updated_at) WHERE price_override IS NOT NULL OR activation_fee_override IS NOT NULL OR included_in_base=TRUE`,
+			`UPDATE catalog.modules SET implementation_state='LEGACY_REFERENCE',legacy_reference='KLAVIERHAUS_LEGACY' WHERE system=TRUE AND legacy_reference=''`,
+			`CREATE INDEX IF NOT EXISTS catalog_modules_publication_idx ON catalog.modules(publication_status,group_key)`,
+			`CREATE INDEX IF NOT EXISTS partner_modules_entitlement_idx ON catalog.partner_modules(partner_id,entitlement_state)`,
+			`CREATE INDEX IF NOT EXISTS partner_modules_commercial_idx ON catalog.partner_modules(partner_id,commercial_configured)`,
+		}},
 	}); err != nil {
 		return err
 	}
 
 	for _, g := range seedGroups {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order) VALUES($1,$2,$2,$2,$3) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,sort_order=EXCLUDED.sort_order`, g.Key, g.Label, g.Order); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order,is_primary_navigation) VALUES($1,$2,$2,$2,$3,TRUE) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,sort_order=EXCLUDED.sort_order,is_primary_navigation=TRUE`, g.Key, g.Label, g.Order); err != nil {
 			return err
 		}
 	}
 	for _, m := range seedModules {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified reference module','Klavierhaus verified reference module','Klavierhaus verified reference module',TRUE,'ACTIVE') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,group_key=EXCLUDED.group_key,system=TRUE`, m.Key, m.Label, m.Group); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability,publication_status,implementation_state,legacy_reference) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified legacy reference module','Klavierhaus verified legacy reference module','Klavierhaus verified legacy reference module',TRUE,'ACTIVE','UNPUBLISHED','LEGACY_REFERENCE','KLAVIERHAUS_LEGACY') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,group_key=EXCLUDED.group_key,system=TRUE,implementation_state=CASE WHEN existing.implementation_state='IN_DEVELOPMENT' THEN 'LEGACY_REFERENCE' ELSE existing.implementation_state END,legacy_reference=CASE WHEN existing.legacy_reference='' THEN 'KLAVIERHAUS_LEGACY' ELSE existing.legacy_reference END`, m.Key, m.Label, m.Group); err != nil {
 			return err
 		}
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW()) ON CONFLICT(partner_id,module_key) DO NOTHING`, m.Key); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at,entitlement_state,commercial_configured,contract_currency,quote_reference,commercial_effective_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW(),'ACTIVE',TRUE,'USD','REFERENCE-PARTNER',NOW()) ON CONFLICT(partner_id,module_key) DO UPDATE SET entitlement_state=CASE WHEN catalog.partner_modules.status='ACTIVE' THEN 'ACTIVE' ELSE catalog.partner_modules.entitlement_state END`, m.Key); err != nil {
 			return err
 		}
 	}
@@ -234,14 +260,14 @@ func (a *app) groups(w http.ResponseWriter, r *http.Request) {
 	locale:=common.RequestLocale(r)
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT group_key,label_en,label_hu,sort_order FROM catalog.module_groups ORDER BY sort_order,lower(label_en)`)
+		rows, err := a.db.Query(`SELECT group_key,label_en,label_hu,sort_order,is_primary_navigation FROM catalog.module_groups ORDER BY sort_order,lower(label_en)`)
 		if err != nil { common.APIError(w,500,"DB","Could not load module groups"); return }
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var k,en,hu string; var s int
-			if rows.Scan(&k,&en,&hu,&s)==nil {
-				items=append(items,map[string]any{"group_key":k,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":s})
+			var k,en,hu string; var s int; var primary bool
+			if rows.Scan(&k,&en,&hu,&s,&primary)==nil {
+				items=append(items,map[string]any{"group_key":k,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":s,"is_primary_navigation":primary})
 			}
 		}
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items),"locale":locale})
@@ -296,7 +322,7 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		rows, err := a.db.Query(`SELECT m.module_key,m.label_en,m.label_hu,m.group_key,g.label_en,g.label_hu,m.description_en,m.description_hu,m.default_monthly_price,m.default_activation_fee,m.currency,m.version,m.latest_version,
 			m.last_updated_at,m.system,m.availability,m.module_type,m.owner_team,m.source_repository,m.source_path,m.source_ref,m.source_commit,
-			m.artifact_type,m.artifact_reference,m.min_platform_version,m.manifest,
+			m.artifact_type,m.artifact_reference,m.min_platform_version,m.manifest,m.publication_status,m.implementation_state,m.legacy_reference,
 			(SELECT COUNT(*) FROM catalog.module_relationships mr WHERE mr.module_key=m.module_key),
 			(SELECT COUNT(*) FROM catalog.partner_modules pm WHERE pm.module_key=m.module_key AND pm.status='ACTIVE'),
 			(SELECT COUNT(*) FROM catalog.module_impact_metrics mm WHERE mm.module_key=m.module_key)
@@ -305,15 +331,17 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var k,labelEN,labelHU,g,groupEN,groupHU,descEN,descHU,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+			var k,labelEN,labelHU,g,groupEN,groupHU,descEN,descHU,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,publicationStatus,implementationState,legacyReference string
 			var p,activationFee float64; var t time.Time; var sys bool; var manifestRaw []byte; var relCount,usageCount,metricCount int
-			if rows.Scan(&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&descEN,&descHU,&p,&activationFee,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
+			if rows.Scan(&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&descEN,&descHU,&p,&activationFee,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&publicationStatus,&implementationState,&legacyReference,&relCount,&usageCount,&metricCount)==nil {
 				manifest:=map[string]any{}; _=json.Unmarshal(manifestRaw,&manifest)
 				locale:=common.RequestLocale(r)
 				items=append(items,map[string]any{"key":k,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,"group_key":g,"group_label":common.Localized(groupEN,groupHU,locale),"group_label_en":groupEN,"group_label_hu":groupHU,"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,"default_monthly_price":p,"default_activation_fee":activationFee,"currency":currency,
 					"version":v,"latest_version":lv,"last_updated_at":t,"system":sys,"availability":availability,"module_type":moduleType,"owner_team":owner,
 					"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,"artifact_type":artifactType,"artifact_reference":artifactRef,
-					"min_platform_version":minPlatform,"manifest":manifest,"relationship_count":relCount,"active_partner_count":usageCount,"impact_metric_count":metricCount})
+					"min_platform_version":minPlatform,"manifest":manifest,"publication_status":publicationStatus,"implementation_state":implementationState,"legacy_reference":legacyReference,
+					"reference_monthly_price":p,"reference_activation_fee":activationFee,"pricing_authority":"PARTNER_CONTRACT",
+					"relationship_count":relCount,"active_partner_count":usageCount,"impact_metric_count":metricCount})
 			}
 		}
 		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
@@ -331,6 +359,9 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 			Version string `json:"version"`
 			LatestVersion string `json:"latest_version"`
 			Availability string `json:"availability"`
+			PublicationStatus string `json:"publication_status"`
+			ImplementationState string `json:"implementation_state"`
+			LegacyReference string `json:"legacy_reference"`
 			ModuleType string `json:"module_type"`
 			OwnerTeam string `json:"owner_team"`
 			SourceRepository string `json:"source_repository"`
@@ -353,20 +384,25 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		if descEN==""{descEN=legacyDesc}; if descHU==""{descHU=legacyDesc}
 		if labelEN==""||labelHU==""{common.APIError(w,400,"VALIDATION","English and Hungarian module labels are required");return}
 		if in.Currency==""{in.Currency="USD"}; if in.Version==""{in.Version="1.0.0"}; if in.LatestVersion==""{in.LatestVersion=in.Version}
-		if in.Availability==""{in.Availability="ACTIVE"}; in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
-		if !availabilityValues[in.Availability] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
+		if in.Availability==""{in.Availability="ACTIVE"}
+		in.PublicationStatus=strings.ToUpper(strings.TrimSpace(in.PublicationStatus)); if in.PublicationStatus==""{in.PublicationStatus="UNPUBLISHED"}
+		in.ImplementationState=strings.ToUpper(strings.TrimSpace(in.ImplementationState)); if in.ImplementationState==""{in.ImplementationState="IN_DEVELOPMENT"}
+		in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
+		if !availabilityValues[in.Availability] || !publicationStates[in.PublicationStatus] || !implementationStates[in.ImplementationState] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
+		if in.PublicationStatus=="PUBLISHED" && in.ImplementationState!="READY" { common.APIError(w,409,"MODULE_NOT_READY","Only READY modules can be published");return }
 		manifest,_:=json.Marshal(in.Manifest); if len(manifest)==0{manifest=[]byte("{}")}
 		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
 			module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
-			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest)
-			VALUES($1,$2,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11,FALSE,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb)`,
+			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest,publication_status,implementation_state,legacy_reference)
+			VALUES($1,$2,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11,FALSE,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23,$24,$25)`,
 			in.Key,labelEN,labelHU,in.GroupKey,descEN,descHU,in.DefaultMonthlyPrice,in.DefaultActivationFee,in.Currency,in.Version,in.LatestVersion,
 			in.Availability,in.ModuleType,strings.TrimSpace(in.OwnerTeam),strings.TrimSpace(in.SourceRepository),strings.TrimSpace(in.SourcePath),
 			strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.SourceCommit),strings.TrimSpace(in.ArtifactType),strings.TrimSpace(in.ArtifactReference),
-			strings.TrimSpace(in.MinPlatformVersion),string(manifest))
+			strings.TrimSpace(in.MinPlatformVersion),string(manifest),in.PublicationStatus,in.ImplementationState,strings.TrimSpace(in.LegacyReference))
 		if err!=nil{common.APIError(w,409,"CONFLICT","Module could not be created");return}
 		common.JSON(w,201,map[string]any{"key":in.Key,"label":common.Localized(labelEN,labelHU,common.RequestLocale(r)),"label_en":labelEN,"label_hu":labelHU,"description_en":descEN,"description_hu":descHU,"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,"default_activation_fee":in.DefaultActivationFee,
-			"currency":in.Currency,"version":in.Version,"latest_version":in.LatestVersion,"availability":in.Availability,"module_type":in.ModuleType,"system":false})
+			"currency":in.Currency,"version":in.Version,"latest_version":in.LatestVersion,"availability":in.Availability,"publication_status":in.PublicationStatus,
+			"implementation_state":in.ImplementationState,"legacy_reference":strings.TrimSpace(in.LegacyReference),"module_type":in.ModuleType,"pricing_authority":"PARTNER_CONTRACT","system":false})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
@@ -396,6 +432,9 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		DescriptionHU *string `json:"description_hu"`
 		GroupKey *string `json:"group_key"`
 		Availability *string `json:"availability"`
+		PublicationStatus *string `json:"publication_status"`
+		ImplementationState *string `json:"implementation_state"`
+		LegacyReference *string `json:"legacy_reference"`
 		LatestVersion *string `json:"latest_version"`
 		ModuleType *string `json:"module_type"`
 		OwnerTeam *string `json:"owner_team"`
@@ -411,11 +450,11 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		Manifest map[string]any `json:"manifest"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-	var labelEN,labelHU,descEN,descHU,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+	var labelEN,labelHU,descEN,descHU,groupKey,availability,publicationStatus,implementationState,legacyReference,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
 	var price,activationFee float64; var manifestRaw []byte
-	if err:=a.db.QueryRow(`SELECT label_en,label_hu,description_en,description_hu,group_key,default_monthly_price,default_activation_fee,availability,latest_version,module_type,owner_team,source_repository,source_path,
+	if err:=a.db.QueryRow(`SELECT label_en,label_hu,description_en,description_hu,group_key,default_monthly_price,default_activation_fee,availability,publication_status,implementation_state,legacy_reference,latest_version,module_type,owner_team,source_repository,source_path,
 		source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest FROM catalog.modules WHERE module_key=$1`,key).
-		Scan(&labelEN,&labelHU,&descEN,&descHU,&groupKey,&price,&activationFee,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
+		Scan(&labelEN,&labelHU,&descEN,&descHU,&groupKey,&price,&activationFee,&availability,&publicationStatus,&implementationState,&legacyReference,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
 		common.APIError(w,404,"NOT_FOUND","Module not found");return
 	}
 	if in.Label!=nil{legacy:=strings.TrimSpace(*in.Label);if in.LabelEN==nil{labelEN=legacy};if in.LabelHU==nil{labelHU=legacy}}
@@ -425,21 +464,24 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 	if in.DescriptionEN!=nil{descEN=strings.TrimSpace(*in.DescriptionEN)}
 	if in.DescriptionHU!=nil{descHU=strings.TrimSpace(*in.DescriptionHU)}
 	set:=func(dst *string,src *string){if src!=nil{*dst=strings.TrimSpace(*src)}}
-	set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
+	set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&publicationStatus,in.PublicationStatus);set(&implementationState,in.ImplementationState);set(&legacyReference,in.LegacyReference);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
 	set(&repo,in.SourceRepository);set(&path,in.SourcePath);set(&ref,in.SourceRef);set(&commit,in.SourceCommit);set(&artifactType,in.ArtifactType);set(&artifactRef,in.ArtifactReference);set(&minPlatform,in.MinPlatformVersion)
-	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
-	if labelEN==""||labelHU==""||price<0||activationFee<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid bilingual module update");return}
+	availability=strings.ToUpper(availability);publicationStatus=strings.ToUpper(publicationStatus);implementationState=strings.ToUpper(implementationState);moduleType=strings.ToUpper(moduleType)
+	if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
+	if labelEN==""||labelHU==""||price<0||activationFee<0||!availabilityValues[availability]||!publicationStates[publicationStatus]||!implementationStates[implementationState]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid bilingual module update");return}
+	if publicationStatus=="PUBLISHED" && implementationState!="READY"{common.APIError(w,409,"MODULE_NOT_READY","Only READY modules can be published");return}
 	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
 	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,label_en=$2,label_hu=$3,description=$4,description_en=$4,description_hu=$5,group_key=$6,
 		default_monthly_price=$7,default_activation_fee=$8,availability=$9,latest_version=$10,module_type=$11,owner_team=$12,source_repository=$13,source_path=$14,
-		source_ref=$15,source_commit=$16,artifact_type=$17,artifact_reference=$18,min_platform_version=$19,manifest=$20::jsonb,last_updated_at=NOW()
-		WHERE module_key=$1`,key,labelEN,labelHU,descEN,descHU,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
+		source_ref=$15,source_commit=$16,artifact_type=$17,artifact_reference=$18,min_platform_version=$19,manifest=$20::jsonb,publication_status=$21,implementation_state=$22,legacy_reference=$23,last_updated_at=NOW()
+		WHERE module_key=$1`,key,labelEN,labelHU,descEN,descHU,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw),publicationStatus,implementationState,legacyReference);err!=nil{
 		common.APIError(w,409,"CONFLICT","Module could not be updated");return
 	}
 	common.JSON(w,200,map[string]any{
 		"key":key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
 		"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
 		"group_key":groupKey,"default_monthly_price":price,"default_activation_fee":activationFee,"availability":availability,
+		"publication_status":publicationStatus,"implementation_state":implementationState,"legacy_reference":legacyReference,"pricing_authority":"PARTNER_CONTRACT",
 		"latest_version":latestVersion,"module_type":moduleType,"owner_team":owner,"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,
 		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform,
 	})
@@ -514,7 +556,9 @@ func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 }
 
 func (a *app) ensurePartnerModules(partnerID string) error {
-	_, err := a.db.Exec(`INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base) SELECT $1,module_key,'NOT_LICENSED',FALSE,FALSE FROM catalog.modules ON CONFLICT(partner_id,module_key) DO NOTHING`, partnerID)
+	_, err := a.db.Exec(`INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,entitlement_state,commercial_configured,contract_currency)
+		SELECT $1,module_key,'NOT_LICENSED',FALSE,FALSE,'INACTIVE',FALSE,currency FROM catalog.modules
+		ON CONFLICT(partner_id,module_key) DO NOTHING`, partnerID)
 	return err
 }
 
@@ -578,14 +622,17 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 	}
 	key := parts[2]
 	var in struct {
-		Status         *string  `json:"status"`
-		Visible        *bool    `json:"visible"`
-		IncludedInBase *bool    `json:"included_in_base"`
+		Status           *string  `json:"status"`
+		EntitlementState *string  `json:"entitlement_state"`
+		Visible          *bool    `json:"visible"`
+		IncludedInBase   *bool    `json:"included_in_base"`
 		PartnerPrice         *float64 `json:"partner_price"`
 		PriceEffectiveAt     string   `json:"price_effective_at"`
 		PartnerActivationFee *float64 `json:"partner_activation_fee"`
 		ActivationFeeEffectiveAt string `json:"activation_fee_effective_at"`
-		Reason           string   `json:"reason"`
+		ContractCurrency   *string  `json:"contract_currency"`
+		QuoteReference     *string  `json:"quote_reference"`
+		Reason             string   `json:"reason"`
 	}
 	if common.Decode(r, &in) != nil {
 		common.APIError(w, 400, "JSON", "Invalid request")
@@ -624,7 +671,12 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	if in.Status != nil && in.EntitlementState != nil {
+		common.APIError(w,400,"VALIDATION","Use either status or entitlement_state in one request, not both")
+		return
+	}
 	if in.Status != nil {
+		*in.Status=strings.ToUpper(strings.TrimSpace(*in.Status))
 		if !moduleStates[*in.Status] {
 			common.APIError(w, 400, "VALIDATION", "Invalid module state")
 			return
@@ -639,11 +691,16 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 				common.APIError(w, 409, "BILLING_LIFECYCLE_REQUIRED", "Module deactivation is Billing-owned; schedule period-end cancellation through Billing")
 				return
 			}
+			nextEntitlement:=old
+			if *in.Status=="ACTIVE"{nextEntitlement="ACTIVE"}else if *in.Status=="NOT_LICENSED"{nextEntitlement="INACTIVE"}else{
+				_ = tx.QueryRow(`SELECT entitlement_state FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&nextEntitlement)
+			}
 			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET
 					status=$3,
+					entitlement_state=$4,
 					activated_at=CASE WHEN $3='ACTIVE' THEN NOW() ELSE activated_at END,
 					updated_at=NOW()
-				WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.Status); err != nil {
+				WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.Status,nextEntitlement); err != nil {
 				common.APIError(w, 500, "DB", "Could not update module state")
 				return
 			}
@@ -651,6 +708,30 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 				common.APIError(w, 500, "DB", "Could not save module history")
 				return
 			}
+		}
+	}
+	if in.EntitlementState != nil {
+		nextState:=strings.ToUpper(strings.TrimSpace(*in.EntitlementState))
+		if !entitlementStates[nextState] { common.APIError(w,400,"VALIDATION","Invalid entitlement state"); return }
+		var oldState,oldStatus string
+		if err=tx.QueryRow(`SELECT entitlement_state,status FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&oldState,&oldStatus);err!=nil{
+			common.APIError(w,404,"NOT_FOUND","Module not found");return
+		}
+		if nextState=="CANCEL_PENDING" && !internal {
+			common.APIError(w,409,"BILLING_LIFECYCLE_REQUIRED","Cancellation pending state is Billing-owned")
+			return
+		}
+		if nextState=="INACTIVE" && oldState!="INACTIVE" && !internal {
+			common.APIError(w,409,"BILLING_LIFECYCLE_REQUIRED","Module deactivation is Billing-owned; schedule period-end cancellation through Billing")
+			return
+		}
+		nextStatus:=oldStatus
+		if nextState=="INACTIVE"{nextStatus="NOT_LICENSED"}
+		if oldState!=nextState{
+			if _,err=tx.Exec(`UPDATE catalog.partner_modules SET entitlement_state=$3,status=$4,activated_at=CASE WHEN $3='ACTIVE' THEN COALESCE(activated_at,NOW()) ELSE activated_at END,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`,partnerID,key,nextState,nextStatus);err!=nil{
+				common.APIError(w,500,"DB","Could not update entitlement state");return
+			}
+			if err=recordHistory("entitlement_state",oldState,nextState,time.Now().UTC());err!=nil{common.APIError(w,500,"DB","Could not save module history");return}
 		}
 	}
 	if in.Visible != nil {
@@ -664,11 +745,28 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			if err = recordHistory("visible", old, *in.Visible, time.Now().UTC()); err != nil { common.APIError(w, 500, "DB", "Could not save module history"); return }
 		}
 	}
+	if in.ContractCurrency != nil || in.QuoteReference != nil {
+		var oldCurrency,oldQuote string
+		if err=tx.QueryRow(`SELECT contract_currency,quote_reference FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&oldCurrency,&oldQuote);err!=nil{
+			common.APIError(w,404,"NOT_FOUND","Module not found");return
+		}
+		nextCurrency:=oldCurrency;nextQuote:=oldQuote
+		if in.ContractCurrency!=nil{nextCurrency=strings.ToUpper(strings.TrimSpace(*in.ContractCurrency))}
+		if in.QuoteReference!=nil{nextQuote=strings.TrimSpace(*in.QuoteReference)}
+		if nextCurrency==""{common.APIError(w,400,"VALIDATION","contract_currency is required");return}
+		if oldCurrency!=nextCurrency || oldQuote!=nextQuote{
+			if _,err=tx.Exec(`UPDATE catalog.partner_modules SET contract_currency=$3,quote_reference=$4,commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,NOW()),updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`,partnerID,key,nextCurrency,nextQuote);err!=nil{
+				common.APIError(w,500,"DB","Could not update partner commercial reference");return
+			}
+			if oldCurrency!=nextCurrency{if err=recordHistory("contract_currency",oldCurrency,nextCurrency,time.Now().UTC());err!=nil{common.APIError(w,500,"DB","Could not save module history");return}}
+			if oldQuote!=nextQuote{if err=recordHistory("quote_reference",oldQuote,nextQuote,time.Now().UTC());err!=nil{common.APIError(w,500,"DB","Could not save module history");return}}
+		}
+	}
 	if in.IncludedInBase != nil {
 		var old bool
 		_ = tx.QueryRow(`SELECT included_in_base FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`, partnerID, key).Scan(&old)
 		if old != *in.IncludedInBase {
-			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET included_in_base=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.IncludedInBase); err != nil {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET included_in_base=$3,commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,NOW()),updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.IncludedInBase); err != nil {
 				common.APIError(w, 500, "DB", "Could not update base package")
 				return
 			}
@@ -694,12 +792,14 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !effectiveAt.After(time.Now().UTC()) {
-			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET price_override=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerPrice); err != nil {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET price_override=$3,commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,$4),updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerPrice,effectiveAt); err != nil {
 				common.APIError(w, 500, "DB", "Could not update price")
 				return
 			}
 		}
-		if _, err = tx.Exec(`INSERT INTO catalog.price_history(partner_id,module_key,old_price,new_price,effective_at,actor,reason) VALUES($1,$2,$3,$4,$5,$6,$7)`, partnerID, key, oldValue, *in.PartnerPrice, effectiveAt, actor, reason); err != nil {
+		var contractCurrency,quoteReference string
+		_ = tx.QueryRow(`SELECT contract_currency,quote_reference FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&contractCurrency,&quoteReference)
+		if _, err = tx.Exec(`INSERT INTO catalog.price_history(partner_id,module_key,old_price,new_price,effective_at,actor,reason,currency,quote_reference) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, partnerID, key, oldValue, *in.PartnerPrice, effectiveAt, actor, reason,contractCurrency,quoteReference); err != nil {
 			common.APIError(w, 500, "DB", "Could not save price history")
 			return
 		}
@@ -737,13 +837,15 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !activationEffectiveAt.After(time.Now().UTC()) {
-			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET activation_fee_override=$3,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerActivationFee); err != nil {
+			if _, err = tx.Exec(`UPDATE catalog.partner_modules SET activation_fee_override=$3,commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,$4),updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`, partnerID, key, *in.PartnerActivationFee,activationEffectiveAt); err != nil {
 				common.APIError(w, 500, "DB", "Could not update activation fee")
 				return
 			}
 		}
-		if _, err = tx.Exec(`INSERT INTO catalog.activation_fee_history(partner_id,module_key,old_fee,new_fee,effective_at,actor,reason)
-			VALUES($1,$2,$3,$4,$5,$6,$7)`, partnerID, key, oldFee, *in.PartnerActivationFee, activationEffectiveAt, actor, reason); err != nil {
+		var activationCurrency,activationQuoteReference string
+		_ = tx.QueryRow(`SELECT contract_currency,quote_reference FROM catalog.partner_modules WHERE partner_id=$1 AND module_key=$2`,partnerID,key).Scan(&activationCurrency,&activationQuoteReference)
+		if _, err = tx.Exec(`INSERT INTO catalog.activation_fee_history(partner_id,module_key,old_fee,new_fee,effective_at,actor,reason,currency,quote_reference)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, partnerID, key, oldFee, *in.PartnerActivationFee, activationEffectiveAt, actor, reason,activationCurrency,activationQuoteReference); err != nil {
 			common.APIError(w, 500, "DB", "Could not save activation-fee history")
 			return
 		}
@@ -801,7 +903,12 @@ func (a *app) partnerModuleCommercialHistory(w http.ResponseWriter, partnerID, k
 func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billable bool, locale string) {
 	q := partnerModuleSelect + ` WHERE pm.partner_id=$1`
 	if billable {
-		q += ` AND pm.status='ACTIVE' AND m.availability='ACTIVE'`
+		q += ` AND pm.status='ACTIVE' AND m.availability='ACTIVE' AND m.publication_status='PUBLISHED'
+			AND pm.commercial_configured=TRUE
+			AND (pm.included_in_base=TRUE OR pm.price_override IS NOT NULL OR EXISTS (
+				SELECT 1 FROM catalog.price_history ph
+				WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
+			))`
 	}
 	q += ` ORDER BY g.sort_order,m.label`
 	rows, err := a.db.Query(q, partnerID)
@@ -842,9 +949,14 @@ func (a *app) resolvePartnerModulePriceAt(ctx context.Context, partnerID, key st
 				(SELECT ph.old_price FROM catalog.price_history ph
 				 WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at>$3 AND ph.old_price IS NOT NULL
 				 ORDER BY ph.effective_at ASC,ph.id ASC LIMIT 1),
-				pm.price_override,m.default_monthly_price
+				pm.price_override,
+				CASE WHEN pm.included_in_base THEN 0 END
 			),
-			m.currency,
+			COALESCE(
+				(SELECT ph.currency FROM catalog.price_history ph
+				 WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=$3
+				 ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1),
+				NULLIF(pm.contract_currency,''),m.currency),
 			COALESCE(
 				(SELECT CASE WHEN lower(pmh.new_value)='true' THEN TRUE WHEN lower(pmh.new_value)='false' THEN FALSE END
 				 FROM catalog.partner_module_history pmh
@@ -858,7 +970,12 @@ func (a *app) resolvePartnerModulePriceAt(ctx context.Context, partnerID, key st
 			)
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
-		WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key, at).Scan(&price, &currency, &included)
+		WHERE pm.partner_id=$1 AND pm.module_key=$2
+			AND pm.commercial_configured=TRUE
+			AND (pm.included_in_base=TRUE OR pm.price_override IS NOT NULL OR EXISTS (
+				SELECT 1 FROM catalog.price_history ph
+				WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=$3
+			))`, partnerID, key, at).Scan(&price, &currency, &included)
 	return price, currency, included, err
 }
 
@@ -1006,9 +1123,9 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 	}
 	query := `
 		SELECT pm.partner_id,
-			COUNT(*) FILTER (WHERE pm.status='ACTIVE' AND m.availability='ACTIVE'),
-			COALESCE(SUM(CASE WHEN pm.status='ACTIVE' AND m.availability='ACTIVE' AND pm.included_in_base=FALSE
-				THEN COALESCE(ep.new_price,pm.price_override,m.default_monthly_price) ELSE 0 END),0),
+			COUNT(*) FILTER (WHERE pm.status='ACTIVE' AND pm.entitlement_state='ACTIVE' AND m.availability='ACTIVE'),
+			COALESCE(SUM(CASE WHEN pm.status='ACTIVE' AND pm.entitlement_state='ACTIVE' AND m.availability='ACTIVE' AND pm.included_in_base=FALSE AND pm.commercial_configured=TRUE
+				THEN COALESCE(ep.new_price,pm.price_override,0) ELSE 0 END),0),
 			MAX(pm.updated_at)
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
@@ -1047,18 +1164,20 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 
 const partnerModuleSelect = `SELECT
 	pm.partner_id,m.module_key,m.label_en,m.label_hu,m.group_key,g.label_en,g.label_hu,pm.status,pm.visible,pm.included_in_base,
+	pm.entitlement_state,pm.commercial_configured,pm.contract_currency,pm.quote_reference,pm.commercial_effective_at,
+	m.publication_status,m.implementation_state,
 	m.default_monthly_price,pm.price_override,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),
-	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
+	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_REFERENCE_ONLY' END,
 	np.new_price,np.effective_at,
 	m.default_activation_fee,pm.activation_fee_override,COALESCE(eaf.new_fee,pm.activation_fee_override,m.default_activation_fee),
-	CASE WHEN eaf.new_fee IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.activation_fee_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
+	CASE WHEN eaf.new_fee IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.activation_fee_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_REFERENCE_ONLY' END,
 	naf.new_fee,naf.effective_at,
-	m.currency,m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at
+	COALESCE(NULLIF(ep.currency,''),NULLIF(pm.contract_currency,''),m.currency),m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at
 	FROM catalog.partner_modules pm
 	JOIN catalog.modules m ON m.module_key=pm.module_key
 	JOIN catalog.module_groups g ON g.group_key=m.group_key
 	LEFT JOIN LATERAL (
-		SELECT ph.new_price FROM catalog.price_history ph
+		SELECT ph.new_price,ph.currency FROM catalog.price_history ph
 		WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
 		ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
 	) ep ON TRUE
@@ -1091,14 +1210,16 @@ func nullableTime(v sql.NullTime) any {
 }
 
 func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
-	var id, k, labelEN, labelHU, g, groupEN, groupHU, st, currency, v, lv, availability, priceSource, activationSource string
-	var vis, inc bool
+	var id, k, labelEN, labelHU, g, groupEN, groupHU, st, entitlementState, contractCurrency, quoteReference, publicationStatus, implementationState, currency, v, lv, availability, priceSource, activationSource string
+	var vis, inc, commercialConfigured bool
 	var defPrice, price, defaultActivationFee, activationFee float64
 	var priceOverride, nextPrice, activationOverride, nextActivationFee sql.NullFloat64
-	var nextPriceAt, nextActivationFeeAt, activated sql.NullTime
+	var commercialEffectiveAt,nextPriceAt, nextActivationFeeAt, activated sql.NullTime
 	var t time.Time
 	err := s.Scan(
 		&id,&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&st,&vis,&inc,
+		&entitlementState,&commercialConfigured,&contractCurrency,&quoteReference,&commercialEffectiveAt,
+		&publicationStatus,&implementationState,
 		&defPrice,&priceOverride,&price,&priceSource,&nextPrice,&nextPriceAt,
 		&defaultActivationFee,&activationOverride,&activationFee,&activationSource,&nextActivationFee,&nextActivationFeeAt,
 		&currency,&v,&lv,&t,&availability,&activated,
@@ -1106,11 +1227,13 @@ func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
 	return map[string]any{
 		"partner_id": id, "key": k, "label": common.Localized(labelEN,labelHU,locale), "label_en": labelEN, "label_hu": labelHU,
 		"group_key": g, "group_label": common.Localized(groupEN,groupHU,locale), "group_label_en": groupEN, "group_label_hu": groupHU,
-		"status": st, "visible": vis, "included_in_base": inc,
-		"default_monthly_price": defPrice, "price_override": nullableFloat(priceOverride),
-		"partner_price": price, "price_source": priceSource,
+		"status": st, "entitlement_state":entitlementState, "visible": vis, "included_in_base": inc,
+		"commercial_configured":commercialConfigured,"contract_currency":contractCurrency,"quote_reference":quoteReference,"commercial_effective_at":nullableTime(commercialEffectiveAt),
+		"publication_status":publicationStatus,"implementation_state":implementationState,
+		"default_monthly_price": defPrice, "reference_monthly_price":defPrice, "price_override": nullableFloat(priceOverride),
+		"partner_price": price, "price_source": priceSource, "pricing_authority":"PARTNER_CONTRACT",
 		"next_partner_price": nullableFloat(nextPrice), "next_price_effective_at": nullableTime(nextPriceAt),
-		"default_activation_fee": defaultActivationFee, "activation_fee_override": nullableFloat(activationOverride),
+		"default_activation_fee": defaultActivationFee, "reference_activation_fee":defaultActivationFee, "activation_fee_override": nullableFloat(activationOverride),
 		"partner_activation_fee": activationFee, "activation_fee_source": activationSource,
 		"next_partner_activation_fee": nullableFloat(nextActivationFee), "next_activation_fee_effective_at": nullableTime(nextActivationFeeAt),
 		"currency": currency, "version": v, "latest_version": lv, "last_updated_at": t,

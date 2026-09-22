@@ -207,7 +207,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final activation = TextEditingController(text: number(row['partner_activation_fee']).toStringAsFixed(2));
     final recurringEffective = TextEditingController();
     final activationEffective = TextEditingController();
+    final quoteReference = TextEditingController(text: s(row['quote_reference']));
     final reason = TextEditingController();
+    String contractCurrency = s(row['contract_currency']).isEmpty ? (s(row['currency']).isEmpty ? 'USD' : s(row['currency'])) : s(row['contract_currency']);
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -218,9 +220,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           width: 760,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             _RuleStrip(items: [
-              _RuleItem(Icons.toggle_on_outlined, 'Entitlement', _humanize(s(row['status']))),
-              _RuleItem(Icons.sell_outlined, 'Default 30-day price', money(row['default_monthly_price'])),
-              _RuleItem(Icons.bolt_outlined, 'Default activation fee', money(row['default_activation_fee'])),
+              _RuleItem(Icons.toggle_on_outlined, 'Entitlement', _humanize(s(row['entitlement_state']).isEmpty ? s(row['status']) : s(row['entitlement_state']))),
+              _RuleItem(Icons.sell_outlined, 'Reference module price', money(row['reference_monthly_price'] ?? row['default_monthly_price'])),
+              _RuleItem(Icons.bolt_outlined, 'Reference activation fee', money(row['reference_activation_fee'] ?? row['default_activation_fee'])),
             ]),
             const SizedBox(height: 14),
             SwitchListTile.adaptive(
@@ -237,6 +239,23 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               subtitle: const LText('Included modules remain visible in the commercial matrix but add no recurring module fee.'),
             ),
             const SizedBox(height: 8),
+            ResponsiveFieldPair(
+              first: DropdownButtonFormField<String>(
+                value: contractCurrency,
+                decoration: InputDecoration(labelText: uiLiteral('Contract currency')),
+                items: const [
+                  DropdownMenuItem(value: 'USD', child: LText('USD')),
+                  DropdownMenuItem(value: 'EUR', child: LText('EUR')),
+                  DropdownMenuItem(value: 'GBP', child: LText('GBP')),
+                ],
+                onChanged: (value) { if (value != null) setLocal(() => contractCurrency = value); },
+              ),
+              second: TextField(
+                controller: quoteReference,
+                decoration: InputDecoration(labelText: uiLiteral('Quote / offer reference'), hintText: uiLiteral('Partner-specific commercial offer')),
+              ),
+            ),
+            const SizedBox(height: 12),
             ResponsiveFieldPair(
               first: TextField(
                 controller: recurring,
@@ -281,6 +300,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           await widget.api.patch('/api/v1/partners/$partnerID/modules/$moduleKey', {
             'visible': visible,
             'included_in_base': included,
+            'contract_currency': contractCurrency,
+            'quote_reference': quoteReference.text.trim(),
             'partner_price': recurringValue,
             'price_effective_at': recurringEffective.text.trim(),
             'partner_activation_fee': activationValue,
@@ -294,7 +315,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         }
       }
     }
-    for (final controller in [recurring, activation, recurringEffective, activationEffective, reason]) {
+    for (final controller in [recurring, activation, recurringEffective, activationEffective, quoteReference, reason]) {
       controller.dispose();
     }
   }
@@ -353,7 +374,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           _DefinitionRow(label: 'Current period price', value: currentPeriodPrice),
           _DefinitionRow(label: 'Next billing date', value: subscription == null ? '—' : s(subscription['next_billing_date'])),
           _DefinitionRow(label: 'Next billing price', value: nextBillingPrice),
-          _DefinitionRow(label: 'Configured 30-day price', value: row['included_in_base'] == true ? 'Included' : commercialMoney(row['partner_price'], currency)),
+          _DefinitionRow(label: 'Contract price', value: row['included_in_base'] == true ? 'Included in base service' : commercialMoney(row['partner_price'], currency)),
+          _DefinitionRow(label: 'Pricing authority', value: _humanize(s(row['pricing_authority']).isEmpty ? 'PARTNER_CONTRACT' : s(row['pricing_authority']))),
+          _DefinitionRow(label: 'Quote / offer', value: s(row['quote_reference']).isEmpty ? 'Not recorded' : s(row['quote_reference'])),
           _DefinitionRow(label: 'Price source', value: _humanize(s(row['price_source']))),
           _DefinitionRow(label: 'Next configured price', value: commercialMoney(configuredNext, currency) + (nextAtLabel.isEmpty ? '' : ' · ' + nextAtLabel)),
           _DefinitionRow(label: 'Activation fee', value: commercialMoney(row['partner_activation_fee'], currency)),
@@ -449,6 +472,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     String group = s(module?['group_key']).isEmpty ? s(groups.first['group_key']) : s(module?['group_key']);
     String type = s(module?['module_type']).isEmpty ? 'FEATURE' : s(module?['module_type']);
     String availability = s(module?['availability']).isEmpty ? 'ACTIVE' : s(module?['availability']);
+    String publicationStatus = s(module?['publication_status']).isEmpty ? 'UNPUBLISHED' : s(module?['publication_status']);
+    String implementationState = s(module?['implementation_state']).isEmpty ? 'IN_DEVELOPMENT' : s(module?['implementation_state']);
+    final legacyReference = TextEditingController(text: s(module?['legacy_reference']));
     String? dialogError;
 
     final result = await showDialog<Map<String, dynamic>?>(
@@ -496,15 +522,40 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               second: TextField(controller: activationFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Default activation fee'))),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: availability,
-              decoration: InputDecoration(labelText: uiLiteral('Availability')),
-              items: const [
-                DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
-                DropdownMenuItem(value: 'UNAVAILABLE', child: LText('UNAVAILABLE')),
-                DropdownMenuItem(value: 'DEPRECATED', child: LText('DEPRECATED')),
-              ],
-              onChanged: (value) { if (value != null) setLocal(() => availability = value); },
+            ResponsiveFieldPair(
+              first: DropdownButtonFormField<String>(
+                value: publicationStatus,
+                decoration: InputDecoration(labelText: uiLiteral('Publication status')),
+                items: const [
+                  DropdownMenuItem(value: 'UNPUBLISHED', child: LText('UNPUBLISHED')),
+                  DropdownMenuItem(value: 'PUBLISHED', child: LText('PUBLISHED')),
+                ],
+                onChanged: (value) { if (value != null) setLocal(() => publicationStatus = value); },
+              ),
+              second: DropdownButtonFormField<String>(
+                value: implementationState,
+                decoration: InputDecoration(labelText: uiLiteral('Implementation state')),
+                items: const [
+                  DropdownMenuItem(value: 'LEGACY_REFERENCE', child: LText('LEGACY REFERENCE')),
+                  DropdownMenuItem(value: 'IN_DEVELOPMENT', child: LText('IN DEVELOPMENT')),
+                  DropdownMenuItem(value: 'READY', child: LText('READY')),
+                ],
+                onChanged: (value) { if (value != null) setLocal(() => implementationState = value); },
+              ),
+            ),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: DropdownButtonFormField<String>(
+                value: availability,
+                decoration: InputDecoration(labelText: uiLiteral('Operational availability')),
+                items: const [
+                  DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
+                  DropdownMenuItem(value: 'UNAVAILABLE', child: LText('UNAVAILABLE')),
+                  DropdownMenuItem(value: 'DEPRECATED', child: LText('DEPRECATED')),
+                ],
+                onChanged: (value) { if (value != null) setLocal(() => availability = value); },
+              ),
+              second: TextField(controller: legacyReference, decoration: InputDecoration(labelText: uiLiteral('Legacy/reference implementation'))),
             ),
             const SizedBox(height: 18),
             const _DialogSectionLabel('SOURCE & RELEASE'),
@@ -554,6 +605,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               'default_monthly_price': double.tryParse(price.text) ?? 0,
               'default_activation_fee': double.tryParse(activationFee.text) ?? 0,
               'availability': availability,
+              'publication_status': publicationStatus,
+              'implementation_state': implementationState,
+              'legacy_reference': legacyReference.text.trim(),
               'module_type': type,
               'owner_team': owner.text.trim(),
               'source_repository': repo.text.trim(),
@@ -569,7 +623,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         ),
       ),
     );
-    for (final controller in [labelEN,labelHU,key,descriptionEN,descriptionHU,price,activationFee,owner,repo,path,sourceRef,commit,artifactType,artifactReference,latestVersion,minPlatform]) {
+    for (final controller in [labelEN,labelHU,key,descriptionEN,descriptionHU,price,activationFee,owner,repo,path,sourceRef,commit,artifactType,artifactReference,latestVersion,minPlatform,legacyReference]) {
       controller.dispose();
     }
     return result;
@@ -862,13 +916,18 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               const SizedBox(height: 3),
               LText(s(module['key']), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
             ])),
-            _StatusPill(label: s(module['availability']).isEmpty ? 'ACTIVE' : s(module['availability'])),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              _StatusPill(label: s(module['publication_status']).isEmpty ? 'UNPUBLISHED' : s(module['publication_status'])),
+              const SizedBox(height: 4),
+              _StatusPill(label: s(module['implementation_state']).isEmpty ? 'IN_DEVELOPMENT' : s(module['implementation_state'])),
+            ]),
           ]),
           const SizedBox(height: 14),
           _DefinitionRow(label: 'Group', value: s(module['group_label']).isEmpty ? s(module['group_key']) : s(module['group_label'])),
           _DefinitionRow(label: 'Type', value: _humanize(s(module['module_type']).isEmpty ? 'FEATURE' : s(module['module_type']))),
-          _DefinitionRow(label: 'Default 30-day price', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['default_monthly_price']).toStringAsFixed(2)),
-          _DefinitionRow(label: 'Default activation fee', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['default_activation_fee']).toStringAsFixed(2)),
+          _DefinitionRow(label: 'Reference module price', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['reference_monthly_price'] ?? module['default_monthly_price']).toStringAsFixed(2)),
+          _DefinitionRow(label: 'Reference activation fee', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['reference_activation_fee'] ?? module['default_activation_fee']).toStringAsFixed(2)),
+          const _DefinitionRow(label: 'Billing authority', value: 'Partner-specific contract / quote'),
           _DefinitionRow(label: 'Latest version', value: s(module['latest_version']).isEmpty ? '—' : s(module['latest_version'])),
           _DefinitionRow(label: 'Owner', value: s(module['owner_team']).isEmpty ? '—' : s(module['owner_team'])),
           const SizedBox(height: 8),

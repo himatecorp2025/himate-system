@@ -32,6 +32,12 @@ type terms struct {
 	ActivationFeeWaived   bool
 	ActivationFeeReason   string
 	BaseMonthlyFee        float64
+	MinimumMonthlyCommitment float64
+	QuoteReference        string
+	CommercialConfigured  bool
+	TermsVersion          int
+	ContractedAt          sql.NullTime
+	PricingModel          string
 	AnnualIncreasePercent float64
 	CycleDays             int
 	InvoiceDay            int
@@ -208,14 +214,15 @@ func (a *app) migrate(ctx context.Context) error {
 		start223BillingImmutabilityMigration(),
 		start233BillingLifecycleMigration(),
 		start234BillingPaymentMigration(),
+		start23111BillingCommercialModelMigration(),
 	}); err != nil {
 		return err
 	}
 
 	if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.partner_terms(
-		partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date
-	) VALUES('ptr_000001','USD',0,TRUE,'Existing reference partner; activation fee not applicable',2000,10,30,1,'2026-01-01','2026-01-01')
-	ON CONFLICT(partner_id) DO NOTHING`); err != nil {
+		partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,minimum_monthly_commitment,quote_reference,commercial_configured,terms_version,contracted_at,pricing_model,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date
+	) VALUES('ptr_000001','USD',0,TRUE,'Existing reference partner; activation fee not applicable',2000,1500,'REFERENCE-PARTNER',TRUE,1,NOW(),'INDIVIDUAL_QUOTE',10,30,1,'2026-01-01','2026-01-01')
+	ON CONFLICT(partner_id) DO UPDATE SET minimum_monthly_commitment=GREATEST(billing.partner_terms.minimum_monthly_commitment,1500),commercial_configured=TRUE,quote_reference=CASE WHEN billing.partner_terms.quote_reference='' THEN 'REFERENCE-PARTNER' ELSE billing.partner_terms.quote_reference END,contracted_at=COALESCE(billing.partner_terms.contracted_at,NOW())`); err != nil {
 		return err
 	}
 	_, err := a.db.ExecContext(ctx, `INSERT INTO billing.initial_licenses(
@@ -286,9 +293,9 @@ func (a *app) ensureTerms(id string) (terms, error) {
 		return terms{}, err
 	}
 	var t terms
-	err := a.db.QueryRow(`SELECT partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date,updated_at
+	err := a.db.QueryRow(`SELECT partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,minimum_monthly_commitment,quote_reference,commercial_configured,terms_version,contracted_at,pricing_model,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date,updated_at
 		FROM billing.partner_terms WHERE partner_id=$1`, id).
-		Scan(&t.PartnerID, &t.Currency, &t.ActivationFee, &t.ActivationFeeWaived, &t.ActivationFeeReason, &t.BaseMonthlyFee, &t.AnnualIncreasePercent, &t.CycleDays, &t.InvoiceDay, &t.PriceEffectiveFrom, &t.ServiceAnchorDate, &t.UpdatedAt)
+		Scan(&t.PartnerID, &t.Currency, &t.ActivationFee, &t.ActivationFeeWaived, &t.ActivationFeeReason, &t.BaseMonthlyFee,&t.MinimumMonthlyCommitment,&t.QuoteReference,&t.CommercialConfigured,&t.TermsVersion,&t.ContractedAt,&t.PricingModel, &t.AnnualIncreasePercent, &t.CycleDays, &t.InvoiceDay, &t.PriceEffectiveFrom, &t.ServiceAnchorDate, &t.UpdatedAt)
 	return t, err
 }
 
@@ -480,6 +487,8 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 	switch section {
 	case "terms":
 		a.terms(w, r, id)
+	case "terms-history":
+		a.termsHistory(w, r, id)
 	case "license":
 		a.license(w, r, id)
 	case "agreement":
@@ -522,6 +531,8 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			ActivationFeeWaived   *bool    `json:"activation_fee_waived"`
 			ActivationFeeReason   *string  `json:"activation_fee_reason"`
 			BaseMonthlyFee        *float64 `json:"base_monthly_fee"`
+			MinimumMonthlyCommitment *float64 `json:"minimum_monthly_commitment"`
+			QuoteReference        *string  `json:"quote_reference"`
 			AnnualIncreasePercent *float64 `json:"annual_increase_percent"`
 			PriceEffectiveFrom    *string  `json:"price_effective_from"`
 			ServiceAnchorDate     *string  `json:"service_anchor_date"`
@@ -538,6 +549,8 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 		if in.ActivationFeeWaived != nil { next.ActivationFeeWaived = *in.ActivationFeeWaived }
 		if in.ActivationFeeReason != nil { next.ActivationFeeReason = strings.TrimSpace(*in.ActivationFeeReason) }
 		if in.BaseMonthlyFee != nil { next.BaseMonthlyFee = *in.BaseMonthlyFee }
+		if in.MinimumMonthlyCommitment != nil { next.MinimumMonthlyCommitment = *in.MinimumMonthlyCommitment }
+		if in.QuoteReference != nil { next.QuoteReference = strings.TrimSpace(*in.QuoteReference) }
 		if in.AnnualIncreasePercent != nil { next.AnnualIncreasePercent = *in.AnnualIncreasePercent }
 		if in.PriceEffectiveFrom != nil {
 			p, e := time.Parse("2006-01-02", strings.TrimSpace(*in.PriceEffectiveFrom))
@@ -550,25 +563,42 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			next.ServiceAnchorDate = p
 		}
 		if next.Currency == "" { next.Currency = "USD" }
-		if next.ActivationFee < 0 || next.BaseMonthlyFee < 0 || next.AnnualIncreasePercent < 0 {
+		if next.ActivationFee < 0 || next.BaseMonthlyFee < 0 || next.MinimumMonthlyCommitment < 0 || next.AnnualIncreasePercent < 0 {
 			common.APIError(w, 400, "VALIDATION", "Commercial amounts cannot be negative")
 			return
 		}
-		if !next.ActivationFeeWaived && next.Currency == "USD" && next.ActivationFee < 13000 {
-			common.APIError(w, 400, "VALIDATION", "New partner activation fee must be at least USD 13,000 unless explicitly waived")
+		if next.Currency=="USD" && next.MinimumMonthlyCommitment < 1500 {
+			common.APIError(w,400,"MINIMUM_MONTHLY_COMMITMENT","USD minimum monthly commitment cannot be below 1500")
 			return
 		}
+		next.CommercialConfigured=true
+		next.TermsVersion=current.TermsVersion+1
+		next.PricingModel="INDIVIDUAL_QUOTE"
 
 		tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
 		if err != nil { common.APIError(w, 500, "DB", "Could not start terms update"); return }
 		defer tx.Rollback()
-		_, err = tx.Exec(`UPDATE billing.partner_terms SET currency=$2,activation_fee=$3,activation_fee_waived=$4,activation_fee_reason=$5,base_monthly_fee=$6,annual_increase_percent=$7,cycle_days=30,invoice_day=1,price_effective_from=$8,service_anchor_date=$9,updated_at=NOW() WHERE partner_id=$1`,
-			id, next.Currency, next.ActivationFee, next.ActivationFeeWaived, next.ActivationFeeReason, next.BaseMonthlyFee, next.AnnualIncreasePercent, next.PriceEffectiveFrom, next.ServiceAnchorDate)
+		var lockedVersion int
+		if err=tx.QueryRow(`SELECT terms_version FROM billing.partner_terms WHERE partner_id=$1 FOR UPDATE`,id).Scan(&lockedVersion);err!=nil{
+			common.APIError(w,500,"DB","Could not lock commercial terms");return
+		}
+		if lockedVersion!=current.TermsVersion{
+			common.APIError(w,409,"COMMERCIAL_TERMS_CHANGED","Commercial terms changed concurrently; reload before saving")
+			return
+		}
+		next.TermsVersion=lockedVersion+1
+		_, err = tx.Exec(`UPDATE billing.partner_terms SET currency=$2,activation_fee=$3,activation_fee_waived=$4,activation_fee_reason=$5,base_monthly_fee=$6,minimum_monthly_commitment=$7,quote_reference=$8,commercial_configured=TRUE,terms_version=$9,contracted_at=COALESCE(contracted_at,NOW()),pricing_model='INDIVIDUAL_QUOTE',annual_increase_percent=$10,cycle_days=30,invoice_day=1,price_effective_from=$11,service_anchor_date=$12,updated_at=NOW() WHERE partner_id=$1`,
+			id, next.Currency, next.ActivationFee, next.ActivationFeeWaived, next.ActivationFeeReason, next.BaseMonthlyFee,next.MinimumMonthlyCommitment,next.QuoteReference,next.TermsVersion, next.AnnualIncreasePercent, next.PriceEffectiveFrom, next.ServiceAnchorDate)
 		if err != nil { common.APIError(w, 500, "DB", "Could not update terms"); return }
 
 		actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 		reason := strings.TrimSpace(in.Reason)
 		if reason == "" { reason = "HIMATE administrator commercial update" }
+		if _,err=tx.Exec(`INSERT INTO billing.partner_terms_history(partner_id,terms_version,currency,activation_fee,activation_fee_waived,base_monthly_fee,minimum_monthly_commitment,annual_increase_percent,price_effective_from,service_anchor_date,quote_reference,pricing_model,actor,reason)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'INDIVIDUAL_QUOTE',$12,$13)`,
+			id,next.TermsVersion,next.Currency,next.ActivationFee,next.ActivationFeeWaived,next.BaseMonthlyFee,next.MinimumMonthlyCommitment,next.AnnualIncreasePercent,next.PriceEffectiveFrom,next.ServiceAnchorDate,next.QuoteReference,actor,reason);err!=nil{
+			common.APIError(w,500,"DB","Could not save commercial terms history");return
+		}
 		if current.BaseMonthlyFee != next.BaseMonthlyFee || !sameDate(current.PriceEffectiveFrom, next.PriceEffectiveFrom) || current.Currency != next.Currency {
 			if _, err = tx.Exec(`INSERT INTO billing.base_fee_history(partner_id,currency,old_price,new_price,old_effective_from,new_effective_from,actor,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
 				id, next.Currency, current.BaseMonthlyFee, next.BaseMonthlyFee, current.PriceEffectiveFrom, next.PriceEffectiveFrom, actor, reason); err != nil {
@@ -590,7 +620,9 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			id, "", "COMMERCIAL_TERMS_UPDATED", termsEventAt, map[string]any{
 				"currency": next.Currency, "activation_fee": next.ActivationFee,
 				"activation_fee_waived": next.ActivationFeeWaived,
-				"base_30_day_fee": next.BaseMonthlyFee, "price_effective_from": next.PriceEffectiveFrom.Format("2006-01-02"),
+				"base_30_day_fee": next.BaseMonthlyFee, "minimum_monthly_commitment":next.MinimumMonthlyCommitment,
+				"quote_reference":next.QuoteReference,"terms_version":next.TermsVersion,"pricing_model":"INDIVIDUAL_QUOTE",
+				"price_effective_from": next.PriceEffectiveFrom.Format("2006-01-02"),
 				"actor": actor, "reason": reason,
 			}); err != nil {
 			common.APIError(w, 500, "DB", "Could not record commercial terms event")
@@ -604,13 +636,48 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 	}
 }
 
+func (a *app) termsHistory(w http.ResponseWriter,r *http.Request,id string){
+	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+	rows,err:=a.db.Query(`SELECT terms_version,currency,activation_fee,activation_fee_waived,base_monthly_fee,minimum_monthly_commitment,annual_increase_percent,
+		price_effective_from,service_anchor_date,quote_reference,pricing_model,actor,reason,changed_at
+		FROM billing.partner_terms_history WHERE partner_id=$1 ORDER BY terms_version DESC LIMIT 250`,id)
+	if err!=nil{common.APIError(w,500,"DB","Could not load commercial terms history");return}
+	defer rows.Close()
+	items:=[]map[string]any{}
+	for rows.Next(){
+		var version int
+		var currency,quote,pricingModel,actor,reason string
+		var activation,base,minimum,uplift float64
+		var waived bool
+		var priceEffective,anchor,changed time.Time
+		if err:=rows.Scan(&version,&currency,&activation,&waived,&base,&minimum,&uplift,&priceEffective,&anchor,&quote,&pricingModel,&actor,&reason,&changed);err!=nil{
+			common.APIError(w,500,"DB","Could not decode commercial terms history");return
+		}
+		items=append(items,map[string]any{
+			"terms_version":version,"currency":currency,"activation_fee":activation,"activation_fee_waived":waived,
+			"base_monthly_fee":base,"minimum_monthly_commitment":minimum,"annual_increase_percent":uplift,
+			"price_effective_from":priceEffective.Format("2006-01-02"),"service_anchor_date":anchor.Format("2006-01-02"),
+			"quote_reference":quote,"pricing_model":pricingModel,"actor":actor,"reason":reason,"changed_at":changed.UTC(),
+		})
+	}
+	if err:=rows.Err();err!=nil{common.APIError(w,500,"DB","Could not load complete commercial terms history");return}
+	common.JSON(w,200,map[string]any{"partner_id":id,"items":items,"count":len(items)})
+}
+
 func sameDate(a, b time.Time) bool { return a.Format("2006-01-02") == b.Format("2006-01-02") }
+
+func nullableTermsTime(v sql.NullTime) any {
+	if !v.Valid{return nil}
+	return v.Time.UTC()
+}
 
 func termsMap(t terms) map[string]any {
 	return map[string]any{
 		"partner_id": t.PartnerID, "currency": t.Currency, "activation_fee": t.ActivationFee,
 		"activation_fee_waived": t.ActivationFeeWaived, "activation_fee_reason": t.ActivationFeeReason,
-		"base_monthly_fee": t.BaseMonthlyFee, "annual_increase_percent": t.AnnualIncreasePercent,
+		"base_monthly_fee": t.BaseMonthlyFee,"minimum_monthly_commitment":t.MinimumMonthlyCommitment,
+		"quote_reference":t.QuoteReference,"commercial_configured":t.CommercialConfigured,"terms_version":t.TermsVersion,"pricing_model":t.PricingModel,
+		"contracted_at":nullableTermsTime(t.ContractedAt),"annual_increase_percent": t.AnnualIncreasePercent,
 		"annual_increase_month": 1, "annual_increase_day": 1, "cycle_days": 30, "invoice_day": 1,
 		"price_effective_from": t.PriceEffectiveFrom.Format("2006-01-02"), "service_anchor_date": t.ServiceAnchorDate.Format("2006-01-02"),
 		"updated_at": t.UpdatedAt,
@@ -659,7 +726,8 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 		if in.Waived != nil { next.Waived = *in.Waived }
 		if in.WaiverReason != nil { next.WaiverReason = strings.TrimSpace(*in.WaiverReason) }
 		if next.Required < 0 || next.Paid < 0 { common.APIError(w, 400, "VALIDATION", "License amounts cannot be negative"); return }
-		if !next.Waived && next.Currency == "USD" && next.Required < 13000 { common.APIError(w, 400, "VALIDATION", "Initial license must be at least USD 13,000 unless waived"); return }
+		// START-23.11.1: activation/license fees are partner-specific contract terms.
+		// There is intentionally no platform-wide minimum activation fee.
 
 		status := current.Status
 		if next.Waived {
@@ -879,6 +947,32 @@ func (a *app) setCatalogModuleNotLicensed(ctx context.Context, partnerID, module
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("catalog entitlement update returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (a *app) setCatalogEntitlementState(ctx context.Context, partnerID, moduleKey, state, actor, reason string) error {
+	if strings.TrimSpace(a.catalogHost) == "" || len(strings.TrimSpace(a.token)) < 24 {
+		return fmt.Errorf("catalog service credential is not configured")
+	}
+	body, err := json.Marshal(map[string]any{
+		"entitlement_state": strings.ToUpper(strings.TrimSpace(state)),
+		"reason": strings.TrimSpace(reason),
+	})
+	if err != nil { return err }
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch,
+		"http://"+a.catalogHost+"/internal/v1/partners/"+partnerID+"/modules/"+moduleKey,
+		bytes.NewReader(body))
+	if err != nil { return err }
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.token)
+	if strings.TrimSpace(actor)=="" { actor="billing" }
+	req.Header.Set("X-Himate-User-ID", actor)
+	resp, err := a.client.Do(req)
+	if err != nil { return err }
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("catalog entitlement state update returned status %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -1373,6 +1467,10 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 	}
 	if err = tx.Commit(); err != nil {
 		common.APIError(w, 500, "DB", "Could not commit subscription update")
+		return
+	}
+	if err = a.setCatalogEntitlementState(r.Context(),id,moduleKey,nextLifecycle,actor,reason); err != nil {
+		common.APIError(w,502,"CATALOG_SYNC_FAILED","Subscription was updated but module entitlement synchronization is pending; retry the same request")
 		return
 	}
 	common.JSON(w, 200, map[string]any{

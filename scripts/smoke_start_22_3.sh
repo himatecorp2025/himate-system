@@ -58,7 +58,7 @@ partner="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"di
 partner_id="$(printf '%s' "$partner" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 test -n "$partner_id"
 curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"group_key":"ci_223","label":"CI START 22.3","sort_order":93}'   "$BASE_URL/api/v1/module-groups" >/dev/null
-curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"key":"ci.commercial_snapshot","label":"Commercial Snapshot Module","group_key":"ci_223","description":"START-22.3 immutable period pricing","currency":"USD","version":"1.0.0","latest_version":"1.0.0","default_monthly_price":50,"availability":"ACTIVE","module_type":"FEATURE","owner_team":"Platform","manifest":{"schema_version":1}}'   "$BASE_URL/api/v1/modules" >/dev/null
+curl -fsS -b "$COOKIE" -H 'Content-Type: application/json'   -d '{"key":"ci.commercial_snapshot","label":"Commercial Snapshot Module","group_key":"ci_223","description":"START-22.3 immutable period pricing","currency":"USD","version":"1.0.0","latest_version":"1.0.0","default_monthly_price":50,"availability":"ACTIVE","publication_status":"PUBLISHED","implementation_state":"READY","module_type":"FEATURE","owner_team":"Platform","manifest":{"schema_version":1}}'   "$BASE_URL/api/v1/modules" >/dev/null
 echo "$partner_id"
 
 printf 'commercial workflow fails closed before agreement/evidence/payment... '

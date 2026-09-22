@@ -45,12 +45,20 @@ if data.get("schema_version") != 1:
 if data.get("start") != "23.1":
     errors.append("matrix start must be 23.1")
 
-completed_match = re.fullmatch(r"23\.(?:[1-9]|1[0-2])", str(data.get("completed_through", "")))
-if not completed_match:
-    errors.append("matrix completed_through must be START-23.1 through START-23.12")
-    completed_phase = 1
-else:
-    completed_phase = int(str(data["completed_through"]).split(".", 1)[1])
+def parse_start_phase(raw: object) -> tuple[int, ...] | None:
+    text = str(raw)
+    match = re.fullmatch(r"23\.([0-9]+(?:\.[0-9]+)*)", text)
+    if not match:
+        return None
+    parts = tuple(int(x) for x in match.group(1).split("."))
+    if not parts or not (1 <= parts[0] <= 12):
+        return None
+    return parts
+
+completed_phase = parse_start_phase(data.get("completed_through"))
+if completed_phase is None:
+    errors.append("matrix completed_through must be START-23.1 through START-23.12, including valid subphases")
+    completed_phase = (1,)
 if len(surfaces) < 50:
     errors.append(f"expected at least 50 inventoried surfaces, got {len(surfaces)}")
 if len(contracts) < 80:
@@ -129,8 +137,9 @@ for contract in contracts:
         errors.append(f"{cid}: unknown surface {contract['surface']}")
     if contract["current_state"] not in states:
         errors.append(f"{cid}: invalid current_state {contract['current_state']}")
-    if not re.fullmatch(r"23\.(?:[2-9]|1[0-2])", str(contract["target_phase"])):
-        errors.append(f"{cid}: target_phase must be START-23.2 through START-23.12")
+    target_phase = parse_start_phase(contract["target_phase"])
+    if target_phase is None or not (2 <= target_phase[0] <= 12):
+        errors.append(f"{cid}: target_phase must be START-23.2 through START-23.12, including valid subphases")
     if not str(contract["e2e_proof"]).strip():
         errors.append(f"{cid}: e2e_proof requirement is empty")
 
@@ -219,7 +228,7 @@ for cid, expected in required_blockers.items():
     if item is None:
         errors.append(f"known blocker missing from matrix: {cid}")
         continue
-    target_phase = int(str(item.get("target_phase", "23.12")).split(".", 1)[1])
+    target_phase = parse_start_phase(item.get("target_phase", "23.12")) or (12,)
     current = item.get("current_state")
     if target_phase > completed_phase:
         if current != expected:
