@@ -281,9 +281,10 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.4_ACCEPTANCE.md`
 - `docs/START-23.5_ACCEPTANCE.md`
 - `docs/START-23.6_ACCEPTANCE.md`
+- `docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. A dedicated START-23.1–23.6 cross-phase audit is required before START-23.7. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. The START-23.1–23.6 cross-phase closure audit is now an enforced CI gate and must remain green during START-23.7 and later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.

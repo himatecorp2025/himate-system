@@ -16,7 +16,8 @@
     "MISSING_BACKEND_INTEGRATION",
     "MISSING_DATA_MODEL",
     "DUPLICATE_CONTROL_PATH",
-    "MUTATION_PROVEN_PROD_UNVERIFIED"
+    "MUTATION_PROVEN_PROD_UNVERIFIED",
+    "CONTROL_HIDDEN_PROD_UNVERIFIED"
   ],
   "surfaces": [
     {
@@ -352,11 +353,11 @@
       "backend_service": "NONE — control intentionally hidden until provider exists",
       "persistence": "NONE",
       "audit": "NONE",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "NOT_APPLICABLE",
+      "current_state": "CONTROL_HIDDEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "scripts/audit_start_23_6.py: login UI contains no SSO action or placeholder",
-      "notes": "No OIDC provider is configured for START-23.6; the non-functional SSO control is deliberately absent from the login UI."
+      "e2e_proof": "scripts/audit_start_23_6.py: login UI contains no SSO action, placeholder, or stale SSO localization literal",
+      "notes": "No OIDC/SAML provider is configured for START-23.6. The non-functional SSO control is deliberately absent; this contract is closed by hiding the unavailable control until a real provider-backed authentication flow exists."
     },
     {
       "id": "DASH-REVENUE",
