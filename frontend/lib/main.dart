@@ -6629,15 +6629,23 @@ class _SectionHeader extends StatelessWidget {
     if (trailing == null) return copy;
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 620) {
+        if (constraints.maxWidth < 760) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [copy, const SizedBox(height: 10), trailing!],
+            children: [
+              copy,
+              const SizedBox(height: 10),
+              SizedBox(width: double.infinity, child: trailing!),
+            ],
           );
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.end,
-          children: [Expanded(child: copy), const SizedBox(width: 12), trailing!],
+          children: [
+            Expanded(child: copy),
+            const SizedBox(width: 12),
+            Flexible(child: Align(alignment: Alignment.centerRight, child: trailing!)),
+          ],
         );
       },
     );
@@ -6792,16 +6800,42 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     child: Padding(
       padding: const EdgeInsets.all(18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(icon, color: brandGold, size: 19)),
-          const SizedBox(width: 10),
-          Expanded(child: LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
-          if (action != null) action!,
-        ]),
-        const SizedBox(height: 14),
-        ...children,
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final titleBlock = Row(
+                children: [
+                  Container(width: 36, height: 36, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(icon, color: brandGold, size: 19)),
+                  const SizedBox(width: 10),
+                  Expanded(child: LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+                ],
+              );
+              if (action == null) return titleBlock;
+              if (constraints.maxWidth < 460) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    titleBlock,
+                    const SizedBox(height: 10),
+                    Align(alignment: Alignment.centerLeft, child: action!),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: titleBlock),
+                  const SizedBox(width: 10),
+                  Flexible(child: Align(alignment: Alignment.centerRight, child: action!)),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          ...children,
+        ],
+      ),
     ),
   );
 }
@@ -6814,11 +6848,33 @@ class _DefinitionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Row(children: [
-      Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5))),
-      const SizedBox(width: 12),
-      Flexible(child: LText(value, textAlign: TextAlign.right, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: brandNavy, fontSize: emphasis ? 13 : 11, fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600))),
-    ]),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final valueStyle = TextStyle(
+          color: brandNavy,
+          fontSize: emphasis ? 13 : 11,
+          fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600,
+        );
+        if (constraints.maxWidth < 360) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+              const SizedBox(height: 3),
+              LText(value, maxLines: 4, overflow: TextOverflow.ellipsis, style: valueStyle),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5))),
+            const SizedBox(width: 12),
+            Flexible(child: LText(value, textAlign: TextAlign.right, maxLines: 3, overflow: TextOverflow.ellipsis, style: valueStyle)),
+          ],
+        );
+      },
+    ),
   );
 }
 
@@ -6833,22 +6889,50 @@ class _RuleStrip extends StatelessWidget {
   final List<_RuleItem> items;
 
   @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    children: [
-      for (final item in items)
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(color: brandNavy.withOpacity(.04), borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(item.icon, color: brandGold, size: 15),
-            const SizedBox(width: 7),
-            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
-          ]),
-        ),
-    ],
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final narrow = constraints.maxWidth < 520;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final item in items)
+            SizedBox(
+              width: narrow ? constraints.maxWidth : null,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                decoration: BoxDecoration(color: brandNavy.withOpacity(.04), borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
+                child: Row(
+                  mainAxisSize: narrow ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    Icon(item.icon, color: brandGold, size: 15),
+                    const SizedBox(width: 7),
+                    if (narrow)
+                      Expanded(
+                        child: Wrap(
+                          children: [
+                            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 300),
+                        child: Wrap(
+                          children: [
+                            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
+    },
   );
 }
 
@@ -7156,6 +7240,7 @@ class Content extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 760;
+        final stackActions = shouldStackContentActions(constraints.maxWidth, actions.length);
         final padding = constraints.maxWidth < 520 ? 16.0 : constraints.maxWidth < 1050 ? 22.0 : 28.0;
         final header = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -7176,10 +7261,33 @@ class Content extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (narrow)
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [header, if (actions.isNotEmpty) ...[const SizedBox(height: 16), Wrap(spacing: 9, runSpacing: 9, children: actions)]])
+                if (narrow || stackActions)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      header,
+                      if (actions.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Wrap(spacing: 9, runSpacing: 9, children: actions),
+                      ],
+                    ],
+                  )
                 else
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: header), if (actions.isNotEmpty) ...[const SizedBox(width: 20), Wrap(spacing: 9, runSpacing: 9, children: actions)]]),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: header),
+                      if (actions.isNotEmpty) ...[
+                        const SizedBox(width: 20),
+                        Flexible(
+                          child: Align(
+                            alignment: Alignment.topRight,
+                            child: Wrap(alignment: WrapAlignment.end, spacing: 9, runSpacing: 9, children: actions),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 const SizedBox(height: 22),
                 child,
               ],
@@ -7200,7 +7308,7 @@ class ResponsiveKpiGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth < 620 ? 1 : constraints.maxWidth < 980 ? 2 : 4;
+        final columns = responsiveGridColumnsForWidth(constraints.maxWidth);
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         return Wrap(
           spacing: gap,
@@ -7306,15 +7414,34 @@ class _MessageCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     child: Padding(
       padding: const EdgeInsets.all(24),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(width: 46, height: 46, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(11)), child: Icon(icon, color: brandGold, size: 22)),
-        const SizedBox(width: 15),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 16)),
-          const SizedBox(height: 6),
-          LText(message, style: const TextStyle(color: brandTextSoft, height: 1.45)),
-        ])),
-      ]),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final copy = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 6),
+              LText(message, style: const TextStyle(color: brandTextSoft, height: 1.45)),
+            ],
+          );
+          final mark = Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(11)),
+            child: Icon(icon, color: brandGold, size: 22),
+          );
+          if (constraints.maxWidth < 360) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [mark, const SizedBox(height: 12), copy],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [mark, const SizedBox(width: 15), Expanded(child: copy)],
+          );
+        },
+      ),
     ),
   );
 }
