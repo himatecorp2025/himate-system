@@ -4059,6 +4059,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final paymentMethod = TextEditingController(text: '${paymentProfile?['payment_method_id'] ?? ''}');
     final licenseNote = TextEditingController(text: '${license?['note'] ?? ''}');
     final base = TextEditingController(text: number(terms?['base_monthly_fee']).toStringAsFixed(2));
+    final minimumMonthly = TextEditingController(text: number(terms?['minimum_monthly_commitment'] ?? 1500).toStringAsFixed(2));
+    final quoteReference = TextEditingController(text: '${terms?['quote_reference'] ?? ''}');
     final uplift = TextEditingController(text: number(terms?['annual_increase_percent']).toStringAsFixed(2));
     final effective = TextEditingController(text: '${terms?['price_effective_from'] ?? ''}');
     final anchor = TextEditingController(text: '${terms?['service_anchor_date'] ?? ''}');
@@ -4150,8 +4152,17 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 first: TextField(
                   controller: base,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(labelText: uiLiteral('Base 30-day service fee')),
+                  decoration: InputDecoration(labelText: uiLiteral('Individual base service fee')),
                 ),
+                second: TextField(
+                  controller: minimumMonthly,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: uiLiteral('Minimum monthly commitment')),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: quoteReference, decoration: InputDecoration(labelText: uiLiteral('Quote / offer reference'))),
                 second: TextField(
                   controller: uplift,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -4186,6 +4197,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         'activation_fee_waived': waived,
         'activation_fee_reason': waiverReason.text.trim(),
         'base_monthly_fee': double.tryParse(base.text) ?? 0,
+        'minimum_monthly_commitment': double.tryParse(minimumMonthly.text) ?? 1500,
+        'quote_reference': quoteReference.text.trim(),
         'annual_increase_percent': double.tryParse(uplift.text) ?? 10,
         'price_effective_from': effective.text.trim(),
         'service_anchor_date': anchor.text.trim(),
@@ -4222,6 +4235,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       paymentMethod,
       licenseNote,
       base,
+      minimumMonthly,
+      quoteReference,
       uplift,
       effective,
       anchor,
@@ -7377,7 +7392,10 @@ class _CommercialSummaryCard extends StatelessWidget {
       _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
       _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
       _DefinitionRow(label: 'License paid', value: '${money(license['paid_amount'])} / ${money(license['required_amount'])}'),
-      _DefinitionRow(label: 'Base 30-day fee', value: money(billing['effective_base_fee'])),
+      _DefinitionRow(label: 'Individual base fee', value: money(billing['effective_base_fee'])),
+      _DefinitionRow(label: 'Minimum monthly commitment', value: money(terms['minimum_monthly_commitment'])),
+      _DefinitionRow(label: 'Quote / offer', value: '${terms['quote_reference'] ?? '—'}'),
+      _DefinitionRow(label: 'Terms version', value: '${terms['terms_version'] ?? 1}'),
       _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
       _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
       _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),
