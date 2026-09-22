@@ -7229,7 +7229,7 @@ class _OperationsControlsCard extends StatelessWidget {
       _DefinitionRow(label: 'Private services', value: 'Internal network only'),
       _DefinitionRow(label: 'Partner databases', value: 'Separate from HIMATE control plane'),
       _DefinitionRow(label: 'Connector model', value: 'Pre-defined API exchange'),
-      _DefinitionRow(label: 'Backups / restore', value: 'Scheduled for START-21'),
+      _DefinitionRow(label: 'Backups / restore', value: 'Encrypted · restore verified'),
     ],
   );
 }
