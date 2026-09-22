@@ -11,6 +11,7 @@ catalog = (ROOT / "services/cmd/catalog/main.go").read_text()
 portal = (ROOT / "services/cmd/gateway/partner_portal.go").read_text()
 admin_ui = (ROOT / "frontend/lib/main.dart").read_text()
 modules_ui = (ROOT / "frontend/lib/module_control_plane.dart").read_text()
+localization = (ROOT / "frontend/lib/localization.dart").read_text()
 render = (ROOT / "render.yaml").read_text()
 matrix = json.loads((ROOT / "docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
 
@@ -48,6 +49,14 @@ if "DropdownMenuItem(value: 'NOT_LICENSED'" not in admin_ui:
 
 if "Subscription lifecycle" not in modules_ui or "cancellation_effective_at" not in modules_ui:
     errors.append("Modules commercial matrix does not expose Billing lifecycle state")
+
+for token in [
+    "'Subscription lifecycle': 'Előfizetés életciklusa'",
+    "'Cancellation effective': 'Lemondás hatálybalépése'",
+    "'Cancel pending': 'Lemondás függőben'",
+]:
+    if token not in localization:
+        errors.append(f"START-23.3 Hungarian lifecycle localization missing: {token}")
 
 required_render = [
     "name: himate-30day-invoice-cycle",
