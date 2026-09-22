@@ -2425,9 +2425,9 @@ class _PartnersPageState extends State<PartnersPage> {
     final providerCustomerId = TextEditingController();
     final paymentMethodId = TextEditingController();
     final agreementReference = TextEditingController();
-    final activationInvoiceReference = TextEditingController();
     final evidenceName = TextEditingController(text: 'Initial license payment evidence');
-    final evidenceReference = TextEditingController();
+    html.File? activationInvoiceFile;
+    html.File? paymentEvidenceFile;
     final systemName = TextEditingController();
     final release = TextEditingController(text: '0.3.0-start-09-13');
     String category = '${categories.first['id']}';
@@ -2499,9 +2499,26 @@ class _PartnersPageState extends State<PartnersPage> {
                         decoration: InputDecoration(labelText: uiLiteral('Commercial agreement reference *'), hintText: uiLiteral('Signed contract / agreement reference')),
                       ),
                       const SizedBox(height: 12),
-                      TextField(
-                        controller: activationInvoiceReference,
-                        decoration: InputDecoration(labelText: uiLiteral('Activation-fee invoice reference *'), hintText: uiLiteral('Persistent invoice URL / document reference')),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: LText(
+                              activationInvoiceFile?.name ?? 'No activation invoice selected',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: brandTextSoft),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final file = await pickBrowserFile('application/pdf,image/png,image/jpeg,image/webp');
+                              if (file != null) setLocal(() => activationInvoiceFile = file);
+                            },
+                            icon: const Icon(Icons.receipt_long_outlined),
+                            label: const LText('Choose activation invoice *'),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
@@ -2509,14 +2526,33 @@ class _PartnersPageState extends State<PartnersPage> {
                         second: TextField(controller: paymentMethodId, decoration: InputDecoration(labelText: uiLiteral('Payment method ID'), hintText: uiLiteral('Saved payment method, e.g. pm_...'))),
                       ),
                       const SizedBox(height: 12),
-                      ResponsiveFieldPair(
-                        first: TextField(controller: evidenceName, decoration: InputDecoration(labelText: uiLiteral('Payment evidence name'))),
-                        second: TextField(controller: evidenceReference, decoration: InputDecoration(labelText: uiLiteral('Payment evidence reference / URL'))),
+                      TextField(controller: evidenceName, decoration: InputDecoration(labelText: uiLiteral('Payment evidence name'))),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: LText(
+                              paymentEvidenceFile?.name ?? 'No payment evidence selected',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: brandTextSoft),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final file = await pickBrowserFile('application/pdf,image/png,image/jpeg,image/webp,text/plain');
+                              if (file != null) setLocal(() => paymentEvidenceFile = file);
+                            },
+                            icon: const Icon(Icons.verified_outlined),
+                            label: const LText('Choose payment evidence'),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 10),
                       const _RuleStrip(items: [
                         _RuleItem(Icons.handshake_outlined, 'Agreement', 'Explicit commercial agreement is required'),
-                        _RuleItem(Icons.receipt_long_outlined, 'Activation invoice', 'Persistent invoice reference is recorded'),
+                        _RuleItem(Icons.receipt_long_outlined, 'Activation invoice', 'File is stored in Evidence/Storage and SHA-256 checked'),
                         _RuleItem(Icons.lock_clock_outlined, 'Provisioning gate', 'Agreement + PAID license + evidence are required'),
                       ]),
                     ],
@@ -2577,9 +2613,9 @@ class _PartnersPageState extends State<PartnersPage> {
           primaryLabel: 'Create & validate provisioning',
           onPrimary: () {
             if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty ||
-                agreementReference.text.trim().isEmpty || activationInvoiceReference.text.trim().isEmpty) {
+                agreementReference.text.trim().isEmpty || activationInvoiceFile == null) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('Display name, administrator email, commercial agreement and activation invoice reference are required.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(content: LText('Display name, administrator email, commercial agreement and an activation invoice file are required.'), behavior: SnackBarBehavior.floating),
               );
               return;
             }
@@ -2622,14 +2658,29 @@ class _PartnersPageState extends State<PartnersPage> {
           'agreement_reference': agreementReference.text.trim(),
           'note': 'Confirmed during New Partner provisioning wizard',
         });
+        final invoiceFile = activationInvoiceFile!;
+        final invoiceBytes = await readBrowserFile(invoiceFile);
+        final invoiceEvidence = await widget.api.multipart('/api/v1/evidence', {
+          'partner_id': partnerId,
+          'metric_key': '',
+          'evidence_type': 'INVOICE',
+          'title': 'Activation fee invoice',
+          'description': 'Activation-fee invoice uploaded during New Partner provisioning wizard',
+          'period_start': '',
+          'period_end': '',
+        }, invoiceBytes, invoiceFile.name);
+        final invoiceEvidenceId = '${invoiceEvidence['id'] ?? ''}'.trim();
+        if (invoiceEvidenceId.isEmpty) {
+          throw StateError('Activation invoice Evidence upload returned no ID.');
+        }
         await widget.api.post('/api/v1/billing/partners/$partnerId/documents', {
           'kind': 'INVOICE',
           'name': 'Activation fee invoice',
-          'storage_url': activationInvoiceReference.text.trim(),
+          'storage_url': 'evidence://$invoiceEvidenceId',
           'note': 'Activation-fee invoice registered during New Partner provisioning wizard',
-          'mime_type': 'application/octet-stream',
-          'sha256': '',
-          'size_bytes': 0,
+          'mime_type': '${invoiceEvidence['mime_type'] ?? ''}',
+          'sha256': '${invoiceEvidence['sha256'] ?? ''}',
+          'size_bytes': invoiceEvidence['size_bytes'] ?? 0,
         });
 
         await widget.api.patch('/api/v1/partners/$partnerId', {
@@ -2637,15 +2688,30 @@ class _PartnersPageState extends State<PartnersPage> {
           'reason': 'Commercial and provisioning configuration captured',
         });
 
-        if (evidenceReference.text.trim().isNotEmpty) {
+        if (paymentEvidenceFile != null) {
+          final paymentFile = paymentEvidenceFile!;
+          final paymentBytes = await readBrowserFile(paymentFile);
+          final paymentEvidence = await widget.api.multipart('/api/v1/evidence', {
+            'partner_id': partnerId,
+            'metric_key': '',
+            'evidence_type': 'OTHER',
+            'title': evidenceName.text.trim().isEmpty ? 'Initial license payment evidence' : evidenceName.text.trim(),
+            'description': 'Payment evidence uploaded during New Partner provisioning wizard',
+            'period_start': '',
+            'period_end': '',
+          }, paymentBytes, paymentFile.name);
+          final paymentEvidenceId = '${paymentEvidence['id'] ?? ''}'.trim();
+          if (paymentEvidenceId.isEmpty) {
+            throw StateError('Payment Evidence upload returned no ID.');
+          }
           await widget.api.post('/api/v1/billing/partners/$partnerId/documents', {
             'kind': 'PAYMENT_EVIDENCE',
             'name': evidenceName.text.trim().isEmpty ? 'Initial license payment evidence' : evidenceName.text.trim(),
-            'storage_url': evidenceReference.text.trim(),
+            'storage_url': 'evidence://$paymentEvidenceId',
             'note': 'Registered during New Partner provisioning wizard',
-            'mime_type': 'application/octet-stream',
-            'sha256': '',
-            'size_bytes': 0,
+            'mime_type': '${paymentEvidence['mime_type'] ?? ''}',
+            'sha256': '${paymentEvidence['sha256'] ?? ''}',
+            'size_bytes': paymentEvidence['size_bytes'] ?? 0,
           });
         }
 
@@ -2707,7 +2773,7 @@ class _PartnersPageState extends State<PartnersPage> {
     for (final controller in [
       displayName, legalName, contactName, contactEmail, primaryDomain, country,
       activationFee, baseMonthlyFee, providerCustomerId, paymentMethodId, agreementReference,
-      activationInvoiceReference, evidenceName, evidenceReference, systemName, release,
+      evidenceName, systemName, release,
     ]) {
       controller.dispose();
     }
