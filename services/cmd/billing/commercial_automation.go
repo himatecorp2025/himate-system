@@ -142,6 +142,38 @@ func start223BillingImmutabilityMigration() common.Migration {
 	}
 }
 
+func start233BillingLifecycleMigration() common.Migration {
+	return common.Migration{
+		Version: 7,
+		Name: "start-23-3-authoritative-subscription-lifecycle",
+		Statements: []string{
+			`ALTER TABLE billing.module_subscriptions ADD COLUMN IF NOT EXISTS lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE'`,
+			`ALTER TABLE billing.module_subscriptions ADD COLUMN IF NOT EXISTS cancellation_requested_at TIMESTAMPTZ`,
+			`ALTER TABLE billing.module_subscriptions ADD COLUMN IF NOT EXISTS cancellation_effective_at DATE`,
+			`ALTER TABLE billing.module_subscriptions ADD COLUMN IF NOT EXISTS cancellation_requested_by TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE billing.module_subscriptions ADD COLUMN IF NOT EXISTS cancellation_reason TEXT NOT NULL DEFAULT ''`,
+			`UPDATE billing.module_subscriptions
+				SET lifecycle_state=CASE
+					WHEN payment_status='INACTIVE' THEN 'INACTIVE'
+					WHEN cancel_at_period_end THEN 'CANCEL_PENDING'
+					ELSE 'ACTIVE'
+				END
+				WHERE lifecycle_state NOT IN ('ACTIVE','CANCEL_PENDING','INACTIVE') OR lifecycle_state IS NULL`,
+			`UPDATE billing.module_subscriptions
+				SET lifecycle_state='INACTIVE'
+				WHERE payment_status='INACTIVE' AND lifecycle_state<>'INACTIVE'`,
+			`UPDATE billing.module_subscriptions
+				SET lifecycle_state='CANCEL_PENDING',cancellation_effective_at=period_end
+				WHERE payment_status<>'INACTIVE' AND cancel_at_period_end=TRUE`,
+			`ALTER TABLE billing.subscription_history ADD COLUMN IF NOT EXISTS old_lifecycle_state TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE billing.subscription_history ADD COLUMN IF NOT EXISTS new_lifecycle_state TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE billing.subscription_history ADD COLUMN IF NOT EXISTS period_end DATE`,
+			`CREATE INDEX IF NOT EXISTS billing_subscription_lifecycle_idx
+				ON billing.module_subscriptions(lifecycle_state,period_end,partner_id)`,
+		},
+	}
+}
+
 type billingEventExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
