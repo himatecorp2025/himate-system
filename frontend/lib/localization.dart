@@ -614,7 +614,6 @@ class HimateI18n {
   static const Map<String, String> _extendedHu = <String, String>{
     'Culture Connects People': 'A kultúra összeköti az embereket',
     'or continue with': 'vagy folytasd ezzel',
-    'Sign in with SSO': 'Bejelentkezés SSO-val',
     'Secure  •  Trusted  •  Built for a brighter tomorrow': 'Biztonságos  •  Megbízható  •  Egy fényesebb holnapra építve',
     'The brand system and responsive shell are ready. Functional implementation remains in its scheduled START cycle.': 'Az arculati rendszer és a reszponzív keret kész. A funkcionális megvalósítás az ütemezett START ciklusban folytatódik.',
     'Create a partner category first.': 'Előbb hozz létre partnerkategóriát.',
