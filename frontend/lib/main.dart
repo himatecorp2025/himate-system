@@ -2798,6 +2798,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? license;
   Map<String, dynamic>? agreement;
   Map<String, dynamic>? commercialStatus;
+  Map<String, dynamic>? paymentProfile;
   Map<String, dynamic>? websiteAdapter;
   bool loading = true;
   bool supplementalLoading = true;
@@ -2868,6 +2869,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       _safeWorkspaceGet('/api/v1/billing/partners/$id/commercial-status', errors),
       _safeWorkspaceGet('/api/v1/billing/partners/$id/events', errors),
       _safeWorkspaceGet('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', errors),
+      _safeWorkspaceGet('/api/v1/payments/partners/$id/profile', errors),
     ]);
     if (!mounted) return;
     setState(() {
@@ -2887,6 +2889,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       if (r[13] != null) commercialStatus = r[13];
       if (r[14] != null) billingEvents = items(r[14]!);
       if (r[15] != null) websiteAdapter = r[15];
+      if (r[16] != null) paymentProfile = r[16];
       supplementalLoading = false;
       supplementalError = errors.isEmpty ? null : 'Some secondary services are still loading or temporarily unavailable.';
     });
