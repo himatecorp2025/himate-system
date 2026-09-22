@@ -8928,6 +8928,7 @@ func renderPreviewCMSHTML(doc string, page publicCMSPage, requestURL, slug, toke
 		doc = renderSiteDesignHTML(doc, design.Design, locale, r.URL.Path, func(id string) string {
 			return "/public/v1/cms/media/"+url.PathEscape(id)
 		})
+		w.Header().Set("X-Himate-Design", "published")
 	}
 	w.Header().Set("X-Himate-SSR", "published")
 	w.Header().Set("X-Himate-SEO", "page+global")
