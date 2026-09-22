@@ -404,6 +404,10 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 			a.subscriptionByKey(w, r, id, parts[2])
 			return
 		}
+		if section == "license" && parts[2] == "collect" {
+			a.collectActivationLicense(w, r, id)
+			return
+		}
 		common.APIError(w, 404, "NOT_FOUND", "Route not found")
 		return
 	}
