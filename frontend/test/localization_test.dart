@@ -75,6 +75,21 @@ void main() {
     }
   });
 
+  test('START-23.3 subscription lifecycle labels are localized', () {
+    for (final value in <String>[
+      'Subscription lifecycle',
+      'Cancellation effective',
+      'Cancel pending',
+      'Paid-period deactivation is Billing-managed. Use Cancel at period end; access remains active until the current 30-day period closes.',
+    ]) {
+      expect(
+        HimateI18n.literal('hu_HU', value),
+        isNot(value),
+        reason: 'Missing Hungarian START-23.3 translation for $value',
+      );
+    }
+  });
+
   test('START-23 dynamic CMS and commercial messages are localized', () {
     expect(HimateI18n.literal('hu_HU', 'Section 4'), 'Szekció 4');
     expect(HimateI18n.literal('hu_HU', 'Version 12'), 'Verzió 12');
