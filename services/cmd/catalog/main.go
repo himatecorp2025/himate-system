@@ -756,7 +756,7 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 500, "DB", "Could not commit module update")
 		return
 	}
-	a.onePartnerModule(w, partnerID, key)
+	a.onePartnerModule(w, partnerID, key, common.RequestLocale(r))
 }
 
 func (a *app) partnerModuleCommercialHistory(w http.ResponseWriter, partnerID, key string) {
@@ -932,8 +932,8 @@ func (a *app) internalModulePriceQuotes(w http.ResponseWriter, r *http.Request) 
 	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
 }
 
-func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key string) {
-	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key), common.RequestLocale(r))
+func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key, locale string) {
+	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key), locale)
 	if err != nil {
 		common.APIError(w, 404, "NOT_FOUND", "Module not found")
 		return
