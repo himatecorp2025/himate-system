@@ -139,7 +139,7 @@ deploy1="$(curl -fsS -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d
 printf '%s' "$deploy1" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["deployment_status"]=="DEPLOYED"; assert d["active_release"]=="start-23.10-prod-r1"; assert d["runtime_status"]=="OK"'
 deploy2="$(curl -fsS -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{"release":"start-23.10-prod-r2"}' "$BASE_URL/api/v1/environments/$prod_id/deploy")"
 printf '%s' "$deploy2" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["deployment_status"]=="DEPLOYED"; assert d["active_release"]=="start-23.10-prod-r2"'
-provider="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT provider||':'||status||':'||provider_deploy_id FROM runtime.deployments WHERE partner_id='$partner_id' AND environment='PRODUCTION' ORDER BY created_at DESC LIMIT 1")"
+provider="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT provider||':'||status||':'||provider_deploy_id FROM runtime.deployments WHERE partner_id='$partner_id' AND environment='PRODUCTION' ORDER BY updated_at DESC LIMIT 1")"
 printf '%s' "$provider" | grep -q '^local:READY:local_'
 verified="$(curl -fsS -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{}' "$BASE_URL/api/v1/environments/$prod_id/verify-domain")"
 printf '%s' "$verified" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["domain_status"]=="FAILED"; assert d["dns_status"]=="FAILED"; assert d["launch_ready"] is False'
