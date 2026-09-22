@@ -639,7 +639,8 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	}
 	where:=""
 	if len(whereParts)>0 { where="WHERE "+strings.Join(whereParts," AND ") }
-	rows,err:=a.db.Query(`SELECT v.metric_key,d.label,d.unit,d.aggregation,
+	locale:=common.RequestLocale(r)
+	rows,err:=a.db.Query(`SELECT v.metric_key,d.label_en,d.label_hu,d.unit,d.aggregation,
 		CASE d.aggregation
 			WHEN 'LATEST' THEN (ARRAY_AGG(v.numeric_value ORDER BY v.period_end DESC,v.id DESC))[1]
 			WHEN 'AVERAGE' THEN AVG(v.numeric_value)
@@ -648,19 +649,19 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 		MAX(v.period_end) AS latest_period_end,
 		COUNT(*) AS observations
 		FROM impact.metric_values v JOIN impact.metric_definitions d ON d.metric_key=v.metric_key `+where+`
-		GROUP BY v.metric_key,d.label,d.unit,d.aggregation ORDER BY d.label`,args...)
+		GROUP BY v.metric_key,d.label_en,d.label_hu,d.unit,d.aggregation ORDER BY d.label_en`,args...)
 	if err!=nil { common.APIError(w,500,"DB","Could not calculate impact summary"); return }
 	defer rows.Close()
 	items:=[]map[string]any{}
 	for rows.Next() {
-		var key,label,unit,agg string
+		var key,labelEN,labelHU,unit,agg string
 		var num sql.NullFloat64
 		var end time.Time
 		var count int
-		if rows.Scan(&key,&label,&unit,&agg,&num,&end,&count)==nil {
+		if rows.Scan(&key,&labelEN,&labelHU,&unit,&agg,&num,&end,&count)==nil {
 			var value any
 			if num.Valid { value=num.Float64 }
-			items=append(items,map[string]any{"metric_key":key,"label":label,"unit":unit,"aggregation":agg,"numeric_value":value,"latest_period_end":end.Format("2006-01-02"),"observations":count})
+			items=append(items,map[string]any{"metric_key":key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,"unit":unit,"aggregation":agg,"numeric_value":value,"latest_period_end":end.Format("2006-01-02"),"observations":count})
 		}
 	}
 	baselines:=a.baselineValues(partnerID)
