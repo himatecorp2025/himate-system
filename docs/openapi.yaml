@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.8-start-23.4
+  version: 0.8.9-start-23.5
   description: >
-    Authenticated REST contract for the START-01 through START-23.4 HIMATE
-    control-plane surface. Partner business databases remain isolated behind
+    Authenticated REST contract for the START-01 through START-23.5 HIMATE
+    control-plane surface. Dynamic business labels/descriptions are persisted in
+    English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
+    Accept-Language, then en_US. Partner business databases remain isolated behind
     connector/API contracts; deployment remains isolated behind Runtime;
     encrypted backup/recovery remains isolated behind Backups; payment-provider
     access is isolated behind the Payments adapter while Billing remains the
@@ -130,13 +132,13 @@ paths:
   /api/v1/admin/roles:
     get:
       tags: [Administration]
-      summary: List built-in and custom HIMATE role definitions and permissions
+      summary: List built-in and locale-resolved bilingual custom HIMATE role definitions and permissions
       responses:
         "200": {description: Role catalog}
     post:
       tags: [Administration]
-      summary: Create a custom backend-authoritative role
-      description: System-owner only. Wildcard and system-owner approval authority are not delegable.
+      summary: Create a bilingual custom backend-authoritative role
+      description: System-owner only. role_key and permissions remain locale-neutral; label_en/label_hu and description_en/description_hu are display metadata. Wildcard and system-owner approval authority are not delegable.
       responses:
         "201": {description: Custom role created}
         "403": {description: System owner required}
@@ -146,7 +148,7 @@ paths:
       - {name: roleKey, in: path, required: true, schema: {type: string}}
     patch:
       tags: [Administration]
-      summary: Update custom role label, permissions or active state
+      summary: Update custom role bilingual metadata, permissions or active state
       responses:
         "200": {description: Custom role updated}
         "409": {description: Built-in role protected or custom role still assigned}
@@ -363,23 +365,26 @@ paths:
   /api/v1/partner-categories:
     get:
       tags: [Partners]
-      summary: List partner categories
+      summary: List locale-resolved bilingual partner categories
+      description: Response retains name_en/name_hu; legacy name resolves to the requested locale.
       responses:
         "200": {description: Partner categories}
     post:
       tags: [Partners]
-      summary: Create a partner category
+      summary: Create a bilingual partner category
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [name_en, name_hu]
               properties:
-                name: {type: string}
+                name_en: {type: string}
+                name_hu: {type: string}
+                name: {type: string, deprecated: true, description: Legacy fallback accepted for historical clients}
       responses:
-        "201": {description: Category created}
+        "201": {description: Category created with both language variants}
         "409": {description: Category already exists}
   /api/v1/partners:
     get:
@@ -475,31 +480,33 @@ paths:
   /api/v1/module-groups:
     get:
       tags: [Modules]
-      summary: Module groups
+      summary: Locale-resolved bilingual module groups
+      description: Each item includes label_en/label_hu; label resolves to the requested locale.
       responses:
         "200": {description: Module groups}
     post:
       tags: [Modules]
-      summary: Create a stable module group
+      summary: Create a stable bilingual module group
+      description: Stable group_key is language-neutral; new UI mutations provide label_en and label_hu.
       responses:
-        "201": {description: Module group created}
+        "201": {description: Module group created with bilingual labels}
   /api/v1/module-groups/{groupKey}:
     parameters:
       - {name: groupKey, in: path, required: true, schema: {type: string}}
     patch:
       tags: [Modules]
-      summary: Update module group label or sort order
+      summary: Update bilingual module-group labels or sort order
       responses:
         "200": {description: Module group updated}
   /api/v1/modules:
     get:
       tags: [Modules]
-      summary: Module catalog
+      summary: Locale-resolved bilingual module catalog
       responses:
         "200": {description: Canonical and custom modules}
     post:
       tags: [Modules]
-      summary: Create custom module
+      summary: Create custom module with bilingual label/description metadata
       responses:
         "201": {description: Module created}
         "409": {description: Stable key conflict}
@@ -511,7 +518,7 @@ paths:
         schema: {type: string}
     patch:
       tags: [Modules]
-      summary: Update catalog metadata or availability
+      summary: Update bilingual catalog metadata or availability
       responses:
         "200": {description: Updated catalog module}
   /api/v1/modules/{moduleKey}/relationships:
@@ -1407,12 +1414,12 @@ paths:
   /api/v1/impact/definitions:
     get:
       tags: [Impact]
-      summary: List metric definitions
+      summary: List locale-resolved bilingual metric definitions
       responses:
         "200": {description: Metric definitions}
     post:
       tags: [Impact]
-      summary: Create a metric definition
+      summary: Create a bilingual metric definition
       responses:
         "201": {description: Metric definition created}
   /api/v1/impact/values:
