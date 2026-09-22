@@ -120,11 +120,11 @@ feature_activation="$(curl -fsS -b "$PARTNER_A_COOKIE" -H 'Content-Type: applica
 printf '%s' "$feature_activation" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["module"]["status"]=="ACTIVE"; assert d["module"]["key"]=="ci.portal_feature"'
 echo ok
 
-printf 'activation synchronizes a 30-day subscription and period-end cancellation... '
+printf 'activation synchronizes a calendar-month subscription and month-boundary cancellation... '
 billing_a="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/billing/summary")"
-printf '%s' "$billing_a" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["partner_id"]==sys.argv[1]; assert d["current_total"]>=65; assert d["cycle_days"]==30' "$partner_a_id"
+printf '%s' "$billing_a" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["partner_id"]==sys.argv[1]; assert d["current_total"]>=65; assert d["billing_cycle_model"]=="CALENDAR_MONTH"; assert d["cycle_days"] is None; assert d["proration"]=="NONE"' "$partner_a_id"
 subs_a="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/billing/subscriptions")"
-printf '%s' "$subs_a" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=next(x for x in d["items"] if x["module_key"]=="ci.portal_feature"); assert m["cancel_at_period_end"] is False; assert m["auto_renew"] is True'
+printf '%s' "$subs_a" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=next(x for x in d["items"] if x["module_key"]=="ci.portal_feature"); assert m["cancel_at_period_end"] is False; assert m["auto_renew"] is True; assert m["billing_model"]=="CALENDAR_MONTH"; assert m["proration"]=="NONE"'
 cancelled="$(curl -fsS -b "$PARTNER_A_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"cancel_at_period_end":true}' "$BASE_URL/partner/api/v1/modules/ci.portal_feature/subscription")"
 printf '%s' "$cancelled" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["cancel_at_period_end"] is True; assert d["auto_renew"] is False; assert d["period_end_exclusive"]'
 modules_after_cancel="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/modules")"
