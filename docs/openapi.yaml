@@ -1209,14 +1209,17 @@ paths:
       tags: [Connector]
       security:
         - connectorBearer: []
-      summary: Read tenant-bound website entitlement and service-cycle state
+      summary: Read tenant-bound website entitlement, design and service-cycle state
       description: >
         Partner identity is derived only from the connector credential.
-        Response includes active entitlements, version/configuration, domain
-        binding and 30-day cycle metadata. It deliberately excludes module
-        prices, raw invoices, payment data and unrestricted personal data.
-        Partner websites remain independent applications using this connector
-        contract instead of being reprogrammed by HIMATE.
+        Response includes the active visual design profile, active entitlements,
+        version/configuration, domain binding and 30-day cycle metadata. Design
+        remains a visual-only state block and does not contain or rewrite CMS
+        content, module state, billing or workflow mechanics. The response
+        deliberately excludes module prices, raw invoices, payment data and
+        unrestricted personal data. Partner websites remain independent
+        applications using this connector contract instead of being reprogrammed
+        by HIMATE.
       responses:
         "200": {description: Minimized tenant-bound commercial state}
         "401": {description: Invalid connector credential}
