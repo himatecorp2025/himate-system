@@ -532,6 +532,29 @@ func (a *app) passwordResetDeliveryConfigured() bool {
 	return a.smtpHost != "" && a.smtpPort != "" && a.smtpFrom != "" && a.resetBaseURL != ""
 }
 
+func (a *app) publishedEmailLogoURL(ctx context.Context) string {
+	base := strings.TrimRight(a.resetBaseURL, "/")
+	fallback := base + "/brand/himate_identity_wordmark_2026.webp"
+	design, err := a.fetchPublishedDesign(ctx)
+	if err != nil || design.Version <= 0 {
+		return fallback
+	}
+	id := strings.TrimSpace(design.Design.Assets["email_logo"])
+	if id == "" {
+		id = strings.TrimSpace(design.Design.Assets["header_wordmark"])
+	}
+	if id == "" {
+		id = strings.TrimSpace(design.Design.LogoMediaAssetID)
+	}
+	if id == "" {
+		return fallback
+	}
+	if parsed, err := url.Parse(a.resetBaseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		base = parsed.Scheme + "://" + parsed.Host
+	}
+	return strings.TrimRight(base, "/") + "/public/v1/cms/media/" + url.PathEscape(id)
+}
+
 func (a *app) sendPasswordResetEmail(to, token string) error {
 	if !a.passwordResetDeliveryConfigured() {
 		return errors.New("password-reset email delivery is not configured")
@@ -543,15 +566,33 @@ func (a *app) sendPasswordResetEmail(to, token string) error {
 	}
 	link := a.resetBaseURL + "/login?reset_token=" + url.QueryEscape(token)
 	subject := "HIMATE password reset"
-	body := "A password reset was requested for your HIMATE administrator account.\r\n\r\n" +
+	minutes := strconv.Itoa(int(a.passwordResetTTL.Minutes()))
+	plain := "A password reset was requested for your HIMATE administrator account.\r\n\r\n" +
 		"Open this one-time link to set a new password:\r\n" + link + "\r\n\r\n" +
-		"This link expires in " + strconv.Itoa(int(a.passwordResetTTL.Minutes())) + " minutes. " +
+		"This link expires in " + minutes + " minutes. " +
 		"If you did not request this reset, you can ignore this email.\r\n"
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	logoURL := a.publishedEmailLogoURL(ctx)
+	cancel()
+	htmlBody := "<!doctype html><html><body style=\"margin:0;background:#f8f9fb;font-family:Arial,sans-serif;color:#1f2937\">" +
+		"<div style=\"max-width:620px;margin:0 auto;padding:32px\">" +
+		"<img src=\"" + html.EscapeString(logoURL) + "\" alt=\"HIMATE\" style=\"max-width:220px;height:auto;margin-bottom:28px\">" +
+		"<div style=\"background:#fff;border:1px solid #e4e7ec;border-radius:10px;padding:28px\">" +
+		"<h1 style=\"margin:0 0 18px;color:#0b1f3b;font-size:28px\">Password reset</h1>" +
+		"<p>A password reset was requested for your HIMATE administrator account.</p>" +
+		"<p><a href=\"" + html.EscapeString(link) + "\" style=\"display:inline-block;padding:12px 18px;background:#0b1f3b;color:#fff;text-decoration:none;border-radius:6px\">Set a new password</a></p>" +
+		"<p>This one-time link expires in " + html.EscapeString(minutes) + " minutes.</p>" +
+		"<p style=\"color:#667085\">If you did not request this reset, you can ignore this email.</p>" +
+		"</div></div></body></html>"
+	boundary := "himate-reset-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	msg := []byte("From: " + a.smtpFrom + "\r\n" +
 		"To: " + to + "\r\n" +
 		"Subject: " + subject + "\r\n" +
 		"MIME-Version: 1.0\r\n" +
-		"Content-Type: text/plain; charset=UTF-8\r\n\r\n" + body)
+		"Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
+		"--" + boundary + "\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + plain + "\r\n" +
+		"--" + boundary + "\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n" + htmlBody + "\r\n" +
+		"--" + boundary + "--\r\n")
 	return smtp.SendMail(hostPort, auth, a.smtpFrom, []string{to}, msg)
 }
 
