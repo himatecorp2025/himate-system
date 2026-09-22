@@ -858,6 +858,13 @@ func (a *app) expireDueCancellations(ctx context.Context, at time.Time) error {
 		if err != nil { return err }
 		changed, _ := result.RowsAffected()
 		if changed > 0 {
+			if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.subscription_history(
+					partner_id,module_key,old_auto_renew,new_auto_renew,old_cancel_at_period_end,new_cancel_at_period_end,
+					old_lifecycle_state,new_lifecycle_state,period_end,actor,reason
+				) VALUES($1,$2,FALSE,FALSE,TRUE,FALSE,'CANCEL_PENDING','INACTIVE',$3,'billing-cycle',$4)`,
+				item.partnerID,item.moduleKey,dateOnly(item.end),"Scheduled cancellation reached paid-period boundary"); err != nil {
+				return err
+			}
 			eventKey := fmt.Sprintf("MODULE_CANCELLATION_EFFECTIVE:%s:%s:%s",item.partnerID,item.moduleKey,dateOnly(item.end).Format("2006-01-02"))
 			if err := a.emitBillingEvent(ctx,eventKey,item.partnerID,item.moduleKey,"MODULE_CANCELLATION_EFFECTIVE",dateOnly(item.end),map[string]any{
 				"period_start":dateOnly(item.start).Format("2006-01-02"),
