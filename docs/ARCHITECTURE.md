@@ -443,6 +443,31 @@ Billing -- PAID / FAILED + immutable billing event
 
 Production uses the Stripe adapter with runtime-only `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Local/CI uses the deterministic mock adapter but still exercises the same persisted attempt, signed-webhook and Billing settlement path. Webhook events stay retryable until Billing settlement succeeds; exact processed duplicates are idempotent and event-ID payload reuse fails closed.
 
+## START-23.5 dynamic localization boundary
+
+Dynamic business localization is a persistence concern, not only a Flutter translation concern.
+
+Stable technical identifiers remain language-neutral:
+- category IDs/slugs;
+- module-group keys;
+- module keys;
+- Impact metric keys;
+- RBAC role keys and permission keys.
+
+Localized metadata is stored alongside those identifiers:
+
+```text
+Partners: categories.name_en / name_hu
+Catalog: module_groups.label_en / label_hu
+Catalog: modules.label_en / label_hu + description_en / description_hu
+Impact: metric_definitions.label_en / label_hu + description_en / description_hu
+Identity: custom_roles.label_en / label_hu + description_en / description_hu
+```
+
+All participating services use the shared `services/internal/common/locale.go` contract. Resolution order is explicit query locale, `X-Himate-Locale`, `Accept-Language`, then `en_US`. APIs expose both stored variants while the legacy display field resolves to the active locale for backward compatibility.
+
+Flutter sends `X-Himate-Locale` on API requests and invalidates API cache when locale changes so cached dynamic records cannot leak across language switches. Authorization, billing and entitlement semantics never depend on localized strings.
+
 ## Deployment topology
 
 Local/CI uses `docker-compose.yml`, the Runtime `local` deployment provider and a separate local backup volume. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled. The isolated `himate-payments` private service owns payment-provider connectivity and receives Stripe credentials only as runtime secrets. Production Backups uses the `render_disk` provider with a dedicated `/offsite` Render persistent disk and the runtime-injected AES-256 encryption key. No AWS/S3 endpoint or credential is required by the current production topology.
