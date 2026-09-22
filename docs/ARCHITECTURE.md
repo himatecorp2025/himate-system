@@ -285,6 +285,22 @@ The automated viewport matrix covers 320×568, 390×844, 768×1024, 1024×768, 1
 
 START-23 keeps the post-START-22.3 privacy/credential-boundary and concurrent-load audits mandatory. It does not replace START-24 Security Acceptance.
 
+## Functional contract and product-acceptance boundary (START-23.1)
+
+START-23.1 introduces an explicit product-acceptance contract over the existing microservice architecture. It does not collapse services, duplicate business ownership, or add a new business domain.
+
+The contract distinguishes **route reachability** from **functional completion**. A visible mutation is complete only when UI input, public API routing, backend authorization, service ownership, durable persistence/storage, readback, audit/domain events, EN/HU presentation, failure states and automated E2E proof all agree.
+
+The authoritative machine-readable inventory lives in `docs/START-23.1_FUNCTIONAL_MATRIX.json`. CI audits every current Flutter mutation against that matrix and rejects unregistered POST/PUT/PATCH/DELETE/multipart actions. Product gaps are deliberately represented as explicit states rather than being hidden by green GET-only smoke tests.
+
+The architecture also records three cross-service closure constraints for START-23.2–23.12:
+
+- Catalog entitlement state and Billing subscription state must converge on one authoritative 30-day lifecycle command; an administrator must not bypass paid-period cancellation by directly forcing a catalog state.
+- Billing's existing invoice-cycle code requires a production scheduler before it can be considered automatic.
+- invoice generation is not payment collection; a separate provider-adapter/payment-attempt/webhook boundary is required before recurring customer charging is accepted.
+
+START-24 Security Acceptance is therefore downstream of START-23.12, not immediately downstream of START-23.
+
 ## Backups and verified recovery (START-21)
 
 Backup orchestration is isolated in the private `backups` microservice. It does not run long backup or restore work inside Gateway requests.
