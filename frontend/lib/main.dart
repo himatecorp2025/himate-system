@@ -6263,6 +6263,7 @@ class BrandDialog extends StatelessWidget {
                     SizedBox(width: phone ? 10 : 13),
                     Expanded(
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           LText(title, style: phone ? Theme.of(context).textTheme.titleMedium : Theme.of(context).textTheme.titleLarge),
