@@ -308,6 +308,14 @@ func (a *app) provider(name string) (deploymentProvider, error) {
 	return provider, nil
 }
 
+func (a *app) validateEnvironmentProvider(environment string, provider deploymentProvider) error {
+	if strings.EqualFold(strings.TrimSpace(environment), "PRODUCTION") &&
+		a.defaultProvider != "local" && provider.Name() == "local" {
+		return fmt.Errorf("production deployment cannot override the configured runtime provider with local")
+	}
+	return nil
+}
+
 func (a *app) deploymentProvider(config map[string]any) (deploymentProvider, string, error) {
 	name := configString(config, "provider")
 	provider, err := a.provider(name)
@@ -397,8 +405,8 @@ func (a *app) deploy(w http.ResponseWriter, r *http.Request) {
 	// Production installations configured for a real deployment provider must fail
 	// closed if an environment tries to downgrade itself to the deterministic local
 	// adapter. Local remains valid when it is the process-wide provider (CI/dev).
-	if in.Environment == "PRODUCTION" && a.defaultProvider != "local" && provider.Name() == "local" {
-		common.APIError(w, http.StatusConflict, "PRODUCTION_PROVIDER_REQUIRED", "Production deployment cannot override the configured runtime provider with local")
+	if err := a.validateEnvironmentProvider(in.Environment, provider); err != nil {
+		common.APIError(w, http.StatusConflict, "PRODUCTION_PROVIDER_REQUIRED", err.Error())
 		return
 	}
 	commitID := configString(in.Config, "render_commit_id")
