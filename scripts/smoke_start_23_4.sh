@@ -64,7 +64,12 @@ echo ok
 printf 'configure provider profile and initiate activation charge idempotently... '
 customer="cus_start234_$STAMP"
 method="pm_start234_$STAMP"
-curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "{"provider_customer_id":"$customer","payment_method_id":"$method","autopay_enabled":true}" "$BASE_URL/api/v1/payments/partners/$partner_id/profile" >/dev/null
+profile_payload="$(python3 - "$customer" "$method" <<'PY'
+import json,sys
+print(json.dumps({"provider_customer_id":sys.argv[1],"payment_method_id":sys.argv[2],"autopay_enabled":True},separators=(",",":")))
+PY
+)"
+curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$profile_payload" "$BASE_URL/api/v1/payments/partners/$partner_id/profile" >/dev/null
 attempt1="$(curl -fsS -b "$OWNER_COOKIE" -X POST -H 'Content-Type: application/json' -d '{}' "$BASE_URL/api/v1/billing/partners/$partner_id/license/collect")"
 attempt2="$(curl -fsS -b "$OWNER_COOKIE" -X POST -H 'Content-Type: application/json' -d '{}' "$BASE_URL/api/v1/billing/partners/$partner_id/license/collect")"
 printf '%s\n%s' "$attempt1" "$attempt2" | python3 -c 'import json,sys; lines=sys.stdin.read().splitlines(); a=json.loads(lines[0]); b=json.loads(lines[1]); assert a["id"]==b["id"],(a,b); assert a["status"]=="PROCESSING",a; assert a["purpose"]=="ACTIVATION_LICENSE",a'
