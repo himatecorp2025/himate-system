@@ -556,3 +556,38 @@ func TestGlobalSEOFallbackRendering(t *testing.T) {
 		}
 	}
 }
+
+
+func TestSTART236PasswordResetTokenHash(t *testing.T) {
+	tokenA, err := newPasswordResetToken()
+	if err != nil { t.Fatal(err) }
+	tokenB, err := newPasswordResetToken()
+	if err != nil { t.Fatal(err) }
+	if tokenA == tokenB || len(tokenA) < 40 || len(tokenB) < 40 {
+		t.Fatalf("reset tokens must be high-entropy and unique: %q %q", tokenA, tokenB)
+	}
+	hashA := passwordResetTokenHash(tokenA)
+	if hashA == tokenA || hashA == "" {
+		t.Fatal("password reset token must not be stored in plaintext form")
+	}
+	if hashA != passwordResetTokenHash(tokenA) {
+		t.Fatal("password reset token hash must be deterministic")
+	}
+	if hashA == passwordResetTokenHash(tokenB) {
+		t.Fatal("different reset tokens must have different hashes")
+	}
+}
+
+func TestSTART236PasswordResetProductionDeliveryConfiguration(t *testing.T) {
+	a := &app{
+		smtpHost: "smtp.example.test", smtpPort: "587", smtpFrom: "security@example.test",
+		resetBaseURL: "https://himate.example", passwordResetTTL: 30 * time.Minute,
+	}
+	if !a.passwordResetDeliveryConfigured() {
+		t.Fatal("complete password reset delivery configuration should be accepted")
+	}
+	a.smtpFrom = ""
+	if a.passwordResetDeliveryConfigured() {
+		t.Fatal("missing sender must make password reset delivery unavailable")
+	}
+}
