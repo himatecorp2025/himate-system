@@ -3760,13 +3760,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               DropdownButtonFormField<String>(
                 value: state,
                 decoration: InputDecoration(labelText: uiLiteral('Module state')),
-                items: const [
-                  DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
-                  DropdownMenuItem(value: 'NOT_LICENSED', child: LText('NOT LICENSED')),
-                  DropdownMenuItem(value: 'MAINTENANCE', child: LText('MAINTENANCE')),
+                items: [
+                  const DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
+                  if ('${module['status']}' != 'ACTIVE')
+                    const DropdownMenuItem(value: 'NOT_LICENSED', child: LText('NOT LICENSED')),
+                  const DropdownMenuItem(value: 'MAINTENANCE', child: LText('MAINTENANCE')),
                 ],
                 onChanged: (v) { if (v != null) setLocal(() => state = v); },
               ),
+              if ('${module['status']}' == 'ACTIVE') ...[
+                const SizedBox(height: 6),
+                const LText(
+                  'Paid-period deactivation is Billing-managed. Use Cancel at period end; access remains active until the current 30-day period closes.',
+                  style: TextStyle(color: brandTextSoft, fontSize: 9.5),
+                ),
+              ],
               const SizedBox(height: 8),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
