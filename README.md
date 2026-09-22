@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–23.8 implementation status
+## START-01–23.9 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -288,6 +288,17 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.12-start-23.8`
 - START-23.8 acceptance is `docs/START-23.8_ACCEPTANCE.md`, `scripts/audit_start_23_8.py` and `scripts/smoke_start_23_8.sh`
 
+### START-23.9 — Real Dashboard, Analytics & Global Search
+- Revenue YTD is calculated from provider-settled PAID activation licenses and recurring invoices owned by Billing
+- monetary totals remain grouped by original currency; no implicit FX conversion is performed
+- People Reached is explicitly bound to `klavierhaus.events.attendance.attendee_count` in the Impact service
+- the Program Impact chart is a real 12-month time series from Impact observations rather than a hardcoded visual
+- Recent Activity is sourced from the immutable governance audit stream and filtered by the signed-in administrator's read permissions
+- the shared Dashboard cache excludes permission-scoped activity and historical-year requests bypass the current-year cache
+- global search is active across permitted authoritative domains and never broadens backend authorization
+- release contract version is `0.8.13-start-23.9`
+- START-23.9 acceptance is `docs/START-23.9_ACCEPTANCE.md`, `scripts/audit_start_23_9.py` and `scripts/smoke_start_23_9.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -313,10 +324,11 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.6_ACCEPTANCE.md`
 - `docs/START-23.7_ACCEPTANCE.md`
 - `docs/START-23.8_ACCEPTANCE.md`
+- `docs/START-23.9_ACCEPTANCE.md`
 - `docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. START-23.9 protects authoritative Dashboard revenue/Impact analytics, audit-backed Recent Activity and permission-scoped global search. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
