@@ -45,6 +45,15 @@ This metric is produced by the START-22 Connector from the allowlisted `events.a
 
 The configured metric aggregation semantics are preserved. Missing source data resolves to zero rather than synthetic data.
 
+## Dashboard RBAC contract
+
+Dashboard analytics never broaden domain authorization.
+
+- Revenue YTD is returned only when the authenticated administrator has `billing.read`.
+- People Reached and the Impact trend are returned only when the administrator has `impact.read`.
+- A restricted domain is represented explicitly as `authorized: false`; sensitive values are omitted rather than returned as zero.
+- The shared role-neutral cache may hold full internal summary state, but response shaping is performed for the authenticated administrator before the payload leaves Gateway.
+
 ## Recent Activity contract
 
 Dashboard Recent Activity is read from the immutable `identity.audit_events` stream.
@@ -125,8 +134,9 @@ Partner search results may deep-link directly into the Partner Workspace. Other 
 6. System Owner global search finds partner/module/CMS/contact records;
 7. a restricted Reporting administrator can search allowed partner data;
 8. the same restricted administrator cannot receive CMS/contact/administration/audit search results;
-9. search rejects queries shorter than two characters;
-10. the five historical Dashboard placeholders are absent from executable Flutter source.
+9. the Reporting administrator receives Impact analytics but no Billing analytics without `billing.read`;
+10. search rejects queries shorter than two characters;
+11. the five historical Dashboard placeholders are absent from executable Flutter source.
 
 ## Release contract
 
