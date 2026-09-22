@@ -66,14 +66,22 @@ catalog="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$partner_id/m
 printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; assert next(x for x in d["items"] if x["key"]==key)["status"]=="ACTIVE"' "$MODULE_KEY"
 echo ok
 
+printf 'maintenance cannot be used as a deactivation bypass... '
+curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"status":"MAINTENANCE","reason":"START-23.3 maintenance lifecycle test"}' "$BASE_URL/api/v1/partners/$partner_id/modules/$MODULE_KEY" >/dev/null
+test "$(status "$OWNER_COOKIE" PATCH "/api/v1/partners/$partner_id/modules/$MODULE_KEY" -H 'Content-Type: application/json' -d '{"status":"NOT_LICENSED","reason":"maintenance bypass attempt"}')" = "409"
+grep -q 'BILLING_LIFECYCLE_REQUIRED' "$BODY"
+catalog="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$partner_id/modules")"
+printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; assert next(x for x in d["items"] if x["key"]==key)["status"]=="MAINTENANCE"' "$MODULE_KEY"
+echo ok
+
 printf 'admin schedules period-end cancellation in Billing... '
 cancelled="$(curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"cancel_at_period_end":true,"reason":"START-23.3 admin cancellation"}' "$BASE_URL/api/v1/billing/partners/$partner_id/subscriptions/$MODULE_KEY")"
 printf '%s' "$cancelled" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lifecycle_state"]=="CANCEL_PENDING",d; assert d["cancel_at_period_end"] is True,d; assert d["auto_renew"] is False,d; assert d["cancellation_effective_at"]==sys.argv[1],d' "$period_end"
 catalog="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$partner_id/modules")"
-printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; assert next(x for x in d["items"] if x["key"]==key)["status"]=="ACTIVE"' "$MODULE_KEY"
+printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; assert next(x for x in d["items"] if x["key"]==key)["status"]=="MAINTENANCE"' "$MODULE_KEY"
 echo ok
 
-printf 'Partner Portal uses the same Billing state machine to withdraw and reschedule... '
+printf 'Partner Portal uses the same Billing state machine to withdraw and reschedule while Catalog is in maintenance... '
 portal_payload="$(python3 - "$PORTAL_EMAIL" "$PORTAL_PASSWORD" <<'PY'
 import json,sys
 print(json.dumps({"name":"START 23.3 Portal Owner","email":sys.argv[1],"password":sys.argv[2],"role":"owner"}))
@@ -91,6 +99,8 @@ printf '%s' "$withdrawn" | python3 -c 'import json,sys; d=json.load(sys.stdin); 
 rescheduled="$(curl -fsS -b "$PARTNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"cancel_at_period_end":true}' "$BASE_URL/partner/api/v1/modules/$MODULE_KEY/subscription")"
 printf '%s' "$rescheduled" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lifecycle_state"]=="CANCEL_PENDING",d; assert d["cancellation_effective_at"]==sys.argv[1],d' "$period_end"
 echo ok
+
+curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"status":"ACTIVE","reason":"Restore service before scheduled paid-period expiry"}' "$BASE_URL/api/v1/partners/$partner_id/modules/$MODULE_KEY" >/dev/null
 
 printf 'exact period-end Billing cycle expires entitlement without renewal... '
 docker compose exec -T billing /app/service --run-invoice-cycle "$period_end"
