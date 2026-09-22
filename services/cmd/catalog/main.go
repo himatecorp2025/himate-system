@@ -444,14 +444,20 @@ func (a *app) moduleImpactMetrics(w http.ResponseWriter,r *http.Request,key stri
 
 func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
-	rows,err:=a.db.Query(`SELECT partner_id,status,visible,included_in_base,COALESCE(price_override,0),activated_at,updated_at FROM catalog.partner_modules WHERE module_key=$1 ORDER BY partner_id`,key)
-	if err!=nil{common.APIError(w,500,"DB","Could not load module usage");return};defer rows.Close()
-	items:=[]map[string]any{};counts:=map[string]int{};for rows.Next(){var partner,status string;var visible,included bool;var price float64;var activated sql.NullTime;var updated time.Time
-		if rows.Scan(&partner,&status,&visible,&included,&price,&activated,&updated)==nil{counts[status]++;var activatedAt any;if activated.Valid{activatedAt=activated.Time}
-			items=append(items,map[string]any{"partner_id":partner,"status":status,"visible":visible,"included_in_base":included,"price_override":price,"activated_at":activatedAt,"updated_at":updated})}}
+	rows,err:=a.db.Query(partnerModuleSelect+` WHERE pm.module_key=$1 ORDER BY pm.partner_id`,key)
+	if err!=nil{common.APIError(w,500,"DB","Could not load module usage");return}
+	defer rows.Close()
+	items:=[]map[string]any{}
+	counts:=map[string]int{}
+	for rows.Next(){
+		item,scanErr:=scanPartnerModule(rows)
+		if scanErr!=nil{common.APIError(w,500,"DB","Could not decode module usage");return}
+		counts[fmt.Sprint(item["status"])]++
+		items=append(items,item)
+	}
+	if err:=rows.Err();err!=nil{common.APIError(w,500,"DB","Could not load complete module usage");return}
 	common.JSON(w,200,map[string]any{"items":items,"count":len(items),"status_counts":counts})
 }
-
 
 func (a *app) ensurePartnerModules(partnerID string) error {
 	_, err := a.db.Exec(`INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base) SELECT $1,module_key,'NOT_LICENSED',FALSE,FALSE FROM catalog.modules ON CONFLICT(partner_id,module_key) DO NOTHING`, partnerID)
