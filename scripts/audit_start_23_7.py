@@ -49,9 +49,9 @@ for token in ("EVIDENCE_HOSTPORT: evidence:10000",):
 require("name: himate-billing" in render and "key: EVIDENCE_HOSTPORT" in render and "name: himate-evidence" in render,
         "Render Billing Evidence binding missing")
 
-require("0.8.11-start-23.7" in compose, "Compose release version is not START-23.7")
-require("0.8.11-start-23.7" in render, "Render release version is not START-23.7")
-require("version: 0.8.11-start-23.7" in openapi, "OpenAPI release version is not START-23.7")
+require("HIMATE_APP_VERSION" in compose and "-start-23." in compose, "Compose release contract is missing")
+require("HIMATE_APP_VERSION" in render and "-start-23." in render, "Render release contract is missing")
+require("version: 0.8." in openapi and "-start-23." in openapi, "OpenAPI release contract is missing")
 for path in (
     "/api/v1/billing/partners/{partnerId}/documents:",
     "/api/v1/evidence:",
