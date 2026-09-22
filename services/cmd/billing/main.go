@@ -105,8 +105,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{
-			"status": "ok", "service": "billing", "cycle_days": 30,
-			"cycle_model": "activation-date anchored", "annual_increase_date": "January 1", "time": time.Now().UTC(),
+			"status": "ok", "service": "billing", "billing_cycle_model": "CALENDAR_MONTH",
+			"cycle_model": "calendar month; invoice on next month day 1; no proration", "annual_increase_date": "January 1", "time": time.Now().UTC(),
 		})
 	})
 	mux.HandleFunc("/api/v1/billing/profile", a.profile)
@@ -215,6 +215,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start233BillingLifecycleMigration(),
 		start234BillingPaymentMigration(),
 		start23111BillingCommercialModelMigration(),
+		start23112CalendarMonthBillingMigration(),
 	}); err != nil {
 		return err
 	}
@@ -587,7 +588,7 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 		next.TermsVersion=lockedVersion+1
-		_, err = tx.Exec(`UPDATE billing.partner_terms SET currency=$2,activation_fee=$3,activation_fee_waived=$4,activation_fee_reason=$5,base_monthly_fee=$6,minimum_monthly_commitment=$7,quote_reference=$8,commercial_configured=TRUE,terms_version=$9,contracted_at=COALESCE(contracted_at,NOW()),pricing_model='INDIVIDUAL_QUOTE',annual_increase_percent=$10,cycle_days=30,invoice_day=1,price_effective_from=$11,service_anchor_date=$12,updated_at=NOW() WHERE partner_id=$1`,
+		_, err = tx.Exec(`UPDATE billing.partner_terms SET currency=$2,activation_fee=$3,activation_fee_waived=$4,activation_fee_reason=$5,base_monthly_fee=$6,minimum_monthly_commitment=$7,quote_reference=$8,commercial_configured=TRUE,terms_version=$9,contracted_at=COALESCE(contracted_at,NOW()),pricing_model='INDIVIDUAL_QUOTE',billing_cycle_model='CALENDAR_MONTH',annual_increase_percent=$10,cycle_days=30,invoice_day=1,price_effective_from=$11,service_anchor_date=$12,updated_at=NOW() WHERE partner_id=$1`,
 			id, next.Currency, next.ActivationFee, next.ActivationFeeWaived, next.ActivationFeeReason, next.BaseMonthlyFee,next.MinimumMonthlyCommitment,next.QuoteReference,next.TermsVersion, next.AnnualIncreasePercent, next.PriceEffectiveFrom, next.ServiceAnchorDate)
 		if err != nil { common.APIError(w, 500, "DB", "Could not update terms"); return }
 
@@ -620,7 +621,7 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			id, "", "COMMERCIAL_TERMS_UPDATED", termsEventAt, map[string]any{
 				"currency": next.Currency, "activation_fee": next.ActivationFee,
 				"activation_fee_waived": next.ActivationFeeWaived,
-				"base_30_day_fee": next.BaseMonthlyFee, "minimum_monthly_commitment":next.MinimumMonthlyCommitment,
+				"base_monthly_fee": next.BaseMonthlyFee, "base_30_day_fee": next.BaseMonthlyFee, "minimum_monthly_commitment":next.MinimumMonthlyCommitment,
 				"quote_reference":next.QuoteReference,"terms_version":next.TermsVersion,"pricing_model":"INDIVIDUAL_QUOTE",
 				"price_effective_from": next.PriceEffectiveFrom.Format("2006-01-02"),
 				"actor": actor, "reason": reason,
@@ -678,7 +679,8 @@ func termsMap(t terms) map[string]any {
 		"base_monthly_fee": t.BaseMonthlyFee,"minimum_monthly_commitment":t.MinimumMonthlyCommitment,
 		"quote_reference":t.QuoteReference,"commercial_configured":t.CommercialConfigured,"terms_version":t.TermsVersion,"pricing_model":t.PricingModel,
 		"contracted_at":nullableTermsTime(t.ContractedAt),"annual_increase_percent": t.AnnualIncreasePercent,
-		"annual_increase_month": 1, "annual_increase_day": 1, "cycle_days": 30, "invoice_day": 1,
+		"annual_increase_month": 1, "annual_increase_day": 1, "billing_cycle_model":"CALENDAR_MONTH", "cycle_days": nil, "invoice_day": 1,
+		"proration":"NONE", "invoice_timing":"NEXT_MONTH_DAY_1_FOR_PREVIOUS_CALENDAR_MONTH",
 		"price_effective_from": t.PriceEffectiveFrom.Format("2006-01-02"), "service_anchor_date": t.ServiceAnchorDate.Format("2006-01-02"),
 		"updated_at": t.UpdatedAt,
 	}
@@ -786,14 +788,20 @@ func effectiveBaseFee(t terms, at time.Time) float64 {
 	return math.Round(value*100) / 100
 }
 
-func cycleWindow(anchor, at time.Time) (time.Time, time.Time) {
-	anchor = dateOnly(anchor)
+func calendarMonthWindow(at time.Time) (time.Time, time.Time) {
 	at = dateOnly(at)
-	if at.Before(anchor) { return anchor, anchor.AddDate(0, 0, 30) }
-	days := int(at.Sub(anchor).Hours() / 24)
-	index := days / 30
-	start := anchor.AddDate(0, 0, index*30)
-	return start, start.AddDate(0, 0, 30)
+	start := time.Date(at.Year(), at.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return start, start.AddDate(0, 1, 0)
+}
+
+func previousCalendarMonth(at time.Time) (time.Time, time.Time) {
+	currentStart, _ := calendarMonthWindow(at)
+	return currentStart.AddDate(0, -1, 0), currentStart
+}
+
+func cycleWindow(anchor, at time.Time) (time.Time, time.Time) {
+	_ = anchor
+	return calendarMonthWindow(at)
 }
 
 func dateOnly(v time.Time) time.Time { return time.Date(v.UTC().Year(), v.UTC().Month(), v.UTC().Day(), 0, 0, 0, 0, time.UTC) }
@@ -819,7 +827,7 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	if err != nil { common.APIError(w, 502, "CATALOG", "Could not load billable modules"); return }
 	now := time.Now().UTC()
 	base := effectiveBaseFee(t, now)
-	start, end := cycleWindow(t.ServiceAnchorDate, now)
+	start, end := calendarMonthWindow(now)
 	if err := a.syncSubscriptions(r.Context(), id, t.Currency, rawMods, now); err != nil {
 		common.APIError(w, 500, "DB", "Could not synchronize module subscriptions")
 		return
@@ -831,9 +839,10 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	common.JSON(w, 200, map[string]any{
 		"partner_id": id, "currency": t.Currency, "effective_base_fee": base, "extra_module_fee": extra,
-		"current_total": math.Round((base+extra)*100) / 100, "annual_increase_percent": t.AnnualIncreasePercent,
-		"annual_increase_date": "January 1", "cycle_days": 30, "invoice_day": 1,
-		"service_period": "activation-date anchored 30-day cycle",
+		"current_total": math.Round(math.Max(base+extra,t.MinimumMonthlyCommitment)*100) / 100, "annual_increase_percent": t.AnnualIncreasePercent,
+		"annual_increase_date": "January 1", "billing_cycle_model":"CALENDAR_MONTH", "cycle_days": nil, "invoice_day": 1,
+		"service_period": "calendar month; full-month charge; no proration",
+		"proration":"NONE","minimum_monthly_commitment":t.MinimumMonthlyCommitment,
 		"current_period_start": start.Format("2006-01-02"), "current_period_end_exclusive": end.Format("2006-01-02"),
 		"next_billing_date": end.Format("2006-01-02"), "modules": mods,
 	})
@@ -1047,49 +1056,33 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		var activation, existingStart, existingEnd time.Time
 		var currentPrice float64
 		var autoRenew, cancelAtEnd bool
-		var paymentStatus string
-		err := a.db.QueryRowContext(ctx, `SELECT activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
+		var paymentStatus, billingModel string
+		err := a.db.QueryRowContext(ctx, `SELECT activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status,billing_model
 			FROM billing.module_subscriptions WHERE partner_id=$1 AND module_key=$2`, id, key).
-			Scan(&activation, &existingStart, &existingEnd, &currentPrice, &autoRenew, &cancelAtEnd, &paymentStatus)
+			Scan(&activation, &existingStart, &existingEnd, &currentPrice, &autoRenew, &cancelAtEnd, &paymentStatus, &billingModel)
 
 		if err == sql.ErrNoRows {
 			activation = moduleActivationDate(mod, today)
-			start := dateOnly(activation)
-			end := start.AddDate(0, 0, 30)
-			var snapshotPrice float64
-			firstPeriod := true
-			for {
-				_, price, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, start, end, catalogPrice, included)
-				if snapErr != nil { return fmt.Errorf("create subscription snapshot %s/%s: %w", id, key, snapErr) }
-				snapshotPrice = price
-				if firstPeriod {
-					if err := a.emitBillingEvent(ctx,
-						fmt.Sprintf("MODULE_ACTIVATED:%s:%s:%s", id, key, dateOnly(activation).Format("2006-01-02")),
-						id, key, "MODULE_ACTIVATED", activation, map[string]any{
-							"activation_date": dateOnly(activation).Format("2006-01-02"),
-							"period_start": start.Format("2006-01-02"),
-							"period_end_exclusive": end.Format("2006-01-02"),
-							"price_snapshot": snapshotPrice,
-						}); err != nil { return err }
-					firstPeriod = false
-				}
-				if today.Before(end) {
-					break
-				}
-				if err := a.closeModulePeriod(ctx, id, key, start, end, false); err != nil { return err }
-				nextStart := end
-				nextEnd := nextStart.AddDate(0, 0, 30)
-				_, nextPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, nextStart, nextEnd, catalogPrice, included)
-				if snapErr != nil { return fmt.Errorf("backfill renewal snapshot %s/%s: %w", id, key, snapErr) }
-				if err := a.markModuleRenewed(ctx, id, key, nextStart, nextEnd, nextPrice); err != nil { return err }
-				start, end, snapshotPrice = nextStart, nextEnd, nextPrice
-				if today.Before(end) {
-					break
-				}
+			start, end := calendarMonthWindow(activation)
+			pricingAt := activation
+			if today.After(end) || today.Equal(end) {
+				start, end = calendarMonthWindow(today)
+				pricingAt = start
 			}
+			_, snapshotPrice, _, snapErr := a.ensureModulePeriodSnapshotAt(ctx, id, key, currency, start, end, pricingAt, catalogPrice, included)
+			if snapErr != nil { return fmt.Errorf("create calendar-month subscription snapshot %s/%s: %w", id, key, snapErr) }
+			if err := a.emitBillingEvent(ctx,
+				fmt.Sprintf("MODULE_ACTIVATED:%s:%s:%s", id, key, dateOnly(activation).Format("2006-01-02")),
+				id, key, "MODULE_ACTIVATED", activation, map[string]any{
+					"activation_date": dateOnly(activation).Format("2006-01-02"),
+					"billing_model":"CALENDAR_MONTH","proration":"NONE",
+					"period_start": start.Format("2006-01-02"),
+					"period_end_exclusive": end.Format("2006-01-02"),
+					"price_snapshot": snapshotPrice,
+				}); err != nil { return err }
 			if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.module_subscriptions(
-					partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status
-				) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING')`,
+					partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status,billing_model
+				) VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'PENDING','CALENDAR_MONTH')`,
 				id, key, currency, activation, start, end, snapshotPrice); err != nil {
 				return err
 			}
@@ -1100,6 +1093,21 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		activation = dateOnly(activation)
 		existingStart = dateOnly(existingStart)
 		existingEnd = dateOnly(existingEnd)
+
+		if billingModel != "CALENDAR_MONTH" {
+			start, end := calendarMonthWindow(today)
+			pricingAt := start
+			if activation.After(start) { pricingAt = activation }
+			_, snapshotPrice, _, snapErr := a.ensureModulePeriodSnapshotAt(ctx, id, key, currency, start, end, pricingAt, catalogPrice, included)
+			if snapErr != nil { return fmt.Errorf("migrate subscription to calendar month %s/%s: %w", id, key, snapErr) }
+			existingStart, existingEnd, currentPrice = start, end, snapshotPrice
+			if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
+					period_start=$3,period_end=$4,price=$5,billing_model='CALENDAR_MONTH',
+					cancellation_effective_at=CASE WHEN cancel_at_period_end THEN $4 ELSE NULL END,updated_at=NOW()
+				WHERE partner_id=$1 AND module_key=$2`,
+				id,key,start,end,snapshotPrice); err != nil { return err }
+			billingModel = "CALENDAR_MONTH"
+		}
 
 		if cancelAtEnd {
 			if cancellationExpired(true, existingEnd, today) {
@@ -1125,12 +1133,12 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 
 		if paymentStatus == "INACTIVE" {
 			activation = moduleActivationDate(mod, today)
-			start, end := cycleWindow(activation, today)
-			_, snapshotPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, start, end, catalogPrice, included)
+			start, end := calendarMonthWindow(today)
+			_, snapshotPrice, _, snapErr := a.ensureModulePeriodSnapshotAt(ctx, id, key, currency, start, end, activation, catalogPrice, included)
 			if snapErr != nil { return fmt.Errorf("reactivation snapshot %s/%s: %w", id, key, snapErr) }
 			if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
 					currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
-					auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',lifecycle_state='ACTIVE',
+					auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',lifecycle_state='ACTIVE',billing_model='CALENDAR_MONTH',
 					cancellation_requested_at=NULL,cancellation_effective_at=NULL,cancellation_requested_by='',cancellation_reason='',updated_at=NOW()
 				WHERE partner_id=$1 AND module_key=$2`,
 				id, key, currency, activation, start, end, snapshotPrice); err != nil {
@@ -1155,8 +1163,8 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		for autoRenew && !today.Before(existingEnd) {
 			if err := a.closeModulePeriod(ctx, id, key, existingStart, existingEnd, false); err != nil { return err }
 			nextStart := existingEnd
-			nextEnd := nextStart.AddDate(0, 0, 30)
-			_, nextPrice, _, snapErr := a.ensureModulePeriodSnapshot(ctx, id, key, currency, nextStart, nextEnd, catalogPrice, included)
+			nextEnd := nextStart.AddDate(0, 1, 0)
+			_, nextPrice, _, snapErr := a.ensureModulePeriodSnapshotAt(ctx, id, key, currency, nextStart, nextEnd, nextStart, catalogPrice, included)
 			if snapErr != nil { return fmt.Errorf("renewal snapshot %s/%s: %w", id, key, snapErr) }
 			if err := a.markModuleRenewed(ctx, id, key, nextStart, nextEnd, nextPrice); err != nil { return err }
 			existingStart, existingEnd, currentPrice = nextStart, nextEnd, nextPrice
@@ -1164,7 +1172,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 
 		if _, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions SET
 				currency=$3,activation_date=$4,period_start=$5,period_end=$6,price=$7,
-				auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',lifecycle_state='ACTIVE',
+				auto_renew=TRUE,cancel_at_period_end=FALSE,payment_status='PENDING',lifecycle_state='ACTIVE',billing_model='CALENDAR_MONTH',
 				cancellation_requested_at=NULL,cancellation_effective_at=NULL,cancellation_requested_by='',cancellation_reason='',updated_at=NOW()
 			WHERE partner_id=$1 AND module_key=$2`,
 			id, key, currency, activation, existingStart, existingEnd, currentPrice); err != nil {
@@ -1344,19 +1352,19 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 func (a *app) subscriptions(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
 	rows, err := a.db.Query(`SELECT module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status,
-		lifecycle_state,cancellation_requested_at,cancellation_effective_at,cancellation_requested_by,cancellation_reason,updated_at
+		lifecycle_state,cancellation_requested_at,cancellation_effective_at,cancellation_requested_by,cancellation_reason,billing_model,updated_at
 		FROM billing.module_subscriptions WHERE partner_id=$1 ORDER BY module_key`, id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load subscriptions"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		var key, currency, payment, lifecycle, cancellationRequestedBy, cancellationReason string
+		var key, currency, payment, lifecycle, cancellationRequestedBy, cancellationReason, billingModel string
 		var activation, start, end, updated time.Time
 		var cancellationRequestedAt, cancellationEffectiveAt sql.NullTime
 		var price float64
 		var renew, cancel bool
 		if rows.Scan(&key, &currency, &activation, &start, &end, &price, &renew, &cancel, &payment,
-			&lifecycle,&cancellationRequestedAt,&cancellationEffectiveAt,&cancellationRequestedBy,&cancellationReason,&updated) == nil {
+			&lifecycle,&cancellationRequestedAt,&cancellationEffectiveAt,&cancellationRequestedBy,&cancellationReason,&billingModel,&updated) == nil {
 			items = append(items, map[string]any{
 				"module_key": key, "currency": currency, "activation_date": activation.Format("2006-01-02"),
 				"period_start": start.Format("2006-01-02"), "period_end_exclusive": end.Format("2006-01-02"),
@@ -1366,6 +1374,7 @@ func (a *app) subscriptions(w http.ResponseWriter, r *http.Request, id string) {
 				"cancellation_effective_at": nullableDateValue(cancellationEffectiveAt),
 				"cancellation_requested_by": cancellationRequestedBy,
 				"cancellation_reason": cancellationReason,
+				"billing_model":billingModel,"proration":"NONE",
 				"updated_at": updated,
 			})
 		}
@@ -1569,24 +1578,25 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 
 func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
-	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,status,provider_status,
+	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,minimum_commitment_adjustment,billing_model,status,provider_status,
 		payment_attempt_id,provider,provider_payment_id,paid_at,payment_failure_code,payment_failure_message,created_at
 		FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC`, id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load invoices"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		var invoiceID, currency, status, providerStatus, attemptID, provider, providerPaymentID, failureCode, failureMessage string
+		var invoiceID, currency, billingModel, status, providerStatus, attemptID, provider, providerPaymentID, failureCode, failureMessage string
 		var invoiceDate, start, end, created time.Time
 		var paidAt sql.NullTime
-		var base, module, total float64
-		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &status, &providerStatus,
+		var base, module, total, minimumAdjustment float64
+		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &minimumAdjustment, &billingModel, &status, &providerStatus,
 			&attemptID, &provider, &providerPaymentID, &paidAt, &failureCode, &failureMessage, &created) == nil {
 			var paid any
 			if paidAt.Valid { paid = paidAt.Time }
 			items = append(items, map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
-				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": providerStatus,
+				"currency": currency, "base_fee": base, "module_fee": module, "minimum_commitment_adjustment":minimumAdjustment,
+				"billing_model":billingModel,"proration":"NONE","total": total, "status": status, "provider_status": providerStatus,
 				"payment_attempt_id": attemptID, "provider": provider, "provider_payment_id": providerPaymentID, "paid_at": paid,
 				"payment_failure_code": failureCode, "payment_failure_message": failureMessage, "created_at": created,
 				"items": a.invoiceItemsFor(invoiceID),
@@ -1611,10 +1621,9 @@ func (a *app) runEndpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 func isCycleBoundary(anchor, at time.Time) bool {
-	anchor, at = dateOnly(anchor), dateOnly(at)
-	if !at.After(anchor) { return false }
-	days := int(at.Sub(anchor).Hours() / 24)
-	return days > 0 && days%30 == 0
+	_ = anchor
+	at = dateOnly(at)
+	return at.Day() == 1
 }
 
 func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
@@ -1641,29 +1650,30 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		if err := a.syncSubscriptions(ctx, id, t.Currency, rawMods, at); err != nil { return err }
 
 		if !isCycleBoundary(t.ServiceAnchorDate, at) { continue }
-		start := at.AddDate(0, 0, -30)
+		start, end := previousCalendarMonth(at)
 		base := effectiveBaseFee(t, start)
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
-		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
-			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
-			invoiceID, id, at, start, at, t.Currency, base)
+		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,minimum_commitment_adjustment,billing_model)
+			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7,0,'CALENDAR_MONTH') ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
+			invoiceID, id, at, start, end, t.Currency, base)
 		if err != nil { return err }
 		inserted, _ := result.RowsAffected()
-		// A rerun must keep the originally invoiced base price immutable.
 		if err := a.db.QueryRowContext(ctx, `SELECT id,base_fee FROM billing.invoices
 			WHERE partner_id=$1 AND service_period_start=$2 AND service_period_end=$3`,
-			id, start, at).Scan(&invoiceID, &base); err != nil { return err }
-		moduleTotal, err := a.attachInvoiceItems(ctx, invoiceID, id, t.Currency, start, at, base)
+			id, start, end).Scan(&invoiceID, &base); err != nil { return err }
+		moduleTotal, adjustment, err := a.attachInvoiceItems(ctx, invoiceID, id, t.Currency, start, end, base, t.MinimumMonthlyCommitment)
 		if err != nil { return err }
-		total := math.Round((base+moduleTotal)*100)/100
-		if _, err := a.db.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3 WHERE id=$1`,
-			invoiceID, moduleTotal, total); err != nil { return err }
+		total := math.Round((base+moduleTotal+adjustment)*100)/100
+		if _, err := a.db.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,minimum_commitment_adjustment=$3,total=$4,billing_model='CALENDAR_MONTH' WHERE id=$1`,
+			invoiceID, moduleTotal, adjustment, total); err != nil { return err }
 		if inserted > 0 {
 			if err := a.emitBillingEvent(ctx, "INVOICE_GENERATED:"+invoiceID, id, "", "INVOICE_GENERATED", at, map[string]any{
 				"invoice_id": invoiceID, "currency": t.Currency, "base_fee": base,
-				"module_fee": moduleTotal, "total": total,
+				"module_fee": moduleTotal, "minimum_commitment_adjustment":adjustment,
+				"minimum_monthly_commitment":t.MinimumMonthlyCommitment,"billing_model":"CALENDAR_MONTH",
+				"proration":"NONE","total": total,
 				"service_period_start": start.Format("2006-01-02"),
-				"service_period_end_exclusive": at.Format("2006-01-02"),
+				"service_period_end_exclusive": end.Format("2006-01-02"),
 			}); err != nil { return err }
 		}
 		a.queueInvoiceCollection(ctx, invoiceID, id, t.Currency, total)
