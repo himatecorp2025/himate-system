@@ -61,7 +61,7 @@ terms="$(python3 - "$TODAY" <<'PY'
 import json,sys
 day=sys.argv[1]
 print(json.dumps({
- "currency":"USD","activation_fee":239,"activation_fee_waived":False,"activation_fee_reason":"",
+ "currency":"USD","activation_fee":13000,"activation_fee_waived":False,"activation_fee_reason":"",
  "base_monthly_fee":0,"annual_increase_percent":0,
  "price_effective_from":day,"service_anchor_date":day,
  "reason":"START-23.9 dashboard revenue acceptance"
@@ -71,7 +71,7 @@ PY
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$terms" "$BASE_URL/api/v1/billing/partners/$partner_id/terms" >/dev/null
 provider_pay_activation "$BASE_URL" "$OWNER_COOKIE" "$partner_id" "start239_$STAMP"
 after_revenue_json="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/dashboard/summary?year=$YEAR&refresh=true")"
-printf '%s' "$after_revenue_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); before=float(sys.argv[1]); x=next(i for i in d["billing"]["items"] if i["currency"]=="USD"); assert float(x["revenue_ytd"]) >= before+238.99,(before,x)' "$before_revenue"
+printf '%s' "$after_revenue_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); before=float(sys.argv[1]); x=next(i for i in d["billing"]["items"] if i["currency"]=="USD"); assert float(x["revenue_ytd"]) >= before+12999.99,(before,x)' "$before_revenue"
 echo ok
 
 printf 'ensure authoritative People Reached metric and mutate current-month Impact... '
