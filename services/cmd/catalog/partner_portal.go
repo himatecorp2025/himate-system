@@ -195,7 +195,7 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	}
 	if status == "ACTIVE" {
 		tx.Rollback()
-		a.onePartnerModule(w, partnerID, key)
+		a.onePartnerModule(w, partnerID, key, common.RequestLocale(r))
 		return
 	}
 	if status == "MAINTENANCE" {
