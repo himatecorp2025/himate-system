@@ -269,7 +269,8 @@ func (a *app) createCharge(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 400, "VALIDATION", "invoice_id is required for invoice collection")
 		return
 	}
-	if existing, ok := a.attemptByIdempotency(in.IdempotencyKey); ok {
+	existing, exists := a.attemptByIdempotency(in.IdempotencyKey)
+	if exists && existing.Status != "RETRYABLE" {
 		common.JSON(w, 200, attemptMap(existing))
 		return
 	}
@@ -285,14 +286,18 @@ func (a *app) createCharge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := attemptID(in.IdempotencyKey)
-	_, err = a.db.Exec(`INSERT INTO payments.attempts(id,partner_id,invoice_id,purpose,amount,currency,provider,idempotency_key,status)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,'PENDING') ON CONFLICT(idempotency_key) DO NOTHING`,
-		id, in.PartnerID, in.InvoiceID, in.Purpose, math.Round(in.Amount*100)/100, in.Currency, a.provider, in.IdempotencyKey)
-	if err != nil { common.APIError(w, 500, "DB", "Could not create payment attempt"); return }
+	if exists {
+		id = existing.ID
+	} else {
+		_, err = a.db.Exec(`INSERT INTO payments.attempts(id,partner_id,invoice_id,purpose,amount,currency,provider,idempotency_key,status)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,'PENDING') ON CONFLICT(idempotency_key) DO NOTHING`,
+			id, in.PartnerID, in.InvoiceID, in.Purpose, math.Round(in.Amount*100)/100, in.Currency, a.provider, in.IdempotencyKey)
+		if err != nil { common.APIError(w, 500, "DB", "Could not create payment attempt"); return }
+	}
 
 	providerID, providerStatus, err := a.providerCharge(r.Context(), id, in, profile)
 	if err != nil {
-		_, _ = a.db.Exec(`UPDATE payments.attempts SET status='FAILED',failure_code='PROVIDER_REQUEST_FAILED',failure_message=$2,updated_at=NOW() WHERE id=$1`, id, trimError(err))
+		_, _ = a.db.Exec(`UPDATE payments.attempts SET status='RETRYABLE',failure_code='PROVIDER_REQUEST_FAILED',failure_message=$2,updated_at=NOW() WHERE id=$1`, id, trimError(err))
 		common.APIError(w, 502, "PAYMENT_PROVIDER", "Payment provider request failed")
 		return
 	}
