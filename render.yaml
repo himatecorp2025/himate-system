@@ -71,6 +71,11 @@ services:
           type: pserv
           name: himate-payments
           property: hostport
+      - key: EVIDENCE_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-evidence
+          property: hostport
 
   - type: pserv
     name: himate-payments
