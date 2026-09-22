@@ -6324,14 +6324,17 @@ class _MiniCounter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: brandNavy.withOpacity(.055),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: brandNavy.withOpacity(.07)),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: brandNavy.withOpacity(.055),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: brandNavy.withOpacity(.07)),
+        ),
+        child: LText(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
       ),
-      child: LText(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -6350,10 +6353,13 @@ class _StatusPill extends StatelessWidget {
             : value.contains('SUSPENDED') || value.contains('ARCHIVED')
                 ? brandDanger
                 : brandSteel;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99), border: Border.all(color: tone.withOpacity(.15))),
-      child: LText(_humanize(label), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .25)),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99), border: Border.all(color: tone.withOpacity(.15))),
+        child: LText(_humanize(label), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .25)),
+      ),
     );
   }
 }
