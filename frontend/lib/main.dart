@@ -3460,10 +3460,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
   Future<void> editTerms() async {
     final activation = TextEditingController(text: number(terms?['activation_fee']).toStringAsFixed(2));
-    final paid = TextEditingController(text: number(license?['paid_amount']).toStringAsFixed(2));
-    final paymentDate = TextEditingController(text: '${license?['payment_date'] ?? ''}');
-    final paymentReference = TextEditingController(text: '${license?['payment_reference'] ?? ''}');
-    final verifiedBy = TextEditingController(text: '${license?['verified_by'] ?? ''}');
+    final providerCustomer = TextEditingController(text: '${paymentProfile?['provider_customer_id'] ?? ''}');
+    final paymentMethod = TextEditingController(text: '${paymentProfile?['payment_method_id'] ?? ''}');
     final licenseNote = TextEditingController(text: '${license?['note'] ?? ''}');
     final base = TextEditingController(text: number(terms?['base_monthly_fee']).toStringAsFixed(2));
     final uplift = TextEditingController(text: number(terms?['annual_increase_percent']).toStringAsFixed(2));
@@ -3472,6 +3470,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final waiverReason = TextEditingController(text: '${terms?['activation_fee_reason'] ?? ''}');
     final commercialReason = TextEditingController();
     bool waived = terms?['activation_fee_waived'] == true;
+    bool autopay = paymentProfile?['autopay_enabled'] == true;
+    bool collectActivationNow = false;
     String currency = '${terms?['currency'] ?? 'USD'}';
 
     final ok = await showDialog<bool>(
@@ -3479,7 +3479,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Pricing & Subscription',
-          subtitle: 'Partner-specific license and recurring terms with an activation-date anchored 30-day service cycle.',
+          subtitle: 'Partner-specific license, provider-backed payment and recurring 30-day terms.',
           icon: Icons.payments_outlined,
           width: 760,
           child: Column(
@@ -3508,31 +3508,44 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 value: waived,
                 onChanged: (v) => setLocal(() => waived = v),
                 title: const LText('Activation fee waived'),
-                subtitle: const LText('Use only for an existing/reference partner where no activation transaction applies.'),
+                subtitle: const LText('Use only where no provider transaction applies.'),
               ),
               if (waived) ...[
                 const SizedBox(height: 8),
                 TextField(controller: waiverReason, decoration: InputDecoration(labelText: uiLiteral('Waiver reason'))),
               ],
               const SizedBox(height: 18),
-              const _DialogSectionLabel('INITIAL LICENSE PAYMENT'),
+              const _DialogSectionLabel('PROVIDER-BACKED PAYMENT'),
               const SizedBox(height: 10),
-              ResponsiveFieldPair(
-                first: TextField(
-                  controller: paid,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(labelText: uiLiteral('Paid amount')),
-                ),
-                second: TextField(
-                  controller: paymentDate,
-                  decoration: InputDecoration(labelText: uiLiteral('Payment date'), hintText: uiLiteral('YYYY-MM-DD')),
-                ),
-              ),
+              _DefinitionRow(label: 'License status', value: '${license?['status'] ?? 'NOT_PAID'}'),
+              _DefinitionRow(label: 'Paid amount', value: money(license?['paid_amount'], currency: currency)),
+              _DefinitionRow(label: 'Provider reference', value: '${license?['payment_reference'] ?? '—'}'),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: paymentReference, decoration: InputDecoration(labelText: uiLiteral('Payment reference'))),
-                second: TextField(controller: verifiedBy, decoration: InputDecoration(labelText: uiLiteral('Verified by'), hintText: uiLiteral('Optional — current admin is used automatically'))),
+                first: TextField(
+                  controller: providerCustomer,
+                  decoration: InputDecoration(labelText: uiLiteral('Provider customer ID'), hintText: uiLiteral('Stripe customer ID')),
+                ),
+                second: TextField(
+                  controller: paymentMethod,
+                  decoration: InputDecoration(labelText: uiLiteral('Payment method ID'), hintText: uiLiteral('Saved payment method')),
+                ),
               ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: autopay,
+                onChanged: waived ? null : (v) => setLocal(() => autopay = v),
+                title: const LText('Automatic recurring collection'),
+                subtitle: const LText('Recurring invoices are charged off-session through the configured provider.'),
+              ),
+              if (!waived && '${license?['status'] ?? ''}' != 'PAID')
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: collectActivationNow,
+                  onChanged: (v) => setLocal(() => collectActivationNow = v),
+                  title: const LText('Collect activation license after save'),
+                  subtitle: const LText('PAID is set only after the signed provider webhook is verified.'),
+                ),
               const SizedBox(height: 12),
               TextField(controller: licenseNote, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('License note'))),
               const SizedBox(height: 18),
@@ -3558,13 +3571,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               const SizedBox(height: 12),
               TextField(controller: commercialReason, decoration: InputDecoration(labelText: uiLiteral('Change reason'), hintText: uiLiteral('Recorded in commercial price history'))),
               const SizedBox(height: 12),
-              const _RuleStrip(
-                items: [
-                  _RuleItem(Icons.timelapse_outlined, 'Service cycle', '30 days from activation date'),
-                  _RuleItem(Icons.event_repeat_outlined, 'Renewal', 'Every 30 days'),
-                  _RuleItem(Icons.trending_up_rounded, 'Annual uplift', 'January 1'),
-                ],
-              ),
+              const _RuleStrip(items: [
+                _RuleItem(Icons.verified_user_outlined, 'Payment authority', 'Signed provider webhook only'),
+                _RuleItem(Icons.event_repeat_outlined, 'Renewal', 'Automatic 30-day collection'),
+                _RuleItem(Icons.lock_clock_outlined, 'Provisioning', 'Opens only after verified PAID state'),
+              ]),
             ],
           ),
           primaryLabel: 'Save commercial terms',
@@ -3574,26 +3585,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
 
     if (ok == true) {
-      final requiredAmount = double.tryParse(activation.text) ?? 0;
-      final paidAmount = double.tryParse(paid.text) ?? 0;
-      final hasPaymentEvidence = documents.any((d) {
-        final kind = '${d['kind'] ?? ''}'.toUpperCase();
-        final storageReference = '${d['storage_url'] ?? ''}'.trim();
-        return (kind == 'PAYMENT_EVIDENCE' || kind == 'RECEIPT') && storageReference.isNotEmpty;
-      });
-      if (!waived && requiredAmount > 0 && paidAmount >= requiredAmount && !hasPaymentEvidence) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: LText('Register payment evidence or a receipt before marking the activation license paid.'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: brandWarning,
-            ),
-          );
-        }
-        return;
-      }
-
       await widget.api.put('/api/v1/billing/partners/${partner['id']}/terms', {
         'currency': currency,
         'activation_fee': double.tryParse(activation.text) ?? 0,
@@ -3608,24 +3599,32 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       await widget.api.put('/api/v1/billing/partners/${partner['id']}/license', {
         'currency': currency,
         'required_amount': double.tryParse(activation.text) ?? 0,
-        'paid_amount': double.tryParse(paid.text) ?? 0,
-        'payment_date': paymentDate.text.trim(),
-        'payment_reference': paymentReference.text.trim(),
-        'verified_by': verifiedBy.text.trim(),
         'note': licenseNote.text.trim(),
         'waived': waived,
         'waiver_reason': waiverReason.text.trim(),
       });
+      if (!waived) {
+        await widget.api.put('/api/v1/payments/partners/${partner['id']}/profile', {
+          'provider_customer_id': providerCustomer.text.trim(),
+          'payment_method_id': paymentMethod.text.trim(),
+          'autopay_enabled': autopay,
+        });
+        if (collectActivationNow) {
+          await widget.api.post('/api/v1/billing/partners/${partner['id']}/license/collect', {});
+        }
+      }
       await load();
-      if (mounted) success('Commercial terms and initial license updated.');
+      if (mounted) {
+        success(collectActivationNow
+            ? 'Commercial terms saved and provider-backed activation collection initiated.'
+            : 'Commercial terms and payment profile updated.');
+      }
     }
 
     for (final controller in [
       activation,
-      paid,
-      paymentDate,
-      paymentReference,
-      verifiedBy,
+      providerCustomer,
+      paymentMethod,
       licenseNote,
       base,
       uplift,
