@@ -65,9 +65,11 @@ for token in (
     "func (a *app) runSchedulerOnce() int",
     'queueBackup(item.id,"scheduler")',
     "last_scheduled_at=NOW()",
+    "pg_try_advisory_lock(2310001)",
 ):
     require(token in backups_worker, f"Backup scheduler closure missing {token!r}")
 require("LastScheduledAt" in backups_main, "backup policy does not retain last_scheduled_at readback")
+require("backups_one_pending_partner_idx" in backups_main, "backup pending-work uniqueness guard is missing")
 for token in (
     'parts[0]=="scheduler"&&parts[1]=="run"',
     "func (a *app) schedulerRun",
