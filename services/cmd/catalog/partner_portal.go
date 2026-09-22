@@ -171,26 +171,6 @@ func portalModuleMap(item portalModule) map[string]any {
 	}
 }
 
-func (a *app) partnerPortalModules(w http.ResponseWriter, partnerID string) {
-	modules, err := a.loadPartnerPortalModules(partnerID)
-	if err != nil {
-		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load partner portal modules")
-		return
-	}
-	items := make([]map[string]any, 0, len(modules))
-	activeCount := 0
-	availableCount := 0
-	for _, item := range modules {
-		if item.Status == "ACTIVE" { activeCount++ }
-		if item.CanActivate { availableCount++ }
-		items = append(items, portalModuleMap(item))
-	}
-	common.JSON(w, http.StatusOK, map[string]any{
-		"partner_id": partnerID, "items": items, "count": len(items),
-		"active_count": activeCount, "available_count": availableCount,
-	})
-}
-
 func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, partnerID, key string) {
 	key = strings.TrimSpace(key)
 	if key == "" {
