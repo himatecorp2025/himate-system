@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–23.2 implementation status
+## START-01–23.3 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -213,6 +213,16 @@ The architecture remains microservice/container based. It is **not** being colla
 - legacy duplicate module create/edit controls removed from Licensing & Finance
 - end-of-period cancellation semantics remain deliberately assigned to START-23.3
 
+### START-23.3 — Authoritative Period-End Cancellation State Machine
+- Billing is the single lifecycle authority for module subscriptions: `ACTIVE` → `CANCEL_PENDING` → `INACTIVE`
+- admin and Partner Portal use the same Billing cancellation command
+- an active paid-period entitlement cannot be changed directly to `NOT_LICENSED` through Catalog administration
+- current 30-day access and immutable price snapshots survive until the exact period boundary
+- cancellation can be withdrawn before the boundary; pending/inactive subscriptions have no false next-period quote
+- the daily Render Billing cron closes exact module boundaries and safely catches up missed runs idempotently
+- Catalog performs final entitlement deactivation only from Billing's internal lifecycle path
+- payment-provider charging and settlement remain START-23.4
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -232,9 +242,10 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23_ACCEPTANCE.md`
 - `docs/START-23.1_ACCEPTANCE.md`
 - `docs/START-23.2_ACCEPTANCE.md`
+- `docs/START-23.3_ACCEPTANCE.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.1 remain protected by their historical acceptance suites. START-23.2 additionally requires `docs/START-23.2_ACCEPTANCE.md`, `scripts/audit_start_23_2.py`, and `scripts/smoke_start_23_2.sh`. Partner-module pricing now has automated mutation/readback evidence, while final production proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.3–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 additionally requires `docs/START-23.3_ACCEPTANCE.md`, `scripts/audit_start_23_3.py`, and `scripts/smoke_start_23_3.sh`. Billing-owned cancellation now has mutation/state-machine evidence and the Render daily lifecycle scheduler is contract-checked. Final production proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.4–23.12 close the remaining matrix blockers.

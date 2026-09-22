@@ -767,10 +767,10 @@
       "persistence": "catalog.partner_modules + price_history + history",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SEMANTIC_GAP",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.3",
-      "e2e_proof": "required: matrix visibility + per-partner price",
-      "notes": "Commercial price/fee editing is covered by MODULE-COMMERCIAL-MATRIX-EDIT in START-23.2. Direct entitlement-state semantics remain blocked until START-23.3 unifies cancellation."
+      "e2e_proof": "scripts/smoke_start_23_3.sh: direct ACTIVE -> NOT_LICENSED and indirect ACTIVE -> MAINTENANCE -> NOT_LICENSED admin bypasses rejected; Billing owns period-end deactivation",
+      "notes": "Commercial price/fee editing remains Catalog-owned. Any external transition into NOT_LICENSED from a live or maintenance entitlement is rejected; Billing owns final period-end deactivation."
     },
     {
       "id": "PART-MODULE-CANCEL",
@@ -785,10 +785,10 @@
       "persistence": "billing.module_subscriptions + subscription_history",
       "audit": "billing events + gateway audit",
       "localization_state": "PARTIAL",
-      "current_state": "SEMANTIC_GAP",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.3",
-      "e2e_proof": "required: access until period end + no next invoice",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_3.sh: admin schedule -> current-period access -> exact-boundary expiry -> no renewal",
+      "notes": "Admin cancellation uses the authoritative Billing subscription command."
     },
     {
       "id": "BILLING-PROFILE",
@@ -1613,10 +1613,10 @@
       "persistence": "billing.module_subscriptions + subscription_history",
       "audit": "PARTNER_SUBSCRIPTION_UPDATED",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.3",
-      "e2e_proof": "required: same state machine as admin",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_3.sh: Partner Portal withdraw/reschedule through the same Billing lifecycle state machine",
+      "notes": "Portal no longer derives cancellation authority from Catalog ACTIVE state."
     },
     {
       "id": "PORTAL-COMPANY",
@@ -1757,10 +1757,10 @@
       "persistence": "billing subscriptions, snapshots, invoice ledger",
       "audit": "billing events",
       "localization_state": "N/A",
-      "current_state": "MISSING_PRODUCTION_AUTOMATION",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.3",
-      "e2e_proof": "required: production scheduler + missed-run/idempotency proof",
-      "notes": "Code exists; no dedicated Render schedule is declared in render.yaml."
+      "e2e_proof": "render.yaml himate-30day-invoice-cycle + scripts/smoke_start_23_3.sh exact-boundary and rerun idempotency",
+      "notes": "Render daily cron executes Billing --run-invoice-cycle; daily evaluation catches module-specific 30-day boundaries and missed runs idempotently."
     },
     {
       "id": "PAYMENT-AUTOPAY",
@@ -1793,10 +1793,10 @@
       "persistence": "catalog entitlement + billing subscription",
       "audit": "billing events + audit",
       "localization_state": "PARTIAL",
-      "current_state": "SEMANTIC_GAP",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.3",
-      "e2e_proof": "required: admin cannot bypass paid-period cancellation",
-      "notes": "Admin can currently patch Catalog status independently of Billing cancellation."
+      "e2e_proof": "scripts/smoke_start_23_3.sh: admin and Partner Portal converge on Billing ACTIVE/CANCEL_PENDING/INACTIVE lifecycle",
+      "notes": "Billing is authoritative; Catalog accepts final NOT_LICENSED transition only from the internal Billing lifecycle path."
     },
     {
       "id": "DYNAMIC-BILINGUAL-MODEL",
@@ -1888,5 +1888,6 @@
       "e2e_proof": "scripts/smoke_start_23_2.sh: history fields/readback",
       "notes": "History exposes effective-dated field changes with actor and reason."
     }
-  ]
+  ],
+  "completed_through": "23.3"
 }

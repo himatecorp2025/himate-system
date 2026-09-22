@@ -403,7 +403,8 @@ func (a *app) partnerSubscription(w http.ResponseWriter,r *http.Request,u partne
 	for _,item:=range anyItems(catalog["items"]){if fmt.Sprint(item["key"])==key{target=item;break}}
 	if target==nil{common.APIError(w,404,"NOT_FOUND","Module not found");return}
 	if target["included_in_base"]==true{common.APIError(w,409,"BASE_MODULE","Base-package modules cannot be cancelled individually");return}
-	if fmt.Sprint(target["status"])!="ACTIVE"{common.APIError(w,409,"MODULE_NOT_ACTIVE","Only an active module subscription can be changed");return}
+	// START-23.3: Billing owns subscription lifecycle. Catalog availability/state
+	// must not prevent a tenant from scheduling cancellation of an existing paid period.
 	var in struct{CancelAtPeriodEnd *bool `json:"cancel_at_period_end"`}
 	if common.Decode(r,&in)!=nil||in.CancelAtPeriodEnd==nil{common.APIError(w,400,"VALIDATION","cancel_at_period_end is required");return}
 	payload:=map[string]any{"cancel_at_period_end":*in.CancelAtPeriodEnd,"reason":"Partner Portal request"}

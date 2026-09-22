@@ -31,6 +31,7 @@ required_top = {
     "title",
     "baseline_ref",
     "acceptance_rule",
+    "completed_through",
     "states",
     "surfaces",
     "contracts",
@@ -43,6 +44,13 @@ if data.get("schema_version") != 1:
     errors.append("matrix schema_version must be 1")
 if data.get("start") != "23.1":
     errors.append("matrix start must be 23.1")
+
+completed_match = re.fullmatch(r"23\.(?:[1-9]|1[0-2])", str(data.get("completed_through", "")))
+if not completed_match:
+    errors.append("matrix completed_through must be START-23.1 through START-23.12")
+    completed_phase = 1
+else:
+    completed_phase = int(str(data["completed_through"]).split(".", 1)[1])
 if len(surfaces) < 50:
     errors.append(f"expected at least 50 inventoried surfaces, got {len(surfaces)}")
 if len(contracts) < 80:
@@ -210,10 +218,18 @@ for cid, expected in required_blockers.items():
     item = by_id.get(cid)
     if item is None:
         errors.append(f"known blocker missing from matrix: {cid}")
-    elif item.get("current_state") != expected:
+        continue
+    target_phase = int(str(item.get("target_phase", "23.12")).split(".", 1)[1])
+    current = item.get("current_state")
+    if target_phase > completed_phase:
+        if current != expected:
+            errors.append(
+                f"{cid}: blocker must remain {expected} until target phase {item.get('target_phase')} closes it; "
+                f"got {current}"
+            )
+    elif current == expected:
         errors.append(
-            f"{cid}: blocker must remain {expected} until its target phase closes it; "
-            f"got {item.get('current_state')}"
+            f"{cid}: target phase {item.get('target_phase')} is already completed but blocker still remains {expected}"
         )
 
 # Production-proven claims need a concrete proof reference.
