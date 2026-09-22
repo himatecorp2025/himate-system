@@ -20,24 +20,19 @@ from datetime import datetime,timezone
 print(datetime.now(timezone.utc).date().isoformat())
 PY
 )"
-PREV30="$(python3 - "$TODAY" <<'PY'
-from datetime import date,timedelta
+read MONTH_START NEXT_MONTH MONTH_AFTER_NEXT <<EOF
+$(python3 - "$TODAY" <<'PY'
+from datetime import date
 import sys
-print((date.fromisoformat(sys.argv[1])-timedelta(days=30)).isoformat())
+d=date.fromisoformat(sys.argv[1])
+start=d.replace(day=1)
+nxt=date(start.year+1,1,1) if start.month==12 else date(start.year,start.month+1,1)
+nxt2=date(nxt.year+1,1,1) if nxt.month==12 else date(nxt.year,nxt.month+1,1)
+print(start.isoformat(),nxt.isoformat(),nxt2.isoformat())
 PY
-)"
-NEXT30="$(python3 - "$TODAY" <<'PY'
-from datetime import date,timedelta
-import sys
-print((date.fromisoformat(sys.argv[1])+timedelta(days=30)).isoformat())
-PY
-)"
-NEXT60="$(python3 - "$TODAY" <<'PY'
-from datetime import date,timedelta
-import sys
-print((date.fromisoformat(sys.argv[1])+timedelta(days=60)).isoformat())
-PY
-)"
+)
+EOF
+PREV30="$MONTH_START"
 
 status() {
   cookie="$1"; method="$2"; path="$3"; shift 3
@@ -92,26 +87,24 @@ ready="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/c
 printf '%s' "$ready" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["provisioning_allowed"] is True; assert d["payment"]["status"]=="PAID"; assert d["evidence"]["invoice_count"]>=1; assert d["evidence"]["payment_evidence_count"]>=1; assert all(x["complete"] is True for x in d["workflow"])'
 echo ok
 
-printf 'module activation backfills 30-day snapshots from authoritative activation date... '
+printf 'module activation creates immutable calendar-month snapshot from authoritative activation date... '
 module_payload="$(python3 - "$PREV30" <<'PY'
 import json,sys
 print(json.dumps({"status":"ACTIVE","visible":True,"included_in_base":False,"partner_price":50,"price_effective_at":sys.argv[1]+"T00:00:00Z","reason":"START-22.3 initial module price"}))
 PY
 )"
 curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$module_payload" "$BASE_URL/api/v1/partners/$partner_id/modules/ci.commercial_snapshot" >/dev/null
-docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1   -c "UPDATE catalog.partner_modules SET activated_at='$PREV30'::date WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot';" >/dev/null
+docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1   -c "UPDATE catalog.partner_modules SET activated_at='$MONTH_START'::date WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot';" >/dev/null
 summary="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/summary")"
-printf '%s' "$summary" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["cycle_days"]==30; assert d["extra_module_fee"]==50,d'
-snapshot_count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot'")"
-test "$snapshot_count" -ge "2"
-past_price="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT price_snapshot FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND period_start='$PREV30'::date")"
-current_price="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT price_snapshot FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND period_start='$TODAY'::date")"
-test "$past_price" = "50.00"
+printf '%s' "$summary" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["billing_cycle_model"]=="CALENDAR_MONTH"; assert d["cycle_days"] is None; assert d["extra_module_fee"]==50,d'
+snapshot_count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND billing_model='CALENDAR_MONTH'")"
+test "$snapshot_count" -ge "1"
+current_price="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT price_snapshot FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND billing_model='CALENDAR_MONTH' AND period_start='$MONTH_START'::date")"
 test "$current_price" = "50.00"
 echo ok
 
 printf 'current period price is immutable after a catalog price change... '
-price_change="$(python3 - "$TODAY" <<'PY'
+price_change="$(python3 - "$NEXT_MONTH" <<'PY'
 import json,sys
 print(json.dumps({"partner_price":90,"price_effective_at":sys.argv[1]+"T00:00:00Z","reason":"START-22.3 next-period price"}))
 PY
@@ -120,33 +113,33 @@ curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$price_c
 curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/summary" >/dev/null
 sub_now="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/subscriptions")"
 printf '%s' "$sub_now" | python3 -c 'import json,sys; d=json.load(sys.stdin); s=next(x for x in d["items"] if x["module_key"]=="ci.commercial_snapshot"); assert s["price"]==50,s'
-test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT price_snapshot FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND period_start='$TODAY'::date")" = "50.00"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT price_snapshot FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND billing_model='CALENDAR_MONTH' AND period_start='$MONTH_START'::date")" = "50.00"
 echo ok
 
 printf 'invoice cycle uses immutable item lines, never the live catalog price... '
-docker compose exec -T billing /app/service --run-invoice-cycle "$TODAY"
+docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT_MONTH"
 invoice_today="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/invoices")"
-printf '%s' "$invoice_today" | python3 -c 'import json,sys; d=json.load(sys.stdin); inv=next(x for x in d["items"] if str(x["service_period_end_exclusive"])[:10]==sys.argv[1]); mods=[i for i in inv["items"] if i["item_type"]=="MODULE" and i["module_key"]=="ci.commercial_snapshot"]; assert len(mods)==1,inv; assert mods[0]["amount"]==50,mods; assert inv["base_fee"]==100 and inv["module_fee"]==50 and inv["total"]==150,inv' "$TODAY"
+printf '%s' "$invoice_today" | python3 -c 'import json,sys; d=json.load(sys.stdin); start,end=sys.argv[1:]; inv=next(x for x in d["items"] if str(x["service_period_start"])[:10]==start and str(x["service_period_end_exclusive"])[:10]==end); mods=[i for i in inv["items"] if i["item_type"]=="MODULE" and i["module_key"]=="ci.commercial_snapshot"]; assert len(mods)==1,inv; assert mods[0]["amount"]==50,mods; assert inv["base_fee"]==100 and inv["module_fee"]==50 and inv["minimum_commitment_adjustment"]==1350 and inv["total"]==1500,inv' "$MONTH_START" "$NEXT_MONTH"
 echo ok
 
 printf 'database guards reject mutation of immutable billing ledger values... '
-if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.module_period_snapshots SET price_snapshot=999 WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND period_start='$PREV30'::date" >/dev/null 2>&1; then
+if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.module_period_snapshots SET price_snapshot=999 WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND billing_model='CALENDAR_MONTH' AND period_start='$MONTH_START'::date" >/dev/null 2>&1; then
   echo "snapshot mutation unexpectedly succeeded" >&2
   exit 1
 fi
-if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoice_items SET amount=999 WHERE partner_id='$partner_id' AND item_type='MODULE' AND period_start='$PREV30'::date" >/dev/null 2>&1; then
+if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoice_items SET amount=999 WHERE partner_id='$partner_id' AND item_type='MODULE' AND billing_model='CALENDAR_MONTH' AND period_start='$MONTH_START'::date" >/dev/null 2>&1; then
   echo "invoice item amount mutation unexpectedly succeeded" >&2
   exit 1
 fi
 echo ok
 
-printf 'next module period adopts the new price snapshot... '
-docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT30"
+printf 'next calendar month adopts the new price snapshot... '
+docker compose exec -T billing /app/service --run-invoice-cycle "$MONTH_AFTER_NEXT"
 sub_next="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/subscriptions")"
-printf '%s' "$sub_next" | python3 -c 'import json,sys; d=json.load(sys.stdin); s=next(x for x in d["items"] if x["module_key"]=="ci.commercial_snapshot"); assert s["price"]==90,s; assert str(s["period_start"])[:10]==sys.argv[1],s' "$NEXT30"
-test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT price_snapshot FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND period_start='$NEXT30'::date")" = "90.00"
+printf '%s' "$sub_next" | python3 -c 'import json,sys; d=json.load(sys.stdin); s=next(x for x in d["items"] if x["module_key"]=="ci.commercial_snapshot"); assert s["price"]==90,s; assert str(s["period_start"])[:10]==sys.argv[1],s' "$NEXT_MONTH"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT price_snapshot FROM billing.module_period_snapshots WHERE partner_id='$partner_id' AND module_key='ci.commercial_snapshot' AND billing_model='CALENDAR_MONTH' AND period_start='$NEXT_MONTH'::date")" = "90.00"
 invoice_next="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/invoices")"
-printf '%s' "$invoice_next" | python3 -c 'import json,sys; d=json.load(sys.stdin); inv=next(x for x in d["items"] if str(x["service_period_end_exclusive"])[:10]==sys.argv[1]); mods=[i for i in inv["items"] if i["item_type"]=="MODULE" and i["module_key"]=="ci.commercial_snapshot"]; assert len(mods)==1,inv; assert mods[0]["amount"]==50,mods' "$NEXT30"
+printf '%s' "$invoice_next" | python3 -c 'import json,sys; d=json.load(sys.stdin); inv=next(x for x in d["items"] if str(x["service_period_end_exclusive"])[:10]==sys.argv[1]); mods=[i for i in inv["items"] if i["item_type"]=="MODULE" and i["module_key"]=="ci.commercial_snapshot"]; assert len(mods)==1,inv; assert mods[0]["amount"]==50,mods' "$MONTH_AFTER_NEXT"
 echo ok
 
 printf 'period-end cancellation emits an immutable billing event... '
