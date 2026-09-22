@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import re
+
+root = Path(__file__).resolve().parents[1]
+catalog = (root / "services/cmd/catalog/main.go").read_text()
+portal = (root / "services/cmd/catalog/partner_portal.go").read_text()
+billing = (root / "services/cmd/billing/main.go").read_text()
+automation = (root / "services/cmd/billing/commercial_automation.go").read_text()
+frontend = (root / "frontend/lib/module_control_plane.dart").read_text()
+main_ui = (root / "frontend/lib/main.dart").read_text()
+
+def require(condition, message):
+    if not condition:
+        raise SystemExit("START-23.11.1 audit failed: " + message)
+
+seed_block = catalog.split("var seedModules = []seedModule{", 1)[1].split("\n}", 1)[0]
+seed_rows = re.findall(r'\{"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\}', seed_block)
+require(len(seed_rows) == 38, f"expected 38 canonical seed modules, found {len(seed_rows)}")
+groups = [g for _, _, g in seed_rows]
+require(groups.count("finance_invoicing") == 3, "Finance & Invoicing must contain 3 canonical modules")
+require(groups.count("technical") == 16, "Technical Operations must contain 16 canonical modules")
+require(groups.count("marketing") == 8, "Marketing must contain 8 canonical modules")
+require(groups.count("website_events") == 11, "Website & Events must contain 11 canonical modules")
+require(any(k == "workshop_workflow" and g == "technical" for k, _, g in seed_rows), "Workshop Workflow must belong to Technical Operations")
+
+for token in [
+    "publication_status TEXT NOT NULL DEFAULT 'UNPUBLISHED'",
+    "implementation_state TEXT NOT NULL DEFAULT 'IN_DEVELOPMENT'",
+    "legacy_reference TEXT NOT NULL DEFAULT ''",
+    "entitlement_state TEXT NOT NULL DEFAULT 'INACTIVE'",
+    "commercial_configured BOOLEAN NOT NULL DEFAULT FALSE",
+    "contract_currency TEXT NOT NULL DEFAULT 'USD'",
+    "quote_reference TEXT NOT NULL DEFAULT ''",
+    '"pricing_authority":"PARTNER_CONTRACT"',
+    '"publication_status":publicationStatus',
+    '"entitlement_state":entitlementState',
+]:
+    require(token in catalog, f"missing catalog contract token: {token}")
+
+require('publicationStatus=="PUBLISHED" && implementationState!="READY"' in catalog, "PUBLISHED must require READY implementation")
+require("m.publication_status='PUBLISHED'" in portal, "Partner Portal must hide unpublished modules")
+require('"MODULE_UNPUBLISHED"' in portal, "Partner activation must fail closed for unpublished modules")
+require('"COMMERCIAL_TERMS_REQUIRED"' in portal, "Partner activation must require configured partner commercial terms")
+
+for token in [
+    "minimum_monthly_commitment NUMERIC(12,2) NOT NULL DEFAULT 1500",
+    "pricing_model TEXT NOT NULL DEFAULT 'INDIVIDUAL_QUOTE'",
+    "billing.partner_terms_history",
+    "ALTER TABLE billing.partner_terms ALTER COLUMN activation_fee SET DEFAULT 0",
+]:
+    require(token in automation, f"missing billing commercial model token: {token}")
+
+require("next.MinimumMonthlyCommitment < 1500" in billing, "USD 1500 minimum commitment guard is missing")
+require("next.ActivationFee < 0" in billing, "activation fee must reject negative values")
+require("ActivationFee < 13000" not in billing, "obsolete USD 13,000 activation-fee floor is still enforced")
+require('"quote_reference":t.QuoteReference' in billing, "partner quote reference is not exposed")
+require("termsHistory" in billing and "partner_terms_history" in billing, "versioned commercial history readback is missing")
+require("SELECT terms_version FROM billing.partner_terms WHERE partner_id=$1 FOR UPDATE" in billing, "commercial terms concurrent update lock is missing")
+
+for token in [
+    "Publication status",
+    "Implementation state",
+    "Partner-specific contract / quote",
+    "Quote / offer reference",
+]:
+    require(token in frontend, f"module admin UI missing: {token}")
+
+for token in [
+    "Minimum monthly commitment",
+    "Individual activation fee",
+    "Quote / offer reference",
+]:
+    require(token in main_ui, f"partner commercial UI missing: {token}")
+
+print("HIMATE START-23.11.1 module registry and individual commercial model audit passed")
