@@ -78,6 +78,8 @@ START-23.9 adds role-safe executive read models without creating a new analytics
 
 Recent Activity remains derived from the immutable Identity audit stream. Because audit visibility depends on administrator permissions, activity is filtered after authentication and is deliberately excluded from the shared Dashboard cache. The shared cache contains role-neutral summary data only; historical-year analytics bypass that current-year cache.
 
+Dashboard response shaping is also domain-aware: Billing analytics require `billing.read`, while People Reached and the Impact trend require `impact.read`. Unauthorized analytics are replaced with explicit restricted markers before the cached summary is returned, so the shared cache never broadens a caller's effective data visibility.
+
 Global search is implemented as permission-aware Gateway fan-out over authoritative domain services rather than a replicated search index. Before a domain is queried, Gateway verifies the caller already has that domain's read permission. This keeps search consistent with the existing backend-authoritative RBAC model and avoids cross-domain data leakage.
 
 
