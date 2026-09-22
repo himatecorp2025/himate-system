@@ -1888,5 +1888,6 @@
       "e2e_proof": "scripts/smoke_start_23_2.sh: history fields/readback",
       "notes": "History exposes effective-dated field changes with actor and reason."
     }
-  ]
+  ],
+  "completed_through": "23.3"
 }
