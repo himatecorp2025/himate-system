@@ -2302,21 +2302,29 @@ class DashboardPage extends StatelessWidget {
         final billing=Map<String,dynamic>.from(d['billing']??<String,dynamic>{});
         final impact=Map<String,dynamic>.from(d['impact']??<String,dynamic>{});
         final activity=Map<String,dynamic>.from(d['activity']??<String,dynamic>{});
+        final billingAuthorized=billing['authorized']!=false;
+        final impactAuthorized=impact['authorized']!=false;
         final revenueRows=items(billing);
-        String revenueValue='0';
-        String revenueNote=uiLiteral('No paid revenue recorded this year');
-        if(revenueRows.length==1){
+        String revenueValue=billingAuthorized?'0':uiLiteral('Restricted');
+        String revenueNote=billingAuthorized
+            ?uiLiteral('No paid revenue recorded this year')
+            :uiLiteral('Billing permission required');
+        if(billingAuthorized&&revenueRows.length==1){
           final row=revenueRows.first;
           final currency='${row['currency']??''}';
           revenueValue=_dashboardMoney(currency,row['revenue_ytd']);
           revenueNote=uiLiteral('Paid activation + recurring revenue');
-        }else if(revenueRows.length>1){
+        }else if(billingAuthorized&&revenueRows.length>1){
           revenueValue=uiLiteral('Mixed');
           revenueNote=revenueRows
               .map((row)=>_dashboardMoney('${row['currency']??''}',row['revenue_ytd']))
               .join(' · ');
         }
         final people=impact['people_reached_ytd']??0;
+        final peopleValue=impactAuthorized?_dashboardCompact(people):uiLiteral('Restricted');
+        final peopleNote=impactAuthorized
+            ?uiLiteral('Verified attendance metric · YTD')
+            :uiLiteral('Impact permission required');
         final hour=DateTime.now().hour;
         final greeting=hour<12?uiLiteral('Good morning,'):hour<18?uiLiteral('Good afternoon,'):uiLiteral('Good evening,');
         return Content(
@@ -2332,7 +2340,7 @@ class DashboardPage extends StatelessWidget {
                 SizedBox(width:w,child:Kpi(label:uiLiteral('Active Partners'),value:'${p['live']??0}',note:uiLiteral('${p['total']??0} partner records'),icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8))),
                 SizedBox(width:w,child:Kpi(label:uiLiteral('Active Programs'),value:'${m['catalog_total']??0}',note:uiLiteral('Available program modules'),icon:Icons.description_outlined,accent:brandNavy)),
                 SizedBox(width:w,child:Kpi(label:uiLiteral('Revenue (YTD)'),value:revenueValue,note:revenueNote,icon:Icons.bar_chart_rounded,accent:brandGold)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('People Reached'),value:_dashboardCompact(people),note:uiLiteral('Verified attendance metric · YTD'),icon:Icons.groups_rounded,accent:brandNavy)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('People Reached'),value:peopleValue,note:peopleNote,icon:Icons.groups_rounded,accent:brandNavy)),
               ]);
             }),
             const SizedBox(height:18),
@@ -2340,12 +2348,12 @@ class DashboardPage extends StatelessWidget {
               final trend=items(<String,dynamic>{'items':impact['trend']});
               final activities=items(activity);
               if(c.maxWidth<900)return Column(children:[
-                _ImpactPanel(trend:trend,year:year),
+                _ImpactPanel(trend:trend,year:year,authorized:impactAuthorized),
                 const SizedBox(height:16),
                 _ActivityPanel(items:activities),
               ]);
               return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Expanded(flex:7,child:_ImpactPanel(trend:trend,year:year)),
+                Expanded(flex:7,child:_ImpactPanel(trend:trend,year:year,authorized:impactAuthorized)),
                 const SizedBox(width:16),
                 Expanded(flex:4,child:_ActivityPanel(items:activities)),
               ]);
@@ -2358,9 +2366,10 @@ class DashboardPage extends StatelessWidget {
 }
 
 class _ImpactPanel extends StatelessWidget {
-  const _ImpactPanel({required this.trend,required this.year});
+  const _ImpactPanel({required this.trend,required this.year,required this.authorized});
   final List<Map<String,dynamic>> trend;
   final int year;
+  final bool authorized;
 
   @override
   Widget build(BuildContext context)=>SizedBox(
@@ -2377,7 +2386,16 @@ class _ImpactPanel extends StatelessWidget {
           )
         ]),
         const SizedBox(height:12),
-        Expanded(child:_ImpactChart(trend:trend)),
+        Expanded(
+          child:authorized
+              ?_ImpactChart(trend:trend)
+              :Center(
+                  child:LText(
+                    uiLiteral('Impact permission required'),
+                    style:GoogleFonts.inter(color:brandTextSoft,fontSize:11.5),
+                  ),
+                ),
+        ),
       ]),
     )),
   );
