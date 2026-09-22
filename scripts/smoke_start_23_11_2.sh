@@ -18,7 +18,7 @@ $(python3 - <<'PY'
 from datetime import date
 today=date.today()
 start=today.replace(day=1)
-mid=start.replace(day=min(15, (date(start.year + (start.month==12), 1 if start.month==12 else start.month+1, 1)-start).days))
+mid=today.replace(day=min(today.day,15))
 if start.month==12: nxt=date(start.year+1,1,1)
 else: nxt=date(start.year,start.month+1,1)
 print(start.isoformat(), mid.isoformat(), nxt.isoformat())
