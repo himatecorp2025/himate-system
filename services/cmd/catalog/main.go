@@ -504,7 +504,7 @@ func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 	items:=[]map[string]any{}
 	counts:=map[string]int{}
 	for rows.Next(){
-		item,scanErr:=scanPartnerModule(rows)
+		item,scanErr:=scanPartnerModule(rows, common.RequestLocale(r))
 		if scanErr!=nil{common.APIError(w,500,"DB","Could not decode module usage");return}
 		counts[fmt.Sprint(item["status"])]++
 		items=append(items,item)
@@ -813,7 +813,7 @@ func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billab
 	items := []map[string]any{}
 	extra := 0.0
 	for rows.Next() {
-		item, err := scanPartnerModule(rows)
+		item, err := scanPartnerModule(rows, common.RequestLocale(r))
 		if err != nil {
 			continue
 		}
@@ -933,7 +933,7 @@ func (a *app) internalModulePriceQuotes(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key string) {
-	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key))
+	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key), common.RequestLocale(r))
 	if err != nil {
 		common.APIError(w, 404, "NOT_FOUND", "Module not found")
 		return
@@ -985,7 +985,7 @@ func (a *app) commercialMatrix(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		item, scanErr := scanPartnerModule(rows)
+		item, scanErr := scanPartnerModule(rows, common.RequestLocale(r))
 		if scanErr != nil {
 			common.APIError(w, 500, "DB", "Could not decode partner-module commercial matrix")
 			return
@@ -1046,7 +1046,7 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 
 
 const partnerModuleSelect = `SELECT
-	pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,
+	pm.partner_id,m.module_key,m.label_en,m.label_hu,m.group_key,g.label_en,g.label_hu,pm.status,pm.visible,pm.included_in_base,
 	m.default_monthly_price,pm.price_override,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),
 	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
 	np.new_price,np.effective_at,
@@ -1090,21 +1090,22 @@ func nullableTime(v sql.NullTime) any {
 	return v.Time.UTC()
 }
 
-func scanPartnerModule(s scanner) (map[string]any, error) {
-	var id, k, l, g, gl, st, currency, v, lv, availability, priceSource, activationSource string
+func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
+	var id, k, labelEN, labelHU, g, groupEN, groupHU, st, currency, v, lv, availability, priceSource, activationSource string
 	var vis, inc bool
 	var defPrice, price, defaultActivationFee, activationFee float64
 	var priceOverride, nextPrice, activationOverride, nextActivationFee sql.NullFloat64
 	var nextPriceAt, nextActivationFeeAt, activated sql.NullTime
 	var t time.Time
 	err := s.Scan(
-		&id,&k,&l,&g,&gl,&st,&vis,&inc,
+		&id,&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&st,&vis,&inc,
 		&defPrice,&priceOverride,&price,&priceSource,&nextPrice,&nextPriceAt,
 		&defaultActivationFee,&activationOverride,&activationFee,&activationSource,&nextActivationFee,&nextActivationFeeAt,
 		&currency,&v,&lv,&t,&availability,&activated,
 	)
 	return map[string]any{
-		"partner_id": id, "key": k, "label": l, "group_key": g, "group_label": gl,
+		"partner_id": id, "key": k, "label": common.Localized(labelEN,labelHU,locale), "label_en": labelEN, "label_hu": labelHU,
+		"group_key": g, "group_label": common.Localized(groupEN,groupHU,locale), "group_label_en": groupEN, "group_label_hu": groupHU,
 		"status": st, "visible": vis, "included_in_base": inc,
 		"default_monthly_price": defPrice, "price_override": nullableFloat(priceOverride),
 		"partner_price": price, "price_source": priceSource,
