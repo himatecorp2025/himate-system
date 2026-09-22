@@ -118,6 +118,13 @@ for token in (
 ):
     require(token in partner_portal, f"Partner Portal design API missing {token!r}")
 
+theme_audit_rule = 'return "PARTNER_THEME_ACTIVATED"'
+module_audit_rule = 'return "PARTNER_MODULE_ACTIVATED"'
+require(theme_audit_rule in partner_portal and module_audit_rule in partner_portal,
+        "Partner Portal audit action catalog is incomplete")
+require(partner_portal.index(theme_audit_rule) < partner_portal.index(module_audit_rule),
+        "specific theme activation audit rule must precede generic module activation matching")
+
 for token in (
     "Upload brand asset",
     "New custom design",
