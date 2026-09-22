@@ -59,6 +59,8 @@ func (a *app) backupRoute(w http.ResponseWriter,r *http.Request){
 		a.restoreTests(w,r)
 	case len(parts)==1&&parts[0]=="summary":
 		a.summary(w,r)
+	case len(parts)==2&&parts[0]=="scheduler"&&parts[1]=="run":
+		a.schedulerRun(w,r)
 	case len(parts)==1&&parts[0]=="prune":
 		a.pruneRoute(w,r)
 	default:
@@ -70,7 +72,9 @@ func (a *app) policyRoute(w http.ResponseWriter,r *http.Request,partnerID string
 	switch r.Method{
 	case http.MethodGet:
 		p,err:=a.ensurePolicy(partnerID);if err!=nil{common.APIError(w,500,"DB","Could not load backup policy");return}
-		common.JSON(w,200,map[string]any{"partner_id":p.PartnerID,"retention_days":p.RetentionDays,"max_restore_points":p.MaxRestorePoints,"schedule_hours":p.ScheduleHours,"enabled":p.Enabled,"updated_at":p.UpdatedAt.UTC()})
+		var last any
+		if p.LastScheduledAt.Valid{last=p.LastScheduledAt.Time.UTC()}
+		common.JSON(w,200,map[string]any{"partner_id":p.PartnerID,"retention_days":p.RetentionDays,"max_restore_points":p.MaxRestorePoints,"schedule_hours":p.ScheduleHours,"enabled":p.Enabled,"last_scheduled_at":last,"updated_at":p.UpdatedAt.UTC()})
 	case http.MethodPut:
 		var in struct{
 			RetentionDays int `json:"retention_days"`
@@ -91,7 +95,9 @@ func (a *app) policyRoute(w http.ResponseWriter,r *http.Request,partnerID string
 			partnerID,in.RetentionDays,in.MaxRestorePoints,in.ScheduleHours,enabled)
 		if err!=nil{common.APIError(w,500,"DB","Could not update backup policy");return}
 		p,_:=a.ensurePolicy(partnerID);a.signal()
-		common.JSON(w,200,map[string]any{"partner_id":p.PartnerID,"retention_days":p.RetentionDays,"max_restore_points":p.MaxRestorePoints,"schedule_hours":p.ScheduleHours,"enabled":p.Enabled,"updated_at":p.UpdatedAt.UTC()})
+		var last any
+		if p.LastScheduledAt.Valid{last=p.LastScheduledAt.Time.UTC()}
+		common.JSON(w,200,map[string]any{"partner_id":p.PartnerID,"retention_days":p.RetentionDays,"max_restore_points":p.MaxRestorePoints,"schedule_hours":p.ScheduleHours,"enabled":p.Enabled,"last_scheduled_at":last,"updated_at":p.UpdatedAt.UTC()})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or PUT")
 	}
@@ -121,6 +127,12 @@ func (a *app) restoreTests(w http.ResponseWriter,r *http.Request){
 	items:=[]map[string]any{}
 	for rows.Next(){if test,scanErr:=scanRestoreTest(rows);scanErr==nil{items=append(items,mapRestoreTest(test))}}
 	common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+}
+
+func (a *app) schedulerRun(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use POST");return}
+	queued:=a.runSchedulerOnce()
+	common.JSON(w,200,map[string]any{"status":"ok","queued":queued,"ran_at":time.Now().UTC()})
 }
 
 func (a *app) pruneRoute(w http.ResponseWriter,r *http.Request){

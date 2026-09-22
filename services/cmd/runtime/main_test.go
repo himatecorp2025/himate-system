@@ -84,3 +84,39 @@ func TestRenderProviderRejectsMissingServiceID(t *testing.T) {
 		t.Fatalf("expected missing service ID error, got %v", err)
 	}
 }
+
+
+func TestValidateEnvironmentProviderProductionRejectsLocalDowngrade(t *testing.T) {
+	a := &app{defaultProvider: "render"}
+	if err := a.validateEnvironmentProvider("PRODUCTION", localProvider{}); err == nil {
+		t.Fatal("expected production local-provider downgrade to be rejected")
+	}
+}
+
+func TestValidateEnvironmentProviderLocalProcessAllowsLocalForCI(t *testing.T) {
+	a := &app{defaultProvider: "local"}
+	if err := a.validateEnvironmentProvider("PRODUCTION", localProvider{}); err != nil {
+		t.Fatalf("local CI provider should remain valid: %v", err)
+	}
+}
+
+func TestDeploymentProviderUsesRenderDefaultAndServiceID(t *testing.T) {
+	a := &app{
+		defaultProvider: "render",
+		defaultRenderID: "srv_default",
+		providers: map[string]deploymentProvider{
+			"local": localProvider{},
+			"render": renderProvider{},
+		},
+	}
+	provider, serviceID, err := a.deploymentProvider(map[string]any{})
+	if err != nil {
+		t.Fatalf("deployment provider: %v", err)
+	}
+	if provider.Name() != "render" {
+		t.Fatalf("expected render provider, got %s", provider.Name())
+	}
+	if serviceID != "srv_default" {
+		t.Fatalf("expected default Render service id, got %q", serviceID)
+	}
+}

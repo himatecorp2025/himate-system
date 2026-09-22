@@ -520,3 +520,12 @@ The same START-23.6 acceptance also proves existing service ownership rather tha
 Local/CI uses `docker-compose.yml`, the Runtime `local` deployment provider and a separate local backup volume. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled. The isolated `himate-payments` private service owns payment-provider connectivity and receives Stripe credentials only as runtime secrets. Production Backups uses the `render_disk` provider with a dedicated `/offsite` Render persistent disk and the runtime-injected AES-256 encryption key. No AWS/S3 endpoint or credential is required by the current production topology.
 
 The Render Runtime service is configured for the `render` provider and receives `RENDER_API_KEY` / optional default service ID as secrets. Provider credentials never live in source control.
+
+START-23.10 closes System & Operations without collapsing existing service boundaries. Provisioning remains the workflow owner for isolated partner infrastructure. Connector remains the credential, desired-state and Website Adapter boundary. Environments persists environment/domain lifecycle state, while Runtime alone owns deployment-provider calls. Backups owns encrypted recovery policy and scheduling.
+
+Production Runtime is explicitly provider-bound: Render is configured through runtime-only credentials and service identity. The deterministic local provider remains valid for development/CI, but a production process configured for a real provider rejects any environment-level attempt to downgrade itself to local. This prevents test-provider semantics from silently reaching production.
+
+Backup scheduling uses one shared due-policy implementation for both the background minute loop and the authorized operations scheduler action. The policy API exposes last_scheduled_at, providing deterministic policy-to-scheduler observability while preserving the same asynchronous backup worker, encrypted durable artifact and automatic restore-verification pipeline.
+
+START-23.10 provides containerized mutation proof and production configuration proof. External live Render deployment plus public DNS/TLS evidence remains intentionally reserved for START-23.12 production acceptance.
+

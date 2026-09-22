@@ -49,6 +49,7 @@ type policy struct {
 	MaxRestorePoints int
 	ScheduleHours    int
 	Enabled          bool
+	LastScheduledAt  sql.NullTime
 	UpdatedAt        time.Time
 }
 
@@ -190,6 +191,11 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS backups_tests_point_idx ON backups.restore_tests(restore_point_id,created_at DESC)`,
 			`CREATE INDEX IF NOT EXISTS backups_tests_status_idx ON backups.restore_tests(status,created_at)`,
 		}},
+		{Version:2,Name:"single-pending-backup-per-partner",Statements:[]string{
+			`CREATE UNIQUE INDEX IF NOT EXISTS backups_one_pending_partner_idx
+				ON backups.restore_points(partner_id)
+				WHERE status IN ('QUEUED','RUNNING')`,
+		}},
 	})
 }
 
@@ -211,8 +217,8 @@ func (a *app) ensurePolicy(partnerID string)(policy,error){
 	_,err:=a.db.Exec(`INSERT INTO backups.policies(partner_id) VALUES($1) ON CONFLICT(partner_id) DO NOTHING`,partnerID)
 	if err!=nil{return policy{},err}
 	var p policy
-	err=a.db.QueryRow(`SELECT partner_id,retention_days,max_restore_points,schedule_hours,enabled,updated_at FROM backups.policies WHERE partner_id=$1`,partnerID).
-		Scan(&p.PartnerID,&p.RetentionDays,&p.MaxRestorePoints,&p.ScheduleHours,&p.Enabled,&p.UpdatedAt)
+	err=a.db.QueryRow(`SELECT partner_id,retention_days,max_restore_points,schedule_hours,enabled,last_scheduled_at,updated_at FROM backups.policies WHERE partner_id=$1`,partnerID).
+		Scan(&p.PartnerID,&p.RetentionDays,&p.MaxRestorePoints,&p.ScheduleHours,&p.Enabled,&p.LastScheduledAt,&p.UpdatedAt)
 	return p,err
 }
 

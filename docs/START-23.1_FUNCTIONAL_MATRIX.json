@@ -574,11 +574,11 @@
       "backend_service": "provisioning",
       "persistence": "provisioning jobs + isolated partner infrastructure",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: prepare + execute + idempotent retry",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: prepare -> execute -> persisted steps -> idempotent retry",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "PART-WIZ-LICENSE",
@@ -646,11 +646,11 @@
       "backend_service": "connector",
       "persistence": "connector credential metadata; raw token one-time only",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: credential issue -> auth -> rotation",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: issue -> credential-bound auth -> rotate -> old token rejected -> new token accepted",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "PART-ENV-EDIT",
@@ -664,11 +664,11 @@
       "backend_service": "environments",
       "persistence": "environments.environments",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: edit -> read -> deploy gates",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: edit -> readback -> provider/deploy gates",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "PART-ENV-CREATE",
@@ -682,11 +682,11 @@
       "backend_service": "environments",
       "persistence": "environments.environments",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: create -> provider lifecycle",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: create production environment -> persisted provider lifecycle",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "PART-PROFILE-EDIT",
@@ -1186,11 +1186,11 @@
       "backend_service": "backups",
       "persistence": "backups restore-point metadata + encrypted Render disk artifact",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
+      "localization_state": "COMPLETE",
       "current_state": "PROD_PROVEN",
       "target_phase": "23.10",
       "e2e_proof": "existing START-21 + Render production proof",
-      "notes": ""
+      "notes": "Existing START-21 and production backup/restore evidence remains authoritative; START-23.10 does not downgrade this proof."
     },
     {
       "id": "BACKUP-RESTORE-TEST",
@@ -1204,11 +1204,11 @@
       "backend_service": "backups",
       "persistence": "backups restore-test records",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
+      "localization_state": "COMPLETE",
       "current_state": "PROD_PROVEN",
       "target_phase": "23.10",
       "e2e_proof": "existing START-21 + production restore verification",
-      "notes": ""
+      "notes": "Existing START-21 and production backup/restore evidence remains authoritative; START-23.10 does not downgrade this proof."
     },
     {
       "id": "BACKUP-POLICY",
@@ -1222,11 +1222,11 @@
       "backend_service": "backups",
       "persistence": "backups partner policy",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: policy -> scheduler behavior",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: policy update -> deterministic scheduler run -> last_scheduled_at/readback",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "CMS-PAGE-CREATE",
@@ -1384,11 +1384,11 @@
       "backend_service": "connector",
       "persistence": "connector website-adapter config",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: domain binding -> commercial-state",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: wrong-domain fail-closed -> correct domain -> credential-bound commercial state",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "CONTACT-LEAD-EDIT",
@@ -1474,11 +1474,11 @@
       "backend_service": "environments + runtime",
       "persistence": "environment/provider deployment state",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: DNS/TLS/deploy/retry actions per UI",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: deploy/retry + DNS/TLS failure persistence + launch gate",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "ENV-CREATE",
@@ -1492,11 +1492,11 @@
       "backend_service": "environments",
       "persistence": "environments.environments",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: create -> gates",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: create -> readback -> provider lifecycle",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "ENV-EDIT",
@@ -1510,11 +1510,11 @@
       "backend_service": "environments",
       "persistence": "environments.environments",
       "audit": "central gateway mutation audit",
-      "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "localization_state": "COMPLETE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
-      "e2e_proof": "required: update -> provider state",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_10.sh: update -> readback -> provider state",
+      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
     },
     {
       "id": "NOTIFY-READ",
@@ -2057,5 +2057,5 @@
       "notes": "Partner website/runtime consumers can resolve the active theme independently from content and business APIs, enabling skin swaps without content migration."
     }
   ],
-  "completed_through": "23.9"
+  "completed_through": "23.10"
 }

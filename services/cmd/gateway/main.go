@@ -1044,6 +1044,27 @@ func decodeAuditState(raw []byte) any {
 	return sanitizeAuditValue(decoded)
 }
 
+func auditPartnerIDFromState(value any) string {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key,item := range typed {
+			if strings.EqualFold(strings.TrimSpace(key),"partner_id") {
+				if id := strings.TrimSpace(fmt.Sprint(item)); strings.HasPrefix(id,"ptr_") {
+					return id
+				}
+			}
+		}
+		for _,item := range typed {
+			if id := auditPartnerIDFromState(item); id != "" { return id }
+		}
+	case []any:
+		for _,item := range typed {
+			if id := auditPartnerIDFromState(item); id != "" { return id }
+		}
+	}
+	return ""
+}
+
 func auditAction(r *http.Request) string {
 	path := r.URL.Path
 	switch {
@@ -1160,6 +1181,14 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			newState := decodeAuditState(recorder.body.Bytes())
 			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
 				newState = requestState
+			}
+			// Some control-plane mutations identify the partner in the JSON state
+			// rather than the URL (for example provisioning jobs and environment
+			// creation). Preserve tenant-scoped auditability by enriching only when
+			// the route classifier did not already provide an authoritative partner.
+			if partnerID == "" {
+				partnerID = auditPartnerIDFromState(newState)
+				if partnerID == "" { partnerID = auditPartnerIDFromState(requestState) }
 			}
 			event := auditEvent{
 				ActorID: u.ID, ActorName: u.Name, ActorRoles: append([]string(nil), u.Roles...),
