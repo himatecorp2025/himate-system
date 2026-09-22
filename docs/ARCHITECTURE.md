@@ -411,8 +411,40 @@ ADR-0005 records this boundary and the reasons for rejecting direct SQL access a
 
 Evidence is validated and SHA-256 checked. PDF report jobs freeze immutable snapshots. Storage is an abstraction used by evidence/report/CMS media. Partner and control-plane data boundaries remain explicit.
 
+## START-23.4 payment-provider boundary
+
+Payments is an independently deployable private microservice. Billing never stores Stripe API credentials and Payments never updates Billing tables directly.
+
+```text
+Admin / Billing scheduler
+        |
+        v
+Billing -- authoritative obligation / amount / invoice
+        |
+        | internal charge intent + idempotency key
+        v
+Payments -- provider profile + attempt ledger
+        |
+        | Stripe REST (production) / mock adapter (CI)
+        v
+Payment provider
+        |
+        | signed PaymentIntent webhook
+        v
+Gateway public webhook route
+        |
+        v
+Payments -- signature + timestamp + payment ID + amount/currency verification
+        |
+        | internal verified settlement
+        v
+Billing -- PAID / FAILED + immutable billing event
+```
+
+Production uses the Stripe adapter with runtime-only `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Local/CI uses the deterministic mock adapter but still exercises the same persisted attempt, signed-webhook and Billing settlement path. Webhook events stay retryable until Billing settlement succeeds; exact processed duplicates are idempotent and event-ID payload reuse fails closed.
+
 ## Deployment topology
 
-Local/CI uses `docker-compose.yml`, the Runtime `local` deployment provider and a separate local backup volume. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled. Production Backups uses the `render_disk` provider with a dedicated `/offsite` Render persistent disk and the runtime-injected AES-256 encryption key. No AWS/S3 endpoint or credential is required by the current production topology.
+Local/CI uses `docker-compose.yml`, the Runtime `local` deployment provider and a separate local backup volume. Render topology is declared in `render.yaml`; all Git auto-deploy remains disabled and production deployment is controlled. The isolated `himate-payments` private service owns payment-provider connectivity and receives Stripe credentials only as runtime secrets. Production Backups uses the `render_disk` provider with a dedicated `/offsite` Render persistent disk and the runtime-injected AES-256 encryption key. No AWS/S3 endpoint or credential is required by the current production topology.
 
 The Render Runtime service is configured for the `render` provider and receives `RENDER_API_KEY` / optional default service ID as secrets. Provider credentials never live in source control.

@@ -150,6 +150,7 @@ func main() {
 			"partners":     os.Getenv("PARTNERS_HOSTPORT"),
 			"catalog":      os.Getenv("CATALOG_HOSTPORT"),
 			"billing":      os.Getenv("BILLING_HOSTPORT"),
+			"payments":     os.Getenv("PAYMENTS_HOSTPORT"),
 			"contact":      os.Getenv("CONTACT_HOSTPORT"),
 			"provisioning": os.Getenv("PROVISIONING_HOSTPORT"),
 			"environments": os.Getenv("ENVIRONMENTS_HOSTPORT"),
@@ -209,6 +210,9 @@ func main() {
 	})
 	mux.HandleFunc("/connector/v1/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "connector")
+	})
+	mux.HandleFunc("/webhooks/stripe", func(w http.ResponseWriter, r *http.Request) {
+		a.serveProxy(w, r, "payments")
 	})
 	mux.HandleFunc("/api/", a.api)
 	mux.Handle("/", a.web())
@@ -639,7 +643,7 @@ func permissionResource(r *http.Request) string {
 		return "catalog"
 	case path == "/api/v1/partner-categories", path == "/api/v1/partners", strings.HasPrefix(path, "/api/v1/partners/"):
 		return "partners"
-	case strings.HasPrefix(path, "/api/v1/billing/"):
+	case strings.HasPrefix(path, "/api/v1/billing/"), strings.HasPrefix(path, "/api/v1/payments/"):
 		return "billing"
 	case path == "/api/v1/contact/inquiries", strings.HasPrefix(path, "/api/v1/contact/inquiries/"):
 		return "contact"
@@ -700,8 +704,9 @@ func requiredPermission(r *http.Request) string {
 		action = "approve"
 	case resource == "evidence" && r.Method == http.MethodPatch:
 		action = "approve"
-	case resource == "billing" && r.Method == http.MethodPut &&
-		(strings.Contains(path, "/license") || strings.Contains(path, "/agreement")):
+	case resource == "billing" &&
+		((r.Method == http.MethodPut && (strings.Contains(path, "/license") || strings.Contains(path, "/agreement") || strings.Contains(path, "/payments/"))) ||
+		 (r.Method == http.MethodPost && strings.HasSuffix(path, "/license/collect"))):
 		action = "approve"
 	}
 	return resource + "." + action
@@ -945,6 +950,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "catalog")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/billing/"):
 		a.serveProxy(w, r, "billing")
+	case strings.HasPrefix(r.URL.Path, "/api/v1/payments/"):
+		a.serveProxy(w, r, "payments")
 	case r.URL.Path == "/api/v1/contact/inquiries", strings.HasPrefix(r.URL.Path, "/api/v1/contact/inquiries/"):
 		a.serveProxy(w, r, "contact")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/provisioning/"):
@@ -984,6 +991,9 @@ func auditResource(r *http.Request) (string, string) {
 		resource = "partners"
 		if len(parts) > 1 && parts[1] != "portfolio" { partnerID = parts[1] }
 	case "billing":
+		resource = "billing"
+		if len(parts) > 2 && parts[1] == "partners" { partnerID = parts[2] }
+	case "payments":
 		resource = "billing"
 		if len(parts) > 2 && parts[1] == "partners" { partnerID = parts[2] }
 	case "connectors":

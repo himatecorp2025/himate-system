@@ -45,6 +45,7 @@ services:
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       CATALOG_HOSTPORT: catalog:10000
       PARTNERS_HOSTPORT: partners:10000
+      PAYMENTS_HOSTPORT: payments:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +53,22 @@ services:
         condition: service_started
       partners:
         condition: service_started
+      payments:
+        condition: service_started
+
+  payments:
+    build:
+      context: .
+      dockerfile: services/docker/payments.Dockerfile
+    environment:
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      BILLING_HOSTPORT: billing:10000
+      PAYMENT_PROVIDER: mock
+      STRIPE_WEBHOOK_SECRET: whsec_local_start234_test
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   contact:
     build:
@@ -287,6 +304,7 @@ services:
       PARTNERS_HOSTPORT: partners:10000
       CATALOG_HOSTPORT: catalog:10000
       BILLING_HOSTPORT: billing:10000
+      PAYMENTS_HOSTPORT: payments:10000
       CONTACT_HOSTPORT: contact:10000
       PROVISIONING_HOSTPORT: provisioning:10000
       ENVIRONMENTS_HOSTPORT: environments:10000
@@ -307,6 +325,8 @@ services:
       catalog:
         condition: service_started
       billing:
+        condition: service_started
+      payments:
         condition: service_started
       contact:
         condition: service_started
@@ -341,7 +361,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.8.7-start-23.3
+      HIMATE_APP_VERSION: 0.8.8-start-23.4
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456
@@ -353,6 +373,7 @@ services:
       PARTNERS_HOSTPORT: partners:10000
       CATALOG_HOSTPORT: catalog:10000
       BILLING_HOSTPORT: billing:10000
+      PAYMENTS_HOSTPORT: payments:10000
       CONTACT_HOSTPORT: contact:10000
       PROVISIONING_HOSTPORT: provisioning:10000
       ENVIRONMENTS_HOSTPORT: environments:10000
@@ -374,6 +395,8 @@ services:
       catalog:
         condition: service_started
       billing:
+        condition: service_started
+      payments:
         condition: service_started
       contact:
         condition: service_started

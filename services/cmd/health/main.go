@@ -37,6 +37,7 @@ func main(){
 			"partners":os.Getenv("PARTNERS_HOSTPORT"),
 			"catalog":os.Getenv("CATALOG_HOSTPORT"),
 			"billing":os.Getenv("BILLING_HOSTPORT"),
+			"payments":os.Getenv("PAYMENTS_HOSTPORT"),
 			"contact":os.Getenv("CONTACT_HOSTPORT"),
 			"provisioning":os.Getenv("PROVISIONING_HOSTPORT"),
 			"environments":os.Getenv("ENVIRONMENTS_HOSTPORT"),

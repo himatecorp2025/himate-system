@@ -18,6 +18,7 @@ type app struct {
 	db           *sql.DB
 	catalogHost  string
 	partnersHost string
+	paymentsHost string
 	token        string
 	client      *http.Client
 }
@@ -65,6 +66,7 @@ func main() {
 		db: db,
 		catalogHost: os.Getenv("CATALOG_HOSTPORT"),
 		partnersHost: os.Getenv("PARTNERS_HOSTPORT"),
+		paymentsHost: os.Getenv("PAYMENTS_HOSTPORT"),
 		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		client: &http.Client{Timeout: 8 * time.Second},
 	}
@@ -102,6 +104,7 @@ func main() {
 	mux.HandleFunc("/api/v1/billing/subscription-matrix", a.subscriptionMatrix)
 	mux.HandleFunc("/api/v1/billing/partners/", a.partnerRoutes)
 	mux.HandleFunc("/internal/v1/invoices/run", a.runEndpoint)
+	mux.HandleFunc("/internal/v1/payments/settlements", a.paymentSettlement)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	mux.HandleFunc("/internal/v1/partners/", a.internalPartnerRoutes)
 	common.Run(log, "billing", common.Env("PORT", "10000"), common.InternalAuth(a.token, mux))
@@ -200,6 +203,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start223BillingMigration(),
 		start223BillingImmutabilityMigration(),
 		start233BillingLifecycleMigration(),
+		start234BillingPaymentMigration(),
 	}); err != nil {
 		return err
 	}
@@ -400,6 +404,10 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 			a.subscriptionByKey(w, r, id, parts[2])
 			return
 		}
+		if section == "license" && parts[2] == "collect" {
+			a.collectActivationLicense(w, r, id)
+			return
+		}
 		common.APIError(w, 404, "NOT_FOUND", "Route not found")
 		return
 	}
@@ -577,48 +585,32 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 		next := current
 		if in.Currency != nil { next.Currency = strings.ToUpper(strings.TrimSpace(*in.Currency)) }
 		if in.RequiredAmount != nil { next.Required = *in.RequiredAmount }
-		if in.PaidAmount != nil { next.Paid = *in.PaidAmount }
-		if in.PaymentReference != nil { next.Reference = strings.TrimSpace(*in.PaymentReference) }
-		if in.VerifiedBy != nil { next.VerifiedBy = strings.TrimSpace(*in.VerifiedBy) }
+		if in.PaidAmount != nil || in.PaymentReference != nil || in.VerifiedBy != nil || in.PaymentDate != nil {
+			common.APIError(w, 409, "PROVIDER_MANAGED_PAYMENT", "Paid amount, payment date, reference and verification are provider-managed in START-23.4")
+			return
+		}
 		if in.Note != nil { next.Note = strings.TrimSpace(*in.Note) }
 		if in.Waived != nil { next.Waived = *in.Waived }
 		if in.WaiverReason != nil { next.WaiverReason = strings.TrimSpace(*in.WaiverReason) }
-		if in.PaymentDate != nil {
-			if strings.TrimSpace(*in.PaymentDate) == "" {
-				next.PaymentDate = sql.NullTime{}
-			} else {
-				p, e := time.Parse("2006-01-02", strings.TrimSpace(*in.PaymentDate))
-				if e != nil { common.APIError(w, 400, "VALIDATION", "payment_date must be YYYY-MM-DD"); return }
-				next.PaymentDate = sql.NullTime{Time: p, Valid: true}
-			}
-		}
 		if next.Required < 0 || next.Paid < 0 { common.APIError(w, 400, "VALIDATION", "License amounts cannot be negative"); return }
 		if !next.Waived && next.Currency == "USD" && next.Required < 13000 { common.APIError(w, 400, "VALIDATION", "Initial license must be at least USD 13,000 unless waived"); return }
 
-		status := "NOT_PAID"
+		status := current.Status
 		if next.Waived {
 			status = "WAIVED"
-		} else if next.Paid >= next.Required && next.Required > 0 {
-			status = "PAID"
-		} else if next.Paid > 0 {
-			status = "PARTIALLY_PAID"
+			next.Paid = 0
+			next.PaymentDate = sql.NullTime{}
+			next.Reference = ""
+			next.VerifiedBy = ""
+		} else if current.Status == "WAIVED" {
+			status = "NOT_PAID"
 		}
-		if status == "PAID" {
-			if !next.PaymentDate.Valid || next.Reference == "" {
-				common.APIError(w, 400, "VALIDATION", "Paid license requires payment_date and payment_reference")
-				return
-			}
-			if next.VerifiedBy == "" { next.VerifiedBy = strings.TrimSpace(r.Header.Get("X-Himate-User-ID")) }
-			if next.VerifiedBy == "" { common.APIError(w, 400, "VALIDATION", "Paid license requires verification"); return }
-			_, _, paymentEvidenceCount, err := a.commercialEvidenceBreakdown(r.Context(), id)
-			if err != nil {
-				common.APIError(w, 500, "DB", "Could not verify payment evidence")
-				return
-			}
-			if paymentEvidenceCount == 0 {
-				common.APIError(w, 409, "PAYMENT_EVIDENCE_REQUIRED", "Register payment evidence or a receipt before marking the activation license paid")
-				return
-			}
+		if current.Status == "PAID" && !next.Waived {
+			status = "PAID"
+			next.Paid = current.Paid
+			next.PaymentDate = current.PaymentDate
+			next.Reference = current.Reference
+			next.VerifiedBy = current.VerifiedBy
 		}
 		var payment any
 		if next.PaymentDate.Valid { payment = next.PaymentDate.Time }
@@ -1404,18 +1396,26 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 
 func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
-	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,status,provider_status,created_at FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC`, id)
+	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,status,provider_status,
+		payment_attempt_id,provider,provider_payment_id,paid_at,payment_failure_code,payment_failure_message,created_at
+		FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC`, id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load invoices"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		var invoiceID, currency, status, provider string
+		var invoiceID, currency, status, providerStatus, attemptID, provider, providerPaymentID, failureCode, failureMessage string
 		var invoiceDate, start, end, created time.Time
+		var paidAt sql.NullTime
 		var base, module, total float64
-		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &status, &provider, &created) == nil {
+		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &status, &providerStatus,
+			&attemptID, &provider, &providerPaymentID, &paidAt, &failureCode, &failureMessage, &created) == nil {
+			var paid any
+			if paidAt.Valid { paid = paidAt.Time }
 			items = append(items, map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
-				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": provider, "created_at": created,
+				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": providerStatus,
+				"payment_attempt_id": attemptID, "provider": provider, "provider_payment_id": providerPaymentID, "paid_at": paid,
+				"payment_failure_code": failureCode, "payment_failure_message": failureMessage, "created_at": created,
 				"items": a.invoiceItemsFor(invoiceID),
 			})
 		}
@@ -1446,6 +1446,7 @@ func isCycleBoundary(anchor, at time.Time) bool {
 
 func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 	at = dateOnly(at)
+	if err := a.retryPendingInvoiceCollections(ctx); err != nil { return err }
 	rows, err := a.db.QueryContext(ctx, `SELECT partner_id FROM billing.partner_terms`)
 	if err != nil { return err }
 	defer rows.Close()
@@ -1492,6 +1493,7 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 				"service_period_end_exclusive": at.Format("2006-01-02"),
 			}); err != nil { return err }
 		}
+		a.queueInvoiceCollection(ctx, invoiceID, id, t.Currency, total)
 	}
 	return nil
 }

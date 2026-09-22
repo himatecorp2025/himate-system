@@ -90,6 +90,25 @@ void main() {
     }
   });
 
+  test('START-23.4 provider payment labels are localized', () {
+    for (final value in <String>[
+      'Provider customer ID',
+      'Payment method ID',
+      'Provider reference',
+      'Automatic recurring collection',
+      'Collect activation license after save',
+      'PAID is set only after the signed provider webhook is verified.',
+      'Signed provider webhook only',
+      'Automatic 30-day collection',
+    ]) {
+      expect(
+        HimateI18n.literal('hu_HU', value),
+        isNot(value),
+        reason: 'Missing Hungarian START-23.4 translation for $value',
+      );
+    }
+  });
+
   test('START-23 dynamic CMS and commercial messages are localized', () {
     expect(HimateI18n.literal('hu_HU', 'Section 4'), 'Szekció 4');
     expect(HimateI18n.literal('hu_HU', 'Version 12'), 'Verzió 12');

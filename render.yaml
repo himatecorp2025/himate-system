@@ -66,6 +66,41 @@ services:
           type: pserv
           name: himate-partners
           property: hostport
+      - key: PAYMENTS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-payments
+          property: hostport
+
+  - type: pserv
+    name: himate-payments
+    runtime: docker
+    dockerfilePath: ./services/docker/payments.Dockerfile
+    dockerContext: .
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: BILLING_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-billing
+          property: hostport
+      - key: PAYMENT_PROVIDER
+        value: stripe
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_API_BASE
+        value: https://api.stripe.com
 
   - type: pserv
     name: himate-contact
@@ -465,6 +500,11 @@ services:
           type: pserv
           name: himate-billing
           property: hostport
+      - key: PAYMENTS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-payments
+          property: hostport
       - key: CONTACT_HOSTPORT
         fromService:
           type: pserv
@@ -538,7 +578,7 @@ services:
       - key: HIMATE_ENV
         value: production
       - key: HIMATE_APP_VERSION
-        value: 0.8.7-start-23.3
+        value: 0.8.8-start-23.4
       - key: COOKIE_SECURE
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS
@@ -574,6 +614,11 @@ services:
         fromService:
           type: pserv
           name: himate-billing
+          property: hostport
+      - key: PAYMENTS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-payments
           property: hostport
       - key: CONTACT_HOSTPORT
         fromService:
@@ -663,4 +708,9 @@ services:
         fromService:
           type: pserv
           name: himate-catalog
+          property: hostport
+      - key: PAYMENTS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-payments
           property: hostport
