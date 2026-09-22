@@ -2895,6 +2895,298 @@ func renderPreviewCMSHTML(doc string, page publicCMSPage, requestURL, slug, toke
 	}, "PREVIEW")
 }
 
+var gatewayDesignColorPattern = regexp.MustCompile("^#[0-9A-Fa-f]{6}$")
+
+func designColor(value, fallback string) string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if gatewayDesignColorPattern.MatchString(value) {
+		return value
+	}
+	return fallback
+}
+
+func designFontCSS(value, fallback string) string {
+	switch strings.TrimSpace(value) {
+	case "Cormorant Garamond":
+		return "\"Cormorant Garamond\",Georgia,serif"
+	case "Inter":
+		return "Inter,Arial,sans-serif"
+	case "Georgia":
+		return "Georgia,serif"
+	case "Arial":
+		return "Arial,sans-serif"
+	default:
+		return fallback
+	}
+}
+
+func replaceNavContents(doc, className, inner string) string {
+	marker := "class=\"" + className + "\""
+	idx := strings.Index(doc, marker)
+	if idx < 0 {
+		return doc
+	}
+	start := strings.LastIndex(strings.ToLower(doc[:idx]), "<nav")
+	if start < 0 {
+		return doc
+	}
+	openEndRel := strings.Index(doc[start:], ">")
+	if openEndRel < 0 {
+		return doc
+	}
+	contentStart := start + openEndRel + 1
+	closeRel := strings.Index(strings.ToLower(doc[contentStart:]), "</nav>")
+	if closeRel < 0 {
+		return doc
+	}
+	contentEnd := contentStart + closeRel
+	return doc[:contentStart] + inner + doc[contentEnd:]
+}
+
+func designNavigationHTML(design publicSiteDesign, locale, currentPath string, footer bool) string {
+	items := append([]publicNavigationItem(nil), design.Navigation...)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].SortOrder < items[j].SortOrder })
+	var b strings.Builder
+	for _, item := range items {
+		if !item.Visible || strings.TrimSpace(item.URL) == "" {
+			continue
+		}
+		label := strings.TrimSpace(item.LabelEN)
+		if normalizePublicLocale(locale) == "hu_HU" {
+			label = strings.TrimSpace(item.LabelHU)
+		}
+		if label == "" {
+			continue
+		}
+		active := strings.TrimRight(strings.TrimSpace(item.URL), "/") == strings.TrimRight(currentPath, "/")
+		if item.URL == "/" && currentPath == "/" {
+			active = true
+		}
+		b.WriteString("<a")
+		if active && !footer {
+			b.WriteString(" class=\"active\" aria-current=\"page\"")
+		}
+		b.WriteString(" href=\"")
+		b.WriteString(html.EscapeString(item.URL))
+		b.WriteString("\">")
+		b.WriteString(html.EscapeString(label))
+		b.WriteString("</a>")
+	}
+	if !footer {
+		b.WriteString("<span class=\"nav-divider\" aria-hidden=\"true\"></span><a class=\"nav-login-text\" href=\"/login\">Login</a><a class=\"login-pill\" href=\"/login\">Login</a>")
+	}
+	return b.String()
+}
+
+func renderSiteDesignHTML(doc string, design publicSiteDesign, locale, currentPath string, logoURL cmsMediaURL) string {
+	navy := designColor(design.Navy, "#0B1F3B")
+	gold := designColor(design.Gold, "#D4AF6B")
+	background := designColor(design.Background, "#F8F9FB")
+	textColor := designColor(design.TextColor, "#1F2937")
+	headingFont := designFontCSS(design.HeadingFont, "\"Cormorant Garamond\",Georgia,serif")
+	bodyFont := designFontCSS(design.BodyFont, "Inter,Arial,sans-serif")
+	radius := design.ButtonRadius
+	if radius < 0 || radius > 40 {
+		radius = 6
+	}
+	style := fmt.Sprintf("<style data-himate-design>:root{--navy:%s;--deep:%s;--gold:%s;--gold2:%s;--ivory:%s;--ink:%s}body{background:%s!important;color:%s!important;font-family:%s!important}h1,h2,h3,.serif{font-family:%s!important}.btn,.login-pill{border-radius:%dpx!important}</style>",
+		navy, navy, gold, gold, background, textColor, background, textColor, bodyFont, headingFont, radius)
+	if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
+		doc = doc[:headEnd] + style + "<!-- HIMATE DESIGN:PUBLISHED_OR_PREVIEW -->" + doc[headEnd:]
+	}
+	if id := strings.TrimSpace(design.LogoMediaAssetID); id != "" {
+		doc = strings.ReplaceAll(doc, "/brand/himate_identity_wordmark_2026.webp", html.EscapeString(logoURL(id)))
+	}
+	doc = replaceNavContents(doc, "links", designNavigationHTML(design, locale, currentPath, false))
+	doc = replaceNavContents(doc, "footer-links", designNavigationHTML(design, locale, currentPath, true))
+	return doc
+}
+
+func dynamicMarketingTemplate() string {
+	return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"description\" content=\"HIMATE System\"><meta name=\"theme-color\" content=\"#0B1F3B\"><meta name=\"robots\" content=\"index,follow\"><title>HIMATE System</title><link rel=\"stylesheet\" href=\"/himate-brand-r4.css\"><script src=\"/site.js\" defer></script><link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/brand/himate_identity_favicon_32.png\"></head><body>" +
+		"<header class=\"site-nav\" style=\"background:#06172C\"><div class=\"wrap nav-inner\"><a class=\"brand-logo\" href=\"/\" aria-label=\"HIMATE home\"><img src=\"/brand/himate_identity_wordmark_2026.webp\" alt=\"HIMATE System\"></a><nav class=\"links\"><a href=\"/platform\">Platform</a><a href=\"/modules\">Modules</a><a href=\"/programs\">Programs</a><a href=\"/impact\">Impact</a><a href=\"/partners\">Partners</a><a href=\"/contact\">Contact</a><span class=\"nav-divider\" aria-hidden=\"true\"></span><a class=\"nav-login-text\" href=\"/login\">Login</a><a class=\"login-pill\" href=\"/login\">Login</a></nav><button class=\"menu\" type=\"button\" aria-label=\"Open navigation\" aria-expanded=\"false\">☰</button></div></header>" +
+		"<main data-cms-dynamic-root style=\"padding-top:138px\"></main>" +
+		"<footer class=\"footer\"><div class=\"wrap footer-inner\"><a class=\"brand-logo footer-logo\" href=\"/\" aria-label=\"HIMATE home\"><img src=\"/brand/himate_identity_wordmark_2026.webp\" alt=\"HIMATE System\"></a><nav class=\"footer-links\" aria-label=\"Footer navigation\"><a href=\"/platform\">Platform</a><a href=\"/modules\">Modules</a><a href=\"/programs\">Programs</a><a href=\"/impact\">Impact</a><a href=\"/partners\">Partners</a><a href=\"/contact\">Contact</a></nav><div class=\"footer-tagline\"><span>A smarter future<br>for arts &amp; culture</span><em>Culture Fuels Tomorrow.</em></div></div><div class=\"wrap footer-copy\">© 2026 HIMATE System. All rights reserved.</div></footer></body></html>"
+}
+
+func marketingTemplateFilename(slug string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(slug)) {
+	case "landing":
+		return "landing.html", true
+	case "platform":
+		return "platform.html", true
+	case "modules":
+		return "modules.html", true
+	case "programs":
+		return "programs.html", true
+	case "impact":
+		return "impact.html", true
+	case "partners":
+		return "partners.html", true
+	case "contact":
+		return "contact.html", true
+	default:
+		return "", false
+	}
+}
+
+func (a *app) marketingTemplate(slug string) string {
+	if filename, ok := marketingTemplateFilename(slug); ok {
+		if raw, err := os.ReadFile(filepath.Join(filepath.Clean(a.webDir), filename)); err == nil {
+			return string(raw)
+		}
+	}
+	return dynamicMarketingTemplate()
+}
+
+func writeHTMLResponse(w http.ResponseWriter, r *http.Request, doc string, status int) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len([]byte(doc))))
+	if r.Method == http.MethodHead {
+		w.WriteHeader(status)
+		return
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(doc))
+}
+
+func (a *app) cmsPagePreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	slug := strings.Trim(strings.TrimPrefix(r.URL.Path, "/cms-preview/"), "/")
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if slug == "" || token == "" {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
+	page, err := a.fetchPreviewCMS(ctx, slug, token)
+	cancel()
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	doc := a.marketingTemplate(slug)
+	doc = renderPreviewCMSHTML(doc, page, publicOrigin(r)+r.URL.Path, slug, token)
+	designCtx, designCancel := context.WithTimeout(r.Context(), 1200*time.Millisecond)
+	design, designErr := a.fetchPublishedDesign(designCtx)
+	designCancel()
+	if designErr == nil && design.Version > 0 {
+		doc = renderSiteDesignHTML(doc, design.Design, page.Locale, "/"+strings.Trim(slug, "/"), func(id string) string {
+			return "/public/v1/cms/media/"+url.PathEscape(id)
+		})
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	w.Header().Set("X-Himate-SSR", "preview")
+	w.Header().Set("X-Himate-Preview", "cms")
+	writeHTMLResponse(w, r, doc, http.StatusOK)
+}
+
+func previewActiveClass(active bool) string {
+	if active {
+		return "active"
+	}
+	return ""
+}
+
+func designPreviewFrameHTML(token, viewport string) string {
+	width := "1440px"
+	label := "Desktop · 1440"
+	switch viewport {
+	case "tablet":
+		width = "834px"
+		label = "Tablet · 834"
+	case "mobile":
+		width = "390px"
+		label = "Mobile · 390"
+	default:
+		viewport = "desktop"
+	}
+	base := "/design-preview?token="+url.QueryEscape(token)
+	raw := base+"&viewport="+url.QueryEscape(viewport)+"&raw=1"
+	return fmt.Sprintf("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>HIMATE Design Preview</title><style>html,body{margin:0;background:#111827;color:#fff;font-family:Inter,Arial,sans-serif}.bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#06172c;border-bottom:1px solid #d4af6b}.bar a{color:#fff;text-decoration:none;border:1px solid #667085;border-radius:6px;padding:7px 10px}.bar a.active{border-color:#d4af6b;color:#f0d39a}.label{margin-left:auto;color:#cbd5e1}.stage{padding:20px;display:flex;justify-content:center;min-height:calc(100vh - 62px)}iframe{width:%s;height:calc(100vh - 88px);border:0;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.45)}</style></head><body><div class=\"bar\"><strong>HIMATE Design Preview</strong><a href=\"%s&viewport=desktop\" class=\"%s\">Desktop</a><a href=\"%s&viewport=tablet\" class=\"%s\">Tablet</a><a href=\"%s&viewport=mobile\" class=\"%s\">Mobile</a><span class=\"label\">%s</span></div><div class=\"stage\"><iframe title=\"HIMATE website design preview\" src=\"%s\"></iframe></div></body></html>",
+		width,
+		html.EscapeString(base), previewActiveClass(viewport=="desktop"),
+		html.EscapeString(base), previewActiveClass(viewport=="tablet"),
+		html.EscapeString(base), previewActiveClass(viewport=="mobile"),
+		html.EscapeString(label), html.EscapeString(raw))
+}
+
+func (a *app) designPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
+	preview, err := a.fetchPreviewDesign(ctx, token)
+	cancel()
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	viewport := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("viewport")))
+	if viewport != "tablet" && viewport != "mobile" {
+		viewport = "desktop"
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	w.Header().Set("X-Himate-Preview", "design")
+	if r.URL.Query().Get("raw") != "1" {
+		writeHTMLResponse(w, r, designPreviewFrameHTML(token, viewport), http.StatusOK)
+		return
+	}
+	doc := a.marketingTemplate("landing")
+	locale := publicLocale(r)
+	pageCtx, pageCancel := context.WithTimeout(r.Context(), 1500*time.Millisecond)
+	if page, pageErr := a.fetchPublishedCMS(pageCtx, "landing", locale); pageErr == nil {
+		doc = renderPublishedCMSHTML(doc, page, publicOrigin(r)+"/")
+	}
+	pageCancel()
+	doc = renderSiteDesignHTML(doc, preview, locale, "/", func(id string) string {
+		return "/preview/v1/cms/design/media/"+url.PathEscape(id)+"?token="+url.QueryEscape(token)
+	})
+	writeHTMLResponse(w, r, doc, http.StatusOK)
+}
+
+func (a *app) serveDynamicCMSPage(w http.ResponseWriter, r *http.Request, slug string) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	if !regexp.MustCompile("^[a-z0-9]+(?:-[a-z0-9]+)*$").MatchString(slug) {
+		return false
+	}
+	locale := publicLocale(r)
+	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
+	page, err := a.fetchPublishedCMS(ctx, slug, locale)
+	cancel()
+	if err != nil {
+		return false
+	}
+	doc := renderPublishedCMSHTML(dynamicMarketingTemplate(), page, publicOrigin(r)+r.URL.Path)
+	designCtx, designCancel := context.WithTimeout(r.Context(), 1200*time.Millisecond)
+	design, designErr := a.fetchPublishedDesign(designCtx)
+	designCancel()
+	if designErr == nil && design.Version > 0 {
+		doc = renderSiteDesignHTML(doc, design.Design, locale, r.URL.Path, func(id string) string {
+			return "/public/v1/cms/media/"+url.PathEscape(id)
+		})
+		w.Header().Set("X-Himate-Design", "published")
+	}
+	w.Header().Set("X-Himate-SSR", "published")
+	w.Header().Set("X-Himate-SEO", "page+global")
+	w.Header().Set("Content-Language", map[bool]string{true:"hu",false:"en"}[locale=="hu_HU"])
+	writeHTMLResponse(w, r, doc, http.StatusOK)
+	return true
+}
+
 func (a *app) serveMarketingPage(w http.ResponseWriter, r *http.Request, filename, slug string) {
 	path := filepath.Join(filepath.Clean(a.webDir), filename)
 	raw, err := os.ReadFile(path)
