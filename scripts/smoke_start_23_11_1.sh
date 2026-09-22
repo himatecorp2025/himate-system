@@ -14,6 +14,7 @@ OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json
 OWNER_PASSWORD="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_PASSWORD"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_PASSWORD=")))')"
 STAMP="$(date +%s)"
 MODULE_KEY="ci.start23111_$STAMP"
+UNCONFIGURED_KEY="ci.start23111_unconfigured_$STAMP"
 PORTAL_EMAIL="start23111-$STAMP@example.com"
 PORTAL_PASSWORD="Strong-Start23111!$STAMP"
 QUOTE_A="Q-23111-A-$STAMP"
@@ -103,6 +104,8 @@ terms_a="$(curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/jso
 printf '%s' "$terms_a" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["activation_fee"]==4200,d; assert d["base_monthly_fee"]==850,d; assert d["minimum_monthly_commitment"]==1750,d; assert d["quote_reference"]==sys.argv[1],d; assert d["pricing_model"]=="INDIVIDUAL_QUOTE",d; assert d["commercial_configured"] is True,d; assert d["terms_version"]>=2,d' "$QUOTE_A"
 history="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_a_id/terms-history")"
 printf '%s' "$history" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"]>=1,d; x=d["items"][0]; assert x["quote_reference"]==sys.argv[1],x; assert x["activation_fee"]==4200,x; assert x["minimum_monthly_commitment"]==1750,x' "$QUOTE_A"
+license="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_a_id/license")"
+printf '%s' "$license" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["required_amount"]==4200,d'
 echo ok
 
 printf 'partner-module contract price is explicit and independent from module reference price... '
@@ -148,6 +151,38 @@ curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"publication_status":"PUBLISHED"}' "$BASE_URL/api/v1/modules/$MODULE_KEY" >/dev/null
 portal_after="$(curl -fsS -b "$PORTAL_COOKIE" "$BASE_URL/partner/api/v1/modules")"
 printf '%s' "$portal_after" | python3 -c 'import json,sys; d=json.load(sys.stdin); key,quote=sys.argv[1:]; m=next(x for x in d["items"] if x["key"]==key); assert m["partner_price"]==275,m; assert m["commercial_configured"] is True,m; assert m["quote_reference"]==quote,m; assert m["entitlement_state"]=="INACTIVE",m' "$MODULE_KEY" "$QUOTE_A"
+echo ok
+
+printf 'published module without partner-specific commercial configuration fails closed... '
+unconfigured_payload="$(python3 - "$UNCONFIGURED_KEY" <<'PY'
+import json,sys
+print(json.dumps({
+ "key":sys.argv[1],"group_key":"technical","label_en":"START 23.11.1 Unconfigured","label_hu":"START 23.11.1 Nincs Arazva",
+ "currency":"USD","version":"1.0.0","latest_version":"1.0.0",
+ "default_monthly_price":777,"default_activation_fee":777,
+ "availability":"ACTIVE","publication_status":"PUBLISHED","implementation_state":"READY",
+ "module_type":"FEATURE","owner_team":"Platform","manifest":{"schema_version":1}
+}))
+PY
+)"
+curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$unconfigured_payload" "$BASE_URL/api/v1/modules" >/dev/null
+code="$(status "$PORTAL_COOKIE" POST "/partner/api/v1/modules/$UNCONFIGURED_KEY/activate" -H 'Content-Type: application/json' -d '{}')"
+test "$code" = "409"
+grep -q 'COMMERCIAL_TERMS_REQUIRED' "$BODY"
+echo ok
+
+printf 'contracted module activation and Billing cancellation state stay synchronized... '
+activated="$(curl -fsS -b "$PORTAL_COOKIE" -X POST -H 'Content-Type: application/json' -d '{}' "$BASE_URL/partner/api/v1/modules/$MODULE_KEY/activate")"
+printf '%s' "$activated" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=d["module"]; assert m["status"]=="ACTIVE",m; assert m["entitlement_state"]=="ACTIVE",m'
+curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_a_id/summary" >/dev/null
+cancelled="$(curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"cancel_at_period_end":true,"reason":"START-23.11.1 lifecycle sync"}' "$BASE_URL/api/v1/billing/partners/$partner_a_id/subscriptions/$MODULE_KEY")"
+printf '%s' "$cancelled" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lifecycle_state"]=="CANCEL_PENDING",d'
+catalog_state="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$partner_a_id/modules")"
+printf '%s' "$catalog_state" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; m=next(x for x in d["items"] if x["key"]==key); assert m["status"]=="ACTIVE",m; assert m["entitlement_state"]=="CANCEL_PENDING",m' "$MODULE_KEY"
+withdrawn="$(curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"cancel_at_period_end":false,"reason":"START-23.11.1 lifecycle withdrawal"}' "$BASE_URL/api/v1/billing/partners/$partner_a_id/subscriptions/$MODULE_KEY")"
+printf '%s' "$withdrawn" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lifecycle_state"]=="ACTIVE",d'
+catalog_state="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$partner_a_id/modules")"
+printf '%s' "$catalog_state" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; m=next(x for x in d["items"] if x["key"]==key); assert m["entitlement_state"]=="ACTIVE",m' "$MODULE_KEY"
 echo ok
 
 echo "HIMATE START-23.11.1 module registry and individual commercial model smoke passed"
