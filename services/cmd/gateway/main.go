@@ -299,6 +299,16 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS identity_custom_roles_active_idx ON identity.custom_roles(active,role_key)`,
 		}},
 		partnerPortalMigration(),
+		{Version: 8, Name: "start-23-5-bilingual-custom-roles", Statements: []string{
+			`ALTER TABLE identity.custom_roles ADD COLUMN IF NOT EXISTS label_en TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.custom_roles ADD COLUMN IF NOT EXISTS label_hu TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.custom_roles ADD COLUMN IF NOT EXISTS description_en TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE identity.custom_roles ADD COLUMN IF NOT EXISTS description_hu TEXT NOT NULL DEFAULT ''`,
+			`UPDATE identity.custom_roles SET label_en=label WHERE label_en=''`,
+			`UPDATE identity.custom_roles SET label_hu=label WHERE label_hu=''`,
+			`UPDATE identity.custom_roles SET description_en=description WHERE description_en=''`,
+			`UPDATE identity.custom_roles SET description_hu=description WHERE description_hu=''`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -562,16 +572,16 @@ func normalizeCustomPermissions(values []string) ([]string, error) {
 func (a *app) roleDefinitionByKey(key string) (roleDefinition, bool) {
 	if definition, ok := builtinRoleDefinitionByKey(key); ok { return definition, true }
 	if a == nil || a.db == nil { return roleDefinition{}, false }
-	var label, description string
+	var labelEN, descriptionEN string
 	var raw []byte
 	var active bool
-	if err := a.db.QueryRow(`SELECT label,description,permissions,active FROM identity.custom_roles WHERE role_key=$1`, key).
-		Scan(&label,&description,&raw,&active); err != nil || !active {
+	if err := a.db.QueryRow(`SELECT label_en,description_en,permissions,active FROM identity.custom_roles WHERE role_key=$1`, key).
+		Scan(&labelEN,&descriptionEN,&raw,&active); err != nil || !active {
 		return roleDefinition{}, false
 	}
 	permissions := []string{}
 	_ = json.Unmarshal(raw, &permissions)
-	return roleDefinition{Key:key,Label:label,Description:description,Permissions:permissions}, true
+	return roleDefinition{Key:key,Label:labelEN,Description:descriptionEN,Permissions:permissions}, true
 }
 
 func (a *app) normalizeRoles(values []string) ([]string, error) {
@@ -1658,35 +1668,63 @@ func passwordPolicyError(password string) string {
 }
 
 func (a *app) adminRoles(w http.ResponseWriter, r *http.Request, actor user) {
+	locale:=common.RequestLocale(r)
 	switch r.Method {
 	case http.MethodGet:
 		items := make([]map[string]any,0,len(roleDefinitions)+8)
 		for _,role := range roleDefinitions {
-			items=append(items,map[string]any{"key":role.Key,"label":role.Label,"description":role.Description,"permissions":role.Permissions,"system":true,"active":true})
+			items=append(items,map[string]any{
+				"key":role.Key,"label":role.Label,"label_en":role.Label,"label_hu":role.Label,
+				"description":role.Description,"description_en":role.Description,"description_hu":role.Description,
+				"permissions":role.Permissions,"system":true,"active":true,
+			})
 		}
-		rows,err:=a.db.Query(`SELECT role_key,label,description,permissions,active,created_by,created_at,updated_at FROM identity.custom_roles ORDER BY active DESC,lower(label)`)
+		rows,err:=a.db.Query(`SELECT role_key,label_en,label_hu,description_en,description_hu,permissions,active,created_by,created_at,updated_at
+			FROM identity.custom_roles ORDER BY active DESC,lower(label_en),role_key`)
 		if err!=nil{common.APIError(w,500,"DB","Could not load custom roles");return}
 		defer rows.Close()
 		for rows.Next(){
-			var key,label,description,createdBy string;var raw []byte;var active bool;var created,updated time.Time
-			if rows.Scan(&key,&label,&description,&raw,&active,&createdBy,&created,&updated)==nil{
+			var key,labelEN,labelHU,descEN,descHU,createdBy string;var raw []byte;var active bool;var created,updated time.Time
+			if rows.Scan(&key,&labelEN,&labelHU,&descEN,&descHU,&raw,&active,&createdBy,&created,&updated)==nil{
 				permissions:=[]string{};_ = json.Unmarshal(raw,&permissions)
-				items=append(items,map[string]any{"key":key,"label":label,"description":description,"permissions":permissions,"system":false,"active":active,"created_by":createdBy,"created_at":created,"updated_at":updated})
+				items=append(items,map[string]any{
+					"key":key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
+					"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
+					"permissions":permissions,"system":false,"active":active,"created_by":createdBy,"created_at":created,"updated_at":updated,
+				})
 			}
 		}
-		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items),"locale":locale})
 	case http.MethodPost:
 		if !ownerRequired(w,actor){return}
-		var in struct{Key string `json:"key"`;Label string `json:"label"`;Description string `json:"description"`;Permissions []string `json:"permissions"`}
+		var in struct{
+			Key string `json:"key"`
+			Label string `json:"label"`
+			LabelEN string `json:"label_en"`
+			LabelHU string `json:"label_hu"`
+			Description string `json:"description"`
+			DescriptionEN string `json:"description_en"`
+			DescriptionHU string `json:"description_hu"`
+			Permissions []string `json:"permissions"`
+		}
 		if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-		in.Key=strings.ToLower(strings.TrimSpace(in.Key));in.Label=strings.TrimSpace(in.Label)
-		if !roleKeyPattern.MatchString(in.Key)||in.Label==""{common.APIError(w,400,"VALIDATION","Stable role key and label are required");return}
+		in.Key=strings.ToLower(strings.TrimSpace(in.Key))
+		labelEN:=strings.TrimSpace(in.LabelEN);labelHU:=strings.TrimSpace(in.LabelHU);legacyLabel:=strings.TrimSpace(in.Label)
+		if labelEN==""{labelEN=legacyLabel};if labelHU==""{labelHU=legacyLabel}
+		descEN:=strings.TrimSpace(in.DescriptionEN);descHU:=strings.TrimSpace(in.DescriptionHU);legacyDesc:=strings.TrimSpace(in.Description)
+		if descEN==""{descEN=legacyDesc};if descHU==""{descHU=legacyDesc}
+		if !roleKeyPattern.MatchString(in.Key)||labelEN==""||labelHU==""{common.APIError(w,400,"VALIDATION","Stable role key and bilingual labels are required");return}
 		if _,exists:=builtinRoleDefinitionByKey(in.Key);exists{common.APIError(w,409,"ROLE_RESERVED","Built-in role keys are reserved");return}
 		permissions,err:=normalizeCustomPermissions(in.Permissions);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
 		raw,_:=json.Marshal(permissions)
-		if _,err=a.db.Exec(`INSERT INTO identity.custom_roles(role_key,label,description,permissions,created_by) VALUES($1,$2,$3,$4::jsonb,$5)`,
-			in.Key,in.Label,strings.TrimSpace(in.Description),string(raw),actor.ID);err!=nil{common.APIError(w,409,"CONFLICT","Role could not be created");return}
-		common.JSON(w,201,map[string]any{"key":in.Key,"label":in.Label,"description":strings.TrimSpace(in.Description),"permissions":permissions,"system":false,"active":true})
+		if _,err=a.db.Exec(`INSERT INTO identity.custom_roles(role_key,label,label_en,label_hu,description,description_en,description_hu,permissions,created_by)
+			VALUES($1,$2,$2,$3,$4,$4,$5,$6::jsonb,$7)`,
+			in.Key,labelEN,labelHU,descEN,descHU,string(raw),actor.ID);err!=nil{common.APIError(w,409,"CONFLICT","Role could not be created");return}
+		common.JSON(w,201,map[string]any{
+			"key":in.Key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
+			"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
+			"permissions":permissions,"system":false,"active":true,
+		})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
@@ -1698,27 +1736,41 @@ func (a *app) adminRole(w http.ResponseWriter,r *http.Request,actor user){
 	key:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/admin/roles/"),"/")
 	if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Role not found");return}
 	if _,exists:=builtinRoleDefinitionByKey(key);exists{common.APIError(w,409,"ROLE_PROTECTED","Built-in roles cannot be modified");return}
-	var label,description string;var raw []byte;var active bool
-	if err:=a.db.QueryRow(`SELECT label,description,permissions,active FROM identity.custom_roles WHERE role_key=$1`,key).Scan(&label,&description,&raw,&active);err!=nil{
+	locale:=common.RequestLocale(r)
+	var labelEN,labelHU,descEN,descHU string;var raw []byte;var active bool
+	if err:=a.db.QueryRow(`SELECT label_en,label_hu,description_en,description_hu,permissions,active FROM identity.custom_roles WHERE role_key=$1`,key).
+		Scan(&labelEN,&labelHU,&descEN,&descHU,&raw,&active);err!=nil{
 		common.APIError(w,404,"NOT_FOUND","Role not found");return
 	}
 	permissions:=[]string{};_ = json.Unmarshal(raw,&permissions)
-	var in struct{Label *string `json:"label"`;Description *string `json:"description"`;Permissions *[]string `json:"permissions"`;Active *bool `json:"active"`}
+	var in struct{
+		Label *string `json:"label"`;LabelEN *string `json:"label_en"`;LabelHU *string `json:"label_hu"`
+		Description *string `json:"description"`;DescriptionEN *string `json:"description_en"`;DescriptionHU *string `json:"description_hu"`
+		Permissions *[]string `json:"permissions"`;Active *bool `json:"active"`
+	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-	if in.Label!=nil{label=strings.TrimSpace(*in.Label)}
-	if in.Description!=nil{description=strings.TrimSpace(*in.Description)}
+	if in.Label!=nil{legacy:=strings.TrimSpace(*in.Label);if in.LabelEN==nil{labelEN=legacy};if in.LabelHU==nil{labelHU=legacy}}
+	if in.LabelEN!=nil{labelEN=strings.TrimSpace(*in.LabelEN)}
+	if in.LabelHU!=nil{labelHU=strings.TrimSpace(*in.LabelHU)}
+	if in.Description!=nil{legacy:=strings.TrimSpace(*in.Description);if in.DescriptionEN==nil{descEN=legacy};if in.DescriptionHU==nil{descHU=legacy}}
+	if in.DescriptionEN!=nil{descEN=strings.TrimSpace(*in.DescriptionEN)}
+	if in.DescriptionHU!=nil{descHU=strings.TrimSpace(*in.DescriptionHU)}
 	if in.Active!=nil{active=*in.Active}
 	if in.Permissions!=nil{next,err:=normalizeCustomPermissions(*in.Permissions);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return};permissions=next}
-	if label==""{common.APIError(w,400,"VALIDATION","Role label is required");return}
+	if labelEN==""||labelHU==""{common.APIError(w,400,"VALIDATION","English and Hungarian role labels are required");return}
 	if !active{
 		var assigned int
 		_ = a.db.QueryRow(`SELECT COUNT(*) FROM identity.users WHERE roles ? $1`,key).Scan(&assigned)
 		if assigned>0{common.APIError(w,409,"ROLE_IN_USE","Remove this role from administrators before deactivating it");return}
 	}
 	raw,_=json.Marshal(permissions)
-	if _,err:=a.db.Exec(`UPDATE identity.custom_roles SET label=$2,description=$3,permissions=$4::jsonb,active=$5,updated_at=NOW() WHERE role_key=$1`,
-		key,label,description,string(raw),active);err!=nil{common.APIError(w,500,"DB","Could not update role");return}
-	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"permissions":permissions,"system":false,"active":active})
+	if _,err:=a.db.Exec(`UPDATE identity.custom_roles SET label=$2,label_en=$2,label_hu=$3,description=$4,description_en=$4,description_hu=$5,permissions=$6::jsonb,active=$7,updated_at=NOW() WHERE role_key=$1`,
+		key,labelEN,labelHU,descEN,descHU,string(raw),active);err!=nil{common.APIError(w,500,"DB","Could not update role");return}
+	common.JSON(w,200,map[string]any{
+		"key":key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
+		"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
+		"permissions":permissions,"system":false,"active":active,
+	})
 }
 
 func (a *app) adminUsers(w http.ResponseWriter, r *http.Request, actor user) {
