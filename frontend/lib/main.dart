@@ -3767,18 +3767,19 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
   Future<void> addDocument() async {
     final name = TextEditingController();
-    final url = TextEditingController();
     final note = TextEditingController();
     String kind = 'CONTRACT';
+    html.File? selectedFile;
 
     final ok = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
-          title: 'Register document',
-          subtitle: 'Register commercial document metadata with a persistent storage URL or document reference.',
+          title: 'Upload commercial document',
+          subtitle: 'The file is stored in HIMATE Evidence/Storage first, checksum-verified, then linked to Billing.',
           icon: Icons.note_add_outlined,
-          width: 640,
+          width: 680,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -3792,57 +3793,94 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                   DropdownMenuItem(value: 'PAYMENT_EVIDENCE', child: LText('Payment evidence')),
                   DropdownMenuItem(value: 'OTHER', child: LText('Other')),
                 ],
-                onChanged: (v) { if (v != null) setLocal(() => kind = v); },
+                onChanged: (v) { if (v != null) setLocal(() { kind = v; selectedFile = null; }); },
               ),
               const SizedBox(height: 12),
               TextField(controller: name, decoration: InputDecoration(labelText: uiLiteral('Document name *'))),
               const SizedBox(height: 12),
-              TextField(
-                controller: url,
-                decoration: InputDecoration(
-                  labelText: uiLiteral('Storage URL / reference'),
-                  hintText: uiLiteral('Required for contracts, invoices, receipts and payment evidence'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: LText(
+                      selectedFile?.name ?? 'No file selected',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: brandTextSoft),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final file = await pickBrowserFile('application/pdf,image/png,image/jpeg,image/webp,text/plain');
+                      if (file != null) setLocal(() => selectedFile = file);
+                    },
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: const LText('Choose file'),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               TextField(controller: note, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Notes'))),
+              const SizedBox(height: 12),
+              const _RuleStrip(items: [
+                _RuleItem(Icons.shield_outlined, 'Storage', 'Evidence-backed · partner-scoped'),
+                _RuleItem(Icons.fingerprint_outlined, 'Integrity', 'SHA-256 checked before Billing link'),
+              ]),
             ],
           ),
-          primaryLabel: 'Register document',
-          onPrimary: () => Navigator.pop(context, true),
+          primaryLabel: 'Upload and register',
+          onPrimary: () {
+            if (name.text.trim().isEmpty || selectedFile == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: LText('Choose a file and enter a document name.'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+              return;
+            }
+            Navigator.pop(context, true);
+          },
         ),
       ),
     );
 
-    if (ok == true && name.text.trim().isNotEmpty) {
-      final evidenceKind = kind == 'CONTRACT' || kind == 'INVOICE' || kind == 'RECEIPT' || kind == 'PAYMENT_EVIDENCE';
-      if (evidenceKind && url.text.trim().isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: LText('Commercial evidence requires an attached storage URL or persistent document reference.'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: brandWarning,
-            ),
-          );
-        }
-        for (final controller in [name, url, note]) {
-          controller.dispose();
-        }
-        return;
+    if (ok == true && selectedFile != null) {
+      final file = selectedFile!;
+      final bytes = await readBrowserFile(file);
+      final evidenceType = switch (kind) {
+        'CONTRACT' => 'CONTRACT',
+        'INVOICE' => 'INVOICE',
+        _ => 'OTHER',
+      };
+      final evidence = await widget.api.multipart('/api/v1/evidence', {
+        'partner_id': '${partner['id']}',
+        'metric_key': '',
+        'evidence_type': evidenceType,
+        'title': name.text.trim(),
+        'description': note.text.trim(),
+        'period_start': '',
+        'period_end': '',
+      }, bytes, file.name);
+      final evidenceId = '${evidence['id'] ?? ''}'.trim();
+      if (evidenceId.isEmpty) {
+        throw StateError('Evidence upload returned no ID.');
       }
       await widget.api.post('/api/v1/billing/partners/${partner['id']}/documents', {
         'kind': kind,
         'name': name.text.trim(),
-        'storage_url': url.text.trim(),
+        'storage_url': 'evidence://$evidenceId',
         'note': note.text.trim(),
+        'mime_type': '${evidence['mime_type'] ?? ''}',
+        'sha256': '${evidence['sha256'] ?? ''}',
+        'size_bytes': evidence['size_bytes'] ?? 0,
       });
       await load();
-      if (mounted) success('Document registered.');
+      if (mounted) success('Commercial document uploaded and registered.');
     }
 
-    for (final c in [name, url, note]) {
-      c.dispose();
+    for (final controller in [name, note]) {
+      controller.dispose();
     }
   }
 
