@@ -805,8 +805,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
               child: LText(blockers.join(' · '), style: const TextStyle(color: brandWarning, fontSize: 9.5, fontWeight: FontWeight.w600)),
             ),
           ],
-          const Spacer(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           if (!active)
             SizedBox(
               width: double.infinity,
@@ -842,7 +841,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     Widget grid(List<Map<String, dynamic>> data) => LayoutBuilder(builder: (context, constraints) {
       final width = constraints.maxWidth < 650 ? constraints.maxWidth : constraints.maxWidth < 1050 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
       return Wrap(spacing: 12, runSpacing: 12, children: [
-        for (final module in data) SizedBox(width: width, height: 385, child: moduleCard(module)),
+        for (final module in data) SizedBox(width: width, child: moduleCard(module)),
       ]);
     });
     return Content(
