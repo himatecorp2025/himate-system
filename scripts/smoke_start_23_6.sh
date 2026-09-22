@@ -210,6 +210,9 @@ company_changed="$(printf '%s' "$company_before" | python3 -c 'import json,sys; 
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_changed" "$BASE_URL/api/v1/billing/profile" >/dev/null
 company_after="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
 printf '%s' "$company_after" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["contact_name"]=="START 23.6 Acceptance "+sys.argv[1]' "$STAMP"
+curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_before" "$BASE_URL/api/v1/billing/profile" >/dev/null
+company_restored="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
+printf '%s' "$company_restored" | python3 -c 'import json,sys; before=json.loads(sys.argv[1]); after=json.load(sys.stdin); assert after["contact_name"]==before["contact_name"]' "$company_before"
 echo ok
 
 printf 'signed-in profile mutation persists and restores... '
