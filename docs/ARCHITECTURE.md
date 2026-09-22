@@ -81,12 +81,6 @@ Recent Activity remains derived from the immutable Identity audit stream. Becaus
 Global search is implemented as permission-aware Gateway fan-out over authoritative domain services rather than a replicated search index. Before a domain is queried, Gateway verifies the caller already has that domain's read permission. This keeps search consistent with the existing backend-authoritative RBAC model and avoids cross-domain data leakage.
 
 
-START-23.9 adds role-safe executive read models without creating a new analytics monolith. Billing owns paid financial aggregation through its private `/internal/v1/analytics/dashboard` endpoint. Impact owns People Reached and the 12-month attendance series through `/internal/v1/impact/dashboard`, using the explicit `klavierhaus.events.attendance.attendee_count` metric. Gateway composes those read models with Partner and Catalog summaries.
-
-Recent Activity remains derived from the immutable Identity audit stream. Because audit visibility depends on administrator permissions, activity is filtered after authentication and is deliberately excluded from the shared Dashboard cache. The shared cache contains role-neutral summary data only; historical-year analytics bypass that current-year cache.
-
-Global search is implemented as permission-aware Gateway fan-out over authoritative domain services rather than a replicated search index. Before a domain is queried, Gateway verifies the caller already has that domain's read permission. This keeps search consistent with the existing backend-authoritative RBAC model and avoids cross-domain data leakage.
-
 ### Scaling model
 The topology permits independent horizontal/vertical scaling of the hot services, isolates provider failures, and prevents partner-runtime operations from requiring a Gateway rebuild. HTTP clients use connection pooling and explicit timeouts.
 
