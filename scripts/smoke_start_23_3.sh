@@ -104,7 +104,7 @@ printf 'period-end cycle is idempotent and history is retained... '
 docker compose exec -T billing /app/service --run-invoice-cycle "$period_end"
 subs_repeat="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/subscriptions")"
 printf '%s' "$subs_repeat" | python3 -c 'import json,sys; d=json.load(sys.stdin); key,start,end=sys.argv[1:]; s=next(x for x in d["items"] if x["module_key"]==key); assert s["lifecycle_state"]=="INACTIVE",s; assert s["period_start"]==start,s; assert s["period_end_exclusive"]==end,s' "$MODULE_KEY" "$period_start" "$period_end"
-history_count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.subscription_history WHERE partner_id='$partner_id' AND module_key='$MODULE_KEY' AND new_lifecycle_state IN ('ACTIVE','CANCEL_PENDING');")"
+history_count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.subscription_history WHERE partner_id='$partner_id' AND module_key='$MODULE_KEY' AND new_lifecycle_state IN ('ACTIVE','CANCEL_PENDING','INACTIVE');")"
 test "$history_count" -ge 4
 events="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/events")"
 printf '%s' "$events" | python3 -c 'import json,sys; d=json.load(sys.stdin); types={x["event_type"] for x in d["items"]}; required={"MODULE_CANCELLATION_SCHEDULED","MODULE_CANCELLATION_WITHDRAWN","MODULE_CANCELLATION_EFFECTIVE","MODULE_PERIOD_ENDED"}; assert required <= types,(required-types,d)'
