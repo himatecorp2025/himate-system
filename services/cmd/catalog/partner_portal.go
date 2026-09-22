@@ -208,14 +208,14 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	}
 	defer tx.Rollback()
 
-	var status, availability, label string
+	var status, availability, labelEN, labelHU string
 	var visible bool
 	if err := tx.QueryRow(`
-		SELECT pm.status,m.availability,m.label,pm.visible
+		SELECT pm.status,m.availability,m.label_en,m.label_hu,pm.visible
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
 		WHERE pm.partner_id=$1 AND pm.module_key=$2
-		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&label,&visible); err != nil {
+		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&labelEN,&labelHU,&visible); err != nil {
 		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Module not found")
 		return
 	}
@@ -234,7 +234,7 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	}
 
 	rows, err := tx.Query(`
-		SELECT r.target_module_key,m.label,r.relation_type,pm.status
+		SELECT r.target_module_key,m.label_en,m.label_hu,r.relation_type,pm.status
 		FROM catalog.module_relationships r
 		JOIN catalog.modules m ON m.module_key=r.target_module_key
 		LEFT JOIN catalog.partner_modules pm ON pm.partner_id=$1 AND pm.module_key=r.target_module_key
@@ -245,9 +245,10 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	}
 	blockers := []string{}
 	for rows.Next() {
-		var target,targetLabel,relation string
+		var target,targetLabelEN,targetLabelHU,relation string
 		var targetStatus sql.NullString
-		if rows.Scan(&target,&targetLabel,&relation,&targetStatus) != nil { continue }
+		if rows.Scan(&target,&targetLabelEN,&targetLabelHU,&relation,&targetStatus) != nil { continue }
+		targetLabel:=common.Localized(targetLabelEN,targetLabelHU,common.RequestLocale(r))
 		isActive := targetStatus.Valid && targetStatus.String == "ACTIVE"
 		if relation == "REQUIRES" && !isActive {
 			blockers = append(blockers, "Requires "+targetLabel)
@@ -294,6 +295,6 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 		common.APIError(w, http.StatusInternalServerError, "DB", "Module activated but could not be reloaded")
 		return
 	}
-	item["activation_message"] = fmt.Sprintf("%s activated", label)
+	item["activation_message"] = fmt.Sprintf("%s activated", common.Localized(labelEN,labelHU,common.RequestLocale(r)))
 	common.JSON(w, http.StatusOK, item)
 }
