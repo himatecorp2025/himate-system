@@ -394,6 +394,13 @@ func (a *app) deploy(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusBadRequest, "PROVIDER_CONFIG", err.Error())
 		return
 	}
+	// Production installations configured for a real deployment provider must fail
+	// closed if an environment tries to downgrade itself to the deterministic local
+	// adapter. Local remains valid when it is the process-wide provider (CI/dev).
+	if in.Environment == "PRODUCTION" && a.defaultProvider != "local" && provider.Name() == "local" {
+		common.APIError(w, http.StatusConflict, "PRODUCTION_PROVIDER_REQUIRED", "Production deployment cannot override the configured runtime provider with local")
+		return
+	}
 	commitID := configString(in.Config, "render_commit_id")
 	if commitID == "" && isGitSHA(in.Release) {
 		commitID = in.Release
