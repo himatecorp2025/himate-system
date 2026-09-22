@@ -102,6 +102,8 @@ The smoke proves:
 7. versioned commercial history,
 8. two partners receiving different recurring and activation prices for the same module,
 9. unpublished-module Partner Portal invisibility and activation rejection,
-10. READY → PUBLISHED exposure without replacing partner-specific contractual pricing.
+10. READY → PUBLISHED exposure without replacing partner-specific contractual pricing,
+11. published modules without partner-specific commercial configuration fail closed,
+12. Partner Portal activation writes ACTIVE entitlement and Billing cancellation synchronizes CANCEL_PENDING/ACTIVE back to Catalog without overriding operational maintenance state.
 
 START-23.11.2 must not begin automatically after this phase; it remains a separate development and acceptance boundary.
