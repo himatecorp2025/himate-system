@@ -198,7 +198,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
   }
 
-  Future<void> editCommercialAssignment(Map<String, dynamic> row) async {  Future<void> editCommercialAssignment(Map<String, dynamic> row) async {
+  Future<void> editCommercialAssignment(Map<String, dynamic> row) async {
     final partnerID = s(row['partner_id']);
     final moduleKey = s(row['key']);
     bool visible = row['visible'] == true;
