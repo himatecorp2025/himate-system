@@ -26,7 +26,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.10-start-23.6' ../docs/openapi.yaml
+          grep -q 'version: 0.8.11-start-23.7' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
@@ -64,6 +64,7 @@ jobs:
           test -s ../docs/START-23.4_ACCEPTANCE.md
           test -s ../docs/START-23.5_ACCEPTANCE.md
           test -s ../docs/START-23.6_ACCEPTANCE.md
+          test -s ../docs/START-23.7_ACCEPTANCE.md
           test -s ../docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md
           grep -q '^  /api/v1/auth/password-reset/request:' ../docs/openapi.yaml
           grep -q '^  /api/v1/auth/password-reset/confirm:' ../docs/openapi.yaml
@@ -110,6 +111,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_6.py
       - name: Run START-23.1-23.6 cross-phase closure audit
         run: python3 ../scripts/audit_start_23_1_23_6.py
+      - name: Run START-23.7 Evidence, Impact & Reporting audit
+        run: python3 ../scripts/audit_start_23_7.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -331,6 +334,8 @@ jobs:
         run: sh scripts/smoke_start_23_5.sh http://127.0.0.1:8080
       - name: Run START-23.6 Administration, Identity & Business CRUD smoke
         run: sh scripts/smoke_start_23_6.sh http://127.0.0.1:8080
+      - name: Run START-23.7 Evidence, Impact & Reporting smoke
+        run: sh scripts/smoke_start_23_7.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
