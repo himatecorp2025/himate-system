@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–23.1 implementation status
+## START-01–23.2 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -202,6 +202,17 @@ The architecture remains microservice/container based. It is **not** being colla
 - representative mutation canary proves write → persistence → readback → authorization/audit behavior instead of GET-only route reachability
 - START-24 is blocked until the complete START-23.2–23.12 closure program passes
 
+### START-23.2 — Partner × Module Commercial Control Plane & Individual Pricing
+- central Partner × Module matrix with partner/module perspectives, filters and responsive cards
+- module defaults plus partner-specific 30-day recurring-price overrides
+- module defaults plus partner-specific one-time activation-fee overrides
+- effective-dated recurring-price and activation-fee history with actor/reason traceability
+- current immutable Billing period displayed beside configured Catalog pricing
+- exact next-period price resolved at each subscription boundary through a batched internal Catalog point-in-time quote
+- partner visibility and base-service inclusion remain explicit commercial controls
+- legacy duplicate module create/edit controls removed from Licensing & Finance
+- end-of-period cancellation semantics remain deliberately assigned to START-23.3
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -220,9 +231,10 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-22.3_ACCEPTANCE.md`
 - `docs/START-23_ACCEPTANCE.md`
 - `docs/START-23.1_ACCEPTANCE.md`
+- `docs/START-23.2_ACCEPTANCE.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23 remain protected by their historical acceptance suites. START-23.1 additionally requires the machine-readable functional matrix, `scripts/audit_start_23_1_contract.py`, and `scripts/smoke_start_23_1_mutation_canary.sh`. A GET-only route check is no longer accepted as mutation evidence. START-24 Security Acceptance remains blocked until START-23.2–23.12 close every matrix blocker and START-23.12 completes the full mutation/production acceptance.
+START-22 through START-23.1 remain protected by their historical acceptance suites. START-23.2 additionally requires `docs/START-23.2_ACCEPTANCE.md`, `scripts/audit_start_23_2.py`, and `scripts/smoke_start_23_2.sh`. Partner-module pricing now has automated mutation/readback evidence, while final production proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.3–23.12 close the remaining matrix blockers.
