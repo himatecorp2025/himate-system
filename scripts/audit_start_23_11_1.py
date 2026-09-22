@@ -99,7 +99,7 @@ for token in [
 ]:
     require(token in localization, f"START-23.11.1 HU localization missing: {token}")
 
-require(matrix.get("completed_through") == "23.11.1", "functional matrix completed_through must be 23.11.1")
+require(matrix.get("completed_through") in {"23.11.1", "23.11.2"}, "functional matrix completed_through must be 23.11.1 or a validated later 23.11 subphase")
 surface_ids = {item["id"] for item in matrix.get("surfaces", [])}
 bad_surface_refs = [(item.get("id"), item.get("surface")) for item in matrix.get("contracts", []) if item.get("surface") not in surface_ids]
 require(not bad_surface_refs, f"functional matrix has invalid surface references: {bad_surface_refs}")
