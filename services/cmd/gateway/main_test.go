@@ -414,6 +414,24 @@ func TestAuditSanitization(t *testing.T) {
 	}
 }
 
+func TestAuditPartnerIDFromState(t *testing.T) {
+	cases := []struct{
+		name string
+		value any
+		want string
+	}{
+		{"direct", map[string]any{"partner_id":"ptr_123"}, "ptr_123"},
+		{"nested job", map[string]any{"job":map[string]any{"partner_id":"ptr_456"}}, "ptr_456"},
+		{"nested list", map[string]any{"items":[]any{map[string]any{"partner_id":"ptr_789"}}}, "ptr_789"},
+		{"reject unrelated id", map[string]any{"partner_id":"usr_123"}, ""},
+	}
+	for _,tc := range cases {
+		if got:=auditPartnerIDFromState(tc.value);got!=tc.want {
+			t.Fatalf("%s: got %q, want %q",tc.name,got,tc.want)
+		}
+	}
+}
+
 func TestAuditActionClassification(t *testing.T) {
 	cases := []struct {
 		method string
