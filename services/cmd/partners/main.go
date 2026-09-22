@@ -162,16 +162,31 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS partners_legal_name_trgm_idx ON partners.partners USING gin(legal_name gin_trgm_ops)`,
 			`CREATE INDEX IF NOT EXISTS partners_primary_domain_trgm_idx ON partners.partners USING gin(primary_domain gin_trgm_ops)`,
 		}},
+		{Version: 4, Name: "start-23-5-bilingual-partner-categories", Statements: []string{
+			`ALTER TABLE partners.categories ADD COLUMN IF NOT EXISTS name_en TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE partners.categories ADD COLUMN IF NOT EXISTS name_hu TEXT NOT NULL DEFAULT ''`,
+			`UPDATE partners.categories SET name_en=name WHERE name_en=''`,
+			`UPDATE partners.categories SET name_hu=name WHERE name_hu=''`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS partners_categories_name_en_unique ON partners.categories(lower(name_en)) WHERE name_en<>''`,
+			`CREATE INDEX IF NOT EXISTS partners_categories_name_hu_idx ON partners.categories(lower(name_hu)) WHERE name_hu<>''`,
+		}},
 	}); err != nil {
 		return err
 	}
 
-	defaults := []string{"Classical Music", "Fine Art", "Gallery", "Theatre", "Cultural Organization", "Other"}
-	for i, name := range defaults {
+	defaults := []struct{ EN, HU string }{
+		{"Classical Music", "Klasszikus zene"},
+		{"Fine Art", "Képzőművészet"},
+		{"Gallery", "Galéria"},
+		{"Theatre", "Színház"},
+		{"Cultural Organization", "Kulturális szervezet"},
+		{"Other", "Egyéb"},
+	}
+	for i, item := range defaults {
 		if _, err := a.db.ExecContext(ctx,
-			`INSERT INTO partners.categories(id,name,slug,system) VALUES($1,$2,$3,TRUE)
-			 ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,slug=EXCLUDED.slug,system=TRUE`,
-			fmt.Sprintf("cat_%03d", i+1), name, slugify(name)); err != nil {
+			`INSERT INTO partners.categories(id,name,name_en,name_hu,slug,system) VALUES($1,$2,$2,$3,$4,TRUE)
+			 ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,name_en=EXCLUDED.name_en,name_hu=EXCLUDED.name_hu,slug=EXCLUDED.slug,system=TRUE`,
+			fmt.Sprintf("cat_%03d", i+1), item.EN, item.HU, slugify(item.EN)); err != nil {
 			return err
 		}
 	}
@@ -187,9 +202,10 @@ func (a *app) migrate(ctx context.Context) error {
 }
 
 func (a *app) categories(w http.ResponseWriter, r *http.Request) {
+	locale := common.RequestLocale(r)
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT id,name,slug,system FROM partners.categories ORDER BY system DESC,name`)
+		rows, err := a.db.Query(`SELECT id,name_en,name_hu,slug,system FROM partners.categories ORDER BY system DESC,lower(name_en),id`)
 		if err != nil {
 			common.APIError(w, 500, "DB", "Could not load categories")
 			return
@@ -197,25 +213,40 @@ func (a *app) categories(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var id, name, slug string
+			var id, nameEN, nameHU, slug string
 			var system bool
-			if err := rows.Scan(&id, &name, &slug, &system); err != nil {
+			if err := rows.Scan(&id, &nameEN, &nameHU, &slug, &system); err != nil {
 				continue
 			}
-			items = append(items, map[string]any{"id": id, "name": name, "slug": slug, "system": system})
+			items = append(items, map[string]any{
+				"id": id, "name": common.Localized(nameEN, nameHU, locale),
+				"name_en": nameEN, "name_hu": nameHU, "slug": slug, "system": system,
+			})
 		}
-		common.JSON(w, 200, map[string]any{"items": items})
+		common.JSON(w, 200, map[string]any{"items": items, "locale": locale})
 	case http.MethodPost:
 		var in struct {
-			Name string `json:"name"`
+			Name   string `json:"name"`
+			NameEN string `json:"name_en"`
+			NameHU string `json:"name_hu"`
 		}
-		if common.Decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
-			common.APIError(w, 400, "VALIDATION", "Category name is required")
+		if common.Decode(r, &in) != nil {
+			common.APIError(w, 400, "JSON", "Invalid request")
 			return
 		}
-		name := strings.TrimSpace(in.Name)
-		id := "cat_custom_" + slugify(name)
-		res, err := a.db.Exec(`INSERT INTO partners.categories(id,name,slug,system) VALUES($1,$2,$3,FALSE) ON CONFLICT(name) DO NOTHING`, id, name, slugify(name))
+		nameEN := strings.TrimSpace(in.NameEN)
+		nameHU := strings.TrimSpace(in.NameHU)
+		legacy := strings.TrimSpace(in.Name)
+		if nameEN == "" { nameEN = legacy }
+		if nameHU == "" { nameHU = legacy }
+		if nameEN == "" || nameHU == "" {
+			common.APIError(w, 400, "VALIDATION", "English and Hungarian category names are required")
+			return
+		}
+		id := "cat_custom_" + slugify(nameEN)
+		slug := slugify(nameEN)
+		res, err := a.db.Exec(`INSERT INTO partners.categories(id,name,name_en,name_hu,slug,system)
+			VALUES($1,$2,$2,$3,$4,FALSE) ON CONFLICT(name) DO NOTHING`, id, nameEN, nameHU, slug)
 		if err != nil {
 			common.APIError(w, 409, "CONFLICT", "Category could not be created")
 			return
@@ -224,7 +255,10 @@ func (a *app) categories(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 409, "CONFLICT", "Category already exists")
 			return
 		}
-		common.JSON(w, 201, map[string]any{"id": id, "name": name, "slug": slugify(name), "system": false})
+		common.JSON(w, 201, map[string]any{
+			"id": id, "name": common.Localized(nameEN, nameHU, locale),
+			"name_en": nameEN, "name_hu": nameHU, "slug": slug, "system": false,
+		})
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or POST")
 	}
