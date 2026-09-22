@@ -222,6 +222,26 @@ func (a *app) collectActivationLicense(w http.ResponseWriter, r *http.Request, p
 	common.JSON(w,201,out)
 }
 
+func (a *app) retryPendingInvoiceCollections(ctx context.Context) error {
+	rows,err:=a.db.QueryContext(ctx,`SELECT id,partner_id,currency,total FROM billing.invoices
+		WHERE status<>'PAID' AND provider_status='COLLECTION_PENDING'
+		ORDER BY invoice_date,id LIMIT 500`)
+	if err!=nil{return err}
+	defer rows.Close()
+	type pending struct{ id,partnerID,currency string; total float64 }
+	items:=[]pending{}
+	for rows.Next(){
+		var x pending
+		if err:=rows.Scan(&x.id,&x.partnerID,&x.currency,&x.total);err!=nil{return err}
+		items=append(items,x)
+	}
+	if err:=rows.Err();err!=nil{return err}
+	for _,x:=range items{
+		a.queueInvoiceCollection(ctx,x.id,x.partnerID,x.currency,x.total)
+	}
+	return nil
+}
+
 func (a *app) queueInvoiceCollection(ctx context.Context, invoiceID, partnerID, currency string, total float64) {
 	out,err:=a.requestPaymentCharge(ctx,partnerID,invoiceID,"INVOICE",total,currency,"invoice:"+invoiceID)
 	if err!=nil{
