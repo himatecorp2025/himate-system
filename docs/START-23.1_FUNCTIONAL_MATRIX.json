@@ -458,13 +458,13 @@
       "method": "POST",
       "api_pattern": "/api/v1/partner-categories",
       "backend_service": "partners",
-      "persistence": "partners.partner_categories",
-      "audit": "central gateway mutation audit",
-      "localization_state": "MISSING_DYNAMIC_MODEL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "persistence": "partners.categories.name_en + name_hu",
+      "audit": "central gateway audit + bilingual readback",
+      "localization_state": "BILINGUAL_PERSISTED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.5",
-      "e2e_proof": "required: create -> list -> locale variants",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_5.sh: create category -> EN/HU list readback",
+      "notes": "Stable category identity is locale-neutral; legacy name resolves from the requested locale while explicit EN/HU values remain available."
     },
     {
       "id": "PART-CREATE",
@@ -836,13 +836,13 @@
       "method": "POST",
       "api_pattern": "/api/v1/module-groups",
       "backend_service": "catalog",
-      "persistence": "catalog.module_groups",
-      "audit": "central gateway mutation audit",
-      "localization_state": "MISSING_DYNAMIC_MODEL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "persistence": "catalog.module_groups.label_en + label_hu",
+      "audit": "central gateway audit + bilingual readback",
+      "localization_state": "BILINGUAL_PERSISTED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.5",
-      "e2e_proof": "required: create -> list with EN/HU label",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_5.sh: create module group -> EN/HU list readback",
+      "notes": "Module-group key remains stable while label is resolved per locale."
     },
     {
       "id": "MODULE-CREATE",
@@ -1808,13 +1808,13 @@
       "method": "SCHEMA",
       "api_pattern": "catalog/partners/impact/identity",
       "backend_service": "catalog + partners + impact + identity",
-      "persistence": "EN/HU label/description columns required",
-      "audit": "migration audit",
-      "localization_state": "MISSING",
-      "current_state": "MISSING_DATA_MODEL",
+      "persistence": "EN/HU label/description columns for categories, module groups/modules, metric definitions and custom roles",
+      "audit": "locale unit tests + mutation/readback acceptance + central gateway audit",
+      "localization_state": "BILINGUAL_PERSISTED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.5",
-      "e2e_proof": "required: locale switch returns correct dynamic labels",
-      "notes": "Module groups/modules/categories/metric definitions are currently single-label models."
+      "e2e_proof": "scripts/smoke_start_23_5.sh: same persisted records resolve distinct en_US/hu_HU labels across all dynamic domains",
+      "notes": "Shared locale resolution contract: query -> X-Himate-Locale -> Accept-Language -> en_US. Stable keys and authorization semantics remain locale-neutral."
     },
     {
       "id": "PUBLIC-CONTACT",
@@ -1961,5 +1961,5 @@
       "notes": "Commercial editor cannot write provider-managed paid fields directly."
     }
   ],
-  "completed_through": "23.4"
+  "completed_through": "23.5"
 }
