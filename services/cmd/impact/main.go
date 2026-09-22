@@ -155,6 +155,16 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS impact_values_retention_idx ON impact.metric_values(retain_until) WHERE retain_until IS NOT NULL AND legal_hold=FALSE`,
 			`CREATE INDEX IF NOT EXISTS impact_values_source_ref_idx ON impact.metric_values(source_ref) WHERE source_ref<>''`,
 		}},
+		{Version: 5, Name: "start-23-5-bilingual-impact-definitions", Statements: []string{
+			`ALTER TABLE impact.metric_definitions ADD COLUMN IF NOT EXISTS label_en TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE impact.metric_definitions ADD COLUMN IF NOT EXISTS label_hu TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE impact.metric_definitions ADD COLUMN IF NOT EXISTS description_en TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE impact.metric_definitions ADD COLUMN IF NOT EXISTS description_hu TEXT NOT NULL DEFAULT ''`,
+			`UPDATE impact.metric_definitions SET label_en=label WHERE label_en=''`,
+			`UPDATE impact.metric_definitions SET label_hu=label WHERE label_hu=''`,
+			`UPDATE impact.metric_definitions SET description_en=description WHERE description_en=''`,
+			`UPDATE impact.metric_definitions SET description_hu=description WHERE description_hu=''`,
+		}},
 	})
 }
 
@@ -166,7 +176,11 @@ func (a *app) ensureSystemDefinition(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		MetricKey   string `json:"metric_key"`
 		Label       string `json:"label"`
+		LabelEN     string `json:"label_en"`
+		LabelHU     string `json:"label_hu"`
 		Description string `json:"description"`
+		DescriptionEN string `json:"description_en"`
+		DescriptionHU string `json:"description_hu"`
 		Unit        string `json:"unit"`
 		Aggregation string `json:"aggregation"`
 		Scope       string `json:"scope"`
@@ -177,75 +191,100 @@ func (a *app) ensureSystemDefinition(w http.ResponseWriter, r *http.Request) {
 	}
 	in.MetricKey = strings.TrimSpace(in.MetricKey)
 	in.Label = strings.TrimSpace(in.Label)
+	in.LabelEN = strings.TrimSpace(in.LabelEN)
+	in.LabelHU = strings.TrimSpace(in.LabelHU)
 	in.Description = strings.TrimSpace(in.Description)
+	in.DescriptionEN = strings.TrimSpace(in.DescriptionEN)
+	in.DescriptionHU = strings.TrimSpace(in.DescriptionHU)
+	if in.LabelEN=="" { in.LabelEN=in.Label }
+	if in.LabelHU=="" { in.LabelHU=in.Label }
+	if in.DescriptionEN=="" { in.DescriptionEN=in.Description }
+	if in.DescriptionHU=="" { in.DescriptionHU=in.Description }
 	in.Unit = strings.TrimSpace(in.Unit)
 	in.Aggregation = strings.ToUpper(strings.TrimSpace(in.Aggregation))
 	in.Scope = strings.ToUpper(strings.TrimSpace(in.Scope))
 	if in.Unit == "" { in.Unit = "count" }
 	if in.Aggregation == "" { in.Aggregation = "LATEST" }
 	if in.Scope == "" { in.Scope = "PARTNER" }
-	if !metricKeyPattern.MatchString(in.MetricKey) || in.Label == "" ||
+	if !metricKeyPattern.MatchString(in.MetricKey) || in.LabelEN == "" || in.LabelHU == "" ||
 		!aggregationValues[in.Aggregation] || !scopeValues[in.Scope] {
 		common.APIError(w, http.StatusBadRequest, "VALIDATION", "Invalid system metric definition")
 		return
 	}
-	_, err := a.db.Exec(`INSERT INTO impact.metric_definitions(metric_key,label,description,unit,aggregation,scope,active,system)
-		VALUES($1,$2,$3,$4,$5,$6,TRUE,TRUE)
+	_, err := a.db.Exec(`INSERT INTO impact.metric_definitions(metric_key,label,label_en,label_hu,description,description_en,description_hu,unit,aggregation,scope,active,system)
+		VALUES($1,$2,$2,$3,$4,$4,$5,$6,$7,$8,TRUE,TRUE)
 		ON CONFLICT(metric_key) DO UPDATE SET
-			label=EXCLUDED.label,description=EXCLUDED.description,unit=EXCLUDED.unit,
-			aggregation=EXCLUDED.aggregation,scope=EXCLUDED.scope,active=TRUE,system=TRUE,updated_at=NOW()`,
-		in.MetricKey,in.Label,in.Description,in.Unit,in.Aggregation,in.Scope)
+			label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=EXCLUDED.label_hu,
+			description=EXCLUDED.description,description_en=EXCLUDED.description_en,description_hu=EXCLUDED.description_hu,
+			unit=EXCLUDED.unit,aggregation=EXCLUDED.aggregation,scope=EXCLUDED.scope,active=TRUE,system=TRUE,updated_at=NOW()`,
+		in.MetricKey,in.LabelEN,in.LabelHU,in.DescriptionEN,in.DescriptionHU,in.Unit,in.Aggregation,in.Scope)
 	if err != nil {
 		common.APIError(w, http.StatusInternalServerError, "DB", "Could not ensure system metric definition")
 		return
 	}
 	common.JSON(w,http.StatusOK,map[string]any{
-		"metric_key":in.MetricKey,"label":in.Label,"unit":in.Unit,
+		"metric_key":in.MetricKey,"label":common.Localized(in.LabelEN,in.LabelHU,common.RequestLocale(r)),"label_en":in.LabelEN,"label_hu":in.LabelHU,"description_en":in.DescriptionEN,"description_hu":in.DescriptionHU,"unit":in.Unit,
 		"aggregation":in.Aggregation,"scope":in.Scope,"active":true,"system":true,
 	})
 }
 
 func (a *app) definitions(w http.ResponseWriter, r *http.Request) {
+	locale:=common.RequestLocale(r)
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT metric_key,label,description,unit,aggregation,scope,active,system,created_at,updated_at FROM impact.metric_definitions ORDER BY label`)
+		rows, err := a.db.Query(`SELECT metric_key,label_en,label_hu,description_en,description_hu,unit,aggregation,scope,active,system,created_at,updated_at FROM impact.metric_definitions ORDER BY lower(label_en),metric_key`)
 		if err != nil { common.APIError(w,500,"DB","Could not load metric definitions"); return }
 		defer rows.Close()
 		items:=[]map[string]any{}
 		for rows.Next() {
-			var key,label,desc,unit,agg,scope string
+			var key,labelEN,labelHU,descEN,descHU,unit,agg,scope string
 			var active,system bool
 			var created,updated time.Time
-			if rows.Scan(&key,&label,&desc,&unit,&agg,&scope,&active,&system,&created,&updated)==nil {
-				items=append(items,map[string]any{"metric_key":key,"label":label,"description":desc,"unit":unit,"aggregation":agg,"scope":scope,"active":active,"system":system,"created_at":created,"updated_at":updated})
+			if rows.Scan(&key,&labelEN,&labelHU,&descEN,&descHU,&unit,&agg,&scope,&active,&system,&created,&updated)==nil {
+				items=append(items,map[string]any{
+					"metric_key":key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
+					"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
+					"unit":unit,"aggregation":agg,"scope":scope,"active":active,"system":system,"created_at":created,"updated_at":updated,
+				})
 			}
 		}
-		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items),"locale":locale})
 	case http.MethodPost:
 		var in struct {
 			MetricKey string `json:"metric_key"`
 			Label string `json:"label"`
+			LabelEN string `json:"label_en"`
+			LabelHU string `json:"label_hu"`
 			Description string `json:"description"`
+			DescriptionEN string `json:"description_en"`
+			DescriptionHU string `json:"description_hu"`
 			Unit string `json:"unit"`
 			Aggregation string `json:"aggregation"`
 			Scope string `json:"scope"`
 		}
 		if common.Decode(r,&in)!=nil { common.APIError(w,400,"JSON","Invalid request"); return }
 		in.MetricKey=strings.TrimSpace(in.MetricKey)
-		in.Label=strings.TrimSpace(in.Label)
+		labelEN:=strings.TrimSpace(in.LabelEN); labelHU:=strings.TrimSpace(in.LabelHU); legacyLabel:=strings.TrimSpace(in.Label)
+		if labelEN==""{labelEN=legacyLabel}; if labelHU==""{labelHU=legacyLabel}
+		descEN:=strings.TrimSpace(in.DescriptionEN); descHU:=strings.TrimSpace(in.DescriptionHU); legacyDesc:=strings.TrimSpace(in.Description)
+		if descEN==""{descEN=legacyDesc}; if descHU==""{descHU=legacyDesc}
 		in.Aggregation=strings.ToUpper(strings.TrimSpace(in.Aggregation))
 		in.Scope=strings.ToUpper(strings.TrimSpace(in.Scope))
 		if in.Unit=="" { in.Unit="count" }
 		if in.Aggregation=="" { in.Aggregation="SUM" }
 		if in.Scope=="" { in.Scope="PARTNER" }
-		if !metricKeyPattern.MatchString(in.MetricKey) || in.Label=="" || !aggregationValues[in.Aggregation] || !scopeValues[in.Scope] {
-			common.APIError(w,400,"VALIDATION","Invalid metric definition")
+		if !metricKeyPattern.MatchString(in.MetricKey) || labelEN=="" || labelHU=="" || !aggregationValues[in.Aggregation] || !scopeValues[in.Scope] {
+			common.APIError(w,400,"VALIDATION","Invalid bilingual metric definition")
 			return
 		}
-		_,err:=a.db.Exec(`INSERT INTO impact.metric_definitions(metric_key,label,description,unit,aggregation,scope,system)
-			VALUES($1,$2,$3,$4,$5,$6,FALSE)`,in.MetricKey,in.Label,strings.TrimSpace(in.Description),strings.TrimSpace(in.Unit),in.Aggregation,in.Scope)
+		_,err:=a.db.Exec(`INSERT INTO impact.metric_definitions(metric_key,label,label_en,label_hu,description,description_en,description_hu,unit,aggregation,scope,system)
+			VALUES($1,$2,$2,$3,$4,$4,$5,$6,$7,$8,FALSE)`,in.MetricKey,labelEN,labelHU,descEN,descHU,strings.TrimSpace(in.Unit),in.Aggregation,in.Scope)
 		if err!=nil { common.APIError(w,409,"CONFLICT","Metric key already exists"); return }
-		common.JSON(w,201,map[string]any{"metric_key":in.MetricKey,"label":in.Label,"unit":in.Unit,"aggregation":in.Aggregation,"scope":in.Scope,"active":true,"system":false})
+		common.JSON(w,201,map[string]any{
+			"metric_key":in.MetricKey,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
+			"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
+			"unit":strings.TrimSpace(in.Unit),"aggregation":in.Aggregation,"scope":in.Scope,"active":true,"system":false,
+		})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
