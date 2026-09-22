@@ -106,6 +106,10 @@ history="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$part
 printf '%s' "$history" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["count"]>=1,d; x=d["items"][0]; assert x["quote_reference"]==sys.argv[1],x; assert x["activation_fee"]==4200,x; assert x["minimum_monthly_commitment"]==1750,x' "$QUOTE_A"
 license="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_a_id/license")"
 printf '%s' "$license" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["required_amount"]==4200,d'
+if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.partner_terms_history SET quote_reference='TAMPERED' WHERE partner_id='$partner_a_id';" >/dev/null 2>&1; then
+  echo "commercial history mutation unexpectedly succeeded" >&2
+  exit 1
+fi
 echo ok
 
 printf 'partner-module contract price is explicit and independent from module reference price... '
