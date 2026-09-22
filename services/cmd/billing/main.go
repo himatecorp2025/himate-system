@@ -99,6 +99,7 @@ func main() {
 		})
 	})
 	mux.HandleFunc("/api/v1/billing/profile", a.profile)
+	mux.HandleFunc("/api/v1/billing/subscription-matrix", a.subscriptionMatrix)
 	mux.HandleFunc("/api/v1/billing/partners/", a.partnerRoutes)
 	mux.HandleFunc("/internal/v1/invoices/run", a.runEndpoint)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
@@ -981,6 +982,69 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',updated_at=NOW()
 		WHERE partner_id=$1 AND module_key NOT IN (`+strings.Join(placeholders, ",")+`) AND payment_status<>'INACTIVE'`, args...)
 	return err
+}
+
+func parsePartnerIDs(raw string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range strings.Split(raw, ",") {
+		id := strings.TrimSpace(value)
+		if id == "" || seen[id] { continue }
+		seen[id] = true
+		out = append(out, id)
+		if len(out) >= 200 { break }
+	}
+	return out
+}
+
+func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, 405, "METHOD", "Use GET")
+		return
+	}
+	ids := parsePartnerIDs(r.URL.Query().Get("partner_ids"))
+	if len(ids) == 0 {
+		common.JSON(w, 200, map[string]any{"items": []map[string]any{}, "count": 0})
+		return
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := `SELECT partner_id,module_key,currency,activation_date,period_start,period_end,price,auto_renew,cancel_at_period_end,payment_status,updated_at
+		FROM billing.module_subscriptions WHERE partner_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY partner_id,module_key`
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not load subscription matrix")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var partnerID, key, currency, payment string
+		var activation, start, end, updated time.Time
+		var price float64
+		var renew, cancel bool
+		if err := rows.Scan(&partnerID, &key, &currency, &activation, &start, &end, &price, &renew, &cancel, &payment, &updated); err != nil {
+			common.APIError(w, 500, "DB", "Could not decode subscription matrix")
+			return
+		}
+		items = append(items, map[string]any{
+			"partner_id": partnerID, "module_key": key, "currency": currency,
+			"activation_date": activation.Format("2006-01-02"),
+			"period_start": start.Format("2006-01-02"),
+			"period_end_exclusive": end.Format("2006-01-02"),
+			"price": price, "auto_renew": renew, "cancel_at_period_end": cancel,
+			"payment_status": payment, "updated_at": updated,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		common.APIError(w, 500, "DB", "Could not load complete subscription matrix")
+		return
+	}
+	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
 }
 
 func (a *app) subscriptions(w http.ResponseWriter, r *http.Request, id string) {
