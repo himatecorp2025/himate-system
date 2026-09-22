@@ -13,6 +13,7 @@ def read(path):
 common = read("services/internal/common/locale.go")
 partners = read("services/cmd/partners/main.go")
 catalog = read("services/cmd/catalog/main.go")
+partner_portal_catalog = read("services/cmd/catalog/partner_portal.go")
 impact = read("services/cmd/impact/main.go")
 gateway = read("services/cmd/gateway/main.go")
 frontend = read("frontend/lib/main.dart")
@@ -29,6 +30,8 @@ for token in ["name_en", "name_hu", "common.RequestLocale", "common.Localized"]:
 
 for token in ["label_en", "label_hu", "description_en", "description_hu", "common.RequestLocale", "common.Localized"]:
     assert token in catalog, f"catalog bilingual contract missing: {token}"
+for token in ["label_en", "label_hu", "description_en", "description_hu", "common.RequestLocale", "common.Localized"]:
+    assert token in partner_portal_catalog, f"Partner Portal bilingual catalog contract missing: {token}"
 
 for token in ["label_en", "label_hu", "description_en", "description_hu", "common.RequestLocale", "common.Localized"]:
     assert token in impact, f"impact bilingual contract missing: {token}"
