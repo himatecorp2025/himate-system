@@ -3518,7 +3518,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               const _DialogSectionLabel('PROVIDER-BACKED PAYMENT'),
               const SizedBox(height: 10),
               _DefinitionRow(label: 'License status', value: '${license?['status'] ?? 'NOT_PAID'}'),
-              _DefinitionRow(label: 'Paid amount', value: money(license?['paid_amount'], currency: currency)),
+              _DefinitionRow(label: 'Paid amount', value: '$currency ${number(license?['paid_amount']).toStringAsFixed(2)}'),
               _DefinitionRow(label: 'Provider reference', value: '${license?['payment_reference'] ?? '—'}'),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
