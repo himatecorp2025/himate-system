@@ -541,7 +541,7 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 404, "NOT_FOUND", "Route not found")
 			return
 		}
-		a.listPartnerModules(w, partnerID, true)
+		a.listPartnerModules(w, partnerID, true, common.RequestLocale(r))
 		return
 	}
 	if parts[1] != "modules" {
@@ -569,7 +569,7 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 405, "METHOD", "Use GET")
 			return
 		}
-		a.listPartnerModules(w, partnerID, false)
+		a.listPartnerModules(w, partnerID, false, common.RequestLocale(r))
 		return
 	}
 	if r.Method != http.MethodPatch {
@@ -798,7 +798,7 @@ func (a *app) partnerModuleCommercialHistory(w http.ResponseWriter, partnerID, k
 	})
 }
 
-func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billable bool) {
+func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billable bool, locale string) {
 	q := partnerModuleSelect + ` WHERE pm.partner_id=$1`
 	if billable {
 		q += ` AND pm.status='ACTIVE' AND m.availability='ACTIVE'`
@@ -813,7 +813,7 @@ func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billab
 	items := []map[string]any{}
 	extra := 0.0
 	for rows.Next() {
-		item, err := scanPartnerModule(rows, common.RequestLocale(r))
+		item, err := scanPartnerModule(rows, locale)
 		if err != nil {
 			continue
 		}
