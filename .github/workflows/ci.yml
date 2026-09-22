@@ -258,6 +258,10 @@ jobs:
         run: sh scripts/smoke_start_22_2.sh http://127.0.0.1:8080
       - name: Run START-22.3 Commercial Automation & Website Integration smoke
         run: sh scripts/smoke_start_22_3.sh http://127.0.0.1:8080
+      - name: Run post-START-22.3 privacy and credential-boundary audit
+        run: sh scripts/audit_privacy_start_01_22_3.sh http://127.0.0.1:8080
+      - name: Run post-START-22.3 concurrent load audit
+        run: sh scripts/audit_load_start_01_22_3.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
