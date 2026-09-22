@@ -3742,6 +3742,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final initialCancel = cancelAtPeriodEnd;
     final price = TextEditingController(text: number(module['partner_price']).toStringAsFixed(2));
     final effectiveAt = TextEditingController();
+    final activationFee = TextEditingController(text: number(module['partner_activation_fee']).toStringAsFixed(2));
+    final activationFeeEffectiveAt = TextEditingController();
     final reason = TextEditingController();
 
     final ok = await showDialog<bool>(
@@ -3804,6 +3806,18 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 ),
               ),
               const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: activationFee,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: uiLiteral('Partner activation fee')),
+                ),
+                second: TextField(
+                  controller: activationFeeEffectiveAt,
+                  decoration: InputDecoration(labelText: uiLiteral('Activation fee effective at'), hintText: uiLiteral('Optional RFC3339 timestamp')),
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: reason,
                 decoration: InputDecoration(labelText: uiLiteral('Change reason'), hintText: uiLiteral('Recorded in module, price and subscription history')),
@@ -3825,6 +3839,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           'included_in_base': included,
           'partner_price': double.tryParse(price.text) ?? 0,
           'price_effective_at': effectiveAt.text.trim(),
+          'partner_activation_fee': double.tryParse(activationFee.text) ?? 0,
+          'activation_fee_effective_at': activationFeeEffectiveAt.text.trim(),
           'reason': reason.text.trim(),
         },
       );
@@ -3852,6 +3868,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     }
     price.dispose();
     effectiveAt.dispose();
+    activationFee.dispose();
+    activationFeeEffectiveAt.dispose();
     reason.dispose();
   }
 
@@ -6803,9 +6821,15 @@ class _PartnerModuleCardState extends State<PartnerModuleCard> {
                     _TinyFlag(icon: included ? Icons.inventory_2_outlined : Icons.add_card_outlined, label: included ? 'BASE' : 'EXTRA', active: included),
                   ],
                 ),
-                const SizedBox(height: 13),
+                const SizedBox(height: 10),
                 Row(children: [
-                  const LText('Monthly', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const LText('Activation fee', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const Spacer(),
+                  LText(money(m['partner_activation_fee']), style: const TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w700)),
+                ]),
+                const SizedBox(height: 9),
+                Row(children: [
+                  const LText('30-day price', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
                   const Spacer(),
                   LText(included ? 'Included' : money(m['partner_price']), style: const TextStyle(color: brandNavy, fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(width: 7),
