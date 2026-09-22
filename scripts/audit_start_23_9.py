@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,9 +28,14 @@ acceptance = read("docs/START-23.9_ACCEPTANCE.md")
 architecture = read("docs/ARCHITECTURE.md")
 smoke = read("scripts/smoke_start_23_9.sh")
 
-require("0.8.13-start-23.9" in compose, "Compose release version is not START-23.9")
-require("0.8.13-start-23.9" in render, "Render release version is not START-23.9")
-require("version: 0.8.13-start-23.9" in openapi, "OpenAPI release version is not START-23.9")
+def release_phase(text: str):
+    match = re.search(r"0\.8\.\d+-start-(23\.\d+)", text)
+    require(match is not None, "START-23.x release identifier is missing")
+    return tuple(int(x) for x in match.group(1).split("."))
+
+require(release_phase(compose) >= (23, 9), "Compose release regressed below START-23.9")
+require(release_phase(render) >= (23, 9), "Render release regressed below START-23.9")
+require(release_phase(openapi) >= (23, 9), "OpenAPI release regressed below START-23.9")
 
 for token in (
     '"/internal/v1/analytics/dashboard"',
