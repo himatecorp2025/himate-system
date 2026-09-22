@@ -1700,6 +1700,33 @@ func copyDashboardPayload(source map[string]any) map[string]any {
 	return out
 }
 
+func (a *app) dashboardPayloadForActor(source map[string]any, actor user) map[string]any {
+	out:=copyDashboardPayload(source)
+	if a.hasPermission(actor,"billing.read") {
+		if raw,ok:=source["billing"].(map[string]any);ok {
+			billing:=copyDashboardPayload(raw)
+			billing["authorized"]=true
+			out["billing"]=billing
+		}
+	} else {
+		out["billing"]=map[string]any{
+			"authorized":false,"items":[]any{},"count":0,"status":"restricted",
+		}
+	}
+	if a.hasPermission(actor,"impact.read") {
+		if raw,ok:=source["impact"].(map[string]any);ok {
+			impact:=copyDashboardPayload(raw)
+			impact["authorized"]=true
+			out["impact"]=impact
+		}
+	} else {
+		out["impact"]=map[string]any{
+			"authorized":false,"people_reached_ytd":nil,"trend":[]any{},"status":"restricted",
+		}
+	}
+	return out
+}
+
 func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	year,err:=dashboardYear(r)
 	if err!=nil { common.APIError(w,http.StatusBadRequest,"VALIDATION",err.Error());return }
@@ -1712,7 +1739,7 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	// This prevents one administrator's visible audit domains from leaking to another.
 	a.dashboardMu.RLock()
 	if cacheable && a.dashboardPayload != nil && time.Now().Before(a.dashboardExpires) {
-		payload:=copyDashboardPayload(a.dashboardPayload)
+		payload:=a.dashboardPayloadForActor(a.dashboardPayload,actor)
 		a.dashboardMu.RUnlock()
 		payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
 		if activityErr!=nil { payload["activity"]=map[string]any{"items":[]any{},"count":0,"source":"IDENTITY_APPEND_ONLY_AUDIT","status":"degraded"} }
@@ -1748,7 +1775,7 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	wg.Wait()
 
 	if cacheable && partnerErr!=nil && moduleErr!=nil && billingErr!=nil && impactErr!=nil && stale!=nil {
-		payload:=copyDashboardPayload(stale)
+		payload:=a.dashboardPayloadForActor(stale,actor)
 		payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
 		w.Header().Set("X-Himate-Cache","stale")
 		w.Header().Set("Server-Timing",fmt.Sprintf("dashboard;dur=%d",time.Since(started).Milliseconds()))
@@ -1781,7 +1808,7 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 		a.dashboardMu.Unlock()
 	}
 
-	payload:=copyDashboardPayload(core)
+	payload:=a.dashboardPayloadForActor(core,actor)
 	payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
 	w.Header().Set("X-Himate-Cache","miss")
 	w.Header().Set("Server-Timing",fmt.Sprintf("dashboard;dur=%d",time.Since(started).Milliseconds()))
