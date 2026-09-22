@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.15-start-23.11.1
+  version: 0.8.16-start-23.11.2
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.1 HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.2 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -352,7 +352,7 @@ paths:
   /partner/api/v1/billing/summary:
     get:
       tags: [Partner Portal]
-      summary: Own current 30-day billing summary
+      summary: Own current calendar-month billing summary
       responses:
         "200": {description: Tenant billing summary}
   /partner/api/v1/billing/subscriptions:
@@ -756,7 +756,7 @@ paths:
         Persists negotiated activation fee, base fee, minimum monthly commitment,
         quote reference and a monotonic terms version. USD contracts enforce the
         HIMATE minimum monthly commitment of 1,500 while activation fees remain
-        individually negotiated. START-23.11.1 does not change invoice-cycle semantics.
+        individually negotiated. START-23.11.2 bills completed calendar months on the following month day 1, charges the full monthly fee without proration, and enforces the contractual minimum monthly commitment.
       responses:
         "200": {description: Updated individual commercial terms}
         "400": {description: Invalid amount or USD minimum commitment below 1,500}
@@ -872,7 +872,7 @@ paths:
       - {$ref: "#/components/parameters/PartnerId"}
     get:
       tags: [Billing]
-      summary: Current 30-day commercial summary
+      summary: Current calendar-month commercial summary
       responses:
         "200": {description: Effective fee and cycle window}
   /api/v1/billing/partners/{partnerId}/documents:
@@ -954,7 +954,7 @@ paths:
     patch:
       tags: [Billing]
       summary: Authoritatively schedule or withdraw end-of-period cancellation
-      description: Billing owns the ACTIVE/CANCEL_PENDING/INACTIVE lifecycle. Cancellation preserves the current immutable 30-day period, prevents renewal, and becomes INACTIVE only when the Billing cycle closes the exact period boundary.
+      description: Billing owns the ACTIVE/CANCEL_PENDING/INACTIVE lifecycle. Cancellation preserves the current immutable calendar month, prevents renewal, and becomes INACTIVE at the next calendar-month boundary. Module activation during a month is charged for the full month with no proration.
       requestBody:
         required: true
         content:
@@ -1260,7 +1260,7 @@ paths:
       description: >
         Partner identity is derived only from the connector credential.
         Response includes the active visual design profile, active entitlements,
-        version/configuration, domain binding and 30-day cycle metadata. Design
+        version/configuration, domain binding and calendar-month billing metadata. Design
         remains a visual-only state block and does not contain or rewrite CMS
         content, module state, billing or workflow mechanics. The response
         deliberately excludes module prices, raw invoices, payment data and
