@@ -873,7 +873,7 @@ class _LoginPageState extends State<LoginPage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 820;
+          final compact = useCompactLoginForSize(Size(constraints.maxWidth, constraints.maxHeight));
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -1433,6 +1433,17 @@ ShellLayoutMode shellLayoutForWidth(double width) {
   if (width < 980) return ShellLayoutMode.tablet;
   return ShellLayoutMode.desktop;
 }
+
+bool useCompactLoginForSize(Size size) => size.width < 820 || size.height < 720;
+
+int responsiveGridColumnsForWidth(double width) {
+  if (width < 620) return 1;
+  if (width < 980) return 2;
+  return 4;
+}
+
+bool shouldStackContentActions(double width, int actionCount) =>
+    width < 920 || (actionCount > 2 && width < 1180);
 
 class Shell extends StatefulWidget {
   const Shell({required this.api, required this.user, required this.onUserChanged, required this.onLogout, super.key});
@@ -6141,6 +6152,63 @@ class ResponsiveFieldPair extends StatelessWidget {
 }
 
 
+class ResponsiveActionBar extends StatelessWidget {
+  const ResponsiveActionBar({
+    required this.actions,
+    this.leading,
+    this.breakpoint = 620,
+    this.gap = 10,
+    super.key,
+  });
+
+  final Widget? leading;
+  final List<Widget> actions;
+  final double breakpoint;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (leading != null) ...[
+                leading!,
+                SizedBox(height: gap),
+              ],
+              for (var i = 0; i < actions.length; i++) ...[
+                SizedBox(width: double.infinity, child: actions[i]),
+                if (i < actions.length - 1) SizedBox(height: gap),
+              ],
+            ],
+          );
+        }
+        return Row(
+          children: [
+            if (leading != null) Expanded(child: leading!),
+            if (leading != null && actions.isNotEmpty) SizedBox(width: gap),
+            if (actions.isNotEmpty)
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: actions,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+
 class BrandDialog extends StatelessWidget {
   const BrandDialog({
     required this.title,
@@ -6161,11 +6229,13 @@ class BrandDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final phone = viewport.width < 520;
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      insetPadding: EdgeInsets.symmetric(horizontal: phone ? 10 : 20, vertical: phone ? 12 : 24),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: width, maxHeight: MediaQuery.of(context).size.height * .88),
+        constraints: BoxConstraints(maxWidth: width, maxHeight: viewport.height * (phone ? .94 : .88)),
         child: Container(
           decoration: BoxDecoration(
             color: brandWhite,
@@ -6214,27 +6284,12 @@ class BrandDialog extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
                 decoration: const BoxDecoration(border: Border(top: BorderSide(color: brandMist))),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final actions = [
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const LText('Cancel')),
-                      FilledButton(onPressed: onPrimary, child: LText(primaryLabel)),
-                    ];
-                    if (constraints.maxWidth < 420) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(width: double.infinity, child: actions[1]),
-                          const SizedBox(height: 8),
-                          SizedBox(width: double.infinity, child: actions[0]),
-                        ],
-                      );
-                    }
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [actions[0], const SizedBox(width: 8), actions[1]],
-                    );
-                  },
+                child: ResponsiveActionBar(
+                  breakpoint: 480,
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context, false), child: const LText('Cancel')),
+                    FilledButton(onPressed: onPrimary, child: LText(primaryLabel)),
+                  ],
                 ),
               ),
             ],
