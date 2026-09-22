@@ -1446,6 +1446,7 @@ func isCycleBoundary(anchor, at time.Time) bool {
 
 func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 	at = dateOnly(at)
+	if err := a.retryPendingInvoiceCollections(ctx); err != nil { return err }
 	rows, err := a.db.QueryContext(ctx, `SELECT partner_id FROM billing.partner_terms`)
 	if err != nil { return err }
 	defer rows.Close()
