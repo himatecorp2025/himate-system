@@ -37,6 +37,8 @@ for token in (
     "billing.initial_licenses",
     "billing.invoices",
     "status='PAID'",
+    "provider_payment_id<>''",
+    "provider_status='SUCCEEDED'",
     "paid_at",
     '"currency_policy": "NO_FX_CONVERSION"',
 ):
