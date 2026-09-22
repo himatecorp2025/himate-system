@@ -235,6 +235,7 @@ printf '%s' "$regenerated" | python3 -c 'import json,sys; d=json.load(sys.stdin)
 echo ok
 
 printf 'Evidence report linkage and central audit are visible... '
+sleep 2
 linked="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/evidence/$evidence_id")"
 printf '%s' "$linked" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert sys.argv[1] in d["report_ids"],d' "$report_id"
 audit="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/audit/events?limit=200")"
