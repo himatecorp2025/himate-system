@@ -191,12 +191,16 @@ jobs:
           grep -q 'key: HIMATE_RENDER_SERVICE_ID' render.yaml
           grep -q 'HIMATE_RUNTIME_PROVIDER: local' docker-compose.yml
           grep -q 'key: HIMATE_BACKUP_PROVIDER' render.yaml
-          grep -q 'value: s3' render.yaml
+          grep -q 'value: render_disk' render.yaml
           grep -q 'key: HIMATE_BACKUP_ENCRYPTION_KEY_B64' render.yaml
-          grep -q 'key: HIMATE_BACKUP_S3_ENDPOINT' render.yaml
-          grep -q 'key: HIMATE_BACKUP_S3_BUCKET' render.yaml
-          grep -q 'key: HIMATE_BACKUP_S3_ACCESS_KEY' render.yaml
-          grep -q 'key: HIMATE_BACKUP_S3_SECRET_KEY' render.yaml
+          grep -q 'key: HIMATE_BACKUP_OFFSITE_ROOT' render.yaml
+          grep -q 'name: himate-backups-offsite' render.yaml
+          grep -q 'mountPath: /offsite' render.yaml
+          grep -q 'sizeGB: 10' render.yaml
+          if grep -q 'key: HIMATE_BACKUP_S3_' render.yaml; then
+            echo "Render production backup must not require external S3 credentials"
+            exit 1
+          fi
           grep -q 'HIMATE_BACKUP_PROVIDER: local' docker-compose.yml
       - name: Validate Docker Compose topology
         run: docker compose config --quiet
