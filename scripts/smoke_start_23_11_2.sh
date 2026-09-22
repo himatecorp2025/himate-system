@@ -85,10 +85,20 @@ invoice_id="$(printf '%s' "$invoices" | python3 -c 'import json,sys; d=json.load
 test -n "$invoice_id"
 echo ok
 
-printf 'calendar invoice rerun is idempotent and ledger commercial values are immutable... '
+printf 'calendar invoice rerun is idempotent and finalized commercial values ignore later term changes... '
+changed_terms="$(python3 - "$MID_MONTH" <<'PY'
+import json,sys
+print(json.dumps({"currency":"USD","activation_fee":0,"activation_fee_waived":True,"activation_fee_reason":"CI",
+ "base_monthly_fee":850,"minimum_monthly_commitment":2000,"quote_reference":"Q-23112-CALENDAR-V2",
+ "annual_increase_percent":0,"price_effective_from":sys.argv[1],"service_anchor_date":sys.argv[1],"reason":"post-invoice retry immutability"}))
+PY
+)"
+curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$changed_terms" "$BASE_URL/api/v1/billing/partners/$partner_id/terms" >/dev/null
 docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT_MONTH"
 count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.invoices WHERE partner_id='$partner_id' AND billing_model='CALENDAR_MONTH' AND service_period_start='$MONTH_START'::date AND service_period_end='$NEXT_MONTH'::date;")"
 test "$count" = "1"
+persisted_total="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT total FROM billing.invoices WHERE id='$invoice_id';")"
+test "$persisted_total" = "1500.00"
 if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoice_items SET amount=999 WHERE invoice_id='$invoice_id' AND item_type='MODULE';" >/dev/null 2>&1; then
   echo 'calendar-month invoice item mutation unexpectedly succeeded' >&2
   exit 1
