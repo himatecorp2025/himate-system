@@ -55,7 +55,10 @@ for cid in ["PART-CATEGORY-CREATE", "MODULE-CREATE-GROUP", "DYNAMIC-BILINGUAL-MO
     assert item["current_state"] == "MUTATION_PROVEN_PROD_UNVERIFIED", (cid, item["current_state"])
     assert "smoke_start_23_5.sh" in item["e2e_proof"], cid
 
-assert matrix.get("completed_through") == "23.5"
+def phase_tuple(value):
+    return tuple(int(part) for part in str(value).split("."))
+
+assert phase_tuple(matrix.get("completed_through", "0")) >= phase_tuple("23.5")
 assert "audit_start_23_5.py" in ci
 assert "smoke_start_23_5.sh" in ci
 print("HIMATE START-23.5 dynamic bilingual business-model static audit passed")
