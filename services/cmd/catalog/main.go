@@ -100,6 +100,7 @@ func main() {
 	mux.HandleFunc("/api/v1/module-groups/", a.groupByKey)
 	mux.HandleFunc("/api/v1/modules", a.modules)
 	mux.HandleFunc("/api/v1/modules/", a.moduleByKey)
+	mux.HandleFunc("/api/v1/module-commercial-matrix", a.commercialMatrix)
 	mux.HandleFunc("/api/v1/partners/", a.partnerModules)
 	mux.HandleFunc("/internal/v1/partners/", a.partnerModules)
 	mux.HandleFunc("/internal/v1/partner-portal/", a.partnerPortal)
@@ -179,6 +180,21 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS module_impact_metric_idx ON catalog.module_impact_metrics(metric_key)`,
 		}},
+		{Version: 5, Name: "partner-module-commercial-control", Statements: []string{
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS default_activation_fee NUMERIC(12,2) NOT NULL DEFAULT 0`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS activation_fee_override NUMERIC(12,2)`,
+			`CREATE TABLE IF NOT EXISTS catalog.activation_fee_history(
+				id BIGSERIAL PRIMARY KEY,
+				partner_id TEXT NOT NULL,
+				module_key TEXT NOT NULL,
+				old_fee NUMERIC(12,2),
+				new_fee NUMERIC(12,2) NOT NULL,
+				effective_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				actor TEXT NOT NULL DEFAULT '',
+				reason TEXT NOT NULL DEFAULT ''
+			)`,
+			`CREATE INDEX IF NOT EXISTS activation_fee_history_lookup ON catalog.activation_fee_history(partner_id,module_key,effective_at DESC,id DESC)`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -250,7 +266,7 @@ func (a *app) groupByKey(w http.ResponseWriter, r *http.Request) {
 func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT m.module_key,m.label,m.group_key,g.label,m.description,m.default_monthly_price,m.currency,m.version,m.latest_version,
+		rows, err := a.db.Query(`SELECT m.module_key,m.label,m.group_key,g.label,m.description,m.default_monthly_price,m.default_activation_fee,m.currency,m.version,m.latest_version,
 			m.last_updated_at,m.system,m.availability,m.module_type,m.owner_team,m.source_repository,m.source_path,m.source_ref,m.source_commit,
 			m.artifact_type,m.artifact_reference,m.min_platform_version,m.manifest,
 			(SELECT COUNT(*) FROM catalog.module_relationships mr WHERE mr.module_key=m.module_key),
@@ -262,10 +278,10 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		items := []map[string]any{}
 		for rows.Next() {
 			var k,l,g,gl,d,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
-			var p float64; var t time.Time; var sys bool; var manifestRaw []byte; var relCount,usageCount,metricCount int
-			if rows.Scan(&k,&l,&g,&gl,&d,&p,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
+			var p,activationFee float64; var t time.Time; var sys bool; var manifestRaw []byte; var relCount,usageCount,metricCount int
+			if rows.Scan(&k,&l,&g,&gl,&d,&p,&activationFee,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
 				manifest:=map[string]any{}; _=json.Unmarshal(manifestRaw,&manifest)
-				items=append(items,map[string]any{"key":k,"label":l,"group_key":g,"group_label":gl,"description":d,"default_monthly_price":p,"currency":currency,
+				items=append(items,map[string]any{"key":k,"label":l,"group_key":g,"group_label":gl,"description":d,"default_monthly_price":p,"default_activation_fee":activationFee,"currency":currency,
 					"version":v,"latest_version":lv,"last_updated_at":t,"system":sys,"availability":availability,"module_type":moduleType,"owner_team":owner,
 					"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,"artifact_type":artifactType,"artifact_reference":artifactRef,
 					"min_platform_version":minPlatform,"manifest":manifest,"relationship_count":relCount,"active_partner_count":usageCount,"impact_metric_count":metricCount})
@@ -292,6 +308,7 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 			ArtifactReference string `json:"artifact_reference"`
 			MinPlatformVersion string `json:"min_platform_version"`
 			DefaultMonthlyPrice float64 `json:"default_monthly_price"`
+			DefaultActivationFee float64 `json:"default_activation_fee"`
 			Manifest map[string]any `json:"manifest"`
 		}
 		if common.Decode(r,&in)!=nil || !moduleKeyPattern.MatchString(in.Key) || strings.TrimSpace(in.Label)=="" || strings.TrimSpace(in.GroupKey)=="" {
@@ -299,18 +316,18 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.Currency==""{in.Currency="USD"}; if in.Version==""{in.Version="1.0.0"}; if in.LatestVersion==""{in.LatestVersion=in.Version}
 		if in.Availability==""{in.Availability="ACTIVE"}; in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
-		if !availabilityValues[in.Availability] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
+		if !availabilityValues[in.Availability] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
 		manifest,_:=json.Marshal(in.Manifest); if len(manifest)==0{manifest=[]byte("{}")}
 		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
-			module_key,label,group_key,description,default_monthly_price,currency,version,latest_version,system,availability,module_type,owner_team,
+			module_key,label,group_key,description,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
 			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb)`,
-			in.Key,strings.TrimSpace(in.Label),in.GroupKey,strings.TrimSpace(in.Description),in.DefaultMonthlyPrice,in.Currency,in.Version,in.LatestVersion,
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,FALSE,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)`,
+			in.Key,strings.TrimSpace(in.Label),in.GroupKey,strings.TrimSpace(in.Description),in.DefaultMonthlyPrice,in.DefaultActivationFee,in.Currency,in.Version,in.LatestVersion,
 			in.Availability,in.ModuleType,strings.TrimSpace(in.OwnerTeam),strings.TrimSpace(in.SourceRepository),strings.TrimSpace(in.SourcePath),
 			strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.SourceCommit),strings.TrimSpace(in.ArtifactType),strings.TrimSpace(in.ArtifactReference),
 			strings.TrimSpace(in.MinPlatformVersion),string(manifest))
 		if err!=nil{common.APIError(w,409,"CONFLICT","Module could not be created");return}
-		common.JSON(w,201,map[string]any{"key":in.Key,"label":strings.TrimSpace(in.Label),"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,
+		common.JSON(w,201,map[string]any{"key":in.Key,"label":strings.TrimSpace(in.Label),"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,"default_activation_fee":in.DefaultActivationFee,
 			"currency":in.Currency,"version":in.Version,"latest_version":in.LatestVersion,"availability":in.Availability,"module_type":in.ModuleType,"system":false})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
@@ -347,28 +364,29 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		ArtifactReference *string `json:"artifact_reference"`
 		MinPlatformVersion *string `json:"min_platform_version"`
 		DefaultMonthlyPrice *float64 `json:"default_monthly_price"`
+		DefaultActivationFee *float64 `json:"default_activation_fee"`
 		Manifest map[string]any `json:"manifest"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
 	var label,description,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
-	var price float64; var manifestRaw []byte
-	if err:=a.db.QueryRow(`SELECT label,description,group_key,default_monthly_price,availability,latest_version,module_type,owner_team,source_repository,source_path,
+	var price,activationFee float64; var manifestRaw []byte
+	if err:=a.db.QueryRow(`SELECT label,description,group_key,default_monthly_price,default_activation_fee,availability,latest_version,module_type,owner_team,source_repository,source_path,
 		source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest FROM catalog.modules WHERE module_key=$1`,key).
-		Scan(&label,&description,&groupKey,&price,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
+		Scan(&label,&description,&groupKey,&price,&activationFee,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
 		common.APIError(w,404,"NOT_FOUND","Module not found");return
 	}
 	set:=func(dst *string,src *string){if src!=nil{*dst=strings.TrimSpace(*src)}}
 	set(&label,in.Label);set(&description,in.Description);set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
 	set(&repo,in.SourceRepository);set(&path,in.SourcePath);set(&ref,in.SourceRef);set(&commit,in.SourceCommit);set(&artifactType,in.ArtifactType);set(&artifactRef,in.ArtifactReference);set(&minPlatform,in.MinPlatformVersion)
-	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}
-	if label==""||price<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid module update");return}
+	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
+	if label==""||price<0||activationFee<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid module update");return}
 	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
-	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,description=$3,group_key=$4,default_monthly_price=$5,availability=$6,latest_version=$7,module_type=$8,
-		owner_team=$9,source_repository=$10,source_path=$11,source_ref=$12,source_commit=$13,artifact_type=$14,artifact_reference=$15,min_platform_version=$16,manifest=$17::jsonb,last_updated_at=NOW()
-		WHERE module_key=$1`,key,label,description,groupKey,price,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
+	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,description=$3,group_key=$4,default_monthly_price=$5,default_activation_fee=$6,availability=$7,latest_version=$8,module_type=$9,
+		owner_team=$10,source_repository=$11,source_path=$12,source_ref=$13,source_commit=$14,artifact_type=$15,artifact_reference=$16,min_platform_version=$17,manifest=$18::jsonb,last_updated_at=NOW()
+		WHERE module_key=$1`,key,label,description,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
 		common.APIError(w,409,"CONFLICT","Module could not be updated");return
 	}
-	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"group_key":groupKey,"default_monthly_price":price,"availability":availability,
+	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"group_key":groupKey,"default_monthly_price":price,"default_activation_fee":activationFee,"availability":availability,
 		"latest_version":latestVersion,"module_type":moduleType,"owner_team":owner,"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,
 		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform})
 }
