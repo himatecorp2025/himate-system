@@ -26,6 +26,8 @@ ci = read(".github/workflows/ci.yml")
 openapi = read("docs/openapi.yaml")
 matrix = json.loads(read("docs/START-23.1_FUNCTIONAL_MATRIX.json"))
 helper = read("scripts/evidence_test_helpers.sh")
+smoke0108 = read("scripts/smoke_backend.sh")
+smoke0913 = read("scripts/smoke_start_09_13.sh")
 smoke223 = read("scripts/smoke_start_22_3.sh")
 smoke234 = read("scripts/smoke_start_23_4.sh")
 
@@ -63,15 +65,24 @@ require("same-partner file-backed HIMATE Evidence" in openapi,
         "OpenAPI does not document the START-23.7 commercial Evidence boundary")
 
 # Historical acceptance can no longer inject fabricated commercial evidence.
-require(". scripts/evidence_test_helpers.sh" in smoke223, "START-22.3 does not use real Evidence helper")
-require(". scripts/evidence_test_helpers.sh" in smoke234, "START-23.4 does not use real Evidence helper")
+for label, smoke in (
+    ("START-01-08", smoke0108),
+    ("START-09-13", smoke0913),
+    ("START-22.3", smoke223),
+    ("START-23.4", smoke234),
+):
+    require(". scripts/evidence_test_helpers.sh" in smoke,
+            f"{label} does not use real Evidence helper")
 for stale in (
+    "ci://receipt/paid.pdf",
+    "ci://start09/receipt.pdf",
+    "ci://start09/isolation.pdf",
     "evidence://start223/activation-invoice-001",
     "evidence://start223/payment-001",
     "evidence://start234/activation-invoice",
     "evidence://start234/payment",
 ):
-    require(stale not in smoke223 and stale not in smoke234,
+    require(all(stale not in smoke for smoke in (smoke0108, smoke0913, smoke223, smoke234)),
             f"synthetic historical Evidence fixture remains: {stale}")
 require("create_pdf_evidence" in helper and "/api/v1/evidence" in helper and "/integrity" in helper,
         "real file-backed Evidence fixture helper incomplete")
