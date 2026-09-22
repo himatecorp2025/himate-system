@@ -726,7 +726,7 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		nextStatus:=oldStatus
-		if nextState=="ACTIVE"{nextStatus="ACTIVE"}else if nextState=="INACTIVE"{nextStatus="NOT_LICENSED"}
+		if nextState=="INACTIVE"{nextStatus="NOT_LICENSED"}
 		if oldState!=nextState{
 			if _,err=tx.Exec(`UPDATE catalog.partner_modules SET entitlement_state=$3,status=$4,activated_at=CASE WHEN $3='ACTIVE' THEN COALESCE(activated_at,NOW()) ELSE activated_at END,updated_at=NOW() WHERE partner_id=$1 AND module_key=$2`,partnerID,key,nextState,nextStatus);err!=nil{
 				common.APIError(w,500,"DB","Could not update entitlement state");return
