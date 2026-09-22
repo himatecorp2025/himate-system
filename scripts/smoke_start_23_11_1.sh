@@ -179,6 +179,25 @@ test "$code" = "409"
 grep -q 'COMMERCIAL_TERMS_REQUIRED' "$BODY"
 echo ok
 
+printf 'explicit base-package inclusion is commercial-ready with zero extra module fee... '
+base_payload="$(python3 - "$QUOTE_A" <<'PY'
+import json,sys
+print(json.dumps({
+ "visible":True,
+ "included_in_base":True,
+ "contract_currency":"USD",
+ "quote_reference":sys.argv[1]+"-BASE",
+ "reason":"START-23.11.1 base package inclusion"
+}))
+PY
+)"
+curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$base_payload" "$BASE_URL/api/v1/partners/$partner_a_id/modules/$UNCONFIGURED_KEY" >/dev/null
+base_price="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$partner_a_id/modules/$UNCONFIGURED_KEY/price-at?at=$today")"
+printf '%s' "$base_price" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["included_in_base"] is True,d; assert d["price"]==0,d'
+base_portal="$(curl -fsS -b "$PORTAL_COOKIE" "$BASE_URL/partner/api/v1/modules")"
+printf '%s' "$base_portal" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; m=next(x for x in d["items"] if x["key"]==key); assert m["included_in_base"] is True,m; assert m["commercial_ready"] is True,m; assert m["partner_price"]==0,m; assert m["can_activate"] is True,m' "$UNCONFIGURED_KEY"
+echo ok
+
 printf 'contracted module activation and Billing cancellation state stay synchronized... '
 activated="$(curl -fsS -b "$PORTAL_COOKIE" -X POST -H 'Content-Type: application/json' -d '{}' "$BASE_URL/partner/api/v1/modules/$MODULE_KEY/activate")"
 printf '%s' "$activated" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=d["module"]; assert m["status"]=="ACTIVE",m; assert m["entitlement_state"]=="ACTIVE",m'
