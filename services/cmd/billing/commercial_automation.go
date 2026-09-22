@@ -229,15 +229,26 @@ func (a *app) ensureModulePeriodSnapshot(
 	fallbackPrice float64,
 	fallbackIncluded bool,
 ) (int64, float64, bool, error) {
+	return a.ensureModulePeriodSnapshotAt(ctx, partnerID, moduleKey, billingCurrency, periodStart, periodEnd, periodStart, fallbackPrice, fallbackIncluded)
+}
+
+func (a *app) ensureModulePeriodSnapshotAt(
+	ctx context.Context,
+	partnerID, moduleKey, billingCurrency string,
+	periodStart, periodEnd, pricingAt time.Time,
+	fallbackPrice float64,
+	fallbackIncluded bool,
+) (int64, float64, bool, error) {
 	periodStart = dateOnly(periodStart)
 	periodEnd = dateOnly(periodEnd)
+	pricingAt = dateOnly(pricingAt)
 	var id int64
 	var price float64
 	var included bool
 	var currency string
 	err := a.db.QueryRowContext(ctx, `SELECT id,price_snapshot,included_in_base,currency
 		FROM billing.module_period_snapshots
-		WHERE partner_id=$1 AND module_key=$2 AND period_start=$3`,
+		WHERE partner_id=$1 AND module_key=$2 AND period_start=$3 AND billing_model='CALENDAR_MONTH'`,
 		partnerID, moduleKey, periodStart).Scan(&id, &price, &included, &currency)
 	if err == nil {
 		if currency != billingCurrency {
@@ -247,21 +258,21 @@ func (a *app) ensureModulePeriodSnapshot(
 	}
 	if err != sql.ErrNoRows { return 0, 0, false, err }
 
-	price, included, catalogCurrency, err := a.modulePriceAt(ctx, partnerID, moduleKey, periodStart, fallbackPrice, fallbackIncluded, billingCurrency)
+	price, included, catalogCurrency, err := a.modulePriceAt(ctx, partnerID, moduleKey, pricingAt, fallbackPrice, fallbackIncluded, billingCurrency)
 	if err != nil { return 0, 0, false, err }
 	if catalogCurrency != "" && billingCurrency != "" && !strings.EqualFold(catalogCurrency, billingCurrency) {
 		return 0, 0, false, fmt.Errorf("module %s currency %s does not match partner billing currency %s", moduleKey, catalogCurrency, billingCurrency)
 	}
 
 	_, err = a.db.ExecContext(ctx, `INSERT INTO billing.module_period_snapshots(
-			partner_id,module_key,period_start,period_end,currency,price_snapshot,included_in_base
-		) VALUES($1,$2,$3,$4,$5,$6,$7)
-		ON CONFLICT(partner_id,module_key,period_start) DO NOTHING`,
-		partnerID, moduleKey, periodStart, periodEnd, billingCurrency, price, included)
+			partner_id,module_key,period_start,period_end,currency,price_snapshot,included_in_base,billing_model,pricing_effective_at,source
+		) VALUES($1,$2,$3,$4,$5,$6,$7,'CALENDAR_MONTH',$8,'PARTNER_CONTRACT_EFFECTIVE_PRICE')
+		ON CONFLICT(partner_id,module_key,period_start,billing_model) DO NOTHING`,
+		partnerID, moduleKey, periodStart, periodEnd, billingCurrency, price, included, pricingAt)
 	if err != nil { return 0, 0, false, err }
 	if err = a.db.QueryRowContext(ctx, `SELECT id,price_snapshot,included_in_base,currency
 		FROM billing.module_period_snapshots
-		WHERE partner_id=$1 AND module_key=$2 AND period_start=$3`,
+		WHERE partner_id=$1 AND module_key=$2 AND period_start=$3 AND billing_model='CALENDAR_MONTH'`,
 		partnerID, moduleKey, periodStart).Scan(&id, &price, &included, &currency); err != nil {
 		return 0, 0, false, err
 	}
@@ -269,31 +280,36 @@ func (a *app) ensureModulePeriodSnapshot(
 		return 0, 0, false, fmt.Errorf("snapshot currency mismatch for %s/%s: %s != %s", partnerID, moduleKey, currency, billingCurrency)
 	}
 
-	eventKey := fmt.Sprintf("MODULE_PERIOD_STARTED:%s:%s:%s", partnerID, moduleKey, periodStart.Format("2006-01-02"))
+	eventKey := fmt.Sprintf("MODULE_PERIOD_STARTED:CALENDAR_MONTH:%s:%s:%s", partnerID, moduleKey, periodStart.Format("2006-01-02"))
 	if err := a.emitBillingEvent(ctx, eventKey, partnerID, moduleKey, "MODULE_PERIOD_STARTED", periodStart, map[string]any{
+		"billing_model": "CALENDAR_MONTH",
 		"period_start": periodStart.Format("2006-01-02"),
 		"period_end_exclusive": periodEnd.Format("2006-01-02"),
+		"pricing_effective_at": pricingAt.Format("2006-01-02"),
 		"currency": billingCurrency,
 		"price_snapshot": price,
 		"included_in_base": included,
+		"proration": "NONE",
 	}); err != nil { return 0, 0, false, err }
 
 	if !included && price > 0 {
-		itemKey := fmt.Sprintf("MODULE:%s:%s:%s", partnerID, moduleKey, periodStart.Format("2006-01-02"))
+		itemKey := fmt.Sprintf("MODULE_MONTH:%s:%s:%s", partnerID, moduleKey, periodStart.Format("2006-01-02"))
 		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoice_items(
-				item_key,partner_id,module_key,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,snapshot_id
-			) VALUES($1,$2,$3,'MODULE',$4,$5,1,$6,$6,$7,$8,$9)
+				item_key,partner_id,module_key,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,snapshot_id,billing_model
+			) VALUES($1,$2,$3,'MODULE',$4,$5,1,$6,$6,$7,$8,$9,'CALENDAR_MONTH')
 			ON CONFLICT(item_key) DO NOTHING`,
-			itemKey, partnerID, moduleKey, "Module "+moduleKey+" · 30-day service", billingCurrency, price, periodStart, periodEnd, id)
+			itemKey, partnerID, moduleKey, "Module "+moduleKey+" · calendar month", billingCurrency, price, periodStart, periodEnd, id)
 		if err != nil { return 0, 0, false, err }
 		if rows, _ := result.RowsAffected(); rows > 0 {
 			if err := a.emitBillingEvent(ctx, "INVOICE_ITEM_CREATED:"+itemKey, partnerID, moduleKey, "INVOICE_ITEM_CREATED", time.Now().UTC(), map[string]any{
 				"item_key": itemKey,
 				"item_type": "MODULE",
+				"billing_model": "CALENDAR_MONTH",
 				"amount": price,
 				"currency": billingCurrency,
 				"period_start": periodStart.Format("2006-01-02"),
 				"period_end_exclusive": periodEnd.Format("2006-01-02"),
+				"proration": "NONE",
 			}); err != nil { return 0, 0, false, err }
 		}
 	}
@@ -546,33 +562,60 @@ func (a *app) invoiceItemsFor(invoiceID string) []map[string]any {
 	return items
 }
 
-func (a *app) attachInvoiceItems(ctx context.Context, invoiceID, partnerID, currency string, serviceStart, serviceEnd time.Time, base float64) (float64, error) {
-	baseKey := fmt.Sprintf("BASE:%s:%s", partnerID, dateOnly(serviceStart).Format("2006-01-02"))
+func minimumCommitmentAdjustment(subtotal, minimum float64) float64 {
+	if minimum <= subtotal { return 0 }
+	value := minimum - subtotal
+	return float64(int64(value*100+0.5)) / 100
+}
+
+func (a *app) attachInvoiceItems(ctx context.Context, invoiceID, partnerID, currency string, serviceStart, serviceEnd time.Time, base, minimum float64) (float64, float64, error) {
+	serviceStart = dateOnly(serviceStart)
+	serviceEnd = dateOnly(serviceEnd)
+	baseKey := fmt.Sprintf("BASE_MONTH:%s:%s", partnerID, serviceStart.Format("2006-01-02"))
 	result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoice_items(
-			item_key,invoice_id,partner_id,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,status,invoiced_at
-		) VALUES($1,$2,$3,'BASE_SERVICE','Base 30-day service',$4,1,$5,$5,$6,$7,'INVOICED',NOW())
+			item_key,invoice_id,partner_id,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,status,invoiced_at,billing_model
+		) VALUES($1,$2,$3,'BASE_SERVICE','Base calendar-month service',$4,1,$5,$5,$6,$7,'INVOICED',NOW(),'CALENDAR_MONTH')
 		ON CONFLICT(item_key) DO NOTHING`,
-		baseKey, invoiceID, partnerID, currency, base, dateOnly(serviceStart), dateOnly(serviceEnd))
-	if err != nil { return 0, err }
+		baseKey, invoiceID, partnerID, currency, base, serviceStart, serviceEnd)
+	if err != nil { return 0, 0, err }
 	if rows, _ := result.RowsAffected(); rows > 0 {
 		_ = a.emitBillingEvent(ctx, "INVOICE_ITEM_CREATED:"+baseKey, partnerID, "", "INVOICE_ITEM_CREATED", time.Now().UTC(), map[string]any{
-			"item_key":baseKey,"item_type":"BASE_SERVICE","amount":base,"currency":currency,
-			"period_start":dateOnly(serviceStart).Format("2006-01-02"),"period_end_exclusive":dateOnly(serviceEnd).Format("2006-01-02"),
+			"item_key":baseKey,"item_type":"BASE_SERVICE","billing_model":"CALENDAR_MONTH","amount":base,"currency":currency,
+			"period_start":serviceStart.Format("2006-01-02"),"period_end_exclusive":serviceEnd.Format("2006-01-02"),
 		})
 	}
 
 	if _, err = a.db.ExecContext(ctx, `UPDATE billing.invoice_items
 		SET invoice_id=$2,status='INVOICED',invoiced_at=NOW()
-		WHERE partner_id=$1 AND item_type='MODULE' AND invoice_id IS NULL AND period_start<$3`,
-		partnerID, invoiceID, dateOnly(serviceEnd)); err != nil {
-		return 0, err
+		WHERE partner_id=$1 AND item_type='MODULE' AND billing_model='CALENDAR_MONTH'
+			AND invoice_id IS NULL AND period_start=$3 AND period_end=$4`,
+		partnerID, invoiceID, serviceStart, serviceEnd); err != nil {
+		return 0, 0, err
 	}
 	var moduleTotal float64
 	if err = a.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM billing.invoice_items
-		WHERE invoice_id=$1 AND item_type='MODULE'`, invoiceID).Scan(&moduleTotal); err != nil {
-		return 0, err
+		WHERE invoice_id=$1 AND item_type='MODULE' AND billing_model='CALENDAR_MONTH'`, invoiceID).Scan(&moduleTotal); err != nil {
+		return 0, 0, err
 	}
-	return moduleTotal, nil
+
+	adjustment := minimumCommitmentAdjustment(base+moduleTotal, minimum)
+	if adjustment > 0 {
+		minimumKey := fmt.Sprintf("MINIMUM_MONTHLY:%s:%s", partnerID, serviceStart.Format("2006-01-02"))
+		result, err = a.db.ExecContext(ctx, `INSERT INTO billing.invoice_items(
+				item_key,invoice_id,partner_id,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,status,invoiced_at,billing_model
+			) VALUES($1,$2,$3,'MINIMUM_COMMITMENT','Minimum monthly commitment adjustment',$4,1,$5,$5,$6,$7,'INVOICED',NOW(),'CALENDAR_MONTH')
+			ON CONFLICT(item_key) DO NOTHING`,
+			minimumKey, invoiceID, partnerID, currency, adjustment, serviceStart, serviceEnd)
+		if err != nil { return 0, 0, err }
+		if rows, _ := result.RowsAffected(); rows > 0 {
+			_ = a.emitBillingEvent(ctx, "INVOICE_ITEM_CREATED:"+minimumKey, partnerID, "", "INVOICE_ITEM_CREATED", time.Now().UTC(), map[string]any{
+				"item_key":minimumKey,"item_type":"MINIMUM_COMMITMENT","billing_model":"CALENDAR_MONTH","amount":adjustment,
+				"minimum_monthly_commitment":minimum,"currency":currency,
+				"period_start":serviceStart.Format("2006-01-02"),"period_end_exclusive":serviceEnd.Format("2006-01-02"),
+			})
+		}
+	}
+	return moduleTotal, adjustment, nil
 }
 
 
@@ -623,3 +666,62 @@ func start23111BillingCommercialModelMigration() common.Migration {
 		},
 	}
 }
+
+func start23112CalendarMonthBillingMigration() common.Migration {
+	return common.Migration{
+		Version: 10,
+		Name: "start-23-11-2-calendar-month-billing",
+		Statements: []string{
+			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS billing_cycle_model TEXT NOT NULL DEFAULT 'CALENDAR_MONTH'`,
+			`UPDATE billing.partner_terms SET billing_cycle_model='CALENDAR_MONTH' WHERE billing_cycle_model<>'CALENDAR_MONTH'`,
+			`ALTER TABLE billing.module_subscriptions ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'LEGACY_30_DAY'`,
+			`ALTER TABLE billing.module_subscriptions ALTER COLUMN billing_model SET DEFAULT 'CALENDAR_MONTH'`,
+			`ALTER TABLE billing.module_period_snapshots ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'LEGACY_30_DAY'`,
+			`ALTER TABLE billing.module_period_snapshots ADD COLUMN IF NOT EXISTS pricing_effective_at DATE`,
+			`ALTER TABLE billing.module_period_snapshots ALTER COLUMN billing_model SET DEFAULT 'CALENDAR_MONTH'`,
+			`ALTER TABLE billing.module_period_snapshots DROP CONSTRAINT IF EXISTS module_period_snapshots_partner_id_module_key_period_start_key`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS billing_module_period_snapshot_model_unique
+				ON billing.module_period_snapshots(partner_id,module_key,period_start,billing_model)`,
+			`ALTER TABLE billing.invoice_items ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'LEGACY_30_DAY'`,
+			`ALTER TABLE billing.invoice_items ALTER COLUMN billing_model SET DEFAULT 'CALENDAR_MONTH'`,
+			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS minimum_commitment_adjustment NUMERIC(12,2) NOT NULL DEFAULT 0`,
+			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'LEGACY_30_DAY'`,
+			`ALTER TABLE billing.invoices ALTER COLUMN billing_model SET DEFAULT 'CALENDAR_MONTH'`,
+			`CREATE INDEX IF NOT EXISTS billing_invoice_calendar_period_idx
+				ON billing.invoices(partner_id,billing_model,service_period_start,service_period_end)`,
+			`CREATE OR REPLACE FUNCTION billing.guard_invoice_item_mutation() RETURNS trigger LANGUAGE plpgsql AS $fn$
+			BEGIN
+				IF TG_OP='DELETE' THEN
+					RAISE EXCEPTION 'billing.invoice_items is append-only';
+				END IF;
+				IF OLD.item_key IS DISTINCT FROM NEW.item_key
+					OR OLD.partner_id IS DISTINCT FROM NEW.partner_id
+					OR OLD.module_key IS DISTINCT FROM NEW.module_key
+					OR OLD.item_type IS DISTINCT FROM NEW.item_type
+					OR OLD.description IS DISTINCT FROM NEW.description
+					OR OLD.currency IS DISTINCT FROM NEW.currency
+					OR OLD.quantity IS DISTINCT FROM NEW.quantity
+					OR OLD.unit_price IS DISTINCT FROM NEW.unit_price
+					OR OLD.amount IS DISTINCT FROM NEW.amount
+					OR OLD.period_start IS DISTINCT FROM NEW.period_start
+					OR OLD.period_end IS DISTINCT FROM NEW.period_end
+					OR OLD.snapshot_id IS DISTINCT FROM NEW.snapshot_id
+					OR OLD.billing_model IS DISTINCT FROM NEW.billing_model
+					OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+					RAISE EXCEPTION 'billing.invoice_items commercial fields are immutable';
+				END IF;
+				IF OLD.invoice_id IS NOT NULL AND OLD.invoice_id IS DISTINCT FROM NEW.invoice_id THEN
+					RAISE EXCEPTION 'billing.invoice_items invoice assignment is immutable once set';
+				END IF;
+				IF OLD.status='INVOICED' AND NEW.status IS DISTINCT FROM OLD.status THEN
+					RAISE EXCEPTION 'billing.invoice_items invoiced status cannot be reversed';
+				END IF;
+				IF OLD.invoiced_at IS NOT NULL AND OLD.invoiced_at IS DISTINCT FROM NEW.invoiced_at THEN
+					RAISE EXCEPTION 'billing.invoice_items invoiced_at is immutable once set';
+				END IF;
+				RETURN NEW;
+			END; $fn$`,
+		},
+	}
+}
+
