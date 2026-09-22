@@ -154,7 +154,7 @@ printf 'READY then PUBLISHED exposes the contracted module without changing its 
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"implementation_state":"READY"}' "$BASE_URL/api/v1/modules/$MODULE_KEY" >/dev/null
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"publication_status":"PUBLISHED"}' "$BASE_URL/api/v1/modules/$MODULE_KEY" >/dev/null
 portal_after="$(curl -fsS -b "$PORTAL_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-printf '%s' "$portal_after" | python3 -c 'import json,sys; d=json.load(sys.stdin); key,quote=sys.argv[1:]; m=next(x for x in d["items"] if x["key"]==key); assert m["partner_price"]==275,m; assert m["commercial_configured"] is True,m; assert m["quote_reference"]==quote,m; assert m["entitlement_state"]=="INACTIVE",m' "$MODULE_KEY" "$QUOTE_A"
+printf '%s' "$portal_after" | python3 -c 'import json,sys; d=json.load(sys.stdin); key,quote=sys.argv[1:]; m=next(x for x in d["items"] if x["key"]==key); assert m["partner_price"]==275,m; assert m["commercial_configured"] is True,m; assert m["commercial_ready"] is True,m; assert m["quote_reference"]==quote,m; assert m["entitlement_state"]=="INACTIVE",m' "$MODULE_KEY" "$QUOTE_A"
 echo ok
 
 printf 'published module without partner-specific commercial configuration fails closed... '
@@ -170,6 +170,10 @@ print(json.dumps({
 PY
 )"
 curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$unconfigured_payload" "$BASE_URL/api/v1/modules" >/dev/null
+unconfigured_portal="$(curl -fsS -b "$PORTAL_COOKIE" "$BASE_URL/partner/api/v1/modules")"
+printf '%s' "$unconfigured_portal" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; m=next(x for x in d["items"] if x["key"]==key); assert m["commercial_configured"] is False,m; assert m["commercial_ready"] is False,m; assert m["can_activate"] is False,m; assert m["partner_price"]==0,m' "$UNCONFIGURED_KEY"
+code="$(status "$OWNER_COOKIE" GET "/api/v1/partners/$partner_a_id/modules/$UNCONFIGURED_KEY/price-at?at=$today")"
+test "$code" = "404"
 code="$(status "$PORTAL_COOKIE" POST "/partner/api/v1/modules/$UNCONFIGURED_KEY/activate" -H 'Content-Type: application/json' -d '{}')"
 test "$code" = "409"
 grep -q 'COMMERCIAL_TERMS_REQUIRED' "$BODY"
