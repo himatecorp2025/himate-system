@@ -263,7 +263,7 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 		return
 	}
 
-	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key))
+	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key), common.RequestLocale(r))
 	if err != nil {
 		common.APIError(w, http.StatusInternalServerError, "DB", "Module activated but could not be reloaded")
 		return
