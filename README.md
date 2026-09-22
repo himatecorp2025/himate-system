@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–23.3 implementation status
+## START-01–23.6 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -111,6 +111,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Partner service
 - Module Catalog service
 - Billing service
+- Payments service
 - Contact service
 - Provisioning Engine
 - Environments service
@@ -123,6 +124,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Storage service
 - Backups / recoverability service
 - Runtime / deployment-provider adapter service
+- Notifications service
 - PostgreSQL control-plane database plus isolated partner databases
 - isolated CI/development backup volume; dedicated Render persistent backup disk in production
 
@@ -144,7 +146,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Partner Portal role namespace is non-interoperable with HIMATE administrator roles
 - server-paginated partner reads and bounded page-level aggregation
 - encrypted durable restore artifacts with mandatory restore verification
-- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–22 smoke tests in CI
+- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–23.6 smoke tests in CI
 
 
 ### START-22.1 — Internal Control Plane Completion
