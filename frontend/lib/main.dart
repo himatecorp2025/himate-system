@@ -4301,13 +4301,9 @@ class FinancePage extends StatefulWidget {
 
 class _FinancePageState extends State<FinancePage> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> groups = <Map<String, dynamic>>[];
   Map<String, dynamic>? profile;
   bool loading = false;
   String? error;
-  String query = '';
-  String groupFilter = 'ALL';
-
   @override
   void initState() {
     super.initState();
@@ -4329,11 +4325,10 @@ class _FinancePageState extends State<FinancePage> {
 
     await Future.wait<void>([
       fetch('/api/v1/modules', (data) => modules = items(data)),
-      fetch('/api/v1/module-groups', (data) => groups = items(data)),
       fetch('/api/v1/billing/profile', (data) => profile = data),
     ]);
 
-    if (mounted && failures.length == 3) {
+    if (mounted && failures.length == 2) {
       setState(() => error = failures.first);
     }
   }
@@ -4427,168 +4422,6 @@ class _FinancePageState extends State<FinancePage> {
     for (final c in [legal, registration, address, tax, contactName, email, phone, bank, bankAddress, account, iban, swift]) {
       c.dispose();
     }
-  }
-
-  Future<void> addModule() async {
-    if (groups.isEmpty) return;
-    final label = TextEditingController();
-    final key = TextEditingController();
-    final description = TextEditingController();
-    final price = TextEditingController(text: '0.00');
-    String group = '${groups.first['group_key']}';
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => BrandDialog(
-          title: 'Add custom module',
-          subtitle: 'Create a stable module key and place the new capability inside an existing HIMATE menu group.',
-          icon: Icons.add_box_outlined,
-          width: 700,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ResponsiveFieldPair(
-                first: TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Module name *'))),
-                second: TextField(controller: key, decoration: InputDecoration(labelText: uiLiteral('Stable key *'), hintText: uiLiteral('group.module_name'))),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: group,
-                decoration: InputDecoration(labelText: uiLiteral('Menu group')),
-                items: [
-                  for (final g in groups)
-                    DropdownMenuItem(value: '${g['group_key']}', child: LText('${g['label']}')),
-                ],
-                onChanged: (v) { if (v != null) setLocal(() => group = v); },
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Description'))),
-              const SizedBox(height: 12),
-              TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Default monthly price (USD)'))),
-            ],
-          ),
-          primaryLabel: 'Create module',
-          onPrimary: () => Navigator.pop(context, true),
-        ),
-      ),
-    );
-
-    if (ok == true && label.text.trim().isNotEmpty && key.text.trim().isNotEmpty) {
-      await widget.api.post('/api/v1/modules', {
-        'key': key.text.trim(),
-        'label': label.text.trim(),
-        'group_key': group,
-        'description': description.text.trim(),
-        'currency': 'USD',
-        'version': '1.0.0',
-        'latest_version': '1.0.0',
-        'default_monthly_price': double.tryParse(price.text) ?? 0,
-      });
-      await load();
-      if (mounted) success('Custom module created.');
-    }
-
-    for (final c in [label, key, description, price]) {
-      c.dispose();
-    }
-  }
-
-  Future<void> editCatalogModule(Map<String, dynamic> module) async {
-    final label = TextEditingController(text: '${module['label'] ?? ''}');
-    final description = TextEditingController(text: '${module['description'] ?? ''}');
-    final price = TextEditingController(text: number(module['default_monthly_price']).toStringAsFixed(2));
-    final latestVersion = TextEditingController(text: '${module['latest_version'] ?? module['version'] ?? '1.0.0'}');
-    String group = '${module['group_key'] ?? (groups.isNotEmpty ? groups.first['group_key'] : '')}';
-    String availability = '${module['availability'] ?? 'ACTIVE'}';
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => BrandDialog(
-          title: '${module['label']}',
-          subtitle: 'Manage catalog metadata and availability without changing the stable technical key.',
-          icon: Icons.grid_view_outlined,
-          width: 720,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Module name'))),
-              const SizedBox(height: 12),
-              ResponsiveFieldPair(
-                first: DropdownButtonFormField<String>(
-                  value: group,
-                  decoration: InputDecoration(labelText: uiLiteral('Menu group')),
-                  items: [
-                    for (final g in groups)
-                      DropdownMenuItem(value: '${g['group_key']}', child: LText('${g['label']}')),
-                  ],
-                  onChanged: (v) { if (v != null) setLocal(() => group = v); },
-                ),
-                second: DropdownButtonFormField<String>(
-                  value: availability,
-                  decoration: InputDecoration(labelText: uiLiteral('Availability')),
-                  items: const [
-                    DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
-                    DropdownMenuItem(value: 'UNAVAILABLE', child: LText('UNAVAILABLE')),
-                    DropdownMenuItem(value: 'DEPRECATED', child: LText('DEPRECATED')),
-                  ],
-                  onChanged: (v) { if (v != null) setLocal(() => availability = v); },
-                ),
-              ),
-              const SizedBox(height: 12),
-              ResponsiveFieldPair(
-                first: TextField(
-                  controller: price,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(labelText: uiLiteral('Default 30-day price')),
-                ),
-                second: TextField(controller: latestVersion, decoration: InputDecoration(labelText: uiLiteral('Latest version'))),
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Description'))),
-              const SizedBox(height: 12),
-              TextFormField(
-                initialValue: '${module['key']}',
-                readOnly: true,
-                decoration: InputDecoration(labelText: uiLiteral('Stable technical key')),
-              ),
-            ],
-          ),
-          primaryLabel: 'Save module',
-          onPrimary: () => Navigator.pop(context, true),
-        ),
-      ),
-    );
-
-    if (ok == true && label.text.trim().isNotEmpty) {
-      await widget.api.patch('/api/v1/modules/${module['key']}', {
-        'label': label.text.trim(),
-        'description': description.text.trim(),
-        'group_key': group,
-        'default_monthly_price': double.tryParse(price.text) ?? 0,
-        'availability': availability,
-        'latest_version': latestVersion.text.trim(),
-      });
-      await load();
-      if (mounted) success('Module catalog entry updated.');
-    }
-
-    for (final controller in [label, description, price, latestVersion]) {
-      controller.dispose();
-    }
-  }
-
-  List<Map<String, dynamic>> get filteredModules {
-    final q = query.trim().toLowerCase();
-    return modules.where((m) {
-      final textOk = q.isEmpty ||
-          '${m['label']}'.toLowerCase().contains(q) ||
-          '${m['key']}'.toLowerCase().contains(q) ||
-          '${m['group_label']}'.toLowerCase().contains(q);
-      final groupOk = groupFilter == 'ALL' || '${m['group_key']}' == groupFilter;
-      return textOk && groupOk;
-    }).toList();
   }
 
   @override
