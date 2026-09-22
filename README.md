@@ -295,6 +295,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - the Program Impact chart is a real 12-month time series from Impact observations rather than a hardcoded visual
 - Recent Activity is sourced from the immutable governance audit stream and filtered by the signed-in administrator's read permissions
 - the shared Dashboard cache excludes permission-scoped activity and historical-year requests bypass the current-year cache
+- Billing and Impact Dashboard analytics are response-filtered by `billing.read` / `impact.read`; restricted roles receive no sensitive KPI values
 - global search is active across permitted authoritative domains and never broadens backend authorization
 - release contract version is `0.8.13-start-23.9`
 - START-23.9 acceptance is `docs/START-23.9_ACCEPTANCE.md`, `scripts/audit_start_23_9.py` and `scripts/smoke_start_23_9.sh`
