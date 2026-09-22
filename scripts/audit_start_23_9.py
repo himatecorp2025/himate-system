@@ -24,6 +24,7 @@ compose = read("docker-compose.yml")
 render = read("render.yaml")
 openapi = read("docs/openapi.yaml")
 acceptance = read("docs/START-23.9_ACCEPTANCE.md")
+architecture = read("docs/ARCHITECTURE.md")
 smoke = read("scripts/smoke_start_23_9.sh")
 
 require("0.8.13-start-23.9" in compose, "Compose release version is not START-23.9")
@@ -108,6 +109,8 @@ for token in (
 ):
     require(token in ci, f"CI does not retain required gate {token}")
 
+require(architecture.count("START-23.9 adds role-safe executive read models") == 1,
+        "START-23.9 architecture section is duplicated or missing")
 require("HIMATE START-23.9 Dashboard, Analytics & Global Search smoke passed" in smoke,
         "START-23.9 Compose smoke completion marker is missing")
 require("No START-23.10+ product scope is included." in acceptance,
