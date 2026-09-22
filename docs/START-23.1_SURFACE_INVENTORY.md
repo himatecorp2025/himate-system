@@ -7,9 +7,9 @@ This document is generated from the authoritative machine-readable matrix. It en
 ## Inventory summary
 
 - surfaces: **53**
-- functional contracts: **87**
-- mutation contracts: **74**
-- explicit placeholders/mock/gaps: **25**
+- functional contracts: **88**
+- mutation contracts: **75**
+- explicit blockers/gaps: **25**
 
 ## Status interpretation
 
@@ -427,7 +427,9 @@ Read-only/supporting surface. No independent mutation is currently registered fo
 
 Public contact form
 
-Read-only/supporting surface. No independent mutation is currently registered for this surface; read-path behavior remains covered by the broader route/regression suites.
+| Contract | UI / behavior | Kind | Backend | State | Closure |
+|---|---|---|---|---|---|
+| `PUBLIC-CONTACT` | Submit public contact inquiry | mutation | contact | `SOURCE_COMPLETE_PROD_UNVERIFIED` | START-23.6 |
 
 ## 50. Automation / Billing
 
