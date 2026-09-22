@@ -45,6 +45,14 @@ require('publicationStatus=="PUBLISHED" && implementationState!="READY"' in cata
 require("m.publication_status='PUBLISHED'" in portal, "Partner Portal must hide unpublished modules")
 require('"MODULE_UNPUBLISHED"' in portal, "Partner activation must fail closed for unpublished modules")
 require('"COMMERCIAL_TERMS_REQUIRED"' in portal, "Partner activation must require configured partner commercial terms")
+require("commercial_ready" in portal, "Partner Portal must expose derived commercial readiness")
+require("pm.commercial_configured=TRUE" in catalog and "m.publication_status='PUBLISHED'" in catalog,
+        "billable module selection must require publication and partner commercial configuration")
+price_resolver = catalog.split("func (a *app) resolvePartnerModulePriceAt", 1)[1].split("func (a *app) partnerModulePriceAt", 1)[0]
+require("pm.price_override,m.default_monthly_price" not in price_resolver,
+        "Billing price resolver must never fall back to catalog reference price")
+require("pm.price_override" in price_resolver and "catalog.price_history" in price_resolver,
+        "Billing price resolver must use partner contract pricing history/override")
 
 for token in [
     "minimum_monthly_commitment NUMERIC(12,2) NOT NULL DEFAULT 1500",
