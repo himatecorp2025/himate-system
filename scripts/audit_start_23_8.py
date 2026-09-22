@@ -129,6 +129,15 @@ for token in (
 require("assets" in design_ui and "layout_key" in design_ui,
         "HIMATE Design Guide does not expose multi-surface assets and layout family")
 
+brand_assets = read("frontend/lib/brand_assets.dart")
+main_ui = read("frontend/lib/main.dart")
+require("himateLoginWordmarkUrl" in brand_assets and "_loadPublishedBrandAssets" in main_ui,
+        "published login-logo consumer is missing")
+require("himateRuntimeIconUrl" in brand_assets and "assetUrl: himateLoginWordmarkUrl" in main_ui,
+        "published app/login asset binding is missing")
+require("publishedEmailLogoURL" in gateway and "multipart/alternative" in gateway,
+        "published email-logo consumer is missing")
+
 # Admin UI uses real previews instead of raw JSON.
 for token in (
     "preview_html_path",
@@ -174,6 +183,12 @@ for path in (
     "/api/v1/cms/design/publish:",
     "/api/v1/cms/seo/draft:",
     "/api/v1/cms/seo/publish:",
+    "/partner/api/v1/design:",
+    "/partner/api/v1/design/media:",
+    "/partner/api/v1/design/profiles:",
+    "/partner/api/v1/design/profiles/{profileId}:",
+    "/partner/api/v1/design/profiles/{profileId}/activate:",
+    "/public/v1/cms/partner-design/{partnerId}:",
 ):
     require(path in openapi, f"OpenAPI missing {path}")
 
