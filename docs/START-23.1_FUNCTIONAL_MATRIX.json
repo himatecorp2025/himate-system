@@ -2076,7 +2076,7 @@
     },
     {
       "id": "PARTNER-COMMERCIAL-TERMS-23-11-1",
-      "surface": "partner.commercial_terms",
+      "surface": "partner.commercial",
       "ui": "Configure partner-specific activation fee, base fee, minimum commitment and quote reference",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
@@ -2094,7 +2094,7 @@
     },
     {
       "id": "PARTNER-MODULE-CONTRACT-PRICING-23-11-1",
-      "surface": "modules.commercial_matrix",
+      "surface": "modules.usage",
       "ui": "Persist contract-authoritative partner-module recurring and activation pricing",
       "kind": "mutation",
       "frontend_file": "frontend/lib/module_control_plane.dart",
