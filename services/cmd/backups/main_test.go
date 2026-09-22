@@ -47,6 +47,24 @@ func TestLocalOffsiteRejectsTraversalAndRoundTrips(t *testing.T) {
 	if _,err:=provider.Open(context.Background(),"../escape");err==nil{t.Fatal("traversal key accepted")}
 }
 
+func TestRenderDiskProviderUsesConfiguredPersistentRoot(t *testing.T) {
+	root:=t.TempDir()
+	t.Setenv("HIMATE_BACKUP_PROVIDER","render_disk")
+	t.Setenv("HIMATE_BACKUP_OFFSITE_ROOT",root)
+	provider,err:=newOffsiteProvider(nil)
+	if err!=nil{t.Fatal(err)}
+	if provider.Name()!="render_disk"{t.Fatalf("unexpected provider name %q",provider.Name())}
+	source:=filepath.Join(t.TempDir(),"artifact")
+	if err:=os.WriteFile(source,[]byte("render-persistent"),0600);err!=nil{t.Fatal(err)}
+	key:="ptr_render/bkp_render.hmbk"
+	if err:=provider.Put(context.Background(),key,source);err!=nil{t.Fatal(err)}
+	reader,err:=provider.Open(context.Background(),key);if err!=nil{t.Fatal(err)}
+	got:=new(bytes.Buffer);_,_=got.ReadFrom(reader);reader.Close()
+	if got.String()!="render-persistent"{t.Fatalf("unexpected persistent content %q",got.String())}
+	if err:=provider.Delete(context.Background(),key);err!=nil{t.Fatal(err)}
+	if _,err:=os.Stat(filepath.Join(root,"ptr_render","bkp_render.hmbk"));!os.IsNotExist(err){t.Fatalf("artifact was not deleted: %v",err)}
+}
+
 func TestSanitizeConfigRemovesSecretsRecursively(t *testing.T) {
 	input:=map[string]any{
 		"partner_id":"ptr_1",
