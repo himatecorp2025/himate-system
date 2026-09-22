@@ -1445,7 +1445,7 @@
       "ui": "Full website design preview",
       "kind": "mutation",
       "frontend_file": "frontend/lib/design_guide.dart",
-      "source_token": "HIMATE website preview",
+      "source_token": "'/api/v1/cms/design/preview'",
       "method": "POST + GET",
       "api_pattern": "/api/v1/cms/design/preview + /design-preview",
       "backend_service": "cms + gateway",
