@@ -21,12 +21,10 @@ type seedGroup struct {
 }
 
 var seedGroups = []seedGroup{
-	{"workshop", "Workshop", 1},
-	{"finance_invoicing", "Finance & Invoicing", 2},
-	{"technical", "Technical Operations", 3},
-	{"marketing", "Marketing", 4},
-	{"website_events", "Website & Events", 5},
-	{"communication", "Communication", 6},
+	{"finance_invoicing", "Finance & Invoicing", 1},
+	{"technical", "Technical Operations", 2},
+	{"marketing", "Marketing", 3},
+	{"website_events", "Website & Events", 4},
 }
 
 var seedModules = []seedModule{
@@ -48,7 +46,7 @@ var seedModules = []seedModule{
 	{"settings", "Settings", "technical"},
 	{"system_integrations", "System Activation & Integrations", "technical"},
 	{"users", "Users", "technical"},
-	{"workshop_workflow", "Workshop Workflow", "workshop"},
+	{"workshop_workflow", "Workshop Workflow", "technical"},
 	{"marketing_overview", "Campaign Overview", "marketing"},
 	{"customer_inbox", "Customer Inbox", "marketing"},
 	{"website_reviews", "Reviews", "marketing"},
@@ -71,6 +69,9 @@ var seedModules = []seedModule{
 }
 
 var moduleStates = map[string]bool{"ACTIVE": true, "NOT_LICENSED": true, "MAINTENANCE": true}
+var publicationStates = map[string]bool{"UNPUBLISHED": true, "PUBLISHED": true}
+var implementationStates = map[string]bool{"LEGACY_REFERENCE": true, "IN_DEVELOPMENT": true, "READY": true}
+var entitlementStates = map[string]bool{"INACTIVE": true, "ACTIVE": true, "CANCEL_PENDING": true}
 var availabilityValues = map[string]bool{"ACTIVE": true, "UNAVAILABLE": true, "DEPRECATED": true}
 var moduleTypes = map[string]bool{"CORE": true, "FEATURE": true, "INTEGRATION": true, "REPORTING": true, "WEBSITE": true, "FINANCE": true, "INFRASTRUCTURE": true}
 var relationshipTypes = map[string]bool{"REQUIRES": true, "OPTIONAL_DEPENDENCY": true, "INTEGRATES_WITH": true, "EXTENDS": true, "CONFLICTS_WITH": true, "REPLACES": true}
@@ -210,20 +211,45 @@ func (a *app) migrate(ctx context.Context) error {
 			`UPDATE catalog.modules SET description_en=description WHERE description_en=''`,
 			`UPDATE catalog.modules SET description_hu=description WHERE description_hu=''`,
 		}},
+		{Version: 7, Name: "start-23-11-1-module-registry-commercial-model", Statements: []string{
+			`ALTER TABLE catalog.module_groups ADD COLUMN IF NOT EXISTS is_primary_navigation BOOLEAN NOT NULL DEFAULT FALSE`,
+			`UPDATE catalog.module_groups SET is_primary_navigation=FALSE`,
+			`UPDATE catalog.module_groups SET is_primary_navigation=TRUE WHERE group_key IN ('finance_invoicing','technical','marketing','website_events')`,
+			`UPDATE catalog.modules SET group_key='technical' WHERE module_key='workshop_workflow' AND group_key='workshop'`,
+			`DELETE FROM catalog.module_groups g WHERE g.group_key IN ('workshop','communication') AND NOT EXISTS (SELECT 1 FROM catalog.modules m WHERE m.group_key=g.group_key)`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'UNPUBLISHED'`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS implementation_state TEXT NOT NULL DEFAULT 'IN_DEVELOPMENT'`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS legacy_reference TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS entitlement_state TEXT NOT NULL DEFAULT 'INACTIVE'`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS commercial_configured BOOLEAN NOT NULL DEFAULT FALSE`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS contract_currency TEXT NOT NULL DEFAULT 'USD'`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS quote_reference TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.partner_modules ADD COLUMN IF NOT EXISTS commercial_effective_at TIMESTAMPTZ`,
+			`ALTER TABLE catalog.price_history ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD'`,
+			`ALTER TABLE catalog.price_history ADD COLUMN IF NOT EXISTS quote_reference TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.activation_fee_history ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD'`,
+			`ALTER TABLE catalog.activation_fee_history ADD COLUMN IF NOT EXISTS quote_reference TEXT NOT NULL DEFAULT ''`,
+			`UPDATE catalog.partner_modules SET entitlement_state=CASE WHEN status='ACTIVE' THEN 'ACTIVE' ELSE 'INACTIVE' END WHERE entitlement_state='INACTIVE'`,
+			`UPDATE catalog.partner_modules SET commercial_configured=TRUE,commercial_effective_at=COALESCE(commercial_effective_at,updated_at) WHERE price_override IS NOT NULL OR activation_fee_override IS NOT NULL OR included_in_base=TRUE`,
+			`UPDATE catalog.modules SET implementation_state='LEGACY_REFERENCE',legacy_reference='KLAVIERHAUS_LEGACY' WHERE system=TRUE AND legacy_reference=''`,
+			`CREATE INDEX IF NOT EXISTS catalog_modules_publication_idx ON catalog.modules(publication_status,group_key)`,
+			`CREATE INDEX IF NOT EXISTS partner_modules_entitlement_idx ON catalog.partner_modules(partner_id,entitlement_state)`,
+			`CREATE INDEX IF NOT EXISTS partner_modules_commercial_idx ON catalog.partner_modules(partner_id,commercial_configured)`,
+		}},
 	}); err != nil {
 		return err
 	}
 
 	for _, g := range seedGroups {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order) VALUES($1,$2,$2,$2,$3) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,sort_order=EXCLUDED.sort_order`, g.Key, g.Label, g.Order); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order,is_primary_navigation) VALUES($1,$2,$2,$2,$3,TRUE) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,sort_order=EXCLUDED.sort_order,is_primary_navigation=TRUE`, g.Key, g.Label, g.Order); err != nil {
 			return err
 		}
 	}
 	for _, m := range seedModules {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified reference module','Klavierhaus verified reference module','Klavierhaus verified reference module',TRUE,'ACTIVE') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,group_key=EXCLUDED.group_key,system=TRUE`, m.Key, m.Label, m.Group); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability,publication_status,implementation_state,legacy_reference) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified legacy reference module','Klavierhaus verified legacy reference module','Klavierhaus verified legacy reference module',TRUE,'ACTIVE','UNPUBLISHED','LEGACY_REFERENCE','KLAVIERHAUS_LEGACY') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,group_key=EXCLUDED.group_key,system=TRUE,implementation_state=CASE WHEN existing.implementation_state='IN_DEVELOPMENT' THEN 'LEGACY_REFERENCE' ELSE existing.implementation_state END,legacy_reference=CASE WHEN existing.legacy_reference='' THEN 'KLAVIERHAUS_LEGACY' ELSE existing.legacy_reference END`, m.Key, m.Label, m.Group); err != nil {
 			return err
 		}
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW()) ON CONFLICT(partner_id,module_key) DO NOTHING`, m.Key); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at,entitlement_state,commercial_configured,contract_currency,quote_reference,commercial_effective_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW(),'ACTIVE',TRUE,'USD','REFERENCE-PARTNER',NOW()) ON CONFLICT(partner_id,module_key) DO UPDATE SET entitlement_state=CASE WHEN catalog.partner_modules.status='ACTIVE' THEN 'ACTIVE' ELSE catalog.partner_modules.entitlement_state END`, m.Key); err != nil {
 			return err
 		}
 	}
