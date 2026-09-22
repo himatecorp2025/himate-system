@@ -2,6 +2,7 @@
 set -eu
 
 . scripts/payment_test_helpers.sh
+. scripts/evidence_test_helpers.sh
 
 BASE_URL="${1:-http://127.0.0.1:8080}"
 COOKIE_JAR="${TMPDIR:-/tmp}/himate-smoke-cookies.txt"
@@ -62,7 +63,7 @@ echo ok
 
 printf 'license evidence and paid gate... '
 curl -fsS -b "$COOKIE_JAR" -X PUT   -H 'Content-Type: application/json'   -d '{"currency":"USD","activation_fee":13000,"activation_fee_waived":false,"activation_fee_reason":"","base_monthly_fee":250,"annual_increase_percent":10,"price_effective_from":"2026-09-20","service_anchor_date":"2026-09-20","reason":"CI commercial setup"}'   "$BASE_URL/api/v1/billing/partners/$partner_id/terms" >/dev/null
-curl -fsS -b "$COOKIE_JAR"   -H 'Content-Type: application/json'   -d '{"kind":"PAYMENT_EVIDENCE","name":"CI receipt","storage_url":"ci://receipt/paid.pdf","note":"Ephemeral CI evidence","mime_type":"application/pdf","sha256":"ci-smoke","size_bytes":1}'   "$BASE_URL/api/v1/billing/partners/$partner_id/documents" >/dev/null
+register_billing_evidence_document "$COOKIE_JAR" "$partner_id" "PAYMENT_EVIDENCE" "OTHER" "CI receipt" "start0108-payment" >/dev/null
 curl -fsS -b "$COOKIE_JAR" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":13000,"note":"START-23.4 provider-backed acceptance","waived":false,"waiver_reason":""}' "$BASE_URL/api/v1/billing/partners/$partner_id/license" >/dev/null
 provider_pay_activation "$BASE_URL" "$COOKIE_JAR" "$partner_id" "start0108"
 curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/billing/partners/$partner_id/license" | grep -q '"status":"PAID"'
