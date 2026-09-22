@@ -946,7 +946,11 @@ func (a *app) resolvePartnerModulePriceAt(ctx context.Context, partnerID, key st
 				 ORDER BY ph.effective_at ASC,ph.id ASC LIMIT 1),
 				pm.price_override,m.default_monthly_price
 			),
-			m.currency,
+			COALESCE(
+				(SELECT ph.currency FROM catalog.price_history ph
+				 WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=$3
+				 ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1),
+				NULLIF(pm.contract_currency,''),m.currency),
 			COALESCE(
 				(SELECT CASE WHEN lower(pmh.new_value)='true' THEN TRUE WHEN lower(pmh.new_value)='false' THEN FALSE END
 				 FROM catalog.partner_module_history pmh
@@ -1108,9 +1112,9 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 	}
 	query := `
 		SELECT pm.partner_id,
-			COUNT(*) FILTER (WHERE pm.status='ACTIVE' AND m.availability='ACTIVE'),
-			COALESCE(SUM(CASE WHEN pm.status='ACTIVE' AND m.availability='ACTIVE' AND pm.included_in_base=FALSE
-				THEN COALESCE(ep.new_price,pm.price_override,m.default_monthly_price) ELSE 0 END),0),
+			COUNT(*) FILTER (WHERE pm.status='ACTIVE' AND pm.entitlement_state='ACTIVE' AND m.availability='ACTIVE'),
+			COALESCE(SUM(CASE WHEN pm.status='ACTIVE' AND pm.entitlement_state='ACTIVE' AND m.availability='ACTIVE' AND pm.included_in_base=FALSE AND pm.commercial_configured=TRUE
+				THEN COALESCE(ep.new_price,pm.price_override,0) ELSE 0 END),0),
 			MAX(pm.updated_at)
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
@@ -1149,18 +1153,20 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 
 const partnerModuleSelect = `SELECT
 	pm.partner_id,m.module_key,m.label_en,m.label_hu,m.group_key,g.label_en,g.label_hu,pm.status,pm.visible,pm.included_in_base,
+	pm.entitlement_state,pm.commercial_configured,pm.contract_currency,pm.quote_reference,pm.commercial_effective_at,
+	m.publication_status,m.implementation_state,
 	m.default_monthly_price,pm.price_override,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),
-	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
+	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_REFERENCE_ONLY' END,
 	np.new_price,np.effective_at,
 	m.default_activation_fee,pm.activation_fee_override,COALESCE(eaf.new_fee,pm.activation_fee_override,m.default_activation_fee),
-	CASE WHEN eaf.new_fee IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.activation_fee_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
+	CASE WHEN eaf.new_fee IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.activation_fee_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_REFERENCE_ONLY' END,
 	naf.new_fee,naf.effective_at,
-	m.currency,m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at
+	COALESCE(NULLIF(ep.currency,''),NULLIF(pm.contract_currency,''),m.currency),m.version,m.latest_version,m.last_updated_at,m.availability,pm.activated_at
 	FROM catalog.partner_modules pm
 	JOIN catalog.modules m ON m.module_key=pm.module_key
 	JOIN catalog.module_groups g ON g.group_key=m.group_key
 	LEFT JOIN LATERAL (
-		SELECT ph.new_price FROM catalog.price_history ph
+		SELECT ph.new_price,ph.currency FROM catalog.price_history ph
 		WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
 		ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
 	) ep ON TRUE
@@ -1193,14 +1199,16 @@ func nullableTime(v sql.NullTime) any {
 }
 
 func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
-	var id, k, labelEN, labelHU, g, groupEN, groupHU, st, currency, v, lv, availability, priceSource, activationSource string
-	var vis, inc bool
+	var id, k, labelEN, labelHU, g, groupEN, groupHU, st, entitlementState, contractCurrency, quoteReference, publicationStatus, implementationState, currency, v, lv, availability, priceSource, activationSource string
+	var vis, inc, commercialConfigured bool
 	var defPrice, price, defaultActivationFee, activationFee float64
 	var priceOverride, nextPrice, activationOverride, nextActivationFee sql.NullFloat64
-	var nextPriceAt, nextActivationFeeAt, activated sql.NullTime
+	var commercialEffectiveAt,nextPriceAt, nextActivationFeeAt, activated sql.NullTime
 	var t time.Time
 	err := s.Scan(
 		&id,&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&st,&vis,&inc,
+		&entitlementState,&commercialConfigured,&contractCurrency,&quoteReference,&commercialEffectiveAt,
+		&publicationStatus,&implementationState,
 		&defPrice,&priceOverride,&price,&priceSource,&nextPrice,&nextPriceAt,
 		&defaultActivationFee,&activationOverride,&activationFee,&activationSource,&nextActivationFee,&nextActivationFeeAt,
 		&currency,&v,&lv,&t,&availability,&activated,
@@ -1208,11 +1216,13 @@ func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
 	return map[string]any{
 		"partner_id": id, "key": k, "label": common.Localized(labelEN,labelHU,locale), "label_en": labelEN, "label_hu": labelHU,
 		"group_key": g, "group_label": common.Localized(groupEN,groupHU,locale), "group_label_en": groupEN, "group_label_hu": groupHU,
-		"status": st, "visible": vis, "included_in_base": inc,
-		"default_monthly_price": defPrice, "price_override": nullableFloat(priceOverride),
-		"partner_price": price, "price_source": priceSource,
+		"status": st, "entitlement_state":entitlementState, "visible": vis, "included_in_base": inc,
+		"commercial_configured":commercialConfigured,"contract_currency":contractCurrency,"quote_reference":quoteReference,"commercial_effective_at":nullableTime(commercialEffectiveAt),
+		"publication_status":publicationStatus,"implementation_state":implementationState,
+		"default_monthly_price": defPrice, "reference_monthly_price":defPrice, "price_override": nullableFloat(priceOverride),
+		"partner_price": price, "price_source": priceSource, "pricing_authority":"PARTNER_CONTRACT",
 		"next_partner_price": nullableFloat(nextPrice), "next_price_effective_at": nullableTime(nextPriceAt),
-		"default_activation_fee": defaultActivationFee, "activation_fee_override": nullableFloat(activationOverride),
+		"default_activation_fee": defaultActivationFee, "reference_activation_fee":defaultActivationFee, "activation_fee_override": nullableFloat(activationOverride),
 		"partner_activation_fee": activationFee, "activation_fee_source": activationSource,
 		"next_partner_activation_fee": nullableFloat(nextActivationFee), "next_activation_fee_effective_at": nullableTime(nextActivationFeeAt),
 		"currency": currency, "version": v, "latest_version": lv, "last_updated_at": t,
