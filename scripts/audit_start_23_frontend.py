@@ -24,7 +24,8 @@ required_main = [
     "useCompactLoginForSize(Size(constraints.maxWidth, constraints.maxHeight))",
     "responsiveGridColumnsForWidth(constraints.maxWidth)",
     "shouldStackContentActions(constraints.maxWidth, actions.length)",
-    "maxHeight: viewport.height * (phone ? .94 : .88)",
+    "maxHeight: viewport.height * (mediaPhone ? .94 : .88)",
+    "final compact = constraints.maxWidth < 520;",
 ]
 for token in required_main:
     if token not in main:
