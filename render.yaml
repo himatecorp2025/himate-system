@@ -405,6 +405,11 @@ services:
           type: pserv
           name: himate-partners
           property: hostport
+      - key: CMS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-cms
+          property: hostport
 
   - type: pserv
     name: himate-provisioning
