@@ -359,7 +359,7 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
 			module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
 			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest)
-			VALUES($1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,FALSE,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb)`,
+			VALUES($1,$2,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11,FALSE,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb)`,
 			in.Key,labelEN,labelHU,in.GroupKey,descEN,descHU,in.DefaultMonthlyPrice,in.DefaultActivationFee,in.Currency,in.Version,in.LatestVersion,
 			in.Availability,in.ModuleType,strings.TrimSpace(in.OwnerTeam),strings.TrimSpace(in.SourceRepository),strings.TrimSpace(in.SourcePath),
 			strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.SourceCommit),strings.TrimSpace(in.ArtifactType),strings.TrimSpace(in.ArtifactReference),
