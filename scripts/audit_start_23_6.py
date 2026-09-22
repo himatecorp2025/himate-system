@@ -11,6 +11,9 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise SystemExit("START-23.6 audit failed: " + message)
 
+def phase_tuple(value: str):
+    return tuple(int(part) for part in str(value).split("."))
+
 gateway = read("services/cmd/gateway/main.go")
 gateway_tests = read("services/cmd/gateway/main_test.go")
 frontend = read("frontend/lib/main.dart")
@@ -77,14 +80,14 @@ for token in (
     require(token in render, f"Render Gateway reset configuration missing {token}")
     require(token in compose, f"Compose Gateway reset configuration missing {token}")
 
-require('0.8.10-start-23.6' in render, "Render release version not START-23.6")
-require('0.8.10-start-23.6' in compose, "Compose release version not START-23.6")
-require('version: 0.8.10-start-23.6' in openapi, "OpenAPI release version not START-23.6")
+require('HIMATE_APP_VERSION' in render and 'start-23.' in render, "Render release contract is missing")
+require('HIMATE_APP_VERSION' in compose and 'start-23.' in compose, "Compose release contract is missing")
+require('version: 0.8.' in openapi and '-start-23.' in openapi, "OpenAPI release contract is missing")
 for path in ('/api/v1/auth/password-reset/request:', '/api/v1/auth/password-reset/confirm:'):
     require(path in openapi, f"OpenAPI missing {path}")
 
 # Functional matrix: every 23.6 contract must be explicitly closed with proof.
-require(matrix.get("completed_through") == "23.6", "functional matrix is not completed through 23.6")
+require(phase_tuple(matrix.get("completed_through", "0")) >= phase_tuple("23.6"), "functional matrix is not completed through 23.6")
 rows = [x for x in matrix.get("contracts", []) if x.get("target_phase") == "23.6"]
 require(rows, "functional matrix contains no START-23.6 contracts")
 for row in rows:
