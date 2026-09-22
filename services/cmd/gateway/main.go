@@ -227,6 +227,8 @@ func main() {
 	mux.HandleFunc("/preview/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "cms")
 	})
+	mux.HandleFunc("/cms-preview/", a.cmsPagePreview)
+	mux.HandleFunc("/design-preview", a.designPreview)
 	mux.HandleFunc("/connector/v1/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "connector")
 	})
@@ -2293,6 +2295,31 @@ type publicSEOSettings struct {
 	DefaultOGImageAssetID string   `json:"default_og_image_asset_id"`
 }
 
+type publicNavigationItem struct {
+	LabelEN   string `json:"label_en"`
+	LabelHU   string `json:"label_hu"`
+	URL       string `json:"url"`
+	Visible   bool   `json:"visible"`
+	SortOrder int    `json:"sort_order"`
+}
+
+type publicSiteDesign struct {
+	LogoMediaAssetID string                 `json:"logo_media_asset_id"`
+	Navy             string                 `json:"navy"`
+	Gold             string                 `json:"gold"`
+	Background       string                 `json:"background"`
+	TextColor        string                 `json:"text_color"`
+	HeadingFont      string                 `json:"heading_font"`
+	BodyFont         string                 `json:"body_font"`
+	ButtonRadius     int                    `json:"button_radius"`
+	Navigation       []publicNavigationItem `json:"navigation"`
+}
+
+type publicSiteDesignEnvelope struct {
+	Version int              `json:"version"`
+	Design  publicSiteDesign `json:"design"`
+}
+
 type publicCMSManifest struct {
 	Items []struct {
 		Slug      string `json:"slug"`
@@ -2350,6 +2377,88 @@ func (a *app) fetchPublishedCMS(ctx context.Context, slug, locale string) (publi
 		return out, err
 	}
 	return out, nil
+}
+
+func (a *app) fetchPreviewCMS(ctx context.Context, slug, token string) (publicCMSPage, error) {
+	var out publicCMSPage
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return out, errors.New("CMS service is not configured")
+	}
+	endpoint := "http://" + host + "/preview/v1/cms/pages/" + url.PathEscape(slug) + "?token=" + url.QueryEscape(strings.TrimSpace(token))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("CMS preview %s returned %d", slug, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (a *app) fetchPublishedDesign(ctx context.Context) (publicSiteDesignEnvelope, error) {
+	var out publicSiteDesignEnvelope
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return out, errors.New("CMS service is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/public/v1/cms/design", nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("CMS design returned %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (a *app) fetchPreviewDesign(ctx context.Context, token string) (publicSiteDesign, error) {
+	var out struct {
+		Design publicSiteDesign `json:"design"`
+	}
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		return publicSiteDesign{}, errors.New("CMS service is not configured")
+	}
+	endpoint := "http://" + host + "/preview/v1/cms/design?token=" + url.QueryEscape(strings.TrimSpace(token))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return publicSiteDesign{}, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return publicSiteDesign{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return publicSiteDesign{}, fmt.Errorf("CMS design preview returned %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return publicSiteDesign{}, err
+	}
+	return out.Design, nil
 }
 
 func (a *app) fetchPublishedSEOSettings(ctx context.Context, locale string) (publicSEOSettings, error) {
