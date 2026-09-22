@@ -16,8 +16,10 @@ import (
 	"html"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/smtp"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -42,6 +44,13 @@ type app struct {
 	version          string
 	ttl              time.Duration
 	rememberTTL      time.Duration
+	passwordResetTTL time.Duration
+	resetBaseURL     string
+	smtpHost         string
+	smtpPort         string
+	smtpUser         string
+	smtpPass         string
+	smtpFrom         string
 	secureCookie     bool
 	client           *http.Client
 	proxies          map[string]*httputil.ReverseProxy
@@ -131,6 +140,9 @@ func main() {
 	ttlHours, _ := strconv.Atoi(common.Env("HIMATE_SESSION_TTL_HOURS", "8"))
 	rememberTTLHours, _ := strconv.Atoi(common.Env("HIMATE_REMEMBER_TTL_HOURS", "720"))
 	if rememberTTLHours < ttlHours { rememberTTLHours = ttlHours }
+	resetTTLMinutes, _ := strconv.Atoi(common.Env("HIMATE_PASSWORD_RESET_TTL_MINUTES", "30"))
+	if resetTTLMinutes < 10 { resetTTLMinutes = 10 }
+	if resetTTLMinutes > 120 { resetTTLMinutes = 120 }
 	secure, _ := strconv.ParseBool(common.Env("COOKIE_SECURE", "true"))
 	transport := &http.Transport{
 		MaxIdleConns:        64,
@@ -142,6 +154,11 @@ func main() {
 		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
 		version: common.Env("HIMATE_APP_VERSION", "0.2.0-start-04-08"),
 		ttl: time.Duration(ttlHours) * time.Hour, rememberTTL: time.Duration(rememberTTLHours) * time.Hour,
+		passwordResetTTL: time.Duration(resetTTLMinutes) * time.Minute,
+		resetBaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("HIMATE_PASSWORD_RESET_BASE_URL")), "/"),
+		smtpHost: strings.TrimSpace(os.Getenv("SMTP_HOST")), smtpPort: common.Env("SMTP_PORT", "587"),
+		smtpUser: strings.TrimSpace(os.Getenv("SMTP_USERNAME")), smtpPass: os.Getenv("SMTP_PASSWORD"),
+		smtpFrom: strings.TrimSpace(os.Getenv("SMTP_FROM")),
 		secureCookie: secure, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
 		proxies: map[string]*httputil.ReverseProxy{},
 		loginAttempts: map[string]loginState{},
@@ -195,6 +212,8 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/login", a.login)
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
+	mux.HandleFunc("/api/v1/auth/password-reset/request", a.passwordResetRequest)
+	mux.HandleFunc("/api/v1/auth/password-reset/confirm", a.passwordResetConfirm)
 	mux.HandleFunc("/partner/api/v1/auth/login", a.partnerLogin)
 	mux.HandleFunc("/partner/api/v1/auth/logout", a.partnerLogout)
 	mux.HandleFunc("/partner/api/v1/auth/me", a.partnerMe)
@@ -308,6 +327,19 @@ func (a *app) migrate(ctx context.Context) error {
 			`UPDATE identity.custom_roles SET label_hu=label WHERE label_hu=''`,
 			`UPDATE identity.custom_roles SET description_en=description WHERE description_en=''`,
 			`UPDATE identity.custom_roles SET description_hu=description WHERE description_hu=''`,
+		}},
+		{Version: 9, Name: "start-23-6-password-reset-tokens", Statements: []string{
+			`CREATE TABLE IF NOT EXISTS identity.password_reset_tokens(
+				id BIGSERIAL PRIMARY KEY,
+				user_id TEXT NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
+				token_hash TEXT UNIQUE NOT NULL,
+				expires_at TIMESTAMPTZ NOT NULL,
+				used_at TIMESTAMPTZ,
+				request_ip TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)`,
+			`CREATE INDEX IF NOT EXISTS identity_password_reset_user_idx ON identity.password_reset_tokens(user_id,expires_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS identity_password_reset_active_idx ON identity.password_reset_tokens(token_hash,expires_at) WHERE used_at IS NULL`,
 		}},
 	}); err != nil {
 		return err
@@ -482,6 +514,190 @@ func (a *app) me(w http.ResponseWriter, r *http.Request) {
 	}
 	common.JSON(w, 200, a.publicUser(u))
 }
+
+func passwordResetTokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func newPasswordResetToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil { return "", err }
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+func (a *app) passwordResetDeliveryConfigured() bool {
+	return a.smtpHost != "" && a.smtpPort != "" && a.smtpFrom != "" && a.resetBaseURL != ""
+}
+
+func (a *app) sendPasswordResetEmail(to, token string) error {
+	if !a.passwordResetDeliveryConfigured() {
+		return errors.New("password-reset email delivery is not configured")
+	}
+	hostPort := net.JoinHostPort(a.smtpHost, a.smtpPort)
+	var auth smtp.Auth
+	if a.smtpUser != "" {
+		auth = smtp.PlainAuth("", a.smtpUser, a.smtpPass, a.smtpHost)
+	}
+	link := a.resetBaseURL + "/login?reset_token=" + url.QueryEscape(token)
+	subject := "HIMATE password reset"
+	body := "A password reset was requested for your HIMATE administrator account.\r\n\r\n" +
+		"Open this one-time link to set a new password:\r\n" + link + "\r\n\r\n" +
+		"This link expires in " + strconv.Itoa(int(a.passwordResetTTL.Minutes())) + " minutes. " +
+		"If you did not request this reset, you can ignore this email.\r\n"
+	msg := []byte("From: " + a.smtpFrom + "\r\n" +
+		"To: " + to + "\r\n" +
+		"Subject: " + subject + "\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: text/plain; charset=UTF-8\r\n\r\n" + body)
+	return smtp.SendMail(hostPort, auth, a.smtpFrom, []string{to}, msg)
+}
+
+func (a *app) enqueuePasswordResetAudit(r *http.Request, action, userID string, status int, outcome string) {
+	a.enqueueAudit(auditEvent{
+		ActorID: userID, ActorName: "Password recovery", ActorRoles: []string{"public_identity"},
+		RequestID: strings.TrimSpace(r.Header.Get("X-Request-ID")),
+		CorrelationID: strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
+		Action: action, Method: r.Method, Path: r.URL.Path, Resource: "identity",
+		Status: status, Outcome: outcome, OldState: map[string]any{}, NewState: map[string]any{},
+		CreatedAt: time.Now().UTC(),
+	})
+}
+
+func (a *app) passwordResetRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+		return
+	}
+	if !requestOriginAllowed(r) {
+		common.APIError(w, http.StatusForbidden, "CSRF", "Cross-site request rejected")
+		return
+	}
+	key, now := "password-reset:"+clientKey(r), time.Now().UTC()
+	if !a.loginAllowed(key, now) {
+		w.Header().Set("Retry-After", "900")
+		common.APIError(w, http.StatusTooManyRequests, "RATE_LIMITED", "Too many password reset requests. Try again later.")
+		return
+	}
+	a.recordLoginFailure(key, now)
+	var in struct{ Email string `json:"email"` }
+	if common.Decode(r, &in) != nil || !validEmail(strings.ToLower(strings.TrimSpace(in.Email))) {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", "A valid email is required")
+		return
+	}
+	if a.env == "production" && !a.passwordResetDeliveryConfigured() {
+		common.APIError(w, http.StatusServiceUnavailable, "RESET_UNAVAILABLE", "Password recovery is temporarily unavailable")
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	u, err := a.findUser("email", email)
+	response := map[string]any{"accepted": true, "message": "If the account exists, password reset instructions have been sent."}
+	if err != nil || !u.Active {
+		common.JSON(w, http.StatusAccepted, response)
+		return
+	}
+	token, err := newPasswordResetToken()
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "RESET", "Could not create password reset request")
+		return
+	}
+	tokenHash := passwordResetTokenHash(token)
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not create password reset request")
+		return
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(r.Context(), `UPDATE identity.password_reset_tokens SET used_at=NOW() WHERE user_id=$1 AND used_at IS NULL`, u.ID); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not create password reset request")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO identity.password_reset_tokens(user_id,token_hash,expires_at,request_ip) VALUES($1,$2,$3,$4)`,
+		u.ID, tokenHash, now.Add(a.passwordResetTTL), clientKey(r)); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not create password reset request")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not create password reset request")
+		return
+	}
+	if a.passwordResetDeliveryConfigured() {
+		if err := a.sendPasswordResetEmail(u.Email, token); err != nil {
+			_, _ = a.db.ExecContext(r.Context(), `UPDATE identity.password_reset_tokens SET used_at=NOW() WHERE token_hash=$1`, tokenHash)
+			common.APIError(w, http.StatusServiceUnavailable, "RESET_DELIVERY", "Password recovery is temporarily unavailable")
+			return
+		}
+	}
+	if a.env != "production" {
+		response["development_token"] = token
+	}
+	a.enqueuePasswordResetAudit(r, "PASSWORD_RESET_REQUESTED", u.ID, http.StatusAccepted, "SUCCESS")
+	common.JSON(w, http.StatusAccepted, response)
+}
+
+func (a *app) passwordResetConfirm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+		return
+	}
+	if !requestOriginAllowed(r) {
+		common.APIError(w, http.StatusForbidden, "CSRF", "Cross-site request rejected")
+		return
+	}
+	var in struct {
+		Token string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if common.Decode(r, &in) != nil || strings.TrimSpace(in.Token) == "" {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", "Reset token and new password are required")
+		return
+	}
+	if message := passwordPolicyError(in.NewPassword); message != "" {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", message)
+		return
+	}
+	tokenHash := passwordResetTokenHash(strings.TrimSpace(in.Token))
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not reset password")
+		return
+	}
+	defer tx.Rollback()
+	var userID string
+	err = tx.QueryRowContext(r.Context(), `SELECT user_id FROM identity.password_reset_tokens
+		WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW() FOR UPDATE`, tokenHash).Scan(&userID)
+	if err != nil {
+		a.enqueuePasswordResetAudit(r, "PASSWORD_RESET_COMPLETED", "", http.StatusBadRequest, "FAILED")
+		common.APIError(w, http.StatusBadRequest, "INVALID_RESET_TOKEN", "Password reset link is invalid or expired")
+		return
+	}
+	hash, err := hashPassword(in.NewPassword)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "PASSWORD", "Could not secure password")
+		return
+	}
+	res, err := tx.ExecContext(r.Context(), `UPDATE identity.users SET password_hash=$2,session_version=session_version+1,password_changed_at=NOW(),updated_at=NOW()
+		WHERE id=$1 AND active=TRUE`, userID, hash)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not reset password")
+		return
+	}
+	if rows, _ := res.RowsAffected(); rows != 1 {
+		common.APIError(w, http.StatusBadRequest, "INVALID_RESET_TOKEN", "Password reset link is invalid or expired")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `UPDATE identity.password_reset_tokens SET used_at=NOW() WHERE user_id=$1 AND used_at IS NULL`, userID); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not finalize password reset")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not finalize password reset")
+		return
+	}
+	a.enqueuePasswordResetAudit(r, "PASSWORD_RESET_COMPLETED", userID, http.StatusOK, "SUCCESS")
+	common.JSON(w, http.StatusOK, map[string]any{"reset": true})
+}
+
 
 type roleDefinition struct {
 	Key         string
@@ -1888,17 +2104,25 @@ func (a *app) adminUser(w http.ResponseWriter, r *http.Request, actor user) {
 	}
 
 	hash := current.PasswordHash
+	sessionVersion := current.SessionVersion
+	passwordChanged := false
+	authChanged := in.Email != nil || in.Roles != nil || in.Active != nil
 	if in.Password != nil {
 		if message:=passwordPolicyError(*in.Password); message!="" { common.APIError(w,400,"VALIDATION",message); return }
 		hash, err = hashPassword(*in.Password)
 		if err != nil { common.APIError(w,500,"PASSWORD","Could not secure password"); return }
+		passwordChanged = true
+		authChanged = true
 	}
+	if authChanged { sessionVersion++ }
 	rolesRaw, _ := json.Marshal(next.Roles)
 	var createdAt, updatedAt time.Time
-	err = a.db.QueryRow(`UPDATE identity.users SET name=$2,email=$3,password_hash=$4,roles=$5::jsonb,active=$6,updated_at=NOW()
-		WHERE id=$1 RETURNING created_at,updated_at`,id,next.Name,next.Email,hash,string(rolesRaw),next.Active).Scan(&createdAt,&updatedAt)
+	err = a.db.QueryRow(`UPDATE identity.users SET name=$2,email=$3,password_hash=$4,roles=$5::jsonb,active=$6,
+			session_version=$7,password_changed_at=CASE WHEN $8 THEN NOW() ELSE password_changed_at END,updated_at=NOW()
+		WHERE id=$1 RETURNING created_at,updated_at`,id,next.Name,next.Email,hash,string(rolesRaw),next.Active,sessionVersion,passwordChanged).Scan(&createdAt,&updatedAt)
 	if err != nil { common.APIError(w,500,"DB","Could not update administration user"); return }
 	next.PasswordHash = hash
+	next.SessionVersion = sessionVersion
 	common.JSON(w,200,a.adminUserMap(next,createdAt,updatedAt))
 }
 

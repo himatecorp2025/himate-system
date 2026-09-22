@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–23.3 implementation status
+## START-01–23.6 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -111,6 +111,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Partner service
 - Module Catalog service
 - Billing service
+- Payments service
 - Contact service
 - Provisioning Engine
 - Environments service
@@ -123,6 +124,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Storage service
 - Backups / recoverability service
 - Runtime / deployment-provider adapter service
+- Notifications service
 - PostgreSQL control-plane database plus isolated partner databases
 - isolated CI/development backup volume; dedicated Render persistent backup disk in production
 
@@ -144,7 +146,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Partner Portal role namespace is non-interoperable with HIMATE administrator roles
 - server-paginated partner reads and bounded page-level aggregation
 - encrypted durable restore artifacts with mandatory restore verification
-- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–22 smoke tests in CI
+- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–23.6 smoke tests in CI
 
 
 ### START-22.1 — Internal Control Plane Completion
@@ -245,6 +247,17 @@ The architecture remains microservice/container based. It is **not** being colla
 - category, module-group, module, metric-definition and custom-role editors capture both languages
 - START-23.5 acceptance is `docs/START-23.5_ACCEPTANCE.md`, `scripts/audit_start_23_5.py` and `scripts/smoke_start_23_5.sh`
 
+### START-23.6 — Administration, Identity & Business CRUD Completion
+- tokenized administrator Forgot Password is implemented with random one-time tokens, SHA-256-only persistence, expiry, replay rejection, rate limiting and central audit
+- successful reset rotates `session_version`, invalidating every previously issued administrator session
+- administrator email/role/status/password mutations also rotate `session_version`
+- the unavailable SSO placeholder has been removed from the login UI; no authentication control is exposed without a real provider
+- custom-role changes are backend-authoritative and affect existing sessions on the next permission check
+- administrator create/edit/suspend, partner create/edit/lifecycle, Partner Portal user create/edit, profile/password, HIMATE company profile, Contact Leads and notification read/read-all now have dedicated Compose mutation proof
+- production Gateway declares runtime-only SMTP/reset delivery configuration
+- release contract version is `0.8.10-start-23.6`
+- START-23.6 acceptance is `docs/START-23.6_ACCEPTANCE.md`, `scripts/audit_start_23_6.py` and `scripts/smoke_start_23_6.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -267,9 +280,10 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.3_ACCEPTANCE.md`
 - `docs/START-23.4_ACCEPTANCE.md`
 - `docs/START-23.5_ACCEPTANCE.md`
+- `docs/START-23.6_ACCEPTANCE.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally requires `docs/START-23.4_ACCEPTANCE.md`, `scripts/audit_start_23_4.py`, and `scripts/smoke_start_23_4.sh`. Provider-backed activation and recurring collection now have signed-webhook mutation evidence. Final live-provider proof remains reserved for START-23.12. START-23.5 additionally closes the dynamic bilingual data-model gap with mutation/readback evidence. START-24 Security Acceptance remains blocked until START-23.6–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. A dedicated START-23.1–23.6 cross-phase audit is required before START-23.7. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
