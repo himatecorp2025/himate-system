@@ -46,7 +46,7 @@ print(json.dumps({
  "key":sys.argv[1],"label":"START 23.3 Lifecycle Module","group_key":sys.argv[2],
  "description":"Authoritative period-end lifecycle acceptance","currency":"USD",
  "version":"1.0.0","latest_version":"1.0.0","default_monthly_price":33,
- "default_activation_fee":0,"availability":"ACTIVE","module_type":"FEATURE",
+ "default_activation_fee":0,"availability":"ACTIVE","publication_status":"PUBLISHED","implementation_state":"READY","module_type":"FEATURE",
  "owner_team":"Platform","manifest":{"schema_version":1}
 }))
 PY
