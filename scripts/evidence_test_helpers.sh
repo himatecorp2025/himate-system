@@ -41,7 +41,7 @@ startxref
 %%EOF
 PDF
 
-  response="$(curl -fsS -b "$cookie"     -F "partner_id=$partner_id"     -F "metric_key="     -F "evidence_type=$evidence_type"     -F "title=$title"     -F "description=Acceptance file-backed Evidence fixture"     -F "period_start="     -F "period_end="     -F "file=@$pdf;type=application/pdf"     "$BASE_URL/api/v1/evidence")"
+  response="$(curl -fsS -b "$cookie"     -F "partner_id=$partner_id"     -F "metric_key=$metric_key"     -F "evidence_type=$evidence_type"     -F "title=$title"     -F "description=Acceptance file-backed Evidence fixture"     -F "period_start="     -F "period_end="     -F "file=@$pdf;type=application/pdf"     "$BASE_URL/api/v1/evidence")"
   rm -f "$pdf"
 
   evidence_id="$(printf '%s' "$response" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["has_file"] is True; assert d["sha256"]; assert int(d["size_bytes"])>0; print(d["id"])')"
