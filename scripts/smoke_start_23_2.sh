@@ -75,7 +75,7 @@ print(json.dumps({
  "description":"START-23.2 commercial control-plane acceptance",
  "currency":"USD","version":"1.0.0","latest_version":"1.0.0",
  "default_monthly_price":float(sys.argv[4]),"default_activation_fee":float(sys.argv[5]),
- "availability":"ACTIVE","module_type":"FEATURE","owner_team":"Platform",
+ "availability":"ACTIVE","publication_status":"PUBLISHED","implementation_state":"READY","module_type":"FEATURE","owner_team":"Platform",
  "manifest":{"schema_version":1}
 }))
 PY
