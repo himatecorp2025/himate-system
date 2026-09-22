@@ -324,6 +324,10 @@ paths:
     get:
       tags: [Partner Portal]
       summary: Own published modules with contracted tenant price and dependency blockers
+      description: >
+        Unpublished modules are hidden. commercial_ready is true only when the partner
+        has an explicit effective recurring price or the module is explicitly included
+        in the base service; catalog reference prices are never charging authority.
       responses:
         "200": {description: Tenant module catalog}
   /partner/api/v1/modules/{moduleKey}/activate:
@@ -332,7 +336,7 @@ paths:
     post:
       tags: [Partner Portal]
       summary: Activate an eligible module for the authenticated tenant
-      description: Backend enforces PUBLISHED + partner-specific commercial configuration, availability, REQUIRES and CONFLICTS_WITH relationships. Catalog reference prices, source and dependency metadata are immutable to partners.
+      description: Backend enforces PUBLISHED + commercial_ready, availability, REQUIRES and CONFLICTS_WITH relationships. Catalog reference prices, source and dependency metadata are immutable to partners.
       responses:
         "200": {description: Module activated and billing synchronized}
         "409": {description: Unpublished, unconfigured commercial terms, dependency, conflict, maintenance or availability gate blocked activation}
