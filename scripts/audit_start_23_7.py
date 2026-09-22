@@ -86,6 +86,8 @@ for stale in (
             f"synthetic historical Evidence fixture remains: {stale}")
 require("create_pdf_evidence" in helper and "/api/v1/evidence" in helper and "/integrity" in helper,
         "real file-backed Evidence fixture helper incomplete")
+require('-F "metric_key=$metric_key"' in helper,
+        "Evidence fixture helper drops metric linkage required by VERIFIED_DOCUMENT provenance")
 
 # Evidence binary pipeline.
 for token in (
