@@ -1673,6 +1673,8 @@ func (a *app) dashboardRecentActivity(actor user, limit int) ([]map[string]any, 
 			permissionResource = "billing"
 		case "partner-categories":
 			permissionResource = "partners"
+		case "admin":
+			permissionResource = "administration"
 		}
 		if permissionResource == "" || !a.hasPermission(actor, permissionResource+".read") { continue }
 		items = append(items,map[string]any{
