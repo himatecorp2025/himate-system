@@ -903,7 +903,12 @@ func (a *app) partnerModuleCommercialHistory(w http.ResponseWriter, partnerID, k
 func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billable bool, locale string) {
 	q := partnerModuleSelect + ` WHERE pm.partner_id=$1`
 	if billable {
-		q += ` AND pm.status='ACTIVE' AND m.availability='ACTIVE'`
+		q += ` AND pm.status='ACTIVE' AND m.availability='ACTIVE' AND m.publication_status='PUBLISHED'
+			AND pm.commercial_configured=TRUE
+			AND (pm.included_in_base=TRUE OR pm.price_override IS NOT NULL OR EXISTS (
+				SELECT 1 FROM catalog.price_history ph
+				WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
+			))`
 	}
 	q += ` ORDER BY g.sort_order,m.label`
 	rows, err := a.db.Query(q, partnerID)
@@ -944,7 +949,7 @@ func (a *app) resolvePartnerModulePriceAt(ctx context.Context, partnerID, key st
 				(SELECT ph.old_price FROM catalog.price_history ph
 				 WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at>$3 AND ph.old_price IS NOT NULL
 				 ORDER BY ph.effective_at ASC,ph.id ASC LIMIT 1),
-				pm.price_override,m.default_monthly_price
+				pm.price_override
 			),
 			COALESCE(
 				(SELECT ph.currency FROM catalog.price_history ph
@@ -964,7 +969,12 @@ func (a *app) resolvePartnerModulePriceAt(ctx context.Context, partnerID, key st
 			)
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
-		WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key, at).Scan(&price, &currency, &included)
+		WHERE pm.partner_id=$1 AND pm.module_key=$2
+			AND pm.commercial_configured=TRUE
+			AND (pm.included_in_base=TRUE OR pm.price_override IS NOT NULL OR EXISTS (
+				SELECT 1 FROM catalog.price_history ph
+				WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=$3
+			))`, partnerID, key, at).Scan(&price, &currency, &included)
 	return price, currency, included, err
 }
 
