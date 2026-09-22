@@ -227,6 +227,8 @@ func main() {
 	mux.HandleFunc("/preview/v1/cms/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "cms")
 	})
+	mux.HandleFunc("/cms-preview/", a.cmsPagePreview)
+	mux.HandleFunc("/design-preview", a.designPreview)
 	mux.HandleFunc("/connector/v1/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "connector")
 	})
