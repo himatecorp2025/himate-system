@@ -28,6 +28,7 @@ part 'profile_account.dart';
 part 'module_control_plane.dart';
 part 'notifications_panel.dart';
 part 'partner_portal.dart';
+part 'partner_design.dart';
 part 'commercial_automation_ui.dart';
 
 Future<void> main() async {
