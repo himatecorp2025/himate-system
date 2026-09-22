@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.11-start-23.7
+  version: 0.8.12-start-23.8
   description: >
-    Authenticated REST contract for the START-01 through START-23.7 HIMATE
+    Authenticated REST contract for the START-01 through START-23.8 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -1669,9 +1669,23 @@ paths:
     post:
       tags: [CMS]
       summary: Promote the current draft to PREVIEW and issue a one-time raw preview token
-      description: The preview token is stored only as SHA-256 and is returned raw only by this operation.
+      description: >
+        The preview token is stored only as SHA-256 and is returned raw only by
+        this operation. START-23.8 additionally returns preview_html_path for a
+        private, noindex full-page HTML preview through Gateway.
       responses:
-        "201": {description: Preview snapshot and one-time token}
+        "201": {description: Preview snapshot, one-time token, raw preview_path and full-page preview_html_path}
+  /cms-preview/{slug}:
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string}}
+      - {name: token, in: query, required: true, schema: {type: string}}
+    get:
+      tags: [CMS Preview]
+      security: []
+      summary: Render a token-scoped CMS PREVIEW as full initial HTML
+      responses:
+        "200": {description: Private noindex HTML using the same SSR component renderer as public CMS pages}
+        "404": {description: Preview/token not found}
   /api/v1/cms/pages/{pageId}/preview-token:
     parameters:
       - {name: pageId, in: path, required: true, schema: {type: string}}
@@ -1801,6 +1815,17 @@ paths:
       responses:
         "200": {description: Design Guide draft saved}
         "400": {description: Design validation failed}
+  /api/v1/cms/design/preview:
+    post:
+      tags: [CMS]
+      summary: Issue a 30-minute token for a full-site Design Guide preview
+      description: >
+        The raw token is returned only by this operation and only its SHA-256
+        hash is stored. The response includes desktop, tablet and mobile preview
+        paths rendered by Gateway.
+      responses:
+        "201": {description: Token plus 1440/834/390 full-site preview paths}
+        "400": {description: Current design draft is invalid}
   /api/v1/cms/design/publish:
     post:
       tags: [CMS]
@@ -1815,6 +1840,39 @@ paths:
       summary: Read the active published global website Design Guide
       responses:
         "200": {description: Published logo, color, typography, button and bilingual navigation settings}
+  /preview/v1/cms/design:
+    get:
+      tags: [CMS Preview]
+      security: []
+      parameters:
+        - {name: token, in: query, required: true, schema: {type: string}}
+      summary: Read the token-scoped Design Guide draft for full-site preview rendering
+      responses:
+        "200": {description: Private draft Design Guide}
+        "404": {description: Preview token missing, invalid or expired}
+  /preview/v1/cms/design/media/{mediaId}:
+    parameters:
+      - {name: mediaId, in: path, required: true, schema: {type: string}}
+      - {name: token, in: query, required: true, schema: {type: string}}
+    get:
+      tags: [CMS Preview]
+      security: []
+      summary: Serve only the draft logo media selected by the token-scoped Design preview
+      responses:
+        "200": {description: Private draft logo bytes}
+        "404": {description: Token invalid or media is not the draft logo}
+  /design-preview:
+    get:
+      tags: [CMS Preview]
+      security: []
+      parameters:
+        - {name: token, in: query, required: true, schema: {type: string}}
+        - {name: viewport, in: query, schema: {type: string, enum: [desktop, tablet, mobile], default: desktop}}
+        - {name: raw, in: query, schema: {type: string, enum: ["0", "1"], default: "0"}}
+      summary: Render the real landing website with the token-scoped draft Design Guide
+      responses:
+        "200": {description: Desktop/tablet/mobile preview wrapper or raw full website HTML}
+        "404": {description: Design preview token invalid or expired}
   /public/v1/cms/pages/{slug}:
     parameters:
       - {name: slug, in: path, required: true, schema: {type: string}}
