@@ -1705,11 +1705,12 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	if err!=nil { common.APIError(w,http.StatusBadRequest,"VALIDATION",err.Error());return }
 
 	activity,activityErr:=a.dashboardRecentActivity(actor,6)
+	cacheable:=year==time.Now().UTC().Year()
 
 	// The shared cache intentionally excludes permission-scoped recent activity.
 	// This prevents one administrator's visible audit domains from leaking to another.
 	a.dashboardMu.RLock()
-	if a.dashboardPayload != nil && time.Now().Before(a.dashboardExpires) {
+	if cacheable && a.dashboardPayload != nil && time.Now().Before(a.dashboardExpires) {
 		payload:=copyDashboardPayload(a.dashboardPayload)
 		a.dashboardMu.RUnlock()
 		payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
@@ -1745,7 +1746,7 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	go func(){ defer wg.Done(); impactErr=a.internalGET(ctx,a.hosts["impact"],fmt.Sprintf("/internal/v1/impact/dashboard?year=%d",year),&impactResponse) }()
 	wg.Wait()
 
-	if partnerErr!=nil && moduleErr!=nil && billingErr!=nil && impactErr!=nil && stale!=nil {
+	if cacheable && partnerErr!=nil && moduleErr!=nil && billingErr!=nil && impactErr!=nil && stale!=nil {
 		payload:=copyDashboardPayload(stale)
 		payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
 		w.Header().Set("X-Himate-Cache","stale")
@@ -1772,10 +1773,12 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 		"impact":impactResponse,
 		"system":map[string]any{"status":status,"environment":a.env,"version":a.version,"architecture":"containerized-microservices-start-23.9"},
 	}
-	a.dashboardMu.Lock()
-	a.dashboardPayload=core
-	a.dashboardExpires=time.Now().Add(10*time.Second)
-	a.dashboardMu.Unlock()
+	if cacheable {
+		a.dashboardMu.Lock()
+		a.dashboardPayload=core
+		a.dashboardExpires=time.Now().Add(10*time.Second)
+		a.dashboardMu.Unlock()
+	}
 
 	payload:=copyDashboardPayload(core)
 	payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
