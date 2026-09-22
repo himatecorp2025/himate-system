@@ -23,6 +23,8 @@ design_ui = read("frontend/lib/design_guide.dart")
 partner_design_ui = read("frontend/lib/partner_design.dart")
 partner_portal = read("services/cmd/gateway/partner_portal.go")
 themes = read("services/cmd/cms/themes.go")
+connector_main = read("services/cmd/connector/main.go")
+website_adapter = read("services/cmd/connector/website_adapter.go")
 seo_ui = read("frontend/lib/seo_panel.dart")
 matrix = json.loads(read("docs/START-23.1_FUNCTIONAL_MATRIX.json"))
 ci = read(".github/workflows/ci.yml")
@@ -137,6 +139,13 @@ require("himateRuntimeIconUrl" in brand_assets and "assetUrl: himateLoginWordmar
         "published app/login asset binding is missing")
 require("publishedEmailLogoURL" in gateway and "multipart/alternative" in gateway,
         "published email-logo consumer is missing")
+
+require("CMS_HOSTPORT" in connector_main and '"design":design' in website_adapter and "START-23.8" in website_adapter,
+        "Website Adapter does not expose the active partner theme")
+require("CMS_HOSTPORT: cms:10000" in compose,
+        "Compose Connector is not bound to CMS theme state")
+require("name: himate-connector" in render and "key: CMS_HOSTPORT" in render,
+        "Render Connector is not bound to CMS theme state")
 
 # Admin UI uses real previews instead of raw JSON.
 for token in (
