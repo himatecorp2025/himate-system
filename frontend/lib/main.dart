@@ -2294,8 +2294,8 @@ class _PartnersPageState extends State<PartnersPage> {
     final country = TextEditingController(text: 'United States');
     final activationFee = TextEditingController(text: '13000');
     final baseMonthlyFee = TextEditingController(text: '250');
-    final paidAmount = TextEditingController(text: '0');
-    final paymentReference = TextEditingController();
+    final providerCustomerId = TextEditingController();
+    final paymentMethodId = TextEditingController();
     final agreementReference = TextEditingController();
     final activationInvoiceReference = TextEditingController();
     final evidenceName = TextEditingController(text: 'Initial license payment evidence');
@@ -2377,8 +2377,8 @@ class _PartnersPageState extends State<PartnersPage> {
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: paidAmount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Verified paid amount · USD'))),
-                        second: TextField(controller: paymentReference, decoration: InputDecoration(labelText: uiLiteral('Payment reference'))),
+                        first: TextField(controller: providerCustomerId, decoration: InputDecoration(labelText: uiLiteral('Provider customer ID'), hintText: uiLiteral('Stripe customer ID, e.g. cus_...'))),
+                        second: TextField(controller: paymentMethodId, decoration: InputDecoration(labelText: uiLiteral('Payment method ID'), hintText: uiLiteral('Saved payment method, e.g. pm_...'))),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
@@ -2476,7 +2476,6 @@ class _PartnersPageState extends State<PartnersPage> {
         final partnerId = '${created['id']}';
         final fee = double.tryParse(activationFee.text) ?? 13000;
         final monthly = double.tryParse(baseMonthlyFee.text) ?? 0;
-        final paid = double.tryParse(paidAmount.text) ?? 0;
         final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
 
         await widget.api.put('/api/v1/billing/partners/$partnerId/terms', {
@@ -2537,37 +2536,29 @@ class _PartnersPageState extends State<PartnersPage> {
           'prepare_only': true,
         });
 
-        final readyForProvisioning = paid >= fee &&
-            fee > 0 &&
-            agreementReference.text.trim().isNotEmpty &&
-            activationInvoiceReference.text.trim().isNotEmpty &&
-            paymentReference.text.trim().isNotEmpty &&
-            evidenceReference.text.trim().isNotEmpty;
+        await widget.api.put('/api/v1/billing/partners/$partnerId/license', {
+          'currency': 'USD',
+          'required_amount': fee,
+          'note': 'Provider-backed activation license configured by New Partner wizard',
+          'waived': false,
+          'waiver_reason': '',
+        });
 
-        if (readyForProvisioning) {
-          await widget.api.put('/api/v1/billing/partners/$partnerId/license', {
-            'currency': 'USD',
-            'required_amount': fee,
-            'paid_amount': paid,
-            'payment_date': today,
-            'payment_reference': paymentReference.text.trim(),
-            'verified_by': 'new-partner-wizard',
-            'note': 'Verified during New Partner provisioning wizard',
-            'waived': false,
-            'waiver_reason': '',
+        final hasProviderProfile = providerCustomerId.text.trim().isNotEmpty && paymentMethodId.text.trim().isNotEmpty;
+        if (hasProviderProfile) {
+          await widget.api.put('/api/v1/payments/partners/$partnerId/profile', {
+            'provider_customer_id': providerCustomerId.text.trim(),
+            'payment_method_id': paymentMethodId.text.trim(),
+            'autopay_enabled': true,
           });
-          await widget.api.patch('/api/v1/partners/$partnerId', {
-            'lifecycle': 'READY_TO_PROVISION',
-            'reason': 'License and evidence verified; provisioning inputs complete',
-          });
-          await widget.api.post('/api/v1/provisioning/jobs', provisioningPlan);
+          await widget.api.post('/api/v1/billing/partners/$partnerId/license/collect', {});
         }
 
         if (mounted) {
           unawaited(load(reset: true));
-          success(readyForProvisioning
-              ? 'Partner created and staging provisioning completed.'
-              : 'Partner created in LICENSE_PENDING. Provisioning was not started because payment/evidence is incomplete.');
+          success(hasProviderProfile
+              ? 'Partner created. Provider-backed activation payment was initiated; provisioning remains gated until the signed webhook confirms payment.'
+              : 'Partner created in LICENSE_PENDING. Configure a payment method before collecting the activation license.');
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -2587,7 +2578,7 @@ class _PartnersPageState extends State<PartnersPage> {
 
     for (final controller in [
       displayName, legalName, contactName, contactEmail, primaryDomain, country,
-      activationFee, baseMonthlyFee, paidAmount, paymentReference, agreementReference,
+      activationFee, baseMonthlyFee, providerCustomerId, paymentMethodId, agreementReference,
       activationInvoiceReference, evidenceName, evidenceReference, systemName, release,
     ]) {
       controller.dispose();
