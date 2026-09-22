@@ -145,6 +145,22 @@ for token in (
 require("Register commercial document metadata with a persistent storage URL" not in frontend,
         "legacy free-form commercial storage URL UI remains")
 
+# New Partner provisioning wizard must use real file-backed Evidence too.
+for token in (
+    "html.File? activationInvoiceFile",
+    "html.File? paymentEvidenceFile",
+    "Choose activation invoice *",
+    "'evidence_type': 'INVOICE'",
+    "invoiceEvidenceId",
+    "'storage_url': 'evidence://$invoiceEvidenceId'",
+    "paymentEvidenceId",
+    "'storage_url': 'evidence://$paymentEvidenceId'",
+):
+    require(token in frontend, f"New Partner Evidence wizard missing {token!r}")
+for stale in ("activationInvoiceReference", "evidenceReference"):
+    require(stale not in frontend,
+            f"New Partner wizard still exposes free-form commercial Evidence reference: {stale}")
+
 # Matrix closure.
 require(tuple(map(int, str(matrix.get("completed_through", "0")).split("."))) >= (23, 7),
         "functional matrix is not completed through START-23.7")
