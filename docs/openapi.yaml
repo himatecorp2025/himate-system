@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.12-start-23.8
+  version: 0.8.13-start-23.9
   description: >
-    Authenticated REST contract for the START-01 through START-23.8 HIMATE
+    Authenticated REST contract for the START-01 through START-23.9 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -447,10 +447,35 @@ paths:
         "404": {description: Profile is neither visible catalog design nor own-tenant design}
   /api/v1/dashboard/summary:
     get:
-      tags: [Health]
-      summary: Cached executive summary
+      tags: [Dashboard]
+      summary: Authoritative executive Dashboard summary
+      description: >
+        Aggregates partner/module counts, Billing-paid YTD revenue, the authoritative
+        People Reached Impact metric, a 12-month trend and permission-filtered recent
+        audit activity. Revenue is grouped by original currency with no implicit FX conversion.
+        Billing analytics require billing.read; Impact analytics require impact.read. Restricted
+        domains return an explicit authorized=false marker without sensitive values.
+      parameters:
+        - {name: year, in: query, schema: {type: integer, minimum: 2000, maximum: 2100}}
+        - {name: refresh, in: query, schema: {type: boolean}, description: Bypass the shared current-year Dashboard cache}
       responses:
-        "200": {description: Dashboard KPI snapshot}
+        "200": {description: Dashboard KPI, analytics, trend and permission-filtered activity snapshot}
+        "400": {description: Invalid year}
+  /api/v1/search:
+    get:
+      tags: [Dashboard]
+      summary: Permission-scoped global control-plane search
+      description: >
+        Searches only authoritative domains for which the authenticated administrator
+        already has read permission. Search never broadens authorization and does not
+        use a shadow search database.
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string, minLength: 2, maxLength: 100}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 10, default: 5}}
+      responses:
+        "200": {description: Permission-scoped results from permitted authoritative domains}
+        "400": {description: Search query shorter than 2 or longer than 100 characters}
+        "403": {description: Dashboard read permission required}
   /api/v1/partner-categories:
     get:
       tags: [Partners]

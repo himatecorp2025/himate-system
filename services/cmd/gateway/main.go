@@ -895,7 +895,7 @@ func (a *app) hasPermission(u user, required string) bool {
 func permissionResource(r *http.Request) string {
 	path := r.URL.Path
 	switch {
-	case path == "/api/v1/dashboard/summary":
+	case path == "/api/v1/dashboard/summary", path == "/api/v1/search":
 		return "dashboard"
 	case path == "/api/v1/audit/events":
 		return "audit"
@@ -1181,7 +1181,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Header.Set("X-Himate-User-ID", u.ID)
 	if r.URL.Path == "/api/v1/dashboard/summary" {
-		a.dashboard(w, r)
+		a.dashboard(w, r, u)
 		return
 	}
 	switch {
@@ -1199,6 +1199,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.adminUser(w, r, u)
 	case r.URL.Path == "/api/v1/audit/events" && r.Method == http.MethodGet:
 		a.auditEvents(w, r)
+	case r.URL.Path == "/api/v1/search" && r.Method == http.MethodGet:
+		a.globalSearch(w, r, u)
 	case r.URL.Path == "/api/v1/notifications" || strings.HasPrefix(r.URL.Path, "/api/v1/notifications/"):
 		r.Header.Set("X-Himate-Permissions", strings.Join(a.permissionsForRoles(u.Roles), ","))
 		a.serveProxy(w, r, "notifications")
@@ -1647,72 +1649,288 @@ func mathRound2(v float64) float64 {
 	return float64(int64(v*100-0.5)) / 100
 }
 
-func (a *app) dashboard(w http.ResponseWriter, r *http.Request) {
+func (a *app) dashboardRecentActivity(actor user, limit int) ([]map[string]any, error) {
+	if limit < 1 { limit = 1 }
+	if limit > 12 { limit = 12 }
+	rows, err := a.db.Query(`SELECT id,actor_name,action,resource,partner_id,outcome,created_at
+		FROM identity.audit_events
+		WHERE outcome='SUCCESS'
+		ORDER BY created_at DESC,id DESC
+		LIMIT 120`)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	items := make([]map[string]any,0,limit)
+	for rows.Next() {
+		var id int64
+		var actorName,action,resource,partnerID,outcome string
+		var created time.Time
+		if err := rows.Scan(&id,&actorName,&action,&resource,&partnerID,&outcome,&created); err != nil { return nil, err }
+		permissionResource := resource
+		switch resource {
+		case "modules","module-groups","module-commercial-matrix":
+			permissionResource = "catalog"
+		case "payments":
+			permissionResource = "billing"
+		case "partner-categories":
+			permissionResource = "partners"
+		case "admin":
+			permissionResource = "administration"
+		}
+		if permissionResource == "" || !a.hasPermission(actor, permissionResource+".read") { continue }
+		items = append(items,map[string]any{
+			"id":id,"actor_name":actorName,"action":action,"resource":resource,
+			"partner_id":partnerID,"outcome":outcome,"created_at":created.UTC(),
+		})
+		if len(items) >= limit { break }
+	}
+	if err := rows.Err(); err != nil { return nil, err }
+	return items,nil
+}
+
+func dashboardYear(r *http.Request) (int,error) {
+	year:=time.Now().UTC().Year()
+	raw:=strings.TrimSpace(r.URL.Query().Get("year"))
+	if raw=="" { return year,nil }
+	parsed,err:=strconv.Atoi(raw)
+	if err!=nil||parsed<2000||parsed>2100 { return 0,fmt.Errorf("year must be between 2000 and 2100") }
+	return parsed,nil
+}
+
+func copyDashboardPayload(source map[string]any) map[string]any {
+	out:=make(map[string]any,len(source)+1)
+	for key,value:=range source { out[key]=value }
+	return out
+}
+
+func (a *app) dashboardPayloadForActor(source map[string]any, actor user) map[string]any {
+	out:=copyDashboardPayload(source)
+	if a.hasPermission(actor,"billing.read") {
+		if raw,ok:=source["billing"].(map[string]any);ok {
+			billing:=copyDashboardPayload(raw)
+			billing["authorized"]=true
+			out["billing"]=billing
+		}
+	} else {
+		out["billing"]=map[string]any{
+			"authorized":false,"items":[]any{},"count":0,"status":"restricted",
+		}
+	}
+	if a.hasPermission(actor,"impact.read") {
+		if raw,ok:=source["impact"].(map[string]any);ok {
+			impact:=copyDashboardPayload(raw)
+			impact["authorized"]=true
+			out["impact"]=impact
+		}
+	} else {
+		out["impact"]=map[string]any{
+			"authorized":false,"people_reached_ytd":nil,"trend":[]any{},"status":"restricted",
+		}
+	}
+	return out
+}
+
+func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
+	year,err:=dashboardYear(r)
+	if err!=nil { common.APIError(w,http.StatusBadRequest,"VALIDATION",err.Error());return }
+
+	activity,activityErr:=a.dashboardRecentActivity(actor,6)
+	refresh:=strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")),"true")
+	cacheable:=year==time.Now().UTC().Year() && !refresh
+
+	// The shared cache intentionally excludes permission-scoped recent activity.
+	// This prevents one administrator's visible audit domains from leaking to another.
 	a.dashboardMu.RLock()
-	if a.dashboardPayload != nil && time.Now().Before(a.dashboardExpires) {
-		payload := a.dashboardPayload
+	if cacheable && a.dashboardPayload != nil && time.Now().Before(a.dashboardExpires) {
+		payload:=a.dashboardPayloadForActor(a.dashboardPayload,actor)
 		a.dashboardMu.RUnlock()
-		w.Header().Set("X-Himate-Cache", "hit")
-		common.JSON(w, http.StatusOK, payload)
+		payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
+		if activityErr!=nil { payload["activity"]=map[string]any{"items":[]any{},"count":0,"source":"IDENTITY_APPEND_ONLY_AUDIT","status":"degraded"} }
+		w.Header().Set("X-Himate-Cache","hit")
+		common.JSON(w,http.StatusOK,payload)
 		return
 	}
-	stale := a.dashboardPayload
+	stale:=a.dashboardPayload
 	a.dashboardMu.RUnlock()
 
-	started := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	started:=time.Now()
+	ctx,cancel:=context.WithTimeout(r.Context(),3*time.Second)
 	defer cancel()
 
 	var partnerResponse struct {
-		Items           []map[string]any `json:"items"`
-		Total           int              `json:"total"`
-		LifecycleCounts map[string]int   `json:"lifecycle_counts"`
+		Items []map[string]any `json:"items"`
+		Total int `json:"total"`
+		LifecycleCounts map[string]int `json:"lifecycle_counts"`
 	}
 	var moduleResponse struct {
 		Items []map[string]any `json:"items"`
-		Count int              `json:"count"`
+		Count int `json:"count"`
 	}
-	var partnerErr, moduleErr error
+	var billingResponse map[string]any
+	var impactResponse map[string]any
+	var partnerErr,moduleErr,billingErr,impactErr error
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners?limit=1&offset=0&include_archived=true", &partnerResponse)
-	}()
-	go func() {
-		defer wg.Done()
-		moduleErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/modules", &moduleResponse)
-	}()
+	wg.Add(4)
+	go func(){ defer wg.Done(); partnerErr=a.internalGET(ctx,a.hosts["partners"],"/api/v1/partners?limit=1&offset=0&include_archived=true",&partnerResponse) }()
+	go func(){ defer wg.Done(); moduleErr=a.internalGET(ctx,a.hosts["catalog"],"/api/v1/modules",&moduleResponse) }()
+	go func(){ defer wg.Done(); billingErr=a.internalGET(ctx,a.hosts["billing"],fmt.Sprintf("/internal/v1/analytics/dashboard?year=%d",year),&billingResponse) }()
+	go func(){ defer wg.Done(); impactErr=a.internalGET(ctx,a.hosts["impact"],fmt.Sprintf("/internal/v1/impact/dashboard?year=%d",year),&impactResponse) }()
 	wg.Wait()
 
-	if partnerErr != nil && moduleErr != nil && stale != nil {
-		w.Header().Set("X-Himate-Cache", "stale")
-		w.Header().Set("Server-Timing", fmt.Sprintf("dashboard;dur=%d", time.Since(started).Milliseconds()))
-		common.JSON(w, http.StatusOK, stale)
+	if cacheable && partnerErr!=nil && moduleErr!=nil && billingErr!=nil && impactErr!=nil && stale!=nil {
+		payload:=a.dashboardPayloadForActor(stale,actor)
+		payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
+		w.Header().Set("X-Himate-Cache","stale")
+		w.Header().Set("Server-Timing",fmt.Sprintf("dashboard;dur=%d",time.Since(started).Milliseconds()))
+		common.JSON(w,http.StatusOK,payload)
 		return
 	}
 
-	live := partnerResponse.LifecycleCounts["LIVE"]
-	status := "healthy"
-	if partnerErr != nil || moduleErr != nil {
-		status = "degraded"
+	live:=partnerResponse.LifecycleCounts["LIVE"]
+	status:="healthy"
+	if partnerErr!=nil||moduleErr!=nil||billingErr!=nil||impactErr!=nil||activityErr!=nil { status="degraded" }
+	if billingResponse==nil { billingResponse=map[string]any{"year":year,"items":[]any{},"count":0,"source":"BILLING_PAID_LEDGER","status":"degraded"} }
+	if impactResponse==nil {
+		trend:=make([]map[string]any,0,12)
+		labels:=[]string{"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}
+		for month:=1;month<=12;month++ { trend=append(trend,map[string]any{"month":month,"label":labels[month-1],"value":0}) }
+		impactResponse=map[string]any{"year":year,"metric_key":"klavierhaus.events.attendance.attendee_count","people_reached_ytd":0,"trend":trend,"source":"IMPACT_METRIC_VALUES","status":"degraded"}
 	}
-	payload := map[string]any{
-		"partners": map[string]any{"total": partnerResponse.Total, "live": live, "lifecycle_counts": partnerResponse.LifecycleCounts},
-		"modules": map[string]any{"catalog_total": moduleResponse.Count},
-		"system": map[string]any{
-			"status": status, "environment": a.env, "version": a.version, "architecture": "containerized-microservices-start-09-13",
-		},
+	core:=map[string]any{
+		"year":year,
+		"partners":map[string]any{"total":partnerResponse.Total,"live":live,"lifecycle_counts":partnerResponse.LifecycleCounts},
+		"modules":map[string]any{"catalog_total":moduleResponse.Count},
+		"billing":billingResponse,
+		"impact":impactResponse,
+		"system":map[string]any{"status":status,"environment":a.env,"version":a.version,"architecture":"containerized-microservices-start-23.9"},
+	}
+	if cacheable {
+		a.dashboardMu.Lock()
+		a.dashboardPayload=core
+		a.dashboardExpires=time.Now().Add(10*time.Second)
+		a.dashboardMu.Unlock()
 	}
 
-	a.dashboardMu.Lock()
-	a.dashboardPayload = payload
-	a.dashboardExpires = time.Now().Add(10 * time.Second)
-	a.dashboardMu.Unlock()
+	payload:=a.dashboardPayloadForActor(core,actor)
+	payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
+	w.Header().Set("X-Himate-Cache","miss")
+	w.Header().Set("Server-Timing",fmt.Sprintf("dashboard;dur=%d",time.Since(started).Milliseconds()))
+	common.JSON(w,http.StatusOK,payload)
+}
 
-	w.Header().Set("X-Himate-Cache", "miss")
-	w.Header().Set("Server-Timing", fmt.Sprintf("dashboard;dur=%d", time.Since(started).Milliseconds()))
-	common.JSON(w, http.StatusOK, payload)
+func searchText(values ...any) string {
+	parts:=make([]string,0,len(values))
+	for _,value:=range values { parts=append(parts,strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))) }
+	return strings.Join(parts," ")
+}
+
+func searchContains(q string, values ...any) bool {
+	return strings.Contains(searchText(values...),strings.ToLower(strings.TrimSpace(q)))
+}
+
+func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
+	q:=strings.TrimSpace(r.URL.Query().Get("q"))
+	if len([]rune(q))<2 { common.APIError(w,http.StatusBadRequest,"VALIDATION","Search query must contain at least 2 characters");return }
+	if len([]rune(q))>100 { common.APIError(w,http.StatusBadRequest,"VALIDATION","Search query is too long");return }
+	limit:=auditLimit(r.URL.Query().Get("limit"),5,10)
+	ctx,cancel:=context.WithTimeout(r.Context(),3*time.Second)
+	defer cancel()
+
+	results:=[]map[string]any{}
+	appendResult:=func(resource,id,title,subtitle,deepLink string) {
+		results=append(results,map[string]any{
+			"resource":resource,"id":id,"title":title,"subtitle":subtitle,"deep_link":deepLink,
+		})
+	}
+
+	if a.hasPermission(actor,"partners.read") {
+		var response struct{ Items []map[string]any `json:"items"` }
+		path:="/api/v1/partners?limit="+strconv.Itoa(limit)+"&offset=0&core_only=true&include_stats=false&q="+url.QueryEscape(q)
+		if a.internalGET(ctx,a.hosts["partners"],path,&response)==nil {
+			for _,item:=range response.Items {
+				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
+				name:=strings.TrimSpace(fmt.Sprint(item["name"]))
+				if name=="" { name=id }
+				appendResult("partners",id,name,strings.TrimSpace(fmt.Sprint(item["lifecycle"])), "/app/partners/"+url.PathEscape(id))
+			}
+		}
+	}
+
+	if a.hasPermission(actor,"catalog.read") {
+		var response struct{ Items []map[string]any `json:"items"` }
+		if a.internalGET(ctx,a.hosts["catalog"],"/api/v1/modules",&response)==nil {
+			count:=0
+			for _,item:=range response.Items {
+				if !searchContains(q,item["key"],item["label"],item["label_en"],item["label_hu"],item["description"],item["description_en"],item["description_hu"]) { continue }
+				id:=strings.TrimSpace(fmt.Sprint(item["key"]))
+				title:=strings.TrimSpace(fmt.Sprint(item["label"]))
+				if title=="" { title=id }
+				appendResult("catalog",id,title,"Module · "+id,"/app")
+				count++;if count>=limit { break }
+			}
+		}
+	}
+
+	if a.hasPermission(actor,"contact.read") {
+		var response struct{ Items []map[string]any `json:"items"` }
+		path:="/api/v1/contact/inquiries?limit="+strconv.Itoa(limit)+"&offset=0&q="+url.QueryEscape(q)
+		if a.internalGET(ctx,a.hosts["contact"],path,&response)==nil {
+			for _,item:=range response.Items {
+				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
+				title:=strings.TrimSpace(fmt.Sprint(item["name"]))
+				subtitle:=strings.TrimSpace(fmt.Sprint(item["organization"]))
+				if subtitle=="" { subtitle=strings.TrimSpace(fmt.Sprint(item["email"])) }
+				appendResult("contact",id,title,subtitle,"/app")
+			}
+		}
+	}
+
+	if a.hasPermission(actor,"cms.read") {
+		var response struct{ Items []map[string]any `json:"items"` }
+		if a.internalGET(ctx,a.hosts["cms"],"/api/v1/cms/pages",&response)==nil {
+			count:=0
+			for _,item:=range response.Items {
+				if !searchContains(q,item["id"],item["page_key"],item["name"],item["locale"]) { continue }
+				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
+				title:=strings.TrimSpace(fmt.Sprint(item["name"]))
+				appendResult("cms",id,title,"CMS · "+strings.TrimSpace(fmt.Sprint(item["locale"])),"/app")
+				count++;if count>=limit { break }
+			}
+		}
+	}
+
+	if a.hasPermission(actor,"administration.read") {
+		like:="%"+q+"%"
+		rows,err:=a.db.QueryContext(ctx,`SELECT id,name,email FROM identity.users
+			WHERE name ILIKE $1 OR email ILIKE $1 ORDER BY system_owner DESC,active DESC,lower(name) LIMIT $2`,like,limit)
+		if err==nil {
+			for rows.Next() {
+				var id,name,email string
+				if rows.Scan(&id,&name,&email)==nil { appendResult("administration",id,name,email,"/app") }
+			}
+			rows.Close()
+		}
+	}
+
+	if a.hasPermission(actor,"audit.read") {
+		like:="%"+q+"%"
+		rows,err:=a.db.QueryContext(ctx,`SELECT id,action,actor_name,resource,created_at FROM identity.audit_events
+			WHERE action ILIKE $1 OR actor_name ILIKE $1 OR resource ILIKE $1 OR partner_id ILIKE $1
+			ORDER BY created_at DESC,id DESC LIMIT $2`,like,limit)
+		if err==nil {
+			for rows.Next() {
+				var id int64;var action,actorName,resource string;var created time.Time
+				if rows.Scan(&id,&action,&actorName,&resource,&created)==nil {
+					appendResult("audit",strconv.FormatInt(id,10),strings.ReplaceAll(action,"_"," "),actorName+" · "+resource,"/app")
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	common.JSON(w,http.StatusOK,map[string]any{
+		"query":q,"items":results,"count":len(results),"limit_per_resource":limit,
+		"permission_scoped":true,
+	})
 }
 
 func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {

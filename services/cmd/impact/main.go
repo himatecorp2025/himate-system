@@ -74,6 +74,7 @@ func main() {
 	mux.HandleFunc("/internal/v1/impact/retention", a.connectorRetention)
 	mux.HandleFunc("/internal/v1/impact/ingest", a.ingest)
 	mux.HandleFunc("/internal/v1/impact/summary", a.summary)
+	mux.HandleFunc("/internal/v1/impact/dashboard", a.dashboardImpact)
 	common.Run(log, "impact", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
 }
 
@@ -618,6 +619,104 @@ func (a *app) baselineValues(partnerID string)map[string]map[string]any{
 }
 
 func stringValue(v any)string{if v==nil{return ""};return fmt.Sprint(v)}
+
+const dashboardPeopleMetricKey = "klavierhaus.events.attendance.attendee_count"
+
+func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
+		return
+	}
+	year := time.Now().UTC().Year()
+	if raw := strings.TrimSpace(r.URL.Query().Get("year")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 2000 || parsed > 2100 {
+			common.APIError(w, http.StatusBadRequest, "VALIDATION", "year must be between 2000 and 2100")
+			return
+		}
+		year = parsed
+	}
+
+	aggregation, unit := "SUM", "count"
+	var labelEN, labelHU string
+	err := a.db.QueryRow(`SELECT aggregation,unit,label_en,label_hu FROM impact.metric_definitions WHERE metric_key=$1 AND active=TRUE`,
+		dashboardPeopleMetricKey).Scan(&aggregation,&unit,&labelEN,&labelHU)
+	if err != nil && err != sql.ErrNoRows {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load dashboard Impact definition")
+		return
+	}
+
+	var ytd sql.NullFloat64
+	if err == nil {
+		err = a.db.QueryRow(`SELECT
+			CASE $3
+				WHEN 'LATEST' THEN (ARRAY_AGG(numeric_value ORDER BY period_end DESC,id DESC))[1]
+				WHEN 'AVERAGE' THEN AVG(numeric_value)
+				ELSE SUM(numeric_value)
+			END
+		FROM impact.metric_values
+		WHERE metric_key=$1 AND numeric_value IS NOT NULL
+		  AND period_end >= make_date($2,1,1)
+		  AND period_end < make_date($2+1,1,1)`, dashboardPeopleMetricKey, year, aggregation).Scan(&ytd)
+		if err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate People Reached")
+			return
+		}
+	}
+
+	monthly := map[int]float64{}
+	if err == nil {
+		rows, queryErr := a.db.Query(`SELECT EXTRACT(MONTH FROM period_end)::int AS month_no,
+			CASE $3
+				WHEN 'LATEST' THEN (ARRAY_AGG(numeric_value ORDER BY period_end DESC,id DESC))[1]
+				WHEN 'AVERAGE' THEN AVG(numeric_value)
+				ELSE SUM(numeric_value)
+			END AS value
+		FROM impact.metric_values
+		WHERE metric_key=$1 AND numeric_value IS NOT NULL
+		  AND period_end >= make_date($2,1,1)
+		  AND period_end < make_date($2+1,1,1)
+		GROUP BY EXTRACT(MONTH FROM period_end)
+		ORDER BY month_no`, dashboardPeopleMetricKey, year, aggregation)
+		if queryErr != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate Impact trend")
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var month int
+			var value sql.NullFloat64
+			if scanErr := rows.Scan(&month,&value); scanErr != nil {
+				common.APIError(w, http.StatusInternalServerError, "DB", "Could not read Impact trend")
+				return
+			}
+			if value.Valid { monthly[month]=value.Float64 }
+		}
+	}
+
+	labels := []string{"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}
+	trend := make([]map[string]any,0,12)
+	for month:=1; month<=12; month++ {
+		trend=append(trend,map[string]any{
+			"month":month,
+			"label":labels[month-1],
+			"value":monthly[month],
+		})
+	}
+	value:=0.0
+	if ytd.Valid { value=ytd.Float64 }
+	common.JSON(w,http.StatusOK,map[string]any{
+		"year":year,
+		"metric_key":dashboardPeopleMetricKey,
+		"label_en":labelEN,
+		"label_hu":labelHU,
+		"unit":unit,
+		"aggregation":aggregation,
+		"people_reached_ytd":value,
+		"trend":trend,
+		"source":"IMPACT_METRIC_VALUES",
+	})
+}
 
 func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	if r.Method!=http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }

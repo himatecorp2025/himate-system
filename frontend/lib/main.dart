@@ -1621,6 +1621,26 @@ class _ShellState extends State<Shell> {
     }
   }
 
+  Future<void> openGlobalSearch(BuildContext context) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _GlobalSearchDialog(api: widget.api),
+    );
+    if (!context.mounted || result == null) return;
+    final deepLink = '${result['deep_link'] ?? ''}'.trim();
+    if (deepLink.startsWith('/app/partners/')) {
+      Navigator.of(context).pushNamed(deepLink);
+      return;
+    }
+    final resource = '${result['resource'] ?? 'workspace'}';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: LText('${uiLiteral('Result workspace')}: $resource'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   bool can(String permission) {
     final roles = widget.user['roles'];
     if (roles is List && roles.map((e) => e.toString()).contains('platform_admin')) return true;
@@ -1688,6 +1708,11 @@ class _ShellState extends State<Shell> {
               titleSpacing: 12,
               title: const HimateLogo(width: 170),
               actions: [
+                IconButton(
+                  tooltip: uiLiteral('Global search'),
+                  onPressed: () => unawaited(openGlobalSearch(context)),
+                  icon: const Icon(Icons.search_rounded),
+                ),
                 NotificationCenterButton(api: widget.api),
                 PopupMenuButton<String>(
                   tooltip: tr(context,'account'),
@@ -1757,9 +1782,7 @@ class _ShellState extends State<Shell> {
                                   constraints: const BoxConstraints(maxWidth: 420),
                                   child: TextField(
                                     readOnly: true,
-                                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: LText('Global search will be activated in a later functional cycle.'), behavior: SnackBarBehavior.floating),
-                                    ),
+                                    onTap: () => unawaited(openGlobalSearch(context)),
                                     decoration: InputDecoration(isDense: true, hintText: uiLiteral('Search anywhere...'), prefixIcon: Icon(Icons.search_rounded, size: 19)),
                                   ),
                                 ),
@@ -1767,6 +1790,12 @@ class _ShellState extends State<Shell> {
                             )
                           else
                             const Spacer(),
+                          if (tablet)
+                            IconButton(
+                              tooltip: uiLiteral('Global search'),
+                              onPressed: () => unawaited(openGlobalSearch(context)),
+                              icon: const Icon(Icons.search_rounded),
+                            ),
                           const SizedBox(width: 18),
                           NotificationCenterButton(api: widget.api),
                           const SizedBox(width: 8),
@@ -2053,46 +2082,293 @@ class PlannedPage extends StatelessWidget {
   }
 }
 
+class _GlobalSearchDialog extends StatefulWidget {
+  const _GlobalSearchDialog({required this.api});
+  final Api api;
+
+  @override
+  State<_GlobalSearchDialog> createState() => _GlobalSearchDialogState();
+}
+
+class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
+  final controller = TextEditingController();
+  Timer? debounce;
+  List<Map<String, dynamic>> results = <Map<String, dynamic>>[];
+  bool loading = false;
+  String? error;
+  int generation = 0;
+
+  @override
+  void dispose() {
+    debounce?.cancel();
+    controller.dispose();
+    super.dispose();
+  }
+
+  void changed(String value) {
+    debounce?.cancel();
+    final query = value.trim();
+    if (query.length < 2) {
+      setState(() {
+        results = <Map<String, dynamic>>[];
+        loading = false;
+        error = null;
+      });
+      return;
+    }
+    debounce = Timer(const Duration(milliseconds: 240), () => search(query));
+  }
+
+  Future<void> search(String query) async {
+    final current = ++generation;
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final uri = Uri(path: '/api/v1/search', queryParameters: {'q': query, 'limit': '5'});
+      final response = await widget.api.get(uri.toString(), force: true);
+      if (!mounted || current != generation) return;
+      setState(() {
+        results = items(response);
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted || current != generation) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
+      });
+    }
+  }
+
+  IconData iconFor(String resource) {
+    switch (resource) {
+      case 'partners':
+        return Icons.apartment_rounded;
+      case 'catalog':
+        return Icons.widgets_outlined;
+      case 'contact':
+        return Icons.mark_email_read_outlined;
+      case 'cms':
+        return Icons.language_rounded;
+      case 'administration':
+        return Icons.manage_accounts_outlined;
+      case 'audit':
+        return Icons.fact_check_outlined;
+      default:
+        return Icons.search_rounded;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760, maxHeight: 620),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.manage_search_rounded, color: brandGold),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: LText(
+                      uiLiteral('Global search'),
+                      style: GoogleFonts.cormorantGaramond(fontSize: 24, fontWeight: FontWeight.w700, color: brandNavy),
+                    ),
+                  ),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                onChanged: changed,
+                decoration: InputDecoration(
+                  hintText: uiLiteral('Search partners, modules, contacts, CMS and administration...'),
+                  prefixIcon: const Icon(Icons.search_rounded),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Flexible(
+                child: Builder(
+                  builder: (context) {
+                    if (loading && results.isEmpty) {
+                      return const Center(child: Padding(padding: EdgeInsets.all(30), child: CircularProgressIndicator()));
+                    }
+                    if (error != null) {
+                      return _MessageCard(
+                        icon: Icons.cloud_off_outlined,
+                        title: uiLiteral('Search is temporarily unavailable'),
+                        message: error!,
+                      );
+                    }
+                    if (controller.text.trim().length < 2) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(30),
+                          child: LText(
+                            uiLiteral('Type at least two characters. Results are restricted to workspaces you are allowed to read.'),
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.inter(color: brandTextSoft, fontSize: 12),
+                          ),
+                        ),
+                      );
+                    }
+                    if (results.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(30),
+                          child: LText(uiLiteral('No permitted results found.'), style: GoogleFonts.inter(color: brandTextSoft)),
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: results.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final result = results[index];
+                        final resource = '${result['resource'] ?? ''}';
+                        final deepLink = '${result['deep_link'] ?? ''}';
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: brandNavy.withOpacity(.07),
+                            child: Icon(iconFor(resource), color: brandNavy, size: 19),
+                          ),
+                          title: LText(
+                            '${result['title'] ?? result['id'] ?? ''}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: brandNavy, fontSize: 12.5),
+                          ),
+                          subtitle: LText(
+                            '${result['subtitle'] ?? resource}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(color: brandTextSoft, fontSize: 10.5),
+                          ),
+                          trailing: deepLink.startsWith('/app/partners/')
+                              ? const Icon(Icons.open_in_new_rounded, size: 17)
+                              : LText(resource.toUpperCase(), style: GoogleFonts.inter(fontSize: 8.5, fontWeight: FontWeight.w700, color: brandSteel)),
+                          onTap: () => Navigator.pop(context, result),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _dashboardCompact(dynamic value) {
+  final number = value is num ? value.toDouble() : double.tryParse('$value') ?? 0;
+  return intl.NumberFormat.compact(locale: HimateI18n.activeLocale == 'hu_HU' ? 'hu_HU' : 'en_US').format(number);
+}
+
+String _dashboardMoney(String currency, dynamic value) {
+  final amount = value is num ? value.toDouble() : double.tryParse('$value') ?? 0;
+  try {
+    return intl.NumberFormat.simpleCurrency(
+      name: currency.isEmpty ? null : currency,
+      locale: HimateI18n.activeLocale == 'hu_HU' ? 'hu_HU' : 'en_US',
+      decimalDigits: amount.abs() >= 1000 ? 0 : 2,
+    ).format(amount);
+  } catch (_) {
+    return '$currency ${intl.NumberFormat('#,##0.##').format(amount)}'.trim();
+  }
+}
+
 class DashboardPage extends StatelessWidget {
   const DashboardPage({required this.api, super.key});
   final Api api;
 
   @override
   Widget build(BuildContext context) {
-    const path = '/api/v1/dashboard/summary';
+    final year = DateTime.now().toUtc().year;
+    final path = Uri(path: '/api/v1/dashboard/summary', queryParameters: {'year': '$year'}).toString();
     return FutureBuilder<Map<String, dynamic>>(
       future: api.get(path),
       initialData: api.peek(path),
       builder: (context, snapshot) {
         if (snapshot.hasError && snapshot.data == null) {
-          return Content(title: 'Welcome to HIMATE System', subtitle: 'Manage partners, programs and cultural impact — all in one place.', child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Dashboard data is temporarily unavailable', message: '${snapshot.error}'));
+          return Content(
+            title: uiLiteral('Welcome to HIMATE System'),
+            subtitle: uiLiteral('Manage partners, programs and cultural impact — all in one place.'),
+            child: _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Dashboard data is temporarily unavailable'), message: '${snapshot.error}'),
+          );
         }
         final d=snapshot.data??<String,dynamic>{};
         final p=Map<String,dynamic>.from(d['partners']??<String,dynamic>{});
         final m=Map<String,dynamic>.from(d['modules']??<String,dynamic>{});
+        final billing=Map<String,dynamic>.from(d['billing']??<String,dynamic>{});
+        final impact=Map<String,dynamic>.from(d['impact']??<String,dynamic>{});
+        final activity=Map<String,dynamic>.from(d['activity']??<String,dynamic>{});
+        final billingAuthorized=billing['authorized']!=false;
+        final impactAuthorized=impact['authorized']!=false;
+        final revenueRows=items(billing);
+        String revenueValue=billingAuthorized?'0':uiLiteral('Restricted');
+        String revenueNote=billingAuthorized
+            ?uiLiteral('No paid revenue recorded this year')
+            :uiLiteral('Billing permission required');
+        if(billingAuthorized&&revenueRows.length==1){
+          final row=revenueRows.first;
+          final currency='${row['currency']??''}';
+          revenueValue=_dashboardMoney(currency,row['revenue_ytd']);
+          revenueNote=uiLiteral('Paid activation + recurring revenue');
+        }else if(billingAuthorized&&revenueRows.length>1){
+          revenueValue=uiLiteral('Mixed');
+          revenueNote=revenueRows
+              .map((row)=>_dashboardMoney('${row['currency']??''}',row['revenue_ytd']))
+              .join(' · ');
+        }
+        final people=impact['people_reached_ytd']??0;
+        final peopleValue=impactAuthorized?_dashboardCompact(people):uiLiteral('Restricted');
+        final peopleNote=impactAuthorized
+            ?uiLiteral('Verified attendance metric · YTD')
+            :uiLiteral('Impact permission required');
         final hour=DateTime.now().hour;
-        final greeting=hour<12?'Good morning,':hour<18?'Good afternoon,':'Good evening,';
+        final greeting=hour<12?uiLiteral('Good morning,'):hour<18?uiLiteral('Good afternoon,'):uiLiteral('Good evening,');
         return Content(
           eyebrow:greeting,
-          title:'Welcome to HIMATE System',
-          subtitle:'Manage partners, programs, and cultural impact — all in one place.',
+          title:uiLiteral('Welcome to HIMATE System'),
+          subtitle:uiLiteral('Manage partners, programs, and cultural impact — all in one place.'),
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             LayoutBuilder(builder:(context,c){
               final gap=14.0;
               final cols=c.maxWidth<620?2:4;
               final w=(c.maxWidth-gap*(cols-1))/cols;
               return Wrap(spacing:gap,runSpacing:gap,children:[
-                SizedBox(width:w,child:Kpi(label:'Active Partners',value:'${p['live']??0}',note:'${p['total']??0} partner records',icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8))),
-                SizedBox(width:w,child:Kpi(label:'Active Programs',value:'${m['catalog_total']??0}',note:'Available program modules',icon:Icons.description_outlined,accent:brandNavy)),
-                SizedBox(width:w,child:Kpi(label:'Revenue (YTD)',value:'—',note:'Billing analytics upcoming',icon:Icons.bar_chart_rounded,accent:brandGold)),
-                SizedBox(width:w,child:Kpi(label:'People Reached',value:'—',note:'Impact data in START-13',icon:Icons.groups_rounded,accent:brandNavy)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Partners'),value:'${p['live']??0}',note:uiLiteral('${p['total']??0} partner records'),icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8))),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Programs'),value:'${m['catalog_total']??0}',note:uiLiteral('Available program modules'),icon:Icons.description_outlined,accent:brandNavy)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('Revenue (YTD)'),value:revenueValue,note:revenueNote,icon:Icons.bar_chart_rounded,accent:brandGold)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('People Reached'),value:peopleValue,note:peopleNote,icon:Icons.groups_rounded,accent:brandNavy)),
               ]);
             }),
             const SizedBox(height:18),
             LayoutBuilder(builder:(context,c){
-              if(c.maxWidth<900)return const Column(children:[_ImpactPanel(),SizedBox(height:16),_ActivityPanel()]);
-              return const Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Expanded(flex:7,child:_ImpactPanel()),SizedBox(width:16),Expanded(flex:4,child:_ActivityPanel())
+              final trend=items(<String,dynamic>{'items':impact['trend']});
+              final activities=items(activity);
+              if(c.maxWidth<900)return Column(children:[
+                _ImpactPanel(trend:trend,year:year,authorized:impactAuthorized),
+                const SizedBox(height:16),
+                _ActivityPanel(items:activities),
+              ]);
+              return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                Expanded(flex:7,child:_ImpactPanel(trend:trend,year:year,authorized:impactAuthorized)),
+                const SizedBox(width:16),
+                Expanded(flex:4,child:_ActivityPanel(items:activities)),
               ]);
             }),
           ]),
@@ -2103,7 +2379,11 @@ class DashboardPage extends StatelessWidget {
 }
 
 class _ImpactPanel extends StatelessWidget {
-  const _ImpactPanel();
+  const _ImpactPanel({required this.trend,required this.year,required this.authorized});
+  final List<Map<String,dynamic>> trend;
+  final int year;
+  final bool authorized;
+
   @override
   Widget build(BuildContext context)=>SizedBox(
     height:330,
@@ -2111,87 +2391,179 @@ class _ImpactPanel extends StatelessWidget {
       padding:const EdgeInsets.fromLTRB(22,20,22,16),
       child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         Row(children:[
-          Expanded(child:LText('Program Impact',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
-          Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),decoration:BoxDecoration(border:Border.all(color:brandMist),borderRadius:BorderRadius.circular(7)),child:Row(children:[LText('This Year',style:GoogleFonts.inter(color:brandNavy,fontSize:10.5,fontWeight:FontWeight.w600)),const SizedBox(width:5),const Icon(Icons.keyboard_arrow_down_rounded,size:16,color:brandNavy)]))
+          Expanded(child:LText(uiLiteral('Program Impact'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+          Container(
+            padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),
+            decoration:BoxDecoration(border:Border.all(color:brandMist),borderRadius:BorderRadius.circular(7)),
+            child:LText('$year',style:GoogleFonts.inter(color:brandNavy,fontSize:10.5,fontWeight:FontWeight.w600)),
+          )
         ]),
         const SizedBox(height:12),
-        const Expanded(child:_ImpactChart()),
+        Expanded(
+          child:authorized
+              ?_ImpactChart(trend:trend)
+              :Center(
+                  child:LText(
+                    uiLiteral('Impact permission required'),
+                    style:GoogleFonts.inter(color:brandTextSoft,fontSize:11.5),
+                  ),
+                ),
+        ),
       ]),
     )),
   );
 }
 
 class _ImpactChart extends StatelessWidget {
-  const _ImpactChart();
+  const _ImpactChart({required this.trend});
+  final List<Map<String,dynamic>> trend;
+
   @override
-  Widget build(BuildContext context)=>CustomPaint(painter:_ImpactChartPainter(),child:const SizedBox.expand());
+  Widget build(BuildContext context)=>CustomPaint(
+    painter:_ImpactChartPainter(trend.map((row)=>number(row['value'])).toList()),
+    child:const SizedBox.expand(),
+  );
 }
 
 class _ImpactChartPainter extends CustomPainter {
+  _ImpactChartPainter(this.values);
+  final List<double> values;
+
   @override
   void paint(Canvas canvas,Size size){
-    const left=42.0,bottom=27.0,top=8.0;
+    const left=48.0,bottom=27.0,top=8.0;
     final chart=Rect.fromLTWH(left,top,size.width-left-5,size.height-top-bottom);
     final grid=Paint()..color=brandMist.withOpacity(.82)..strokeWidth=.8;
     for(var i=0;i<=4;i++){final y=chart.top+chart.height*i/4;canvas.drawLine(Offset(chart.left,y),Offset(chart.right,y),grid);}
     for(var i=0;i<12;i++){final x=chart.left+chart.width*i/11;canvas.drawLine(Offset(x,chart.top),Offset(x,chart.bottom),grid);}
-    final vals=<double>[.12,.26,.20,.37,.49,.39,.53,.48,.61,.70,.68,.84];
-    final line=Path(); final area=Path();
+
+    final vals=List<double>.generate(12,(index)=>index<values.length?values[index]:0);
+    var maxValue=0.0;
+    for(final value in vals){if(value>maxValue)maxValue=value;}
+    if(maxValue<=0)maxValue=1;
+
+    final line=Path();
+    final area=Path();
     for(var i=0;i<vals.length;i++){
-      final x=chart.left+chart.width*i/(vals.length-1),y=chart.bottom-chart.height*vals[i];
+      final x=chart.left+chart.width*i/(vals.length-1);
+      final y=chart.bottom-chart.height*(vals[i]/maxValue);
       if(i==0){line.moveTo(x,y);area.moveTo(x,chart.bottom);area.lineTo(x,y);}else{line.lineTo(x,y);area.lineTo(x,y);}
     }
     area.lineTo(chart.right,chart.bottom);area.close();
     canvas.drawPath(area,Paint()..color=const Color(0xFF2E5B87).withOpacity(.11));
     canvas.drawPath(line,Paint()..color=brandNavy..strokeWidth=2.2..style=PaintingStyle.stroke..strokeCap=StrokeCap.round..strokeJoin=StrokeJoin.round);
     final dot=Paint()..color=brandNavy;
-    for(var i=0;i<vals.length;i++)canvas.drawCircle(Offset(chart.left+chart.width*i/(vals.length-1),chart.bottom-chart.height*vals[i]),2.7,dot);
-    final months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    for(var i=0;i<vals.length;i++){
+      canvas.drawCircle(Offset(chart.left+chart.width*i/(vals.length-1),chart.bottom-chart.height*(vals[i]/maxValue)),2.7,dot);
+    }
+    const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     for(var i=0;i<12;i++){
       final tp=TextPainter(text:TextSpan(text:months[i],style:GoogleFonts.inter(fontSize:8.5,color:brandTextSoft)),textDirection:TextDirection.ltr)..layout();
       tp.paint(canvas,Offset(chart.left+chart.width*i/11-tp.width/2,chart.bottom+7));
     }
     for(var i=0;i<=4;i++){
-      final label='${(100-25*i)}K';
+      final value=maxValue*(4-i)/4;
+      final label=intl.NumberFormat.compact().format(value);
       final tp=TextPainter(text:TextSpan(text:label,style:GoogleFonts.inter(fontSize:8,color:brandTextSoft)),textDirection:TextDirection.ltr)..layout();
       tp.paint(canvas,Offset(chart.left-tp.width-8,chart.top+chart.height*i/4-tp.height/2));
     }
   }
-  @override bool shouldRepaint(covariant CustomPainter oldDelegate)=>false;
+
+  @override
+  bool shouldRepaint(covariant _ImpactChartPainter oldDelegate)=>oldDelegate.values.toString()!=values.toString();
 }
 
 class _ActivityPanel extends StatelessWidget {
-  const _ActivityPanel();
+  const _ActivityPanel({required this.items});
+  final List<Map<String,dynamic>> items;
+
+  static String titleFor(String action) {
+    final value=action.trim();
+    if(value.isEmpty)return uiLiteral('System activity');
+    final humanized=value
+        .toLowerCase()
+        .split('_')
+        .where((part)=>part.isNotEmpty)
+        .map((part)=>part[0].toUpperCase()+part.substring(1))
+        .join(' ');
+    return uiLiteral(humanized);
+  }
+
+  static IconData iconFor(String resource) {
+    switch(resource){
+      case 'partners': return Icons.person_add_alt_1_outlined;
+      case 'billing': return Icons.payments_outlined;
+      case 'catalog': return Icons.widgets_outlined;
+      case 'administration': return Icons.manage_accounts_outlined;
+      case 'cms': return Icons.language_outlined;
+      case 'impact': return Icons.insights_outlined;
+      case 'evidence': return Icons.verified_outlined;
+      case 'reports': return Icons.picture_as_pdf_outlined;
+      default: return Icons.history_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context)=>SizedBox(
     height:330,
-    child:Card(child:Padding(padding:const EdgeInsets.fromLTRB(20,20,20,16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[Expanded(child:LText('Recent Activity',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),LText('View all',style:GoogleFonts.inter(color:brandSteel,fontSize:10.5,fontWeight:FontWeight.w600))]),
-      const SizedBox(height:10),
-      const _ActivityRow(icon:Icons.person_add_alt_1_outlined,title:'New partner registered',subtitle:'Partner activity',tone:Color(0xFF1D6FC2)),
-      const Divider(height:12),
-      const _ActivityRow(icon:Icons.description_outlined,title:'Program updated',subtitle:'Module catalog activity',tone:brandGold),
-      const Divider(height:12),
-      const _ActivityRow(icon:Icons.payments_outlined,title:'Payment received',subtitle:'Billing activity',tone:brandSuccess),
-      const Divider(height:12),
-      const _ActivityRow(icon:Icons.person_outline_rounded,title:'New user added',subtitle:'Administration activity',tone:brandNavy),
-    ]))),
+    child:Card(child:Padding(
+      padding:const EdgeInsets.fromLTRB(20,20,20,16),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Row(children:[
+          Expanded(child:LText(uiLiteral('Recent Activity'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+          LText(uiLiteral('Live audit feed'),style:GoogleFonts.inter(color:brandSteel,fontSize:9.5,fontWeight:FontWeight.w600)),
+        ]),
+        const SizedBox(height:10),
+        Expanded(
+          child:items.isEmpty
+              ? Center(child:LText(uiLiteral('No permitted recent activity.'),style:GoogleFonts.inter(color:brandTextSoft,fontSize:11)))
+              : ListView.separated(
+                  padding:EdgeInsets.zero,
+                  itemCount:items.length,
+                  separatorBuilder:(_,__)=>const Divider(height:8),
+                  itemBuilder:(context,index){
+                    final item=items[index];
+                    final resource='${item['resource']??''}';
+                    final actor='${item['actor_name']??''}'.trim();
+                    final partner='${item['partner_id']??''}'.trim();
+                    final subtitle=[
+                      if(actor.isNotEmpty)actor,
+                      if(resource.isNotEmpty)resource,
+                      if(partner.isNotEmpty)partner,
+                    ].join(' · ');
+                    return _ActivityRow(
+                      icon:iconFor(resource),
+                      title:titleFor('${item['action']??''}'),
+                      subtitle:subtitle,
+                      tone:resource=='billing'?brandSuccess:resource=='catalog'?brandGold:brandNavy,
+                    );
+                  },
+                ),
+        ),
+      ]),
+    )),
   );
 }
 
 class _ActivityRow extends StatelessWidget {
   const _ActivityRow({required this.icon,required this.title,required this.subtitle,required this.tone});
-  final IconData icon; final String title,subtitle; final Color tone;
+  final IconData icon;
+  final String title,subtitle;
+  final Color tone;
+
   @override
-  Widget build(BuildContext context)=>Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Row(children:[
-    Container(width:38,height:38,decoration:BoxDecoration(color:tone.withOpacity(.10),shape:BoxShape.circle),child:Icon(icon,color:tone,size:18)),
-    const SizedBox(width:11),
-    Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      LText(title,style:GoogleFonts.inter(color:brandNavy,fontWeight:FontWeight.w600,fontSize:11.5)),
-      const SizedBox(height:2),
-      LText(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:GoogleFonts.inter(color:brandTextSoft,fontSize:9.4)),
-    ]))
-  ]));
+  Widget build(BuildContext context)=>Padding(
+    padding:const EdgeInsets.symmetric(vertical:5),
+    child:Row(children:[
+      Container(width:36,height:36,decoration:BoxDecoration(color:tone.withOpacity(.10),shape:BoxShape.circle),child:Icon(icon,color:tone,size:17)),
+      const SizedBox(width:10),
+      Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        LText(title,maxLines:1,overflow:TextOverflow.ellipsis,style:GoogleFonts.inter(color:brandNavy,fontWeight:FontWeight.w600,fontSize:11.2)),
+        const SizedBox(height:2),
+        LText(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:GoogleFonts.inter(color:brandTextSoft,fontSize:9.2)),
+      ]))
+    ]),
+  );
 }
 
 class PartnersPage extends StatefulWidget {
