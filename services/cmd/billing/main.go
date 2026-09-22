@@ -983,7 +983,7 @@ func (a *app) syncSubscriptions(ctx context.Context, id, currency string, mods [
 		placeholders[i] = fmt.Sprintf("$%d", i+2)
 	}
 	_, err := a.db.ExecContext(ctx, `UPDATE billing.module_subscriptions
-		SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',updated_at=NOW()
+		SET auto_renew=FALSE,cancel_at_period_end=FALSE,payment_status='INACTIVE',lifecycle_state='INACTIVE',updated_at=NOW()
 		WHERE partner_id=$1 AND module_key NOT IN (`+strings.Join(placeholders, ",")+`) AND payment_status<>'INACTIVE'`, args...)
 	return err
 }
@@ -1113,9 +1113,17 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 			"cancellation_reason": cancellationReason,
 			"updated_at": updated,
 		})
-		quoteRequests = append(quoteRequests, map[string]string{
-			"partner_id": partnerID, "module_key": key, "at": dateOnly(end).Format("2006-01-02"),
-		})
+		if lifecycle == "ACTIVE" && renew && !cancel {
+			quoteRequests = append(quoteRequests, map[string]string{
+				"partner_id": partnerID, "module_key": key, "at": dateOnly(end).Format("2006-01-02"),
+			})
+		} else {
+			items[len(items)-1]["next_billing_date"] = nil
+			items[len(items)-1]["next_period_price"] = nil
+			items[len(items)-1]["next_period_currency"] = nil
+			items[len(items)-1]["next_period_included_in_base"] = nil
+			items[len(items)-1]["next_period_price_source"] = nil
+		}
 	}
 	if err := rows.Err(); err != nil {
 		common.APIError(w, 500, "DB", "Could not load complete subscription matrix")
@@ -1127,6 +1135,9 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, item := range items {
+		if item["lifecycle_state"] != "ACTIVE" || item["auto_renew"] != true || item["cancel_at_period_end"] == true {
+			continue
+		}
 		key := quoteKey(fmt.Sprint(item["partner_id"]), fmt.Sprint(item["module_key"]))
 		if quote, ok := quotes[key]; ok {
 			item["next_billing_date"] = item["period_end_exclusive"]
