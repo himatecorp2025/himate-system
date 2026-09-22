@@ -15,7 +15,7 @@ func TestSeedModules(t *testing.T) {
 		seen[m.Key] = true
 		groups[m.Group]++
 	}
-	want := map[string]int{"workshop": 1, "finance_invoicing": 3, "technical": 15, "marketing": 8, "website_events": 11}
+	want := map[string]int{"finance_invoicing": 3, "technical": 16, "marketing": 8, "website_events": 11}
 	for k, n := range want {
 		if groups[k] != n {
 			t.Fatalf("%s expected %d got %d", k, n, groups[k])
@@ -23,11 +23,11 @@ func TestSeedModules(t *testing.T) {
 	}
 }
 
-func TestSixModuleGroups(t *testing.T) {
-	if len(seedGroups) != 6 {
-		t.Fatalf("expected six module groups got %d", len(seedGroups))
+func TestFourPrimaryModuleGroups(t *testing.T) {
+	if len(seedGroups) != 4 {
+		t.Fatalf("expected four primary module groups got %d", len(seedGroups))
 	}
-	want := []string{"workshop", "finance_invoicing", "technical", "marketing", "website_events", "communication"}
+	want := []string{"finance_invoicing", "technical", "marketing", "website_events"}
 	for i, key := range want {
 		if seedGroups[i].Key != key {
 			t.Fatalf("group %d expected %s got %s", i, key, seedGroups[i].Key)
@@ -44,6 +44,21 @@ func TestModuleStateContract(t *testing.T) {
 	for _, state := range []string{"ACTIVE", "UNAVAILABLE", "DEPRECATED"} {
 		if !availabilityValues[state] {
 			t.Fatalf("missing module availability %s", state)
+		}
+	}
+	for _, state := range []string{"UNPUBLISHED", "PUBLISHED"} {
+		if !publicationStates[state] {
+			t.Fatalf("missing module publication state %s", state)
+		}
+	}
+	for _, state := range []string{"LEGACY_REFERENCE", "IN_DEVELOPMENT", "READY"} {
+		if !implementationStates[state] {
+			t.Fatalf("missing implementation state %s", state)
+		}
+	}
+	for _, state := range []string{"INACTIVE", "ACTIVE", "CANCEL_PENDING"} {
+		if !entitlementStates[state] {
+			t.Fatalf("missing entitlement state %s", state)
 		}
 	}
 }
