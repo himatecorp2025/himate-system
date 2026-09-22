@@ -172,8 +172,10 @@ PY
 curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$unconfigured_payload" "$BASE_URL/api/v1/modules" >/dev/null
 unconfigured_portal="$(curl -fsS -b "$PORTAL_COOKIE" "$BASE_URL/partner/api/v1/modules")"
 printf '%s' "$unconfigured_portal" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; m=next(x for x in d["items"] if x["key"]==key); assert m["commercial_configured"] is False,m; assert m["commercial_ready"] is False,m; assert m["can_activate"] is False,m; assert m["partner_price"]==0,m' "$UNCONFIGURED_KEY"
+# price-at is intentionally an internal Catalog/Billing contract, not a public control-plane route.
 code="$(status "$OWNER_COOKIE" GET "/api/v1/partners/$partner_a_id/modules/$UNCONFIGURED_KEY/price-at?at=$today")"
-test "$code" = "404"
+test "$code" = "405"
+grep -q 'METHOD' "$BODY"
 code="$(status "$PORTAL_COOKIE" POST "/partner/api/v1/modules/$UNCONFIGURED_KEY/activate" -H 'Content-Type: application/json' -d '{}')"
 test "$code" = "409"
 grep -q 'COMMERCIAL_TERMS_REQUIRED' "$BODY"
