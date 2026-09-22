@@ -356,7 +356,10 @@ class Api {
   }
 
   Future<Map<String, dynamic>> request(String method, String path, [Map<String, dynamic>? body]) async {
-    final headers = <String, String>{'Accept': 'application/json'};
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'X-Himate-Locale': HimateI18n.activeLocale,
+    };
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;
     final uri = Uri.parse(path);
@@ -585,6 +588,8 @@ class _HimateAppState extends State<HimateApp> {
   void setAnonymousLocale(String value) {
     final normalized = value == 'hu_HU' ? 'hu_HU' : 'en_US';
     html.window.localStorage['himate_locale'] = normalized;
+    HimateI18n.activeLocale = normalized;
+    api.clearCache();
     if (mounted) setState(() => anonymousLocale = normalized);
   }
 
@@ -593,9 +598,10 @@ class _HimateAppState extends State<HimateApp> {
     final preferred = user?['preferred_locale']?.toString();
     if (preferred == 'hu_HU' || preferred == 'en_US') {
       anonymousLocale = preferred!;
+      HimateI18n.activeLocale = preferred;
       html.window.localStorage['himate_locale'] = preferred;
     }
-    api.clearCache('/api/v1/profile');
+    api.clearCache();
     if (mounted) setState(() {});
   }
 
@@ -2243,24 +2249,35 @@ class _PartnersPageState extends State<PartnersPage> {
   }
 
   Future<void> addCategory() async {
-    final controller = TextEditingController();
+    final nameEN = TextEditingController();
+    final nameHU = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => BrandDialog(
         title: 'Add partner category',
-        subtitle: 'Create a category for partner organizations that do not fit the default structure.',
+        subtitle: 'Store both English and Hungarian business labels for every dynamic category.',
         icon: Icons.category_outlined,
-        child: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(labelText: uiLiteral('Category name'), hintText: uiLiteral('e.g. Cultural Foundation')),
+        width: 640,
+        child: ResponsiveFieldPair(
+          first: TextField(
+            controller: nameEN,
+            autofocus: true,
+            decoration: InputDecoration(labelText: uiLiteral('English category name *'), hintText: uiLiteral('e.g. Cultural Foundation')),
+          ),
+          second: TextField(
+            controller: nameHU,
+            decoration: InputDecoration(labelText: uiLiteral('Hungarian category name *'), hintText: uiLiteral('pl. Kulturális alapítvány')),
+          ),
         ),
         primaryLabel: 'Add category',
         onPrimary: () => Navigator.pop(context, true),
       ),
     );
-    if (ok == true && controller.text.trim().isNotEmpty) {
-      final created = await widget.api.post('/api/v1/partner-categories', {'name': controller.text.trim()});
+    if (ok == true && nameEN.text.trim().isNotEmpty && nameHU.text.trim().isNotEmpty) {
+      final created = await widget.api.post('/api/v1/partner-categories', {
+        'name_en': nameEN.text.trim(),
+        'name_hu': nameHU.text.trim(),
+      });
       if (mounted) {
         setState(() {
           categories = <Map<String, dynamic>>[...categories, created]
@@ -2269,7 +2286,8 @@ class _PartnersPageState extends State<PartnersPage> {
         success('Partner category created.');
       }
     }
-    controller.dispose();
+    nameEN.dispose();
+    nameHU.dispose();
   }
 
   Future<void> addPartner() async {
@@ -4548,8 +4566,10 @@ class _ImpactPageState extends State<ImpactPage> {
 
   Future<void> addDefinition() async {
     final key = TextEditingController();
-    final label = TextEditingController();
-    final description = TextEditingController();
+    final labelEN = TextEditingController();
+    final labelHU = TextEditingController();
+    final descriptionEN = TextEditingController();
+    final descriptionHU = TextEditingController();
     final unit = TextEditingController(text: 'count');
     String aggregation = 'SUM';
     String scope = 'PARTNER';
@@ -4558,15 +4578,17 @@ class _ImpactPageState extends State<ImpactPage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'New metric definition',
-          subtitle: 'Create a stable impact metric used consistently across partners and reporting periods.',
+          subtitle: 'Dynamic business metrics store English and Hungarian labels and descriptions independently.',
           icon: Icons.add_chart_outlined,
-          width: 700,
+          width: 760,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              TextField(controller: key, decoration: InputDecoration(labelText: uiLiteral('Metric key'), hintText: uiLiteral('culture.events'))),
+              const SizedBox(height: 12),
               ResponsiveFieldPair(
-                first: TextField(controller: key, decoration: InputDecoration(labelText: uiLiteral('Metric key'), hintText: uiLiteral('culture.events'))),
-                second: TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Display label'))),
+                first: TextField(controller: labelEN, decoration: InputDecoration(labelText: uiLiteral('English display label *'))),
+                second: TextField(controller: labelHU, decoration: InputDecoration(labelText: uiLiteral('Hungarian display label *'))),
               ),
               const SizedBox(height: 12),
               ResponsiveFieldPair(
@@ -4594,7 +4616,10 @@ class _ImpactPageState extends State<ImpactPage> {
                 onChanged: (v) { if (v != null) setLocal(() => scope = v); },
               ),
               const SizedBox(height: 12),
-              TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Description'))),
+              ResponsiveFieldPair(
+                first: TextField(controller: descriptionEN, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('English description'))),
+                second: TextField(controller: descriptionHU, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Hungarian description'))),
+              ),
             ],
           ),
           primaryLabel: 'Create metric',
@@ -4602,18 +4627,20 @@ class _ImpactPageState extends State<ImpactPage> {
         ),
       ),
     );
-    if (ok == true) {
+    if (ok == true && labelEN.text.trim().isNotEmpty && labelHU.text.trim().isNotEmpty) {
       await widget.api.post('/api/v1/impact/definitions', {
         'metric_key': key.text.trim(),
-        'label': label.text.trim(),
-        'description': description.text.trim(),
+        'label_en': labelEN.text.trim(),
+        'label_hu': labelHU.text.trim(),
+        'description_en': descriptionEN.text.trim(),
+        'description_hu': descriptionHU.text.trim(),
         'unit': unit.text.trim(),
         'aggregation': aggregation,
         'scope': scope,
       });
       await load();
     }
-    for (final controller in [key, label, description, unit]) { controller.dispose(); }
+    for (final controller in [key, labelEN, labelHU, descriptionEN, descriptionHU, unit]) { controller.dispose(); }
   }
 
   Future<void> addValue() async {

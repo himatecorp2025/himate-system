@@ -40,7 +40,7 @@ func (a *app) partnerPortal(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
 			return
 		}
-		a.partnerPortalModules(w, partnerID)
+		a.partnerPortalModules(w, r, partnerID)
 		return
 	}
 	if len(parts) == 4 && parts[3] == "activate" {
@@ -54,12 +54,12 @@ func (a *app) partnerPortal(w http.ResponseWriter, r *http.Request) {
 	common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Partner portal catalog route not found")
 }
 
-func (a *app) loadPartnerPortalModules(partnerID string) ([]portalModule, error) {
+func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule, error) {
 	if err := a.ensurePartnerModules(partnerID); err != nil {
 		return nil, err
 	}
 	rows, err := a.db.Query(`
-		SELECT m.module_key,m.label,m.description,m.group_key,g.label,pm.status,pm.included_in_base,
+		SELECT m.module_key,m.label_en,m.label_hu,m.description_en,m.description_hu,m.group_key,g.label_en,g.label_hu,pm.status,pm.included_in_base,
 			COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),m.currency,m.latest_version,m.availability,pm.activated_at
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
@@ -70,7 +70,7 @@ func (a *app) loadPartnerPortalModules(partnerID string) ([]portalModule, error)
 			ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
 		) ep ON TRUE
 		WHERE pm.partner_id=$1
-		ORDER BY g.sort_order,m.label`, partnerID)
+		ORDER BY g.sort_order,m.label_en`, partnerID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,11 +81,15 @@ func (a *app) loadPartnerPortalModules(partnerID string) ([]portalModule, error)
 	index := map[string]int{}
 	for rows.Next() {
 		var item portalModule
+		var labelEN,labelHU,descEN,descHU,groupEN,groupHU string
 		var activated sql.NullTime
-		if err := rows.Scan(&item.Key,&item.Label,&item.Description,&item.GroupKey,&item.GroupLabel,&item.Status,&item.IncludedInBase,
+		if err := rows.Scan(&item.Key,&labelEN,&labelHU,&descEN,&descHU,&item.GroupKey,&groupEN,&groupHU,&item.Status,&item.IncludedInBase,
 			&item.PartnerPrice,&item.Currency,&item.LatestVersion,&item.Availability,&activated); err != nil {
 			return nil, err
 		}
+		item.Label = common.Localized(labelEN,labelHU,locale)
+		item.Description = common.Localized(descEN,descHU,locale)
+		item.GroupLabel = common.Localized(groupEN,groupHU,locale)
 		if activated.Valid { item.ActivatedAt = activated.Time.UTC() }
 		item.Relationships = []map[string]any{}
 		item.Blockers = []string{}
@@ -96,21 +100,22 @@ func (a *app) loadPartnerPortalModules(partnerID string) ([]portalModule, error)
 	if err := rows.Err(); err != nil { return nil, err }
 
 	relRows, err := a.db.Query(`
-		SELECT r.module_key,r.target_module_key,m.label,r.relation_type,r.note
+		SELECT r.module_key,r.target_module_key,m.label_en,m.label_hu,r.relation_type,r.note
 		FROM catalog.module_relationships r
 		JOIN catalog.modules m ON m.module_key=r.target_module_key
 		WHERE r.relation_type IN ('REQUIRES','OPTIONAL_DEPENDENCY','INTEGRATES_WITH','CONFLICTS_WITH','REPLACES')
-		ORDER BY r.module_key,r.relation_type,m.label`)
+		ORDER BY r.module_key,r.relation_type,m.label_en`)
 	if err != nil { return nil, err }
 	defer relRows.Close()
 	for relRows.Next() {
-		var key,target,label,relation,note string
-		if relRows.Scan(&key,&target,&label,&relation,&note) != nil { continue }
+		var key,target,labelEN,labelHU,relation,note string
+		if relRows.Scan(&key,&target,&labelEN,&labelHU,&relation,&note) != nil { continue }
+		label:=common.Localized(labelEN,labelHU,locale)
 		i, ok := index[key]
 		if !ok { continue }
 		modules[i].Relationships = append(modules[i].Relationships, map[string]any{
-			"target_module_key": target, "target_label": label, "relation_type": relation, "note": note,
-			"target_active": active[target],
+			"target_module_key": target, "target_label": label, "target_label_en": labelEN, "target_label_hu": labelHU,
+			"relation_type": relation, "note": note, "target_active": active[target],
 		})
 		if relation == "REQUIRES" && !active[target] {
 			modules[i].Blockers = append(modules[i].Blockers, "Requires "+label)
@@ -133,20 +138,8 @@ func (a *app) loadPartnerPortalModules(partnerID string) ([]portalModule, error)
 	return modules, nil
 }
 
-func portalModuleMap(item portalModule) map[string]any {
-	return map[string]any{
-		"key": item.Key, "label": item.Label, "description": item.Description,
-		"group_key": item.GroupKey, "group_label": item.GroupLabel,
-		"status": item.Status, "included_in_base": item.IncludedInBase,
-		"partner_price": item.PartnerPrice, "currency": item.Currency,
-		"latest_version": item.LatestVersion, "availability": item.Availability,
-		"activated_at": item.ActivatedAt, "relationships": item.Relationships,
-		"can_activate": item.CanActivate, "activation_blockers": item.Blockers,
-	}
-}
-
-func (a *app) partnerPortalModules(w http.ResponseWriter, partnerID string) {
-	modules, err := a.loadPartnerPortalModules(partnerID)
+func (a *app) partnerPortalModules(w http.ResponseWriter, r *http.Request, partnerID string) {
+	modules, err := a.loadPartnerPortalModules(partnerID, common.RequestLocale(r))
 	if err != nil {
 		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load partner portal modules")
 		return
@@ -161,8 +154,21 @@ func (a *app) partnerPortalModules(w http.ResponseWriter, partnerID string) {
 	}
 	common.JSON(w, http.StatusOK, map[string]any{
 		"partner_id": partnerID, "items": items, "count": len(items),
-		"active_count": activeCount, "available_count": availableCount,
+		"active_count": activeCount, "available_count": availableCount, "locale": common.RequestLocale(r),
 	})
+}
+
+
+func portalModuleMap(item portalModule) map[string]any {
+	return map[string]any{
+		"key": item.Key, "label": item.Label, "description": item.Description,
+		"group_key": item.GroupKey, "group_label": item.GroupLabel,
+		"status": item.Status, "included_in_base": item.IncludedInBase,
+		"partner_price": item.PartnerPrice, "currency": item.Currency,
+		"latest_version": item.LatestVersion, "availability": item.Availability,
+		"activated_at": item.ActivatedAt, "relationships": item.Relationships,
+		"can_activate": item.CanActivate, "activation_blockers": item.Blockers,
+	}
 }
 
 func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, partnerID, key string) {
@@ -182,20 +188,20 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	}
 	defer tx.Rollback()
 
-	var status, availability, label string
+	var status, availability, labelEN, labelHU string
 	var visible bool
 	if err := tx.QueryRow(`
-		SELECT pm.status,m.availability,m.label,pm.visible
+		SELECT pm.status,m.availability,m.label_en,m.label_hu,pm.visible
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
 		WHERE pm.partner_id=$1 AND pm.module_key=$2
-		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&label,&visible); err != nil {
+		FOR UPDATE`, partnerID, key).Scan(&status,&availability,&labelEN,&labelHU,&visible); err != nil {
 		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Module not found")
 		return
 	}
 	if status == "ACTIVE" {
 		tx.Rollback()
-		a.onePartnerModule(w, partnerID, key)
+		a.onePartnerModule(w, partnerID, key, common.RequestLocale(r))
 		return
 	}
 	if status == "MAINTENANCE" {
@@ -208,7 +214,7 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	}
 
 	rows, err := tx.Query(`
-		SELECT r.target_module_key,m.label,r.relation_type,pm.status
+		SELECT r.target_module_key,m.label_en,m.label_hu,r.relation_type,pm.status
 		FROM catalog.module_relationships r
 		JOIN catalog.modules m ON m.module_key=r.target_module_key
 		LEFT JOIN catalog.partner_modules pm ON pm.partner_id=$1 AND pm.module_key=r.target_module_key
@@ -219,9 +225,10 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 	}
 	blockers := []string{}
 	for rows.Next() {
-		var target,targetLabel,relation string
+		var target,targetLabelEN,targetLabelHU,relation string
 		var targetStatus sql.NullString
-		if rows.Scan(&target,&targetLabel,&relation,&targetStatus) != nil { continue }
+		if rows.Scan(&target,&targetLabelEN,&targetLabelHU,&relation,&targetStatus) != nil { continue }
+		targetLabel:=common.Localized(targetLabelEN,targetLabelHU,common.RequestLocale(r))
 		isActive := targetStatus.Valid && targetStatus.String == "ACTIVE"
 		if relation == "REQUIRES" && !isActive {
 			blockers = append(blockers, "Requires "+targetLabel)
@@ -263,11 +270,11 @@ func (a *app) partnerPortalActivate(w http.ResponseWriter, r *http.Request, part
 		return
 	}
 
-	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key))
+	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key), common.RequestLocale(r))
 	if err != nil {
 		common.APIError(w, http.StatusInternalServerError, "DB", "Module activated but could not be reloaded")
 		return
 	}
-	item["activation_message"] = fmt.Sprintf("%s activated", label)
+	item["activation_message"] = fmt.Sprintf("%s activated", common.Localized(labelEN,labelHU,common.RequestLocale(r)))
 	common.JSON(w, http.StatusOK, item)
 }

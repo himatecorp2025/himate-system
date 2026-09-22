@@ -234,6 +234,17 @@ The architecture remains microservice/container based. It is **not** being colla
 - exact duplicate provider events are idempotent; event-ID payload conflicts fail closed
 - START-23.4 acceptance is `docs/START-23.4_ACCEPTANCE.md`, `scripts/audit_start_23_4.py` and `scripts/smoke_start_23_4.sh`
 
+### START-23.5 — Dynamic Bilingual Business Model
+- dynamic business records now persist independent English and Hungarian labels/descriptions instead of relying on static UI translation alone
+- shared backend locale resolution order: `locale` query → `X-Himate-Locale` → `Accept-Language` → `en_US`
+- partner categories persist `name_en/name_hu`
+- module groups and modules persist bilingual labels; modules also persist bilingual descriptions
+- Impact metric definitions persist bilingual labels/descriptions and summary read models resolve them per locale
+- custom RBAC roles persist bilingual labels/descriptions while stable `role_key` and permission semantics remain language-neutral
+- Flutter sends the active locale on API requests and clears cached dynamic data on locale changes
+- category, module-group, module, metric-definition and custom-role editors capture both languages
+- START-23.5 acceptance is `docs/START-23.5_ACCEPTANCE.md`, `scripts/audit_start_23_5.py` and `scripts/smoke_start_23_5.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -255,9 +266,10 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.2_ACCEPTANCE.md`
 - `docs/START-23.3_ACCEPTANCE.md`
 - `docs/START-23.4_ACCEPTANCE.md`
+- `docs/START-23.5_ACCEPTANCE.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally requires `docs/START-23.4_ACCEPTANCE.md`, `scripts/audit_start_23_4.py`, and `scripts/smoke_start_23_4.sh`. Provider-backed activation and recurring collection now have signed-webhook mutation evidence. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.5–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally requires `docs/START-23.4_ACCEPTANCE.md`, `scripts/audit_start_23_4.py`, and `scripts/smoke_start_23_4.sh`. Provider-backed activation and recurring collection now have signed-webhook mutation evidence. Final live-provider proof remains reserved for START-23.12. START-23.5 additionally closes the dynamic bilingual data-model gap with mutation/readback evidence. START-24 Security Acceptance remains blocked until START-23.6–23.12 close the remaining matrix blockers.

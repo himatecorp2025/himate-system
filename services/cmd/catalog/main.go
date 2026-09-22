@@ -196,17 +196,31 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS activation_fee_history_lookup ON catalog.activation_fee_history(partner_id,module_key,effective_at DESC,id DESC)`,
 		}},
+		{Version: 6, Name: "start-23-5-bilingual-catalog-records", Statements: []string{
+			`ALTER TABLE catalog.module_groups ADD COLUMN IF NOT EXISTS label_en TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.module_groups ADD COLUMN IF NOT EXISTS label_hu TEXT NOT NULL DEFAULT ''`,
+			`UPDATE catalog.module_groups SET label_en=label WHERE label_en=''`,
+			`UPDATE catalog.module_groups SET label_hu=label WHERE label_hu=''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS label_en TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS label_hu TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS description_en TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE catalog.modules ADD COLUMN IF NOT EXISTS description_hu TEXT NOT NULL DEFAULT ''`,
+			`UPDATE catalog.modules SET label_en=label WHERE label_en=''`,
+			`UPDATE catalog.modules SET label_hu=label WHERE label_hu=''`,
+			`UPDATE catalog.modules SET description_en=description WHERE description_en=''`,
+			`UPDATE catalog.modules SET description_hu=description WHERE description_hu=''`,
+		}},
 	}); err != nil {
 		return err
 	}
 
 	for _, g := range seedGroups {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups(group_key,label,sort_order) VALUES($1,$2,$3) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,sort_order=EXCLUDED.sort_order`, g.Key, g.Label, g.Order); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order) VALUES($1,$2,$2,$2,$3) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,sort_order=EXCLUDED.sort_order`, g.Key, g.Label, g.Order); err != nil {
 			return err
 		}
 	}
 	for _, m := range seedModules {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules(module_key,label,group_key,description,system,availability) VALUES($1,$2,$3,'Klavierhaus verified reference module',TRUE,'ACTIVE') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,group_key=EXCLUDED.group_key,system=TRUE`, m.Key, m.Label, m.Group); err != nil {
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified reference module','Klavierhaus verified reference module','Klavierhaus verified reference module',TRUE,'ACTIVE') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,group_key=EXCLUDED.group_key,system=TRUE`, m.Key, m.Label, m.Group); err != nil {
 			return err
 		}
 		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW()) ON CONFLICT(partner_id,module_key) DO NOTHING`, m.Key); err != nil {
@@ -217,29 +231,39 @@ func (a *app) migrate(ctx context.Context) error {
 }
 
 func (a *app) groups(w http.ResponseWriter, r *http.Request) {
+	locale:=common.RequestLocale(r)
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT group_key,label,sort_order FROM catalog.module_groups ORDER BY sort_order,label`)
+		rows, err := a.db.Query(`SELECT group_key,label_en,label_hu,sort_order FROM catalog.module_groups ORDER BY sort_order,lower(label_en)`)
 		if err != nil { common.APIError(w,500,"DB","Could not load module groups"); return }
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var k,l string; var s int
-			if rows.Scan(&k,&l,&s)==nil { items=append(items,map[string]any{"group_key":k,"label":l,"sort_order":s}) }
+			var k,en,hu string; var s int
+			if rows.Scan(&k,&en,&hu,&s)==nil {
+				items=append(items,map[string]any{"group_key":k,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":s})
+			}
 		}
-		common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+		common.JSON(w,200,map[string]any{"items":items,"count":len(items),"locale":locale})
 	case http.MethodPost:
-		var in struct { Key string `json:"group_key"`; Label string `json:"label"`; SortOrder int `json:"sort_order"` }
-		if common.Decode(r,&in)!=nil || !moduleKeyPattern.MatchString(in.Key) || strings.TrimSpace(in.Label)=="" {
-			common.APIError(w,400,"VALIDATION","Stable group key and label are required"); return
+		var in struct {
+			Key string `json:"group_key"`
+			Label string `json:"label"`
+			LabelEN string `json:"label_en"`
+			LabelHU string `json:"label_hu"`
+			SortOrder int `json:"sort_order"`
 		}
-		if in.SortOrder<=0 {
-			_ = a.db.QueryRow(`SELECT COALESCE(MAX(sort_order),0)+1 FROM catalog.module_groups`).Scan(&in.SortOrder)
+		if common.Decode(r,&in)!=nil || !moduleKeyPattern.MatchString(in.Key) {
+			common.APIError(w,400,"VALIDATION","Stable group key and bilingual labels are required"); return
 		}
-		if _,err:=a.db.Exec(`INSERT INTO catalog.module_groups(group_key,label,sort_order) VALUES($1,$2,$3)`,in.Key,strings.TrimSpace(in.Label),in.SortOrder);err!=nil{
+		en:=strings.TrimSpace(in.LabelEN); hu:=strings.TrimSpace(in.LabelHU); legacy:=strings.TrimSpace(in.Label)
+		if en==""{en=legacy}; if hu==""{hu=legacy}
+		if en==""||hu==""{common.APIError(w,400,"VALIDATION","English and Hungarian group labels are required");return}
+		if in.SortOrder<=0 { _ = a.db.QueryRow(`SELECT COALESCE(MAX(sort_order),0)+1 FROM catalog.module_groups`).Scan(&in.SortOrder) }
+		if _,err:=a.db.Exec(`INSERT INTO catalog.module_groups(group_key,label,label_en,label_hu,sort_order) VALUES($1,$2,$2,$3,$4)`,in.Key,en,hu,in.SortOrder);err!=nil{
 			common.APIError(w,409,"CONFLICT","Module group could not be created");return
 		}
-		common.JSON(w,201,map[string]any{"group_key":in.Key,"label":strings.TrimSpace(in.Label),"sort_order":in.SortOrder})
+		common.JSON(w,201,map[string]any{"group_key":in.Key,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":in.SortOrder})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
@@ -249,25 +273,28 @@ func (a *app) groupByKey(w http.ResponseWriter, r *http.Request) {
 	key:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/module-groups/"),"/")
 	if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Module group not found");return}
 	if r.Method!=http.MethodPatch{common.APIError(w,405,"METHOD","Use PATCH");return}
-	var in struct{Label *string `json:"label"`; SortOrder *int `json:"sort_order"`}
+	locale:=common.RequestLocale(r)
+	var in struct{Label *string `json:"label"`; LabelEN *string `json:"label_en"`; LabelHU *string `json:"label_hu"`; SortOrder *int `json:"sort_order"`}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-	var label string; var order int
-	if err:=a.db.QueryRow(`SELECT label,sort_order FROM catalog.module_groups WHERE group_key=$1`,key).Scan(&label,&order);err!=nil{
+	var en,hu string; var order int
+	if err:=a.db.QueryRow(`SELECT label_en,label_hu,sort_order FROM catalog.module_groups WHERE group_key=$1`,key).Scan(&en,&hu,&order);err!=nil{
 		common.APIError(w,404,"NOT_FOUND","Module group not found");return
 	}
-	if in.Label!=nil{label=strings.TrimSpace(*in.Label)}
+	if in.Label!=nil { legacy:=strings.TrimSpace(*in.Label); if in.LabelEN==nil{en=legacy}; if in.LabelHU==nil{hu=legacy} }
+	if in.LabelEN!=nil{en=strings.TrimSpace(*in.LabelEN)}
+	if in.LabelHU!=nil{hu=strings.TrimSpace(*in.LabelHU)}
 	if in.SortOrder!=nil{order=*in.SortOrder}
-	if label==""||order<=0{common.APIError(w,400,"VALIDATION","Valid label and sort order are required");return}
-	if _,err:=a.db.Exec(`UPDATE catalog.module_groups SET label=$2,sort_order=$3 WHERE group_key=$1`,key,label,order);err!=nil{
+	if en==""||hu==""||order<=0{common.APIError(w,400,"VALIDATION","Valid bilingual labels and sort order are required");return}
+	if _,err:=a.db.Exec(`UPDATE catalog.module_groups SET label=$2,label_en=$2,label_hu=$3,sort_order=$4 WHERE group_key=$1`,key,en,hu,order);err!=nil{
 		common.APIError(w,409,"CONFLICT","Module group could not be updated");return
 	}
-	common.JSON(w,200,map[string]any{"group_key":key,"label":label,"sort_order":order})
+	common.JSON(w,200,map[string]any{"group_key":key,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":order})
 }
 
 func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT m.module_key,m.label,m.group_key,g.label,m.description,m.default_monthly_price,m.default_activation_fee,m.currency,m.version,m.latest_version,
+		rows, err := a.db.Query(`SELECT m.module_key,m.label_en,m.label_hu,m.group_key,g.label_en,g.label_hu,m.description_en,m.description_hu,m.default_monthly_price,m.default_activation_fee,m.currency,m.version,m.latest_version,
 			m.last_updated_at,m.system,m.availability,m.module_type,m.owner_team,m.source_repository,m.source_path,m.source_ref,m.source_commit,
 			m.artifact_type,m.artifact_reference,m.min_platform_version,m.manifest,
 			(SELECT COUNT(*) FROM catalog.module_relationships mr WHERE mr.module_key=m.module_key),
@@ -278,11 +305,12 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		items := []map[string]any{}
 		for rows.Next() {
-			var k,l,g,gl,d,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+			var k,labelEN,labelHU,g,groupEN,groupHU,descEN,descHU,currency,v,lv,availability,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
 			var p,activationFee float64; var t time.Time; var sys bool; var manifestRaw []byte; var relCount,usageCount,metricCount int
-			if rows.Scan(&k,&l,&g,&gl,&d,&p,&activationFee,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
+			if rows.Scan(&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&descEN,&descHU,&p,&activationFee,&currency,&v,&lv,&t,&sys,&availability,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw,&relCount,&usageCount,&metricCount)==nil {
 				manifest:=map[string]any{}; _=json.Unmarshal(manifestRaw,&manifest)
-				items=append(items,map[string]any{"key":k,"label":l,"group_key":g,"group_label":gl,"description":d,"default_monthly_price":p,"default_activation_fee":activationFee,"currency":currency,
+				locale:=common.RequestLocale(r)
+				items=append(items,map[string]any{"key":k,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,"group_key":g,"group_label":common.Localized(groupEN,groupHU,locale),"group_label_en":groupEN,"group_label_hu":groupHU,"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,"default_monthly_price":p,"default_activation_fee":activationFee,"currency":currency,
 					"version":v,"latest_version":lv,"last_updated_at":t,"system":sys,"availability":availability,"module_type":moduleType,"owner_team":owner,
 					"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,"artifact_type":artifactType,"artifact_reference":artifactRef,
 					"min_platform_version":minPlatform,"manifest":manifest,"relationship_count":relCount,"active_partner_count":usageCount,"impact_metric_count":metricCount})
@@ -293,8 +321,12 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Key string `json:"key"`
 			Label string `json:"label"`
+			LabelEN string `json:"label_en"`
+			LabelHU string `json:"label_hu"`
 			GroupKey string `json:"group_key"`
 			Description string `json:"description"`
+			DescriptionEN string `json:"description_en"`
+			DescriptionHU string `json:"description_hu"`
 			Currency string `json:"currency"`
 			Version string `json:"version"`
 			LatestVersion string `json:"latest_version"`
@@ -312,23 +344,28 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 			DefaultActivationFee float64 `json:"default_activation_fee"`
 			Manifest map[string]any `json:"manifest"`
 		}
-		if common.Decode(r,&in)!=nil || !moduleKeyPattern.MatchString(in.Key) || strings.TrimSpace(in.Label)=="" || strings.TrimSpace(in.GroupKey)=="" {
-			common.APIError(w,400,"VALIDATION","Stable key, label and group are required");return
+		if common.Decode(r,&in)!=nil || !moduleKeyPattern.MatchString(in.Key) || strings.TrimSpace(in.GroupKey)=="" {
+			common.APIError(w,400,"VALIDATION","Stable key, bilingual labels and group are required");return
 		}
+		labelEN:=strings.TrimSpace(in.LabelEN); labelHU:=strings.TrimSpace(in.LabelHU); legacyLabel:=strings.TrimSpace(in.Label)
+		if labelEN==""{labelEN=legacyLabel}; if labelHU==""{labelHU=legacyLabel}
+		descEN:=strings.TrimSpace(in.DescriptionEN); descHU:=strings.TrimSpace(in.DescriptionHU); legacyDesc:=strings.TrimSpace(in.Description)
+		if descEN==""{descEN=legacyDesc}; if descHU==""{descHU=legacyDesc}
+		if labelEN==""||labelHU==""{common.APIError(w,400,"VALIDATION","English and Hungarian module labels are required");return}
 		if in.Currency==""{in.Currency="USD"}; if in.Version==""{in.Version="1.0.0"}; if in.LatestVersion==""{in.LatestVersion=in.Version}
 		if in.Availability==""{in.Availability="ACTIVE"}; in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
 		if !availabilityValues[in.Availability] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
 		manifest,_:=json.Marshal(in.Manifest); if len(manifest)==0{manifest=[]byte("{}")}
 		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
-			module_key,label,group_key,description,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
+			module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
 			source_repository,source_path,source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,FALSE,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)`,
-			in.Key,strings.TrimSpace(in.Label),in.GroupKey,strings.TrimSpace(in.Description),in.DefaultMonthlyPrice,in.DefaultActivationFee,in.Currency,in.Version,in.LatestVersion,
+			VALUES($1,$2,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11,FALSE,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb)`,
+			in.Key,labelEN,labelHU,in.GroupKey,descEN,descHU,in.DefaultMonthlyPrice,in.DefaultActivationFee,in.Currency,in.Version,in.LatestVersion,
 			in.Availability,in.ModuleType,strings.TrimSpace(in.OwnerTeam),strings.TrimSpace(in.SourceRepository),strings.TrimSpace(in.SourcePath),
 			strings.TrimSpace(in.SourceRef),strings.TrimSpace(in.SourceCommit),strings.TrimSpace(in.ArtifactType),strings.TrimSpace(in.ArtifactReference),
 			strings.TrimSpace(in.MinPlatformVersion),string(manifest))
 		if err!=nil{common.APIError(w,409,"CONFLICT","Module could not be created");return}
-		common.JSON(w,201,map[string]any{"key":in.Key,"label":strings.TrimSpace(in.Label),"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,"default_activation_fee":in.DefaultActivationFee,
+		common.JSON(w,201,map[string]any{"key":in.Key,"label":common.Localized(labelEN,labelHU,common.RequestLocale(r)),"label_en":labelEN,"label_hu":labelHU,"description_en":descEN,"description_hu":descHU,"group_key":in.GroupKey,"default_monthly_price":in.DefaultMonthlyPrice,"default_activation_fee":in.DefaultActivationFee,
 			"currency":in.Currency,"version":in.Version,"latest_version":in.LatestVersion,"availability":in.Availability,"module_type":in.ModuleType,"system":false})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
@@ -349,9 +386,14 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Method!=http.MethodPatch{common.APIError(w,405,"METHOD","Use PATCH");return}
+	locale:=common.RequestLocale(r)
 	var in struct {
 		Label *string `json:"label"`
+		LabelEN *string `json:"label_en"`
+		LabelHU *string `json:"label_hu"`
 		Description *string `json:"description"`
+		DescriptionEN *string `json:"description_en"`
+		DescriptionHU *string `json:"description_hu"`
 		GroupKey *string `json:"group_key"`
 		Availability *string `json:"availability"`
 		LatestVersion *string `json:"latest_version"`
@@ -369,27 +411,38 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		Manifest map[string]any `json:"manifest"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-	var label,description,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+	var labelEN,labelHU,descEN,descHU,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
 	var price,activationFee float64; var manifestRaw []byte
-	if err:=a.db.QueryRow(`SELECT label,description,group_key,default_monthly_price,default_activation_fee,availability,latest_version,module_type,owner_team,source_repository,source_path,
+	if err:=a.db.QueryRow(`SELECT label_en,label_hu,description_en,description_hu,group_key,default_monthly_price,default_activation_fee,availability,latest_version,module_type,owner_team,source_repository,source_path,
 		source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest FROM catalog.modules WHERE module_key=$1`,key).
-		Scan(&label,&description,&groupKey,&price,&activationFee,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
+		Scan(&labelEN,&labelHU,&descEN,&descHU,&groupKey,&price,&activationFee,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
 		common.APIError(w,404,"NOT_FOUND","Module not found");return
 	}
+	if in.Label!=nil{legacy:=strings.TrimSpace(*in.Label);if in.LabelEN==nil{labelEN=legacy};if in.LabelHU==nil{labelHU=legacy}}
+	if in.LabelEN!=nil{labelEN=strings.TrimSpace(*in.LabelEN)}
+	if in.LabelHU!=nil{labelHU=strings.TrimSpace(*in.LabelHU)}
+	if in.Description!=nil{legacy:=strings.TrimSpace(*in.Description);if in.DescriptionEN==nil{descEN=legacy};if in.DescriptionHU==nil{descHU=legacy}}
+	if in.DescriptionEN!=nil{descEN=strings.TrimSpace(*in.DescriptionEN)}
+	if in.DescriptionHU!=nil{descHU=strings.TrimSpace(*in.DescriptionHU)}
 	set:=func(dst *string,src *string){if src!=nil{*dst=strings.TrimSpace(*src)}}
-	set(&label,in.Label);set(&description,in.Description);set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
+	set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
 	set(&repo,in.SourceRepository);set(&path,in.SourcePath);set(&ref,in.SourceRef);set(&commit,in.SourceCommit);set(&artifactType,in.ArtifactType);set(&artifactRef,in.ArtifactReference);set(&minPlatform,in.MinPlatformVersion)
 	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
-	if label==""||price<0||activationFee<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid module update");return}
+	if labelEN==""||labelHU==""||price<0||activationFee<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid bilingual module update");return}
 	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
-	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,description=$3,group_key=$4,default_monthly_price=$5,default_activation_fee=$6,availability=$7,latest_version=$8,module_type=$9,
-		owner_team=$10,source_repository=$11,source_path=$12,source_ref=$13,source_commit=$14,artifact_type=$15,artifact_reference=$16,min_platform_version=$17,manifest=$18::jsonb,last_updated_at=NOW()
-		WHERE module_key=$1`,key,label,description,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
+	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,label_en=$2,label_hu=$3,description=$4,description_en=$4,description_hu=$5,group_key=$6,
+		default_monthly_price=$7,default_activation_fee=$8,availability=$9,latest_version=$10,module_type=$11,owner_team=$12,source_repository=$13,source_path=$14,
+		source_ref=$15,source_commit=$16,artifact_type=$17,artifact_reference=$18,min_platform_version=$19,manifest=$20::jsonb,last_updated_at=NOW()
+		WHERE module_key=$1`,key,labelEN,labelHU,descEN,descHU,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
 		common.APIError(w,409,"CONFLICT","Module could not be updated");return
 	}
-	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"group_key":groupKey,"default_monthly_price":price,"default_activation_fee":activationFee,"availability":availability,
+	common.JSON(w,200,map[string]any{
+		"key":key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
+		"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
+		"group_key":groupKey,"default_monthly_price":price,"default_activation_fee":activationFee,"availability":availability,
 		"latest_version":latestVersion,"module_type":moduleType,"owner_team":owner,"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,
-		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform})
+		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform,
+	})
 }
 
 func (a *app) moduleRelationships(w http.ResponseWriter,r *http.Request,key string,tail []string){
@@ -451,7 +504,7 @@ func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 	items:=[]map[string]any{}
 	counts:=map[string]int{}
 	for rows.Next(){
-		item,scanErr:=scanPartnerModule(rows)
+		item,scanErr:=scanPartnerModule(rows, common.RequestLocale(r))
 		if scanErr!=nil{common.APIError(w,500,"DB","Could not decode module usage");return}
 		counts[fmt.Sprint(item["status"])]++
 		items=append(items,item)
@@ -488,7 +541,7 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 404, "NOT_FOUND", "Route not found")
 			return
 		}
-		a.listPartnerModules(w, partnerID, true)
+		a.listPartnerModules(w, partnerID, true, common.RequestLocale(r))
 		return
 	}
 	if parts[1] != "modules" {
@@ -516,7 +569,7 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 405, "METHOD", "Use GET")
 			return
 		}
-		a.listPartnerModules(w, partnerID, false)
+		a.listPartnerModules(w, partnerID, false, common.RequestLocale(r))
 		return
 	}
 	if r.Method != http.MethodPatch {
@@ -703,7 +756,7 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 500, "DB", "Could not commit module update")
 		return
 	}
-	a.onePartnerModule(w, partnerID, key)
+	a.onePartnerModule(w, partnerID, key, common.RequestLocale(r))
 }
 
 func (a *app) partnerModuleCommercialHistory(w http.ResponseWriter, partnerID, key string) {
@@ -745,7 +798,7 @@ func (a *app) partnerModuleCommercialHistory(w http.ResponseWriter, partnerID, k
 	})
 }
 
-func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billable bool) {
+func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billable bool, locale string) {
 	q := partnerModuleSelect + ` WHERE pm.partner_id=$1`
 	if billable {
 		q += ` AND pm.status='ACTIVE' AND m.availability='ACTIVE'`
@@ -760,7 +813,7 @@ func (a *app) listPartnerModules(w http.ResponseWriter, partnerID string, billab
 	items := []map[string]any{}
 	extra := 0.0
 	for rows.Next() {
-		item, err := scanPartnerModule(rows)
+		item, err := scanPartnerModule(rows, locale)
 		if err != nil {
 			continue
 		}
@@ -879,8 +932,8 @@ func (a *app) internalModulePriceQuotes(w http.ResponseWriter, r *http.Request) 
 	common.JSON(w, 200, map[string]any{"items": items, "count": len(items)})
 }
 
-func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key string) {
-	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key))
+func (a *app) onePartnerModule(w http.ResponseWriter, partnerID, key, locale string) {
+	item, err := scanPartnerModule(a.db.QueryRow(partnerModuleSelect+` WHERE pm.partner_id=$1 AND pm.module_key=$2`, partnerID, key), locale)
 	if err != nil {
 		common.APIError(w, 404, "NOT_FOUND", "Module not found")
 		return
@@ -932,7 +985,7 @@ func (a *app) commercialMatrix(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		item, scanErr := scanPartnerModule(rows)
+		item, scanErr := scanPartnerModule(rows, common.RequestLocale(r))
 		if scanErr != nil {
 			common.APIError(w, 500, "DB", "Could not decode partner-module commercial matrix")
 			return
@@ -993,7 +1046,7 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 
 
 const partnerModuleSelect = `SELECT
-	pm.partner_id,m.module_key,m.label,m.group_key,g.label,pm.status,pm.visible,pm.included_in_base,
+	pm.partner_id,m.module_key,m.label_en,m.label_hu,m.group_key,g.label_en,g.label_hu,pm.status,pm.visible,pm.included_in_base,
 	m.default_monthly_price,pm.price_override,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),
 	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_DEFAULT' END,
 	np.new_price,np.effective_at,
@@ -1037,21 +1090,22 @@ func nullableTime(v sql.NullTime) any {
 	return v.Time.UTC()
 }
 
-func scanPartnerModule(s scanner) (map[string]any, error) {
-	var id, k, l, g, gl, st, currency, v, lv, availability, priceSource, activationSource string
+func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
+	var id, k, labelEN, labelHU, g, groupEN, groupHU, st, currency, v, lv, availability, priceSource, activationSource string
 	var vis, inc bool
 	var defPrice, price, defaultActivationFee, activationFee float64
 	var priceOverride, nextPrice, activationOverride, nextActivationFee sql.NullFloat64
 	var nextPriceAt, nextActivationFeeAt, activated sql.NullTime
 	var t time.Time
 	err := s.Scan(
-		&id,&k,&l,&g,&gl,&st,&vis,&inc,
+		&id,&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&st,&vis,&inc,
 		&defPrice,&priceOverride,&price,&priceSource,&nextPrice,&nextPriceAt,
 		&defaultActivationFee,&activationOverride,&activationFee,&activationSource,&nextActivationFee,&nextActivationFeeAt,
 		&currency,&v,&lv,&t,&availability,&activated,
 	)
 	return map[string]any{
-		"partner_id": id, "key": k, "label": l, "group_key": g, "group_label": gl,
+		"partner_id": id, "key": k, "label": common.Localized(labelEN,labelHU,locale), "label_en": labelEN, "label_hu": labelHU,
+		"group_key": g, "group_label": common.Localized(groupEN,groupHU,locale), "group_label_en": groupEN, "group_label_hu": groupHU,
 		"status": st, "visible": vis, "included_in_base": inc,
 		"default_monthly_price": defPrice, "price_override": nullableFloat(priceOverride),
 		"partner_price": price, "price_source": priceSource,

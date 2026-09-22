@@ -385,32 +385,37 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
 
   Future<void> addGroup() async {
     final key = TextEditingController();
-    final label = TextEditingController();
+    final labelEN = TextEditingController();
+    final labelHU = TextEditingController();
     final order = TextEditingController(text: (groups.length + 1).toString());
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => BrandDialog(
         title: 'Create module group',
-        subtitle: 'Create a stable classification used by the HIMATE module registry.',
+        subtitle: 'Create a stable registry classification with independent English and Hungarian labels.',
         icon: Icons.category_outlined,
-        width: 560,
+        width: 680,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ResponsiveFieldPair(
-            first: TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Group name *'))),
-            second: TextField(controller: key, decoration: InputDecoration(labelText: uiLiteral('Stable group key *'))),
+            first: TextField(controller: labelEN, decoration: InputDecoration(labelText: uiLiteral('English group name *'))),
+            second: TextField(controller: labelHU, decoration: InputDecoration(labelText: uiLiteral('Hungarian group name *'))),
           ),
           const SizedBox(height: 12),
-          TextField(controller: order, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: uiLiteral('Sort order'))),
+          ResponsiveFieldPair(
+            first: TextField(controller: key, decoration: InputDecoration(labelText: uiLiteral('Stable group key *'))),
+            second: TextField(controller: order, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: uiLiteral('Sort order'))),
+          ),
         ]),
         primaryLabel: 'Create group',
         onPrimary: () => Navigator.pop(context, true),
       ),
     );
-    if (ok == true && key.text.trim().isNotEmpty && label.text.trim().isNotEmpty) {
+    if (ok == true && key.text.trim().isNotEmpty && labelEN.text.trim().isNotEmpty && labelHU.text.trim().isNotEmpty) {
       try {
         await widget.api.post('/api/v1/module-groups', {
           'group_key': key.text.trim().toLowerCase(),
-          'label': label.text.trim(),
+          'label_en': labelEN.text.trim(),
+          'label_hu': labelHU.text.trim(),
           'sort_order': int.tryParse(order.text) ?? groups.length + 1,
         });
         await load();
@@ -419,15 +424,17 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         if (mounted) notify(e.toString(), failure: true);
       }
     }
-    key.dispose(); label.dispose(); order.dispose();
+    key.dispose(); labelEN.dispose(); labelHU.dispose(); order.dispose();
   }
 
   Future<Map<String, dynamic>?> moduleDialog({Map<String, dynamic>? module}) async {
     if (groups.isEmpty) return null;
     final editing = module != null;
-    final label = TextEditingController(text: s(module?['label']));
+    final labelEN = TextEditingController(text: s(module?['label_en']).isEmpty ? s(module?['label']) : s(module?['label_en']));
+    final labelHU = TextEditingController(text: s(module?['label_hu']).isEmpty ? s(module?['label']) : s(module?['label_hu']));
     final key = TextEditingController(text: s(module?['key']));
-    final description = TextEditingController(text: s(module?['description']));
+    final descriptionEN = TextEditingController(text: s(module?['description_en']).isEmpty ? s(module?['description']) : s(module?['description_en']));
+    final descriptionHU = TextEditingController(text: s(module?['description_hu']).isEmpty ? s(module?['description']) : s(module?['description_hu']));
     final price = TextEditingController(text: number(module?['default_monthly_price']).toStringAsFixed(2));
     final activationFee = TextEditingController(text: number(module?['default_activation_fee']).toStringAsFixed(2));
     final owner = TextEditingController(text: s(module?['owner_team']));
@@ -449,17 +456,26 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: editing ? 'Edit module registry' : 'Create module',
-          subtitle: 'Business metadata, source identity, artifact reference and compatibility.',
+          subtitle: 'Bilingual business metadata, source identity, artifact reference and compatibility.',
           icon: Icons.hub_outlined,
-          width: 860,
+          width: 900,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const _DialogSectionLabel('IDENTITY & COMMERCIAL'),
+            const _DialogSectionLabel('BILINGUAL IDENTITY'),
             const SizedBox(height: 10),
             ResponsiveFieldPair(
-              first: TextField(controller: label, decoration: InputDecoration(labelText: uiLiteral('Module name *'))),
-              second: TextField(controller: key, readOnly: editing, decoration: InputDecoration(labelText: uiLiteral('Stable module key *'))),
+              first: TextField(controller: labelEN, decoration: InputDecoration(labelText: uiLiteral('English module name *'))),
+              second: TextField(controller: labelHU, decoration: InputDecoration(labelText: uiLiteral('Hungarian module name *'))),
             ),
             const SizedBox(height: 12),
+            TextField(controller: key, readOnly: editing, decoration: InputDecoration(labelText: uiLiteral('Stable module key *'))),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: descriptionEN, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('English description'))),
+              second: TextField(controller: descriptionHU, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Hungarian description'))),
+            ),
+            const SizedBox(height: 18),
+            const _DialogSectionLabel('COMMERCIAL & CLASSIFICATION'),
+            const SizedBox(height: 10),
             ResponsiveFieldPair(
               first: DropdownButtonFormField<String>(
                 value: group,
@@ -481,17 +497,15 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-                value: availability,
-                decoration: InputDecoration(labelText: uiLiteral('Availability')),
-                items: const [
-                  DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
-                  DropdownMenuItem(value: 'UNAVAILABLE', child: LText('UNAVAILABLE')),
-                  DropdownMenuItem(value: 'DEPRECATED', child: LText('DEPRECATED')),
-                ],
-                onChanged: (value) { if (value != null) setLocal(() => availability = value); },
-              ),
-            const SizedBox(height: 12),
-            TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Description'))),
+              value: availability,
+              decoration: InputDecoration(labelText: uiLiteral('Availability')),
+              items: const [
+                DropdownMenuItem(value: 'ACTIVE', child: LText('ACTIVE')),
+                DropdownMenuItem(value: 'UNAVAILABLE', child: LText('UNAVAILABLE')),
+                DropdownMenuItem(value: 'DEPRECATED', child: LText('DEPRECATED')),
+              ],
+              onChanged: (value) { if (value != null) setLocal(() => availability = value); },
+            ),
             const SizedBox(height: 18),
             const _DialogSectionLabel('SOURCE & RELEASE'),
             const SizedBox(height: 10),
@@ -523,15 +537,17 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           ]),
           primaryLabel: editing ? 'Save module' : 'Create module',
           onPrimary: () {
-            if (label.text.trim().isEmpty || key.text.trim().isEmpty) {
-              setLocal(() => dialogError = 'Module name and stable key are required.');
+            if (labelEN.text.trim().isEmpty || labelHU.text.trim().isEmpty || key.text.trim().isEmpty) {
+              setLocal(() => dialogError = 'English name, Hungarian name and stable key are required.');
               return;
             }
             Navigator.pop(dialogContext, <String, dynamic>{
               if (!editing) 'key': key.text.trim().toLowerCase(),
-              'label': label.text.trim(),
+              'label_en': labelEN.text.trim(),
+              'label_hu': labelHU.text.trim(),
               'group_key': group,
-              'description': description.text.trim(),
+              'description_en': descriptionEN.text.trim(),
+              'description_hu': descriptionHU.text.trim(),
               'currency': s(module?['currency']).isEmpty ? 'USD' : s(module?['currency']),
               if (!editing) 'version': latestVersion.text.trim().isEmpty ? '1.0.0' : latestVersion.text.trim(),
               'latest_version': latestVersion.text.trim().isEmpty ? '1.0.0' : latestVersion.text.trim(),
@@ -553,7 +569,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         ),
       ),
     );
-    for (final controller in [label,key,description,price,activationFee,owner,repo,path,sourceRef,commit,artifactType,artifactReference,latestVersion,minPlatform]) {
+    for (final controller in [labelEN,labelHU,key,descriptionEN,descriptionHU,price,activationFee,owner,repo,path,sourceRef,commit,artifactType,artifactReference,latestVersion,minPlatform]) {
       controller.dispose();
     }
     return result;

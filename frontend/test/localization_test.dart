@@ -109,6 +109,29 @@ void main() {
     }
   });
 
+  test('START-23.5 bilingual dynamic-model editor labels are localized', () {
+    for (final value in <String>[
+      'English category name *',
+      'Hungarian category name *',
+      'English group name *',
+      'Hungarian group name *',
+      'English module name *',
+      'Hungarian module name *',
+      'English display label *',
+      'Hungarian display label *',
+      'English role name *',
+      'Hungarian role name *',
+      'English description',
+      'Hungarian description',
+    ]) {
+      expect(
+        HimateI18n.literal('hu_HU', value),
+        isNot(value),
+        reason: 'Missing Hungarian START-23.5 translation for $value',
+      );
+    }
+  });
+
   test('START-23 dynamic CMS and commercial messages are localized', () {
     expect(HimateI18n.literal('hu_HU', 'Section 4'), 'Szekció 4');
     expect(HimateI18n.literal('hu_HU', 'Version 12'), 'Verzió 12');
