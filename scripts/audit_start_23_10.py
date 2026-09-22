@@ -38,7 +38,7 @@ require("0.8.14-start-23.10" in render, "Render release is not START-23.10")
 require("version: 0.8.14-start-23.10" in openapi, "OpenAPI release is not START-23.10")
 
 for token in (
-    'defaultProvider: normalizeProviderName(common.Env("HIMATE_RUNTIME_PROVIDER","local"))',
+    'defaultProvider: strings.ToLower(strings.TrimSpace(common.Env("HIMATE_RUNTIME_PROVIDER", "local")))',
     "validateEnvironmentProvider",
     "PRODUCTION_PROVIDER_REQUIRED",
     'a.defaultProvider != "local"',
