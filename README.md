@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–23 implementation status
+## START-01–23.1 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -194,6 +194,14 @@ The architecture remains microservice/container based. It is **not** being colla
 - existing privacy and concurrent-load audits remain mandatory regression gates
 - START-24 Security Acceptance remains a separate final gate
 
+### START-23.1 — Functional Contract Reset & Complete UI Inventory
+- reopens product acceptance after the START-23 route-oriented QA proved insufficient for mutation completeness
+- machine-readable inventory maps current UI actions and system automations to API, backend owner, persistence, audit, localization state, E2E proof requirement and closure phase
+- every Flutter POST/PUT/PATCH/DELETE/multipart mutation must be represented in the contract matrix
+- explicit blockers cover placeholders, mock Dashboard data, CMS/design product gaps, dynamic EN/HU schema gaps, subscription-state inconsistency, production billing scheduling and missing payment-provider integration
+- representative mutation canary proves write → persistence → readback → authorization/audit behavior instead of GET-only route reachability
+- START-24 is blocked until the complete START-23.2–23.12 closure program passes
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -211,7 +219,10 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-22.2_ACCEPTANCE.md`
 - `docs/START-22.3_ACCEPTANCE.md`
 - `docs/START-23_ACCEPTANCE.md`
+- `docs/START-23.1_ACCEPTANCE.md`
+- `docs/START-23.1_FUNCTIONAL_MATRIX.json`
+- `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-22.3 remain protected by their historical acceptance suites. START-23 additionally requires `docs/START-23_ACCEPTANCE.md`, the responsive viewport/browser tests, `scripts/audit_start_23_frontend.py`, and `scripts/smoke_start_23.sh`. START-23 is accepted only when Go vet/unit/race/build, Flutter analyze/test/release build, the complete START-01–22.3 regression, privacy/load audits and the dedicated responsive/functional QA gates are green. After merge, development pauses for a short closure audit before START-24 Security Acceptance.
+START-22 through START-23 remain protected by their historical acceptance suites. START-23.1 additionally requires the machine-readable functional matrix, `scripts/audit_start_23_1_contract.py`, and `scripts/smoke_start_23_1_mutation_canary.sh`. A GET-only route check is no longer accepted as mutation evidence. START-24 Security Acceptance remains blocked until START-23.2–23.12 close every matrix blocker and START-23.12 completes the full mutation/production acceptance.
