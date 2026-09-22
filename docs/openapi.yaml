@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.3-start-22.3
+  version: 0.8.4-start-23
   description: >
     Authenticated REST contract for the START-01 through START-22.3 HIMATE
     control-plane surface. Partner business databases remain isolated behind
