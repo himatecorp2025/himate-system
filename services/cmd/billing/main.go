@@ -878,6 +878,7 @@ func (a *app) effectiveModuleFees(ctx context.Context, id string, mods []map[str
 		FROM billing.module_subscriptions s
 		LEFT JOIN billing.module_period_snapshots ps
 			ON ps.partner_id=s.partner_id AND ps.module_key=s.module_key AND ps.period_start=s.period_start
+			AND ps.billing_model=s.billing_model
 		WHERE s.partner_id=$1`, id)
 	if err != nil { return 0, nil, err }
 	for rows.Next() {
@@ -1274,10 +1275,11 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT s.partner_id,s.module_key,s.currency,s.activation_date,s.period_start,s.period_end,s.price,
 		s.auto_renew,s.cancel_at_period_end,s.payment_status,s.lifecycle_state,
 		s.cancellation_requested_at,s.cancellation_effective_at,s.cancellation_requested_by,s.cancellation_reason,
-		s.updated_at,COALESCE(ps.included_in_base,FALSE)
+		s.updated_at,s.billing_model,COALESCE(ps.included_in_base,FALSE)
 		FROM billing.module_subscriptions s
 		LEFT JOIN billing.module_period_snapshots ps
 			ON ps.partner_id=s.partner_id AND ps.module_key=s.module_key AND ps.period_start=s.period_start
+			AND ps.billing_model=s.billing_model
 		WHERE s.partner_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY s.partner_id,s.module_key`
 	rows, err := a.db.Query(query, args...)
 	if err != nil {
@@ -1288,14 +1290,14 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	quoteRequests := []map[string]string{}
 	for rows.Next() {
-		var partnerID, key, currency, payment, lifecycle, cancellationRequestedBy, cancellationReason string
+		var partnerID, key, currency, payment, lifecycle, cancellationRequestedBy, cancellationReason, billingModel string
 		var activation, start, end, updated time.Time
 		var cancellationRequestedAt sql.NullTime
 		var cancellationEffectiveAt sql.NullTime
 		var price float64
 		var renew, cancel, currentIncluded bool
 		if err := rows.Scan(&partnerID, &key, &currency, &activation, &start, &end, &price, &renew, &cancel, &payment, &lifecycle,
-			&cancellationRequestedAt,&cancellationEffectiveAt,&cancellationRequestedBy,&cancellationReason,&updated, &currentIncluded); err != nil {
+			&cancellationRequestedAt,&cancellationEffectiveAt,&cancellationRequestedBy,&cancellationReason,&updated,&billingModel, &currentIncluded); err != nil {
 			common.APIError(w, 500, "DB", "Could not decode subscription matrix")
 			return
 		}
@@ -1305,7 +1307,7 @@ func (a *app) subscriptionMatrix(w http.ResponseWriter, r *http.Request) {
 			"period_start": start.Format("2006-01-02"), "period_end_exclusive": end.Format("2006-01-02"),
 			"price": price, "current_period_included_in_base": currentIncluded,
 			"auto_renew": renew, "cancel_at_period_end": cancel,
-			"payment_status": payment, "lifecycle_state": lifecycle,
+			"payment_status": payment, "lifecycle_state": lifecycle, "billing_model":billingModel, "proration":"NONE",
 			"cancellation_requested_at": nullableTimeValue(cancellationRequestedAt),
 			"cancellation_effective_at": nullableDateValue(cancellationEffectiveAt),
 			"cancellation_requested_by": cancellationRequestedBy,
