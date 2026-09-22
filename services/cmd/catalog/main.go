@@ -386,9 +386,14 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Method!=http.MethodPatch{common.APIError(w,405,"METHOD","Use PATCH");return}
+	locale:=common.RequestLocale(r)
 	var in struct {
 		Label *string `json:"label"`
+		LabelEN *string `json:"label_en"`
+		LabelHU *string `json:"label_hu"`
 		Description *string `json:"description"`
+		DescriptionEN *string `json:"description_en"`
+		DescriptionHU *string `json:"description_hu"`
 		GroupKey *string `json:"group_key"`
 		Availability *string `json:"availability"`
 		LatestVersion *string `json:"latest_version"`
@@ -406,27 +411,38 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 		Manifest map[string]any `json:"manifest"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-	var label,description,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
+	var labelEN,labelHU,descEN,descHU,groupKey,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform string
 	var price,activationFee float64; var manifestRaw []byte
-	if err:=a.db.QueryRow(`SELECT label,description,group_key,default_monthly_price,default_activation_fee,availability,latest_version,module_type,owner_team,source_repository,source_path,
+	if err:=a.db.QueryRow(`SELECT label_en,label_hu,description_en,description_hu,group_key,default_monthly_price,default_activation_fee,availability,latest_version,module_type,owner_team,source_repository,source_path,
 		source_ref,source_commit,artifact_type,artifact_reference,min_platform_version,manifest FROM catalog.modules WHERE module_key=$1`,key).
-		Scan(&label,&description,&groupKey,&price,&activationFee,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
+		Scan(&labelEN,&labelHU,&descEN,&descHU,&groupKey,&price,&activationFee,&availability,&latestVersion,&moduleType,&owner,&repo,&path,&ref,&commit,&artifactType,&artifactRef,&minPlatform,&manifestRaw);err!=nil{
 		common.APIError(w,404,"NOT_FOUND","Module not found");return
 	}
+	if in.Label!=nil{legacy:=strings.TrimSpace(*in.Label);if in.LabelEN==nil{labelEN=legacy};if in.LabelHU==nil{labelHU=legacy}}
+	if in.LabelEN!=nil{labelEN=strings.TrimSpace(*in.LabelEN)}
+	if in.LabelHU!=nil{labelHU=strings.TrimSpace(*in.LabelHU)}
+	if in.Description!=nil{legacy:=strings.TrimSpace(*in.Description);if in.DescriptionEN==nil{descEN=legacy};if in.DescriptionHU==nil{descHU=legacy}}
+	if in.DescriptionEN!=nil{descEN=strings.TrimSpace(*in.DescriptionEN)}
+	if in.DescriptionHU!=nil{descHU=strings.TrimSpace(*in.DescriptionHU)}
 	set:=func(dst *string,src *string){if src!=nil{*dst=strings.TrimSpace(*src)}}
-	set(&label,in.Label);set(&description,in.Description);set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
+	set(&groupKey,in.GroupKey);set(&availability,in.Availability);set(&latestVersion,in.LatestVersion);set(&moduleType,in.ModuleType);set(&owner,in.OwnerTeam)
 	set(&repo,in.SourceRepository);set(&path,in.SourcePath);set(&ref,in.SourceRef);set(&commit,in.SourceCommit);set(&artifactType,in.ArtifactType);set(&artifactRef,in.ArtifactReference);set(&minPlatform,in.MinPlatformVersion)
 	moduleType=strings.ToUpper(moduleType); if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
-	if label==""||price<0||activationFee<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid module update");return}
+	if labelEN==""||labelHU==""||price<0||activationFee<0||!availabilityValues[availability]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid bilingual module update");return}
 	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
-	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,description=$3,group_key=$4,default_monthly_price=$5,default_activation_fee=$6,availability=$7,latest_version=$8,module_type=$9,
-		owner_team=$10,source_repository=$11,source_path=$12,source_ref=$13,source_commit=$14,artifact_type=$15,artifact_reference=$16,min_platform_version=$17,manifest=$18::jsonb,last_updated_at=NOW()
-		WHERE module_key=$1`,key,label,description,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
+	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,label_en=$2,label_hu=$3,description=$4,description_en=$4,description_hu=$5,group_key=$6,
+		default_monthly_price=$7,default_activation_fee=$8,availability=$9,latest_version=$10,module_type=$11,owner_team=$12,source_repository=$13,source_path=$14,
+		source_ref=$15,source_commit=$16,artifact_type=$17,artifact_reference=$18,min_platform_version=$19,manifest=$20::jsonb,last_updated_at=NOW()
+		WHERE module_key=$1`,key,labelEN,labelHU,descEN,descHU,groupKey,price,activationFee,availability,latestVersion,moduleType,owner,repo,path,ref,commit,artifactType,artifactRef,minPlatform,string(manifestRaw));err!=nil{
 		common.APIError(w,409,"CONFLICT","Module could not be updated");return
 	}
-	common.JSON(w,200,map[string]any{"key":key,"label":label,"description":description,"group_key":groupKey,"default_monthly_price":price,"default_activation_fee":activationFee,"availability":availability,
+	common.JSON(w,200,map[string]any{
+		"key":key,"label":common.Localized(labelEN,labelHU,locale),"label_en":labelEN,"label_hu":labelHU,
+		"description":common.Localized(descEN,descHU,locale),"description_en":descEN,"description_hu":descHU,
+		"group_key":groupKey,"default_monthly_price":price,"default_activation_fee":activationFee,"availability":availability,
 		"latest_version":latestVersion,"module_type":moduleType,"owner_team":owner,"source_repository":repo,"source_path":path,"source_ref":ref,"source_commit":commit,
-		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform})
+		"artifact_type":artifactType,"artifact_reference":artifactRef,"min_platform_version":minPlatform,
+	})
 }
 
 func (a *app) moduleRelationships(w http.ResponseWriter,r *http.Request,key string,tail []string){
