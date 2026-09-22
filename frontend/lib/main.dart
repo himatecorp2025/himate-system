@@ -2233,7 +2233,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
                             '${result['title'] ?? result['id'] ?? ''}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w650, color: brandNavy, fontSize: 12.5),
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: brandNavy, fontSize: 12.5),
                           ),
                           subtitle: LText(
                             '${result['subtitle'] ?? resource}',
