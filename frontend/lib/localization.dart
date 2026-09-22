@@ -1201,6 +1201,7 @@ class HimateI18n {
     'Desktop': 'Asztali gép',
     'Long-data safe': 'Hosszú adatokra felkészítve',
     'Touch safe': 'Érintésre optimalizálva',
+    'Encrypted · restore verified': 'Titkosított · visszaállítás ellenőrizve',
   };
 
 
