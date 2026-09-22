@@ -209,11 +209,7 @@ company_before="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile
 company_changed="$(printf '%s' "$company_before" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["contact_name"]="START 23.6 Acceptance "+sys.argv[1]; print(json.dumps(d))' "$STAMP")"
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_changed" "$BASE_URL/api/v1/billing/profile" >/dev/null
 company_after="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
-printf '%s' "$company_after" | python3 - "$STAMP" <<'PY'
-import json,sys
-d=json.load(sys.stdin); assert d["contact_name"]=="START 23.6 Acceptance "+sys.argv[1]
-PY
-curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_before" "$BASE_URL/api/v1/billing/profile" >/dev/null
+printf '%s' "$company_after" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["contact_name"]=="START 23.6 Acceptance "+sys.argv[1]' "$STAMP"
 echo ok
 
 printf 'signed-in profile mutation persists and restores... '
@@ -225,10 +221,7 @@ PY
 )"
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$profile_patch" "$BASE_URL/api/v1/profile" >/dev/null
 profile_after="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/profile")"
-printf '%s' "$profile_after" | python3 - "$STAMP" <<'PY'
-import json,sys
-d=json.load(sys.stdin); assert d["job_title"]=="START 23.6 Owner "+sys.argv[1]; assert d["phone"]=="+1 212 555 2366"
-PY
+printf '%s' "$profile_after" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["job_title"]=="START 23.6 Owner "+sys.argv[1]; assert d["phone"]=="+1 212 555 2366"' "$STAMP"
 profile_restore="$(printf '%s' "$profile_before" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({"name":d.get("name",""),"email":d.get("email",""),"preferred_locale":d.get("preferred_locale","en_US"),"timezone":d.get("timezone","UTC"),"job_title":d.get("job_title",""),"phone":d.get("phone","")}))')"
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$profile_restore" "$BASE_URL/api/v1/profile" >/dev/null
 echo ok
@@ -257,10 +250,7 @@ notifications="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/notifications?li
 notification_id="$(printf '%s' "$notifications" | python3 -c 'import json,sys; d=json.load(sys.stdin); unread=[x for x in d["items"] if not x["read"]]; assert unread, d; print(unread[0]["id"])')"
 curl -fsS -b "$OWNER_COOKIE" -X POST "$BASE_URL/api/v1/notifications/$notification_id/read" >/dev/null
 after_one="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/notifications?limit=100")"
-printf '%s' "$after_one" | python3 - "$notification_id" <<'PY'
-import json,sys
-d=json.load(sys.stdin); nid=int(sys.argv[1]); x=next(x for x in d["items"] if int(x["id"])==nid); assert x["read"] is True
-PY
+printf '%s' "$after_one" | python3 -c 'import json,sys; d=json.load(sys.stdin); nid=int(sys.argv[1]); x=next(x for x in d["items"] if int(x["id"])==nid); assert x["read"] is True' "$notification_id"
 curl -fsS -b "$OWNER_COOKIE" -X POST "$BASE_URL/api/v1/notifications/read-all" >/dev/null
 after_all="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/notifications?limit=100")"
 printf '%s' "$after_all" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["unread_count"]==0,d'
