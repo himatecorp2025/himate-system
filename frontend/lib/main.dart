@@ -444,6 +444,7 @@ class _HimateAppState extends State<HimateApp> {
   @override
   void initState() {
     super.initState();
+    unawaited(_loadPublishedBrandAssets());
     final storedLocale = html.window.localStorage['himate_locale'];
     if (storedLocale == 'hu_HU' || storedLocale == 'en_US') {
       anonymousLocale = storedLocale!;
@@ -534,6 +535,21 @@ class _HimateAppState extends State<HimateApp> {
       paths.add('/api/v1/admin/users');
     }
     api.prefetch(paths);
+  }
+
+  Future<void> _loadPublishedBrandAssets() async {
+    try {
+      final response = await api
+          .get('/public/v1/cms/design', force: true)
+          .timeout(const Duration(seconds: 2));
+      final raw = response['design'];
+      if (raw is Map) {
+        applyPublishedBrandAssets(Map<String, dynamic>.from(raw));
+        if (mounted) setState(() {});
+      }
+    } catch (_) {
+      // Brand customization is optional; built-in assets remain the safe fallback.
+    }
   }
 
   Future<void> _restoreLoginSession() async {
@@ -1136,7 +1152,7 @@ class _DesktopLoginComposition extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                HimateLogo(onDark: true, width: logoWidth),
+                HimateLogo(onDark: true, width: logoWidth, assetUrl: himateLoginWordmarkUrl),
                 const Spacer(),
                 LText(
                   'Culture\nConnects\nPeople',
@@ -1223,7 +1239,7 @@ class _CompactLoginComposition extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const HimateLogo(onDark: true, width: 188),
+          HimateLogo(onDark: true, width: 188, assetUrl: himateLoginWordmarkUrl),
           SizedBox(height: narrow ? 58 : 90),
           LText(
             'Culture Connects People',
@@ -1414,21 +1430,23 @@ class HimateLogo extends StatelessWidget {
     this.compact = false,
     this.shadow = true,
     this.onDark = false,
+    this.assetUrl,
   });
 
   final double width;
   final bool compact;
   final bool shadow;
   final bool onDark;
+  final String? assetUrl;
 
   @override
   Widget build(BuildContext context) {
     final targetWidth = compact ? width : width;
     final targetHeight = compact ? width : width / _himateWordmarkAspectRatio;
-    final assetUrl = compact ? himateIconUrl : himateWordmarkUrl;
+    final resolvedAssetUrl = assetUrl ?? (compact ? himateRuntimeIconUrl : himateRuntimeWordmarkUrl);
 
     final image = Image.network(
-      assetUrl,
+      resolvedAssetUrl,
       width: targetWidth,
       height: targetHeight,
       fit: BoxFit.contain,
@@ -1476,7 +1494,7 @@ class BrandMark extends StatelessWidget {
     return SizedBox.square(
       dimension: size,
       child: Image.network(
-        himateIconUrl,
+        himateRuntimeIconUrl,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
         errorBuilder: (_, __, ___) => DecoratedBox(
