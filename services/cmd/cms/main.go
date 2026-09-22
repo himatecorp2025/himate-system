@@ -80,15 +80,17 @@ type navigationItem struct {
 	SortOrder int `json:"sort_order"`
 }
 type siteDesign struct {
-	LogoMediaAssetID string `json:"logo_media_asset_id"`
-	Navy string `json:"navy"`
-	Gold string `json:"gold"`
-	Background string `json:"background"`
-	TextColor string `json:"text_color"`
-	HeadingFont string `json:"heading_font"`
-	BodyFont string `json:"body_font"`
-	ButtonRadius int `json:"button_radius"`
-	Navigation []navigationItem `json:"navigation"`
+	LogoMediaAssetID string            `json:"logo_media_asset_id"`
+	Assets           map[string]string `json:"assets"`
+	LayoutKey        string            `json:"layout_key"`
+	Navy             string            `json:"navy"`
+	Gold             string            `json:"gold"`
+	Background       string            `json:"background"`
+	TextColor        string            `json:"text_color"`
+	HeadingFont      string            `json:"heading_font"`
+	BodyFont         string            `json:"body_font"`
+	ButtonRadius     int               `json:"button_radius"`
+	Navigation       []navigationItem  `json:"navigation"`
 }
 
 type pageRow struct {
@@ -140,6 +142,11 @@ func main(){
 	mux.HandleFunc("/public/v1/cms/seo",a.publicSEOSettings)
 	mux.HandleFunc("/preview/v1/cms/pages/",a.previewPage)
 	mux.HandleFunc("/preview/v1/cms/media/",a.previewMedia)
+	mux.HandleFunc("/preview/v1/cms/design",a.previewDesign)
+	mux.HandleFunc("/preview/v1/cms/design/media/",a.previewDesignMedia)
+	mux.HandleFunc("/internal/v1/cms/partner-design/",a.partnerDesignInternal)
+	mux.HandleFunc("/internal/v1/cms/partner-media/",a.partnerMediaInternal)
+	mux.HandleFunc("/public/v1/cms/partner-design/",a.publicPartnerDesign)
 	common.Run(log,"cms",common.Env("PORT","10000"),common.InternalAuth(a.token,mux))
 }
 
@@ -241,6 +248,44 @@ func (a *app)migrate(ctx context.Context)error{
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				published_at TIMESTAMPTZ
 			)`,
+		}},
+		{Version:6,Name:"start-23-8-design-preview-token",Statements:[]string{
+			`ALTER TABLE cms.site_design ADD COLUMN IF NOT EXISTS preview_token_hash TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE cms.site_design ADD COLUMN IF NOT EXISTS preview_token_issued_at TIMESTAMPTZ`,
+		}},
+		{Version:7,Name:"start-23-8-tenant-design-profiles",Statements:[]string{
+			`ALTER TABLE cms.media_assets ADD COLUMN IF NOT EXISTS owner_type TEXT NOT NULL DEFAULT 'PLATFORM'`,
+			`ALTER TABLE cms.media_assets ADD COLUMN IF NOT EXISTS owner_id TEXT NOT NULL DEFAULT '_platform'`,
+			`CREATE INDEX IF NOT EXISTS cms_media_owner_idx ON cms.media_assets(owner_type,owner_id,created_at DESC)`,
+			`CREATE TABLE IF NOT EXISTS cms.design_profiles(
+				id TEXT PRIMARY KEY,
+				owner_type TEXT NOT NULL CHECK(owner_type IN ('CATALOG','PARTNER')),
+				owner_id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				description TEXT NOT NULL DEFAULT '',
+				theme JSONB NOT NULL DEFAULT '{}'::jsonb,
+				catalog_visible BOOLEAN NOT NULL DEFAULT FALSE,
+				created_by TEXT NOT NULL DEFAULT '',
+				updated_by TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(owner_type,owner_id,name)
+			)`,
+			`CREATE INDEX IF NOT EXISTS cms_design_profiles_owner_idx ON cms.design_profiles(owner_type,owner_id,updated_at DESC)`,
+			`CREATE TABLE IF NOT EXISTS cms.design_scope_state(
+				scope_type TEXT NOT NULL CHECK(scope_type IN ('PARTNER')),
+				scope_id TEXT NOT NULL,
+				active_profile_id TEXT NOT NULL REFERENCES cms.design_profiles(id),
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				PRIMARY KEY(scope_type,scope_id)
+			)`,
+			`INSERT INTO cms.design_profiles(id,owner_type,owner_id,name,description,theme,catalog_visible,created_by,updated_by)
+			 VALUES
+			 ('theme_classic_editorial','CATALOG','_catalog','Classic Editorial','Editorial typography with restrained HIMATE-style spacing','{"layout_key":"classic_editorial","navy":"#06172C","gold":"#D7AE62","background":"#F8F9FB","text_color":"#1F2937","heading_font":"Cormorant Garamond","body_font":"Inter","button_radius":6,"assets":{}}'::jsonb,TRUE,'system','system'),
+			 ('theme_modern_grid','CATALOG','_catalog','Modern Grid','Contemporary grid-led visual family','{"layout_key":"modern_grid","navy":"#10233F","gold":"#C99A45","background":"#F4F6F8","text_color":"#182230","heading_font":"Inter","body_font":"Inter","button_radius":12,"assets":{}}'::jsonb,TRUE,'system','system'),
+			 ('theme_minimal','CATALOG','_catalog','Minimal','Minimal high-contrast visual family','{"layout_key":"minimal","navy":"#111827","gold":"#B8893C","background":"#FFFFFF","text_color":"#111827","heading_font":"Georgia","body_font":"Arial","button_radius":2,"assets":{}}'::jsonb,TRUE,'system','system')
+			 ON CONFLICT(id) DO NOTHING`,
 		}},
 	})
 }
@@ -532,7 +577,12 @@ func (a *app)promotePreview(w http.ResponseWriter,r *http.Request,p pageRow){
 	if _,err=tx.ExecContext(r.Context(),`UPDATE cms.pages SET preview_version_id=$2,preview_token_hash=$3,preview_token_issued_at=NOW(),updated_at=NOW() WHERE id=$1`,p.ID,v.ID,tokenHash(rawToken));err!=nil{common.APIError(w,500,"DB","Could not activate preview version");return}
 	if err=a.auditTx(r.Context(),tx,p.ID,v.ID,"PREVIEW_CREATED",actor(r),correlationID(r),map[string]any{"draft_version_id":draft.ID},decodeVersion(v));err!=nil{common.APIError(w,500,"DB","Could not audit CMS preview");return}
 	if err=tx.Commit();err!=nil{common.APIError(w,500,"DB","Could not commit CMS preview");return}
-	common.JSON(w,201,map[string]any{"preview":decodeVersion(v),"preview_token":rawToken,"preview_path":"/preview/v1/cms/pages/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken)})
+	common.JSON(w,201,map[string]any{
+		"preview":decodeVersion(v),
+		"preview_token":rawToken,
+		"preview_path":"/preview/v1/cms/pages/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken),
+		"preview_html_path":"/cms-preview/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken),
+	})
 }
 
 func (a *app)rotatePreviewToken(w http.ResponseWriter,r *http.Request,p pageRow){
@@ -542,7 +592,11 @@ func (a *app)rotatePreviewToken(w http.ResponseWriter,r *http.Request,p pageRow)
 	if _,err:=a.db.ExecContext(r.Context(),`UPDATE cms.pages SET preview_token_hash=$2,preview_token_issued_at=NOW(),updated_at=NOW() WHERE id=$1`,p.ID,tokenHash(rawToken));err!=nil{common.APIError(w,500,"DB","Could not rotate preview token");return}
 	_ = a.audit(r.Context(),p.ID,p.PreviewVersionID,"PREVIEW_TOKEN_ROTATED",actor(r),correlationID(r),map[string]any{},map[string]any{"preview_version_id":p.PreviewVersionID})
 	v,_:=a.getVersion(p.PreviewVersionID)
-	common.JSON(w,200,map[string]any{"preview_token":rawToken,"preview_path":"/preview/v1/cms/pages/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken)})
+	common.JSON(w,200,map[string]any{
+		"preview_token":rawToken,
+		"preview_path":"/preview/v1/cms/pages/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken),
+		"preview_html_path":"/cms-preview/"+url.PathEscape(v.Slug)+"?token="+url.QueryEscape(rawToken),
+	})
 }
 
 func (a *app)publishedConflict(ctx context.Context,pageID string,in versionInput)error{
@@ -795,7 +849,16 @@ func (a *app)publicMedia(w http.ResponseWriter,r *http.Request){
 	id:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/public/v1/cms/media/"),"/")
 	var exists bool;_ = a.db.QueryRow(`SELECT
 		EXISTS(SELECT 1 FROM cms.published_media_refs WHERE media_id=$1)
-		OR EXISTS(SELECT 1 FROM cms.site_design WHERE id=1 AND published->>'logo_media_asset_id'=$1)
+		OR EXISTS(SELECT 1 FROM cms.site_design WHERE id=1 AND (
+			published->>'logo_media_asset_id'=$1
+			OR EXISTS(SELECT 1 FROM jsonb_each_text(COALESCE(published->'assets','{}'::jsonb)) AS asset WHERE asset.value=$1)
+		))
+		OR EXISTS(
+			SELECT 1 FROM cms.design_scope_state s
+			JOIN cms.design_profiles p ON p.id=s.active_profile_id
+			CROSS JOIN LATERAL jsonb_each_text(COALESCE(p.theme->'assets','{}'::jsonb)) AS asset
+			WHERE s.scope_type='PARTNER' AND asset.value=$1
+		)
 		OR EXISTS(SELECT 1 FROM cms.seo_settings WHERE id=1 AND published->>'default_og_image_asset_id'=$1)`,id).Scan(&exists)
 	if !exists{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Published media not found");return}

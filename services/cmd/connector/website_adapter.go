@@ -283,6 +283,12 @@ func (a *app) commercialState(w http.ResponseWriter,r *http.Request) {
 		"/api/v1/partners/"+url.PathEscape(cred.PartnerID),&partner);err!=nil {
 		common.APIError(w,502,"PARTNER_UNAVAILABLE","Could not resolve partner domain binding");return
 	}
+	var design map[string]any
+	if err:=a.connectorInternalGET(ctx,a.cmsHost,
+		"/public/v1/cms/partner-design/"+url.PathEscape(cred.PartnerID),&design);err!=nil {
+		common.APIError(w,502,"DESIGN_UNAVAILABLE","Could not resolve authoritative partner visual theme");return
+	}
+
 	primaryDomain:=normalizeDomain(fmt.Sprint(partner["primary_domain"]))
 	if primaryDomain!="" {
 		allowed:=false
@@ -338,6 +344,8 @@ func (a *app) commercialState(w http.ResponseWriter,r *http.Request) {
 			"website":partner["website"],
 		},
 		"adapter":publicAdapter,
+		"design":design,
+		"design_contract_version":"START-23.8",
 		"entitlements":entitlements,
 		"active_module_count":activeCount,
 		"service_cycle":map[string]any{

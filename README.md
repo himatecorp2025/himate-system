@@ -2,7 +2,7 @@
 
 HIMATE is the central control plane for separately deployed arts-sector partner systems.
 
-## START-01–23.7 implementation status
+## START-01–23.8 implementation status
 
 ### START-01–08 — Control-plane foundation
 - authenticated administrator control plane with explicit REST boundaries
@@ -146,7 +146,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Partner Portal role namespace is non-interoperable with HIMATE administrator roles
 - server-paginated partner reads and bounded page-level aggregation
 - encrypted durable restore artifacts with mandatory restore verification
-- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–23.7 smoke tests in CI
+- Go race tests, Flutter browser tests, Docker Compose health and end-to-end START-01–23.8 smoke tests in CI
 
 
 ### START-22.1 — Internal Control Plane Completion
@@ -271,6 +271,23 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.11-start-23.7`
 - START-23.7 acceptance is `docs/START-23.7_ACCEPTANCE.md`, `scripts/audit_start_23_7.py` and `scripts/smoke_start_23_7.sh`
 
+### START-23.8 — CMS, Design & SEO Completion
+- arbitrary CMS sections absent from source templates render as escaped responsive public components
+- arbitrary published CMS slugs are served as real server-rendered public pages instead of redirecting to the landing page
+- CMS Preview opens private noindex full HTML through the same renderer used by publication; raw JSON preview remains API-compatible
+- checksum-backed CMS media is proven through both token-scoped preview and public published URLs
+- published Design Guide settings are applied server-side to public colors, typography, button radius and bilingual navigation
+- brand assets are independently assignable for header/footer wordmarks, browser favicon, app/touch icon, login logo and email/document logo; published consumers use safe built-in fallbacks
+- Design Guide preview uses a 30-minute hashed token and renders the real landing website in desktop 1440, tablet 834 and mobile 390 viewport wrappers
+- reusable tenant-ready design profiles separate visual theme state from CMS content, modules, billing, workflows and application mechanics
+- Partner Portal exposes a design catalog plus tenant-owned custom profiles and checksum-backed tenant media
+- partner theme activation changes only `cms.design_scope_state.active_profile_id`; tenant media is isolated and cross-tenant asset reuse fails closed
+- public partner runtimes resolve the active skin from `/public/v1/cms/partner-design/{partnerId}`, so a theme swap requires no content migration
+- global SEO & Keywords publish is proven in initial HTML, including combined keywords and Organization JSON-LD
+- EN/HU sibling pages, second publish and rollback are covered by dedicated end-to-end acceptance
+- release contract version is `0.8.12-start-23.8`
+- START-23.8 acceptance is `docs/START-23.8_ACCEPTANCE.md`, `scripts/audit_start_23_8.py` and `scripts/smoke_start_23_8.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -295,10 +312,11 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.5_ACCEPTANCE.md`
 - `docs/START-23.6_ACCEPTANCE.md`
 - `docs/START-23.7_ACCEPTANCE.md`
+- `docs/START-23.8_ACCEPTANCE.md`
 - `docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.

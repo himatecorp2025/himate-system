@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–23.7
+# HIMATE control-plane architecture — START-01–23.8
 
 ```text
 Browser / Admin / Partner Portal / Search crawler
@@ -66,6 +66,12 @@ Each domain is an independently buildable Go binary and Docker image. The public
 The HIMATE services currently share the control-plane PostgreSQL instance while owning domain schemas. Partner business databases remain physically isolated.
 
 START-23.7 makes the Evidence boundary authoritative for commercial file proof: the Partner Workspace uploads bytes through Evidence to Storage, while Billing accepts commercial document references only after Evidence confirms same-partner ownership, file backing and a fresh SHA-256/size integrity check. Reports freeze Impact/Evidence state into immutable snapshots and regenerate PDFs only from those persisted snapshots.
+
+START-23.8 completes the public CMS render boundary. CMS remains authoritative for versioned content, Design Guide and SEO state, while Gateway owns initial HTML composition. Published sections that are absent from source templates are emitted as escaped responsive components, and published non-template slugs are rendered inside a generic HIMATE public shell. Page and Design previews use hash-only expiring preview tokens and the same HTML rendering path. Published Design state is applied only after an explicit publish, and published SEO is inserted into the server response before JavaScript.
+
+START-23.8 also makes visual theming a tenant-ready domain rather than coupling it to content. A design profile contains layout family, color/typography tokens, button radius and named brand-asset slots only. CMS content, partner data, modules, billing and workflows remain separate authorities. Reusable catalog profiles and partner-owned custom profiles live in `cms.design_profiles`; `cms.design_scope_state` stores the single active profile pointer. Switching a theme therefore changes one visual pointer without copying or rewriting content or mechanics. Partner-owned design media carries explicit tenant ownership, and custom profiles may reference only media from the same tenant. Public partner runtimes consume the active visual profile independently through `/public/v1/cms/partner-design/{partnerId}`. This separation allows later commercial/package rules to restrict which themes or how many custom profiles are available without changing the content or runtime model.
+
+Published brand assets are named by surface rather than collapsed into one logo field: header wordmark, footer wordmark, favicon, app/touch icon, login logo and email/document logo. Gateway SSR consumes the public-page assets, Flutter consumes the published login/app assets, and system email consumes the published email logo, each with a built-in fallback.
 
 ### Scaling model
 The topology permits independent horizontal/vertical scaling of the hot services, isolates provider failures, and prevents partner-runtime operations from requiring a Gateway rebuild. HTTP clients use connection pooling and explicit timeouts.

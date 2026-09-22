@@ -17,6 +17,15 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   final radius = TextEditingController();
 
   String logoMediaAssetId = '';
+  Map<String, String> assetSlots = <String, String>{
+    'header_wordmark': '',
+    'footer_wordmark': '',
+    'favicon': '',
+    'app_icon': '',
+    'login_logo': '',
+    'email_logo': '',
+  };
+  String layoutKey = 'classic_editorial';
   String headingFont = 'Cormorant Garamond';
   String bodyFont = 'Inter';
   List<Map<String, dynamic>> navigation = <Map<String, dynamic>>[];
@@ -27,6 +36,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   DateTime? publishedAt;
 
   static const fonts = <String>['Cormorant Garamond', 'Inter', 'Georgia', 'Arial'];
+  static const layouts = <String>['classic_editorial', 'modern_grid', 'minimal'];
 
   @override
   void initState() {
@@ -46,6 +56,15 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
 
   Map<String, dynamic> defaultDesign() => <String, dynamic>{
         'logo_media_asset_id': '',
+        'assets': <String, String>{
+          'header_wordmark': '',
+          'footer_wordmark': '',
+          'favicon': '',
+          'app_icon': '',
+          'login_logo': '',
+          'email_logo': '',
+        },
+        'layout_key': 'classic_editorial',
         'navy': '#06172C',
         'gold': '#D7AE62',
         'background': '#F8F9FB',
@@ -71,6 +90,29 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
     textColor.text = (design['text_color'] ?? '#1F2937').toString();
     radius.text = ((design['button_radius'] as num?)?.toInt() ?? 6).toString();
     logoMediaAssetId = (design['logo_media_asset_id'] ?? '').toString();
+    final rawAssets = design['assets'];
+    final nextAssets = <String, String>{
+      'header_wordmark': '',
+      'footer_wordmark': '',
+      'favicon': '',
+      'app_icon': '',
+      'login_logo': '',
+      'email_logo': '',
+    };
+    if (rawAssets is Map) {
+      for (final entry in rawAssets.entries) {
+        if (nextAssets.containsKey(entry.key.toString())) {
+          nextAssets[entry.key.toString()] = entry.value?.toString() ?? '';
+        }
+      }
+    }
+    if ((nextAssets['header_wordmark'] ?? '').isEmpty && logoMediaAssetId.isNotEmpty) {
+      nextAssets['header_wordmark'] = logoMediaAssetId;
+    }
+    assetSlots = nextAssets;
+    logoMediaAssetId = assetSlots['header_wordmark'] ?? logoMediaAssetId;
+    final requestedLayout = (design['layout_key'] ?? 'classic_editorial').toString();
+    layoutKey = layouts.contains(requestedLayout) ? requestedLayout : 'classic_editorial';
     headingFont = fonts.contains((design['heading_font'] ?? '').toString()) ? (design['heading_font'] ?? '').toString() : 'Cormorant Garamond';
     bodyFont = fonts.contains((design['body_font'] ?? '').toString()) ? (design['body_font'] ?? '').toString() : 'Inter';
     final rawNav = design['navigation'];
@@ -128,7 +170,12 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   }
 
   Map<String, dynamic> payload() => <String, dynamic>{
-        'logo_media_asset_id': logoMediaAssetId,
+        'logo_media_asset_id': assetSlots['header_wordmark'] ?? logoMediaAssetId,
+        'assets': <String, String>{
+          for (final entry in assetSlots.entries)
+            if (entry.value.trim().isNotEmpty) entry.key: entry.value.trim(),
+        },
+        'layout_key': layoutKey,
         'navy': navy.text.trim().toUpperCase(),
         'gold': gold.text.trim().toUpperCase(),
         'background': background.text.trim().toUpperCase(),
@@ -172,6 +219,35 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: LText(e.toString()), backgroundColor: brandDanger));
       }
       return false;
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> createPreview(String viewport) async {
+    if (!await saveDraft(quiet: true)) return;
+    if (mounted) setState(() => saving = true);
+    try {
+      final response = await widget.api.post('/api/v1/cms/design/preview');
+      final pathKey = switch (viewport) {
+        'tablet' => 'tablet_path',
+        'mobile' => 'mobile_path',
+        _ => 'desktop_path',
+      };
+      final path = (response[pathKey] ?? response['preview_path'] ?? '').toString();
+      if (path.isEmpty) throw StateError('Design preview returned no preview path.');
+      html.window.open(path, '_blank');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: LText('${viewport[0].toUpperCase()}${viewport.substring(1)} website preview opened.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: LText(e.toString()), backgroundColor: brandDanger),
+        );
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -231,12 +307,32 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
         decoration: InputDecoration(labelText: uiLiteral(label), hintText: '#06172C'),
       );
 
+  Widget assetField(String label, String slot, List<Map<String, dynamic>> imageMedia, {String emptyLabel = 'Use built-in asset'}) {
+    final current = assetSlots[slot] ?? '';
+    final known = current.isEmpty || imageMedia.any((asset) => (asset['id'] ?? '').toString() == current);
+    return DropdownButtonFormField<String>(
+      value: known ? current : '',
+      decoration: InputDecoration(labelText: uiLiteral(label)),
+      items: <DropdownMenuItem<String>>[
+        DropdownMenuItem(value: '', child: LText(emptyLabel)),
+        for (final asset in imageMedia)
+          DropdownMenuItem(
+            value: (asset['id'] ?? '').toString(),
+            child: LText((asset['original_filename'] ?? asset['id'] ?? '').toString()),
+          ),
+      ],
+      onChanged: (value) => setState(() {
+        assetSlots[slot] = value ?? '';
+        if (slot == 'header_wordmark') logoMediaAssetId = value ?? '';
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) return const _BrandLoading();
 
     final imageMedia = widget.media.where((asset) => (asset['mime_type'] ?? '').toString().startsWith('image/')).toList();
-    final knownLogo = logoMediaAssetId.isEmpty || imageMedia.any((asset) => (asset['id'] ?? '').toString() == logoMediaAssetId);
     final previewNavy = parseColor(navy.text, brandNavyDeep);
     final previewGold = parseColor(gold.text, brandGold);
     final previewBackground = parseColor(background.text, brandIvory);
@@ -247,7 +343,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
       children: [
         _SectionHeader(
           title: 'Design Guide',
-          subtitle: 'Global website brand controls for logo, colors, typography, buttons and bilingual navigation.',
+          subtitle: 'Global brand controls with independent header/footer logos, favicon, app/login/email assets, typography, layout family and bilingual navigation.',
           trailing: _MiniCounter(label: 'v$version'),
         ),
         const SizedBox(height: 12),
@@ -302,18 +398,35 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
 
             final controls = Column(
               children: [
+                ResponsiveFieldPair(
+                  first: assetField('Header wordmark / logo', 'header_wordmark', imageMedia, emptyLabel: 'Default HIMATE wordmark'),
+                  second: assetField('Footer wordmark / logo', 'footer_wordmark', imageMedia, emptyLabel: 'Use header wordmark'),
+                ),
+                const SizedBox(height: 12),
+                ResponsiveFieldPair(
+                  first: assetField('Browser favicon', 'favicon', imageMedia, emptyLabel: 'Default favicon'),
+                  second: assetField('App / touch icon', 'app_icon', imageMedia, emptyLabel: 'Default app icon'),
+                ),
+                const SizedBox(height: 12),
+                ResponsiveFieldPair(
+                  first: assetField('Login surface logo', 'login_logo', imageMedia, emptyLabel: 'Use header wordmark'),
+                  second: assetField('Email / document logo', 'email_logo', imageMedia, emptyLabel: 'Use header wordmark'),
+                ),
+                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: knownLogo ? logoMediaAssetId : '',
-                  decoration: InputDecoration(labelText: uiLiteral('Website logo')),
-                  items: <DropdownMenuItem<String>>[
-                    const DropdownMenuItem(value: '', child: LText('Default HIMATE logo')),
-                    for (final asset in imageMedia)
-                      DropdownMenuItem(
-                        value: (asset['id'] ?? '').toString(),
-                        child: LText((asset['original_filename'] ?? asset['id'] ?? '').toString()),
-                      ),
+                  value: layoutKey,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Layout family'),
+                    helperText: uiLiteral('Content and system logic remain unchanged when the layout family changes.'),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'classic_editorial', child: LText('Classic editorial')),
+                    DropdownMenuItem(value: 'modern_grid', child: LText('Modern grid')),
+                    DropdownMenuItem(value: 'minimal', child: LText('Minimal')),
                   ],
-                  onChanged: (value) => setState(() => logoMediaAssetId = value ?? ''),
+                  onChanged: (value) {
+                    if (value != null) setState(() => layoutKey = value);
+                  },
                 ),
                 const SizedBox(height: 12),
                 ResponsiveFieldPair(
@@ -456,6 +569,21 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
               onPressed: saving ? null : () => saveDraft(),
               icon: const Icon(Icons.save_outlined),
               label: const LText('Save design draft'),
+            ),
+            OutlinedButton.icon(
+              onPressed: saving ? null : () => createPreview('desktop'),
+              icon: const Icon(Icons.desktop_windows_outlined),
+              label: const LText('Desktop preview'),
+            ),
+            OutlinedButton.icon(
+              onPressed: saving ? null : () => createPreview('tablet'),
+              icon: const Icon(Icons.tablet_mac_outlined),
+              label: const LText('Tablet preview'),
+            ),
+            OutlinedButton.icon(
+              onPressed: saving ? null : () => createPreview('mobile'),
+              icon: const Icon(Icons.phone_iphone_outlined),
+              label: const LText('Mobile preview'),
             ),
             FilledButton.icon(
               onPressed: saving ? null : publish,

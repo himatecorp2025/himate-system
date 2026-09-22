@@ -284,6 +284,11 @@
       "id": "automation.backups",
       "name": "Automation / Backups",
       "scope": "Scheduled backup and mandatory restore verification"
+    },
+    {
+      "id": "partner_portal.design",
+      "name": "Partner Portal / Design",
+      "scope": "Tenant-isolated design catalog, custom themes, brand asset slots and active profile switching"
     }
   ],
   "contracts": [
@@ -1236,9 +1241,9 @@
       "persistence": "cms pages + versions",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "required: EN/HU page create -> preview -> publish",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: create EN/HU page siblings -> full HTML preview -> publish -> localized public SSR",
       "notes": ""
     },
     {
@@ -1254,9 +1259,9 @@
       "persistence": "cms versions",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "required: arbitrary sections render publicly",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: arbitrary section draft -> preview HTML -> public SSR after publish",
       "notes": ""
     },
     {
@@ -1272,9 +1277,9 @@
       "persistence": "cms media + storage object + SHA-256",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "required: upload -> preview -> published use",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: checksum-backed PNG upload -> token preview media -> public published media byte comparison",
       "notes": ""
     },
     {
@@ -1285,15 +1290,15 @@
       "frontend_file": "frontend/lib/cms_page.dart",
       "source_token": "'/api/v1/cms/pages/' + id + '/preview'",
       "method": "POST",
-      "api_pattern": "/api/v1/cms/pages/{pageId}/preview",
+      "api_pattern": "/api/v1/cms/pages/{pageId}/preview + /cms-preview/{slug}",
       "backend_service": "cms + gateway",
       "persistence": "cms preview token/state",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "required: real full-page desktop/tablet/mobile preview",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_8.sh: preview token -> /cms-preview/{slug} private noindex full HTML with arbitrary component",
+      "notes": "Preview token remains API-compatible while preview_html_path renders a private noindex full HTML page through Gateway."
     },
     {
       "id": "CMS-PUBLISH",
@@ -1308,9 +1313,9 @@
       "persistence": "cms published versions",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "required: publish -> initial SSR HTML",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: publish -> arbitrary slug initial HTML contains CMS content + SEO + media",
       "notes": ""
     },
     {
@@ -1326,9 +1331,9 @@
       "persistence": "cms versions",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "required: rollback -> published render",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: second publish -> rollback first version -> public HTML restores prior content",
       "notes": ""
     },
     {
@@ -1340,14 +1345,14 @@
       "source_token": "Add section",
       "method": "PUT",
       "api_pattern": "/api/v1/cms/pages/{pageId}/draft",
-      "backend_service": "cms + gateway",
+      "backend_service": "cms + gateway SSR",
       "persistence": "cms version exists but public renderer depends on source section",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "required: new section creates real public component",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_8.sh: source-absent brand-story section becomes real himate-cms-dynamic public component",
+      "notes": "Sections absent from source-controlled HTML are generated as escaped, media-aware public components and inserted into the dynamic root or before the footer."
     },
     {
       "id": "AGREEMENT-EDIT",
@@ -1416,9 +1421,9 @@
       "persistence": "cms design draft/version",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "existing business completion smoke; full visual preview still required",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: PUT design draft -> authoritative GET readback",
       "notes": ""
     },
     {
@@ -1430,32 +1435,32 @@
       "source_token": "'/api/v1/cms/design/publish'",
       "method": "POST",
       "api_pattern": "/api/v1/cms/design/publish",
-      "backend_service": "cms + public site",
+      "backend_service": "cms + gateway SSR",
       "persistence": "cms published design",
       "audit": "central gateway mutation audit",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "existing business completion smoke + browser proof required",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_8.sh: publish design -> public HTML CSS variables/navigation mutation + bilingual nav",
+      "notes": "Published Design Guide is applied server-side to public colors, typography, logo, button radius and bilingual navigation."
     },
     {
       "id": "DESIGN-PREVIEW",
       "surface": "website.design",
       "ui": "Full website design preview",
-      "kind": "placeholder",
+      "kind": "mutation",
       "frontend_file": "frontend/lib/design_guide.dart",
-      "source_token": "HIMATE website preview",
-      "method": "NONE",
-      "api_pattern": "NONE",
-      "backend_service": "PARTIAL_UI_ONLY",
-      "persistence": "NONE",
-      "audit": "NONE",
-      "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "source_token": "'/api/v1/cms/design/preview'",
+      "method": "POST + GET",
+      "api_pattern": "/api/v1/cms/design/preview + /design-preview",
+      "backend_service": "cms + gateway",
+      "persistence": "cms.site_design.preview_token_hash + preview_token_issued_at",
+      "audit": "DESIGN_PREVIEW_CREATED",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "required: actual desktop/tablet/mobile website preview",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_8.sh: one-time design preview token -> desktop/tablet/mobile full-site wrappers + raw website render",
+      "notes": "30-minute hashed preview token renders the real landing website in 1440/834/390 viewport wrappers; preview logo access is token-bound."
     },
     {
       "id": "ENV-ACTION",
@@ -1722,9 +1727,9 @@
       "persistence": "cms SEO draft/version",
       "audit": "SEO_SETTINGS_DRAFT_SAVED",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "existing business completion smoke",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: PUT bilingual global SEO draft -> authoritative GET readback",
       "notes": ""
     },
     {
@@ -1736,14 +1741,14 @@
       "source_token": "'/api/v1/cms/seo/publish'",
       "method": "POST",
       "api_pattern": "/api/v1/cms/seo/publish",
-      "backend_service": "cms + gateway",
+      "backend_service": "cms + gateway SSR",
       "persistence": "cms published SEO",
       "audit": "SEO_SETTINGS_PUBLISHED",
       "localization_state": "PARTIAL",
-      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.8",
-      "e2e_proof": "existing business completion smoke + public HTML proof",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_8.sh: publish global SEO -> keywords + organization JSON-LD in initial public HTML",
+      "notes": "Published global SEO is combined into CMS page SEO and rendered into initial HTML; static fallback pages receive global keywords and Organization JSON-LD."
     },
     {
       "id": "BILLING-SCHEDULER",
@@ -1960,7 +1965,97 @@
       "target_phase": "23.4",
       "e2e_proof": "scripts/smoke_start_23_4.sh: provider-backed activation settlement and idempotency",
       "notes": "Commercial editor cannot write provider-managed paid fields directly."
+    },
+    {
+      "id": "PARTNER-DESIGN-MEDIA",
+      "surface": "partner_portal.design",
+      "ui": "Upload partner-owned brand asset",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_design.dart",
+      "source_token": "'/partner/api/v1/design/media'",
+      "method": "POST multipart",
+      "api_pattern": "/partner/api/v1/design/media",
+      "backend_service": "gateway + cms + storage",
+      "persistence": "cms.media_assets owner_type=PARTNER + Storage object",
+      "audit": "PARTNER_DESIGN_MEDIA_UPLOADED",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.8",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: partner-owned image upload -> SHA-256 readback -> tenant isolation",
+      "notes": "Brand media is tenant-owned and can be assigned independently to header/footer wordmark, favicon, app icon, login logo and email/document logo slots."
+    },
+    {
+      "id": "PARTNER-DESIGN-PROFILE-CREATE",
+      "surface": "partner_portal.design",
+      "ui": "Create custom partner design profile",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_design.dart",
+      "source_token": "'/partner/api/v1/design/profiles'",
+      "method": "POST",
+      "api_pattern": "/partner/api/v1/design/profiles",
+      "backend_service": "gateway + cms",
+      "persistence": "cms.design_profiles owner_type=PARTNER",
+      "audit": "PARTNER_THEME_PROFILE_CREATED",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.8",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: create custom visual-only theme -> authoritative readback",
+      "notes": "Theme profile stores visual tokens and partner-owned asset IDs only; CMS content, module configuration and business mechanics are not part of the profile."
+    },
+    {
+      "id": "PARTNER-DESIGN-PROFILE-UPDATE",
+      "surface": "partner_portal.design",
+      "ui": "Edit custom partner design profile",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_design.dart",
+      "source_token": "'/partner/api/v1/design/profiles/'",
+      "method": "PUT",
+      "api_pattern": "/partner/api/v1/design/profiles/{profileId}",
+      "backend_service": "gateway + cms",
+      "persistence": "cms.design_profiles theme JSONB",
+      "audit": "PARTNER_THEME_PROFILE_UPDATED",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.8",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: edit partner theme tokens/assets -> authoritative readback",
+      "notes": "Catalog-owned profiles are immutable to partners; only partner-owned profiles are editable."
+    },
+    {
+      "id": "PARTNER-DESIGN-ACTIVATE",
+      "surface": "partner_portal.design",
+      "ui": "Activate catalog or custom design without changing content/mechanics",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_design.dart",
+      "source_token": "'/partner/api/v1/design/profiles/'",
+      "method": "POST",
+      "api_pattern": "/partner/api/v1/design/profiles/{profileId}/activate",
+      "backend_service": "gateway + cms",
+      "persistence": "cms.design_scope_state active_profile_id",
+      "audit": "PARTNER_THEME_ACTIVATED",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.8",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: snapshot company/modules -> theme switch -> identical company/modules + changed active_profile_id",
+      "notes": "Activation changes one visual-profile pointer only. Audit records content_binding=UNCHANGED and mechanics_binding=UNCHANGED."
+    },
+    {
+      "id": "PARTNER-DESIGN-PUBLIC",
+      "surface": "partner_portal.design",
+      "ui": "Resolve active partner design for website/runtime rendering",
+      "kind": "read",
+      "frontend_file": "frontend/lib/partner_design.dart",
+      "source_token": "designState['active_profile_id']",
+      "method": "GET",
+      "api_pattern": "/public/v1/cms/partner-design/{partnerId}",
+      "backend_service": "cms via gateway public CMS boundary",
+      "persistence": "cms.design_scope_state + cms.design_profiles",
+      "audit": "read-only",
+      "localization_state": "NOT_APPLICABLE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.8",
+      "e2e_proof": "scripts/smoke_start_23_8.sh: public partner theme read returns activated profile and visual tokens",
+      "notes": "Partner website/runtime consumers can resolve the active theme independently from content and business APIs, enabling skin swaps without content migration."
     }
   ],
-  "completed_through": "23.7"
+  "completed_through": "23.8"
 }

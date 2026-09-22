@@ -405,6 +405,11 @@ services:
           type: pserv
           name: himate-partners
           property: hostport
+      - key: CMS_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-cms
+          property: hostport
 
   - type: pserv
     name: himate-provisioning
@@ -583,7 +588,7 @@ services:
       - key: HIMATE_ENV
         value: production
       - key: HIMATE_APP_VERSION
-        value: 0.8.11-start-23.7
+        value: 0.8.12-start-23.8
       - key: COOKIE_SECURE
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS

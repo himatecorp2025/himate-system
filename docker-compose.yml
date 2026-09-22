@@ -243,6 +243,7 @@ services:
       CATALOG_HOSTPORT: catalog:10000
       BILLING_HOSTPORT: billing:10000
       PARTNERS_HOSTPORT: partners:10000
+      CMS_HOSTPORT: cms:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -253,6 +254,8 @@ services:
       billing:
         condition: service_started
       partners:
+        condition: service_started
+      cms:
         condition: service_started
 
   provisioning:
@@ -364,7 +367,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.8.11-start-23.7
+      HIMATE_APP_VERSION: 0.8.12-start-23.8
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456

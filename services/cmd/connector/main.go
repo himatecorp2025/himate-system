@@ -25,6 +25,7 @@ type app struct {
 	catalogHost string
 	billingHost string
 	partnersHost string
+	cmsHost string
 	client *http.Client
 	dataKeyring start22Keyring
 }
@@ -50,6 +51,7 @@ func main() {
 		catalogHost:os.Getenv("CATALOG_HOSTPORT"),
 		billingHost:os.Getenv("BILLING_HOSTPORT"),
 		partnersHost:os.Getenv("PARTNERS_HOSTPORT"),
+		cmsHost:os.Getenv("CMS_HOSTPORT"),
 		client:&http.Client{Timeout:6*time.Second},
 		dataKeyring:dataKeyring,
 	}

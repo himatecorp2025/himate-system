@@ -261,12 +261,12 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     final id = (page['id'] ?? '').toString();
     try {
       final result = await widget.api.post('/api/v1/cms/pages/' + id + '/preview');
-      final path = (result['preview_path'] ?? '').toString();
+      final path = (result['preview_html_path'] ?? result['preview_path'] ?? '').toString();
       if (path.isNotEmpty) html.window.open(path, '_blank');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: LText('Preview created. The raw preview token is returned once and opened in a new tab.'),
+            content: LText('Full-page CMS preview created and opened in a private noindex tab.'),
             behavior: SnackBarBehavior.floating,
           ),
         );

@@ -361,6 +361,9 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   List<Map<String, dynamic>> subscriptions = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> users = <Map<String, dynamic>>[];
+  Map<String, dynamic> designState = <String, dynamic>{};
+  List<Map<String, dynamic>> designProfiles = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> designMedia = <Map<String, dynamic>>[];
 
   static const nav = <_PortalNavSpec>[
     _PortalNavSpec('Overview', Icons.dashboard_outlined, 'dashboard.read'),
@@ -368,6 +371,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     _PortalNavSpec('Results', Icons.insights_outlined, 'impact.read'),
     _PortalNavSpec('Billing', Icons.receipt_long_outlined, 'billing.read'),
     _PortalNavSpec('Company', Icons.apartment_outlined, 'company.read'),
+    _PortalNavSpec('Design', Icons.palette_outlined, 'design.read'),
     _PortalNavSpec('Users', Icons.group_outlined, 'users.read'),
   ];
 
@@ -406,6 +410,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         can('billing.read') ? safeGet('/partner/api/v1/billing/subscriptions') : Future.value(null),
         can('billing.read') ? safeGet('/partner/api/v1/billing/invoices') : Future.value(null),
         can('users.read') ? safeGet('/partner/api/v1/users') : Future.value(null),
+        can('design.read') ? safeGet('/partner/api/v1/design') : Future.value(null),
+        can('design.read') ? safeGet('/partner/api/v1/design/media') : Future.value(null),
       ]);
       if (!mounted) return;
       setState(() {
@@ -418,6 +424,12 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         subscriptions = extras[0] == null ? <Map<String, dynamic>>[] : items(extras[0]!);
         invoices = extras[1] == null ? <Map<String, dynamic>>[] : items(extras[1]!);
         users = extras[2] == null ? <Map<String, dynamic>>[] : items(extras[2]!);
+        designState = extras[3] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[3]!);
+        final rawProfiles = designState['profiles'];
+        designProfiles = rawProfiles is List
+            ? rawProfiles.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+            : <Map<String, dynamic>>[];
+        designMedia = extras[4] == null ? <Map<String, dynamic>>[] : items(extras[4]!);
         loading = false;
       });
     } catch (e) {
@@ -1013,6 +1025,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       case 'Results': return resultsPage();
       case 'Billing': return billingPage();
       case 'Company': return companyPage();
+      case 'Design': return designPage();
       case 'Users': return usersPage();
       default: return overview();
     }
