@@ -20,8 +20,10 @@ STAMP="$(date +%s)"
 RESET_PASSWORD="$(python3 -c 'import secrets; print("Rr6!"+secrets.token_urlsafe(24))')"
 ADMIN_PASSWORD="$(python3 -c 'import secrets; print("Aa6!"+secrets.token_urlsafe(24))')"
 PARTNER_PASSWORD="$(python3 -c 'import secrets; print("Pp6!"+secrets.token_urlsafe(24))')"
+PARTNER_BACKUP_PASSWORD="$(python3 -c 'import secrets; print("Pb6!"+secrets.token_urlsafe(24))')"
 ADMIN_EMAIL="ci-start236-admin-$STAMP@example.com"
 PARTNER_EMAIL="ci-start236-partner-$STAMP@example.com"
+PARTNER_BACKUP_EMAIL="ci-start236-partner-backup-$STAMP@example.com"
 LEAD_EMAIL="ci-start236-lead-$STAMP@example.com"
 ROLE_KEY="ci_236_operator_$STAMP"
 
@@ -189,6 +191,13 @@ printf '%s' "$portal_me" | python3 -c 'import json,sys; d=json.load(sys.stdin); 
 echo ok
 
 printf 'Partner Portal role/status changes invalidate prior sessions... '
+backup_owner_payload="$(python3 - "$PARTNER_BACKUP_EMAIL" "$PARTNER_BACKUP_PASSWORD" <<'PY'
+import json,sys
+print(json.dumps({"name":"START 23.6 Backup Owner","email":sys.argv[1],"password":sys.argv[2],"role":"owner"}))
+PY
+)"
+backup_owner="$(curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$backup_owner_payload" "$BASE_URL/api/v1/partners/$partner_id/portal-users")"
+printf '%s' "$backup_owner" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["role"]=="owner"; assert d["active"] is True'
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"role":"viewer"}' "$BASE_URL/api/v1/partners/$partner_id/portal-users/$portal_id" >/dev/null
 test "$(status "$PARTNER_COOKIE" GET "/partner/api/v1/auth/me")" = "401"
 partner_login "$PARTNER_COOKIE_2" "$PARTNER_EMAIL" "$PARTNER_PASSWORD" >/dev/null
