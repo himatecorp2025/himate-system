@@ -922,9 +922,10 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
                       onChanged: (value) => setState(() => noindex = value),
                     ),
                     const Divider(height: 28),
-                    Row(
-                      children: [
-                        Expanded(child: LText('Content sections', style: Theme.of(context).textTheme.titleMedium)),
+                    ResponsiveActionBar(
+                      breakpoint: 520,
+                      leading: LText('Content sections', style: Theme.of(context).textTheme.titleMedium),
+                      actions: [
                         OutlinedButton.icon(
                           onPressed: addSection,
                           icon: const Icon(Icons.add_rounded),
@@ -959,11 +960,10 @@ class _CMSDraftEditorDialogState extends State<CMSDraftEditorDialog> {
               const Divider(height: 1),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
+                child: ResponsiveActionBar(
+                  breakpoint: 520,
+                  actions: [
                     TextButton(onPressed: () => Navigator.pop(context), child: const LText('Cancel')),
-                    const SizedBox(width: 8),
                     FilledButton.icon(
                       onPressed: () => Navigator.pop(context, payload()),
                       icon: const Icon(Icons.save_outlined),
