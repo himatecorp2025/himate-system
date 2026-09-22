@@ -627,7 +627,8 @@ func (a *app) passwordResetRequest(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, http.StatusServiceUnavailable, "RESET_DELIVERY", "Password recovery is temporarily unavailable")
 			return
 		}
-	} else if a.env != "production" {
+	}
+	if a.env != "production" {
 		response["development_token"] = token
 	}
 	a.enqueuePasswordResetAudit(r, "PASSWORD_RESET_REQUESTED", u.ID, http.StatusAccepted, "SUCCESS")
