@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,10 +34,16 @@ render = read("render.yaml")
 openapi = read("docs/openapi.yaml")
 smoke = read("scripts/smoke_start_23_8.sh")
 
-# Release contract.
-require("0.8.12-start-23.8" in compose, "Compose release version is not START-23.8")
-require("0.8.12-start-23.8" in render, "Render release version is not START-23.8")
-require("version: 0.8.12-start-23.8" in openapi, "OpenAPI release version is not START-23.8")
+# Release contract. Later START-23.x phases must preserve the START-23.8
+# guarantees, so this historical guard accepts any release at or beyond 23.8.
+def release_phase(text: str):
+    match = re.search(r"0\\.8\\.\\d+-start-(23\\.\\d+)", text)
+    require(match is not None, "START-23.x release identifier is missing")
+    return tuple(int(x) for x in match.group(1).split("."))
+
+require(release_phase(compose) >= (23, 8), "Compose release regressed below START-23.8")
+require(release_phase(render) >= (23, 8), "Render release regressed below START-23.8")
+require(release_phase(openapi) >= (23, 8), "OpenAPI release regressed below START-23.8")
 
 # CMS full-page preview remains API-compatible while adding a real HTML route.
 for token in (
