@@ -243,13 +243,13 @@ func partnerAuditAction(r *http.Request)string{
 	path:=r.URL.Path
 	switch{
 	case path=="/partner/api/v1/company"&&r.Method==http.MethodPatch:return "PARTNER_COMPANY_UPDATED"
+	case strings.HasSuffix(path,"/activate")&&strings.HasPrefix(path,"/partner/api/v1/design/profiles/")&&r.Method==http.MethodPost:return "PARTNER_THEME_ACTIVATED"
 	case strings.Contains(path,"/activate")&&r.Method==http.MethodPost:return "PARTNER_MODULE_ACTIVATED"
 	case strings.Contains(path,"/subscription")&&r.Method==http.MethodPatch:return "PARTNER_SUBSCRIPTION_UPDATED"
 	case path=="/partner/api/v1/users"&&r.Method==http.MethodPost:return "PARTNER_USER_CREATED"
 	case strings.HasPrefix(path,"/partner/api/v1/users/")&&r.Method==http.MethodPatch:return "PARTNER_USER_UPDATED"
 	case path=="/partner/api/v1/design/media"&&r.Method==http.MethodPost:return "PARTNER_DESIGN_MEDIA_UPLOADED"
 	case path=="/partner/api/v1/design/profiles"&&r.Method==http.MethodPost:return "PARTNER_THEME_PROFILE_CREATED"
-	case strings.HasSuffix(path,"/activate")&&strings.HasPrefix(path,"/partner/api/v1/design/profiles/")&&r.Method==http.MethodPost:return "PARTNER_THEME_ACTIVATED"
 	case strings.HasPrefix(path,"/partner/api/v1/design/profiles/")&&r.Method==http.MethodPut:return "PARTNER_THEME_PROFILE_UPDATED"
 	default:return "PARTNER_PORTAL_"+strings.ToUpper(r.Method)
 	}
