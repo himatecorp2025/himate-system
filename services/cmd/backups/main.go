@@ -195,6 +195,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS backups_one_pending_partner_idx
 				ON backups.restore_points(partner_id)
 				WHERE status IN ('QUEUED','RUNNING')`,
+		}},
 	})
 }
 
