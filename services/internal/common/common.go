@@ -321,6 +321,9 @@ func DoInternal(client *http.Client, req *http.Request) (*http.Response, error) 
 	}
 	expected := strings.TrimSpace(req.Header.Get("X-Himate-Expected-Version"))
 	if expected == "" {
+		if AppVersion() == "" {
+			return client.Do(req)
+		}
 		return nil, errors.New("internal request is missing X-Himate-Expected-Version")
 	}
 	resp, err := client.Do(req)
@@ -350,9 +353,13 @@ func ReleaseGuard(service string, next http.Handler) http.Handler {
 			w.Header().Set("X-Himate-App-Version", version)
 		}
 		expected := strings.TrimSpace(r.Header.Get("X-Himate-Expected-Version"))
-		if r.URL.Path != "/health" && expected != "" {
+		if r.URL.Path != "/health" && service != "gateway" {
 			if version == "" {
 				APIError(w, http.StatusServiceUnavailable, "RELEASE_VERSION_MISSING", "Service release version is not configured")
+				return
+			}
+			if expected == "" {
+				APIError(w, http.StatusServiceUnavailable, "RELEASE_VERSION_REQUIRED", "Internal request is missing the required release version")
 				return
 			}
 			if version != expected {
