@@ -501,11 +501,13 @@ func uniqueModuleKeys(values []string) ([]string,error) {
 func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 	key := strings.ToUpper(strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/billing/plans/"),"/"))
 	if key=="" || strings.Contains(key,"/") { common.APIError(w,404,"NOT_FOUND","Plan not found"); return }
-	p,err:=a.loadPlan(r.Context(),key)
+	now:=dateOnly(time.Now().UTC())
+	if err:=a.ensureAnnualPlanIncreases(r.Context(),now);err!=nil{common.APIError(w,500,"DB","Could not apply annual package pricing");return}
+	p,err:=a.loadPlanAt(r.Context(),key,now)
 	if err==sql.ErrNoRows { common.APIError(w,404,"NOT_FOUND","Plan not found");return }
 	if err!=nil { common.APIError(w,500,"DB","Could not load plan");return }
 	if r.Method==http.MethodGet{
-		ready,fixed,err:=a.planReady(r.Context(),p,time.Now().UTC())
+		ready,fixed,err:=a.planReady(r.Context(),p,now)
 		if err!=nil{common.APIError(w,500,"DB","Could not load plan modules");return}
 		common.JSON(w,200,planMap(p,fixed,ready));return
 	}
@@ -519,43 +521,104 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 		Active *bool `json:"active"`
 		FixedModuleKeys []string `json:"fixed_module_keys"`
 		EffectiveAt string `json:"effective_at"`
+		Reason string `json:"reason"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-	tx,err:=a.db.BeginTx(r.Context(),nil);if err!=nil{common.APIError(w,500,"DB","Could not start plan update");return};defer tx.Rollback()
-	if in.MonthlyPrice!=nil || in.AnnualListPrice!=nil || in.AnnualPrice!=nil || in.AnnualFreeMonths!=nil || in.ModuleLimit!=nil || in.Active!=nil {
-		nextMonthly:=p.MonthlyPrice;nextList:=p.AnnualListPrice;nextAnnual:=p.AnnualPrice;nextFree:=p.AnnualFreeMonths;nextLimit:=p.ModuleLimit;nextActive:=p.Active
-		if in.MonthlyPrice!=nil{nextMonthly=*in.MonthlyPrice};if in.AnnualListPrice!=nil{nextList=*in.AnnualListPrice};if in.AnnualPrice!=nil{nextAnnual=*in.AnnualPrice}
-		if in.AnnualFreeMonths!=nil{nextFree=*in.AnnualFreeMonths};if in.ModuleLimit!=nil{nextLimit=*in.ModuleLimit};if in.Active!=nil{nextActive=*in.Active}
-		if nextMonthly<0||nextList<0||nextAnnual<0||nextAnnual>nextList||nextFree<0||nextLimit<0{common.APIError(w,400,"VALIDATION","Invalid plan commercial values");return}
-		if _,err=tx.ExecContext(r.Context(),`UPDATE billing.subscription_plans SET monthly_price=$2,annual_list_price=$3,annual_price=$4,
-			annual_free_months=$5,module_limit=$6,active=$7,updated_at=NOW() WHERE plan_key=$1`,
-			key,nextMonthly,nextList,nextAnnual,nextFree,nextLimit,nextActive);err!=nil{common.APIError(w,500,"DB","Could not update plan");return}
-		p.MonthlyPrice,p.AnnualListPrice,p.AnnualPrice,p.AnnualFreeMonths,p.ModuleLimit,p.Active=nextMonthly,nextList,nextAnnual,nextFree,nextLimit,nextActive
+	effective:=now
+	if strings.TrimSpace(in.EffectiveAt)!=""{
+		parsed,e:=time.Parse("2006-01-02",strings.TrimSpace(in.EffectiveAt))
+		if e!=nil{common.APIError(w,400,"VALIDATION","effective_at must be YYYY-MM-DD");return}
+		effective=dateOnly(parsed)
 	}
+	if effective.Before(now){common.APIError(w,400,"VALIDATION","effective_at cannot be in the past");return}
+	reason:=strings.TrimSpace(in.Reason);if reason==""{reason="HIMATE administrator package update"}
+	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"));if actor==""{actor="himate-admin"}
+
+	tx,err:=a.db.BeginTx(r.Context(),nil)
+	if err!=nil{common.APIError(w,500,"DB","Could not start plan update");return}
+	defer tx.Rollback()
+
+	nextMonthly:=p.MonthlyPrice
+	nextList:=p.AnnualListPrice
+	nextAnnual:=p.AnnualPrice
+	nextFree:=p.AnnualFreeMonths
+	nextLimit:=p.ModuleLimit
+	nextActive:=p.Active
+	if in.MonthlyPrice!=nil{nextMonthly=*in.MonthlyPrice}
+	if in.AnnualFreeMonths!=nil{nextFree=*in.AnnualFreeMonths}
+	if in.ModuleLimit!=nil{nextLimit=*in.ModuleLimit}
+	if in.Active!=nil{nextActive=*in.Active}
+	if in.MonthlyPrice!=nil || in.AnnualFreeMonths!=nil {
+		if in.AnnualListPrice==nil{nextList=roundPlanAmount(nextMonthly*12)}
+		if in.AnnualPrice==nil{nextAnnual=roundPlanAmount(nextMonthly*float64(12-nextFree))}
+	}
+	if in.AnnualListPrice!=nil{nextList=*in.AnnualListPrice}
+	if in.AnnualPrice!=nil{nextAnnual=*in.AnnualPrice}
+	if fixedLimit,standard:=standardPlanLimit(key);standard{
+		if in.ModuleLimit!=nil && *in.ModuleLimit!=fixedLimit{
+			common.APIError(w,409,"STANDARD_PACKAGE_LIMIT","Standard package module limits are fixed: Starter 3, Business 10, Flex 15")
+			return
+		}
+		nextLimit=fixedLimit
+	}
+	if nextMonthly<0||nextList<0||nextAnnual<0||nextAnnual>nextList||nextFree<0||nextFree>12||nextLimit<0{
+		common.APIError(w,400,"VALIDATION","Invalid plan commercial values");return
+	}
+	priceChanged:=nextMonthly!=p.MonthlyPrice||nextList!=p.AnnualListPrice||nextAnnual!=p.AnnualPrice
+	metadataChanged:=nextFree!=p.AnnualFreeMonths||nextLimit!=p.ModuleLimit||nextActive!=p.Active
+	if priceChanged {
+		if _,err=tx.ExecContext(r.Context(),`INSERT INTO billing.subscription_plan_price_history(
+			plan_key,currency,monthly_price,annual_list_price,annual_price,effective_from,change_type,
+			annual_increase_percent,actor,reason)
+			VALUES($1,$2,$3,$4,$5,$6,'MANUAL',$7,$8,$9)`,
+			key,p.Currency,nextMonthly,nextList,nextAnnual,effective,p.AnnualIncreasePercent,actor,reason);err!=nil{
+			common.APIError(w,500,"DB","Could not save package price history");return
+		}
+	}
+	if priceChanged||metadataChanged{
+		if _,err=tx.ExecContext(r.Context(),`UPDATE billing.subscription_plans SET
+			monthly_price=CASE WHEN $8<=CURRENT_DATE THEN $2 ELSE monthly_price END,
+			annual_list_price=CASE WHEN $8<=CURRENT_DATE THEN $3 ELSE annual_list_price END,
+			annual_price=CASE WHEN $8<=CURRENT_DATE THEN $4 ELSE annual_price END,
+			annual_free_months=$5,module_limit=$6,active=$7,updated_at=NOW()
+			WHERE plan_key=$1`,
+			key,nextMonthly,nextList,nextAnnual,nextFree,nextLimit,nextActive,effective);err!=nil{
+			common.APIError(w,500,"DB","Could not update plan");return
+		}
+	}
+
 	if in.FixedModuleKeys!=nil {
 		if p.SelectionMode!="FIXED"{common.APIError(w,409,"PLAN_SELECTION_MODE","Only FIXED plans have administrator-defined module sets");return}
 		keys,err:=uniqueModuleKeys(in.FixedModuleKeys);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
-		if len(keys)!=p.ModuleLimit{common.APIError(w,400,"MODULE_LIMIT",fmt.Sprintf("%s requires exactly %d modules",p.Key,p.ModuleLimit));return}
+		if len(keys)!=nextLimit{common.APIError(w,400,"MODULE_LIMIT",fmt.Sprintf("%s requires exactly %d modules",p.Key,nextLimit));return}
 		if err=a.validatePublishedModuleKeys(r.Context(),keys);err!=nil{common.APIError(w,409,"MODULE_NOT_READY",err.Error());return}
-		effective:=dateOnly(time.Now().UTC())
-		var existing int
-		_ = tx.QueryRowContext(r.Context(),`SELECT COUNT(*) FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_to IS NULL`,key).Scan(&existing)
-		if existing>0 { effective=nextMonthStart(time.Now().UTC()) }
-		if strings.TrimSpace(in.EffectiveAt)!="" {
-			parsed,e:=time.Parse("2006-01-02",strings.TrimSpace(in.EffectiveAt));if e!=nil{common.APIError(w,400,"VALIDATION","effective_at must be YYYY-MM-DD");return};effective=dateOnly(parsed)
+		moduleEffective:=effective
+		if strings.TrimSpace(in.EffectiveAt)==""{
+			var existing int
+			_ = tx.QueryRowContext(r.Context(),`SELECT COUNT(*) FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_to IS NULL`,key).Scan(&existing)
+			if existing>0{moduleEffective=nextMonthStart(now)}
 		}
 		if _,err=tx.ExecContext(r.Context(),`UPDATE billing.subscription_plan_modules SET effective_to=$2
-			WHERE plan_key=$1 AND effective_from<$2 AND (effective_to IS NULL OR effective_to>$2)`,key,effective);err!=nil{common.APIError(w,500,"DB","Could not close prior module set");return}
-		if _,err=tx.ExecContext(r.Context(),`DELETE FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_from=$2`,key,effective);err!=nil{common.APIError(w,500,"DB","Could not replace scheduled module set");return}
+			WHERE plan_key=$1 AND effective_from<$2 AND (effective_to IS NULL OR effective_to>$2)`,key,moduleEffective);err!=nil{
+			common.APIError(w,500,"DB","Could not close prior module set");return
+		}
+		if _,err=tx.ExecContext(r.Context(),`DELETE FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_from=$2`,key,moduleEffective);err!=nil{
+			common.APIError(w,500,"DB","Could not replace scheduled module set");return
+		}
 		for i,moduleKey:=range keys{
 			if _,err=tx.ExecContext(r.Context(),`INSERT INTO billing.subscription_plan_modules(plan_key,module_key,position,effective_from)
-				VALUES($1,$2,$3,$4) ON CONFLICT(plan_key,module_key,effective_from) DO UPDATE SET position=EXCLUDED.position,effective_to=NULL`,
-				key,moduleKey,i,effective);err!=nil{common.APIError(w,500,"DB","Could not save plan module");return}
+				VALUES($1,$2,$3,$4) ON CONFLICT(plan_key,module_key,effective_from)
+				DO UPDATE SET position=EXCLUDED.position,effective_to=NULL`,
+				key,moduleKey,i,moduleEffective);err!=nil{common.APIError(w,500,"DB","Could not save plan module");return}
 		}
 	}
 	if err=tx.Commit();err!=nil{common.APIError(w,500,"DB","Could not commit plan update");return}
-	ready,fixed,_:=a.planReady(r.Context(),p,time.Now().UTC())
-	common.JSON(w,200,planMap(p,fixed,ready))
+	current,err:=a.loadPlanAt(r.Context(),key,now)
+	if err!=nil{common.APIError(w,500,"DB","Could not reload plan");return}
+	ready,fixed,_:=a.planReady(r.Context(),current,now)
+	out:=planMap(current,fixed,ready)
+	if priceChanged&&effective.After(now){out["scheduled_price_effective_at"]=effective.Format("2006-01-02")}
+	common.JSON(w,200,out)
 }
 
 func (a *app) loadPartnerPlan(ctx context.Context, partnerID string) (partnerPlanSubscription,error) {
