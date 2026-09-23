@@ -772,7 +772,7 @@ func (a *app)ensureStorage(ctx context.Context)error{
 	if strings.TrimSpace(a.storageHost)==""{return fmt.Errorf("storage service is not configured")}
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+a.storageHost+"/internal/v1/storage/partners/_cms/ensure",bytes.NewReader([]byte("{}")));if err!=nil{return err}
 	common.BindInternalRequest(req,a.token);req.Header.Set("Content-Type","application/json")
-	resp,err:=a.client.Do(req);if err!=nil{return err};defer resp.Body.Close()
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err};defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("storage namespace status %d",resp.StatusCode)}
 	return nil
 }
@@ -781,7 +781,7 @@ func (a *app)putMedia(ctx context.Context,key string,data io.Reader,size int64)(
 	if err:=a.ensureStorage(ctx);err!=nil{return nil,err}
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPut,"http://"+a.storageHost+"/internal/v1/storage/objects/_cms/"+key,data);if err!=nil{return nil,err}
 	req.ContentLength=size;common.BindInternalRequest(req,a.token)
-	resp,err:=a.client.Do(req);if err!=nil{return nil,err};defer resp.Body.Close()
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return nil,err};defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return nil,fmt.Errorf("storage put status %d",resp.StatusCode)}
 	var out map[string]any;if err:=json.NewDecoder(resp.Body).Decode(&out);err!=nil{return nil,err};return out,nil
 }
@@ -791,7 +791,7 @@ func (a *app)getMediaObject(ctx context.Context,m mediaRow,rangeHeader string)(*
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,path,nil);if err!=nil{return nil,err}
 	common.BindInternalRequest(req,a.token)
 	if strings.TrimSpace(rangeHeader)!=""{req.Header.Set("Range",rangeHeader)}
-	return a.client.Do(req)
+	return common.DoInternal(a.client, req)
 }
 
 func mediaSelect()string{return `SELECT id,original_filename,mime_type,object_namespace,object_key,size_bytes,sha256,alt_text,created_by,created_at FROM cms.media_assets`}
