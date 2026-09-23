@@ -82,7 +82,7 @@ func partnerPortalMigration() common.Migration {
 
 func retiredTestPartnerIdentityMigration() common.Migration {
 	return common.Migration{
-		Version: 11,
+		Version: 12,
 		Name:    "retire-fixed-manual-qa-partner-identity",
 		Statements: []string{
 			`DELETE FROM identity.partner_users
