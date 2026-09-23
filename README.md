@@ -359,6 +359,15 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.18-start-23.11.3a`
 - acceptance: `docs/START-23.11.3A_ACCEPTANCE.md`, `scripts/audit_start_23_11_3a.py`, `scripts/smoke_start_23_11_3a.sh`
 
+### START-23.11.3b — Persistent Manual QA Partner
+- adds a durable **HIMATE TEST PARTNER** tenant for manual deployed-environment validation through START-23.12
+- fixed partner ID: `ptr_himate_test_001`
+- fixed Partner Portal owner: `test.partner@himate.test`
+- raw test password is never committed; only its PBKDF2-SHA256 hash is persisted
+- the fixture is intentionally retained across Blueprint syncs and deployments until the system owner explicitly requests deletion
+- release contract version is `0.8.19-start-23.11.3b`
+- acceptance: `docs/START-23.11.3B_ACCEPTANCE.md`, `scripts/audit_start_23_11_3b.py`, `scripts/smoke_start_23_11_3b.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
