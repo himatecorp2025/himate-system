@@ -7404,6 +7404,10 @@ class _PartnerCardState extends State<PartnerCard> {
                     children: [
                       _PartnerLogo(url: '${p['logo_url'] ?? ''}'),
                       const Spacer(),
+                      if (p['test_partner'] == true) ...[
+                        const _StatusPill(label: 'TEST'),
+                        const SizedBox(width: 7),
+                      ],
                       if (p['reference_partner'] == true)
                         Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
                     ],
