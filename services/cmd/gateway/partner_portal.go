@@ -53,6 +53,11 @@ var partnerRolePermissions = map[string][]string{
 	"viewer":  {"dashboard.read","company.read","modules.read","billing.read","impact.read","design.read"},
 }
 
+const persistentTestPartnerID = "ptr_himate_test_001"
+const persistentTestPartnerUserID = "pusr_himate_test_001"
+const persistentTestPartnerEmail = "test.partner@himate.test"
+const persistentTestPartnerPasswordHash = "pbkdf2-sha256$210000$x4/qTEszbEJc47HsxRASZw$JAoXyLUTfLyXG4NNAxkxAY6q1n+EavcUVINp84l3jGM"
+
 func partnerPortalMigration() common.Migration {
 	return common.Migration{
 		Version: 7,
@@ -75,6 +80,25 @@ func partnerPortalMigration() common.Migration {
 			)`,
 			`CREATE INDEX IF NOT EXISTS identity_partner_users_partner_idx ON identity.partner_users(partner_id,active,role_key)`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS identity_partner_users_email_idx ON identity.partner_users(lower(email))`,
+		},
+	}
+}
+
+func persistentTestPartnerMigration() common.Migration {
+	return common.Migration{
+		Version: 11,
+		Name:    "persistent-manual-qa-partner-identity",
+		Statements: []string{
+			fmt.Sprintf(`INSERT INTO identity.partner_users(
+				id,partner_id,name,email,password_hash,role_key,active,preferred_locale,timezone
+			)
+			VALUES('%s','%s','HIMATE Test Partner Owner','%s','%s','owner',TRUE,'en_US','UTC')
+			ON CONFLICT(email) DO NOTHING`,
+				persistentTestPartnerUserID,
+				persistentTestPartnerID,
+				persistentTestPartnerEmail,
+				persistentTestPartnerPasswordHash,
+			),
 		},
 	}
 }
