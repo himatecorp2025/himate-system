@@ -9,6 +9,8 @@ frontend = (root / "frontend/lib/main.dart").read_text(encoding="utf-8")
 compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
+workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+schema_guard = (root / "scripts/audit_smoke_schema_contracts.py").read_text(encoding="utf-8")
 
 release = "0.8.26-start-23.11.3i"
 frontend_start = frontend.index("  Future<void> addPartner() async {")
@@ -90,6 +92,14 @@ checks = [
         "common.BindInternalRequest(req,a.internalToken)" in notification_dispatch
         and "common.DoInternal(a.client,req)" in notification_dispatch
         and 'Header.Set("X-Himate-Internal-Token"' not in notification_dispatch,
+    ),
+    (
+        "smoke schema drift is rejected before expensive Compose build",
+        "Validate smoke database schema contracts" in workflow
+        and "python3 scripts/audit_smoke_schema_contracts.py" in workflow
+        and workflow.index("Validate smoke database schema contracts") < workflow.index("Build and start containerized microservices")
+        and "identity.partner_users" in schema_guard
+        and '"role", "role_key"' in schema_guard,
     ),
     (
         "Compose pins one current release across every application microservice",
