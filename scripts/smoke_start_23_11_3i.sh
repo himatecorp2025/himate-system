@@ -2,7 +2,7 @@
 set -eu
 
 BASE_URL="${1:-http://127.0.0.1:8080}"
-EXPECTED_VERSION="${HIMATE_APP_VERSION:-0.8.26-start-23.11.3i}"
+EXPECTED_VERSION="${HIMATE_APP_VERSION:-0.8.27-start-23.11.3j}"
 
 printf 'gateway reports one synchronized application release... '
 HEALTH="$(curl -fsS "$BASE_URL/api/v1/health")"
