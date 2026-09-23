@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"himate.local/services/internal/common"
 	"io"
@@ -183,12 +184,42 @@ func (a *app) partnerAuth(r *http.Request)(partnerUser,error){
 	return u,nil
 }
 
+var errPartnerPortalAccessDisabled = errors.New("partner portal access is disabled")
+
 func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error {
 	var partner map[string]any
 	if err:=a.internalGET(ctx,a.hosts["partners"],"/api/v1/partners/"+url.PathEscape(partnerID),&partner);err!=nil{return err}
 	lifecycle:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(partner["lifecycle"])))
-	if lifecycle=="SUSPENDED"||lifecycle=="ARCHIVED"{return fmt.Errorf("partner portal access is suspended")}
+	if lifecycle=="SUSPENDED"||lifecycle=="ARCHIVED"{return errPartnerPortalAccessDisabled}
 	return nil
+}
+
+func writePartnerAccessError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errPartnerPortalAccessDisabled) {
+		common.APIError(w,http.StatusForbidden,"PARTNER_ACCESS_DISABLED","Partner Portal access is suspended for this partner")
+		return
+	}
+	var upstream internalHTTPError
+	if errors.As(err,&upstream) {
+		switch upstream.Status {
+		case http.StatusNotFound:
+			common.APIError(w,http.StatusServiceUnavailable,"PARTNER_REGISTRY_NOT_READY","Partner record is not available in the partner registry yet")
+		case http.StatusUnauthorized,http.StatusForbidden:
+			common.APIError(w,http.StatusServiceUnavailable,"PARTNER_REGISTRY_AUTH_FAILED","Partner registry service authentication failed")
+		default:
+			common.APIError(w,http.StatusServiceUnavailable,"PARTNER_REGISTRY_UNAVAILABLE","Partner registry service is unavailable")
+		}
+		return
+	}
+	if errors.Is(err,context.DeadlineExceeded) || errors.Is(err,context.Canceled) {
+		common.APIError(w,http.StatusServiceUnavailable,"PARTNER_REGISTRY_TIMEOUT","Partner registry did not respond in time")
+		return
+	}
+	if strings.Contains(strings.ToLower(err.Error()),"host is not configured") {
+		common.APIError(w,http.StatusServiceUnavailable,"PARTNER_REGISTRY_UNCONFIGURED","Partner registry service host is not configured")
+		return
+	}
+	common.APIError(w,http.StatusServiceUnavailable,"PARTNER_REGISTRY_UNAVAILABLE","Partner registry service is unavailable")
 }
 
 func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
@@ -203,7 +234,7 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	if err!=nil{_ = pbkdf2SHA256([]byte(in.Password),make([]byte,16),passwordIterations,32)}
 	if !valid{a.recordLoginFailure(key,now);common.APIError(w,401,"INVALID_CREDENTIALS","Invalid email or password");return}
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second);defer cancel()
-	if err:=a.partnerAccessAllowed(ctx,u.PartnerID);err!=nil{a.recordLoginFailure(key,now);common.APIError(w,403,"PARTNER_SUSPENDED","Partner Portal access is not available");return}
+	if err:=a.partnerAccessAllowed(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
 	a.clearLoginFailures(key)
 	ttl:=a.ttl;if in.Remember{ttl=a.rememberTTL}
 	token,_:=a.issuePartnerSession(u,ttl)
@@ -226,7 +257,7 @@ func (a *app) partnerMe(w http.ResponseWriter,r *http.Request){
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
 	accessErr:=a.partnerAccessAllowed(ctx,u.PartnerID)
 	cancel()
-	if accessErr!=nil{common.APIError(w,403,"PARTNER_ACCESS_DISABLED","Partner Portal access is not available");return}
+	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
 	common.JSON(w,200,partnerUserMap(u))
 }
 
