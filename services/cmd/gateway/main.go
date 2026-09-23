@@ -1099,6 +1099,8 @@ func auditAction(r *http.Request) string {
 		return "MODULE_IMPACT_MAPPING_CHANGED"
 	case strings.HasPrefix(path, "/api/v1/admin/users/") && r.Method == http.MethodPatch:
 		return "ADMIN_USER_UPDATED"
+	case strings.HasPrefix(path, "/api/v1/partners/") && strings.HasSuffix(path, "/logo") && r.Method == http.MethodPost:
+		return "PARTNER_LOGO_UPLOADED"
 	case strings.HasSuffix(path, "/publish"):
 		return "CMS_PAGE_PUBLISHED"
 	case strings.HasSuffix(path, "/rollback"):
