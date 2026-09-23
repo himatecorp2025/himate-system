@@ -224,6 +224,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23112PlanLedgerImmutabilityMigration(),
 		start23112InvoiceDateConstraintRecoveryMigration(),
 		start23112DunningMigration(),
+		start23113kCommercialModeMigration(),
 	}); err != nil {
 		return err
 	}
@@ -494,6 +495,14 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 			a.collectActivationLicense(w, r, id)
 			return
 		}
+		if section == "charity" && parts[2] == "request" {
+			a.requestCharity(w, r, id)
+			return
+		}
+		if section == "charity" && parts[2] == "modules" {
+			a.charityModules(w, r, id)
+			return
+		}
 		common.APIError(w, 404, "NOT_FOUND", "Route not found")
 		return
 	}
@@ -510,6 +519,8 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 		a.agreement(w, r, id)
 	case "commercial-status":
 		a.commercialStatus(w, r, id)
+	case "commercial-mode":
+		a.commercialMode(w, r, id)
 	case "events":
 		a.billingEvents(w, r, id)
 	case "summary":
