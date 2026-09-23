@@ -4453,9 +4453,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final paymentMethod = TextEditingController(text: '${paymentProfile?['payment_method_id'] ?? ''}');
     final licenseNote = TextEditingController(text: '${license?['note'] ?? ''}');
     final base = TextEditingController(text: number(terms?['base_monthly_fee']).toStringAsFixed(2));
-    final minimumMonthly = TextEditingController(text: number(terms?['minimum_monthly_commitment'] ?? 1500).toStringAsFixed(2));
+    final minimumMonthly = TextEditingController(text: number(terms?['minimum_monthly_commitment'] ?? 0).toStringAsFixed(2));
     final quoteReference = TextEditingController(text: '${terms?['quote_reference'] ?? ''}');
-    final uplift = TextEditingController(text: number(terms?['annual_increase_percent']).toStringAsFixed(2));
+    final uplift = TextEditingController(text: number(terms?['annual_increase_percent'] ?? 5).toStringAsFixed(2));
     final effective = TextEditingController(text: '${terms?['price_effective_from'] ?? ''}');
     final anchor = TextEditingController(text: '${terms?['service_anchor_date'] ?? ''}');
     final waiverReason = TextEditingController(text: '${terms?['activation_fee_reason'] ?? ''}');
@@ -4464,6 +4464,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     bool autopay = paymentProfile?['autopay_enabled'] == true;
     bool collectActivationNow = false;
     String currency = '${terms?['currency'] ?? 'USD'}';
+    String billingMode = '${terms?['billing_mode'] ?? 'PAID'}';
+    String charityStatus = '${terms?['charity_status'] ?? 'NOT_REQUESTED'}';
 
     final ok = await showDialog<bool>(
       context: context,
@@ -4476,6 +4478,56 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const _DialogSectionLabel('COMMERCIAL MODE'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: DropdownButtonFormField<String>(
+                  value: billingMode,
+                  decoration: InputDecoration(labelText: uiLiteral('Billing mode')),
+                  items: const [
+                    DropdownMenuItem(value: 'PAID', child: LText('Paid')),
+                    DropdownMenuItem(value: 'COMPLIMENTARY', child: LText('Complimentary')),
+                    DropdownMenuItem(value: 'CHARITY', child: LText('Charity')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setLocal(() {
+                      billingMode = v;
+                      if (v != 'CHARITY' && charityStatus == 'APPROVED') {
+                        charityStatus = 'NOT_REQUESTED';
+                      }
+                    });
+                  },
+                ),
+                second: DropdownButtonFormField<String>(
+                  value: charityStatus,
+                  decoration: InputDecoration(labelText: uiLiteral('Charity review status')),
+                  items: const [
+                    DropdownMenuItem(value: 'NOT_REQUESTED', child: LText('Not requested')),
+                    DropdownMenuItem(value: 'PENDING', child: LText('Pending review')),
+                    DropdownMenuItem(value: 'APPROVED', child: LText('Approved')),
+                    DropdownMenuItem(value: 'REJECTED', child: LText('Rejected')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setLocal(() {
+                      charityStatus = v;
+                      if (v == 'APPROVED') billingMode = 'CHARITY';
+                    });
+                  },
+                ),
+              ),
+              if (billingMode == 'CHARITY' && charityStatus != 'APPROVED') ...[
+                const SizedBox(height: 8),
+                const _MessageCard(
+                  icon: Icons.policy_outlined,
+                  title: 'Charity requires HIMATE approval',
+                  message: 'Set Charity review status to Approved only after the application or negotiated eligibility has been verified.',
+                ),
+              ],
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('ACTIVATION & PAYMENT'),
+              const SizedBox(height: 10),
               ResponsiveFieldPair(
                 first: DropdownButtonFormField<String>(
                   value: currency,
@@ -4525,7 +4577,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: autopay,
-                onChanged: waived ? null : (v) => setLocal(() => autopay = v),
+                onChanged: (waived || billingMode != 'PAID') ? null : (v) => setLocal(() => autopay = v),
                 title: const LText('Automatic recurring collection'),
                 subtitle: const LText('Recurring invoices are charged off-session through the configured provider.'),
               ),
@@ -4585,41 +4637,64 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
 
     if (ok == true) {
-      await widget.api.put('/api/v1/billing/partners/${partner['id']}/terms', {
-        'currency': currency,
-        'activation_fee': double.tryParse(activation.text) ?? 0,
-        'activation_fee_waived': waived,
-        'activation_fee_reason': waiverReason.text.trim(),
-        'base_monthly_fee': double.tryParse(base.text) ?? 0,
-        'minimum_monthly_commitment': double.tryParse(minimumMonthly.text) ?? 1500,
-        'quote_reference': quoteReference.text.trim(),
-        'annual_increase_percent': double.tryParse(uplift.text) ?? 10,
-        'price_effective_from': effective.text.trim(),
-        'service_anchor_date': anchor.text.trim(),
-        'reason': commercialReason.text.trim(),
-      });
-      await widget.api.put('/api/v1/billing/partners/${partner['id']}/license', {
-        'currency': currency,
-        'required_amount': double.tryParse(activation.text) ?? 0,
-        'note': licenseNote.text.trim(),
-        'waived': waived,
-        'waiver_reason': waiverReason.text.trim(),
-      });
-      if (!waived) {
-        await widget.api.put('/api/v1/payments/partners/${partner['id']}/profile', {
-          'provider_customer_id': providerCustomer.text.trim(),
-          'payment_method_id': paymentMethod.text.trim(),
-          'autopay_enabled': autopay,
-        });
-        if (collectActivationNow) {
-          await widget.api.post('/api/v1/billing/partners/${partner['id']}/license/collect', {});
+      final activationAmount = double.tryParse(activation.text) ?? 0;
+      final effectiveWaived = waived || activationAmount == 0;
+      final effectiveWaiverReason = effectiveWaived && waiverReason.text.trim().isEmpty
+          ? (activationAmount == 0 ? 'Zero-dollar activation fee' : 'HIMATE administrator waiver')
+          : waiverReason.text.trim();
+      if (billingMode == 'CHARITY' && charityStatus != 'APPROVED') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: LText('Charity billing mode requires Approved charity status.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
-      }
-      await load();
-      if (mounted) {
-        success(collectActivationNow
-            ? 'Commercial terms saved and provider-backed activation collection initiated.'
-            : 'Commercial terms and payment profile updated.');
+      } else {
+        await widget.api.put('/api/v1/billing/partners/${partner['id']}/terms', {
+          'currency': currency,
+          'activation_fee': activationAmount,
+          'activation_fee_waived': effectiveWaived,
+          'activation_fee_reason': effectiveWaiverReason,
+          'base_monthly_fee': double.tryParse(base.text) ?? 0,
+          'minimum_monthly_commitment': double.tryParse(minimumMonthly.text) ?? 0,
+          'quote_reference': quoteReference.text.trim(),
+          'annual_increase_percent': double.tryParse(uplift.text) ?? 5,
+          'price_effective_from': effective.text.trim(),
+          'service_anchor_date': anchor.text.trim(),
+          'reason': commercialReason.text.trim(),
+        });
+        await widget.api.patch('/api/v1/billing/partners/${partner['id']}/commercial-mode', {
+          'billing_mode': billingMode,
+          'charity_status': charityStatus,
+          'reason': commercialReason.text.trim().isEmpty
+              ? 'HIMATE administrator commercial-mode update'
+              : commercialReason.text.trim(),
+        });
+        await widget.api.put('/api/v1/billing/partners/${partner['id']}/license', {
+          'currency': currency,
+          'required_amount': activationAmount,
+          'note': licenseNote.text.trim(),
+          'waived': effectiveWaived,
+          'waiver_reason': effectiveWaiverReason,
+        });
+        if (!effectiveWaived && billingMode == 'PAID') {
+          await widget.api.put('/api/v1/payments/partners/${partner['id']}/profile', {
+            'provider_customer_id': providerCustomer.text.trim(),
+            'payment_method_id': paymentMethod.text.trim(),
+            'autopay_enabled': autopay,
+          });
+          if (collectActivationNow) {
+            await widget.api.post('/api/v1/billing/partners/${partner['id']}/license/collect', {});
+          }
+        }
+        await load();
+        if (mounted) {
+          success(collectActivationNow && !effectiveWaived && billingMode == 'PAID'
+              ? 'Commercial terms saved and provider-backed activation collection initiated.'
+              : 'Commercial terms and billing mode updated.');
+        }
       }
     }
 
@@ -8077,6 +8152,8 @@ class _CommercialSummaryCard extends StatelessWidget {
     icon: Icons.payments_outlined,
     action: IconButton(onPressed: onEdit, tooltip: uiLiteral('Edit commercial terms'), icon: const Icon(Icons.edit_outlined, size: 18)),
     children: [
+      _DefinitionRow(label: 'Billing mode', value: _humanize('${terms['billing_mode'] ?? 'PAID'}'), emphasis: true),
+      _DefinitionRow(label: 'Charity status', value: _humanize('${terms['charity_status'] ?? 'NOT_REQUESTED'}')),
       _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
       _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
       _DefinitionRow(label: 'License paid', value: '${money(license['paid_amount'])} / ${money(license['required_amount'])}'),
@@ -8086,7 +8163,7 @@ class _CommercialSummaryCard extends StatelessWidget {
       _DefinitionRow(label: 'Terms version', value: '${terms['terms_version'] ?? 1}'),
       _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
       _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
-      _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),
+      _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 5}% · January 1'),
       _DefinitionRow(label: 'Next cycle', value: '${billing['next_billing_date'] ?? '—'}'),
       const _DefinitionRow(label: 'Billing rule', value: 'Activation-date anchored · 30 days'),
     ],
