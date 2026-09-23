@@ -305,6 +305,16 @@ func AppVersion() string {
 	return strings.TrimSpace(os.Getenv("HIMATE_APP_VERSION"))
 }
 
+func BindInternalRequest(req *http.Request, token string) {
+	if req == nil {
+		return
+	}
+	req.Header.Set("X-Himate-Internal-Token", token)
+	if version := AppVersion(); version != "" {
+		req.Header.Set("X-Himate-Expected-Version", version)
+	}
+}
+
 func ReleaseGuard(service string, next http.Handler) http.Handler {
 	service = strings.TrimSpace(service)
 	version := AppVersion()
