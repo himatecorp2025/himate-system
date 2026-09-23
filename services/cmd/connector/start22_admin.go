@@ -129,7 +129,7 @@ func (a *app) start22ImpactRetention(ctx context.Context,sourceRef,action string
 	if err!=nil{return err}
 	req.Header.Set("Content-Type","application/json")
 	common.BindInternalRequest(req,a.internalToken)
-	resp,err:=a.client.Do(req)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("Impact retention returned %d",resp.StatusCode)}
