@@ -23,11 +23,10 @@ from datetime import datetime,timezone
 print(datetime.now(timezone.utc).date().isoformat())
 PY
 )"
-NEXT_MONTH="$(python3 - "$TODAY" <<'PY'
-from datetime import date
+NEXT30="$(python3 - "$TODAY" <<'PY'
+from datetime import date,timedelta
 import sys
-d=date.fromisoformat(sys.argv[1])
-print(date(d.year+1,1,1).isoformat() if d.month==12 else date(d.year,d.month+1,1).isoformat())
+print((date.fromisoformat(sys.argv[1])+timedelta(days=30)).isoformat())
 PY
 )"
 
@@ -116,7 +115,7 @@ PY
 curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$terms" "$BASE_URL/api/v1/billing/partners/$partner_id/terms" >/dev/null
 curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json'   -d '{"status":"AGREED","agreement_reference":"contract://start232/agreed","note":"START-23.2 commercial agreement"}'   "$BASE_URL/api/v1/billing/partners/$partner_id/agreement" >/dev/null
 terms_read="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/terms")"
-printf '%s' "$terms_read" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["base_monthly_fee"]==100 and d["billing_cycle_model"]=="CALENDAR_MONTH" and d["cycle_days"] is None,d'
+printf '%s' "$terms_read" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["base_monthly_fee"]==100 and d["cycle_days"]==30,d'
 agreement="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/agreement")"
 printf '%s' "$agreement" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="AGREED" and d["agreement_reference"]=="contract://start232/agreed",d'
 echo ok
@@ -141,14 +140,14 @@ history="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id/modules
 printf '%s' "$history" | python3 -c 'import json,sys; d=json.load(sys.stdin); fields={x["field"] for x in d["items"]}; required={"status","visible","partner_price","partner_activation_fee"}; assert required <= fields,(required-fields,d)'
 echo ok
 
-printf 'billing creates immutable current calendar-month subscription and exact next-month quote... '
+printf 'billing creates immutable current subscription and exact next-period quote... '
 curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/summary" >/dev/null
 subs="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/subscription-matrix?partner_ids=$partner_id")"
 printf '%s' "$subs" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; s=next(x for x in d["items"] if x["module_key"]==key); assert s["price"]==75,s; assert s["current_period_included_in_base"] is False,s; assert s["next_period_price"]==75,s; assert s["next_period_included_in_base"] is False,s; assert s["next_billing_date"]==s["period_end_exclusive"],s' "$MODULE_KEY"
 echo ok
 
-printf 'future commercial changes remain scheduled while current calendar month stays immutable... '
-future="$(python3 - "$NEXT_MONTH" <<'PY'
+printf 'future commercial changes remain scheduled while current paid period stays immutable... '
+future="$(python3 - "$NEXT30" <<'PY'
 import json,sys
 print(json.dumps({
  "partner_price":90,"price_effective_at":sys.argv[1]+"T00:00:00Z",
