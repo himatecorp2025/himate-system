@@ -820,7 +820,7 @@ paths:
     patch:
       tags: [Billing]
       summary: Change partner subscription plan
-      description: Same-frequency price upgrades are immediate and collect the full price difference. Downgrades are scheduled with no refund. CUSTOM is available for HIMATE-administered negotiated partners.
+      description: Same-frequency price upgrades are immediate and collect the full price difference. Downgrades are scheduled with no refund. CUSTOM is available for HIMATE-administered negotiated partners. Recurring charges are collected automatically from the saved provider payment method. Failed recurring collection retries on due date, due+2 and due+5 days; the third failure suspends service and starts a 30-day cure window before retention-safe operational account purge.
       responses:
         "200": {description: Plan changed or scheduled}
   /api/v1/billing/partners/{partnerId}/plan/modules:
