@@ -30,7 +30,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.17-start-23.11.3' ../docs/openapi.yaml
+          grep -q 'version: 0.8.18-start-23.11.3a' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
