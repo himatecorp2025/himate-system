@@ -194,9 +194,10 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 	if in.Purpose == "INVOICE" {
 		if dunningEligibleInvoice {
 			if in.Status == "SUCCEEDED" {
-				if dunningPreState == "PAST_DUE" || dunningPreState == "SUSPENDED" {
+				if dunningAttempts > 1 || dunningPreState == "PAST_DUE" || dunningPreState == "SUSPENDED" {
 					_ = a.recoverDunningPayment(r.Context(), in.InvoiceID, in.PartnerID, time.Now().UTC())
 				} else {
+					_, _ = a.db.ExecContext(r.Context(), `UPDATE billing.invoices SET dunning_state='NONE' WHERE id=$1 AND dunning_state<>'PURGED'`, in.InvoiceID)
 					_, _ = a.db.ExecContext(r.Context(), `UPDATE billing.partner_plan_subscriptions SET status='ACTIVE',updated_at=NOW()
 						WHERE partner_id=$1 AND status='PAST_DUE'`, in.PartnerID)
 				}
