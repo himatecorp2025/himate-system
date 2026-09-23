@@ -487,10 +487,102 @@ func (a *app) partnerHasManagedPlan(ctx context.Context,partnerID string)(bool,e
 	return ok&&configured,nil
 }
 
+func stringSetFromAny(value any) map[string]bool {
+	out:=map[string]bool{}
+	raw,ok:=value.([]any)
+	if !ok{return out}
+	for _,item:=range raw{
+		key:=strings.TrimSpace(fmt.Sprint(item))
+		if key!=""{out[key]=true}
+	}
+	return out
+}
+
+func (a *app) enrichPartnerMarketplace(ctx context.Context,partnerID string,out map[string]any) {
+	var plans,current map[string]any
+	plansErr:=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/plans",&plans)
+	currentErr:=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(partnerID)+"/plan",&current)
+	if plansErr!=nil||currentErr!=nil{
+		out["plan_context_available"]=false
+		return
+	}
+	out["plan_context_available"]=true
+	configured:=current["configured"]==true
+	currentKey:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(current["plan_key"])))
+	currentModules:=stringSetFromAny(current["active_module_keys"])
+	out["current_plan_key"]=currentKey
+	out["current_plan_display_name"]=fmt.Sprint(current["display_name"])
+
+	planItems:=anyItems(plans["items"])
+	currentSort:=-1
+	for _,p:=range planItems{
+		if strings.ToUpper(strings.TrimSpace(fmt.Sprint(p["plan_key"])))==currentKey{
+			if n,ok:=p["sort_order"].(float64);ok{currentSort=int(n)}
+			if n,ok:=p["sort_order"].(int);ok{currentSort=n}
+		}
+	}
+
+	rawItems,ok:=out["items"].([]any)
+	if !ok{
+		if typed,typedOK:=out["items"].([]map[string]any);typedOK{
+			rawItems=make([]any,0,len(typed))
+			for _,item:=range typed{rawItems=append(rawItems,item)}
+		}else{
+			return
+		}
+	}
+	enriched:=make([]map[string]any,0,len(rawItems))
+	for _,raw:=range rawItems{
+		module,ok:=raw.(map[string]any);if !ok{continue}
+		key:=strings.TrimSpace(fmt.Sprint(module["key"]))
+		executable:=module["executable"]==true
+		availableKeys:=[]string{}
+		availableNames:=[]string{}
+		upgradeKeys:=[]string{}
+		upgradeNames:=[]string{}
+		for _,p:=range planItems{
+			if p["customer_selectable"]!=true||p["active"]!=true||p["ready"]!=true{continue}
+			planKey:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(p["plan_key"])))
+			planName:=strings.TrimSpace(fmt.Sprint(p["display_name"]))
+			mode:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(p["selection_mode"])))
+			inPlan:=false
+			if mode=="FIXED"{
+				inPlan=stringSetFromAny(p["fixed_module_keys"])[key]
+			}else if mode=="SELECTABLE"{
+				inPlan=executable
+			}
+			if !inPlan{continue}
+			availableKeys=append(availableKeys,planKey)
+			availableNames=append(availableNames,planName)
+			sortOrder:=-1
+			if n,ok:=p["sort_order"].(float64);ok{sortOrder=int(n)}
+			if n,ok:=p["sort_order"].(int);ok{sortOrder=n}
+			if configured&&sortOrder>currentSort{
+				upgradeKeys=append(upgradeKeys,planKey)
+				upgradeNames=append(upgradeNames,planName)
+			}
+		}
+		module["available_in_plans"]=availableKeys
+		module["available_in_plan_names"]=availableNames
+		module["upgrade_plan_keys"]=upgradeKeys
+		module["upgrade_plan_names"]=upgradeNames
+		module["in_current_plan"]=configured&&currentModules[key]
+		if len(upgradeKeys)>0{
+			module["recommended_upgrade_plan"]=upgradeKeys[0]
+			module["recommended_upgrade_plan_name"]=upgradeNames[0]
+		}
+		module["current_plan_key"]=currentKey
+		enriched=append(enriched,module)
+	}
+	out["items"]=enriched
+	out["count"]=len(enriched)
+}
+
 func (a *app) partnerModulesView(w http.ResponseWriter,r *http.Request,u partnerUser){
 	var out map[string]any
 	if err:=a.internalGET(r.Context(),a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules",&out);err!=nil{
 		common.APIError(w,502,"CATALOG_UNAVAILABLE","Module catalog is temporarily unavailable");return}
+	a.enrichPartnerMarketplace(r.Context(),u.PartnerID,out)
 	common.JSON(w,200,out)
 }
 
