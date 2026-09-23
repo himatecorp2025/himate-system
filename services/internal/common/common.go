@@ -301,10 +301,40 @@ func Logged(log *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
+func AppVersion() string {
+	return strings.TrimSpace(os.Getenv("HIMATE_APP_VERSION"))
+}
+
+func ReleaseGuard(service string, next http.Handler) http.Handler {
+	service = strings.TrimSpace(service)
+	version := AppVersion()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if service != "" {
+			w.Header().Set("X-Himate-Service", service)
+		}
+		if version != "" {
+			w.Header().Set("X-Himate-App-Version", version)
+		}
+		expected := strings.TrimSpace(r.Header.Get("X-Himate-Expected-Version"))
+		if r.URL.Path != "/health" && expected != "" {
+			if version == "" {
+				APIError(w, http.StatusServiceUnavailable, "RELEASE_VERSION_MISSING", "Service release version is not configured")
+				return
+			}
+			if version != expected {
+				APIError(w, http.StatusServiceUnavailable, "RELEASE_MISMATCH",
+					fmt.Sprintf("Service %s is running %s while %s is required", service, version, expected))
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func Run(log *slog.Logger, service, port string, handler http.Handler) {
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           Logged(log, handler),
+		Handler:           Logged(log, ReleaseGuard(service, handler)),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       25 * time.Second,
 		WriteTimeout:      45 * time.Second,
