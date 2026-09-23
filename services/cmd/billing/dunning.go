@@ -199,7 +199,9 @@ func (a *app) suspendForNonPayment(ctx context.Context, invoiceID, partnerID str
 			previous = lifecycle
 			if err := a.setPartnerLifecycle(ctx, partnerID, "SUSPENDED", "Three recurring payment attempts failed"); err != nil { return err }
 		}
-		if err := a.setPlanEntitlements(ctx, partnerID, planKey, []string{}, "Recurring payment suspended after three failed attempts"); err != nil { return err }
+		if !strings.EqualFold(planKey, "CUSTOM") {
+			if err := a.setPlanEntitlements(ctx, partnerID, planKey, []string{}, "Recurring payment suspended after three failed attempts"); err != nil { return err }
+		}
 		due := at.AddDate(0, 0, dunningCureDays)
 		if _, err := a.db.ExecContext(ctx, `UPDATE billing.invoices SET dunning_state='SUSPENDED',dunning_suspended_at=$2,purge_due_at=$3,
 			pre_suspend_partner_lifecycle=CASE WHEN pre_suspend_partner_lifecycle='' THEN $4 ELSE pre_suspend_partner_lifecycle END
