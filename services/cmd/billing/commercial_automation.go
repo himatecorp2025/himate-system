@@ -203,7 +203,7 @@ func (a *app) modulePriceAt(ctx context.Context, partnerID, moduleKey string, at
 		"/price-at?at=" + url.QueryEscape(dateOnly(at).Format("2006-01-02"))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.catalogHost+path, nil)
 	if err != nil { return fallbackPrice, fallbackIncluded, fallbackCurrency, err }
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	resp, err := a.client.Do(req)
 	if err != nil { return fallbackPrice, fallbackIncluded, fallbackCurrency, err }
 	defer resp.Body.Close()
