@@ -12,6 +12,7 @@ The Golden Test Partner is identified by explicit partner master data (`test_par
 - Activation persists `test_partner=true` and moves the tenant to `LIVE`.
 - Golden activation does not require a real initial-license payment or normal provisioning gate.
 - The test tenant is not fake-PAID. Billing and payment states remain independently testable.
+- Once enabled, Golden Test mode cannot be casually switched off. Removal is reserved for the future dedicated test-tenant purge workflow so synthetic data can never leak into real aggregates.
 - The tenant receives all 38 canonical HIMATE modules.
 - Golden entitlements are limited to canonical/system modules; temporary/custom acceptance modules are not automatically granted.
 - Canonical modules remain `ACTIVE`, entitlement `ACTIVE`, visible and included for the Golden tenant.
