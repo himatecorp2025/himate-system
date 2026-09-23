@@ -272,3 +272,53 @@ func TestSTART233CancellationBoundaryRemainsExclusive(t *testing.T) {
 		t.Fatal("cancellation must become effective at the exact period boundary")
 	}
 }
+
+func TestSTART23112PlanPricingContract(t *testing.T) {
+	m := start23112PlanBillingMigration()
+	if m.Version != 10 {
+		t.Fatalf("expected migration version 10 got %d", m.Version)
+	}
+	joined := strings.Join(m.Statements, "\n")
+	for _, token := range []string{
+		"'STARTER','Starter','USD',500,6000,6000,0,3,'FIXED'",
+		"'BUSINESS','Business','USD',1500,18000,16500,1,10,'FIXED'",
+		"'FLEX','Flex','USD',2500,30000,22500,3,15,'SELECTABLE'",
+		"partner_plan_subscriptions",
+		"partner_plan_module_selections",
+		"plan_change_history",
+		"invoice_key",
+		"billing_model",
+		"'PLAN_BASED'",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("START-23.11.2 plan migration missing %q", token)
+		}
+	}
+}
+
+func TestSTART23112NextMonthBillingBoundary(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"2026-01-15", "2026-02-01"},
+		{"2026-02-28", "2026-03-01"},
+		{"2026-12-31", "2027-01-01"},
+	}
+	for _, tc := range tests {
+		at, _ := time.Parse("2006-01-02", tc.in)
+		if got := nextMonthStart(at).Format("2006-01-02"); got != tc.want {
+			t.Fatalf("%s expected %s got %s", tc.in, tc.want, got)
+		}
+	}
+}
+
+func TestSTART23112AnnualSavingsAreExplicitAmounts(t *testing.T) {
+	business := subscriptionPlan{Key:"BUSINESS",Name:"Business",Currency:"USD",MonthlyPrice:1500,AnnualListPrice:18000,AnnualPrice:16500,AnnualFreeMonths:1,ModuleLimit:10,SelectionMode:"FIXED"}
+	flex := subscriptionPlan{Key:"FLEX",Name:"Flex",Currency:"USD",MonthlyPrice:2500,AnnualListPrice:30000,AnnualPrice:22500,AnnualFreeMonths:3,ModuleLimit:15,SelectionMode:"SELECTABLE"}
+	b := planMap(business, []string{}, false)
+	f := planMap(flex, []string{}, true)
+	if b["annual_savings"] != float64(1500) {
+		t.Fatalf("business annual savings expected 1500 got %v", b["annual_savings"])
+	}
+	if f["annual_savings"] != float64(7500) {
+		t.Fatalf("flex annual savings expected 7500 got %v", f["annual_savings"])
+	}
+}
