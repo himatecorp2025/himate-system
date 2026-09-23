@@ -46,7 +46,7 @@ checks = [
     ),
     (
         "logo retry recognizes an already committed partner logo",
-        "created?['logo_url']" in add_partner
+        "created['logo_url']" in add_partner
         and "logoUploaded = true;" in add_partner,
     ),
     (
