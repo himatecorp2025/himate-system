@@ -258,8 +258,7 @@ func (a *app) internalJSON(ctx context.Context,method,host,path string,body any,
 	var reader io.Reader
 	if body!=nil{raw,err:=json.Marshal(body);if err!=nil{return err};reader=bytes.NewReader(raw)}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+host+path,reader);if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
-	req.Header.Set("X-Himate-Expected-Version",a.version)
+	common.BindInternalRequest(req,a.internalToken)
 	if body!=nil{req.Header.Set("Content-Type","application/json")}
 	for k,v:=range headers{req.Header.Set(k,v)}
 	resp,err:=a.client.Do(req);if err!=nil{return err};defer resp.Body.Close()
