@@ -508,7 +508,7 @@ func (a *app) start22EnsureImpactMetric(ctx context.Context, key, label, unit, a
 	}
 	req.Header.Set("Content-Type", "application/json")
 	common.BindInternalRequest(req, a.internalToken)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		return err
 	}
@@ -565,7 +565,7 @@ func (a *app) start22RouteImpactRecord(ctx context.Context, record start22Stored
 		req.Header.Set("Content-Type", "application/json")
 		common.BindInternalRequest(req, a.internalToken)
 		req.Header.Set("X-Himate-User-ID", "connector:start22")
-		resp, err := a.client.Do(req)
+		resp, err := common.DoInternal(a.client, req)
 		if err != nil {
 			return false, err
 		}
