@@ -45,35 +45,63 @@ class _NewPartnerApi extends Api {
 void main() {
   testWidgets('START-23.11.3e New Partner button opens the master-data modal without Catalog', (tester) async {
     HimateI18n.activeLocale = 'en_US';
-    await tester.binding.setSurfaceSize(const Size(1440, 900));
+    await tester.binding.setSurfaceSize(const Size(1440, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final api = _NewPartnerApi();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildBrandTheme(),
-        home: PartnersPage(api: api),
-      ),
-    );
-    await tester.pumpAndSettle();
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildBrandTheme(),
+          home: PartnersPage(api: api),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
 
-    final button = find.byKey(const Key('partners-new-partner-button'));
-    expect(button, findsOneWidget);
+      final initialException = tester.takeException();
+      if (initialException != null) {
+        fail('Partners page threw before New Partner interaction: $initialException');
+      }
 
-    await tester.tap(button);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
+      final button = find.byKey(const Key('partners-new-partner-button'));
+      if (button.evaluate().length != 1) {
+        fail('New Partner button was not rendered. GET calls: ${api.gets}');
+      }
 
-    expect(find.byKey(const Key('new-partner-dialog')), findsOneWidget);
-    expect(
-      api.gets.where((path) => path.startsWith('/api/v1/modules')),
-      isEmpty,
-      reason: 'Opening New Partner must never depend on Catalog/module availability.',
-    );
+      await tester.ensureVisible(button);
+      await tester.tap(button, warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
-    Navigator.of(tester.element(find.byKey(const Key('new-partner-dialog')))).pop(false);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
+      final openException = tester.takeException();
+      if (openException != null) {
+        fail('New Partner modal threw while opening: $openException');
+      }
+
+      final dialog = find.byKey(const Key('new-partner-dialog'));
+      if (dialog.evaluate().length != 1) {
+        fail('New Partner modal did not render after click. GET calls: ${api.gets}');
+      }
+
+      expect(
+        api.gets.where((path) => path.startsWith('/api/v1/modules')),
+        isEmpty,
+        reason: 'Opening New Partner must never depend on Catalog/module availability.',
+      );
+
+      final cancel = find.widgetWithText(TextButton, 'Cancel');
+      expect(cancel, findsOneWidget);
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+
+      final closeException = tester.takeException();
+      if (closeException != null) {
+        fail('New Partner modal threw while closing: $closeException');
+      }
+    } catch (error, stack) {
+      fail('New Partner regression stage failed: $error\n$stack');
+    }
   });
 }
