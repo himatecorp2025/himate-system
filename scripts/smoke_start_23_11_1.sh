@@ -81,10 +81,13 @@ test "$code" = "409"
 grep -q 'MODULE_NOT_READY' "$BODY"
 echo ok
 
-printf 'individual partner terms accept negotiated activation fee and enforce USD 1500 minimum commitment... '
-code="$(status "$OWNER_COOKIE" PUT "/api/v1/billing/partners/$partner_a_id/terms" -H 'Content-Type: application/json' -d '{"minimum_monthly_commitment":1499,"reason":"START-23.11.1 minimum guard"}')"
+printf 'individual partner terms allow zero/non-standard commitment but reject negative commercial amounts... '
+zero_terms="$(curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d '{"minimum_monthly_commitment":0,"reason":"START-23.11.3k supersedes legacy minimum commitment guard"}' "$BASE_URL/api/v1/billing/partners/$partner_a_id/terms")"
+printf '%s' "$zero_terms" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["minimum_monthly_commitment"]==0,d'
+code="$(status "$OWNER_COOKIE" PUT "/api/v1/billing/partners/$partner_a_id/terms" -H 'Content-Type: application/json' -d '{"minimum_monthly_commitment":-1,"reason":"negative commercial amount must fail"}')"
 test "$code" = "400"
-grep -q 'MINIMUM_MONTHLY_COMMITMENT' "$BODY"
+grep -q 'VALIDATION' "$BODY"
+grep -q 'Commercial amounts cannot be negative' "$BODY"
 today="$(python3 - <<'PY'
 from datetime import datetime,timezone
 print(datetime.now(timezone.utc).date().isoformat())
