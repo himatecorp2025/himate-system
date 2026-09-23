@@ -606,7 +606,7 @@
     {
       "id": "PART-PORTALUSER-CREATE",
       "surface": "partner.portal_users",
-      "ui": "New Partner wizard creates the initial Owner; Users & Contacts can create additional Partner Portal users",
+      "ui": "Create Partner Portal user",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
       "source_token": "'/api/v1/partners/${partner['id']}/portal-users'",
@@ -618,8 +618,8 @@
       "localization_state": "PARTIAL",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
-      "e2e_proof": "scripts/smoke_start_23_11_3d.sh: create real partner -> register initial owner -> Partner Portal login",
-      "notes": "START-23.11.3d removed the fixed QA fixture. New partner onboarding now provisions the first owner using the administrator/contact email and an explicit initial password."
+      "e2e_proof": "scripts/smoke_start_23_6.sh: create partner owner -> tenant login -> /partner/auth/me",
+      "notes": ""
     },
     {
       "id": "PART-PORTALUSER-EDIT",
