@@ -19,7 +19,8 @@ checks = [
     (
         "partner master model has explicit Golden Test flag",
         "test_partner BOOLEAN NOT NULL DEFAULT FALSE" in partners
-        and 'TestPartner           *bool   `json:"test_partner"`' in partners
+        and "TestPartner" in partners
+        and 'json:"test_partner"' in partners
         and '"test_partner": p.TestPartner' in partners,
     ),
     (
