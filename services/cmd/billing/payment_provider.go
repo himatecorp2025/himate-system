@@ -156,6 +156,7 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 404, "INVOICE_NOT_FOUND", "Invoice not found")
 			return
 		}
+		dunningEligibleInvoice = dunningEligible(billingModel, chargeType)
 		if !strings.EqualFold(currency, in.Currency) || math.Abs(amount-in.Amount) > 0.005 {
 			common.APIError(w, 409, "SETTLEMENT_MISMATCH", "Provider settlement does not match the invoice total and currency")
 			return
@@ -191,15 +192,6 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 	if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit payment settlement"); return }
 
 	if in.Purpose == "INVOICE" {
-		dunningEligibleInvoice = dunningEligible(strings.TrimSpace(func() string {
-			var model string
-			_ = a.db.QueryRowContext(r.Context(), `SELECT billing_model FROM billing.invoices WHERE id=$1`, in.InvoiceID).Scan(&model)
-			return model
-		}()), strings.TrimSpace(func() string {
-			var charge string
-			_ = a.db.QueryRowContext(r.Context(), `SELECT charge_type FROM billing.invoices WHERE id=$1`, in.InvoiceID).Scan(&charge)
-			return charge
-		}()))
 		if dunningEligibleInvoice {
 			if in.Status == "SUCCEEDED" {
 				if dunningPreState == "PAST_DUE" || dunningPreState == "SUSPENDED" {
