@@ -99,7 +99,13 @@ printf '%s' "$starter" | python3 -c 'import json,sys; d=json.load(sys.stdin); as
 echo ok
 
 printf 'same-frequency upgrades charge full price difference and apply immediately... '
-business="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"BUSINESS","billing_frequency":"MONTHLY","reason":"START-23.11.2 upgrade"}' "$BASE_URL/api/v1/billing/partners/$partner_id/plan")"
+business_code="$(status "$COOKIE" PATCH "/api/v1/billing/partners/$partner_id/plan" -H 'Content-Type: application/json' -d '{"plan_key":"BUSINESS","billing_frequency":"MONTHLY","reason":"START-23.11.2 upgrade"}')"
+if [ "$business_code" != "200" ]; then
+  echo "Business upgrade returned HTTP $business_code: $(cat "$BODY")" >&2
+  docker compose logs --no-color --tail=120 billing catalog >&2 || true
+  exit 1
+fi
+business="$(cat "$BODY")"
 printf '%s' "$business" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="BUSINESS" and d["change_type"]=="IMMEDIATE_UPGRADE" and d["upgrade_charge"]==1000,d; assert len(d["active_module_keys"])==10,d'
 flex_payload="$(python3 - "$FLEX_KEYS" <<'PY'
 import json,sys;print(json.dumps({'plan_key':'FLEX','billing_frequency':'MONTHLY','module_keys':json.loads(sys.argv[1]),'reason':'START-23.11.2 Flex upgrade'}))
