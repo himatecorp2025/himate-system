@@ -32,6 +32,7 @@ It remains in the system until the HIMATE system owner explicitly requests remov
 - partner migration creates the fixed test tenant exactly once;
 - identity migration creates the fixed Partner Portal owner exactly once;
 - admin API can read both records;
+- partner reads tolerate a NULL category_id instead of misreporting an existing partner as 404;
 - no CI cleanup deletes either persistent fixture;
 - the fixture is LIVE so Partner Portal authentication is allowed;
 - release contract is `0.8.19-start-23.11.3b`.
