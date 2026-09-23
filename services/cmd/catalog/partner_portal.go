@@ -68,6 +68,14 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 	if err := a.ensurePartnerModules(partnerID); err != nil {
 		return nil, err
 	}
+	var testPartner bool
+	if err := a.db.QueryRow(`SELECT test_partner FROM partners.partners WHERE id=$1`, partnerID).Scan(&testPartner); err != nil {
+		return nil, err
+	}
+	visibilityClause := " AND (m.marketplace_visible=TRUE OR m.publication_status='PUBLISHED')"
+	if testPartner {
+		visibilityClause = ""
+	}
 	rows, err := a.db.Query(`
 		SELECT m.module_key,m.label_en,m.label_hu,m.description_en,m.description_hu,m.marketplace_summary_en,m.marketplace_summary_hu,
 			m.group_key,g.label_en,g.label_hu,pm.status,pm.entitlement_state,pm.included_in_base,
@@ -84,7 +92,7 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 			WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
 			ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
 		) ep ON TRUE
-		WHERE pm.partner_id=$1 AND (m.marketplace_visible=TRUE OR m.publication_status='PUBLISHED')
+		WHERE pm.partner_id=$1`+visibilityClause+`
 		ORDER BY g.sort_order,m.label_en`, partnerID)
 	if err != nil {
 		return nil, err
@@ -112,6 +120,12 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 		item.GroupLabel = common.Localized(groupEN,groupHU,locale)
 		item.Executable = marketplaceExecutable(item.PublicationStatus,item.ImplementationState,item.Availability)
 		item.AccessState = marketplaceAccessState(item.Status,item.EntitlementState,item.PublicationStatus,item.ImplementationState,item.Availability)
+		if testPartner {
+			item.Executable = true
+			item.AccessState = "ACTIVE"
+			item.CommercialConfigured = true
+			item.CommercialReady = true
+		}
 		if activated.Valid { item.ActivatedAt = activated.Time.UTC() }
 		item.Relationships = []map[string]any{}
 		item.Blockers = []string{}
@@ -149,6 +163,11 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 	if err := relRows.Err(); err != nil { return nil, err }
 
 	for i := range modules {
+		if testPartner {
+			modules[i].Blockers = []string{}
+			modules[i].CanActivate = false
+			continue
+		}
 		if modules[i].PublicationStatus != "PUBLISHED" {
 			modules[i].Blockers = append(modules[i].Blockers, "Module is visible in the marketplace but is not published for live use yet")
 		}
