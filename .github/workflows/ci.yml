@@ -30,7 +30,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.24-start-23.11.3g' ../docs/openapi.yaml
+          grep -q 'version: 0.8.25-start-23.11.3h' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
@@ -156,6 +156,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_3f.py
       - name: Run START-23.11.3g Partner Registration Error Handling audit
         run: python3 ../scripts/audit_start_23_11_3g.py
+      - name: Run START-23.11.3h Test Partner Onboarding Hardening audit
+        run: python3 ../scripts/audit_start_23_11_3h.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -402,6 +404,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_3f.sh http://127.0.0.1:8080
       - name: Run START-23.11.3g Partner Registration Error Handling smoke
         run: sh scripts/smoke_start_23_11_3g.sh http://127.0.0.1:8080
+      - name: Run START-23.11.3h Test Partner Onboarding Hardening smoke
+        run: sh scripts/smoke_start_23_11_3h.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
