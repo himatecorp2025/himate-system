@@ -565,7 +565,7 @@ func (a *app) provisioningAllowed(ctx context.Context, partnerID string) (bool, 
 		"http://"+a.billingHost+"/internal/v1/partners/"+partnerID+"/provisioning-gate", nil)
 	if err != nil { return false, "", err }
 	common.BindInternalRequest(req, a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return false, "", err }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
