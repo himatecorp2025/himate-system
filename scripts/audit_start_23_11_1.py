@@ -62,8 +62,10 @@ for token in [
 ]:
     require(token in automation, f"missing billing commercial model token: {token}")
 
-require("next.MinimumMonthlyCommitment < 1500" in billing, "USD 1500 minimum commitment guard is missing")
+require("next.MinimumMonthlyCommitment < 1500" not in billing, "legacy USD 1500 minimum commitment hard gate must remain removed after START-23.11.3k")
+require("next.MinimumMonthlyCommitment < 0" in billing, "minimum monthly commitment must reject negative values")
 require("next.ActivationFee < 0" in billing, "activation fee must reject negative values")
+require('"Commercial amounts cannot be negative"' in billing, "commercial negative-value validation contract is missing")
 require("ActivationFee < 13000" not in billing, "obsolete USD 13,000 terms activation-fee floor is still enforced")
 require("next.Required < 13000" not in billing, "obsolete USD 13,000 license activation-fee floor is still enforced")
 require("setCatalogEntitlementState" in billing and '"entitlement_state"' in billing, "Billing-to-Catalog entitlement synchronization is missing")
