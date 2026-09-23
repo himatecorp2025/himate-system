@@ -4,27 +4,31 @@ set -eu
 BASE_URL="${1:-http://127.0.0.1:8080}"
 TMP_ROOT="${TMPDIR:-/tmp}"
 COOKIE="$TMP_ROOT/himate-start23112-owner.txt"
-rm -f "$COOKIE"
-trap 'rm -f "$COOKIE"' EXIT
+BODY="$TMP_ROOT/himate-start23112-body.json"
+rm -f "$COOKIE" "$BODY"
+trap 'rm -f "$COOKIE" "$BODY"' EXIT
 
 COMPOSE_JSON="$(docker compose config --format json)"
 OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
 OWNER_PASSWORD="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_PASSWORD"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_PASSWORD=")))')"
 STAMP="$(date +%s)"
-MODULE_KEY="ci.start23112_$STAMP"
+PREFIX="ci.plan.$STAMP"
 
-read MONTH_START MID_MONTH NEXT_MONTH <<EOF
+read TODAY NEXT_MONTH MONTH_AFTER_NEXT <<EOF
 $(python3 - <<'PY'
 from datetime import date
-today=date.today()
-start=today.replace(day=1)
-mid=today.replace(day=min(today.day,15))
-if start.month==12: nxt=date(start.year+1,1,1)
-else: nxt=date(start.year,start.month+1,1)
-print(start.isoformat(), mid.isoformat(), nxt.isoformat())
+d=date.today()
+n=date(d.year+1,1,1) if d.month==12 else date(d.year,d.month+1,1)
+n2=date(n.year+1,1,1) if n.month==12 else date(n.year,n.month+1,1)
+print(d.isoformat(),n.isoformat(),n2.isoformat())
 PY
 )
 EOF
+
+status() {
+  cookie="$1"; method="$2"; path="$3"; shift 3
+  curl -sS -o "$BODY" -w '%{http_code}' -b "$cookie" -X "$method" "$@" "$BASE_URL$path"
+}
 
 login_payload="$(python3 - "$OWNER_EMAIL" "$OWNER_PASSWORD" <<'PY'
 import json,sys
@@ -33,78 +37,122 @@ PY
 )"
 curl -fsS -c "$COOKIE" -H 'Content-Type: application/json' -d "$login_payload" "$BASE_URL/api/v1/auth/login" >/dev/null
 
-printf 'create START-23.11.2 partner and published module... '
-partner="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d '{"display_name":"START 23.11.2 Calendar Partner","legal_name":"START 23.11.2 Calendar Partner LLC","brand_name":"23112","contact_name":"Billing Owner","contact_email":"start23112@example.com","country":"US"}' "$BASE_URL/api/v1/partners")"
+printf 'create 15 published READY plan modules... '
+i=1
+while [ "$i" -le 15 ]; do
+  key="$PREFIX.$i"
+  payload="$(python3 - "$key" "$i" <<'PY'
+import json,sys
+key=sys.argv[1];i=sys.argv[2]
+print(json.dumps({"key":key,"group_key":"technical","label_en":"Plan Module "+i,"label_hu":"Plan Modul "+i,
+ "description_en":"START-23.11.2 plan acceptance","description_hu":"START-23.11.2 csomag elfogadas",
+ "currency":"USD","version":"1.0.0","latest_version":"1.0.0","default_monthly_price":0,"default_activation_fee":0,
+ "availability":"ACTIVE","publication_status":"PUBLISHED","implementation_state":"READY","module_type":"FEATURE","owner_team":"Platform","manifest":{"schema_version":1}}))
+PY
+)"
+  curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$payload" "$BASE_URL/api/v1/modules" >/dev/null
+  i=$((i+1))
+done
+echo ok
+
+STARTER_KEYS="$(python3 - "$PREFIX" <<'PY'
+import json,sys;p=sys.argv[1];print(json.dumps([f'{p}.{i}' for i in range(1,4)]))
+PY
+)"
+BUSINESS_KEYS="$(python3 - "$PREFIX" <<'PY'
+import json,sys;p=sys.argv[1];print(json.dumps([f'{p}.{i}' for i in range(1,11)]))
+PY
+)"
+FLEX_KEYS="$(python3 - "$PREFIX" <<'PY'
+import json,sys;p=sys.argv[1];print(json.dumps([f'{p}.{i}' for i in range(1,16)]))
+PY
+)"
+FLEX_NEXT_KEYS="$(python3 - "$PREFIX" <<'PY'
+import json,sys;p=sys.argv[1];print(json.dumps([f'{p}.{i}' for i in range(6,16)]))
+PY
+)"
+
+printf 'configure fixed Starter and Business packages... '
+starter_payload="$(python3 - "$STARTER_KEYS" <<'PY'
+import json,sys;print(json.dumps({'fixed_module_keys':json.loads(sys.argv[1])}))
+PY
+)"
+business_payload="$(python3 - "$BUSINESS_KEYS" <<'PY'
+import json,sys;print(json.dumps({'fixed_module_keys':json.loads(sys.argv[1])}))
+PY
+)"
+curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$starter_payload" "$BASE_URL/api/v1/billing/plans/STARTER" >/dev/null
+curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$business_payload" "$BASE_URL/api/v1/billing/plans/BUSINESS" >/dev/null
+plans="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/plans")"
+printf '%s' "$plans" | python3 -c 'import json,sys; d=json.load(sys.stdin); p={x["plan_key"]:x for x in d["items"]}; s=p["STARTER"]; b=p["BUSINESS"]; f=p["FLEX"]; assert (s["monthly_price"],s["annual_list_price"],s["annual_price"],s["module_limit"],s["ready"])==(500,6000,6000,3,True),s; assert (b["monthly_price"],b["annual_list_price"],b["annual_price"],b["annual_savings"],b["module_limit"],b["ready"])==(1500,18000,16500,1500,10,True),b; assert (f["monthly_price"],f["annual_list_price"],f["annual_price"],f["annual_savings"],f["module_limit"],f["selection_mode"])==(2500,30000,22500,7500,15,"SELECTABLE"),f'
+echo ok
+
+printf 'create monthly-plan partner and prove activation-license gate... '
+partner="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d '{"display_name":"START 23.11.2 Monthly Partner","legal_name":"START 23.11.2 Monthly Partner LLC","brand_name":"Plan Monthly","contact_name":"Plan Owner","contact_email":"plan-monthly@example.com","country":"US"}' "$BASE_URL/api/v1/partners")"
 partner_id="$(printf '%s' "$partner" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
-module_payload="$(python3 - "$MODULE_KEY" <<'PY'
-import json,sys
-print(json.dumps({
- "key":sys.argv[1],"group_key":"technical","label_en":"START 23.11.2 Calendar Module","label_hu":"START 23.11.2 Naptári Modul",
- "description_en":"Calendar-month no-proration acceptance","description_hu":"Naptári havi teljes díjas elfogadás",
- "currency":"USD","version":"1.0.0","latest_version":"1.0.0","default_monthly_price":999,"default_activation_fee":0,
- "availability":"ACTIVE","publication_status":"PUBLISHED","implementation_state":"READY","module_type":"FEATURE","owner_team":"Platform","manifest":{"schema_version":1}
-}))
+blocked_code="$(status "$COOKIE" PATCH "/api/v1/billing/partners/$partner_id/plan" -H 'Content-Type: application/json' -d '{"plan_key":"STARTER","billing_frequency":"MONTHLY"}')"
+test "$blocked_code" = "409"
+grep -q 'ACTIVATION_LICENSE_REQUIRED' "$BODY"
+curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":0,"waived":true,"waiver_reason":"START-23.11.2 CI activation gate"}' "$BASE_URL/api/v1/billing/partners/$partner_id/license" >/dev/null
+starter="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"STARTER","billing_frequency":"MONTHLY","reason":"START-23.11.2 initial Starter"}' "$BASE_URL/api/v1/billing/partners/$partner_id/plan")"
+printf '%s' "$starter" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="STARTER",d; assert d["billing_frequency"]=="MONTHLY",d; assert d["monthly_price"]==500,d; assert len(d["active_module_keys"])==3,d'
+echo ok
+
+printf 'same-frequency upgrades charge full price difference and apply immediately... '
+business="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"BUSINESS","billing_frequency":"MONTHLY","reason":"START-23.11.2 upgrade"}' "$BASE_URL/api/v1/billing/partners/$partner_id/plan")"
+printf '%s' "$business" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="BUSINESS" and d["change_type"]=="IMMEDIATE_UPGRADE" and d["upgrade_charge"]==1000,d; assert len(d["active_module_keys"])==10,d'
+flex_payload="$(python3 - "$FLEX_KEYS" <<'PY'
+import json,sys;print(json.dumps({'plan_key':'FLEX','billing_frequency':'MONTHLY','module_keys':json.loads(sys.argv[1]),'reason':'START-23.11.2 Flex upgrade'}))
 PY
 )"
-curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$module_payload" "$BASE_URL/api/v1/modules" >/dev/null
+flex="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$flex_payload" "$BASE_URL/api/v1/billing/partners/$partner_id/plan")"
+printf '%s' "$flex" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="FLEX" and d["change_type"]=="IMMEDIATE_UPGRADE" and d["upgrade_charge"]==1000,d; assert len(d["active_module_keys"])==15,d'
+active_count="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id/modules" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for x in d["items"] if x["status"]=="ACTIVE"))')"
+test "$active_count" = "15"
 echo ok
 
-printf 'configure individual calendar-month commercial terms... '
-terms_payload="$(python3 - "$MID_MONTH" <<'PY'
-import json,sys
-print(json.dumps({"currency":"USD","activation_fee":0,"activation_fee_waived":True,"activation_fee_reason":"CI",
- "base_monthly_fee":850,"minimum_monthly_commitment":1500,"quote_reference":"Q-23112-CALENDAR",
- "annual_increase_percent":0,"price_effective_from":sys.argv[1],"service_anchor_date":sys.argv[1],"reason":"START-23.11.2 calendar month"}))
-PY
-)"
-terms="$(curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$terms_payload" "$BASE_URL/api/v1/billing/partners/$partner_id/terms")"
-printf '%s' "$terms" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["billing_cycle_model"]=="CALENDAR_MONTH",d; assert d["invoice_day"]==1,d; assert d["proration"]=="NONE",d; assert d["minimum_monthly_commitment"]==1500,d'
+printf 'Flex to Business downgrade schedules next month with no immediate entitlement loss... '
+downgrade="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"BUSINESS","billing_frequency":"MONTHLY","reason":"START-23.11.2 downgrade"}' "$BASE_URL/api/v1/billing/partners/$partner_id/plan")"
+printf '%s' "$downgrade" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="FLEX" and d["change_type"]=="SCHEDULED_DOWNGRADE",d; s=d["scheduled_change"]; assert s["next_plan_key"]=="BUSINESS" and s["effective_at"]==sys.argv[1],d' "$NEXT_MONTH"
+test "$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id/modules" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for x in d["items"] if x["status"]=="ACTIVE"))')" = "15"
 echo ok
 
-printf 'activate module with full monthly partner price and force mid-month activation evidence... '
-commercial_payload='{"status":"ACTIVE","visible":true,"included_in_base":false,"contract_currency":"USD","quote_reference":"Q-23112-CALENDAR","partner_price":275,"partner_activation_fee":0,"reason":"START-23.11.2 full month"}'
-curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$commercial_payload" "$BASE_URL/api/v1/partners/$partner_id/modules/$MODULE_KEY" >/dev/null
-docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE catalog.partner_modules SET activated_at='$MID_MONTH'::date WHERE partner_id='$partner_id' AND module_key='$MODULE_KEY';" >/dev/null
-summary="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/summary")"
-printf '%s' "$summary" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["billing_cycle_model"]=="CALENDAR_MONTH",d; assert d["proration"]=="NONE",d; assert d["current_period_start"]==sys.argv[1],d; assert d["current_period_end_exclusive"]==sys.argv[2],d; assert d["extra_module_fee"]==275,d; assert d["current_total"]==1500,d' "$MONTH_START" "$NEXT_MONTH"
-subs="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/subscriptions")"
-printf '%s' "$subs" | python3 -c 'import json,sys; d=json.load(sys.stdin); key,start,end=sys.argv[1:]; s=next(x for x in d["items"] if x["module_key"]==key); assert s["billing_model"]=="CALENDAR_MONTH",s; assert s["proration"]=="NONE",s; assert s["period_start"]==start,s; assert s["period_end_exclusive"]==end,s; assert s["price"]==275,s' "$MODULE_KEY" "$MONTH_START" "$NEXT_MONTH"
-item_amount="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT amount FROM billing.invoice_items WHERE partner_id='$partner_id' AND module_key='$MODULE_KEY' AND item_type='MODULE' AND billing_model='CALENDAR_MONTH' AND period_start='$MONTH_START'::date;")"
-test "$item_amount" = "275.00"
-echo ok
-
-printf 'schedule cancellation at the calendar-month boundary... '
-cancelled="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"cancel_at_period_end":true,"reason":"START-23.11.2 month boundary"}' "$BASE_URL/api/v1/billing/partners/$partner_id/subscriptions/$MODULE_KEY")"
-printf '%s' "$cancelled" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lifecycle_state"]=="CANCEL_PENDING",d; assert d["cancellation_effective_at"]==sys.argv[1],d' "$NEXT_MONTH"
-echo ok
-
-printf 'day-1 cycle invoices the completed calendar month and enforces the minimum commitment... '
+printf 'next-month billing applies Business downgrade and creates one PLAN invoice... '
 docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT_MONTH"
+state="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/plan")"
+printf '%s' "$state" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="BUSINESS",d; assert d["monthly_price"]==1500,d; assert len(d["active_module_keys"])==10,d'
 invoices="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/invoices")"
-invoice_id="$(printf '%s' "$invoices" | python3 -c 'import json,sys; d=json.load(sys.stdin); start,end=sys.argv[1:]; x=next(i for i in d["items"] if str(i["service_period_start"])[:10]==start and str(i["service_period_end_exclusive"])[:10]==end and i["billing_model"]=="CALENDAR_MONTH"); assert x["base_fee"]==850,x; assert x["module_fee"]==275,x; assert x["minimum_commitment_adjustment"]==375,x; assert x["total"]==1500,x; types={i["item_type"] for i in x["items"]}; assert {"BASE_SERVICE","MODULE","MINIMUM_COMMITMENT"} <= types,(types,x); print(x["id"])' "$MONTH_START" "$NEXT_MONTH")"
-test -n "$invoice_id"
+printf '%s' "$invoices" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[x for x in d["items"] if x.get("billing_model")=="PLAN" and x.get("charge_type")=="PLAN_MONTHLY"]; assert len(xs)==1,xs; x=xs[0]; assert x["plan_key"]=="BUSINESS" and x["total"]==1500,x; assert [i["item_type"] for i in x["items"]]==["PLAN"],x'
+docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT_MONTH"
+count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.invoices WHERE partner_id='$partner_id' AND billing_model='PLAN' AND charge_type='PLAN_MONTHLY' AND service_period_start='$NEXT_MONTH'::date;")"
+test "$count" = "1"
 echo ok
 
-printf 'calendar invoice rerun is idempotent and finalized commercial values ignore later term changes... '
-changed_terms="$(python3 - "$MID_MONTH" <<'PY'
-import json,sys
-print(json.dumps({"currency":"USD","activation_fee":0,"activation_fee_waived":True,"activation_fee_reason":"CI",
- "base_monthly_fee":850,"minimum_monthly_commitment":2000,"quote_reference":"Q-23112-CALENDAR-V2",
- "annual_increase_percent":0,"price_effective_from":sys.argv[1],"service_anchor_date":sys.argv[1],"reason":"post-invoice retry immutability"}))
+printf 'create annual Flex partner and verify full list price versus discounted charge... '
+annual_partner="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d '{"display_name":"START 23.11.2 Annual Partner","legal_name":"START 23.11.2 Annual Partner LLC","brand_name":"Plan Annual","contact_name":"Annual Owner","contact_email":"plan-annual@example.com","country":"US"}' "$BASE_URL/api/v1/partners")"
+annual_id="$(printf '%s' "$annual_partner" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":0,"waived":true,"waiver_reason":"START-23.11.2 CI annual"}' "$BASE_URL/api/v1/billing/partners/$annual_id/license" >/dev/null
+annual_payload="$(python3 - "$FLEX_KEYS" <<'PY'
+import json,sys;print(json.dumps({'plan_key':'FLEX','billing_frequency':'ANNUAL','module_keys':json.loads(sys.argv[1]),'reason':'START-23.11.2 annual Flex'}))
 PY
 )"
-curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$changed_terms" "$BASE_URL/api/v1/billing/partners/$partner_id/terms" >/dev/null
-docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT_MONTH"
-count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.invoices WHERE partner_id='$partner_id' AND billing_model='CALENDAR_MONTH' AND service_period_start='$MONTH_START'::date AND service_period_end='$NEXT_MONTH'::date;")"
-test "$count" = "1"
-persisted_total="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT total FROM billing.invoices WHERE id='$invoice_id';")"
-test "$persisted_total" = "1500.00"
-if docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoice_items SET amount=999 WHERE invoice_id='$invoice_id' AND item_type='MODULE';" >/dev/null 2>&1; then
-  echo 'calendar-month invoice item mutation unexpectedly succeeded' >&2
-  exit 1
-fi
-state="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/subscriptions")"
-printf '%s' "$state" | python3 -c 'import json,sys; d=json.load(sys.stdin); key=sys.argv[1]; s=next(x for x in d["items"] if x["module_key"]==key); assert s["lifecycle_state"]=="INACTIVE",s' "$MODULE_KEY"
+annual="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$annual_payload" "$BASE_URL/api/v1/billing/partners/$annual_id/plan")"
+printf '%s' "$annual" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="FLEX" and d["billing_frequency"]=="ANNUAL",d; assert d["annual_list_price"]==30000 and d["annual_price"]==22500 and d["annual_savings"]==7500,d'
+annual_invoices="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$annual_id/invoices")"
+printf '%s' "$annual_invoices" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if i.get("charge_type")=="PLAN_ANNUAL_PREPAY"); assert x["list_price"]==30000 and x["discount_amount"]==7500 and x["total"]==22500,x; assert x["billing_frequency"]=="ANNUAL",x'
 echo ok
 
-echo 'HIMATE START-23.11.2 calendar-month billing smoke passed'
+printf 'annual Flex module-set change schedules next month and applies without another annual charge... '
+selection_payload="$(python3 - "$FLEX_NEXT_KEYS" <<'PY'
+import json,sys;print(json.dumps({'module_keys':json.loads(sys.argv[1]),'reason':'START-23.11.2 scheduled Flex set'}))
+PY
+)"
+selection="$(curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$selection_payload" "$BASE_URL/api/v1/billing/partners/$annual_id/plan/modules")"
+printf '%s' "$selection" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["effective_at"]==sys.argv[1],d; assert len(d["module_keys"])==10,d' "$NEXT_MONTH"
+docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT_MONTH"
+test "$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$annual_id/modules" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for x in d["items"] if x["status"]=="ACTIVE"))')" = "10"
+annual_count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.invoices WHERE partner_id='$annual_id' AND billing_model='PLAN' AND charge_type IN ('PLAN_ANNUAL_PREPAY','PLAN_ANNUAL_RENEWAL');")"
+test "$annual_count" = "1"
+echo ok
+
+echo 'HIMATE START-23.11.2 subscription-plan recurring billing smoke passed'
