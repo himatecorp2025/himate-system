@@ -76,7 +76,9 @@ checks = [
     ),
     (
         "Partner Portal exposes Charity request and module management",
-        "/partner/api/v1/charity" in gateway_portal
+        'path=="/charity"' in gateway_portal
+        and 'path=="/charity/request"' in gateway_portal
+        and 'path=="/charity/modules"' in gateway_portal
         and "/partner/api/v1/charity/request" in portal
         and "/partner/api/v1/charity/modules" in portal
         and "Manage Charity modules" in portal,

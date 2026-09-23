@@ -48,7 +48,7 @@ Partner-level terms persist:
 - commercial configuration state
 - monotonic terms version and readback history
 
-For USD contracts, the current HIMATE minimum monthly commitment is **USD 1,500**. The old hard-coded USD 13,000 minimum activation fee is removed; activation/license fees are negotiated partner-by-partner and only negative values are invalid.
+START-23.11.3k supersedes the original USD 1,500 hard minimum-commitment rule. Partner commercial terms may now use any non-negative commitment, including USD 0 for approved non-paid commercial modes; negative commercial amounts remain invalid. The USD 1,500 figure is retained only as the central Business package price where applicable, not as a platform-wide partner minimum. The old hard-coded USD 13,000 minimum activation fee remains removed; activation/license fees are negotiated partner-by-partner and may also be zero.
 
 Partner-module commercial configuration persists independently for every partner:
 
@@ -97,7 +97,7 @@ The smoke proves:
 2. four primary navigation groups,
 3. truthful legacy-reference state,
 4. fail-closed publish-before-ready behavior,
-5. USD 1,500 minimum commitment,
+5. non-negative partner commitment including USD 0, with no legacy USD 1,500 hard gate,
 6. negotiated activation fee below the obsolete USD 13,000 floor,
 7. versioned commercial history,
 8. two partners receiving different recurring and activation prices for the same module,

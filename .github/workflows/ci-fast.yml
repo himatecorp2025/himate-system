@@ -21,10 +21,16 @@ jobs:
         run: python3 scripts/audit_smoke_schema_contracts.py
       - name: Validate smoke shell execution contracts
         run: python3 scripts/audit_smoke_execution_contracts.py
+      - name: Validate global START-23.1 frontend mutation contract
+        run: python3 scripts/audit_start_23_1_contract.py
+      - name: Validate inherited START-23.11.1 commercial contract
+        run: python3 scripts/audit_start_23_11_1.py
       - name: Validate current START-23.11.3i contract
         run: python3 scripts/audit_start_23_11_3i.py
       - name: Validate current START-23.11.3j contract
         run: python3 scripts/audit_start_23_11_3j.py
+      - name: Validate current START-23.11.3k contract
+        run: python3 scripts/audit_start_23_11_3k.py
 
   go-fast:
     runs-on: ubuntu-latest
@@ -63,6 +69,7 @@ jobs:
           python3 ../scripts/audit_start_23_11_3h.py
           python3 ../scripts/audit_start_23_11_3i.py
           python3 ../scripts/audit_start_23_11_3j.py
+          python3 ../scripts/audit_start_23_11_3k.py
 
   compose-current:
     needs: preflight
@@ -86,6 +93,8 @@ jobs:
           exit 1
       - name: Run current regression checkpoint — START-17 SSR
         run: sh scripts/smoke_start_17.sh http://127.0.0.1:8080
+      - name: Run inherited commercial checkpoint — START-23.11.1
+        run: sh scripts/smoke_start_23_11_1.sh http://127.0.0.1:8080
       - name: Run current regression checkpoint — START-23.11.3g
         run: sh scripts/smoke_start_23_11_3g.sh http://127.0.0.1:8080
       - name: Run current checkpoint — START-23.11.3h
@@ -94,6 +103,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_3i.sh http://127.0.0.1:8080
       - name: Run current checkpoint — START-23.11.3j
         run: sh scripts/smoke_start_23_11_3j.sh http://127.0.0.1:8080
+      - name: Run current checkpoint — START-23.11.3k
+        run: sh scripts/smoke_start_23_11_3k.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

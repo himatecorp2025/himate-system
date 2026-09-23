@@ -294,6 +294,11 @@
       "id": "partner_portal.design",
       "name": "Partner Portal / Design",
       "scope": "Tenant-isolated design catalog, custom themes, brand asset slots and active profile switching"
+    },
+    {
+      "id": "packages.admin",
+      "name": "Packages Administration",
+      "scope": "Central package pricing, module limits and fixed package membership"
     }
   ],
   "contracts": [
@@ -2258,6 +2263,60 @@
       "target_phase": "23.11.3",
       "e2e_proof": "scripts/smoke_start_23_11_3e.sh: multipart fake logo -> public CMS media -> partner logo_url readback -> Partner Portal company readback",
       "notes": "Logo is optional during onboarding. It is stored as partner-scoped media and linked to the authoritative partner record for later personalization."
+    },
+    {
+      "id": "PACKAGE-ADMIN-23-11-3K",
+      "surface": "packages.admin",
+      "ui": "HIMATE Packages: update central package price and fixed module membership",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/main.dart",
+      "source_token": "'/api/v1/billing/plans/$key'",
+      "method": "PATCH",
+      "api_pattern": "/api/v1/billing/plans/{planKey}",
+      "backend_service": "billing + catalog",
+      "persistence": "billing.subscription_plans + billing.subscription_plan_price_history + billing.subscription_plan_modules",
+      "audit": "central gateway mutation audit + START-23.11.3k commercial acceptance",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3k.sh: central package price/effective-date and fixed module membership mutation -> persistence -> readback",
+      "notes": "START-23.11.3k Packages admin path. Starter max 3, Business max 10, Flex max 15; central price changes apply across active customers according to effective-date rules."
+    },
+    {
+      "id": "PORTAL-CHARITY-REQUEST-23-11-3K",
+      "surface": "partner_portal.billing",
+      "ui": "Partner Portal: request Charity eligibility review",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_portal.dart",
+      "source_token": "'/partner/api/v1/charity/request'",
+      "method": "POST",
+      "api_pattern": "/partner/api/v1/charity/request",
+      "backend_service": "gateway + billing",
+      "persistence": "billing partner commercial mode / charity review state + audit history",
+      "audit": "gateway audit + START-23.11.3k Charity acceptance",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3k.sh: Partner Portal Charity request -> PENDING persistence -> HIMATE approval workflow",
+      "notes": "Charity is never self-approved. Partner may request review, but HIMATE administration is the approval authority."
+    },
+    {
+      "id": "PORTAL-CHARITY-MODULES-23-11-3K",
+      "surface": "partner_portal.modules",
+      "ui": "Partner Portal: manage approved Charity module selection",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_portal.dart",
+      "source_token": "'/partner/api/v1/charity/modules'",
+      "method": "PUT",
+      "api_pattern": "/partner/api/v1/charity/modules",
+      "backend_service": "gateway + billing + catalog",
+      "persistence": "billing Charity module selection + catalog partner entitlements",
+      "audit": "gateway audit + START-23.11.3k Charity module acceptance",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3k.sh: approved Charity module selection -> persisted selection -> Catalog entitlement convergence",
+      "notes": "Only APPROVED Charity partners may manage Charity module selection. Charity selection has no paid-package module-count cap."
     }
   ],
   "completed_through": "23.11.3"
