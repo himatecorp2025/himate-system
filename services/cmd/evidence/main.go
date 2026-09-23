@@ -186,7 +186,7 @@ func allowedMime(kind,mime string)bool{
 func (a *app)ensureStorageNamespace(ctx context.Context,namespace string)error{
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+a.storageHost+"/internal/v1/storage/partners/"+url.PathEscape(namespace)+"/ensure",bytes.NewReader([]byte("{}")))
 	if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	req.Header.Set("Content-Type","application/json")
 	resp,err:=a.client.Do(req)
 	if err!=nil{return err}
@@ -202,7 +202,7 @@ func (a *app)putObject(ctx context.Context,namespace,key string,file *os.File,si
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPut,"http://"+a.storageHost+"/internal/v1/storage/objects/"+url.PathEscape(namespace)+"/"+key,file)
 	if err!=nil{return nil,err}
 	req.ContentLength=size
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	resp,err:=a.client.Do(req)
 	if err!=nil{return nil,err}
 	defer resp.Body.Close()
@@ -216,7 +216,7 @@ func (a *app)getObject(ctx context.Context,namespace,key,mime string)(*http.Resp
 	path:="http://"+a.storageHost+"/internal/v1/storage/objects/"+url.PathEscape(namespace)+"/"+key+"?content_type="+url.QueryEscape(mime)
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,path,nil)
 	if err!=nil{return nil,err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	return a.client.Do(req)
 }
 
