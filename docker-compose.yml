@@ -47,6 +47,7 @@ services:
       PARTNERS_HOSTPORT: partners:10000
       PAYMENTS_HOSTPORT: payments:10000
       EVIDENCE_HOSTPORT: evidence:10000
+      NOTIFICATIONS_HOSTPORT: notifications:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -367,7 +368,7 @@ services:
       - "8080:10000"
     environment:
       HIMATE_ENV: development
-      HIMATE_APP_VERSION: 0.8.15-start-23.11.1
+      HIMATE_APP_VERSION: 0.8.16-start-23.11.2
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SESSION_SECRET: local-development-session-secret-change-me-123456

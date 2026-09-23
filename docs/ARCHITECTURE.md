@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–23.11.1
+# HIMATE control-plane architecture — START-01–23.11.2
 
 ```text
 Browser / Admin / Partner Portal / Search crawler
@@ -539,4 +539,25 @@ Partner entitlement is a separate tenant-scoped state. The compatibility `status
 
 Catalog-level monetary values are reference/list values only. The charging authority is the partner contract. Billing owns partner-level negotiated activation fee, base service fee, minimum monthly commitment, quote reference and terms versions; Catalog owns partner-module negotiated recurring and activation prices with effective-dated history. The quote/currency reference is carried into price history so later billing can prove which commercial agreement authorized a charge.
 
-For USD contracts the current platform policy floor is a 1,500 minimum monthly commitment. Activation/license fees have no global fixed floor and are negotiated per partner. START-23.11.1 stores these terms but deliberately leaves invoice timing, full-period charging and no-proration behavior to START-23.11.2.
+For legacy/CUSTOM USD contracts using the INDIVIDUAL_QUOTE model, the commercial guardrail is a 1,500 minimum monthly commitment. Standard Starter/Business/Flex partners are not governed by that floor; their recurring-price authority is the subscription plan. Activation/license fees have no global fixed floor and remain negotiated per partner.
+
+## START-23.11.2 subscription-plan billing authority
+
+START-23.11.2 introduces a managed subscription-plan layer above the existing module-commercial model. For standard pilot partners, the subscription plan is the recurring-price authority; individual module reference/partner prices remain retained commercial metadata for future add-ons and individually negotiated contracts.
+
+Billing owns the plan catalog and partner subscription state. The seeded public plans are Starter (USD 500/month, fixed 3 modules), Business (USD 1,500/month, fixed 10 modules) and Flex (USD 2,500/month, up to 15 partner-selected modules). Billing also retains a non-public CUSTOM plan type for individually negotiated accounts such as the reference Klavierhaus partner.
+
+Annual prices are explicit monetary contracts rather than derived presentation-only percentages: Starter USD 6,000; Business USD 18,000 list / USD 16,500 charged; Flex USD 30,000 list / USD 22,500 charged. The invoice ledger stores list price and discount amount so UI savings and financial evidence are reproducible.
+
+Activation/license payment remains a separate commercial gate. A partner may inspect available plans, but a first plan cannot activate until the activation license is provider-verified PAID or explicitly WAIVED.
+
+Billing and Catalog keep distinct ownership. Billing determines the plan and effective module set; Catalog remains authoritative for module identity, publication/readiness and persisted partner entitlement. Billing pushes the derived entitlement set through an internal authenticated plan-entitlement command. Starter and Business require complete fixed PUBLISHED+READY module sets configured by HIMATE. Flex accepts at most 15 partner-selected PUBLISHED+READY modules.
+
+Same-frequency upgrades are immediate and charge the full plan-price difference with no proration. Monthly downgrades remain on the current plan through the current period and switch on the next calendar-month day 1; annual downgrades switch at annual renewal. Normal Flex module-set changes are effective on the next calendar-month boundary.
+
+Plan invoices are created idempotently before provider collection. Existing Payments settlement/webhook verification remains authoritative for PAID state. Standard plan partners are excluded from legacy per-module recurring invoice generation and from Partner Portal individual module activation/cancellation commands, preventing a second billing authority from emerging.
+
+Recurring plan collection includes a Billing-owned dunning state machine. The due-date attempt is followed by retry attempts on due+2 and due+5 days. Verified failure of the third attempt moves the plan to SUSPENDED, moves the partner lifecycle to SUSPENDED and removes active plan entitlements. Payment inside the 30-day cure window restores the previous partner lifecycle and entitlement set. When the cure window expires, the partner is ARCHIVED, Partner Portal login identities and current operational plan selections are purged, and the plan becomes CANCELLED. Financial invoices, provider settlement evidence, contract/commercial history and immutable audit/evidence remain under legal retention and are not deleted by the operational purge.
+
+Historical 30-day module subscriptions, module-period snapshots, partner-specific prices, activation-fee history and quote references remain intact for legacy/custom compatibility. They are not rewritten into plan invoices.
+

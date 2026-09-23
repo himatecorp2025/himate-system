@@ -6,6 +6,10 @@ on:
     branches: [develop, main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   go:
     runs-on: ubuntu-latest
@@ -26,7 +30,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.15-start-23.11.1' ../docs/openapi.yaml
+          grep -q 'version: 0.8.16-start-23.11.2' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
@@ -46,6 +50,13 @@ jobs:
           grep -q '^  /api/v1/billing/partners/{partnerId}/commercial-status:' ../docs/openapi.yaml
           grep -q '^  /api/v1/billing/partners/{partnerId}/events:' ../docs/openapi.yaml
           grep -q '^  /api/v1/billing/partners/{partnerId}/license/collect:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/plans:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/plans/{planKey}:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/partners/{partnerId}/plan:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/partners/{partnerId}/plan/modules:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/plans:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/plan:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/plan/modules:' ../docs/openapi.yaml
           grep -q '^  /api/v1/payments/partners/{partnerId}/profile:' ../docs/openapi.yaml
           grep -q '^  /api/v1/payments/partners/{partnerId}/attempts:' ../docs/openapi.yaml
           grep -q '^  /webhooks/stripe:' ../docs/openapi.yaml
@@ -80,6 +91,7 @@ jobs:
           test -s ../docs/START-23.9_ACCEPTANCE.md
           test -s ../docs/START-23.10_ACCEPTANCE.md
           test -s ../docs/START-23.11.1_ACCEPTANCE.md
+          test -s ../docs/START-23.11.2_ACCEPTANCE.md
           grep -q '^  /api/v1/billing/partners/{partnerId}/terms-history:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/scheduler/run:' ../docs/openapi.yaml
           grep -q '^  /api/v1/dashboard/summary:' ../docs/openapi.yaml
@@ -129,6 +141,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_10.py
       - name: Run START-23.11.1 Module Registry & Individual Commercial Model audit
         run: python3 ../scripts/audit_start_23_11_1.py
+      - name: Run START-23.11.2 Subscription Plans & Recurring Billing audit
+        run: python3 ../scripts/audit_start_23_11_2.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -360,6 +374,8 @@ jobs:
         run: sh scripts/smoke_start_23_10.sh http://127.0.0.1:8080
       - name: Run START-23.11.1 Module Registry & Individual Commercial Model smoke
         run: sh scripts/smoke_start_23_11_1.sh http://127.0.0.1:8080
+      - name: Run START-23.11.2 Subscription Plans & Recurring Billing smoke
+        run: sh scripts/smoke_start_23_11_2.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

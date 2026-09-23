@@ -315,13 +315,28 @@ The architecture remains microservice/container based. It is **not** being colla
 ### START-23.11.1 — Module Registry & Individual Commercial Model
 - the canonical Klavierhaus portfolio is represented by 38 real legacy-reference modules across exactly four primary groups: Finance & Invoicing (3), Technical Operations (16), Marketing (8), Website & Events (11)
 - module publication is independent from partner entitlement; only READY modules may become PUBLISHED and unpublished modules fail closed in Partner Portal
-- partner commercial terms are individual contracts/quotes: activation fee, base service fee, USD minimum monthly commitment, contract currency and offer reference are versioned per partner
-- the current USD minimum monthly commitment is 1,500; the obsolete fixed USD 13,000 activation-fee floor is removed
+- legacy/CUSTOM partner commercial terms remain individual contracts/quotes: activation fee, base service fee, USD minimum monthly commitment, contract currency and offer reference are versioned per partner
+- the USD 1,500 minimum applies to the legacy/CUSTOM INDIVIDUAL_QUOTE model only; standard Starter/Business/Flex recurring charges are controlled by their plan prices. The obsolete fixed USD 13,000 activation-fee floor is removed
 - catalog/list prices are reference values only; partner-specific contract pricing is the charging authority
 - partner-module recurring and activation prices retain quote/currency history and remain tenant-isolated
 - release contract version is `0.8.15-start-23.11.1`
 - START-23.11.1 acceptance is `docs/START-23.11.1_ACCEPTANCE.md`, `scripts/audit_start_23_11_1.py` and `scripts/smoke_start_23_11_1.sh`
-- START-23.11.2 billing-period changes are explicitly out of scope and must not begin automatically
+- START-23.11.2 is implemented as subscription-plan recurring billing rather than individual module-price aggregation.
+
+### START-23.11.2 — Subscription Plans & Recurring Billing
+- Starter: USD 500/month, 3 fixed HIMATE-defined modules; USD 6,000/year
+- Business: USD 1,500/month, 10 fixed HIMATE-defined modules; USD 18,000 annual list price → USD 16,500 annual charge
+- Flex: USD 2,500/month, up to 15 partner-selected modules; USD 30,000 annual list price → USD 22,500 annual charge
+- CUSTOM remains available for individually negotiated partners such as the reference Klavierhaus account
+- activation/license collection is a separate prerequisite; a plan activates only after PAID or explicit waiver
+- same-frequency upgrades are immediate and collect the full plan-price difference without proration
+- monthly downgrades apply on the next calendar-month day 1; annual downgrades apply at annual renewal; no refund is generated
+- recurring card collection is automatic; failed recurring charges retry on day 1/day 3/day 6, then suspend service for 30 days before retention-safe operational account purge
+- cure-window payment restores the prior partner lifecycle and plan entitlements; purge removes operational access while retaining legally required financial/contract/audit evidence
+- Billing owns plan pricing/subscription/payment state while Catalog owns the resulting module entitlements
+- module-level commercial pricing/history from START-23.11.1 is retained for future add-ons/custom contracts but is not the recurring invoice authority for standard plans
+- release contract version is `0.8.16-start-23.11.2`
+- acceptance: `docs/START-23.11.2_ACCEPTANCE.md`, `scripts/audit_start_23_11_2.py`, `scripts/smoke_start_23_11_2.sh`
 
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
@@ -351,10 +366,11 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.9_ACCEPTANCE.md`
 - `docs/START-23.10_ACCEPTANCE.md`
 - `docs/START-23.11.1_ACCEPTANCE.md`
+- `docs/START-23.11.2_ACCEPTANCE.md`
 - `docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. START-23.9 protects authoritative Dashboard revenue/Impact analytics, audit-backed Recent Activity and permission-scoped global search. START-23.10 protects provisioning, connector credentials, Website Adapter binding, environment/provider operations and backup policy scheduling. START-23.11.1 protects the canonical 38-module registry, publish-ready lifecycle gates and partner-specific versioned commercial terms. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. START-23.9 protects authoritative Dashboard revenue/Impact analytics, audit-backed Recent Activity and permission-scoped global search. START-23.10 protects provisioning, connector credentials, Website Adapter binding, environment/provider operations and backup policy scheduling. START-23.11.1 protects the canonical 38-module registry, publish-ready lifecycle gates and partner-specific versioned commercial terms. START-23.11.2 protects plan packaging, fixed/selectable entitlements, monthly/annual recurring prices, provider-backed collection and upgrade/downgrade lifecycle. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.

@@ -236,6 +236,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS partner_modules_entitlement_idx ON catalog.partner_modules(partner_id,entitlement_state)`,
 			`CREATE INDEX IF NOT EXISTS partner_modules_commercial_idx ON catalog.partner_modules(partner_id,commercial_configured)`,
 		}},
+		start23112CatalogPlanMigration(),
 	}); err != nil {
 		return err
 	}
@@ -586,6 +587,14 @@ func (a *app) partnerModules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.listPartnerModules(w, partnerID, true, common.RequestLocale(r))
+		return
+	}
+	if parts[1] == "plan-entitlements" {
+		if !internal {
+			common.APIError(w, 404, "NOT_FOUND", "Route not found")
+			return
+		}
+		a.applyPlanEntitlements(w, r, partnerID)
 		return
 	}
 	if parts[1] != "modules" {

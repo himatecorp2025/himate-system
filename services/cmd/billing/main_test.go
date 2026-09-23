@@ -272,3 +272,120 @@ func TestSTART233CancellationBoundaryRemainsExclusive(t *testing.T) {
 		t.Fatal("cancellation must become effective at the exact period boundary")
 	}
 }
+
+func TestSTART23112PlanPricingContract(t *testing.T) {
+	m := start23112PlanBillingMigration()
+	if m.Version != 11 {
+		t.Fatalf("expected migration version 11 got %d", m.Version)
+	}
+	joined := strings.Join(m.Statements, "\n")
+	for _, token := range []string{
+		"'STARTER','Starter','USD',500,6000,6000,0,3,'FIXED'",
+		"'BUSINESS','Business','USD',1500,18000,16500,1,10,'FIXED'",
+		"'FLEX','Flex','USD',2500,30000,22500,3,15,'SELECTABLE'",
+		"partner_plan_subscriptions",
+		"partner_plan_module_selections",
+		"plan_change_history",
+		"invoice_key",
+		"billing_model",
+		"'PLAN_BASED'",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("START-23.11.2 plan migration missing %q", token)
+		}
+	}
+}
+
+func TestSTART23112NextMonthBillingBoundary(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"2026-01-15", "2026-02-01"},
+		{"2026-02-28", "2026-03-01"},
+		{"2026-12-31", "2027-01-01"},
+	}
+	for _, tc := range tests {
+		at, _ := time.Parse("2006-01-02", tc.in)
+		if got := nextMonthStart(at).Format("2006-01-02"); got != tc.want {
+			t.Fatalf("%s expected %s got %s", tc.in, tc.want, got)
+		}
+	}
+}
+
+func TestSTART23112AnnualSavingsAreExplicitAmounts(t *testing.T) {
+	business := subscriptionPlan{Key:"BUSINESS",Name:"Business",Currency:"USD",MonthlyPrice:1500,AnnualListPrice:18000,AnnualPrice:16500,AnnualFreeMonths:1,ModuleLimit:10,SelectionMode:"FIXED"}
+	flex := subscriptionPlan{Key:"FLEX",Name:"Flex",Currency:"USD",MonthlyPrice:2500,AnnualListPrice:30000,AnnualPrice:22500,AnnualFreeMonths:3,ModuleLimit:15,SelectionMode:"SELECTABLE"}
+	b := planMap(business, []string{}, false)
+	f := planMap(flex, []string{}, true)
+	if b["annual_savings"] != float64(1500) {
+		t.Fatalf("business annual savings expected 1500 got %v", b["annual_savings"])
+	}
+	if f["annual_savings"] != float64(7500) {
+		t.Fatalf("flex annual savings expected 7500 got %v", f["annual_savings"])
+	}
+}
+
+func TestSTART23112LegacyInvoiceDateConstraintRecovery(t *testing.T) {
+	m := start23112InvoiceDateConstraintRecoveryMigration()
+	if m.Version != 14 {
+		t.Fatalf("expected migration version 14 got %d", m.Version)
+	}
+	joined := strings.Join(m.Statements, "\n")
+	for _, token := range []string{
+		"invoices_partner_id_invoice_date_key",
+		"billing_invoices_partner_id_invoice_date_key",
+		"billing_invoice_partner_date_idx",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("START-23.11.2 invoice-date recovery missing %q", token)
+		}
+	}
+}
+
+
+func TestSTART23112DunningSchedule(t *testing.T) {
+	invoiceDate := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	if collectionRetryDue(invoiceDate, time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), 1) {
+		t.Fatal("second collection attempt must not run before day 3")
+	}
+	if !collectionRetryDue(invoiceDate, time.Date(2026, 2, 3, 0, 0, 0, 0, time.UTC), 1) {
+		t.Fatal("second collection attempt must run on day 3")
+	}
+	if collectionRetryDue(invoiceDate, time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC), 2) {
+		t.Fatal("third collection attempt must not run before day 6")
+	}
+	if !collectionRetryDue(invoiceDate, time.Date(2026, 2, 6, 0, 0, 0, 0, time.UTC), 2) {
+		t.Fatal("third collection attempt must run on day 6")
+	}
+}
+
+func TestSTART23112DunningMigrationContract(t *testing.T) {
+	m := start23112DunningMigration()
+	if m.Version != 15 {
+		t.Fatalf("expected migration version 15 got %d", m.Version)
+	}
+	joined := strings.Join(m.Statements, "\n")
+	for _, token := range []string{
+		"collection_attempts",
+		"dunning_state",
+		"dunning_suspended_at",
+		"purge_due_at",
+		"pre_suspend_partner_lifecycle",
+		"operational_purged_at",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("START-23.11.2 dunning migration missing %q", token)
+		}
+	}
+}
+
+func TestSTART23112DunningEligibility(t *testing.T) {
+	for _, chargeType := range []string{"PLAN_MONTHLY", "PLAN_ANNUAL_RENEWAL"} {
+		if !dunningEligible("PLAN", chargeType) {
+			t.Fatalf("%s must use recurring-payment dunning", chargeType)
+		}
+	}
+	for _, chargeType := range []string{"PLAN_UPGRADE", "PLAN_ANNUAL_PREPAY", "LEGACY"} {
+		if dunningEligible("PLAN", chargeType) {
+			t.Fatalf("%s must not use recurring-payment dunning", chargeType)
+		}
+	}
+}

@@ -268,7 +268,7 @@
     {
       "id": "automation.billing",
       "name": "Automation / Billing",
-      "scope": "30-day invoice cycle and subscription expiry"
+      "scope": "Subscription-plan recurring billing, monthly/annual collection, immediate upgrades, scheduled downgrades and plan-entitlement synchronization"
     },
     {
       "id": "automation.payments",
@@ -2090,7 +2090,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11.1",
       "e2e_proof": "scripts/smoke_start_23_11_1.sh: USD 1499 rejection -> negotiated activation/base/minimum/quote -> versioned readback",
-      "notes": "USD 1500 is the minimum monthly commitment. Activation fees are partner-specific; the former fixed USD 13000 floor is removed. Invoice-cycle semantics remain START-23.11.2."
+      "notes": "USD 1500 is the minimum monthly commitment for legacy/CUSTOM INDIVIDUAL_QUOTE contracts only; standard plan prices are authoritative for Starter/Business/Flex. Activation fees are partner-specific; the former fixed USD 13000 floor is removed. Invoice-cycle semantics remain START-23.11.2."
     },
     {
       "id": "PARTNER-MODULE-CONTRACT-PRICING-23-11-1",
@@ -2109,7 +2109,61 @@
       "target_phase": "23.11.1",
       "e2e_proof": "scripts/smoke_start_23_11_1.sh: same module -> distinct Partner A/B quote references and prices",
       "notes": "Catalog prices are reference-only. PARTNER_CONTRACT is the pricing authority; unpublished modules remain invisible and non-activatable to Partner Portal."
+    },
+    {
+      "id": "PLAN-PACKAGE-ADMIN-23-11-2",
+      "surface": "modules.registry",
+      "ui": "Modules → Subscription Plans: configure fixed Starter/Business package membership and plan pricing visibility",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/module_control_plane.dart",
+      "source_token": "/api/v1/billing/plans/",
+      "method": "PATCH",
+      "api_pattern": "/api/v1/billing/plans/{planKey}",
+      "backend_service": "billing + catalog",
+      "persistence": "billing.subscription_plans + billing.subscription_plan_modules",
+      "audit": "START-23.11.2 static audit + Compose acceptance",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.2",
+      "e2e_proof": "scripts/smoke_start_23_11_2.sh configures exactly 3 Starter and 10 Business PUBLISHED+READY modules",
+      "notes": "Starter and Business package membership is HIMATE-administered. Existing fixed-package changes default to next calendar-month boundary."
+    },
+    {
+      "id": "PARTNER-PLAN-SELECTION-23-11-2",
+      "surface": "partner_portal.billing",
+      "ui": "Partner Portal Billing & Subscription plan selection / upgrade / downgrade",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_portal.dart",
+      "source_token": "Partner Portal plan selection",
+      "method": "PATCH",
+      "api_pattern": "/partner/api/v1/plan",
+      "backend_service": "billing + catalog",
+      "persistence": "billing.partner_plan_subscriptions + billing.plan_change_history + billing.invoices + billing.invoice_items + catalog.partner_modules",
+      "audit": "START-23.11.2 static audit + Compose acceptance",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.2",
+      "e2e_proof": "scripts/smoke_start_23_11_2.sh proves activation gate, Starter→Business→Flex upgrades, scheduled downgrade and annual Flex prepay",
+      "notes": "Standard recurring price authority is the plan. Business annual list/charged amounts are 18000/16500 USD; Flex 30000/22500 USD."
+    },
+    {
+      "id": "FLEX-MODULE-SELECTION-23-11-2",
+      "surface": "partner_portal.modules",
+      "ui": "Partner Portal Flex module-set management",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_portal.dart",
+      "source_token": "/partner/api/v1/plan/modules",
+      "method": "PUT",
+      "api_pattern": "/partner/api/v1/plan/modules",
+      "backend_service": "billing + catalog",
+      "persistence": "billing.partner_plan_module_selections + catalog.partner_modules",
+      "audit": "START-23.11.2 static audit + Compose acceptance",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.2",
+      "e2e_proof": "scripts/smoke_start_23_11_2.sh schedules a new Flex selection and verifies Catalog entitlement convergence",
+      "notes": "Flex supports at most 15 PUBLISHED+READY modules. Normal module-set changes take effect at the next calendar-month boundary."
     }
   ],
-  "completed_through": "23.11.1"
+  "completed_through": "23.11.2"
 }

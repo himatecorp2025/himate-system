@@ -20,8 +20,9 @@ type app struct {
 	catalogHost  string
 	partnersHost string
 	paymentsHost string
-	evidenceHost string
-	token        string
+	evidenceHost      string
+	notificationsHost string
+	token             string
 	client       *http.Client
 }
 
@@ -76,6 +77,7 @@ func main() {
 		partnersHost: os.Getenv("PARTNERS_HOSTPORT"),
 		paymentsHost: os.Getenv("PAYMENTS_HOSTPORT"),
 		evidenceHost: os.Getenv("EVIDENCE_HOSTPORT"),
+		notificationsHost: os.Getenv("NOTIFICATIONS_HOSTPORT"),
 		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		client: &http.Client{Timeout: 8 * time.Second},
 	}
@@ -105,11 +107,13 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{
-			"status": "ok", "service": "billing", "cycle_days": 30,
-			"cycle_model": "activation-date anchored", "annual_increase_date": "January 1", "time": time.Now().UTC(),
+			"status": "ok", "service": "billing", "billing_cycle_model": "PLAN_BASED",
+			"cycle_model": "subscription plan recurring billing; monthly day-1 or annual prepay", "annual_increase_date": "January 1", "time": time.Now().UTC(),
 		})
 	})
 	mux.HandleFunc("/api/v1/billing/profile", a.profile)
+	mux.HandleFunc("/api/v1/billing/plans", a.plans)
+	mux.HandleFunc("/api/v1/billing/plans/", a.planByKey)
 	mux.HandleFunc("/api/v1/billing/subscription-matrix", a.subscriptionMatrix)
 	mux.HandleFunc("/api/v1/billing/partners/", a.partnerRoutes)
 	mux.HandleFunc("/internal/v1/invoices/run", a.runEndpoint)
@@ -215,6 +219,11 @@ func (a *app) migrate(ctx context.Context) error {
 		start233BillingLifecycleMigration(),
 		start234BillingPaymentMigration(),
 		start23111BillingCommercialModelMigration(),
+		start23112PlanBillingMigration(),
+		start23112PlanBillingRecoveryMigration(),
+		start23112PlanLedgerImmutabilityMigration(),
+		start23112InvoiceDateConstraintRecoveryMigration(),
+		start23112DunningMigration(),
 	}); err != nil {
 		return err
 	}
@@ -473,6 +482,10 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 	id, section := parts[0], parts[1]
 	if len(parts) == 3 {
+		if section == "plan" && parts[2] == "modules" {
+			a.partnerPlanModules(w, r, id)
+			return
+		}
 		if section == "subscriptions" {
 			a.subscriptionByKey(w, r, id, parts[2])
 			return
@@ -485,6 +498,8 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch section {
+	case "plan":
+		a.partnerPlan(w, r, id)
 	case "terms":
 		a.terms(w, r, id)
 	case "terms-history":
@@ -813,6 +828,26 @@ func moduleActivationDate(mod map[string]any, fallback time.Time) time.Time {
 }
 
 func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
+	if planSub, planErr := a.loadPartnerPlan(r.Context(), id); planErr == nil {
+		planState, err := a.partnerPlanMap(r.Context(), planSub)
+		if err != nil { common.APIError(w, 500, "DB", "Could not load subscription plan summary"); return }
+		currentTotal := planSub.MonthlyPriceSnapshot
+		if planSub.BillingFrequency == "ANNUAL" { currentTotal = planSub.AnnualPriceSnapshot }
+		common.JSON(w, 200, map[string]any{
+			"partner_id": id, "currency": planState["currency"], "billing_cycle_model": "PLAN_BASED",
+			"pricing_authority": "SUBSCRIPTION_PLAN", "plan": planState,
+			"effective_base_fee": currentTotal, "extra_module_fee": 0, "current_total": currentTotal,
+			"billing_frequency": planSub.BillingFrequency,
+			"current_period_start": planState["current_period_start"],
+			"current_period_end_exclusive": planState["current_period_end_exclusive"],
+			"next_billing_date": planState["next_billing_at"],
+			"service_period": "subscription plan", "modules_billed_individually": false,
+		})
+		return
+	} else if planErr != sql.ErrNoRows {
+		common.APIError(w, 500, "DB", "Could not load subscription plan")
+		return
+	}
 	t, err := a.ensureTerms(id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load terms"); return }
 	_, rawMods, err := a.catalogFees(r.Context(), id)
@@ -833,6 +868,7 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 		"partner_id": id, "currency": t.Currency, "effective_base_fee": base, "extra_module_fee": extra,
 		"current_total": math.Round((base+extra)*100) / 100, "annual_increase_percent": t.AnnualIncreasePercent,
 		"annual_increase_date": "January 1", "cycle_days": 30, "invoice_day": 1,
+		"billing_cycle_model": "LEGACY_MODULE", "pricing_authority": "PARTNER_CONTRACT",
 		"service_period": "activation-date anchored 30-day cycle",
 		"current_period_start": start.Format("2006-01-02"), "current_period_end_exclusive": end.Format("2006-01-02"),
 		"next_billing_date": end.Format("2006-01-02"), "modules": mods,
@@ -979,10 +1015,14 @@ func (a *app) setCatalogEntitlementState(ctx context.Context, partnerID, moduleK
 
 func (a *app) expireDueCancellations(ctx context.Context, at time.Time) error {
 	today := dateOnly(at)
-	rows, err := a.db.QueryContext(ctx, `SELECT partner_id,module_key,period_start,period_end
-		FROM billing.module_subscriptions
-		WHERE lifecycle_state='CANCEL_PENDING' AND cancel_at_period_end=TRUE AND period_end <= $1
-		ORDER BY period_end,partner_id,module_key`, today)
+	rows, err := a.db.QueryContext(ctx, `SELECT s.partner_id,s.module_key,s.period_start,s.period_end
+		FROM billing.module_subscriptions s
+		WHERE s.lifecycle_state='CANCEL_PENDING' AND s.cancel_at_period_end=TRUE AND s.period_end <= $1
+		  AND NOT EXISTS (
+			SELECT 1 FROM billing.partner_plan_subscriptions pps
+			WHERE pps.partner_id=s.partner_id AND pps.status='ACTIVE'
+		  )
+		ORDER BY s.period_end,s.partner_id,s.module_key`, today)
 	if err != nil { return err }
 	defer rows.Close()
 	type due struct {
@@ -1570,23 +1610,36 @@ func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
 	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,status,provider_status,
-		payment_attempt_id,provider,provider_payment_id,paid_at,payment_failure_code,payment_failure_message,created_at
-		FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC`, id)
+		payment_attempt_id,provider,provider_payment_id,paid_at,payment_failure_code,payment_failure_message,created_at,
+		COALESCE(plan_key,''),COALESCE(billing_frequency,''),COALESCE(charge_type,'LEGACY'),COALESCE(list_price,0),COALESCE(discount_amount,0),COALESCE(billing_model,'LEGACY_MODULE'),
+		COALESCE(collection_attempts,0),COALESCE(dunning_state,'NONE'),dunning_suspended_at,purge_due_at,operational_purged_at
+		FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC,created_at DESC`, id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load invoices"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
 		var invoiceID, currency, status, providerStatus, attemptID, provider, providerPaymentID, failureCode, failureMessage string
+		var planKey, billingFrequency, chargeType, billingModel, dunningState string
 		var invoiceDate, start, end, created time.Time
-		var paidAt sql.NullTime
-		var base, module, total float64
+		var paidAt, dunningSuspendedAt, purgeDueAt, operationalPurgedAt sql.NullTime
+		var base, module, total, listPrice, discountAmount float64
+		var collectionAttempts int
 		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &status, &providerStatus,
-			&attemptID, &provider, &providerPaymentID, &paidAt, &failureCode, &failureMessage, &created) == nil {
-			var paid any
+			&attemptID, &provider, &providerPaymentID, &paidAt, &failureCode, &failureMessage, &created,
+			&planKey,&billingFrequency,&chargeType,&listPrice,&discountAmount,&billingModel,
+			&collectionAttempts,&dunningState,&dunningSuspendedAt,&purgeDueAt,&operationalPurgedAt) == nil {
+			var paid, suspended, purgeDue, purged any
 			if paidAt.Valid { paid = paidAt.Time }
+			if dunningSuspendedAt.Valid { suspended = dunningSuspendedAt.Time }
+			if purgeDueAt.Valid { purgeDue = purgeDueAt.Time }
+			if operationalPurgedAt.Valid { purged = operationalPurgedAt.Time }
 			items = append(items, map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
 				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": providerStatus,
+				"plan_key":planKey,"billing_frequency":billingFrequency,"charge_type":chargeType,"billing_model":billingModel,
+				"list_price":listPrice,"discount_amount":discountAmount,
+				"collection_attempts":collectionAttempts,"dunning_state":dunningState,
+				"dunning_suspended_at":suspended,"purge_due_at":purgeDue,"operational_purged_at":purged,
 				"payment_attempt_id": attemptID, "provider": provider, "provider_payment_id": providerPaymentID, "paid_at": paid,
 				"payment_failure_code": failureCode, "payment_failure_message": failureMessage, "created_at": created,
 				"items": a.invoiceItemsFor(invoiceID),
@@ -1619,7 +1672,10 @@ func isCycleBoundary(anchor, at time.Time) bool {
 
 func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 	at = dateOnly(at)
-	if err := a.retryPendingInvoiceCollections(ctx); err != nil { return err }
+	if err := a.retryPendingInvoiceCollections(ctx, at); err != nil { return err }
+	planManaged, err := a.runPlanBillingCycle(ctx, at)
+	if err != nil { return err }
+	if err := a.runDunningCycle(ctx, at); err != nil { return err }
 	rows, err := a.db.QueryContext(ctx, `SELECT partner_id FROM billing.partner_terms`)
 	if err != nil { return err }
 	defer rows.Close()
@@ -1630,6 +1686,7 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 	}
 	if err := a.expireDueCancellations(ctx, at); err != nil { return err }
 	for _, id := range ids {
+		if planManaged[id] { continue }
 		t, err := a.ensureTerms(id)
 		if err != nil { return err }
 
@@ -1645,7 +1702,7 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		base := effectiveBaseFee(t, start)
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
 		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
-			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
+			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT DO NOTHING`,
 			invoiceID, id, at, start, at, t.Currency, base)
 		if err != nil { return err }
 		inserted, _ := result.RowsAffected()

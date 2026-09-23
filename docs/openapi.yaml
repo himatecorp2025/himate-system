@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.15-start-23.11.1
+  version: 0.8.16-start-23.11.2
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.1 HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.2 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -352,9 +352,42 @@ paths:
   /partner/api/v1/billing/summary:
     get:
       tags: [Partner Portal]
-      summary: Own current 30-day billing summary
+      summary: Own current billing and subscription summary
       responses:
         "200": {description: Tenant billing summary}
+  /partner/api/v1/plans:
+    get:
+      tags: [Partner Portal]
+      summary: Customer-selectable Starter, Business and Flex plans
+      description: Returns monthly price, annual list price, discounted annual price, module capacity and selection mode. CUSTOM is not exposed to Partner Portal users.
+      responses:
+        "200": {description: Customer-selectable subscription plans}
+  /partner/api/v1/plan:
+    get:
+      tags: [Partner Portal]
+      summary: Own current subscription plan
+      responses:
+        "200": {description: Current plan, frequency, renewal boundary and scheduled change}
+    patch:
+      tags: [Partner Portal]
+      summary: Select, upgrade or schedule downgrade of own subscription plan
+      description: Same-frequency upgrades are immediate and charge the complete plan-price difference without proration. Monthly downgrades take effect next calendar-month day 1; annual downgrades take effect at annual renewal.
+      responses:
+        "200": {description: Plan changed or scheduled}
+        "409": {description: Activation license required, plan not ready or commercial transition blocked}
+  /partner/api/v1/plan/modules:
+    get:
+      tags: [Partner Portal]
+      summary: Own current plan module set
+      responses:
+        "200": {description: Current fixed or Flex module set}
+    put:
+      tags: [Partner Portal]
+      summary: Schedule next Flex module selection
+      description: Flex supports up to 15 PUBLISHED and READY modules. Normal selection changes take effect at the next calendar-month boundary.
+      responses:
+        "200": {description: Flex module set scheduled}
+        "409": {description: Current plan is fixed or module is not ready}
   /partner/api/v1/billing/subscriptions:
     get:
       tags: [Partner Portal]
@@ -741,6 +774,72 @@ paths:
       summary: Update HIMATE issuer and banking profile
       responses:
         "200": {description: Updated billing profile}
+  /api/v1/billing/plans:
+    get:
+      tags: [Billing]
+      summary: Subscription plan catalog
+      description: Starter is USD 500 monthly / USD 6,000 annual. Business is USD 1,500 monthly with USD 18,000 annual list price and USD 16,500 annual charged price. Flex is USD 2,500 monthly with USD 30,000 annual list price and USD 22,500 annual charged price.
+      responses:
+        "200": {description: Plans with module limits, selection modes, annual savings and readiness}
+  /api/v1/billing/plans/{planKey}:
+    parameters:
+      - in: path
+        name: planKey
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Billing]
+      summary: Subscription plan detail
+      responses:
+        "200": {description: Plan detail and current fixed module set}
+    patch:
+      tags: [Billing]
+      summary: Update plan commercial fields or fixed module package
+      description: Starter and Business fixed packages must contain exactly their configured module limit and every module must be PUBLISHED and READY. Existing package changes default to next calendar-month day 1.
+      responses:
+        "200": {description: Plan updated}
+        "400": {description: Invalid plan values or module count}
+        "409": {description: Module not PUBLISHED/READY or incompatible selection mode}
+  /api/v1/billing/partners/{partnerId}/plan:
+    parameters:
+      - in: path
+        name: partnerId
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Billing]
+      summary: Partner subscription plan
+      responses:
+        "200": {description: Plan state, billing frequency, prices, modules and scheduled change}
+    put:
+      tags: [Billing]
+      summary: Create partner plan subscription
+      responses:
+        "201": {description: Plan subscription created}
+        "409": {description: Activation license must be paid or waived}
+    patch:
+      tags: [Billing]
+      summary: Change partner subscription plan
+      description: Same-frequency price upgrades are immediate and collect the full price difference. Downgrades are scheduled with no refund. CUSTOM is available for HIMATE-administered negotiated partners. Recurring charges are collected automatically from the saved provider payment method. Failed recurring collection retries on due date, due+2 and due+5 days; the third failure suspends service and starts a 30-day cure window before retention-safe operational account purge.
+      responses:
+        "200": {description: Plan changed or scheduled}
+  /api/v1/billing/partners/{partnerId}/plan/modules:
+    parameters:
+      - in: path
+        name: partnerId
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Billing]
+      summary: Partner plan module set
+      responses:
+        "200": {description: Current fixed or Flex selection}
+    put:
+      tags: [Billing]
+      summary: Schedule Flex module set
+      responses:
+        "200": {description: Module set scheduled for next month boundary}
+        "409": {description: Fixed plan cannot be individually reconfigured}
   /api/v1/billing/partners/{partnerId}/terms:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -754,9 +853,10 @@ paths:
       summary: Update partner-specific commercial terms
       description: >
         Persists negotiated activation fee, base fee, minimum monthly commitment,
-        quote reference and a monotonic terms version. USD contracts enforce the
-        HIMATE minimum monthly commitment of 1,500 while activation fees remain
-        individually negotiated. START-23.11.1 does not change invoice-cycle semantics.
+        quote reference and a monotonic terms version for legacy/CUSTOM INDIVIDUAL_QUOTE
+        partners. The USD 1,500 minimum applies only to that negotiated model.
+        Starter/Business/Flex recurring charges are controlled by subscription-plan prices,
+        while activation fees remain individually negotiated.
       responses:
         "200": {description: Updated individual commercial terms}
         "400": {description: Invalid amount or USD minimum commitment below 1,500}
@@ -872,9 +972,9 @@ paths:
       - {$ref: "#/components/parameters/PartnerId"}
     get:
       tags: [Billing]
-      summary: Current 30-day commercial summary
+      summary: Current commercial billing summary
       responses:
-        "200": {description: Effective fee and cycle window}
+        "200": {description: Plan-based summary for managed-plan partners or legacy negotiated-cycle summary for legacy/CUSTOM partners}
   /api/v1/billing/partners/{partnerId}/documents:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}

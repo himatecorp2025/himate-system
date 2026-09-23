@@ -93,6 +93,10 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+	var dunningEligibleInvoice bool
+	var dunningAttempts int
+	var dunningInvoiceDate time.Time
+	var dunningPreState string
 	if err != nil {
 		common.APIError(w, 500, "DB", "Could not start payment settlement")
 		return
@@ -145,12 +149,14 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 		if err != nil { common.APIError(w, 500, "DB", "Could not settle activation license"); return }
 	} else {
 		var amount float64
-		var currency, oldStatus string
-		if err = tx.QueryRow(`SELECT total,currency,status FROM billing.invoices WHERE id=$1 AND partner_id=$2 FOR UPDATE`, in.InvoiceID, in.PartnerID).
-			Scan(&amount, &currency, &oldStatus); err != nil {
+		var currency, oldStatus, billingModel, chargeType string
+		if err = tx.QueryRow(`SELECT total,currency,status,billing_model,charge_type,collection_attempts,invoice_date,dunning_state
+			FROM billing.invoices WHERE id=$1 AND partner_id=$2 FOR UPDATE`, in.InvoiceID, in.PartnerID).
+			Scan(&amount, &currency, &oldStatus, &billingModel, &chargeType, &dunningAttempts, &dunningInvoiceDate, &dunningPreState); err != nil {
 			common.APIError(w, 404, "INVOICE_NOT_FOUND", "Invoice not found")
 			return
 		}
+		dunningEligibleInvoice = dunningEligible(billingModel, chargeType)
 		if !strings.EqualFold(currency, in.Currency) || math.Abs(amount-in.Amount) > 0.005 {
 			common.APIError(w, 409, "SETTLEMENT_MISMATCH", "Provider settlement does not match the invoice total and currency")
 			return
@@ -184,6 +190,24 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 		in.ProviderEventID,in.AttemptID,in.PartnerID,in.InvoiceID,in.Purpose,in.Amount,in.Currency,in.Status,in.Provider,in.ProviderPaymentID,in.FailureCode,in.FailureMessage)
 	if err != nil { common.APIError(w, 500, "DB", "Could not persist payment settlement"); return }
 	if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit payment settlement"); return }
+
+	if in.Purpose == "INVOICE" {
+		if dunningEligibleInvoice {
+			if in.Status == "SUCCEEDED" {
+				if dunningAttempts > 1 || dunningPreState == "PAST_DUE" || dunningPreState == "SUSPENDED" {
+					_ = a.recoverDunningPayment(r.Context(), in.InvoiceID, in.PartnerID, time.Now().UTC())
+				} else {
+					_, _ = a.db.ExecContext(r.Context(), `UPDATE billing.invoices SET dunning_state='NONE' WHERE id=$1 AND dunning_state<>'PURGED'`, in.InvoiceID)
+					_, _ = a.db.ExecContext(r.Context(), `UPDATE billing.partner_plan_subscriptions SET status='ACTIVE',updated_at=NOW()
+						WHERE partner_id=$1 AND status='PAST_DUE'`, in.PartnerID)
+				}
+			} else if dunningAttempts >= dunningMaxAttempts {
+				_ = a.suspendForNonPayment(r.Context(), in.InvoiceID, in.PartnerID, time.Now().UTC())
+			} else {
+				_ = a.markPastDue(r.Context(), in.InvoiceID, in.PartnerID, dunningAttempts, dunningInvoiceDate)
+			}
+		}
+	}
 	common.JSON(w, 200, map[string]any{"status":"settled","purpose":in.Purpose,"provider_event_id":in.ProviderEventID})
 }
 
@@ -209,6 +233,31 @@ func (a *app) requestPaymentCharge(ctx context.Context, partnerID, invoiceID, pu
 	return out,nil
 }
 
+func (a *app) paymentProfileAutopayReady(ctx context.Context, partnerID string) (bool, error) {
+	if strings.TrimSpace(a.paymentsHost) == "" {
+		return false, fmt.Errorf("PAYMENTS_HOSTPORT is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"http://"+a.paymentsHost+"/api/v1/payments/partners/"+partnerID+"/profile", nil)
+	if err != nil { return false, err }
+	req.Header.Set("X-Himate-Internal-Token", a.token)
+	resp, err := a.client.Do(req)
+	if err != nil { return false, err }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("payments profile status %d", resp.StatusCode)
+	}
+	var out struct {
+		Status          string `json:"status"`
+		AutopayEnabled  bool   `json:"autopay_enabled"`
+		PaymentMethodID string `json:"payment_method_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil { return false, err }
+	return strings.EqualFold(strings.TrimSpace(out.Status), "READY") &&
+		out.AutopayEnabled &&
+		strings.TrimSpace(out.PaymentMethodID) != "", nil
+}
+
 func (a *app) collectActivationLicense(w http.ResponseWriter, r *http.Request, partnerID string) {
 	if r.Method != http.MethodPost { common.APIError(w,405,"METHOD","Use POST");return }
 	x,err:=a.ensureLicense(partnerID)
@@ -222,7 +271,8 @@ func (a *app) collectActivationLicense(w http.ResponseWriter, r *http.Request, p
 	common.JSON(w,201,out)
 }
 
-func (a *app) retryPendingInvoiceCollections(ctx context.Context) error {
+func (a *app) retryPendingInvoiceCollections(ctx context.Context, at time.Time) error {
+	_ = at
 	rows,err:=a.db.QueryContext(ctx,`SELECT id,partner_id,currency,total FROM billing.invoices
 		WHERE status<>'PAID' AND provider_status='COLLECTION_PENDING'
 		ORDER BY invoice_date,id LIMIT 500`)
@@ -243,7 +293,16 @@ func (a *app) retryPendingInvoiceCollections(ctx context.Context) error {
 }
 
 func (a *app) queueInvoiceCollection(ctx context.Context, invoiceID, partnerID, currency string, total float64) {
-	out,err:=a.requestPaymentCharge(ctx,partnerID,invoiceID,"INVOICE",total,currency,"invoice:"+invoiceID)
+	eligible,attempts,invoiceDate,_,metaErr:=a.invoiceDunningMeta(ctx,invoiceID)
+	attemptNumber:=0
+	key:="invoice:"+invoiceID
+	if metaErr==nil && eligible {
+		if attempts>=dunningMaxAttempts{return}
+		attemptNumber=attempts+1
+		key=fmt.Sprintf("invoice:%s:attempt:%d",invoiceID,attemptNumber)
+	}
+
+	out,err:=a.requestPaymentCharge(ctx,partnerID,invoiceID,"INVOICE",total,currency,key)
 	if err!=nil{
 		_,_=a.db.ExecContext(ctx,`UPDATE billing.invoices SET provider_status='COLLECTION_PENDING' WHERE id=$1 AND status<>'PAID'`,invoiceID)
 		return
@@ -252,6 +311,18 @@ func (a *app) queueInvoiceCollection(ctx context.Context, invoiceID, partnerID, 
 	providerID:=strings.TrimSpace(fmt.Sprint(out["provider_payment_id"]))
 	status:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(out["status"])))
 	if status==""{status="PROCESSING"}
+
+	if eligible && attemptNumber>0 {
+		if err:=a.markCollectionAttempt(ctx,invoiceID,attemptNumber,status,attemptID,providerID);err!=nil{return}
+		if status=="FAILED" || status=="REQUIRES_ACTION" {
+			if attemptNumber>=dunningMaxAttempts {
+				_ = a.suspendForNonPayment(ctx,invoiceID,partnerID,time.Now().UTC())
+			} else {
+				_ = a.markPastDue(ctx,invoiceID,partnerID,attemptNumber,invoiceDate)
+			}
+		}
+		return
+	}
 	_,_=a.db.ExecContext(ctx,`UPDATE billing.invoices SET provider_status=$2,payment_attempt_id=$3,provider_payment_id=$4 WHERE id=$1 AND status<>'PAID'`,
 		invoiceID,status,attemptID,providerID)
 }
