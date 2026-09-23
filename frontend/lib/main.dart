@@ -23,6 +23,7 @@ part 'administration_rbac.dart';
 part 'brand_assets.dart';
 part 'backups_panel.dart';
 part 'domains_deployments.dart';
+part 'secrets_admin.dart';
 part 'localization.dart';
 part 'profile_account.dart';
 part 'module_control_plane.dart';
@@ -6603,6 +6604,8 @@ class _AdministrationPageState extends State<AdministrationPage> {
             const SizedBox(height: 12),
             const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
           ],
+          const SizedBox(height: 28),
+          PlatformSecretsPanel(api: widget.api, currentUser: widget.user),
           const SizedBox(height: 28),
           CompanySettingsPanel(api: widget.api, currentUser: widget.user),
           const SizedBox(height: 28),
