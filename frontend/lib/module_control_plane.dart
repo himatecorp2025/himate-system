@@ -14,6 +14,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> commercialRows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptionRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> subscriptionPlans = <Map<String, dynamic>>[];
+  bool showSubscriptionPlans = false;
   bool loading = false;
   String? error;
   String query = '';
@@ -53,6 +55,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         widget.api.get('/api/v1/modules', force: true),
         widget.api.get('/api/v1/module-groups', force: true),
         widget.api.get('/api/v1/partners?limit=200&offset=0&core_only=true', force: true),
+        widget.api.get('/api/v1/billing/plans', force: true),
       ]);
       final partnerItems = items(responses[2]);
       final partnerIDs = partnerItems.map((p) => s(p['id'])).where((id) => id.isNotEmpty).toList();
@@ -74,6 +77,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         partners = partnerItems;
         commercialRows = items(matrix);
         subscriptionRows = items(subscriptions);
+        subscriptionPlans = items(responses[3]);
         commercialShown = 120;
         loading = false;
       });
@@ -952,8 +956,334 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     );
   }
 
+  String planMoney(dynamic value) => intl.NumberFormat.currency(symbol: r'
+    final active = modules.where((m) => m['availability'] == 'ACTIVE').length;
+    final linked = modules.where((m) => s(m['source_repository']).trim().isNotEmpty).length;
+    final relations = modules.fold<int>(0, (sum, m) => sum + ((m['relationship_count'] as num?)?.toInt() ?? 0));
+    final partnerUsage = modules.fold<int>(0, (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0));
+
+    return Content(
+      eyebrow: 'MODULE CONTROL PLANE',
+      title: 'Modules',
+      subtitle: 'Authoritative registry plus partner-by-partner commercial pricing, activation fees, subscription periods, dependencies and usage.',
+      actions: [
+        OutlinedButton.icon(onPressed: () => setState(() => showSubscriptionPlans = true), icon: const Icon(Icons.workspace_premium_outlined), label: const LText('Subscription Plans')),
+        OutlinedButton.icon(onPressed: loading ? null : addGroup, icon: const Icon(Icons.category_outlined), label: const LText('Add group')),
+        FilledButton.icon(onPressed: loading || groups.isEmpty ? null : addModule, icon: const Icon(Icons.add_box_outlined), label: const LText('Add module')),
+      ],
+      child: error != null && modules.isEmpty
+          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Module Control Plane unavailable', message: error!)
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              ResponsiveKpiGrid(children: [
+                Kpi(label: 'Module registry', value: modules.length.toString(), note: 'Canonical + custom modules', icon: Icons.hub_outlined, accent: brandNavy),
+                Kpi(label: 'Active modules', value: active.toString(), note: 'Available for assignment', icon: Icons.check_circle_outline_rounded, accent: brandSuccess),
+                Kpi(label: 'Source linked', value: linked.toString(), note: 'Git/source identity configured', icon: Icons.code_outlined, accent: brandSteel),
+                Kpi(label: 'Relationships', value: relations.toString(), note: partnerUsage.toString() + ' active partner assignments', icon: Icons.account_tree_outlined, accent: brandGold),
+              ]),
+              const SizedBox(height: 22),
+              _SectionHeader(
+                title: 'Partner × Module Commercial Matrix',
+                subtitle: 'Authoritative partner assignment, recurring price, activation fee and current subscription period in one control plane.',
+                trailing: _MiniCounter(label: filteredCommercialRows.length.toString() + ' assignments'),
+              ),
+              const SizedBox(height: 12),
+              _FilterSurface(
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final search = TextField(
+                    onChanged: (value) => setState(() { commercialQuery = value; commercialShown = 120; }),
+                    decoration: InputDecoration(hintText: uiLiteral('Search partner or module...'), prefixIcon: Icon(Icons.search_rounded)),
+                  );
+                  final partner = DropdownButtonFormField<String>(
+                    value: commercialPartnerFilter,
+                    decoration: InputDecoration(labelText: uiLiteral('Partner')),
+                    items: [
+                      const DropdownMenuItem(value: 'ALL', child: LText('All partners')),
+                      for (final item in partners)
+                        DropdownMenuItem(value: s(item['id']), child: LText(partnerName(s(item['id'])))),
+                    ],
+                    onChanged: (value) => setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; }),
+                  );
+                  final module = DropdownButtonFormField<String>(
+                    value: commercialModuleFilter,
+                    decoration: InputDecoration(labelText: uiLiteral('Module')),
+                    items: [
+                      const DropdownMenuItem(value: 'ALL', child: LText('All modules')),
+                      for (final item in modules)
+                        DropdownMenuItem(value: s(item['key']), child: LText(s(item['label']))),
+                    ],
+                    onChanged: (value) => setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; }),
+                  );
+                  final status = DropdownButtonFormField<String>(
+                    value: commercialStatusFilter,
+                    decoration: InputDecoration(labelText: uiLiteral('State')),
+                    items: const [
+                      DropdownMenuItem(value: 'ALL', child: LText('All states')),
+                      DropdownMenuItem(value: 'ACTIVE', child: LText('Active')),
+                      DropdownMenuItem(value: 'NOT_LICENSED', child: LText('Not licensed')),
+                      DropdownMenuItem(value: 'MAINTENANCE', child: LText('Maintenance')),
+                    ],
+                    onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
+                  );
+                  final perspective = Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        selected: commercialPerspective == 'PARTNER',
+                        label: const LText('View by partner'),
+                        onSelected: (_) => setState(() => commercialPerspective = 'PARTNER'),
+                      ),
+                      ChoiceChip(
+                        selected: commercialPerspective == 'MODULE',
+                        label: const LText('View by module'),
+                        onSelected: (_) => setState(() => commercialPerspective = 'MODULE'),
+                      ),
+                    ],
+                  );
+                  if (constraints.maxWidth < 760) {
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      search,
+                      const SizedBox(height: 10),
+                      partner,
+                      const SizedBox(height: 10),
+                      module,
+                      const SizedBox(height: 10),
+                      status,
+                      const SizedBox(height: 10),
+                      perspective,
+                    ]);
+                  }
+                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: partner)]),
+                    const SizedBox(height: 10),
+                    Row(children: [Expanded(child: module), const SizedBox(width: 10), Expanded(child: status)]),
+                    const SizedBox(height: 10),
+                    perspective,
+                  ]);
+                }),
+              ),
+              const SizedBox(height: 12),
+              Builder(builder: (context) {
+                final rows = filteredCommercialRows;
+                if (rows.isEmpty) {
+                  return const _MessageCard(
+                    icon: Icons.price_change_outlined,
+                    title: 'No partner-module assignments found',
+                    message: 'Adjust the filters or create partners/modules to populate the commercial matrix.',
+                  );
+                }
+                final visibleRows = rows.take(commercialShown).toList();
+                return Column(children: [
+                  LayoutBuilder(builder: (context, constraints) {
+                    final width = constraints.maxWidth < 680
+                        ? constraints.maxWidth
+                        : constraints.maxWidth < 1120
+                            ? (constraints.maxWidth - 12) / 2
+                            : (constraints.maxWidth - 24) / 3;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [for (final row in visibleRows) SizedBox(width: width, child: commercialCard(row))],
+                    );
+                  }),
+                  if (visibleRows.length < rows.length) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() => commercialShown += 120),
+                      icon: const Icon(Icons.expand_more_rounded),
+                      label: LText('Show more · ' + (rows.length - visibleRows.length).toString() + ' remaining'),
+                    ),
+                  ],
+                ]);
+              }),
+              const SizedBox(height: 26),
+              _SectionHeader(
+                title: 'Module Registry',
+                subtitle: 'Source code remains versioned in Git; HIMATE stores the authoritative identity, source pointer, release and commercial metadata.',
+                trailing: _MiniCounter(label: filtered.length.toString() + ' shown'),
+              ),
+              const SizedBox(height: 12),
+              _FilterSurface(
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final search = TextField(
+                    onChanged: (value) => setState(() => query = value),
+                    decoration: InputDecoration(hintText: uiLiteral('Search modules, source or owner...'), prefixIcon: Icon(Icons.search_rounded)),
+                  );
+                  final group = DropdownButtonFormField<String>(
+                    value: groupFilter,
+                    decoration: InputDecoration(labelText: uiLiteral('Group')),
+                    items: [
+                      const DropdownMenuItem(value: 'ALL', child: LText('All groups')),
+                      for (final item in groups) DropdownMenuItem(value: s(item['group_key']), child: LText(s(item['label']))),
+                    ],
+                    onChanged: (value) => setState(() => groupFilter = value ?? 'ALL'),
+                  );
+                  final type = DropdownButtonFormField<String>(
+                    value: typeFilter,
+                    decoration: InputDecoration(labelText: uiLiteral('Type')),
+                    items: [
+                      const DropdownMenuItem(value: 'ALL', child: LText('All types')),
+                      for (final value in moduleTypes) DropdownMenuItem(value: value, child: LText(_humanize(value))),
+                    ],
+                    onChanged: (value) => setState(() => typeFilter = value ?? 'ALL'),
+                  );
+                  if (constraints.maxWidth < 760) return Column(children: [search, const SizedBox(height: 10), group, const SizedBox(height: 10), type]);
+                  return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: group), const SizedBox(width: 10), Expanded(child: type)]);
+                }),
+              ),
+              const SizedBox(height: 12),
+              if (filtered.isEmpty)
+                const _MessageCard(icon: Icons.inventory_2_outlined, title: 'No modules found', message: 'No modules match the current filters.')
+              else
+                LayoutBuilder(builder: (context, constraints) {
+                  final width = constraints.maxWidth < 650 ? constraints.maxWidth : constraints.maxWidth < 1050 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+                  return Wrap(spacing: 12, runSpacing: 12, children: [
+                    for (final module in filtered) SizedBox(width: width, child: moduleCard(module)),
+                  ]);
+                }),
+              if (loading) ...[
+                const SizedBox(height: 12),
+                const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+              ],
+            ]),
+    );
+  }
+}
+, decimalDigits: 0).format(number(value));
+
+  String moduleLabel(String key) {
+    for (final module in modules) {
+      if (s(module['key']) == key) return s(module['label']);
+    }
+    return key;
+  }
+
+  Future<void> configureFixedPlan(Map<String, dynamic> plan) async {
+    final limit = (plan['module_limit'] as num?)?.toInt() ?? 0;
+    final selected = <String>{
+      ...((plan['fixed_module_keys'] is List) ? (plan['fixed_module_keys'] as List).map((e) => e.toString()) : const <String>[]),
+    };
+    final candidates = modules.where((m) => s(m['publication_status']) == 'PUBLISHED' && s(m['implementation_state']) == 'READY').toList();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: LText('Configure ${s(plan['display_name'])} modules'),
+          content: SizedBox(
+            width: 580,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                LText('Select exactly $limit PUBLISHED + READY modules. Existing package changes take effect from the next calendar month.', style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                const SizedBox(height: 12),
+                for (final module in candidates)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: selected.contains(s(module['key'])),
+                    title: LText(s(module['label'])),
+                    subtitle: LText(s(module['group_label']), style: const TextStyle(color: brandTextSoft, fontSize: 9)),
+                    onChanged: (value) => setLocal(() {
+                      final key = s(module['key']);
+                      if (value == true) {
+                        if (selected.length < limit) selected.add(key);
+                      } else {
+                        selected.remove(key);
+                      }
+                    }),
+                  ),
+                const SizedBox(height: 8),
+                LText('${selected.length} / $limit selected', style: TextStyle(color: selected.length == limit ? brandSuccess : brandWarning, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const LText('Cancel')),
+            FilledButton(onPressed: selected.length == limit ? () => Navigator.pop(dialogContext, true) : null, child: const LText('Save package')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await widget.api.patch('/api/v1/billing/plans/${s(plan['plan_key'])}', {'fixed_module_keys': selected.toList()..sort()});
+      await load();
+      if (mounted) notify('${s(plan['display_name'])} package updated.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  Widget subscriptionPlanCard(Map<String, dynamic> plan) {
+    final annualList = number(plan['annual_list_price']);
+    final annual = number(plan['annual_price']);
+    final savings = number(plan['annual_savings']);
+    final fixed = s(plan['selection_mode']) == 'FIXED';
+    final ready = plan['ready'] == true;
+    final keys = plan['fixed_module_keys'] is List ? (plan['fixed_module_keys'] as List).map((e) => e.toString()).toList() : <String>[];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: LText(s(plan['display_name']), style: const TextStyle(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w800))),
+            _StatusPill(label: ready ? 'READY' : 'SETUP REQUIRED'),
+          ]),
+          const SizedBox(height: 8),
+          LText('${planMoney(plan['monthly_price'])} / month', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 10),
+          if (annual < annualList) Text(planMoney(annualList), style: const TextStyle(color: brandTextSoft, decoration: TextDecoration.lineThrough, fontWeight: FontWeight.w700)),
+          LText('${planMoney(annual)} / year', style: const TextStyle(color: brandGold, fontWeight: FontWeight.w800, fontSize: 16)),
+          if (savings > 0) LText('Save ${planMoney(savings)} with annual prepayment', style: const TextStyle(color: brandSuccess, fontSize: 10, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 14),
+          _DefinitionRow(label: 'Module capacity', value: '${plan['module_limit'] ?? 0}'),
+          _DefinitionRow(label: 'Selection model', value: fixed ? 'Fixed by HIMATE' : 'Partner chooses modules'),
+          if (fixed) _DefinitionRow(label: 'Configured modules', value: '${keys.length} / ${plan['module_limit'] ?? 0}'),
+          if (fixed && keys.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [for (final key in keys) Chip(label: LText(moduleLabel(key)))]),
+          ],
+          const SizedBox(height: 16),
+          if (fixed)
+            SizedBox(width: double.infinity, child: FilledButton.icon(
+              onPressed: () => configureFixedPlan(plan),
+              icon: const Icon(Icons.tune_rounded),
+              label: LText(ready ? 'Change included modules' : 'Configure included modules'),
+            ))
+          else
+            const _MessageCard(icon: Icons.auto_awesome_outlined, title: 'Customer-selected package', message: 'Flex customers choose up to 15 published modules. No fixed Flex module set is defined by HIMATE.'),
+        ]),
+      ),
+    );
+  }
+
+  Widget subscriptionPlansPage() {
+    final visible = subscriptionPlans.where((p) => s(p['plan_key']) != 'CUSTOM').toList();
+    return Content(
+      eyebrow: 'COMMERCIAL PACKAGING',
+      title: 'Subscription Plans',
+      subtitle: 'Starter and Business use fixed HIMATE-defined module packages. Flex gives the customer up to 15 selectable modules.',
+      actions: [
+        OutlinedButton.icon(onPressed: () => setState(() => showSubscriptionPlans = false), icon: const Icon(Icons.hub_outlined), label: const LText('Back to Modules')),
+        OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
+      ],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const _MessageCard(
+          icon: Icons.payments_outlined,
+          title: 'Pilot pricing authority',
+          message: 'Starter: $500/month · Business: $1,500/month · Flex: $2,500/month. Individual module prices remain stored for future add-ons/custom contracts but do not drive standard plan invoices.',
+        ),
+        const SizedBox(height: 18),
+        LayoutBuilder(builder: (context, constraints) {
+          final width = constraints.maxWidth < 680 ? constraints.maxWidth : constraints.maxWidth < 1120 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+          return Wrap(spacing: 12, runSpacing: 12, children: [for (final plan in visible) SizedBox(width: width, child: subscriptionPlanCard(plan))]);
+        }),
+        if (loading) ...[const SizedBox(height: 12), const LinearProgressIndicator(minHeight: 2)],
+      ]),
+    );
+  }
   @override
   Widget build(BuildContext context) {
+    if (showSubscriptionPlans) return subscriptionPlansPage();
     final active = modules.where((m) => m['availability'] == 'ACTIVE').length;
     final linked = modules.where((m) => s(m['source_repository']).trim().isNotEmpty).length;
     final relations = modules.fold<int>(0, (sum, m) => sum + ((m['relationship_count'] as num?)?.toInt() ?? 0));
