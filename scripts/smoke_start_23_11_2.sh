@@ -101,6 +101,17 @@ blocked_code="$(status "$COOKIE" PATCH "/api/v1/billing/partners/$partner_id/pla
 test "$blocked_code" = "409"
 grep -q 'ACTIVATION_LICENSE_REQUIRED' "$BODY"
 curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":0,"waived":true,"waiver_reason":"START-23.11.2 CI activation gate"}' "$BASE_URL/api/v1/billing/partners/$partner_id/license" >/dev/null
+autopay_blocked="$(status "$COOKIE" PATCH "/api/v1/billing/partners/$partner_id/plan" -H 'Content-Type: application/json' -d '{"plan_key":"STARTER","billing_frequency":"MONTHLY"}')"
+test "$autopay_blocked" = "409"
+grep -q 'AUTOPAY_REQUIRED' "$BODY"
+monthly_customer="cus_start23112_monthly_$STAMP"
+monthly_method="pm_start23112_monthly_$STAMP"
+monthly_profile="$(python3 - "$monthly_customer" "$monthly_method" <<'PY'
+import json,sys
+print(json.dumps({"provider_customer_id":sys.argv[1],"payment_method_id":sys.argv[2],"autopay_enabled":True},separators=(",",":")))
+PY
+)"
+curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$monthly_profile" "$BASE_URL/api/v1/payments/partners/$partner_id/profile" >/dev/null
 starter="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"STARTER","billing_frequency":"MONTHLY","reason":"START-23.11.2 initial Starter"}' "$BASE_URL/api/v1/billing/partners/$partner_id/plan")"
 printf '%s' "$starter" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="STARTER",d; assert d["billing_frequency"]=="MONTHLY",d; assert d["monthly_price"]==500,d; assert len(d["active_module_keys"])==3,d'
 echo ok
@@ -192,6 +203,14 @@ printf 'create annual Flex partner and verify full list price versus discounted 
 annual_partner="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d '{"display_name":"START 23.11.2 Annual Partner","legal_name":"START 23.11.2 Annual Partner LLC","brand_name":"Plan Annual","contact_name":"Annual Owner","contact_email":"plan-annual@example.com","country":"US"}' "$BASE_URL/api/v1/partners")"
 annual_id="$(printf '%s' "$annual_partner" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d '{"currency":"USD","required_amount":0,"waived":true,"waiver_reason":"START-23.11.2 CI annual"}' "$BASE_URL/api/v1/billing/partners/$annual_id/license" >/dev/null
+annual_customer="cus_start23112_annual_$STAMP"
+annual_method="pm_start23112_annual_$STAMP"
+annual_profile="$(python3 - "$annual_customer" "$annual_method" <<'PY'
+import json,sys
+print(json.dumps({"provider_customer_id":sys.argv[1],"payment_method_id":sys.argv[2],"autopay_enabled":True},separators=(",",":")))
+PY
+)"
+curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$annual_profile" "$BASE_URL/api/v1/payments/partners/$annual_id/profile" >/dev/null
 annual_payload="$(python3 - "$FLEX_KEYS" <<'PY'
 import json,sys;print(json.dumps({'plan_key':'FLEX','billing_frequency':'ANNUAL','module_keys':json.loads(sys.argv[1]),'reason':'START-23.11.2 annual Flex'}))
 PY
