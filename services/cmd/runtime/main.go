@@ -52,12 +52,29 @@ type renderProvider struct {
 	apiBase string
 	apiKey  string
 	client  *http.Client
+	db      *sql.DB
+	master  string
 }
 
 func (renderProvider) Name() string { return "render" }
 
+func (p renderProvider) apiKeyFor(ctx context.Context) string {
+	if value := strings.TrimSpace(p.apiKey); value != "" {
+		return value
+	}
+	if p.db == nil {
+		return ""
+	}
+	value, ok, err := common.LoadPlatformSecret(ctx, p.db, p.master, "render_api_key")
+	if err != nil || !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
 func (p renderProvider) do(ctx context.Context, method, path string, body any) (map[string]any, error) {
-	if strings.TrimSpace(p.apiKey) == "" {
+	apiKey := p.apiKeyFor(ctx)
+	if apiKey == "" {
 		return nil, fmt.Errorf("Render provider is selected but RENDER_API_KEY is not configured")
 	}
 	var reader *bytes.Reader
@@ -74,7 +91,7 @@ func (p renderProvider) do(ctx context.Context, method, path string, body any) (
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -179,6 +196,8 @@ func main() {
 				apiBase: common.Env("RENDER_API_BASE", "https://api.render.com/v1"),
 				apiKey:  strings.TrimSpace(os.Getenv("RENDER_API_KEY")),
 				client:  client,
+				db:      db,
+				master:  strings.TrimSpace(os.Getenv("HIMATE_INTERNAL_TOKEN")),
 			},
 		},
 	}
