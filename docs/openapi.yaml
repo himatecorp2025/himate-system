@@ -47,10 +47,19 @@ paths:
                 type: object
                 properties:
                   status: {type: string}
+                  version: {type: string}
                   architecture: {type: string}
                   checked_at: {type: string, format: date-time}
+                  release_consistent:
+                    type: boolean
+                    description: True only when every configured gateway-visible application microservice reports the same release version as the gateway.
                   services:
                     type: object
+                    description: Per-service health state; release drift is reported as version_unknown or version_mismatch.
+                    additionalProperties: {type: string}
+                  service_versions:
+                    type: object
+                    description: Release version reported by each gateway-visible application microservice.
                     additionalProperties: {type: string}
   /api/v1/auth/login:
     post:
@@ -621,6 +630,7 @@ paths:
         "201": {description: Partner created}
         "400": {description: Invalid JSON payload or partner validation error}
         "409": {description: Primary domain is already assigned to another partner}
+        "503": {description: Partner onboarding is blocked because one or more required microservices are unavailable, unversioned, or running a different release}
   /api/v1/partners/{partnerId}/logo:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -648,6 +658,7 @@ paths:
         "404": {description: Partner not found}
         "415": {description: Logo must be PNG, JPEG or WebP}
         "502": {description: CMS or storage unavailable}
+        "503": {description: Partner logo onboarding is blocked by a microservice release mismatch}
   /api/v1/partners/{partnerId}/portal-users:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
