@@ -29,12 +29,24 @@ for path in sorted(scripts_dir.glob("*.sh")):
                 "use 'exec sh <script> ...'"
             )
 
-release_wrapper = (scripts_dir / "smoke_start_23_11_3i.sh").read_text(encoding="utf-8")
-required_delegate = 'exec sh "$SCRIPT_DIR/smoke_start_23_11_3h.sh"'
-if required_delegate not in release_wrapper:
+release_smoke = (scripts_dir / "smoke_start_23_11_3i.sh").read_text(encoding="utf-8")
+if "smoke_start_23_11_3h.sh" in release_smoke:
     failures.append(
-        "START-23.11.3i wrapper must delegate through 'exec sh' so file mode cannot break CI"
+        "START-23.11.3i must be a standalone release-consistency smoke and must not rerun START-23.11.3h"
     )
+if "release_consistent" not in release_smoke or "X-Himate-Expected-Version" not in release_smoke:
+    failures.append(
+        "START-23.11.3i must verify synchronized release health and release-version enforcement"
+    )
+
+workflow_dir = root / ".github" / "workflows"
+for workflow in sorted(workflow_dir.glob("*.yml")):
+    for lineno, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), start=1):
+        stripped = line.strip()
+        if "scripts/" in stripped and ".sh" in stripped and re.search(r"(?:run:\s*|^)(?:\./)?scripts/[^\s]+\.sh", stripped):
+            failures.append(
+                f"{workflow.relative_to(root)}:{lineno}: shell smoke scripts must be invoked through 'sh scripts/...'"
+            )
 
 if failures:
     for failure in failures:
