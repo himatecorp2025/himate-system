@@ -30,7 +30,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.18-start-23.11.3a' ../docs/openapi.yaml
+          grep -q 'version: 0.8.19-start-23.11.3b' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
@@ -148,6 +148,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_3.py
       - name: Run START-23.11.3a Platform Secrets & Provider Readiness audit
         run: python3 ../scripts/audit_start_23_11_3a.py
+      - name: Run START-23.11.3b Persistent Test Partner audit
+        run: python3 ../scripts/audit_start_23_11_3b.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -385,6 +387,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_3.sh http://127.0.0.1:8080
       - name: Run START-23.11.3a Platform Secrets & Provider Readiness smoke
         run: sh scripts/smoke_start_23_11_3a.sh http://127.0.0.1:8080
+      - name: Run START-23.11.3b Persistent Test Partner smoke
+        run: sh scripts/smoke_start_23_11_3b.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

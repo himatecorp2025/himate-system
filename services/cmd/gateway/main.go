@@ -344,6 +344,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS identity_password_reset_active_idx ON identity.password_reset_tokens(token_hash,expires_at) WHERE used_at IS NULL`,
 		}},
 		platformSecretsMigration(),
+		persistentTestPartnerMigration(),
 	}); err != nil {
 		return err
 	}
