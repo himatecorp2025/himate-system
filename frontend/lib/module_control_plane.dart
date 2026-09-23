@@ -14,6 +14,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> commercialRows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptionRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> subscriptionPlans = <Map<String, dynamic>>[];
+  bool showSubscriptionPlans = false;
   bool loading = false;
   String? error;
   String query = '';
@@ -53,6 +55,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         widget.api.get('/api/v1/modules', force: true),
         widget.api.get('/api/v1/module-groups', force: true),
         widget.api.get('/api/v1/partners?limit=200&offset=0&core_only=true', force: true),
+        widget.api.get('/api/v1/billing/plans', force: true),
       ]);
       final partnerItems = items(responses[2]);
       final partnerIDs = partnerItems.map((p) => s(p['id'])).where((id) => id.isNotEmpty).toList();
@@ -74,6 +77,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         partners = partnerItems;
         commercialRows = items(matrix);
         subscriptionRows = items(subscriptions);
+        subscriptionPlans = items(responses[3]);
         commercialShown = 120;
         loading = false;
       });
@@ -952,8 +956,226 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     );
   }
 
+  String planMoney(dynamic value) => intl.NumberFormat.currency(symbol: '\$', decimalDigits: 0).format(number(value));
+
+  String moduleLabel(String key) {
+    for (final module in modules) {
+      if (s(module['key']) == key) return s(module['label']);
+    }
+    return key;
+  }
+
+  Future<void> configureFixedPlan(Map<String, dynamic> plan) async {
+    final limit = (plan['module_limit'] as num?)?.toInt() ?? 0;
+    final selected = <String>{
+      ...((plan['fixed_module_keys'] is List)
+          ? (plan['fixed_module_keys'] as List).map((e) => e.toString())
+          : const <String>[]),
+    };
+    final candidates = modules.where((m) =>
+      s(m['publication_status']) == 'PUBLISHED' &&
+      s(m['implementation_state']) == 'READY'
+    ).toList();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: LText('Configure ${s(plan['display_name'])} modules'),
+          content: SizedBox(
+            width: 580,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                LText(
+                  'Select exactly $limit PUBLISHED + READY modules. Existing package changes take effect from the next calendar month.',
+                  style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                ),
+                const SizedBox(height: 12),
+                for (final module in candidates)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: selected.contains(s(module['key'])),
+                    title: LText(s(module['label'])),
+                    subtitle: LText(s(module['group_label']), style: const TextStyle(color: brandTextSoft, fontSize: 9)),
+                    onChanged: (value) => setLocal(() {
+                      final key = s(module['key']);
+                      if (value == true) {
+                        if (selected.length < limit) selected.add(key);
+                      } else {
+                        selected.remove(key);
+                      }
+                    }),
+                  ),
+                const SizedBox(height: 8),
+                LText(
+                  '${selected.length} / $limit selected',
+                  style: TextStyle(
+                    color: selected.length == limit ? brandSuccess : brandWarning,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const LText('Cancel')),
+            FilledButton(
+              onPressed: selected.length == limit ? () => Navigator.pop(dialogContext, true) : null,
+              child: const LText('Save package'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await widget.api.patch('/api/v1/billing/plans/${s(plan['plan_key'])}', {
+        'fixed_module_keys': selected.toList()..sort(),
+      });
+      await load();
+      if (mounted) notify('${s(plan['display_name'])} package updated.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  Widget subscriptionPlanCard(Map<String, dynamic> plan) {
+    final annualList = number(plan['annual_list_price']);
+    final annual = number(plan['annual_price']);
+    final savings = number(plan['annual_savings']);
+    final fixed = s(plan['selection_mode']) == 'FIXED';
+    final ready = plan['ready'] == true;
+    final keys = plan['fixed_module_keys'] is List
+        ? (plan['fixed_module_keys'] as List).map((e) => e.toString()).toList()
+        : <String>[];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: LText(
+                s(plan['display_name']),
+                style: const TextStyle(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ),
+            _StatusPill(label: ready ? 'READY' : fixed ? 'SETUP REQUIRED' : 'READY'),
+          ]),
+          const SizedBox(height: 8),
+          LText(
+            '${planMoney(plan['monthly_price'])} / month',
+            style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 15),
+          ),
+          const SizedBox(height: 10),
+          if (annual < annualList)
+            Text(
+              planMoney(annualList),
+              style: const TextStyle(
+                color: brandTextSoft,
+                decoration: TextDecoration.lineThrough,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          LText(
+            '${planMoney(annual)} / year',
+            style: const TextStyle(color: brandGold, fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          if (savings > 0)
+            LText(
+              'Save ${planMoney(savings)} with annual prepayment',
+              style: const TextStyle(color: brandSuccess, fontSize: 10, fontWeight: FontWeight.w700),
+            ),
+          const SizedBox(height: 14),
+          _DefinitionRow(label: 'Module capacity', value: '${plan['module_limit'] ?? 0}'),
+          _DefinitionRow(
+            label: 'Selection model',
+            value: fixed ? 'Fixed by HIMATE' : 'Partner chooses modules',
+          ),
+          if (fixed)
+            _DefinitionRow(
+              label: 'Configured modules',
+              value: '${keys.length} / ${plan['module_limit'] ?? 0}',
+            ),
+          if (fixed && keys.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [for (final key in keys) Chip(label: LText(moduleLabel(key)))],
+            ),
+          ],
+          const SizedBox(height: 16),
+          if (fixed)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => configureFixedPlan(plan),
+                icon: const Icon(Icons.tune_rounded),
+                label: LText(ready ? 'Change included modules' : 'Configure included modules'),
+              ),
+            )
+          else
+            const _MessageCard(
+              icon: Icons.auto_awesome_outlined,
+              title: 'Customer-selected package',
+              message: 'Flex customers choose up to 15 published modules. HIMATE does not define a fixed Flex module set.',
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Widget subscriptionPlansPage() {
+    final visible = subscriptionPlans.where((p) => s(p['plan_key']) != 'CUSTOM').toList();
+    return Content(
+      eyebrow: 'COMMERCIAL PACKAGING',
+      title: 'Subscription Plans',
+      subtitle: 'Starter and Business use fixed HIMATE-defined packages. Flex gives the customer up to 15 selectable modules.',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () => setState(() => showSubscriptionPlans = false),
+          icon: const Icon(Icons.hub_outlined),
+          label: const LText('Back to Modules'),
+        ),
+        OutlinedButton.icon(
+          onPressed: loading ? null : load,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const LText('Refresh'),
+        ),
+      ],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const _MessageCard(
+          icon: Icons.payments_outlined,
+          title: 'Pilot pricing authority',
+          message: 'Starter: USD 500/month · Business: USD 1,500/month · Flex: USD 2,500/month. Individual module prices remain stored for future add-ons/custom contracts but do not drive standard plan invoices.',
+        ),
+        const SizedBox(height: 18),
+        LayoutBuilder(builder: (context, constraints) {
+          final width = constraints.maxWidth < 680
+              ? constraints.maxWidth
+              : constraints.maxWidth < 1120
+                  ? (constraints.maxWidth - 12) / 2
+                  : (constraints.maxWidth - 24) / 3;
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [for (final plan in visible) SizedBox(width: width, child: subscriptionPlanCard(plan))],
+          );
+        }),
+        if (loading) ...[
+          const SizedBox(height: 12),
+          const LinearProgressIndicator(minHeight: 2),
+        ],
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (showSubscriptionPlans) return subscriptionPlansPage();
     final active = modules.where((m) => m['availability'] == 'ACTIVE').length;
     final linked = modules.where((m) => s(m['source_repository']).trim().isNotEmpty).length;
     final relations = modules.fold<int>(0, (sum, m) => sum + ((m['relationship_count'] as num?)?.toInt() ?? 0));
@@ -964,6 +1186,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       title: 'Modules',
       subtitle: 'Authoritative registry plus partner-by-partner commercial pricing, activation fees, subscription periods, dependencies and usage.',
       actions: [
+        OutlinedButton.icon(
+          onPressed: () => setState(() => showSubscriptionPlans = true),
+          icon: const Icon(Icons.workspace_premium_outlined),
+          label: const LText('Subscription Plans'),
+        ),
         OutlinedButton.icon(onPressed: loading ? null : addGroup, icon: const Icon(Icons.category_outlined), label: const LText('Add group')),
         FilledButton.icon(onPressed: loading || groups.isEmpty ? null : addModule, icon: const Icon(Icons.add_box_outlined), label: const LText('Add module')),
       ],
