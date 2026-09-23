@@ -232,7 +232,7 @@ func (a *app) migrate(ctx context.Context) error {
 	if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.partner_terms(
 		partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,minimum_monthly_commitment,quote_reference,commercial_configured,terms_version,contracted_at,pricing_model,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date
 	) VALUES('ptr_000001','USD',0,TRUE,'Existing reference partner; activation fee not applicable',2000,1500,'REFERENCE-PARTNER',TRUE,1,NOW(),'INDIVIDUAL_QUOTE',10,30,1,'2026-01-01','2026-01-01')
-	ON CONFLICT(partner_id) DO UPDATE SET minimum_monthly_commitment=GREATEST(billing.partner_terms.minimum_monthly_commitment,1500),commercial_configured=TRUE,quote_reference=CASE WHEN billing.partner_terms.quote_reference='' THEN 'REFERENCE-PARTNER' ELSE billing.partner_terms.quote_reference END,contracted_at=COALESCE(billing.partner_terms.contracted_at,NOW())`); err != nil {
+	ON CONFLICT(partner_id) DO UPDATE SET commercial_configured=TRUE,quote_reference=CASE WHEN billing.partner_terms.quote_reference='' THEN 'REFERENCE-PARTNER' ELSE billing.partner_terms.quote_reference END,contracted_at=COALESCE(billing.partner_terms.contracted_at,NOW())`); err != nil {
 		return err
 	}
 	_, err := a.db.ExecContext(ctx, `INSERT INTO billing.initial_licenses(
@@ -593,9 +593,11 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			common.APIError(w, 400, "VALIDATION", "Commercial amounts cannot be negative")
 			return
 		}
-		if next.Currency=="USD" && next.MinimumMonthlyCommitment < 1500 {
-			common.APIError(w,400,"MINIMUM_MONTHLY_COMMITMENT","USD minimum monthly commitment cannot be below 1500")
-			return
+		if next.ActivationFee == 0 {
+			next.ActivationFeeWaived = true
+			if strings.TrimSpace(next.ActivationFeeReason) == "" {
+				next.ActivationFeeReason = "Zero-dollar activation fee"
+			}
 		}
 		next.CommercialConfigured=true
 		next.TermsVersion=current.TermsVersion+1
