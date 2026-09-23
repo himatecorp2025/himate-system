@@ -15,7 +15,7 @@ schema_guard = (root / "scripts/audit_smoke_schema_contracts.py").read_text(enco
 execution_guard = (root / "scripts/audit_smoke_execution_contracts.py").read_text(encoding="utf-8")
 release_smoke = (root / "scripts/smoke_start_23_11_3i.sh").read_text(encoding="utf-8")
 
-release = "0.8.27-start-23.11.3j"
+release = "0.8.28-start-23.11.3k"
 frontend_start = frontend.index("  Future<void> addPartner() async {")
 frontend_end = frontend.index("  List<Map<String, dynamic>> get filtered => partners;", frontend_start)
 add_partner = frontend[frontend_start:frontend_end]
@@ -167,7 +167,7 @@ checks = [
     (
         "release contract",
         "version: " + release in openapi
-        and "START-01 through START-23.11.3j" in openapi,
+        and "START-01 through START-23.11.3k" in openapi,
     ),
 ]
 
