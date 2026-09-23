@@ -237,6 +237,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS partner_modules_commercial_idx ON catalog.partner_modules(partner_id,commercial_configured)`,
 		}},
 		start23112CatalogPlanMigration(),
+		start23113MarketplaceMigration(),
 	}); err != nil {
 		return err
 	}
@@ -253,6 +254,9 @@ func (a *app) migrate(ctx context.Context) error {
 		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at,entitlement_state,commercial_configured,contract_currency,quote_reference,commercial_effective_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW(),'ACTIVE',TRUE,'USD','REFERENCE-PARTNER',NOW()) ON CONFLICT(partner_id,module_key) DO UPDATE SET entitlement_state=CASE WHEN catalog.partner_modules.status='ACTIVE' THEN 'ACTIVE' ELSE catalog.partner_modules.entitlement_state END`, m.Key); err != nil {
 			return err
 		}
+	}
+	if err := a.seedMarketplaceCatalog(ctx); err != nil {
+		return err
 	}
 	return nil
 }
