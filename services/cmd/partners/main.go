@@ -203,6 +203,19 @@ func (a *app) migrate(ctx context.Context) error {
 		}
 	}
 	if _, err := a.db.ExecContext(ctx,
+		`INSERT INTO partners.partners(
+			id,slug,display_name,legal_name,brand_name,category_id,lifecycle,existing_partner,reference_partner,
+			contact_name,contact_email,country,platform_version,system_health,notes
+		)
+		VALUES(
+			'ptr_himate_test_001','himate-test-partner','HIMATE TEST PARTNER','HIMATE Test Partner LLC','HIMATE Test',
+			'cat_006','LIVE',FALSE,FALSE,'HIMATE Test Partner Owner','test.partner@himate.test','United States',
+			'manual-qa','UNKNOWN','Persistent manual QA fixture. Keep until the HIMATE system owner explicitly requests deletion.'
+		)
+		ON CONFLICT(id) DO NOTHING`); err != nil {
+		return err
+	}
+	if _, err := a.db.ExecContext(ctx,
 		`UPDATE partners.partners SET category_id='cat_006',updated_at=NOW()
 		 WHERE id='ptr_himate_test_001' AND category_id IS NULL`); err != nil {
 		return err

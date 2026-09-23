@@ -19,8 +19,8 @@ checks = [
     ("portal fixture owner role", "'owner',TRUE,'en_US','UTC'" in portal),
     ("password is stored only as PBKDF2 hash", 'persistentTestPartnerPasswordHash = "pbkdf2-sha256$210000$' in portal),
     ("gateway migration is wired", "persistentTestPartnerMigration()," in gateway),
-    ("release version", "version: 0.8.19-start-23.11.3b" in openapi),
-    ("render release version", "value: 0.8.19-start-23.11.3b" in render),
+    ("release version", "version: 0.8.20-start-23.11.3c" in openapi),
+    ("render release version", "value: 0.8.20-start-23.11.3c" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]

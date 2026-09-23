@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -72,5 +75,32 @@ func TestSTART222AdminPortalUserPermissionClassification(t *testing.T) {
 		if got:=requiredPermission(req);got!=tc.want{
 			t.Fatalf("%s %s => %s, want %s",tc.method,tc.path,got,tc.want)
 		}
+	}
+}
+
+
+func TestSTART23113CPartnerAccessErrorClassification(t *testing.T) {
+	tests := []struct{
+		name string
+		err error
+		status int
+		code string
+	}{
+		{name:"suspended",err:errPartnerPortalAccessDisabled,status:http.StatusForbidden,code:"PARTNER_ACCESS_DISABLED"},
+		{name:"missing registry record",err:internalHTTPError{Status:http.StatusNotFound},status:http.StatusServiceUnavailable,code:"PARTNER_REGISTRY_NOT_READY"},
+		{name:"registry auth",err:internalHTTPError{Status:http.StatusForbidden},status:http.StatusServiceUnavailable,code:"PARTNER_REGISTRY_AUTH_FAILED"},
+		{name:"registry outage",err:internalHTTPError{Status:http.StatusBadGateway},status:http.StatusServiceUnavailable,code:"PARTNER_REGISTRY_UNAVAILABLE"},
+		{name:"registry timeout",err:context.DeadlineExceeded,status:http.StatusServiceUnavailable,code:"PARTNER_REGISTRY_TIMEOUT"},
+		{name:"registry unconfigured",err:errors.New("private service host is not configured"),status:http.StatusServiceUnavailable,code:"PARTNER_REGISTRY_UNCONFIGURED"},
+	}
+	for _,tc := range tests {
+		t.Run(tc.name,func(t *testing.T){
+			rec:=httptest.NewRecorder()
+			writePartnerAccessError(rec,tc.err)
+			if rec.Code!=tc.status { t.Fatalf("status=%d want=%d body=%s",rec.Code,tc.status,rec.Body.String()) }
+			var body struct{ Error struct{ Code string `json:"code"` } `json:"error"` }
+			if err:=json.Unmarshal(rec.Body.Bytes(),&body);err!=nil { t.Fatalf("decode response: %v",err) }
+			if body.Error.Code!=tc.code { t.Fatalf("code=%q want=%q",body.Error.Code,tc.code) }
+		})
 	}
 }
