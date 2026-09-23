@@ -152,7 +152,7 @@ func main() {
 	a := &app{
 		db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
-		version: common.Env("HIMATE_APP_VERSION", "0.2.0-start-04-08"),
+		version: common.Env("HIMATE_APP_VERSION", "0.8.26-start-23.11.3i"),
 		ttl: time.Duration(ttlHours) * time.Hour, rememberTTL: time.Duration(rememberTTLHours) * time.Hour,
 		passwordResetTTL: time.Duration(resetTTLMinutes) * time.Minute,
 		resetBaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("HIMATE_PASSWORD_RESET_BASE_URL")), "/"),
@@ -199,7 +199,7 @@ func main() {
 			log.Warn("private service host is not configured", "service", name)
 			continue
 		}
-		p, err := newProxy(host, a.internalToken)
+		p, err := newProxy(host, a.internalToken, a.version)
 		if err != nil {
 			log.Warn("private service proxy is unavailable", "service", name, "error", err)
 			continue
@@ -1245,8 +1245,16 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
 		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
+		if r.URL.Path == "/api/v1/partners" && r.Method == http.MethodPost {
+			if !a.requireServiceReleases(w, r, "partners", "billing", "cms", "storage") {
+				return
+			}
+		}
 		a.serveProxy(w, r, "partners")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.HasSuffix(r.URL.Path, "/logo"):
+		if !a.requireServiceReleases(w, r, "partners", "cms", "storage") {
+			return
+		}
 		a.adminPartnerLogo(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/portal-users"):
 		a.adminPartnerUsers(w, r, u)
@@ -1505,6 +1513,7 @@ func (a *app) live(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) health(w http.ResponseWriter, r *http.Request) {
 	services := map[string]string{"identity": "ok"}
+	serviceVersions := map[string]string{"gateway": a.version}
 	overall := "ok"
 	checkedAt := time.Now().UTC()
 	for name, host := range a.hosts {
@@ -1527,13 +1536,34 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 			services[name] = "unavailable"
 			overall = "degraded"
 		} else {
-			services[name] = "ok"
+			version := strings.TrimSpace(resp.Header.Get("X-Himate-App-Version"))
+			serviceVersions[name] = version
+			switch {
+			case version == "":
+				services[name] = "version_unknown"
+				overall = "degraded"
+			case version != a.version:
+				services[name] = "version_mismatch"
+				overall = "degraded"
+			default:
+				services[name] = "ok"
+			}
 		}
 		if resp != nil {
 			resp.Body.Close()
 		}
 	}
-	common.JSON(w, 200, map[string]any{"status": overall, "service": "himate-gateway", "environment": a.env, "version": a.version, "architecture": "containerized-microservices-start-22", "checked_at": checkedAt, "services": services})
+	common.JSON(w, 200, map[string]any{
+		"status": overall,
+		"service": "himate-gateway",
+		"environment": a.env,
+		"version": a.version,
+		"architecture": "containerized-microservices-start-23.11.3i",
+		"checked_at": checkedAt,
+		"services": services,
+		"service_versions": serviceVersions,
+		"release_consistent": overall == "ok",
+	})
 }
 
 func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
@@ -1994,6 +2024,7 @@ func (a *app) internalGET(ctx context.Context, host, path string, dst any) error
 		return err
 	}
 	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	req.Header.Set("X-Himate-Expected-Version", a.version)
 	resp, err := a.client.Do(req)
 	if err != nil {
 		return err
@@ -2002,7 +2033,73 @@ func (a *app) internalGET(ctx context.Context, host, path string, dst any) error
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
+	gotVersion := strings.TrimSpace(resp.Header.Get("X-Himate-App-Version"))
+	if gotVersion == "" {
+		return fmt.Errorf("service at %s does not report a release version", host)
+	}
+	if gotVersion != a.version {
+		return fmt.Errorf("service at %s is running %s; expected %s", host, gotVersion, a.version)
+	}
 	return json.NewDecoder(resp.Body).Decode(dst)
+}
+
+func (a *app) serviceRelease(ctx context.Context, service string) (string, error) {
+	host := strings.TrimSpace(a.hosts[service])
+	if host == "" {
+		return "", fmt.Errorf("%s service host is not configured", service)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/health", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("%s health returned status %d", service, resp.StatusCode)
+	}
+	version := strings.TrimSpace(resp.Header.Get("X-Himate-App-Version"))
+	if version == "" {
+		return "", fmt.Errorf("%s does not report X-Himate-App-Version", service)
+	}
+	if version != a.version {
+		return version, fmt.Errorf("%s is running %s while gateway requires %s", service, version, a.version)
+	}
+	return version, nil
+}
+
+func (a *app) requireServiceReleases(w http.ResponseWriter, r *http.Request, services ...string) bool {
+	type result struct {
+		service string
+		version string
+		err     error
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2500*time.Millisecond)
+	defer cancel()
+	results := make(chan result, len(services))
+	for _, service := range services {
+		service := service
+		go func() {
+			version, err := a.serviceRelease(ctx, service)
+			results <- result{service: service, version: version, err: err}
+		}()
+	}
+	failures := make([]string, 0)
+	for range services {
+		item := <-results
+		if item.err != nil {
+			failures = append(failures, item.err.Error())
+		}
+	}
+	if len(failures) > 0 {
+		common.APIError(w, http.StatusServiceUnavailable, "RELEASE_MISMATCH",
+			"Operation blocked because microservice releases are not synchronized: "+strings.Join(failures, "; "))
+		return false
+	}
+	return true
 }
 
 func (a *app) serveProxy(w http.ResponseWriter, r *http.Request, service string) {
@@ -2011,10 +2108,15 @@ func (a *app) serveProxy(w http.ResponseWriter, r *http.Request, service string)
 		common.APIError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", service+" service is temporarily unavailable")
 		return
 	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+		if !a.requireServiceReleases(w, r, service) {
+			return
+		}
+	}
 	proxy.ServeHTTP(w, r)
 }
 
-func newProxy(host, token string) (*httputil.ReverseProxy, error) {
+func newProxy(host, token, expectedVersion string) (*httputil.ReverseProxy, error) {
 	if strings.TrimSpace(host) == "" {
 		return nil, errors.New("private service host is required")
 	}
@@ -2024,7 +2126,11 @@ func newProxy(host, token string) (*httputil.ReverseProxy, error) {
 	}
 	p := httputil.NewSingleHostReverseProxy(target)
 	base := p.Director
-	p.Director = func(r *http.Request) { base(r); r.Header.Set("X-Himate-Internal-Token", token) }
+	p.Director = func(r *http.Request) {
+		base(r)
+		r.Header.Set("X-Himate-Internal-Token", token)
+		r.Header.Set("X-Himate-Expected-Version", expectedVersion)
+	}
 	return p, nil
 }
 
