@@ -57,20 +57,21 @@ func (a *app) applyPlanEntitlements(w http.ResponseWriter,r *http.Request,partne
 		}
 		if publication!="PUBLISHED"||implementation!="READY"{common.APIError(w,409,"MODULE_NOT_READY","Plan modules must be PUBLISHED and READY");return}
 	}
-	rows,err:=tx.QueryContext(r.Context(),`SELECT module_key,status,entitlement_state FROM catalog.partner_modules
-		WHERE partner_id=$1 AND entitlement_source='PLAN'`,partnerID)
-	if err!=nil{common.APIError(w,500,"DB","Could not load current plan entitlements");return}
-	type state struct{key,status,entitlement string};current:=[]state{}
-	for rows.Next(){var s state;if err:=rows.Scan(&s.key,&s.status,&s.entitlement);err!=nil{rows.Close();common.APIError(w,500,"DB","Could not decode plan entitlement");return};current=append(current,s)}
+	rows,err:=tx.QueryContext(r.Context(),`SELECT module_key,status,entitlement_state,entitlement_source FROM catalog.partner_modules
+		WHERE partner_id=$1`,partnerID)
+	if err!=nil{common.APIError(w,500,"DB","Could not load current partner entitlements");return}
+	type state struct{key,status,entitlement,source string};current:=[]state{}
+	for rows.Next(){var s state;if err:=rows.Scan(&s.key,&s.status,&s.entitlement,&s.source);err!=nil{rows.Close();common.APIError(w,500,"DB","Could not decode partner entitlement");return};current=append(current,s)}
 	rows.Close()
 	now:=time.Now().UTC();actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"));if actor==""{actor="billing-plan-engine"}
 	reason:=strings.TrimSpace(in.Reason);if reason==""{reason="Subscription plan entitlement synchronization"}
 
 	for _,s:=range current{
 		if target[s.key]{continue}
+		if s.status!="ACTIVE" && s.entitlement!="ACTIVE" && s.source!="PLAN"{continue}
 		if _,err=tx.ExecContext(r.Context(),`UPDATE catalog.partner_modules SET status='NOT_LICENSED',entitlement_state='INACTIVE',visible=FALSE,
 			included_in_base=FALSE,entitlement_source='PLAN',plan_key='',plan_effective_at=$3,updated_at=NOW()
-			WHERE partner_id=$1 AND module_key=$2`,partnerID,s.key,now);err!=nil{common.APIError(w,500,"DB","Could not remove prior plan entitlement");return}
+			WHERE partner_id=$1 AND module_key=$2`,partnerID,s.key,now);err!=nil{common.APIError(w,500,"DB","Could not enforce target plan entitlement set");return}
 		if _,err=tx.ExecContext(r.Context(),`INSERT INTO catalog.partner_module_history(partner_id,module_key,field_name,old_value,new_value,effective_at,actor,reason)
 			VALUES($1,$2,'plan_entitlement',$3,'INACTIVE',$4,$5,$6)`,partnerID,s.key,s.entitlement,now,actor,reason);err!=nil{common.APIError(w,500,"DB","Could not record plan entitlement history");return}
 	}
