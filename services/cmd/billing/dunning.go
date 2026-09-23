@@ -197,6 +197,8 @@ func (a *app) suspendForNonPayment(ctx context.Context, invoiceID, partnerID str
 		if err != nil { return err }
 		if lifecycle != "SUSPENDED" && lifecycle != "ARCHIVED" {
 			previous = lifecycle
+			if _, err := a.db.ExecContext(ctx, `UPDATE billing.invoices SET pre_suspend_partner_lifecycle=$2
+				WHERE id=$1 AND pre_suspend_partner_lifecycle=''`, invoiceID, previous); err != nil { return err }
 			if err := a.setPartnerLifecycle(ctx, partnerID, "SUSPENDED", "Three recurring payment attempts failed"); err != nil { return err }
 		}
 		if !strings.EqualFold(planKey, "CUSTOM") {
