@@ -37,7 +37,7 @@ checks = [
         "New Partner modal is not blocked by Module Catalog",
         "widget.api.get('/api/v1/modules'" not in add_partner,
     ),
-    ("New Partner keeps a safe category fallback", "'cat_006'" in add_partner and "Category service is still loading" in add_partner),
+    ("New Partner keeps the complete built-in category catalog available", all(token in frontend for token in ["cat_001","cat_002","cat_003","cat_004","cat_005","cat_006"]) and "_mergePartnerCategories(categories)" in add_partner and "Category service is still loading" not in add_partner),
     ("company legal identity fields are collected", all(token in add_partner for token in [
         "registrationNumber", "taxId", "legalName", "brandName",
     ])),
@@ -62,8 +62,8 @@ checks = [
     ("CMS stores explicit partner logo publication mapping", "cms.partner_brand_assets" in cms_main and "slot TEXT NOT NULL CHECK(slot IN ('logo'))" in cms_main),
     ("CMS partner media supports logo purpose and public URL", 'purpose == "logo"' in cms_themes and 'out["public_url"] = "/public/v1/cms/media/" + id' in cms_themes),
     ("OpenAPI documents partner logo upload", "/api/v1/partners/{partnerId}/logo:" in openapi),
-    ("release version", "version: 0.8.22-start-23.11.3e" in openapi),
-    ("render release version", "value: 0.8.22-start-23.11.3e" in render),
+    ("release version", "version: 0.8.23-start-23.11.3f" in openapi),
+    ("render release version", "value: 0.8.23-start-23.11.3f" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]

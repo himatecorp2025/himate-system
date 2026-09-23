@@ -2580,6 +2580,7 @@ class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
   bool loading = false;
   bool categoriesLoading = true;
+  String? categoryRegistryWarning;
   bool statsReady = false;
   bool hasMore = false;
   int _loadGeneration = 0;
@@ -2608,9 +2609,63 @@ class _PartnersPageState extends State<PartnersPage> {
     'ARCHIVED',
   ];
 
+  List<Map<String, dynamic>> _builtInPartnerCategories() {
+    final hu = HimateI18n.activeLocale == 'hu_HU';
+    const rows = <List<String>>[
+      <String>['cat_001', 'Classical Music', 'Klasszikus zene', 'classical-music'],
+      <String>['cat_002', 'Fine Art', 'Képzőművészet', 'fine-art'],
+      <String>['cat_003', 'Gallery', 'Galéria', 'gallery'],
+      <String>['cat_004', 'Theatre', 'Színház', 'theatre'],
+      <String>['cat_005', 'Cultural Organization', 'Kulturális szervezet', 'cultural-organization'],
+      <String>['cat_006', 'Other', 'Egyéb', 'other'],
+    ];
+    return rows
+        .map((row) => <String, dynamic>{
+              'id': row[0],
+              'name': hu ? row[2] : row[1],
+              'name_en': row[1],
+              'name_hu': row[2],
+              'slug': row[3],
+              'system': true,
+            })
+        .toList();
+  }
+
+  List<Map<String, dynamic>> _mergePartnerCategories(Iterable<Map<String, dynamic>> remote) {
+    final byID = <String, Map<String, dynamic>>{
+      for (final item in _builtInPartnerCategories()) '${item['id']}': item,
+    };
+    for (final item in remote) {
+      final id = '${item['id'] ?? ''}'.trim();
+      if (id.isEmpty) continue;
+      byID[id] = Map<String, dynamic>.from(item);
+    }
+    final systemOrder = <String, int>{
+      'cat_001': 1,
+      'cat_002': 2,
+      'cat_003': 3,
+      'cat_004': 4,
+      'cat_005': 5,
+      'cat_006': 6,
+    };
+    final result = byID.values.toList()
+      ..sort((a, b) {
+        final aid = '${a['id']}';
+        final bid = '${b['id']}';
+        final ao = systemOrder[aid];
+        final bo = systemOrder[bid];
+        if (ao != null && bo != null) return ao.compareTo(bo);
+        if (ao != null) return -1;
+        if (bo != null) return 1;
+        return '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase());
+      });
+    return result;
+  }
+
   @override
   void initState() {
     super.initState();
+    categories = _builtInPartnerCategories();
     load(loadCategories: true);
   }
 
@@ -2646,13 +2701,27 @@ class _PartnersPageState extends State<PartnersPage> {
     return Uri(path: '/api/v1/partners', queryParameters: params);
   }
 
-  Future<void> _loadCategories() async {
+  Future<void> _loadCategories({bool force = false}) async {
     if (mounted) setState(() => categoriesLoading = true);
     try {
-      final response = await widget.api.get('/api/v1/partner-categories');
-      categories = items(response);
+      final response = await widget.api.get('/api/v1/partner-categories', force: force);
+      final loaded = items(response);
+      if (mounted) {
+        setState(() {
+          categories = _mergePartnerCategories(loaded);
+          categoryRegistryWarning = loaded.isEmpty
+              ? 'The live category registry returned no rows. Built-in partner categories are shown.'
+              : null;
+        });
+      }
     } catch (_) {
-      // Core partner rows remain usable if category metadata is temporarily unavailable.
+      if (mounted) {
+        setState(() {
+          categories = _mergePartnerCategories(categories);
+          categoryRegistryWarning =
+              'The live category registry is temporarily unavailable. Built-in partner categories remain available.';
+        });
+      }
     } finally {
       if (mounted) setState(() => categoriesLoading = false);
     }
@@ -2704,7 +2773,7 @@ class _PartnersPageState extends State<PartnersPage> {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
     if (mounted) setState(() { error = null; statsReady = false; });
-    if (loadCategories || categories.isEmpty) unawaited(_loadCategories());
+    if (loadCategories || categoryRegistryWarning != null) unawaited(_loadCategories(force: loadCategories));
 
     try {
       final page = await widget.api.get(_partnerUri().toString());
@@ -2782,8 +2851,8 @@ class _PartnersPageState extends State<PartnersPage> {
       });
       if (mounted) {
         setState(() {
-          categories = <Map<String, dynamic>>[...categories, created]
-            ..sort((a, b) => '${a['name']}'.compareTo('${b['name']}'));
+          categories = _mergePartnerCategories(<Map<String, dynamic>>[...categories, created]);
+          categoryRegistryWarning = null;
         });
         success('Partner category created.');
       }
@@ -2796,13 +2865,9 @@ class _PartnersPageState extends State<PartnersPage> {
     // The creation dialog must be available even when Catalog or supplementary
     // services are degraded. Partner master data is the primary record; modules,
     // licensing and provisioning are configured from the workspace afterwards.
-    final categoryOptions = categories.isNotEmpty
-        ? List<Map<String, dynamic>>.from(categories)
-        : <Map<String, dynamic>>[
-            <String, dynamic>{'id': 'cat_006', 'name': 'Other'},
-          ];
-    if (categories.isEmpty && !categoriesLoading) {
-      unawaited(_loadCategories());
+    var categoryOptions = _mergePartnerCategories(categories);
+    if (categoryRegistryWarning != null && !categoriesLoading) {
+      unawaited(_loadCategories(force: true));
     }
 
     final displayName = TextEditingController();
@@ -2838,6 +2903,9 @@ class _PartnersPageState extends State<PartnersPage> {
     String category = '${categoryOptions.first['id']}';
     String currency = 'USD';
     bool portalPasswordObscure = true;
+    String? modalCategoryWarning = categoryRegistryWarning;
+    bool categoryRefreshStarted = false;
+    bool dialogOpen = true;
     int step = 0;
 
     bool validPortalPassword(String value) {
@@ -2858,7 +2926,52 @@ class _PartnersPageState extends State<PartnersPage> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setLocal) => BrandDialog(
+        builder: (context, setLocal) {
+          if (!categoryRefreshStarted) {
+            categoryRefreshStarted = true;
+            unawaited(() async {
+              try {
+                final response = await widget.api.get('/api/v1/partner-categories', force: true);
+                final loaded = items(response);
+                final merged = _mergePartnerCategories(loaded);
+                final warning = loaded.isEmpty
+                    ? 'The live category registry returned no rows. Built-in partner categories are shown.'
+                    : null;
+                if (!dialogOpen) return;
+                if (mounted) {
+                  setState(() {
+                    categories = merged;
+                    categoryRegistryWarning = warning;
+                    categoriesLoading = false;
+                  });
+                }
+                setLocal(() {
+                  categoryOptions = merged;
+                  modalCategoryWarning = warning;
+                  if (!categoryOptions.any((item) => '${item['id']}' == category)) {
+                    category = '${categoryOptions.first['id']}';
+                  }
+                });
+              } catch (_) {
+                if (!dialogOpen) return;
+                final fallback = _mergePartnerCategories(categoryOptions);
+                const warning =
+                    'The live category registry is temporarily unavailable. Built-in partner categories remain available.';
+                if (mounted) {
+                  setState(() {
+                    categories = fallback;
+                    categoryRegistryWarning = warning;
+                    categoriesLoading = false;
+                  });
+                }
+                setLocal(() {
+                  categoryOptions = fallback;
+                  modalCategoryWarning = warning;
+                });
+              }
+            }());
+          }
+          return BrandDialog(
           key: const Key('new-partner-dialog'),
           title: 'New Partner',
           subtitle: 'Create the complete partner master record, billing identity, first Portal Owner and initial brand identity. Provisioning can be completed from the partner workspace.',
@@ -2934,12 +3047,12 @@ class _PartnersPageState extends State<PartnersPage> {
                         controller: primaryDomain,
                         decoration: InputDecoration(labelText: uiLiteral('Primary domain'), hintText: uiLiteral('example.com')),
                       ),
-                      if (categories.isEmpty) ...[
+                      if (modalCategoryWarning != null) ...[
                         const SizedBox(height: 12),
-                        const _MessageCard(
+                        _MessageCard(
                           icon: Icons.info_outline_rounded,
-                          title: 'Category service is still loading',
-                          message: 'The partner form remains available. “Other” will be used as a safe fallback and can be changed later.',
+                          title: 'Built-in partner categories are available',
+                          message: modalCategoryWarning!,
                         ),
                       ],
                     ],
@@ -3162,9 +3275,11 @@ class _PartnersPageState extends State<PartnersPage> {
             }
             Navigator.pop(dialogContext, true);
           },
-        ),
+        );
+        },
       ),
     );
+    dialogOpen = false;
 
     if (ok == true) {
       try {
