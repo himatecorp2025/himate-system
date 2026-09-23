@@ -2,52 +2,80 @@
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-billing = (root / "services/cmd/billing/main.go").read_text()
-automation = (root / "services/cmd/billing/commercial_automation.go").read_text()
-frontend = (root / "frontend/lib/main.dart").read_text()
-openapi = (root / "docs/openapi.yaml").read_text()
+billing_main = (root / 'services/cmd/billing/main.go').read_text()
+billing_plans = (root / 'services/cmd/billing/plans.go').read_text()
+catalog_main = (root / 'services/cmd/catalog/main.go').read_text()
+catalog_plans = (root / 'services/cmd/catalog/plans.go').read_text()
+gateway = (root / 'services/cmd/gateway/partner_portal.go').read_text()
+module_ui = (root / 'frontend/lib/module_control_plane.dart').read_text()
+portal_ui = (root / 'frontend/lib/partner_portal.dart').read_text()
+openapi = (root / 'docs/openapi.yaml').read_text()
+acceptance = (root / 'docs/START-23.11.2_ACCEPTANCE.md').read_text()
 
 def require(condition, message):
     if not condition:
-        raise SystemExit("START-23.11.2 audit failed: " + message)
+        raise SystemExit('START-23.11.2 audit failed: ' + message)
 
 for token in [
-    "start23112CalendarMonthBillingMigration()",
-    "billing_cycle_model TEXT NOT NULL DEFAULT 'CALENDAR_MONTH'",
-    "billing_model TEXT NOT NULL DEFAULT 'LEGACY_30_DAY'",
-    "minimum_commitment_adjustment NUMERIC(12,2) NOT NULL DEFAULT 0",
-    "pricing_effective_at DATE",
+    "start23112PlanBillingMigration()",
+    "'STARTER','Starter','USD',500,6000,6000,0,3,'FIXED'",
+    "'BUSINESS','Business','USD',1500,18000,16500,1,10,'FIXED'",
+    "'FLEX','Flex','USD',2500,30000,22500,3,15,'SELECTABLE'",
+    "partner_plan_subscriptions",
+    "partner_plan_module_selections",
+    "plan_change_history",
+    "PLAN_BASED",
+    "PLAN_UPGRADE",
+    "PLAN_ANNUAL_PREPAY",
+    "PLAN_MONTHLY",
 ]:
-    require(token in automation or token in billing, f"missing calendar-month migration token: {token}")
+    require(token in billing_plans or token in billing_main, 'missing plan billing token: ' + token)
+
+require('start23112CalendarMonthBillingMigration' not in billing_main, 'obsolete calendar-month module migration is still wired')
+require('runPlanBillingCycle(ctx, at)' in billing_main, 'plan billing cycle is not authoritative in invoice runner')
+require('if planManaged[id] { continue }' in billing_main, 'legacy module invoice path is not bypassed for plan partners')
+require('ACTIVATION_LICENSE_REQUIRED' in billing_plans, 'activation-license gate is missing')
+require('targetPrice-currentPrice' in billing_plans, 'immediate full plan-price upgrade difference is missing')
+require('SCHEDULED_DOWNGRADE' in billing_plans, 'scheduled downgrade state is missing')
+require('nextMonthStart(time.Now().UTC())' in billing_plans, 'next-month boundary scheduling is missing')
+require("billing_model':'PLAN'" in billing_plans.replace(' ', '') or "'PLAN'" in billing_plans, 'PLAN ledger marker is missing')
 
 for token in [
-    "func calendarMonthWindow",
-    "func previousCalendarMonth",
-    "return at.Day() == 1",
-    '"billing_cycle_model":"CALENDAR_MONTH"',
-    '"proration":"NONE"',
-    '"invoice_timing":"NEXT_MONTH_DAY_1_FOR_PREVIOUS_CALENDAR_MONTH"',
+    'start23112CatalogPlanMigration()',
+    'entitlement_source',
+    'plan-entitlements',
+    'applyPlanEntitlements',
 ]:
-    require(token in billing, f"missing billing-cycle contract token: {token}")
+    require(token in catalog_main or token in catalog_plans, 'missing Catalog plan entitlement token: ' + token)
 
-require("nextStart.AddDate(0, 1, 0)" in billing, "module renewal must advance by calendar month")
-sync_block = billing.split("func (a *app) syncSubscriptions",1)[1].split("func nullableTimeValue",1)[0]
-require("AddDate(0, 0, 30)" not in sync_block, "subscription synchronization still contains fixed 30-day renewal logic")
-require("minimumCommitmentAdjustment(base+moduleTotal, minimum)" in automation, "invoice assembly must enforce the negotiated minimum monthly commitment")
-require("'MINIMUM_COMMITMENT'" in automation, "minimum monthly commitment adjustment invoice item is missing")
-require("'CALENDAR_MONTH'" in automation, "calendar-month ledger marker is missing")
-require('"proration": "NONE"' in automation or '"proration":"NONE"' in automation, "module-period evidence must explicitly record no proration")
-require("pricingAt := activation" in billing, "mid-month activation must resolve the contractual price at activation")
-require("cancellation_effective_at=CASE WHEN cancel_at_period_end THEN $4 ELSE NULL END" in billing, "pending cancellations must migrate to the calendar-month boundary")
-
-for bad in [
-    "activation-date anchored 30-day cycle",
-    "Automatic 30-day collection",
-    "Paid-period deactivation is Billing-managed. Use Cancel at period end; access remains active until the current 30-day period closes.",
+for token in [
+    '/partner/api/v1/plans',
+    '/partner/api/v1/plan',
+    'PLAN_MANAGED_MODULES',
 ]:
-    require(bad not in frontend, f"obsolete billing UI language remains: {bad}")
+    require(token in gateway, 'missing Partner Portal plan boundary: ' + token)
 
-require("calendar month" in openapi.lower(), "OpenAPI must document calendar-month billing")
-require("no proration" in openapi.lower(), "OpenAPI must document no-proration billing")
+for token in [
+    'Subscription Plans',
+    'Starter: $500/month',
+    'Business: $1,500/month',
+    'Flex: $2,500/month',
+    'annual_list_price',
+    'annual_price',
+    'TextDecoration.lineThrough',
+]:
+    require(token in module_ui or token in portal_ui, 'missing plan UI token: ' + token)
 
-print("HIMATE START-23.11.2 calendar-month billing audit passed")
+require('18,000' in acceptance and '16,500' in acceptance, 'Business annual full/discounted amounts are not documented')
+require('30,000' in acceptance and '22,500' in acceptance, 'Flex annual full/discounted amounts are not documented')
+require('module recurring charge' in acceptance.lower(), 'acceptance does not state that modules are not recurring invoice authority')
+
+for token in [
+    '/api/v1/billing/plans:',
+    '/api/v1/billing/plans/{planKey}:',
+    '/api/v1/billing/partners/{partnerId}/plan:',
+    '/api/v1/billing/partners/{partnerId}/plan/modules:',
+]:
+    require(token in openapi, 'OpenAPI missing plan route: ' + token)
+
+print('HIMATE START-23.11.2 subscription-plan billing audit passed')
