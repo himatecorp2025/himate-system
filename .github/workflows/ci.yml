@@ -309,6 +309,8 @@ jobs:
         run: docker compose config --quiet
       - name: Validate smoke database schema contracts
         run: python3 scripts/audit_smoke_schema_contracts.py
+      - name: Validate smoke shell execution contracts
+        run: python3 scripts/audit_smoke_execution_contracts.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health

@@ -11,6 +11,8 @@ render = (root / "render.yaml").read_text(encoding="utf-8")
 openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 schema_guard = (root / "scripts/audit_smoke_schema_contracts.py").read_text(encoding="utf-8")
+execution_guard = (root / "scripts/audit_smoke_execution_contracts.py").read_text(encoding="utf-8")
+release_wrapper = (root / "scripts/smoke_start_23_11_3i.sh").read_text(encoding="utf-8")
 
 release = "0.8.26-start-23.11.3i"
 frontend_start = frontend.index("  Future<void> addPartner() async {")
@@ -100,6 +102,14 @@ checks = [
         and workflow.index("Validate smoke database schema contracts") < workflow.index("Build and start containerized microservices")
         and "identity.partner_users" in schema_guard
         and '"role", "role_key"' in schema_guard,
+    ),
+    (
+        "smoke shell delegation is validated before expensive Compose build",
+        "Validate smoke shell execution contracts" in workflow
+        and "python3 scripts/audit_smoke_execution_contracts.py" in workflow
+        and workflow.index("Validate smoke shell execution contracts") < workflow.index("Build and start containerized microservices")
+        and "Smoke shell execution contract audit: PASS" in execution_guard
+        and 'exec sh "$SCRIPT_DIR/smoke_start_23_11_3h.sh"' in release_wrapper,
     ),
     (
         "Compose pins one current release across every application microservice",
