@@ -2843,6 +2843,8 @@ class _PartnersPageState extends State<PartnersPage> {
 
     bool validPortalEmail(String value) =>
         RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+
+
+    final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
@@ -8153,24 +8155,8 @@ class _MessageCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: contactName, decoration: InputDecoration(labelText: uiLiteral('Primary contact / Portal owner name *'))),
-                        second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Administrator / Partner Portal email *'))),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: portalPassword,
-                        obscureText: portalPasswordObscure,
-                        enableSuggestions: false,
-                        autocorrect: false,
-                        decoration: InputDecoration(
-                          labelText: uiLiteral('Initial Partner Portal password *'),
-                          helperText: uiLiteral('This creates the first Owner account for the partner. The password is never stored in plain text.'),
-                          prefixIcon: const Icon(Icons.lock_outline_rounded),
-                          suffixIcon: IconButton(
-                            onPressed: () => setLocal(() => portalPasswordObscure = !portalPasswordObscure),
-                            icon: Icon(portalPasswordObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                          ),
-                        ),
+                        first: TextField(controller: contactName, decoration: InputDecoration(labelText: uiLiteral('Primary contact'))),
+                        second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Administrator / contact email *'))),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
@@ -8313,11 +8299,10 @@ class _MessageCard extends StatelessWidget {
           ),
           primaryLabel: 'Create & validate provisioning',
           onPrimary: () {
-            if (displayName.text.trim().isEmpty || contactName.text.trim().isEmpty ||
-                contactEmail.text.trim().isEmpty || portalPassword.text.isEmpty ||
+            if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty ||
                 agreementReference.text.trim().isEmpty || activationInvoiceFile == null) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('Display name, Portal owner name/email/password, commercial agreement and an activation invoice file are required.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(content: LText('Display name, administrator email, commercial agreement and an activation invoice file are required.'), behavior: SnackBarBehavior.floating),
               );
               return;
             }
@@ -8340,14 +8325,6 @@ class _MessageCard extends StatelessWidget {
           'primary_domain': primaryDomain.text.trim(),
         });
         final partnerId = '${created['id']}';
-
-        await widget.api.post('/api/v1/partners/$partnerId/portal-users', {
-          'name': contactName.text.trim(),
-          'email': contactEmail.text.trim(),
-          'password': portalPassword.text,
-          'role': 'owner',
-        });
-
         final fee = double.tryParse(activationFee.text) ?? 0;
         final monthly = double.tryParse(baseMonthlyFee.text) ?? 0;
         final minimumMonthly = double.tryParse(minimumMonthlyCommitment.text) ?? 1500;
@@ -8464,8 +8441,8 @@ class _MessageCard extends StatelessWidget {
         if (mounted) {
           unawaited(load(reset: true));
           success(hasProviderProfile
-              ? 'Partner and Partner Portal Owner created. Provider-backed activation payment was initiated; provisioning remains gated until the signed webhook confirms payment.'
-              : 'Partner and Partner Portal Owner created in LICENSE_PENDING. The administrator can sign in at /partner/login; configure a payment method before collecting the activation license.');
+              ? 'Partner created. Provider-backed activation payment was initiated; provisioning remains gated until the signed webhook confirms payment.'
+              : 'Partner created in LICENSE_PENDING. Configure a payment method before collecting the activation license.');
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -8484,7 +8461,7 @@ class _MessageCard extends StatelessWidget {
     }
 
     for (final controller in [
-      displayName, legalName, contactName, contactEmail, portalPassword, primaryDomain, country,
+      displayName, legalName, contactName, contactEmail, primaryDomain, country,
       activationFee, baseMonthlyFee, minimumMonthlyCommitment, quoteReference, providerCustomerId, paymentMethodId, agreementReference,
       evidenceName, systemName, release,
     ]) {
