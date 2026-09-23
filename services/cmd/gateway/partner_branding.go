@@ -56,6 +56,7 @@ func (a *app) adminPartnerLogo(w http.ResponseWriter, r *http.Request, actor use
 		return
 	}
 	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	req.Header.Set("X-Himate-Expected-Version", a.version)
 	req.Header.Set("X-Himate-User-ID", actor.ID)
 	req.Header.Set("X-Correlation-ID", strings.TrimSpace(r.Header.Get("X-Correlation-ID")))
 	req.Header.Set("Content-Type", contentType)
