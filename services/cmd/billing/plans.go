@@ -163,7 +163,9 @@ func start23112PlanBillingMigration() common.Migration {
 			`DROP INDEX IF EXISTS billing.billing_invoice_period_unique`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_key_unique ON billing.invoices(invoice_key) WHERE invoice_key IS NOT NULL`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_period_model_unique
-				ON billing.invoices(partner_id,service_period_start,service_period_end,billing_model,charge_type)`,
+				ON billing.invoices(partner_id,service_period_start,service_period_end,billing_model,charge_type,plan_key)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_legacy_period_unique
+				ON billing.invoices(partner_id,service_period_start,service_period_end) WHERE billing_model='LEGACY_MODULE'`,
 			`INSERT INTO billing.partner_plan_subscriptions(
 				partner_id,plan_key,billing_frequency,status,current_period_start,current_period_end,next_billing_at,
 				monthly_price_snapshot,annual_list_price_snapshot,annual_price_snapshot,
@@ -362,6 +364,7 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 		}
 		if _,err=tx.ExecContext(r.Context(),`UPDATE billing.subscription_plan_modules SET effective_to=$2
 			WHERE plan_key=$1 AND effective_from<$2 AND (effective_to IS NULL OR effective_to>$2)`,key,effective);err!=nil{common.APIError(w,500,"DB","Could not close prior module set");return}
+		if _,err=tx.ExecContext(r.Context(),`DELETE FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_from=$2`,key,effective);err!=nil{common.APIError(w,500,"DB","Could not replace scheduled module set");return}
 		for i,moduleKey:=range keys{
 			if _,err=tx.ExecContext(r.Context(),`INSERT INTO billing.subscription_plan_modules(plan_key,module_key,position,effective_from)
 				VALUES($1,$2,$3,$4) ON CONFLICT(plan_key,module_key,effective_from) DO UPDATE SET position=EXCLUDED.position,effective_to=NULL`,
@@ -537,6 +540,7 @@ func (a *app) replaceFlexSelection(ctx context.Context,partnerID string,keys []s
 	tx,err:=a.db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
 	if _,err=tx.ExecContext(ctx,`UPDATE billing.partner_plan_module_selections SET effective_to=$2
 		WHERE partner_id=$1 AND effective_from<$2 AND (effective_to IS NULL OR effective_to>$2)`,partnerID,effective);err!=nil{return err}
+	if _,err=tx.ExecContext(ctx,`DELETE FROM billing.partner_plan_module_selections WHERE partner_id=$1 AND effective_from=$2`,partnerID,effective);err!=nil{return err}
 	for _,key:=range keys{
 		if _,err=tx.ExecContext(ctx,`INSERT INTO billing.partner_plan_module_selections(partner_id,module_key,effective_from,source)
 			VALUES($1,$2,$3,$4) ON CONFLICT(partner_id,module_key,effective_from) DO UPDATE SET effective_to=NULL,source=EXCLUDED.source`,
@@ -585,7 +589,7 @@ func (a *app) syncPlanEntitlements(ctx context.Context,partnerID,planKey string,
 func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,chargeType string,start,end time.Time,listPrice,amount float64)(string,error){
 	start,end=dateOnly(start),dateOnly(end)
 	key:=fmt.Sprintf("PLAN:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
-	id:="inv_plan_"+strings.ReplaceAll(partnerID,"_","")+"_"+strings.ToLower(chargeType)+"_"+start.Format("20060102")
+	id:="inv_plan_"+strings.ReplaceAll(partnerID,"_","")+"_"+strings.ToLower(chargeType)+"_"+strings.ToLower(planKey)+"_"+start.Format("20060102")
 	discount:=listPrice-amount;if discount<0{discount=0}
 	result,err:=a.db.ExecContext(ctx,`INSERT INTO billing.invoices(
 		id,invoice_key,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,
