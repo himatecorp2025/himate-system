@@ -1009,10 +1009,14 @@ func (a *app) setCatalogEntitlementState(ctx context.Context, partnerID, moduleK
 
 func (a *app) expireDueCancellations(ctx context.Context, at time.Time) error {
 	today := dateOnly(at)
-	rows, err := a.db.QueryContext(ctx, `SELECT partner_id,module_key,period_start,period_end
-		FROM billing.module_subscriptions
-		WHERE lifecycle_state='CANCEL_PENDING' AND cancel_at_period_end=TRUE AND period_end <= $1
-		ORDER BY period_end,partner_id,module_key`, today)
+	rows, err := a.db.QueryContext(ctx, `SELECT s.partner_id,s.module_key,s.period_start,s.period_end
+		FROM billing.module_subscriptions s
+		WHERE s.lifecycle_state='CANCEL_PENDING' AND s.cancel_at_period_end=TRUE AND s.period_end <= $1
+		  AND NOT EXISTS (
+			SELECT 1 FROM billing.partner_plan_subscriptions pps
+			WHERE pps.partner_id=s.partner_id AND pps.status='ACTIVE'
+		  )
+		ORDER BY s.period_end,s.partner_id,s.module_key`, today)
 	if err != nil { return err }
 	defer rows.Close()
 	type due struct {
