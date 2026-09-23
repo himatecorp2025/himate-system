@@ -14,13 +14,20 @@ OWNER_PASSWORD="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=j
 STAMP="$(date +%s)"
 PREFIX="ci.plan.$STAMP"
 
-read TODAY NEXT_MONTH MONTH_AFTER_NEXT <<EOF
+read TODAY NEXT_MONTH MONTH_AFTER_NEXT DUNNING_DAY3 DUNNING_DAY6 RECOVERY_DAY SECOND_DAY6 SECOND_PURGE_DAY <<EOF
 $(python3 - <<'PY'
-from datetime import date
+from datetime import date,timedelta
 d=date.today()
 n=date(d.year+1,1,1) if d.month==12 else date(d.year,d.month+1,1)
 n2=date(n.year+1,1,1) if n.month==12 else date(n.year,n.month+1,1)
-print(d.isoformat(),n.isoformat(),n2.isoformat())
+print(
+ d.isoformat(),n.isoformat(),n2.isoformat(),
+ (n+timedelta(days=2)).isoformat(),
+ (n+timedelta(days=5)).isoformat(),
+ (n+timedelta(days=9)).isoformat(),
+ (n2+timedelta(days=5)).isoformat(),
+ (n2+timedelta(days=35)).isoformat(),
+)
 PY
 )
 EOF
@@ -132,6 +139,53 @@ printf '%s' "$invoices" | python3 -c 'import json,sys; d=json.load(sys.stdin); x
 docker compose exec -T billing /app/service --run-invoice-cycle "$NEXT_MONTH"
 count="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.invoices WHERE partner_id='$partner_id' AND billing_model='PLAN' AND charge_type='PLAN_MONTHLY' AND service_period_start='$NEXT_MONTH'::date;")"
 test "$count" = "1"
+echo ok
+
+printf 'recurring payment dunning retries on day 1, 3 and 6 then suspends service... '
+monthly_invoice_id="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT id FROM billing.invoices WHERE partner_id='$partner_id' AND billing_model='PLAN' AND charge_type='PLAN_MONTHLY' AND service_period_start='$NEXT_MONTH'::date LIMIT 1;")"
+test -n "$monthly_invoice_id"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT collection_attempts FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "1"
+docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET provider_status='FAILED' WHERE id='$monthly_invoice_id';" >/dev/null
+docker compose exec -T billing /app/service --run-invoice-cycle "$DUNNING_DAY3"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT collection_attempts FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "2"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT status FROM billing.partner_plan_subscriptions WHERE partner_id='$partner_id';")" = "PAST_DUE"
+docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET provider_status='FAILED' WHERE id='$monthly_invoice_id';" >/dev/null
+docker compose exec -T billing /app/service --run-invoice-cycle "$DUNNING_DAY6"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT collection_attempts FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "3"
+docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET provider_status='FAILED' WHERE id='$monthly_invoice_id';" >/dev/null
+docker compose exec -T billing /app/service --run-invoice-cycle "$DUNNING_DAY6"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT status FROM billing.partner_plan_subscriptions WHERE partner_id='$partner_id';")" = "SUSPENDED"
+test "$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["lifecycle"])')" = "SUSPENDED"
+test "$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id/modules" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for x in d["items"] if x["status"]=="ACTIVE"))')" = "0"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT purge_due_at FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "$(python3 - "$DUNNING_DAY6" <<'PY'
+from datetime import date,timedelta
+import sys
+print((date.fromisoformat(sys.argv[1])+timedelta(days=30)).isoformat())
+PY
+)"
+echo ok
+
+printf 'paid invoice inside cure window restores plan, lifecycle and entitlements... '
+docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET status='PAID',provider_status='SUCCEEDED' WHERE id='$monthly_invoice_id';" >/dev/null
+docker compose exec -T billing /app/service --run-invoice-cycle "$RECOVERY_DAY"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT status FROM billing.partner_plan_subscriptions WHERE partner_id='$partner_id';")" = "ACTIVE"
+test "$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["lifecycle"])')" = "PROSPECT"
+test "$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id/modules" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for x in d["items"] if x["status"]=="ACTIVE"))')" = "10"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT dunning_state FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "RECOVERED"
+echo ok
+
+printf 'expired 30-day cure window archives account and purges operational access while retaining financial ledger... '
+docker compose exec -T billing /app/service --run-invoice-cycle "$MONTH_AFTER_NEXT"
+second_invoice_id="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT id FROM billing.invoices WHERE partner_id='$partner_id' AND billing_model='PLAN' AND charge_type='PLAN_MONTHLY' AND service_period_start='$MONTH_AFTER_NEXT'::date LIMIT 1;")"
+test -n "$second_invoice_id"
+docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET provider_status='FAILED',collection_attempts=3 WHERE id='$second_invoice_id';" >/dev/null
+docker compose exec -T billing /app/service --run-invoice-cycle "$SECOND_DAY6"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT status FROM billing.partner_plan_subscriptions WHERE partner_id='$partner_id';")" = "SUSPENDED"
+docker compose exec -T billing /app/service --run-invoice-cycle "$SECOND_PURGE_DAY"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT status FROM billing.partner_plan_subscriptions WHERE partner_id='$partner_id';")" = "CANCELLED"
+test "$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["lifecycle"])')" = "ARCHIVED"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT dunning_state FROM billing.invoices WHERE id='$second_invoice_id';")" = "PURGED"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.invoices WHERE partner_id='$partner_id';")" -ge "1"
 echo ok
 
 printf 'create annual Flex partner and verify full list price versus discounted charge... '
