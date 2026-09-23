@@ -93,6 +93,10 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+	var dunningEligibleInvoice bool
+	var dunningAttempts int
+	var dunningInvoiceDate time.Time
+	var dunningPreState string
 	if err != nil {
 		common.APIError(w, 500, "DB", "Could not start payment settlement")
 		return
@@ -145,9 +149,10 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 		if err != nil { common.APIError(w, 500, "DB", "Could not settle activation license"); return }
 	} else {
 		var amount float64
-		var currency, oldStatus string
-		if err = tx.QueryRow(`SELECT total,currency,status FROM billing.invoices WHERE id=$1 AND partner_id=$2 FOR UPDATE`, in.InvoiceID, in.PartnerID).
-			Scan(&amount, &currency, &oldStatus); err != nil {
+		var currency, oldStatus, billingModel, chargeType string
+		if err = tx.QueryRow(`SELECT total,currency,status,billing_model,charge_type,collection_attempts,invoice_date,dunning_state
+			FROM billing.invoices WHERE id=$1 AND partner_id=$2 FOR UPDATE`, in.InvoiceID, in.PartnerID).
+			Scan(&amount, &currency, &oldStatus, &billingModel, &chargeType, &dunningAttempts, &dunningInvoiceDate, &dunningPreState); err != nil {
 			common.APIError(w, 404, "INVOICE_NOT_FOUND", "Invoice not found")
 			return
 		}
@@ -184,6 +189,32 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 		in.ProviderEventID,in.AttemptID,in.PartnerID,in.InvoiceID,in.Purpose,in.Amount,in.Currency,in.Status,in.Provider,in.ProviderPaymentID,in.FailureCode,in.FailureMessage)
 	if err != nil { common.APIError(w, 500, "DB", "Could not persist payment settlement"); return }
 	if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit payment settlement"); return }
+
+	if in.Purpose == "INVOICE" {
+		dunningEligibleInvoice = dunningEligible(strings.TrimSpace(func() string {
+			var model string
+			_ = a.db.QueryRowContext(r.Context(), `SELECT billing_model FROM billing.invoices WHERE id=$1`, in.InvoiceID).Scan(&model)
+			return model
+		}()), strings.TrimSpace(func() string {
+			var charge string
+			_ = a.db.QueryRowContext(r.Context(), `SELECT charge_type FROM billing.invoices WHERE id=$1`, in.InvoiceID).Scan(&charge)
+			return charge
+		}()))
+		if dunningEligibleInvoice {
+			if in.Status == "SUCCEEDED" {
+				if dunningPreState == "PAST_DUE" || dunningPreState == "SUSPENDED" {
+					_ = a.recoverDunningPayment(r.Context(), in.InvoiceID, in.PartnerID, time.Now().UTC())
+				} else {
+					_, _ = a.db.ExecContext(r.Context(), `UPDATE billing.partner_plan_subscriptions SET status='ACTIVE',updated_at=NOW()
+						WHERE partner_id=$1 AND status='PAST_DUE'`, in.PartnerID)
+				}
+			} else if dunningAttempts >= dunningMaxAttempts {
+				_ = a.suspendForNonPayment(r.Context(), in.InvoiceID, in.PartnerID, time.Now().UTC())
+			} else {
+				_ = a.markPastDue(r.Context(), in.InvoiceID, in.PartnerID, dunningAttempts, dunningInvoiceDate)
+			}
+		}
+	}
 	common.JSON(w, 200, map[string]any{"status":"settled","purpose":in.Purpose,"provider_event_id":in.ProviderEventID})
 }
 
