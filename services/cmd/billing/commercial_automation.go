@@ -204,7 +204,7 @@ func (a *app) modulePriceAt(ctx context.Context, partnerID, moduleKey string, at
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.catalogHost+path, nil)
 	if err != nil { return fallbackPrice, fallbackIncluded, fallbackCurrency, err }
 	common.BindInternalRequest(req, a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return fallbackPrice, fallbackIncluded, fallbackCurrency, err }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
