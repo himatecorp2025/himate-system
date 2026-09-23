@@ -185,6 +185,17 @@ func start23112PlanBillingMigration() common.Migration {
 	}
 }
 
+func start23112PlanBillingRecoveryMigration() common.Migration {
+	return common.Migration{
+		Version: 12,
+		Name: "start-23-11-2-plan-billing-index-recovery",
+		Statements: []string{
+			`DROP INDEX IF EXISTS billing.billing_invoice_key_unique`,
+			`CREATE UNIQUE INDEX billing_invoice_key_unique ON billing.invoices(invoice_key)`,
+		},
+	}
+}
+
 func nextMonthStart(at time.Time) time.Time {
 	at = dateOnly(at)
 	return time.Date(at.Year(), at.Month()+1, 1, 0, 0, 0, 0, time.UTC)
