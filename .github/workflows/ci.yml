@@ -154,6 +154,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_3e.py
       - name: Run START-23.11.3f Partner Category Resilience audit
         run: python3 ../scripts/audit_start_23_11_3f.py
+      - name: Run START-23.11.3g Partner Registration Error Handling audit
+        run: python3 ../scripts/audit_start_23_11_3g.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -398,6 +400,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_3e.sh http://127.0.0.1:8080
       - name: Run START-23.11.3f Partner Category Resilience smoke
         run: sh scripts/smoke_start_23_11_3f.sh http://127.0.0.1:8080
+      - name: Run START-23.11.3g Partner Registration Error Handling smoke
+        run: sh scripts/smoke_start_23_11_3g.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
