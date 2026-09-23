@@ -61,7 +61,7 @@ func (a *app) adminPartnerLogo(w http.ResponseWriter, r *http.Request, actor use
 	req.Header.Set("X-Correlation-ID", strings.TrimSpace(r.Header.Get("X-Correlation-ID")))
 	req.Header.Set("Content-Type", contentType)
 
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		common.APIError(w, http.StatusBadGateway, "CMS_UNAVAILABLE", "Partner logo upload failed")
 		return
