@@ -590,7 +590,8 @@ func (a *app) ensurePartnerModules(partnerID string) error {
 			plan_effective_at=COALESCE(plan_effective_at,NOW()),
 			activated_at=COALESCE(activated_at,NOW()),
 			updated_at=NOW()
-		WHERE partner_id=$1`, partnerID)
+		WHERE partner_id=$1
+		  AND module_key IN (SELECT module_key FROM catalog.modules WHERE system=TRUE)`, partnerID)
 	return err
 }
 
