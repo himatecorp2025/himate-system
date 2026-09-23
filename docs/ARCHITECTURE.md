@@ -210,7 +210,7 @@ The authoritative tenant ID is read from the authenticated partner identity on e
 
 Module self-service is implemented inside the Catalog boundary. It may change only the authenticated partner entitlement from NOT_LICENSED to ACTIVE. It cannot alter global catalog metadata, prices, source/release identity or relationships. Activation validates global availability plus `REQUIRES` and `CONFLICTS_WITH` relations before changing entitlement state.
 
-Billing remains authoritative for renewal state. Catalog activation is synchronized through the existing Billing summary/subscription model. Cancellation sets `cancel_at_period_end`; Billing keeps the entitlement active through the current calendar month and marks it NOT_LICENSED only when the period expires.
+Billing remains authoritative for renewal state. Catalog activation is synchronized through the existing Billing summary/subscription model. Cancellation sets `cancel_at_period_end`; Billing keeps the entitlement active through the already-paid 30-day period and marks it NOT_LICENSED only when the period expires.
 
 Company self-service is allowlisted at the Gateway. Lifecycle, provisioning, environment, commercial terms and global Control Plane fields are intentionally absent from the Partner Portal write contract.
 
@@ -236,7 +236,7 @@ Partner base billing boundary
 Itemized invoice
 ```
 
-A module price change during a running calendar month cannot mutate that period. Billing asks Catalog for the price effective at the exact period start and persists one snapshot keyed by partner/module/period start. If synchronization was unavailable for one or more periods, Billing reconstructs them from activation forward using Catalog history rather than today's price.
+A module price change during a running 30-day period cannot mutate that period. Billing asks Catalog for the price effective at the exact period start and persists one snapshot keyed by partner/module/period start. If synchronization was unavailable for one or more periods, Billing reconstructs them from activation forward using Catalog history rather than today's price.
 
 Provisioning now consumes a stricter Billing gate:
 
@@ -317,7 +317,7 @@ The authoritative machine-readable inventory lives in `docs/START-23.1_FUNCTIONA
 
 The architecture also records three cross-service closure constraints for START-23.2–23.12:
 
-- Catalog entitlement state and Billing subscription state must converge on one authoritative calendar-month lifecycle command; an administrator must not bypass paid-period cancellation by directly forcing a catalog state.
+- Catalog entitlement state and Billing subscription state must converge on one authoritative 30-day lifecycle command; an administrator must not bypass paid-period cancellation by directly forcing a catalog state.
 - Billing's existing invoice-cycle code requires a production scheduler before it can be considered automatic.
 - invoice generation is not payment collection; a separate provider-adapter/payment-attempt/webhook boundary is required before recurring customer charging is accepted.
 
@@ -325,7 +325,7 @@ START-24 Security Acceptance is therefore downstream of START-23.12, not immedia
 
 ## Partner × Module commercial control plane (START-23.2)
 
-START-23.2 keeps service ownership explicit: Catalog owns module definitions, partner assignment, configured recurring prices, activation fees and effective-dated commercial history; Billing owns immutable calendar-month subscription periods and invoice snapshots.
+START-23.2 keeps service ownership explicit: Catalog owns module definitions, partner assignment, configured recurring prices, activation fees and effective-dated commercial history; Billing owns immutable 30-day subscription periods and invoice snapshots.
 
 The administration Modules surface joins two read models without duplicating ownership. Catalog exposes the partner-by-module commercial matrix, while Billing exposes current subscription periods. For each subscription boundary Billing performs one authenticated batched internal quote request to Catalog so the displayed next-period price is resolved from the same point-in-time price history used by billing logic rather than guessed by Flutter.
 
@@ -333,7 +333,7 @@ Module registry defaults now include a one-time activation fee. Each partner ass
 
 The legacy module create/edit path in Licensing & Finance has been removed so the Modules control plane is the only administrative registry owner. Normal cancellation is intentionally not finalized here: START-23.3 makes Billing authoritative for module-subscription lifecycle. Each subscription has an explicit `ACTIVE`, `CANCEL_PENDING` or `INACTIVE` state. Admin and Partner Portal cancellation commands converge on the same Billing mutation and append the same subscription-history/Billing-event trail.
 
-Catalog remains authoritative for assignment metadata, visibility and commercial configuration, but cannot externally terminate an active paid-period entitlement. An external `ACTIVE -> NOT_LICENSED` request is rejected; after the next calendar-month boundary the Billing cycle uses the private internal Catalog path to complete deactivation. This preserves paid access and immutable period pricing while preventing an admin UI or API caller from bypassing the commercial lifecycle.
+Catalog remains authoritative for assignment metadata, visibility and commercial configuration, but cannot externally terminate an active paid-period entitlement. An external `ACTIVE -> NOT_LICENSED` request is rejected; after the exact 30-day period boundary the Billing cycle uses the private internal Catalog path to complete deactivation. This preserves paid access and immutable period pricing while preventing an admin UI or API caller from bypassing the commercial lifecycle.
 
 The subscription read model suppresses next-period quotes for `CANCEL_PENDING` and `INACTIVE` subscriptions. Therefore UI surfaces cannot display a misleading next renewal after cancellation is scheduled. Cancellation may be withdrawn before period end, returning the subscription to `ACTIVE`.
 
@@ -541,11 +541,21 @@ Catalog-level monetary values are reference/list values only. The charging autho
 
 For USD contracts the current platform policy floor is a 1,500 minimum monthly commitment. Activation/license fees have no global fixed floor and are negotiated per partner. START-23.11.1 stores these terms but deliberately leaves invoice timing, full-period charging and no-proration behavior to START-23.11.2.
 
+## START-23.11.2 subscription-plan billing authority
 
-## START-23.11.2 calendar-month billing authority
+START-23.11.2 introduces a managed subscription-plan layer above the existing module-commercial model. For standard pilot partners, the subscription plan is the recurring-price authority; individual module reference/partner prices remain retained commercial metadata for future add-ons and individually negotiated contracts.
 
-Billing owns one recurring period model for new commercial evidence: `CALENDAR_MONTH`. Each period begins on the first day of a calendar month and ends exclusively on the first day of the next month. The completed month is invoiced on that following day 1. Activation during a month creates the full negotiated monthly module charge for that month; proration is intentionally disabled.
+Billing owns the plan catalog and partner subscription state. The seeded public plans are Starter (USD 500/month, fixed 3 modules), Business (USD 1,500/month, fixed 10 modules) and Flex (USD 2,500/month, up to 15 partner-selected modules). Billing also retains a non-public CUSTOM plan type for individually negotiated accounts such as the reference Klavierhaus partner.
 
-The monthly invoice contains the base service fee, exact-month module items and, when required, an explicit `MINIMUM_COMMITMENT` adjustment so the invoice reaches the partner's contractual minimum monthly commitment. Every commercial line remains immutable after creation.
+Annual prices are explicit monetary contracts rather than derived presentation-only percentages: Starter USD 6,000; Business USD 18,000 list / USD 16,500 charged; Flex USD 30,000 list / USD 22,500 charged. The invoice ledger stores list price and discount amount so UI savings and financial evidence are reproducible.
 
-Historical activation-anchored 30-day snapshots remain retained as `LEGACY_30_DAY` evidence. They are not rewritten. Active subscriptions migrate forward to `CALENDAR_MONTH`, and pending cancellation becomes effective at the next month boundary.
+Activation/license payment remains a separate commercial gate. A partner may inspect available plans, but a first plan cannot activate until the activation license is provider-verified PAID or explicitly WAIVED.
+
+Billing and Catalog keep distinct ownership. Billing determines the plan and effective module set; Catalog remains authoritative for module identity, publication/readiness and persisted partner entitlement. Billing pushes the derived entitlement set through an internal authenticated plan-entitlement command. Starter and Business require complete fixed PUBLISHED+READY module sets configured by HIMATE. Flex accepts at most 15 partner-selected PUBLISHED+READY modules.
+
+Same-frequency upgrades are immediate and charge the full plan-price difference with no proration. Monthly downgrades remain on the current plan through the current period and switch on the next calendar-month day 1; annual downgrades switch at annual renewal. Normal Flex module-set changes are effective on the next calendar-month boundary.
+
+Plan invoices are created idempotently before provider collection. Existing Payments settlement/webhook verification remains authoritative for PAID state. Standard plan partners are excluded from legacy per-module recurring invoice generation and from Partner Portal individual module activation/cancellation commands, preventing a second billing authority from emerging.
+
+Historical 30-day module subscriptions, module-period snapshots, partner-specific prices, activation-fee history and quote references remain intact for legacy/custom compatibility. They are not rewritten into plan invoices.
+
