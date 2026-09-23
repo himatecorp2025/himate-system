@@ -350,6 +350,15 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.17-start-23.11.3`
 - acceptance: `docs/START-23.11.3_ACCEPTANCE.md`, `scripts/audit_start_23_11_3.py`, `scripts/smoke_start_23_11_3.sh`
 
+### START-23.11.3a — Platform Secrets & Provider Readiness
+- Administration now contains a system-owner controlled **Secrets & API Keys** workspace.
+- supported provider credentials are explicitly allowlisted and stored encrypted with AES-256-GCM; raw stored values are never returned to the UI.
+- Stripe and Render consumers prefer process environment variables, then resolve the encrypted HIMATE vault dynamically.
+- missing Stripe credentials no longer terminate the Payments process: health remains available with configuration-required state while charge/webhook execution fails closed.
+- audit snapshots redact submitted secret values.
+- release contract version is `0.8.18-start-23.11.3a`
+- acceptance: `docs/START-23.11.3A_ACCEPTANCE.md`, `scripts/audit_start_23_11_3a.py`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
