@@ -56,6 +56,20 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
+func TestPartnerTechnicalSlugAllowsDuplicateDisplayNames(t *testing.T) {
+	first := partnerTechnicalSlug("Klavierhaus", "ptr_000042")
+	second := partnerTechnicalSlug("Klavierhaus", "ptr_000043")
+	if first == second {
+		t.Fatalf("duplicate display names must receive distinct technical slugs: %s", first)
+	}
+	if first != "klavierhaus-000042" || second != "klavierhaus-000043" {
+		t.Fatalf("unexpected technical slugs: %s / %s", first, second)
+	}
+	if got := partnerTechnicalSlug("***", "ptr_000044"); got != "custom-000044" {
+		t.Fatalf("punctuation-only display names must still receive a safe technical slug, got %s", got)
+	}
+}
+
 func TestProvisioningRequiresLicenseGate(t *testing.T) {
 	if !requiresProvisioningGate("READY_TO_PROVISION", "PROVISIONING") {
 		t.Fatal("provisioning transition must require Billing gate")
