@@ -29,7 +29,7 @@ type partner struct {
 	MarketingContactName, MarketingContactEmail, RegistrationNumber         string
 	TaxID, Country, StateRegion, City, PostalCode, AddressLine1              string
 	AddressLine2, Website, Phone, Notes                                      string
-	ExistingPartner, ReferencePartner                                       bool
+	ExistingPartner, ReferencePartner, TestPartner                                       bool
 	HealthCheckedAt, LastSyncAt                                              sql.NullTime
 	CreatedAt, UpdatedAt                                                     time.Time
 }
@@ -180,6 +180,10 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS onboarding_request_id TEXT NOT NULL DEFAULT ''`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS partners_onboarding_request_unique
 				ON partners.partners(onboarding_request_id) WHERE onboarding_request_id<>''`,
+		}},
+		{Version: 8, Name: "start-23-11-3j-golden-test-partner", Statements: []string{
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS test_partner BOOLEAN NOT NULL DEFAULT FALSE`,
+			`CREATE INDEX IF NOT EXISTS partners_test_partner_idx ON partners.partners(test_partner) WHERE test_partner=TRUE`,
 		}},
 	}); err != nil {
 		return err
@@ -635,6 +639,7 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 			Phone                 *string `json:"phone"`
 			LogoURL               *string `json:"logo_url"`
 			Notes                 *string `json:"notes"`
+			TestPartner           *bool   `json:"test_partner"`
 			Reason                string  `json:"reason"`
 		}
 		if common.Decode(r, &in) != nil {
@@ -647,6 +652,7 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		oldLifecycle := p.Lifecycle
+		oldTestPartner := p.TestPartner
 		set(in.DisplayName, &p.DisplayName)
 		set(in.LegalName, &p.LegalName)
 		set(in.BrandName, &p.BrandName)
@@ -674,6 +680,12 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 		set(in.Phone, &p.Phone)
 		set(in.LogoURL, &p.LogoURL)
 		set(in.Notes, &p.Notes)
+		if in.TestPartner != nil {
+			p.TestPartner = *in.TestPartner
+			if p.TestPartner && !oldTestPartner {
+				p.Lifecycle = "LIVE"
+			}
+		}
 		if p.DisplayName == "" {
 			common.APIError(w, 400, "VALIDATION", "Display name is required")
 			return
@@ -687,11 +699,12 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 400, "VALIDATION", "Invalid lifecycle")
 			return
 		}
-		if !canTransition(oldLifecycle, p.Lifecycle) {
+		goldenActivation := !oldTestPartner && p.TestPartner
+		if !goldenActivation && !canTransition(oldLifecycle, p.Lifecycle) {
 			common.APIError(w, 409, "INVALID_LIFECYCLE_TRANSITION", "Lifecycle transition is not allowed")
 			return
 		}
-		if requiresProvisioningGate(oldLifecycle, p.Lifecycle) {
+		if !goldenActivation && requiresProvisioningGate(oldLifecycle, p.Lifecycle) {
 			allowed, reason, gateErr := a.provisioningAllowed(r.Context(), id)
 			if gateErr != nil {
 				common.APIError(w, 503, "BILLING_GATE_UNAVAILABLE", "Provisioning cannot start while license verification is unavailable")
@@ -715,13 +728,13 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 			contact_name=$9,contact_email=$10,finance_contact_name=$11,finance_contact_email=$12,
 			technical_contact_name=$13,technical_contact_email=$14,marketing_contact_name=$15,marketing_contact_email=$16,
 			registration_number=$17,tax_id=$18,country=$19,state_region=$20,city=$21,postal_code=$22,address_line1=$23,address_line2=$24,
-			website=$25,phone=$26,logo_url=$27,notes=$28,updated_at=NOW()
+			website=$25,phone=$26,logo_url=$27,notes=$28,test_partner=$29,updated_at=NOW()
 			WHERE id=$1`,
 			id, p.DisplayName, p.LegalName, p.BrandName, p.CategoryID, p.Lifecycle, p.PrimaryDomain, p.StagingDomain,
 			p.ContactName, p.ContactEmail, p.FinanceContactName, p.FinanceContactEmail,
 			p.TechnicalContactName, p.TechnicalContactEmail, p.MarketingContactName, p.MarketingContactEmail,
 			p.RegistrationNumber, p.TaxID, p.Country, p.StateRegion, p.City, p.PostalCode, p.AddressLine1, p.AddressLine2,
-			p.Website, p.Phone, p.LogoURL, p.Notes)
+			p.Website, p.Phone, p.LogoURL, p.Notes, p.TestPartner)
 		if err != nil {
 			common.APIError(w, 409, "CONFLICT", "Partner could not be updated; verify domain and category uniqueness")
 			return
@@ -730,7 +743,11 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 			actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
 			reason := strings.TrimSpace(in.Reason)
 			if reason == "" {
-				reason = "HIMATE administrator lifecycle update"
+				if goldenActivation {
+					reason = "Golden Test Partner activation"
+				} else {
+					reason = "HIMATE administrator lifecycle update"
+				}
 			}
 			if _, err = tx.Exec(`INSERT INTO partners.lifecycle_history(partner_id,from_state,to_state,changed_by,reason) VALUES($1,$2,$3,$4,$5)`,
 				id, oldLifecycle, p.Lifecycle, actor, reason); err != nil {
@@ -816,7 +833,7 @@ func (a *app) purgeOperationalPartner(w http.ResponseWriter, r *http.Request, id
 
 const selectPartner = `SELECT
 	p.id,p.slug,p.display_name,p.legal_name,p.brand_name,COALESCE(p.category_id,''),COALESCE(c.name,''),p.lifecycle,
-	p.existing_partner,p.reference_partner,p.primary_domain,p.staging_domain,p.logo_url,p.platform_version,p.system_health,
+	p.existing_partner,p.reference_partner,p.test_partner,p.primary_domain,p.staging_domain,p.logo_url,p.platform_version,p.system_health,
 	p.contact_name,p.contact_email,p.finance_contact_name,p.finance_contact_email,p.technical_contact_name,p.technical_contact_email,
 	p.marketing_contact_name,p.marketing_contact_email,p.registration_number,p.tax_id,p.country,p.state_region,p.city,p.postal_code,
 	p.address_line1,p.address_line2,p.website,p.phone,p.notes,p.health_checked_at,p.last_sync_at,p.created_at,p.updated_at
@@ -828,7 +845,7 @@ func scanPartner(s scanner) (partner, error) {
 	var p partner
 	err := s.Scan(
 		&p.ID, &p.Slug, &p.DisplayName, &p.LegalName, &p.BrandName, &p.CategoryID, &p.CategoryName, &p.Lifecycle,
-		&p.ExistingPartner, &p.ReferencePartner, &p.PrimaryDomain, &p.StagingDomain, &p.LogoURL, &p.PlatformVersion, &p.SystemHealth,
+		&p.ExistingPartner, &p.ReferencePartner, &p.TestPartner, &p.PrimaryDomain, &p.StagingDomain, &p.LogoURL, &p.PlatformVersion, &p.SystemHealth,
 		&p.ContactName, &p.ContactEmail, &p.FinanceContactName, &p.FinanceContactEmail, &p.TechnicalContactName, &p.TechnicalContactEmail,
 		&p.MarketingContactName, &p.MarketingContactEmail, &p.RegistrationNumber, &p.TaxID, &p.Country, &p.StateRegion, &p.City, &p.PostalCode,
 		&p.AddressLine1, &p.AddressLine2, &p.Website, &p.Phone, &p.Notes, &p.HealthCheckedAt, &p.LastSyncAt, &p.CreatedAt, &p.UpdatedAt,
@@ -851,7 +868,7 @@ func partnerMap(p partner) map[string]any {
 	return map[string]any{
 		"id": p.ID, "slug": p.Slug, "display_name": p.DisplayName, "legal_name": p.LegalName, "brand_name": p.BrandName,
 		"category_id": p.CategoryID, "category_name": p.CategoryName, "lifecycle": p.Lifecycle,
-		"existing_partner": p.ExistingPartner, "reference_partner": p.ReferencePartner,
+		"existing_partner": p.ExistingPartner, "reference_partner": p.ReferencePartner, "test_partner": p.TestPartner,
 		"primary_domain": p.PrimaryDomain, "staging_domain": p.StagingDomain, "logo_url": p.LogoURL,
 		"platform_version": p.PlatformVersion, "system_health": p.SystemHealth,
 		"health_checked_at": nullableTime(p.HealthCheckedAt), "last_sync_at": nullableTime(p.LastSyncAt),
