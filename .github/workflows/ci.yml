@@ -383,6 +383,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_2.sh http://127.0.0.1:8080
       - name: Run START-23.11.3 Module Marketplace smoke
         run: sh scripts/smoke_start_23_11_3.sh http://127.0.0.1:8080
+      - name: Run START-23.11.3a Platform Secrets & Provider Readiness smoke
+        run: sh scripts/smoke_start_23_11_3a.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
