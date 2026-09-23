@@ -2793,45 +2793,52 @@ class _PartnersPageState extends State<PartnersPage> {
   }
 
   Future<void> addPartner() async {
-    if (categories.isEmpty && categoriesLoading) {
-      await _loadCategories();
+    // The creation dialog must be available even when Catalog or supplementary
+    // services are degraded. Partner master data is the primary record; modules,
+    // licensing and provisioning are configured from the workspace afterwards.
+    final categoryOptions = categories.isNotEmpty
+        ? List<Map<String, dynamic>>.from(categories)
+        : <Map<String, dynamic>>[
+            <String, dynamic>{'id': 'cat_006', 'name': 'Other'},
+          ];
+    if (categories.isEmpty && !categoriesLoading) {
+      unawaited(_loadCategories());
     }
-    if (categories.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: LText('Create a partner category first.'), behavior: SnackBarBehavior.floating),
-      );
-      return;
-    }
-
-    final moduleResponse = await widget.api.get('/api/v1/modules', force: true);
-    final availableModules = items(moduleResponse)
-        .where((module) => '${module['publication_status'] ?? 'UNPUBLISHED'}' == 'PUBLISHED')
-        .toList();
 
     final displayName = TextEditingController();
     final legalName = TextEditingController();
+    final brandName = TextEditingController();
+    final registrationNumber = TextEditingController();
+    final taxId = TextEditingController();
+    final country = TextEditingController(text: 'United States');
+    final stateRegion = TextEditingController();
+    final city = TextEditingController();
+    final postalCode = TextEditingController();
+    final addressLine1 = TextEditingController();
+    final addressLine2 = TextEditingController();
+    final website = TextEditingController();
+    final phone = TextEditingController();
+    final primaryDomain = TextEditingController();
     final contactName = TextEditingController();
     final contactEmail = TextEditingController();
     final portalPassword = TextEditingController();
-    final primaryDomain = TextEditingController();
-    final country = TextEditingController(text: 'United States');
+    final financeContactName = TextEditingController();
+    final financeContactEmail = TextEditingController();
+    final technicalContactName = TextEditingController();
+    final technicalContactEmail = TextEditingController();
+    final marketingContactName = TextEditingController();
+    final marketingContactEmail = TextEditingController();
     final activationFee = TextEditingController(text: '0');
     final baseMonthlyFee = TextEditingController(text: '0');
     final minimumMonthlyCommitment = TextEditingController(text: '1500');
     final quoteReference = TextEditingController();
-    final providerCustomerId = TextEditingController();
-    final paymentMethodId = TextEditingController();
-    final agreementReference = TextEditingController();
-    final evidenceName = TextEditingController(text: 'Initial license payment evidence');
-    html.File? activationInvoiceFile;
-    html.File? paymentEvidenceFile;
-    final systemName = TextEditingController();
-    final release = TextEditingController(text: '0.3.0-start-09-13');
-    String category = '${categories.first['id']}';
-    String environment = 'STAGING';
+    final notes = TextEditingController();
+
+    html.File? partnerLogoFile;
+    String category = '${categoryOptions.first['id']}';
+    String currency = 'USD';
     bool portalPasswordObscure = true;
     int step = 0;
-    final selectedModules = <String>{};
 
     bool validPortalPassword(String value) {
       return value.runes.length >= 12 &&
@@ -2841,20 +2848,23 @@ class _PartnersPageState extends State<PartnersPage> {
           RegExp(r'[^A-Za-z0-9\s]').hasMatch(value);
     }
 
-    bool validPortalEmail(String value) =>
+    bool validEmail(String value) =>
         RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim());
+
+    bool validOptionalEmail(TextEditingController controller) =>
+        controller.text.trim().isEmpty || validEmail(controller.text);
 
     final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
-          title: 'New Partner · Provisioning Wizard',
-          subtitle: 'Business, commercial, evidence, system identity, environment and module preset are captured before provisioning can begin.',
-          icon: Icons.precision_manufacturing_outlined,
-          width: 820,
+          title: 'New Partner',
+          subtitle: 'Create the complete partner master record, billing identity, first Portal Owner and initial brand identity. Provisioning can be completed from the partner workspace.',
+          icon: Icons.add_business_outlined,
+          width: 900,
           child: SizedBox(
-            height: 560,
+            height: 620,
             child: Stepper(
               currentStep: step,
               type: StepperType.vertical,
@@ -2862,28 +2872,132 @@ class _PartnersPageState extends State<PartnersPage> {
               onStepTapped: (value) => setLocal(() => step = value),
               steps: [
                 Step(
-                  title: const LText('1 · Business identity'),
+                  title: const LText('1 · Company & legal identity'),
                   isActive: step >= 0,
                   content: Column(
                     children: [
                       ResponsiveFieldPair(
-                        first: TextField(controller: displayName, decoration: InputDecoration(labelText: uiLiteral('Display name *'))),
-                        second: TextField(controller: legalName, decoration: InputDecoration(labelText: uiLiteral('Legal name'))),
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: category,
-                        decoration: InputDecoration(labelText: uiLiteral('Partner category')),
-                        items: [
-                          for (final item in categories)
-                            DropdownMenuItem(value: '${item['id']}', child: LText('${item['name']}')),
-                        ],
-                        onChanged: (value) { if (value != null) setLocal(() => category = value); },
+                        first: TextField(
+                          controller: displayName,
+                          autofocus: true,
+                          decoration: InputDecoration(labelText: uiLiteral('Display name *'), hintText: uiLiteral('Name shown inside HIMATE')),
+                        ),
+                        second: TextField(
+                          controller: legalName,
+                          decoration: InputDecoration(labelText: uiLiteral('Legal company name *')),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: contactName, decoration: InputDecoration(labelText: uiLiteral('Primary contact / Portal owner name *'))),
-                        second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Administrator / Partner Portal email *'))),
+                        first: TextField(
+                          controller: brandName,
+                          decoration: InputDecoration(labelText: uiLiteral('Brand / DBA'), hintText: uiLiteral('Defaults to display name')),
+                        ),
+                        second: DropdownButtonFormField<String>(
+                          value: category,
+                          decoration: InputDecoration(labelText: uiLiteral('Partner category')),
+                          items: [
+                            for (final item in categoryOptions)
+                              DropdownMenuItem(value: '${item['id']}', child: LText('${item['name']}')),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) setLocal(() => category = value);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(
+                          controller: registrationNumber,
+                          decoration: InputDecoration(labelText: uiLiteral('Company / registration number *')),
+                        ),
+                        second: TextField(
+                          controller: taxId,
+                          decoration: InputDecoration(labelText: uiLiteral('Tax / VAT ID *')),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(
+                          controller: website,
+                          keyboardType: TextInputType.url,
+                          decoration: InputDecoration(labelText: uiLiteral('Website')),
+                        ),
+                        second: TextField(
+                          controller: phone,
+                          keyboardType: TextInputType.phone,
+                          decoration: InputDecoration(labelText: uiLiteral('Company phone')),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: primaryDomain,
+                        decoration: InputDecoration(labelText: uiLiteral('Primary domain'), hintText: uiLiteral('example.com')),
+                      ),
+                      if (categories.isEmpty) ...[
+                        const SizedBox(height: 12),
+                        const _MessageCard(
+                          icon: Icons.info_outline_rounded,
+                          title: 'Category service is still loading',
+                          message: 'The partner form remains available. “Other” will be used as a safe fallback and can be changed later.',
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Step(
+                  title: const LText('2 · Registered office & contacts'),
+                  isActive: step >= 1,
+                  content: Column(
+                    children: [
+                      ResponsiveFieldPair(
+                        first: TextField(controller: country, decoration: InputDecoration(labelText: uiLiteral('Country *'))),
+                        second: TextField(controller: stateRegion, decoration: InputDecoration(labelText: uiLiteral('State / region'))),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: city, decoration: InputDecoration(labelText: uiLiteral('City *'))),
+                        second: TextField(controller: postalCode, decoration: InputDecoration(labelText: uiLiteral('Postal code *'))),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(controller: addressLine1, decoration: InputDecoration(labelText: uiLiteral('Registered address line 1 *'))),
+                      const SizedBox(height: 12),
+                      TextField(controller: addressLine2, decoration: InputDecoration(labelText: uiLiteral('Registered address line 2'))),
+                      const SizedBox(height: 18),
+                      const _DialogSectionLabel('OPERATIONAL CONTACTS'),
+                      const SizedBox(height: 10),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: financeContactName, decoration: InputDecoration(labelText: uiLiteral('Finance / billing contact'))),
+                        second: TextField(controller: financeContactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Finance / billing email'))),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: technicalContactName, decoration: InputDecoration(labelText: uiLiteral('Technical contact'))),
+                        second: TextField(controller: technicalContactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Technical email'))),
+                      ),
+                      const SizedBox(height: 12),
+                      ResponsiveFieldPair(
+                        first: TextField(controller: marketingContactName, decoration: InputDecoration(labelText: uiLiteral('Marketing contact'))),
+                        second: TextField(controller: marketingContactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Marketing email'))),
+                      ),
+                    ],
+                  ),
+                ),
+                Step(
+                  title: const LText('3 · Partner Portal & branding'),
+                  isActive: step >= 2,
+                  content: Column(
+                    children: [
+                      ResponsiveFieldPair(
+                        first: TextField(
+                          controller: contactName,
+                          decoration: InputDecoration(labelText: uiLiteral('Portal Owner / primary contact name *')),
+                        ),
+                        second: TextField(
+                          controller: contactEmail,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: InputDecoration(labelText: uiLiteral('Partner Portal Owner email *')),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -2893,47 +3007,35 @@ class _PartnersPageState extends State<PartnersPage> {
                         autocorrect: false,
                         decoration: InputDecoration(
                           labelText: uiLiteral('Initial Partner Portal password *'),
-                          helperText: uiLiteral('This creates the first Owner account for the partner. The password is never stored in plain text.'),
+                          helperText: uiLiteral('Minimum 12 characters with lowercase, uppercase, number and special character.'),
                           prefixIcon: const Icon(Icons.lock_outline_rounded),
                           suffixIcon: IconButton(
+                            tooltip: uiLiteral(portalPasswordObscure ? 'Show password' : 'Hide password'),
                             onPressed: () => setLocal(() => portalPasswordObscure = !portalPasswordObscure),
                             icon: Icon(portalPasswordObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      ResponsiveFieldPair(
-                        first: TextField(controller: country, decoration: InputDecoration(labelText: uiLiteral('Country'))),
-                        second: TextField(controller: primaryDomain, decoration: InputDecoration(labelText: uiLiteral('Primary domain'), hintText: uiLiteral('example.org'))),
-                      ),
-                    ],
-                  ),
-                ),
-                Step(
-                  title: const LText('2 · Commercial & license evidence'),
-                  isActive: step >= 1,
-                  content: Column(
-                    children: [
-                      ResponsiveFieldPair(
-                        first: TextField(controller: activationFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Individual activation fee · USD'))),
-                        second: TextField(controller: baseMonthlyFee, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Individual base monthly fee · USD'))),
-                      ),
-                      const SizedBox(height: 12),
-                      ResponsiveFieldPair(
-                        first: TextField(controller: minimumMonthlyCommitment, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Minimum monthly commitment · USD'))),
-                        second: TextField(controller: quoteReference, decoration: InputDecoration(labelText: uiLiteral('Quote / offer reference'), hintText: uiLiteral('Partner-specific offer reference'))),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: agreementReference,
-                        decoration: InputDecoration(labelText: uiLiteral('Commercial agreement reference *'), hintText: uiLiteral('Signed contract / agreement reference')),
-                      ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 18),
+                      const _DialogSectionLabel('PARTNER BRAND IDENTITY'),
+                      const SizedBox(height: 10),
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              color: brandNavy.withOpacity(.05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: brandMist),
+                            ),
+                            child: const Icon(Icons.image_outlined, color: brandNavy),
+                          ),
+                          const SizedBox(width: 14),
                           Expanded(
                             child: LText(
-                              activationInvoiceFile?.name ?? 'No activation invoice selected',
+                              partnerLogoFile?.name ?? 'No partner logo selected',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: brandTextSoft),
@@ -2942,127 +3044,123 @@ class _PartnersPageState extends State<PartnersPage> {
                           const SizedBox(width: 12),
                           OutlinedButton.icon(
                             onPressed: () async {
-                              final file = await pickBrowserFile('application/pdf,image/png,image/jpeg,image/webp');
-                              if (file != null) setLocal(() => activationInvoiceFile = file);
+                              final file = await pickBrowserFile('image/png,image/jpeg,image/webp');
+                              if (file != null) setLocal(() => partnerLogoFile = file);
                             },
-                            icon: const Icon(Icons.receipt_long_outlined),
-                            label: const LText('Choose activation invoice *'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ResponsiveFieldPair(
-                        first: TextField(controller: providerCustomerId, decoration: InputDecoration(labelText: uiLiteral('Provider customer ID'), hintText: uiLiteral('Stripe customer ID, e.g. cus_...'))),
-                        second: TextField(controller: paymentMethodId, decoration: InputDecoration(labelText: uiLiteral('Payment method ID'), hintText: uiLiteral('Saved payment method, e.g. pm_...'))),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(controller: evidenceName, decoration: InputDecoration(labelText: uiLiteral('Payment evidence name'))),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: LText(
-                              paymentEvidenceFile?.name ?? 'No payment evidence selected',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: brandTextSoft),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          OutlinedButton.icon(
-                            onPressed: () async {
-                              final file = await pickBrowserFile('application/pdf,image/png,image/jpeg,image/webp,text/plain');
-                              if (file != null) setLocal(() => paymentEvidenceFile = file);
-                            },
-                            icon: const Icon(Icons.verified_outlined),
-                            label: const LText('Choose payment evidence'),
+                            icon: const Icon(Icons.upload_file_rounded),
+                            label: const LText('Choose logo'),
                           ),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      const _RuleStrip(items: [
-                        _RuleItem(Icons.handshake_outlined, 'Agreement', 'Explicit commercial agreement is required'),
-                        _RuleItem(Icons.receipt_long_outlined, 'Activation invoice', 'File is stored in Evidence/Storage and SHA-256 checked'),
-                        _RuleItem(Icons.lock_clock_outlined, 'Provisioning gate', 'Agreement + PAID license + evidence are required'),
-                      ]),
+                      const LText(
+                        'PNG, JPEG or WebP. The asset is stored in the partner-scoped media library and becomes the partner logo reference used by HIMATE and the Partner Portal.',
+                        style: TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+                      ),
                     ],
                   ),
                 ),
                 Step(
-                  title: const LText('3 · System & environment'),
-                  isActive: step >= 2,
+                  title: const LText('4 · Commercial defaults'),
+                  isActive: step >= 3,
                   content: Column(
                     children: [
                       ResponsiveFieldPair(
-                        first: TextField(controller: systemName, decoration: InputDecoration(labelText: uiLiteral('System name'), hintText: uiLiteral('Defaults to partner display name'))),
-                        second: TextField(controller: release, decoration: InputDecoration(labelText: uiLiteral('Desired platform release'))),
+                        first: DropdownButtonFormField<String>(
+                          value: currency,
+                          decoration: InputDecoration(labelText: uiLiteral('Billing currency')),
+                          items: const [
+                            DropdownMenuItem(value: 'USD', child: LText('USD')),
+                            DropdownMenuItem(value: 'EUR', child: LText('EUR')),
+                            DropdownMenuItem(value: 'GBP', child: LText('GBP')),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) setLocal(() => currency = value);
+                          },
+                        ),
+                        second: TextField(
+                          controller: quoteReference,
+                          decoration: InputDecoration(labelText: uiLiteral('Quote / offer reference')),
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: environment,
-                        decoration: InputDecoration(labelText: uiLiteral('Initial environment')),
-                        items: const [
-                          DropdownMenuItem(value: 'STAGING', child: LText('STAGING · required first environment')),
-                        ],
-                        onChanged: (value) { if (value != null) setLocal(() => environment = value); },
+                      ResponsiveFieldPair(
+                        first: TextField(
+                          controller: activationFee,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(labelText: uiLiteral('Activation fee')),
+                        ),
+                        second: TextField(
+                          controller: baseMonthlyFee,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(labelText: uiLiteral('Base monthly fee')),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: minimumMonthlyCommitment,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(labelText: uiLiteral('Minimum monthly commitment')),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: notes,
+                        maxLines: 3,
+                        decoration: InputDecoration(labelText: uiLiteral('Internal partner notes')),
+                      ),
+                      const SizedBox(height: 12),
+                      const _MessageCard(
+                        icon: Icons.lock_clock_outlined,
+                        title: 'Provisioning remains controlled',
+                        message: 'Creating the partner does not launch production or bypass licensing. Agreements, invoices, payment evidence, modules and environments can be completed from the partner workspace.',
                       ),
                     ],
-                  ),
-                ),
-                Step(
-                  title: const LText('4 · Module preset'),
-                  isActive: step >= 3,
-                  content: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 250),
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        for (final module in availableModules)
-                          CheckboxListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            value: selectedModules.contains('${module['key']}'),
-                            title: LText('${module['label'] ?? module['key']}'),
-                            subtitle: LText('${module['key']}'),
-                            onChanged: (value) => setLocal(() {
-                              final key = '${module['key']}';
-                              if (value == true) {
-                                selectedModules.add(key);
-                              } else {
-                                selectedModules.remove(key);
-                              }
-                            }),
-                          ),
-                      ],
-                    ),
                   ),
                 ),
               ],
             ),
           ),
-          primaryLabel: 'Create & validate provisioning',
+          primaryLabel: 'Create partner',
           onPrimary: () {
-            if (displayName.text.trim().isEmpty || contactName.text.trim().isEmpty ||
-                contactEmail.text.trim().isEmpty || portalPassword.text.isEmpty ||
-                agreementReference.text.trim().isEmpty || activationInvoiceFile == null) {
+            final requiredMissing = displayName.text.trim().isEmpty ||
+                legalName.text.trim().isEmpty ||
+                registrationNumber.text.trim().isEmpty ||
+                taxId.text.trim().isEmpty ||
+                country.text.trim().isEmpty ||
+                city.text.trim().isEmpty ||
+                postalCode.text.trim().isEmpty ||
+                addressLine1.text.trim().isEmpty ||
+                contactName.text.trim().isEmpty ||
+                contactEmail.text.trim().isEmpty ||
+                portalPassword.text.isEmpty;
+            if (requiredMissing) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('Display name, Portal owner name/email/password, commercial agreement and an activation invoice file are required.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(
+                  content: LText('Complete the required company, registered-office and Partner Portal fields before creating the partner.'),
+                  behavior: SnackBarBehavior.floating,
+                ),
               );
               return;
             }
-            if (!validPortalEmail(contactEmail.text)) {
+            if (!validEmail(contactEmail.text) ||
+                !validOptionalEmail(financeContactEmail) ||
+                !validOptionalEmail(technicalContactEmail) ||
+                !validOptionalEmail(marketingContactEmail)) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('Enter a valid Partner Portal email address before creating the partner.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(content: LText('One or more email addresses are invalid.'), behavior: SnackBarBehavior.floating),
               );
               return;
             }
             if (!validPortalPassword(portalPassword.text)) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('Partner Portal password must be at least 12 characters and include lowercase, uppercase, a number and a special character.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(
+                  content: LText('Partner Portal password must be at least 12 characters and include lowercase, uppercase, a number and a special character.'),
+                  behavior: SnackBarBehavior.floating,
+                ),
               );
               return;
             }
-            Navigator.pop(context, true);
+            Navigator.pop(dialogContext, true);
           },
         ),
       ),
@@ -3070,143 +3168,100 @@ class _PartnersPageState extends State<PartnersPage> {
 
     if (ok == true) {
       try {
-        final created = await widget.api.post('/api/v1/partners', {
+        var created = await widget.api.post('/api/v1/partners', {
           'display_name': displayName.text.trim(),
-          'legal_name': legalName.text.trim().isEmpty ? displayName.text.trim() : legalName.text.trim(),
+          'legal_name': legalName.text.trim(),
+          'brand_name': brandName.text.trim().isEmpty ? displayName.text.trim() : brandName.text.trim(),
           'category_id': category,
           'lifecycle': 'PROSPECT',
+          'registration_number': registrationNumber.text.trim(),
+          'tax_id': taxId.text.trim(),
+          'country': country.text.trim(),
+          'state_region': stateRegion.text.trim(),
+          'city': city.text.trim(),
+          'postal_code': postalCode.text.trim(),
+          'address_line1': addressLine1.text.trim(),
+          'address_line2': addressLine2.text.trim(),
+          'website': website.text.trim(),
+          'phone': phone.text.trim(),
+          'primary_domain': primaryDomain.text.trim(),
           'contact_name': contactName.text.trim(),
           'contact_email': contactEmail.text.trim(),
-          'country': country.text.trim(),
-          'primary_domain': primaryDomain.text.trim(),
+          'finance_contact_name': financeContactName.text.trim(),
+          'finance_contact_email': financeContactEmail.text.trim(),
+          'technical_contact_name': technicalContactName.text.trim(),
+          'technical_contact_email': technicalContactEmail.text.trim(),
+          'marketing_contact_name': marketingContactName.text.trim(),
+          'marketing_contact_email': marketingContactEmail.text.trim(),
+          'notes': notes.text.trim(),
         });
         final partnerId = '${created['id']}';
+        final warnings = <String>[];
 
-        await widget.api.post('/api/v1/partners/$partnerId/portal-users', {
-          'name': contactName.text.trim(),
-          'email': contactEmail.text.trim(),
-          'password': portalPassword.text,
-          'role': 'owner',
-        });
-
-        final fee = double.tryParse(activationFee.text) ?? 0;
-        final monthly = double.tryParse(baseMonthlyFee.text) ?? 0;
-        final minimumMonthly = double.tryParse(minimumMonthlyCommitment.text) ?? 1500;
-        final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
-
-        await widget.api.put('/api/v1/billing/partners/$partnerId/terms', {
-          'currency': 'USD',
-          'activation_fee': fee,
-          'activation_fee_waived': false,
-          'activation_fee_reason': '',
-          'base_monthly_fee': monthly,
-          'minimum_monthly_commitment': minimumMonthly,
-          'quote_reference': quoteReference.text.trim(),
-          'annual_increase_percent': 10,
-          'price_effective_from': today,
-          'service_anchor_date': today,
-          'reason': 'New Partner provisioning wizard',
-        });
-        await widget.api.put('/api/v1/billing/partners/$partnerId/agreement', {
-          'status': 'AGREED',
-          'agreement_reference': agreementReference.text.trim(),
-          'note': 'Confirmed during New Partner provisioning wizard',
-        });
-        final invoiceFile = activationInvoiceFile!;
-        final invoiceBytes = await readBrowserFile(invoiceFile);
-        final invoiceEvidence = await widget.api.multipart('/api/v1/evidence', {
-          'partner_id': partnerId,
-          'metric_key': '',
-          'evidence_type': 'INVOICE',
-          'title': 'Activation fee invoice',
-          'description': 'Activation-fee invoice uploaded during New Partner provisioning wizard',
-          'period_start': '',
-          'period_end': '',
-        }, invoiceBytes, invoiceFile.name);
-        final invoiceEvidenceId = '${invoiceEvidence['id'] ?? ''}'.trim();
-        if (invoiceEvidenceId.isEmpty) {
-          throw StateError('Activation invoice Evidence upload returned no ID.');
+        try {
+          await widget.api.post('/api/v1/partners/$partnerId/portal-users', {
+            'name': contactName.text.trim(),
+            'email': contactEmail.text.trim(),
+            'password': portalPassword.text,
+            'role': 'owner',
+          });
+        } catch (e) {
+          warnings.add('Partner Portal Owner: $e');
         }
-        await widget.api.post('/api/v1/billing/partners/$partnerId/documents', {
-          'kind': 'INVOICE',
-          'name': 'Activation fee invoice',
-          'storage_url': 'evidence://$invoiceEvidenceId',
-          'note': 'Activation-fee invoice registered during New Partner provisioning wizard',
-          'mime_type': '${invoiceEvidence['mime_type'] ?? ''}',
-          'sha256': '${invoiceEvidence['sha256'] ?? ''}',
-          'size_bytes': invoiceEvidence['size_bytes'] ?? 0,
-        });
 
-        await widget.api.patch('/api/v1/partners/$partnerId', {
-          'lifecycle': 'LICENSE_PENDING',
-          'reason': 'Commercial and provisioning configuration captured',
-        });
-
-        if (paymentEvidenceFile != null) {
-          final paymentFile = paymentEvidenceFile!;
-          final paymentBytes = await readBrowserFile(paymentFile);
-          final paymentEvidence = await widget.api.multipart('/api/v1/evidence', {
-            'partner_id': partnerId,
-            'metric_key': '',
-            'evidence_type': 'OTHER',
-            'title': evidenceName.text.trim().isEmpty ? 'Initial license payment evidence' : evidenceName.text.trim(),
-            'description': 'Payment evidence uploaded during New Partner provisioning wizard',
-            'period_start': '',
-            'period_end': '',
-          }, paymentBytes, paymentFile.name);
-          final paymentEvidenceId = '${paymentEvidence['id'] ?? ''}'.trim();
-          if (paymentEvidenceId.isEmpty) {
-            throw StateError('Payment Evidence upload returned no ID.');
+        if (partnerLogoFile != null) {
+          try {
+            final logoFile = partnerLogoFile!;
+            final bytes = await readBrowserFile(logoFile);
+            final logo = await widget.api.multipart(
+              '/api/v1/partners/$partnerId/logo',
+              {
+                'alt_text': '${displayName.text.trim()} logo',
+                'purpose': 'logo',
+              },
+              bytes,
+              logoFile.name,
+            );
+            final updated = logo['partner'];
+            if (updated is Map) created = Map<String, dynamic>.from(updated);
+          } catch (e) {
+            warnings.add('Partner logo: $e');
           }
-          await widget.api.post('/api/v1/billing/partners/$partnerId/documents', {
-            'kind': 'PAYMENT_EVIDENCE',
-            'name': evidenceName.text.trim().isEmpty ? 'Initial license payment evidence' : evidenceName.text.trim(),
-            'storage_url': 'evidence://$paymentEvidenceId',
-            'note': 'Registered during New Partner provisioning wizard',
-            'mime_type': '${paymentEvidence['mime_type'] ?? ''}',
-            'sha256': '${paymentEvidence['sha256'] ?? ''}',
-            'size_bytes': paymentEvidence['size_bytes'] ?? 0,
-          });
         }
 
-        final provisioningPlan = {
-          'partner_id': partnerId,
-          'system_name': systemName.text.trim().isEmpty ? displayName.text.trim() : systemName.text.trim(),
-          'admin_email': contactEmail.text.trim(),
-          'platform_version': release.text.trim(),
-          'desired_release': release.text.trim(),
-          'environment': environment,
-          'module_preset': selectedModules.toList()..sort(),
-        };
-
-        await widget.api.post('/api/v1/provisioning/jobs', {
-          ...provisioningPlan,
-          'prepare_only': true,
-        });
-
-        await widget.api.put('/api/v1/billing/partners/$partnerId/license', {
-          'currency': 'USD',
-          'required_amount': fee,
-          'note': 'Provider-backed activation license configured by New Partner wizard',
-          'waived': false,
-          'waiver_reason': '',
-        });
-
-        final hasProviderProfile = providerCustomerId.text.trim().isNotEmpty && paymentMethodId.text.trim().isNotEmpty;
-        if (hasProviderProfile) {
-          await widget.api.put('/api/v1/payments/partners/$partnerId/profile', {
-            'provider_customer_id': providerCustomerId.text.trim(),
-            'payment_method_id': paymentMethodId.text.trim(),
-            'autopay_enabled': true,
+        try {
+          final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
+          await widget.api.put('/api/v1/billing/partners/$partnerId/terms', {
+            'currency': currency,
+            'activation_fee': double.tryParse(activationFee.text) ?? 0,
+            'activation_fee_waived': false,
+            'activation_fee_reason': '',
+            'base_monthly_fee': double.tryParse(baseMonthlyFee.text) ?? 0,
+            'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 1500,
+            'quote_reference': quoteReference.text.trim(),
+            'annual_increase_percent': 10,
+            'price_effective_from': today,
+            'service_anchor_date': today,
+            'reason': 'New Partner master-data onboarding',
           });
-          await widget.api.post('/api/v1/billing/partners/$partnerId/license/collect', {});
+        } catch (e) {
+          warnings.add('Commercial defaults: $e');
         }
 
         if (mounted) {
           unawaited(load(reset: true));
-          success(hasProviderProfile
-              ? 'Partner and Partner Portal Owner created. Provider-backed activation payment was initiated; provisioning remains gated until the signed webhook confirms payment.'
-              : 'Partner and Partner Portal Owner created in LICENSE_PENDING. The administrator can sign in at /partner/login; configure a payment method before collecting the activation license.');
+          if (warnings.isEmpty) {
+            success('Partner master data, Portal Owner and onboarding defaults created.');
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: LText('Partner created. Supplementary setup needs attention: ${warnings.join(' · ')}'),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: brandWarning,
+                duration: const Duration(seconds: 8),
+              ),
+            );
+          }
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -3218,16 +3273,45 @@ class _PartnersPageState extends State<PartnersPage> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('New Partner wizard failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+            SnackBar(
+              content: LText('Partner could not be created: $e'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: brandDanger,
+            ),
           );
         }
       }
     }
 
     for (final controller in [
-      displayName, legalName, contactName, contactEmail, portalPassword, primaryDomain, country,
-      activationFee, baseMonthlyFee, minimumMonthlyCommitment, quoteReference, providerCustomerId, paymentMethodId, agreementReference,
-      evidenceName, systemName, release,
+      displayName,
+      legalName,
+      brandName,
+      registrationNumber,
+      taxId,
+      country,
+      stateRegion,
+      city,
+      postalCode,
+      addressLine1,
+      addressLine2,
+      website,
+      phone,
+      primaryDomain,
+      contactName,
+      contactEmail,
+      portalPassword,
+      financeContactName,
+      financeContactEmail,
+      technicalContactName,
+      technicalContactEmail,
+      marketingContactName,
+      marketingContactEmail,
+      activationFee,
+      baseMonthlyFee,
+      minimumMonthlyCommitment,
+      quoteReference,
+      notes,
     ]) {
       controller.dispose();
     }
