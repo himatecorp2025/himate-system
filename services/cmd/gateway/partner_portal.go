@@ -305,7 +305,7 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	accessCtx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
 	accessErr:=a.partnerAccessAllowed(accessCtx,u.PartnerID)
 	cancel()
-	if accessErr!=nil{common.APIError(w,403,"PARTNER_ACCESS_DISABLED","Partner Portal access is not available");return}
+	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
 	mutating:=r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions
 	if mutating{
 		started:=time.Now();requestState:=captureAuditRequest(r);rec:=&auditResponseWriter{ResponseWriter:w};w=rec
