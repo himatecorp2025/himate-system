@@ -1099,6 +1099,8 @@ func auditAction(r *http.Request) string {
 		return "MODULE_IMPACT_MAPPING_CHANGED"
 	case strings.HasPrefix(path, "/api/v1/admin/users/") && r.Method == http.MethodPatch:
 		return "ADMIN_USER_UPDATED"
+	case strings.HasPrefix(path, "/api/v1/partners/") && strings.HasSuffix(path, "/brand-media") && r.Method == http.MethodPost:
+		return "PARTNER_BRAND_MEDIA_UPLOADED"
 	case strings.HasSuffix(path, "/publish"):
 		return "CMS_PAGE_PUBLISHED"
 	case strings.HasSuffix(path, "/rollback"):
@@ -1246,6 +1248,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "partners")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.HasSuffix(r.URL.Path, "/logo"):
 		a.adminPartnerLogo(w, r, u)
+	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.HasSuffix(r.URL.Path, "/brand-media"):
+		a.adminPartnerBrandMedia(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/portal-users"):
 		a.adminPartnerUsers(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/modules"):
@@ -1285,6 +1289,52 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	default:
 		common.APIError(w, 404, "API_NOT_FOUND", "API endpoint not found")
 	}
+}
+
+func (a *app) adminPartnerBrandMedia(w http.ResponseWriter, r *http.Request, u user) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+		return
+	}
+	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/partners/"), "/")
+	parts := strings.Split(raw, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] != "brand-media" {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Partner brand media route not found")
+		return
+	}
+	partnerID := parts[0]
+	if !strings.HasPrefix(partnerID, "ptr_") || strings.Contains(partnerID, "/") {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", "Invalid partner ID")
+		return
+	}
+	host := strings.TrimSpace(a.hosts["cms"])
+	if host == "" {
+		common.APIError(w, http.StatusBadGateway, "UPSTREAM", "CMS service is not configured")
+		return
+	}
+	upstream := "/internal/v1/cms/partner-media/" + url.PathEscape(partnerID)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, "http://"+host+upstream, io.LimitReader(r.Body, 66<<20))
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "REQUEST", "Could not prepare partner logo upload")
+		return
+	}
+	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
+	req.Header.Set("X-Himate-User-ID", u.ID)
+	req.Header.Set("X-Correlation-ID", strings.TrimSpace(r.Header.Get("X-Correlation-ID")))
+	req.Header.Set("Content-Type", r.Header.Get("Content-Type"))
+	resp, err := a.client.Do(req)
+	if err != nil {
+		common.APIError(w, http.StatusBadGateway, "UPSTREAM", "Partner logo upload failed")
+		return
+	}
+	defer resp.Body.Close()
+	for _, key := range []string{"Content-Type", "Content-Length"} {
+		if value := resp.Header.Get(key); value != "" {
+			w.Header().Set(key, value)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, 2<<20))
 }
 
 func auditResource(r *http.Request) (string, string) {
