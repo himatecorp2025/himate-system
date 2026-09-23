@@ -564,7 +564,7 @@ func (a *app) provisioningAllowed(ctx context.Context, partnerID string) (bool, 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		"http://"+a.billingHost+"/internal/v1/partners/"+partnerID+"/provisioning-gate", nil)
 	if err != nil { return false, "", err }
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	resp, err := a.client.Do(req)
 	if err != nil { return false, "", err }
 	defer resp.Body.Close()
