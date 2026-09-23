@@ -88,7 +88,7 @@ func main() {
 		log.Error("unsupported payment provider", "provider", a.provider)
 		os.Exit(1)
 	}
-	if a.provider == "stripe" && !a.providerConfigured() {
+	if a.provider == "stripe" && !a.providerConfigured(context.Background()) {
 		log.Warn("Stripe provider is not configured yet; payment execution is disabled until STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are set")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -99,8 +99,8 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{
 			"status": "ok", "service": "payments", "provider": a.provider,
-			"provider_configured": a.providerConfigured(),
-			"configuration_required": !a.providerConfigured(),
+			"provider_configured": a.providerConfigured(r.Context()),
+			"configuration_required": !a.providerConfigured(r.Context()),
 			"time": time.Now().UTC(),
 		})
 	})
@@ -156,18 +156,35 @@ func (a *app) migrate(ctx context.Context) error {
 	})
 }
 
-func (a *app) providerConfigured() bool {
+func (a *app) stripeCredentials(ctx context.Context) (string, string) {
+	key := strings.TrimSpace(a.stripeKey)
+	webhook := strings.TrimSpace(a.webhookSecret)
+	if key == "" {
+		if value, ok, err := common.LoadPlatformSecret(ctx, a.db, a.token, "stripe_secret_key"); err == nil && ok {
+			key = value
+		}
+	}
+	if webhook == "" {
+		if value, ok, err := common.LoadPlatformSecret(ctx, a.db, a.token, "stripe_webhook_secret"); err == nil && ok {
+			webhook = value
+		}
+	}
+	return key, webhook
+}
+
+func (a *app) providerConfigured(ctx context.Context) bool {
 	if a.provider == "mock" {
 		return true
 	}
 	if a.provider == "stripe" {
-		return strings.TrimSpace(a.stripeKey) != "" && strings.TrimSpace(a.webhookSecret) != ""
+		key, webhook := a.stripeCredentials(ctx)
+		return strings.TrimSpace(key) != "" && strings.TrimSpace(webhook) != ""
 	}
 	return false
 }
 
-func (a *app) requireProviderConfigured(w http.ResponseWriter) bool {
-	if a.providerConfigured() {
+func (a *app) requireProviderConfigured(ctx context.Context, w http.ResponseWriter) bool {
+	if a.providerConfigured(ctx) {
 		return true
 	}
 	common.APIError(w, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNCONFIGURED", "Payment provider credentials are not configured yet")
@@ -268,7 +285,7 @@ func attemptID(idempotency string) string {
 
 func (a *app) createCharge(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost { common.APIError(w, 405, "METHOD", "Use POST"); return }
-	if !a.requireProviderConfigured(w) { return }
+	if !a.requireProviderConfigured(r.Context(), w) { return }
 	var in chargeRequest
 	if common.Decode(r, &in) != nil { common.APIError(w, 400, "JSON", "Invalid request"); return }
 	in.PartnerID = strings.TrimSpace(in.PartnerID)
@@ -350,7 +367,9 @@ func (a *app) providerCharge(ctx context.Context, attemptID string, in chargeReq
 	if in.InvoiceID != "" { form.Set("metadata[invoice_id]", in.InvoiceID) }
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.stripeAPIBase+"/v1/payment_intents", strings.NewReader(form.Encode()))
 	if err != nil { return "", "", err }
-	req.SetBasicAuth(a.stripeKey, "")
+	stripeKey, _ := a.stripeCredentials(ctx)
+	if strings.TrimSpace(stripeKey) == "" { return "", "", errors.New("Stripe secret key is not configured") }
+	req.SetBasicAuth(stripeKey, "")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Idempotency-Key", in.IdempotencyKey)
 	resp, err := a.client.Do(req)
@@ -400,7 +419,8 @@ func (a *app) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if !a.requireProviderConfigured(w) { return }
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil { common.APIError(w, 400, "BODY", "Could not read webhook body"); return }
-	if err := verifyStripeSignature(raw, r.Header.Get("Stripe-Signature"), a.webhookSecret, time.Now().UTC(), 5*time.Minute); err != nil {
+	_, webhookSecret := a.stripeCredentials(r.Context())
+	if err := verifyStripeSignature(raw, r.Header.Get("Stripe-Signature"), webhookSecret, time.Now().UTC(), 5*time.Minute); err != nil {
 		common.APIError(w, 400, "INVALID_SIGNATURE", "Invalid payment webhook signature")
 		return
 	}
