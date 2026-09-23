@@ -362,7 +362,7 @@ The architecture remains microservice/container based. It is **not** being colla
 ### START-23.11.3b / 23.11.3c — Superseded QA fixture approach
 - these releases introduced and hardened a fixed manual-QA partner fixture
 - START-23.11.3d intentionally retires that fixture in favor of testing the real New Partner onboarding path
-- historical acceptance documents remain for traceability, but their fixed-fixture CI gates are no longer active
+- the obsolete fixed-fixture acceptance documents and executable audit/smoke scripts are intentionally absent from the current tree; Git history remains the traceability source
 
 ### START-23.11.3d — Real Partner Onboarding
 - **New Partner** now creates the partner record and immediately registers the first Partner Portal **Owner**
