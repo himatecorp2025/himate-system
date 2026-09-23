@@ -1,8 +1,6 @@
 package main
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
@@ -183,6 +181,3 @@ func (a *app) adminSecrets(w http.ResponseWriter, r *http.Request, u user) {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", fmt.Sprintf("Use PUT or DELETE for %s", definition.Environment))
 	}
 }
-
-var _ = sql.ErrNoRows
-var _ = errors.Is
