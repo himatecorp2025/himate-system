@@ -150,6 +150,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_3a.py
       - name: Run START-23.11.3b Persistent Test Partner audit
         run: python3 ../scripts/audit_start_23_11_3b.py
+      - name: Run START-23.11.3c Production Fixture Readiness audit
+        run: python3 ../scripts/audit_start_23_11_3c.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -389,6 +391,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_3a.sh http://127.0.0.1:8080
       - name: Run START-23.11.3b Persistent Test Partner smoke
         run: sh scripts/smoke_start_23_11_3b.sh http://127.0.0.1:8080
+      - name: Run START-23.11.3c Production Fixture Readiness smoke
+        run: sh scripts/smoke_start_23_11_3c.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
