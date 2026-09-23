@@ -412,6 +412,19 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.25-start-23.11.3h`
 - acceptance: `docs/START-23.11.3H_ACCEPTANCE.md`, `scripts/audit_start_23_11_3h.py`, `scripts/smoke_start_23_11_3h.sh`
 
+### START-23.11.3i — Release Consistency & Partner Data Contract
+- every deployable HIMATE application service receives the same `HIMATE_APP_VERSION`
+- the shared HTTP layer publishes service/release headers and rejects version-bound internal mutations when releases differ
+- gateway mutation routing preflights downstream service versions; New Partner checks Partners, Billing, CMS and Storage before core creation
+- `/api/v1/health` reports `service_versions`, `release_consistent`, `version_unknown` and `version_mismatch`
+- mixed releases are blocked with `RELEASE_MISMATCH` instead of surfacing misleading field-validation messages
+- the Compose acceptance now proves the complete partner master-data payload survives POST -> PostgreSQL -> GET without losing legal name, brand/DBA, registration, Tax/VAT, address, website, phone or operational contacts
+- Partner Portal Owner persistence remains part of the same end-to-end acceptance
+- Render auto-deploy remains disabled; production release completion requires all application services to be deployed from the same release
+- START-23.11.4 remains frozen until the production test partner is created successfully
+- release contract version is `0.8.26-start-23.11.3i`
+- acceptance: `docs/START-23.11.3I_ACCEPTANCE.md`, `scripts/audit_start_23_11_3i.py`, `scripts/smoke_start_23_11_3i.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -440,6 +453,7 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.9_ACCEPTANCE.md`
 - `docs/START-23.10_ACCEPTANCE.md`
 - `docs/START-23.11.3H_ACCEPTANCE.md`
+- `docs/START-23.11.3I_ACCEPTANCE.md`
 - `docs/START-23.11.1_ACCEPTANCE.md`
 - `docs/START-23.11.2_ACCEPTANCE.md`
 - `docs/START-23.11.3_ACCEPTANCE.md`
