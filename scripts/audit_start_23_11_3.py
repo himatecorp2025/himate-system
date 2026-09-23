@@ -58,6 +58,8 @@ for token in [
 ]:
     require(token in gateway_portal, "Gateway Marketplace enrichment missing " + token)
 
+require("?locale=" in gateway_portal and "u.PreferredLocale" in gateway_portal, "Partner Portal locale is not propagated into Catalog Marketplace reads")
+
 for token in [
     "Module Marketplace",
     "Included in your plan",
