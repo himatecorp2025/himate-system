@@ -168,12 +168,19 @@ require(
     "New Partner UI does not explain the deferred commercial Evidence workflow",
 )
 # The authoritative post-create workspace still owns the real Evidence pipeline.
+# START-23.11.3e generalized the document uploader, so verify the semantic
+# INVOICE -> Evidence INVOICE mapping rather than requiring a hard-coded payload.
+add_document_start = frontend.index("  Future<void> addDocument() async {")
+add_document_end = frontend.index("\n  Map<String, dynamic>? subscriptionFor", add_document_start)
+add_document = frontend[add_document_start:add_document_end]
 for token in (
-    "'evidence_type': 'INVOICE'",
+    "final evidenceType = switch (kind)",
+    "'INVOICE' => 'INVOICE'",
+    "'evidence_type': evidenceType",
     "'storage_url': 'evidence://$evidenceId'",
     "Commercial document uploaded and registered.",
 ):
-    require(token in frontend, f"Partner Workspace Evidence flow missing {token!r}")
+    require(token in add_document, f"Partner Workspace Evidence flow missing {token!r}")
 
 # Matrix closure.
 require(tuple(map(int, str(matrix.get("completed_through", "0")).split("."))) >= (23, 7),
