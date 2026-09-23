@@ -71,5 +71,9 @@ void main() {
       isEmpty,
       reason: 'Opening New Partner must never depend on Catalog/module availability.',
     );
+
+    Navigator.of(tester.element(find.byKey(const Key('new-partner-dialog')))).pop(false);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
   });
 }
