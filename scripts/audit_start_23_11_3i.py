@@ -75,8 +75,9 @@ checks = [
     ),
     (
         "gateway direct internal calls are version-bound too",
-        'req.Header.Set("X-Himate-Expected-Version",a.version)' in (root / "services/cmd/gateway/partner_portal.go").read_text(encoding="utf-8")
-        and 'req.Header.Set("X-Himate-Expected-Version", a.version)' in (root / "services/cmd/gateway/partner_branding.go").read_text(encoding="utf-8"),
+        "common.BindInternalRequest(req,a.internalToken)" in (root / "services/cmd/gateway/partner_portal.go").read_text(encoding="utf-8")
+        and "common.BindInternalRequest(req, a.internalToken)" in (root / "services/cmd/gateway/partner_branding.go").read_text(encoding="utf-8")
+        and "common.DoInternal(a.client, req)" in (root / "services/cmd/gateway/partner_branding.go").read_text(encoding="utf-8"),
     ),
     (
         "gateway SSR CMS reads are version-bound and validate downstream release",
