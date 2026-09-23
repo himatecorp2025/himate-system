@@ -486,9 +486,9 @@ func (a *app) metrics(w http.ResponseWriter,r *http.Request){
 		req,err:=http.NewRequestWithContext(r.Context(),http.MethodPost,"http://"+a.impactHost+"/internal/v1/impact/ingest",bytes.NewReader(raw))
 		if err!=nil { common.APIError(w,500,"FORWARD","Could not prepare metric sync");return }
 		req.Header.Set("Content-Type","application/json")
-		req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+		common.BindInternalRequest(req,a.internalToken)
 		req.Header.Set("X-Himate-User-ID","connector:"+c.CredentialID)
-		resp,err:=a.client.Do(req)
+		resp,err:=common.DoInternal(a.client, req)
 		if err!=nil { common.APIError(w,502,"IMPACT_UNAVAILABLE","Impact service did not respond");return }
 		resp.Body.Close()
 		if resp.StatusCode<200 || resp.StatusCode>=300 { common.APIError(w,409,"METRIC_REJECTED",fmt.Sprintf("Impact service rejected metric %d",i));return }

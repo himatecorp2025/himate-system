@@ -124,8 +124,8 @@ func (a *app)checkServices(ctx context.Context)[]serviceResult{
 func (a *app)internalGET(ctx context.Context,host,path string,dst any)error{
 	if strings.TrimSpace(host)==""{return fmt.Errorf("host not configured")}
 	req,_:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+host+path,nil)
-	req.Header.Set("X-Himate-Internal-Token",a.token)
-	resp,err:=a.client.Do(req);if err!=nil{return err}
+	common.BindInternalRequest(req,a.token)
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("status %d",resp.StatusCode)}
 	return json.NewDecoder(resp.Body).Decode(dst)

@@ -557,9 +557,9 @@ func (a *app) settleBilling(ctx context.Context, x attempt, status, providerPaym
 	req, err := http.NewRequestWithContext(ctx,http.MethodPost,"http://"+a.billingHost+"/internal/v1/payments/settlements",bytes.NewReader(raw))
 	if err != nil { return err }
 	req.Header.Set("Content-Type","application/json")
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	req.Header.Set("X-Himate-User-ID","payments-service")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

@@ -100,8 +100,8 @@ func (a *app) notifyDunning(ctx context.Context, eventType, severity, title, mes
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+a.notificationsHost+"/internal/v1/notifications/events", bytes.NewReader(raw))
 	if err != nil { return }
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.token)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.token)
+	resp, err := common.DoInternal(a.client, req)
 	if err == nil && resp != nil { resp.Body.Close() }
 }
 
@@ -109,8 +109,8 @@ func (a *app) partnerLifecycle(ctx context.Context, partnerID string) (string, e
 	if strings.TrimSpace(a.partnersHost) == "" { return "", fmt.Errorf("PARTNERS_HOSTPORT is required") }
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.partnersHost+"/api/v1/partners/"+partnerID, nil)
 	if err != nil { return "", err }
-	req.Header.Set("X-Himate-Internal-Token", a.token)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.token)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return "", err }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK { return "", fmt.Errorf("partners status %d", resp.StatusCode) }
@@ -125,9 +125,9 @@ func (a *app) setPartnerLifecycle(ctx context.Context, partnerID, lifecycle, rea
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, "http://"+a.partnersHost+"/api/v1/partners/"+partnerID, bytes.NewReader(raw))
 	if err != nil { return err }
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	req.Header.Set("X-Himate-User-ID", "billing-dunning-engine")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("partners lifecycle status %d", resp.StatusCode) }
@@ -140,9 +140,9 @@ func (a *app) purgePartnerOperationalAccess(ctx context.Context, partnerID, reas
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+a.partnersHost+"/api/v1/partners/"+partnerID+"/purge-operational", bytes.NewReader(raw))
 	if err != nil { return err }
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	req.Header.Set("X-Himate-User-ID", "billing-dunning-engine")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("partners operational purge status %d", resp.StatusCode) }
@@ -155,9 +155,9 @@ func (a *app) setPlanEntitlements(ctx context.Context, partnerID, planKey string
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://"+a.catalogHost+"/internal/v1/partners/"+partnerID+"/plan-entitlements", bytes.NewReader(raw))
 	if err != nil { return err }
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	req.Header.Set("X-Himate-User-ID", "billing-dunning-engine")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("catalog entitlement status %d", resp.StatusCode) }

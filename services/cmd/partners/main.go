@@ -564,8 +564,8 @@ func (a *app) provisioningAllowed(ctx context.Context, partnerID string) (bool, 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		"http://"+a.billingHost+"/internal/v1/partners/"+partnerID+"/provisioning-gate", nil)
 	if err != nil { return false, "", err }
-	req.Header.Set("X-Himate-Internal-Token", a.token)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.token)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return false, "", err }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -674,6 +674,10 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 		set(in.Phone, &p.Phone)
 		set(in.LogoURL, &p.LogoURL)
 		set(in.Notes, &p.Notes)
+		if p.DisplayName == "" {
+			common.APIError(w, 400, "VALIDATION", "Display name is required")
+			return
+		}
 		p.ContactEmail = strings.ToLower(p.ContactEmail)
 		p.FinanceContactEmail = strings.ToLower(p.FinanceContactEmail)
 		p.TechnicalContactEmail = strings.ToLower(p.TechnicalContactEmail)

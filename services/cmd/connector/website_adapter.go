@@ -239,8 +239,8 @@ func (a *app) connectorInternalGET(ctx context.Context,host,path string,dst any)
 	if strings.TrimSpace(host)=="" { return fmt.Errorf("service host is not configured") }
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+host+path,nil)
 	if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
-	resp,err:=a.client.Do(req)
+	common.BindInternalRequest(req,a.internalToken)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return err}
 	defer resp.Body.Close()
 	raw,err:=io.ReadAll(io.LimitReader(resp.Body,1<<20))

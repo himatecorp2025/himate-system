@@ -128,8 +128,8 @@ func (a *app) start22ImpactRetention(ctx context.Context,sourceRef,action string
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+a.impactHost+"/internal/v1/impact/retention",bytes.NewReader(raw))
 	if err!=nil{return err}
 	req.Header.Set("Content-Type","application/json")
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
-	resp,err:=a.client.Do(req)
+	common.BindInternalRequest(req,a.internalToken)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("Impact retention returned %d",resp.StatusCode)}

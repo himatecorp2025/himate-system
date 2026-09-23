@@ -541,10 +541,10 @@ func (a *app) runtimeRequest(ctx context.Context, method, path string, payload a
 	}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+a.runtimeHost+path,body)
 	if err!=nil{return 0,err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	if payload!=nil{req.Header.Set("Content-Type","application/json")}
 	started:=time.Now()
-	resp,err:=a.client.Do(req)
+	resp,err:=common.DoInternal(a.client, req)
 	latency:=time.Since(started).Milliseconds()
 	if err!=nil{return latency,err}
 	defer resp.Body.Close()
@@ -561,10 +561,10 @@ func (a *app) partnerJSON(ctx context.Context,method,path string,payload any,act
 	}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+a.partnersHost+path,body)
 	if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	if strings.TrimSpace(actor)!="" { req.Header.Set("X-Himate-User-ID",strings.TrimSpace(actor)) }
 	if payload!=nil { req.Header.Set("Content-Type","application/json") }
-	resp,err:=a.client.Do(req)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300 {

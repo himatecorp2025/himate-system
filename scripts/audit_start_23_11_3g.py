@@ -56,8 +56,8 @@ checks = [
         'PRIMARY_DOMAIN_EXISTS' in partners
         and 'partnerTechnicalSlug(in.DisplayName, id)' in partners,
     ),
-    ("release version", "version: 0.8.25-start-23.11.3h" in openapi),
-    ("render release version", "value: 0.8.25-start-23.11.3h" in render),
+    ("release version", "version: 0.8.26-start-23.11.3i" in openapi),
+    ("render release version", "value: 0.8.26-start-23.11.3i" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]

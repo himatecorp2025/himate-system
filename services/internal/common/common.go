@@ -301,10 +301,85 @@ func Logged(log *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
+func AppVersion() string {
+	return strings.TrimSpace(os.Getenv("HIMATE_APP_VERSION"))
+}
+
+func BindInternalRequest(req *http.Request, token string) {
+	if req == nil {
+		return
+	}
+	req.Header.Set("X-Himate-Internal-Token", token)
+	if version := AppVersion(); version != "" {
+		req.Header.Set("X-Himate-Expected-Version", version)
+	}
+}
+
+func DoInternal(client *http.Client, req *http.Request) (*http.Response, error) {
+	if client == nil || req == nil {
+		return nil, errors.New("internal HTTP client and request are required")
+	}
+	expected := strings.TrimSpace(req.Header.Get("X-Himate-Expected-Version"))
+	if expected == "" {
+		if AppVersion() == "" {
+			return client.Do(req)
+		}
+		return nil, errors.New("internal request is missing X-Himate-Expected-Version")
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	got := strings.TrimSpace(resp.Header.Get("X-Himate-App-Version"))
+	if got == "" {
+		resp.Body.Close()
+		return nil, fmt.Errorf("internal service did not report X-Himate-App-Version; expected %s", expected)
+	}
+	if got != expected {
+		resp.Body.Close()
+		return nil, fmt.Errorf("internal service release mismatch: got %s, expected %s", got, expected)
+	}
+	return resp, nil
+}
+
+func ReleaseGuard(service string, next http.Handler) http.Handler {
+	service = strings.TrimSpace(service)
+	version := AppVersion()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if service != "" {
+			w.Header().Set("X-Himate-Service", service)
+		}
+		if version != "" {
+			w.Header().Set("X-Himate-App-Version", version)
+		}
+		expected := strings.TrimSpace(r.Header.Get("X-Himate-Expected-Version"))
+		if r.URL.Path != "/health" && service != "gateway" {
+			if version == "" {
+				APIError(w, http.StatusServiceUnavailable, "RELEASE_VERSION_MISSING", "Service release version is not configured")
+				return
+			}
+			if expected == "" {
+				APIError(w, http.StatusServiceUnavailable, "RELEASE_VERSION_REQUIRED", "Internal request is missing the required release version")
+				return
+			}
+			if version != expected {
+				APIError(w, http.StatusServiceUnavailable, "RELEASE_MISMATCH",
+					fmt.Sprintf("Service %s is running %s while %s is required", service, version, expected))
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func Run(log *slog.Logger, service, port string, handler http.Handler) {
+	if AppVersion() == "" {
+		log.Error("HIMATE_APP_VERSION is required", "service", service)
+		return
+	}
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           Logged(log, handler),
+		Handler:           Logged(log, ReleaseGuard(service, handler)),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       25 * time.Second,
 		WriteTimeout:      45 * time.Second,

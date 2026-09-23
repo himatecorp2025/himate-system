@@ -210,15 +210,15 @@ func (a *app)item(w http.ResponseWriter,r *http.Request){
 func (a *app)internalGET(ctx context.Context,host,path string,dst any)error{
 	if strings.TrimSpace(host)==""{return fmt.Errorf("private service host is not configured")}
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+host+path,nil);if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
-	resp,err:=a.client.Do(req);if err!=nil{return err};defer resp.Body.Close()
+	common.BindInternalRequest(req,a.token)
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err};defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("status %d",resp.StatusCode)}
 	return json.NewDecoder(resp.Body).Decode(dst)
 }
 func (a *app)internalPOST(ctx context.Context,host,path string,payload any,dst any)error{
 	raw,_:=json.Marshal(payload);req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+host+path,bytes.NewReader(raw));if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.token);req.Header.Set("Content-Type","application/json")
-	resp,err:=a.client.Do(req);if err!=nil{return err};defer resp.Body.Close()
+	common.BindInternalRequest(req,a.token);req.Header.Set("Content-Type","application/json")
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err};defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("status %d",resp.StatusCode)}
 	if dst!=nil{return json.NewDecoder(resp.Body).Decode(dst)}
 	return nil
@@ -326,18 +326,18 @@ func (a *app)renderFromStoredSnapshot(ctx context.Context,rec reportRecord)error
 func truncate(v string,n int)string{if len(v)<=n{return v};return v[:n]}
 func (a *app)ensureStorageNamespace(ctx context.Context,namespace string)error{
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+a.storageHost+"/internal/v1/storage/partners/"+url.PathEscape(namespace)+"/ensure",bytes.NewReader([]byte("{}")));if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.token);req.Header.Set("Content-Type","application/json")
-	resp,err:=a.client.Do(req);if err!=nil{return err};defer resp.Body.Close();if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("storage namespace status %d",resp.StatusCode)};return nil
+	common.BindInternalRequest(req,a.token);req.Header.Set("Content-Type","application/json")
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err};defer resp.Body.Close();if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("storage namespace status %d",resp.StatusCode)};return nil
 }
 func (a *app)putObject(ctx context.Context,namespace,key string,data []byte)(map[string]any,error){
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPut,"http://"+a.storageHost+"/internal/v1/storage/objects/"+url.PathEscape(namespace)+"/"+key,bytes.NewReader(data));if err!=nil{return nil,err}
-	req.ContentLength=int64(len(data));req.Header.Set("X-Himate-Internal-Token",a.token)
-	resp,err:=a.client.Do(req);if err!=nil{return nil,err};defer resp.Body.Close();if resp.StatusCode<200||resp.StatusCode>=300{return nil,fmt.Errorf("storage put status %d",resp.StatusCode)}
+	req.ContentLength=int64(len(data));common.BindInternalRequest(req,a.token)
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return nil,err};defer resp.Body.Close();if resp.StatusCode<200||resp.StatusCode>=300{return nil,fmt.Errorf("storage put status %d",resp.StatusCode)}
 	var out map[string]any;if err:=json.NewDecoder(resp.Body).Decode(&out);err!=nil{return nil,err};return out,nil
 }
 func (a *app)getObject(ctx context.Context,namespace,key,mime string)(*http.Response,error){
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+a.storageHost+"/internal/v1/storage/objects/"+url.PathEscape(namespace)+"/"+key+"?content_type="+url.QueryEscape(mime),nil);if err!=nil{return nil,err}
-	req.Header.Set("X-Himate-Internal-Token",a.token);return a.client.Do(req)
+	common.BindInternalRequest(req,a.token);return common.DoInternal(a.client, req)
 }
 
 func (a *app)worker(){

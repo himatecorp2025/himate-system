@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"himate.local/services/internal/common"
 	"himate.local/services/internal/partnerdb"
 	"io"
 	"net/http"
@@ -37,10 +38,10 @@ func (a *app) internalJSON(ctx context.Context,method,host,path string,payload a
 	var body io.Reader
 	if payload!=nil{raw,err:=json.Marshal(payload);if err!=nil{return err};body=bytes.NewReader(raw)}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+host+path,body);if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	common.BindInternalRequest(req,a.internalToken)
 	req.Header.Set("X-Himate-User-ID","service:backups")
 	if payload!=nil{req.Header.Set("Content-Type","application/json")}
-	resp,err:=a.client.Do(req);if err!=nil{return err}
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err}
 	defer resp.Body.Close()
 	if optional&&resp.StatusCode==http.StatusNotFound{return nil}
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("private service returned status %d",resp.StatusCode)}
@@ -51,9 +52,9 @@ func (a *app) internalJSON(ctx context.Context,method,host,path string,payload a
 func (a *app) fetchToFile(ctx context.Context,host,path,target string)error{
 	if strings.TrimSpace(host)==""{return fmt.Errorf("storage service host is not configured")}
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+host+path,nil);if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	common.BindInternalRequest(req,a.internalToken)
 	req.Header.Set("X-Himate-User-ID","service:backups")
-	resp,err:=a.client.Do(req);if err!=nil{return err}
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("media archive returned status %d",resp.StatusCode)}
 	f,err:=os.OpenFile(target,os.O_CREATE|os.O_TRUNC|os.O_WRONLY,0600);if err!=nil{return err}

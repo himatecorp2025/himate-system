@@ -498,8 +498,8 @@ func (a *app) validateEvidence(ctx context.Context,evidenceID,partnerID,metricKe
 	q.Set("metric_key",metricKey)
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+a.evidenceHost+"/internal/v1/evidence/validate?"+q.Encode(),nil)
 	if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
-	resp,err:=a.client.Do(req)
+	common.BindInternalRequest(req,a.token)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return fmt.Errorf("evidence validation: %w",err)}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("evidence is not a verified document for this partner and metric")}
