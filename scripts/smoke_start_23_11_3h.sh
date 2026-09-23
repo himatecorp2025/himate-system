@@ -2,6 +2,7 @@
 set -eu
 
 BASE_URL="${1:-http://127.0.0.1:8080}"
+EXPECTED_VERSION="${HIMATE_APP_VERSION:-0.8.26-start-23.11.3i}"
 TMP_ROOT="${TMPDIR:-/tmp}"
 OWNER_COOKIE="$TMP_ROOT/himate-start23113h-owner.txt"
 BODY="$TMP_ROOT/himate-start23113h-body.json"
@@ -19,6 +20,24 @@ PY
 )"
 curl -fsS -c "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$login_payload" "$BASE_URL/api/v1/auth/login" >/dev/null
 
+printf 'all gateway-visible microservices report the same release version... '
+HEALTH="$(curl -fsS "$BASE_URL/api/v1/health")"
+python3 - "$HEALTH" "$EXPECTED_VERSION" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1]); expected=sys.argv[2]
+assert d["version"]==expected, d
+assert d["release_consistent"] is True, d
+bad={k:v for k,v in d["services"].items() if v!="ok"}
+assert not bad, bad
+versions=d["service_versions"]
+assert versions.get("gateway")==expected, versions
+for service,status in d["services"].items():
+    if service=="identity":
+        continue
+    assert versions.get(service)==expected, (service,versions.get(service),expected)
+PY
+echo ok
+
 STAMP="$(date +%s)"
 DISPLAY="Klavierhaus Test Partner $STAMP"
 REQ_ONE="qa-onboarding-$STAMP-a"
@@ -30,19 +49,30 @@ import json,sys
 display,request_id,suffix,stamp=sys.argv[1:]
 print(json.dumps({
   "display_name":display,
-  "legal_name":display+" LLC",
-  "brand_name":display,
+  "legal_name":"Klavierhaus New York, LLC & Co. / Legal "+suffix,
+  "brand_name":"Klavierhaus NYC / DBA & Brand "+suffix,
   "category_id":"cat_003",
   "lifecycle":"PROSPECT",
-  "registration_number":"QA-"+stamp+"-"+suffix,
-  "tax_id":"QA-TAX-"+stamp+"-"+suffix,
-  "country":"United States",
-  "state_region":"New York",
+  "primary_domain":"qa-"+stamp+"-"+suffix+".partner.example",
+  "registration_number":"NY-REG / HRB-12:34-"+stamp+"-"+suffix,
+  "tax_id":"US-EIN 12-3456789 / VAT-DE-"+stamp+"-"+suffix,
+  "country":"United States / USA",
+  "state_region":"New York - NY",
   "city":"New York",
-  "postal_code":"10001",
-  "address_line1":"1 Test Partner Way",
-  "contact_name":"Test Partner Owner",
+  "postal_code":"10001-1234",
+  "address_line1":"123 W 57th St., Floor 8 / Suite A",
+  "address_line2":"c/o Partner QA - Building B",
+  "website":"https://example.com/partners/qa?case="+stamp+"-"+suffix,
+  "phone":"+1 (212) 555-010"+suffix,
+  "contact_name":"Test Partner Owner "+suffix,
   "contact_email":"test.partner."+stamp+"."+suffix+"@himate.test",
+  "finance_contact_name":"Finance / Billing & AP",
+  "finance_contact_email":"finance."+stamp+"."+suffix+"@himate.test",
+  "technical_contact_name":"Technical / Systems",
+  "technical_contact_email":"technical."+stamp+"."+suffix+"@himate.test",
+  "marketing_contact_name":"Marketing & PR",
+  "marketing_contact_email":"marketing."+stamp+"."+suffix+"@himate.test",
+  "notes":"START-23.11.3i full master-data roundtrip; punctuation: & / : , . #",
   "onboarding_request_id":request_id
 }))
 PY
@@ -62,6 +92,24 @@ assert d["slug"], d
 print(d["id"])
 PY
 )"
+echo ok
+
+printf 'every partner master-data field survives POST -> PostgreSQL -> GET... '
+SAVED="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$FIRST_ID")"
+python3 - "$PAYLOAD_ONE" "$SAVED" <<'PY'
+import json,sys
+want=json.loads(sys.argv[1]); got=json.loads(sys.argv[2])
+fields=[
+"display_name","legal_name","brand_name","category_id","lifecycle","primary_domain",
+"contact_name","contact_email","finance_contact_name","finance_contact_email",
+"technical_contact_name","technical_contact_email","marketing_contact_name","marketing_contact_email",
+"registration_number","tax_id","country","state_region","city","postal_code",
+"address_line1","address_line2","website","phone","notes"
+]
+for key in fields:
+    assert got.get(key)==want.get(key), (key,want.get(key),got.get(key))
+assert got["id"] and got["slug"], got
+PY
 echo ok
 
 printf 'replaying the same onboarding request returns the same partner instead of creating a duplicate... '
@@ -142,4 +190,4 @@ assert d["price_effective_from"]==today and d["service_anchor_date"]==today, d
 PY
 echo ok
 
-echo 'HIMATE START-23.11.3h Test Partner Onboarding Hardening smoke passed'
+echo 'HIMATE START-23.11.3h/3i Partner Onboarding + Release Consistency smoke passed'
