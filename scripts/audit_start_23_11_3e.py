@@ -16,9 +16,24 @@ start = frontend.index("  Future<void> addPartner() async {")
 end = frontend.index("  List<Map<String, dynamic>> get filtered => partners;", start)
 add_partner = frontend[start:end]
 
+dialog_index = add_partner.index("final ok = await showDialog<bool>(")
+pre_dialog = add_partner[:dialog_index]
+partner_page_tail = frontend[end:frontend.index("class PartnerWorkspace", end)]
+
 checks = [
     (
-        "New Partner modal is not blocked by a pre-dialog module API request",
+        "New Partner action is wired to the Partners page button",
+        "key: const Key('partners-new-partner-button')" in partner_page_tail
+        and "onPressed: addPartner" in partner_page_tail,
+    ),
+    (
+        "New Partner modal is created before any remote API dependency",
+        "widget.api." not in pre_dialog
+        and "final ok = await showDialog<bool>(" in add_partner
+        and "key: const Key('new-partner-dialog')" in add_partner,
+    ),
+    (
+        "New Partner modal is not blocked by Module Catalog",
         "widget.api.get('/api/v1/modules'" not in add_partner,
     ),
     ("New Partner keeps a safe category fallback", "'cat_006'" in add_partner and "Category service is still loading" in add_partner),
