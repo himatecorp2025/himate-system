@@ -10,7 +10,7 @@ HIMATE is the central control plane for separately deployed arts-sector partner 
 - partner registry, lifecycle enforcement and server-side pagination
 - Partner Workspace, canonical module catalog and partner-specific entitlement/pricing
 - auditable initial-license/payment/evidence gate
-- calendar-month billing, full-month/no-proration charging and subscription cancellation lifecycle
+- activation-date anchored 30-day billing and subscription cancellation lifecycle
 - responsive Flutter administration shell and hardened gateway/session boundary
 
 ### START-09–13 — Provisioning, environments, connectors and impact
@@ -168,7 +168,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - tenant identity is derived only from the authenticated partner session
 - partner sessions cannot authenticate to the HIMATE administrator API
 - module activation reuses the authoritative Catalog and enforces availability, dependency and conflict rules
-- active modules use Billing calendar-month subscriptions with month-boundary cancellation
+- active modules reuse the Billing 30-day subscription model with end-of-period cancellation
 - Impact and billing data are read from the existing authoritative services
 - company self-service is allowlisted and cannot change lifecycle, global pricing, provisioning or platform controls
 - partner-user role/status changes rotate session versions; last active Owner is protected
@@ -176,7 +176,7 @@ The architecture remains microservice/container based. It is **not** being colla
 
 ### START-22.3 — Commercial Automation & Partner Website Integration
 - explicit commercial agreement → activation invoice → payment evidence → PAID license → provisioning gate
-- immutable partner/module price snapshot for every calendar-month period
+- immutable partner/module price snapshot for every activation-anchored 30-day period
 - point-in-time Catalog price resolution and missed-period backfill
 - itemized BASE_SERVICE and MODULE invoice ledger
 - immutable billing event stream for commercial, period, renewal, cancellation and invoice lifecycle
@@ -206,7 +206,7 @@ The architecture remains microservice/container based. It is **not** being colla
 
 ### START-23.2 — Partner × Module Commercial Control Plane & Individual Pricing
 - central Partner × Module matrix with partner/module perspectives, filters and responsive cards
-- module defaults plus partner-specific monthly recurring-price overrides
+- module defaults plus partner-specific 30-day recurring-price overrides
 - module defaults plus partner-specific one-time activation-fee overrides
 - effective-dated recurring-price and activation-fee history with actor/reason traceability
 - current immutable Billing period displayed beside configured Catalog pricing
@@ -219,7 +219,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Billing is the single lifecycle authority for module subscriptions: `ACTIVE` → `CANCEL_PENDING` → `INACTIVE`
 - admin and Partner Portal use the same Billing cancellation command
 - an active paid-period entitlement cannot be changed directly to `NOT_LICENSED` through Catalog administration
-- current calendar-month access and immutable price snapshots survive until the next month boundary
+- current 30-day access and immutable price snapshots survive until the exact period boundary
 - cancellation can be withdrawn before the boundary; pending/inactive subscriptions have no false next-period quote
 - the daily Render Billing cron closes exact module boundaries and safely catches up missed runs idempotently
 - Catalog performs final entitlement deactivation only from Billing's internal lifecycle path
@@ -230,7 +230,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Billing remains the source of truth for activation-license and invoice financial state
 - administrator-entered paid amount/date/reference/verifier can no longer create a PAID activation license
 - activation-license collection is an idempotent Billing command and PAID is applied only after a verified provider settlement
-- calendar-month invoices create idempotent off-session provider attempts on the following month day 1 when partner autopay is enabled
+- recurring 30-day invoices create idempotent off-session provider attempts when partner autopay is enabled
 - Stripe production adapter uses runtime secrets only; deterministic mock provider is restricted to local/CI acceptance
 - webhook reconciliation verifies signature, timestamp, provider payment ID, amount and currency and preserves retryability until Billing settlement succeeds
 - exact duplicate provider events are idempotent; event-ID payload conflicts fail closed
@@ -319,18 +319,22 @@ The architecture remains microservice/container based. It is **not** being colla
 - the current USD minimum monthly commitment is 1,500; the obsolete fixed USD 13,000 activation-fee floor is removed
 - catalog/list prices are reference values only; partner-specific contract pricing is the charging authority
 - partner-module recurring and activation prices retain quote/currency history and remain tenant-isolated
-- release contract version is `0.8.16-start-23.11.2`
+- release contract version is `0.8.15-start-23.11.1`
 - START-23.11.1 acceptance is `docs/START-23.11.1_ACCEPTANCE.md`, `scripts/audit_start_23_11_1.py` and `scripts/smoke_start_23_11_1.sh`
+- START-23.11.2 is implemented as subscription-plan recurring billing rather than individual module-price aggregation.
 
-### START-23.11.2 — Calendar-Month Billing & Full-Period Charging
-- recurring service periods are calendar months, invoiced on the following month day 1
-- mid-month module activation charges the full negotiated monthly fee; proration is disabled
-- Billing cancellation becomes effective at the next calendar-month boundary
-- invoice assembly enforces the partner minimum monthly commitment with an explicit immutable adjustment line
-- legacy 30-day ledger rows remain preserved while new recurring evidence is marked `CALENDAR_MONTH`
+### START-23.11.2 — Subscription Plans & Recurring Billing
+- Starter: USD 500/month, 3 fixed HIMATE-defined modules; USD 6,000/year
+- Business: USD 1,500/month, 10 fixed HIMATE-defined modules; USD 18,000 annual list price → USD 16,500 annual charge
+- Flex: USD 2,500/month, up to 15 partner-selected modules; USD 30,000 annual list price → USD 22,500 annual charge
+- CUSTOM remains available for individually negotiated partners such as the reference Klavierhaus account
+- activation/license collection is a separate prerequisite; a plan activates only after PAID or explicit waiver
+- same-frequency upgrades are immediate and collect the full plan-price difference without proration
+- monthly downgrades apply on the next calendar-month day 1; annual downgrades apply at annual renewal; no refund is generated
+- Billing owns plan pricing/subscription/payment state while Catalog owns the resulting module entitlements
+- module-level commercial pricing/history from START-23.11.1 is retained for future add-ons/custom contracts but is not the recurring invoice authority for standard plans
 - release contract version is `0.8.16-start-23.11.2`
 - acceptance: `docs/START-23.11.2_ACCEPTANCE.md`, `scripts/audit_start_23_11_2.py`, `scripts/smoke_start_23_11_2.sh`
-- START-23.11.2 billing-period changes are explicitly out of scope and must not begin automatically
 
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
@@ -367,4 +371,4 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. START-23.9 protects authoritative Dashboard revenue/Impact analytics, audit-backed Recent Activity and permission-scoped global search. START-23.10 protects provisioning, connector credentials, Website Adapter binding, environment/provider operations and backup policy scheduling. START-23.11.1 protects the canonical 38-module registry, publish-ready lifecycle gates and partner-specific versioned commercial terms. START-23.11.2 protects calendar-month billing, full-period/no-proration charging, month-boundary cancellation and minimum-commitment invoice enforcement. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. START-23.9 protects authoritative Dashboard revenue/Impact analytics, audit-backed Recent Activity and permission-scoped global search. START-23.10 protects provisioning, connector credentials, Website Adapter binding, environment/provider operations and backup policy scheduling. START-23.11.1 protects the canonical 38-module registry, publish-ready lifecycle gates and partner-specific versioned commercial terms. START-23.11.2 protects plan packaging, fixed/selectable entitlements, monthly/annual recurring prices, provider-backed collection and upgrade/downgrade lifecycle. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
