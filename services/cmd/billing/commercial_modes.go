@@ -77,7 +77,9 @@ func start23113kCommercialModeMigration() common.Migration {
 			)`,
 			`CREATE INDEX IF NOT EXISTS billing_charity_module_selection_idx
 				ON billing.partner_charity_module_selections(partner_id,effective_from,effective_to,module_key)`,
+			`ALTER TABLE billing.partner_terms ALTER COLUMN minimum_monthly_commitment SET DEFAULT 0`,
 			`ALTER TABLE billing.partner_terms ALTER COLUMN annual_increase_percent SET DEFAULT 5`,
+			`UPDATE billing.partner_terms SET annual_increase_percent=5`,
 			`ALTER TABLE billing.subscription_plans ADD COLUMN IF NOT EXISTS annual_increase_percent NUMERIC(6,2) NOT NULL DEFAULT 5`,
 			`UPDATE billing.subscription_plans SET annual_increase_percent=5 WHERE plan_key IN ('STARTER','BUSINESS','FLEX')`,
 			`CREATE TABLE IF NOT EXISTS billing.subscription_plan_price_history(
