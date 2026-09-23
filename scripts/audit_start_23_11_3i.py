@@ -10,6 +10,7 @@ compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+fast_workflow = (root / ".github/workflows/ci-fast.yml").read_text(encoding="utf-8")
 schema_guard = (root / "scripts/audit_smoke_schema_contracts.py").read_text(encoding="utf-8")
 execution_guard = (root / "scripts/audit_smoke_execution_contracts.py").read_text(encoding="utf-8")
 release_wrapper = (root / "scripts/smoke_start_23_11_3i.sh").read_text(encoding="utf-8")
@@ -94,6 +95,17 @@ checks = [
         "common.BindInternalRequest(req,a.internalToken)" in notification_dispatch
         and "common.DoInternal(a.client,req)" in notification_dispatch
         and 'Header.Set("X-Himate-Internal-Token"' not in notification_dispatch,
+    ),
+    (
+        "feature branches use fast checkpoint CI while full acceptance is reserved for merge gates",
+        "branches: [develop, main]" in workflow
+        and "'start-*'" not in workflow.split("pull_request:", 1)[0]
+        and "'pre-start-*'" not in workflow.split("pull_request:", 1)[0]
+        and "name: HIMATE Fast CI" in fast_workflow
+        and "branches: ['start-*', 'pre-start-*']" in fast_workflow
+        and "compose-current:" in fast_workflow
+        and "smoke_start_23_11_3h.sh" in fast_workflow
+        and "smoke_start_23_11_3i.sh" in fast_workflow,
     ),
     (
         "smoke schema drift is rejected before expensive Compose build",
