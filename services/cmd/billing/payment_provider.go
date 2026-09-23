@@ -233,6 +233,31 @@ func (a *app) requestPaymentCharge(ctx context.Context, partnerID, invoiceID, pu
 	return out,nil
 }
 
+func (a *app) paymentProfileAutopayReady(ctx context.Context, partnerID string) (bool, error) {
+	if strings.TrimSpace(a.paymentsHost) == "" {
+		return false, fmt.Errorf("PAYMENTS_HOSTPORT is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"http://"+a.paymentsHost+"/api/v1/payments/partners/"+partnerID+"/profile", nil)
+	if err != nil { return false, err }
+	req.Header.Set("X-Himate-Internal-Token", a.token)
+	resp, err := a.client.Do(req)
+	if err != nil { return false, err }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("payments profile status %d", resp.StatusCode)
+	}
+	var out struct {
+		Status          string `json:"status"`
+		AutopayEnabled  bool   `json:"autopay_enabled"`
+		PaymentMethodID string `json:"payment_method_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil { return false, err }
+	return strings.EqualFold(strings.TrimSpace(out.Status), "READY") &&
+		out.AutopayEnabled &&
+		strings.TrimSpace(out.PaymentMethodID) != "", nil
+}
+
 func (a *app) collectActivationLicense(w http.ResponseWriter, r *http.Request, partnerID string) {
 	if r.Method != http.MethodPost { common.APIError(w,405,"METHOD","Use POST");return }
 	x,err:=a.ensureLicense(partnerID)
