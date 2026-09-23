@@ -146,6 +146,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_2.py
       - name: Run START-23.11.3 Module Marketplace audit
         run: python3 ../scripts/audit_start_23_11_3.py
+      - name: Run START-23.11.3a Platform Secrets & Provider Readiness audit
+        run: python3 ../scripts/audit_start_23_11_3a.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
