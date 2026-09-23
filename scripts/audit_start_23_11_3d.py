@@ -23,8 +23,8 @@ checks = [
     ("fixed portal startup constants are removed", "persistentTestPartnerPasswordHash" not in portal and "persistentTestPartnerID" not in portal),
     ("gateway uses the retirement identity migration", "retiredTestPartnerIdentityMigration()," in gateway),
     ("Partner Portal API uses precise access diagnostics", "if accessErr!=nil{writePartnerAccessError(w,accessErr);return}" in portal),
-    ("release version", "version: 0.8.24-start-23.11.3g" in openapi),
-    ("render release version", "value: 0.8.24-start-23.11.3g" in render),
+    ("release version", "version: 0.8.25-start-23.11.3h" in openapi),
+    ("render release version", "value: 0.8.25-start-23.11.3h" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]
