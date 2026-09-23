@@ -384,7 +384,7 @@ func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 func (a *app) validatePublishedModuleKeys(ctx context.Context, keys []string) error {
 	req, _ := http.NewRequestWithContext(ctx,http.MethodGet,"http://"+a.catalogHost+"/api/v1/modules",nil)
 	common.BindInternalRequest(req,a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 { return fmt.Errorf("catalog returned %d",resp.StatusCode) }
@@ -749,7 +749,7 @@ func (a *app) syncPlanEntitlements(ctx context.Context,partnerID,planKey string,
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPut,"http://"+a.catalogHost+"/internal/v1/partners/"+partnerID+"/plan-entitlements",bytes.NewReader(raw))
 	if err!=nil{return err}
 	req.Header.Set("Content-Type","application/json");common.BindInternalRequest(req,a.token);req.Header.Set("X-Himate-User-ID","billing-plan-engine")
-	resp,err:=a.client.Do(req);if err!=nil{return err};defer resp.Body.Close()
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err};defer resp.Body.Close()
 	if resp.StatusCode>=300{return fmt.Errorf("catalog plan entitlement sync returned %d",resp.StatusCode)}
 	return nil
 }
