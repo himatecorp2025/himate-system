@@ -352,7 +352,7 @@ paths:
   /partner/api/v1/billing/summary:
     get:
       tags: [Partner Portal]
-      summary: Own current 30-day billing summary
+      summary: Own current billing and subscription summary
       responses:
         "200": {description: Tenant billing summary}
   /partner/api/v1/plans:
@@ -853,9 +853,10 @@ paths:
       summary: Update partner-specific commercial terms
       description: >
         Persists negotiated activation fee, base fee, minimum monthly commitment,
-        quote reference and a monotonic terms version. USD contracts enforce the
-        HIMATE minimum monthly commitment of 1,500 while activation fees remain
-        individually negotiated. START-23.11.1 does not change invoice-cycle semantics.
+        quote reference and a monotonic terms version for legacy/CUSTOM INDIVIDUAL_QUOTE
+        partners. The USD 1,500 minimum applies only to that negotiated model.
+        Starter/Business/Flex recurring charges are controlled by subscription-plan prices,
+        while activation fees remain individually negotiated.
       responses:
         "200": {description: Updated individual commercial terms}
         "400": {description: Invalid amount or USD minimum commitment below 1,500}
@@ -971,9 +972,9 @@ paths:
       - {$ref: "#/components/parameters/PartnerId"}
     get:
       tags: [Billing]
-      summary: Current 30-day commercial summary
+      summary: Current commercial billing summary
       responses:
-        "200": {description: Effective fee and cycle window}
+        "200": {description: Plan-based summary for managed-plan partners or legacy negotiated-cycle summary for legacy/CUSTOM partners}
   /api/v1/billing/partners/{partnerId}/documents:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
