@@ -83,7 +83,7 @@ This prevents the onboarding path from creating an incomplete record that later 
 
 - Deterministic frontend contract audit: `python3 scripts/audit_start_23_11_3e.py`
   - verifies the **New Partner** button is wired to `addPartner`;
-  - verifies `showDialog` is reached before any remote API dependency;
+  - verifies no awaited remote dependency can block `showDialog`;
   - verifies opening the modal contains no Module Catalog request;
   - verifies the complete master-data, Portal Owner and logo fields remain in the onboarding path.
 - Existing Flutter browser suite continues to validate shared dialog/responsive behavior.
