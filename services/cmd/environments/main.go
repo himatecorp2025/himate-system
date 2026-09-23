@@ -541,7 +541,7 @@ func (a *app) runtimeRequest(ctx context.Context, method, path string, payload a
 	}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+a.runtimeHost+path,body)
 	if err!=nil{return 0,err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	if payload!=nil{req.Header.Set("Content-Type","application/json")}
 	started:=time.Now()
 	resp,err:=a.client.Do(req)
@@ -561,7 +561,7 @@ func (a *app) partnerJSON(ctx context.Context,method,path string,payload any,act
 	}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+a.partnersHost+path,body)
 	if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	if strings.TrimSpace(actor)!="" { req.Header.Set("X-Himate-User-ID",strings.TrimSpace(actor)) }
 	if payload!=nil { req.Header.Set("Content-Type","application/json") }
 	resp,err:=a.client.Do(req)
