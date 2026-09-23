@@ -452,6 +452,13 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	}
 	current,loadErr:=a.loadPartnerPlan(r.Context(),partnerID)
 	if loadErr!=nil && loadErr!=sql.ErrNoRows{common.APIError(w,500,"DB","Could not load current plan");return}
+	if loadErr==sql.ErrNoRows {
+		license,licenseErr:=a.ensureLicense(partnerID)
+		if licenseErr!=nil{common.APIError(w,500,"DB","Could not verify activation license");return}
+		if license.Status!="PAID" && !license.Waived {
+			common.APIError(w,409,"ACTIVATION_LICENSE_REQUIRED","Activation license must be paid or explicitly waived before a subscription plan can be activated");return
+		}
+	}
 	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"));if actor==""{actor="partner"}
 	reason:=strings.TrimSpace(in.Reason);if reason==""{reason="Subscription plan selection"}
 	if loadErr==sql.ErrNoRows{
