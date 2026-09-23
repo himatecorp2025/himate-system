@@ -352,9 +352,42 @@ paths:
   /partner/api/v1/billing/summary:
     get:
       tags: [Partner Portal]
-      summary: Own current calendar-month billing summary
+      summary: Own current 30-day billing summary
       responses:
         "200": {description: Tenant billing summary}
+  /partner/api/v1/plans:
+    get:
+      tags: [Partner Portal]
+      summary: Customer-selectable Starter, Business and Flex plans
+      description: Returns monthly price, annual list price, discounted annual price, module capacity and selection mode. CUSTOM is not exposed to Partner Portal users.
+      responses:
+        "200": {description: Customer-selectable subscription plans}
+  /partner/api/v1/plan:
+    get:
+      tags: [Partner Portal]
+      summary: Own current subscription plan
+      responses:
+        "200": {description: Current plan, frequency, renewal boundary and scheduled change}
+    patch:
+      tags: [Partner Portal]
+      summary: Select, upgrade or schedule downgrade of own subscription plan
+      description: Same-frequency upgrades are immediate and charge the complete plan-price difference without proration. Monthly downgrades take effect next calendar-month day 1; annual downgrades take effect at annual renewal.
+      responses:
+        "200": {description: Plan changed or scheduled}
+        "409": {description: Activation license required, plan not ready or commercial transition blocked}
+  /partner/api/v1/plan/modules:
+    get:
+      tags: [Partner Portal]
+      summary: Own current plan module set
+      responses:
+        "200": {description: Current fixed or Flex module set}
+    put:
+      tags: [Partner Portal]
+      summary: Schedule next Flex module selection
+      description: Flex supports up to 15 PUBLISHED and READY modules. Normal selection changes take effect at the next calendar-month boundary.
+      responses:
+        "200": {description: Flex module set scheduled}
+        "409": {description: Current plan is fixed or module is not ready}
   /partner/api/v1/billing/subscriptions:
     get:
       tags: [Partner Portal]
@@ -741,6 +774,72 @@ paths:
       summary: Update HIMATE issuer and banking profile
       responses:
         "200": {description: Updated billing profile}
+  /api/v1/billing/plans:
+    get:
+      tags: [Billing]
+      summary: Subscription plan catalog
+      description: Starter is USD 500 monthly / USD 6,000 annual. Business is USD 1,500 monthly with USD 18,000 annual list price and USD 16,500 annual charged price. Flex is USD 2,500 monthly with USD 30,000 annual list price and USD 22,500 annual charged price.
+      responses:
+        "200": {description: Plans with module limits, selection modes, annual savings and readiness}
+  /api/v1/billing/plans/{planKey}:
+    parameters:
+      - in: path
+        name: planKey
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Billing]
+      summary: Subscription plan detail
+      responses:
+        "200": {description: Plan detail and current fixed module set}
+    patch:
+      tags: [Billing]
+      summary: Update plan commercial fields or fixed module package
+      description: Starter and Business fixed packages must contain exactly their configured module limit and every module must be PUBLISHED and READY. Existing package changes default to next calendar-month day 1.
+      responses:
+        "200": {description: Plan updated}
+        "400": {description: Invalid plan values or module count}
+        "409": {description: Module not PUBLISHED/READY or incompatible selection mode}
+  /api/v1/billing/partners/{partnerId}/plan:
+    parameters:
+      - in: path
+        name: partnerId
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Billing]
+      summary: Partner subscription plan
+      responses:
+        "200": {description: Plan state, billing frequency, prices, modules and scheduled change}
+    put:
+      tags: [Billing]
+      summary: Create partner plan subscription
+      responses:
+        "201": {description: Plan subscription created}
+        "409": {description: Activation license must be paid or waived}
+    patch:
+      tags: [Billing]
+      summary: Change partner subscription plan
+      description: Same-frequency price upgrades are immediate and collect the full price difference. Downgrades are scheduled with no refund. CUSTOM is available for HIMATE-administered negotiated partners.
+      responses:
+        "200": {description: Plan changed or scheduled}
+  /api/v1/billing/partners/{partnerId}/plan/modules:
+    parameters:
+      - in: path
+        name: partnerId
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Billing]
+      summary: Partner plan module set
+      responses:
+        "200": {description: Current fixed or Flex selection}
+    put:
+      tags: [Billing]
+      summary: Schedule Flex module set
+      responses:
+        "200": {description: Module set scheduled for next month boundary}
+        "409": {description: Fixed plan cannot be individually reconfigured}
   /api/v1/billing/partners/{partnerId}/terms:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -756,7 +855,7 @@ paths:
         Persists negotiated activation fee, base fee, minimum monthly commitment,
         quote reference and a monotonic terms version. USD contracts enforce the
         HIMATE minimum monthly commitment of 1,500 while activation fees remain
-        individually negotiated. START-23.11.2 bills completed calendar months on the following month day 1, charges the full monthly fee without proration, and enforces the contractual minimum monthly commitment.
+        individually negotiated. START-23.11.1 does not change invoice-cycle semantics.
       responses:
         "200": {description: Updated individual commercial terms}
         "400": {description: Invalid amount or USD minimum commitment below 1,500}
@@ -872,7 +971,7 @@ paths:
       - {$ref: "#/components/parameters/PartnerId"}
     get:
       tags: [Billing]
-      summary: Current calendar-month commercial summary
+      summary: Current 30-day commercial summary
       responses:
         "200": {description: Effective fee and cycle window}
   /api/v1/billing/partners/{partnerId}/documents:
@@ -954,7 +1053,7 @@ paths:
     patch:
       tags: [Billing]
       summary: Authoritatively schedule or withdraw end-of-period cancellation
-      description: Billing owns the ACTIVE/CANCEL_PENDING/INACTIVE lifecycle. Cancellation preserves the current immutable calendar month, prevents renewal, and becomes INACTIVE at the next calendar-month boundary. Module activation during a month is charged for the full month with no proration.
+      description: Billing owns the ACTIVE/CANCEL_PENDING/INACTIVE lifecycle. Cancellation preserves the current immutable 30-day period, prevents renewal, and becomes INACTIVE only when the Billing cycle closes the exact period boundary.
       requestBody:
         required: true
         content:
@@ -1260,7 +1359,7 @@ paths:
       description: >
         Partner identity is derived only from the connector credential.
         Response includes the active visual design profile, active entitlements,
-        version/configuration, domain binding and calendar-month billing metadata. Design
+        version/configuration, domain binding and 30-day cycle metadata. Design
         remains a visual-only state block and does not contain or rewrite CMS
         content, module state, billing or workflow mechanics. The response
         deliberately excludes module prices, raw invoices, payment data and
