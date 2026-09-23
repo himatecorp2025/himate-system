@@ -322,3 +322,20 @@ func TestSTART23112AnnualSavingsAreExplicitAmounts(t *testing.T) {
 		t.Fatalf("flex annual savings expected 7500 got %v", f["annual_savings"])
 	}
 }
+
+func TestSTART23112LegacyInvoiceDateConstraintRecovery(t *testing.T) {
+	m := start23112InvoiceDateConstraintRecoveryMigration()
+	if m.Version != 14 {
+		t.Fatalf("expected migration version 14 got %d", m.Version)
+	}
+	joined := strings.Join(m.Statements, "\n")
+	for _, token := range []string{
+		"invoices_partner_id_invoice_date_key",
+		"billing_invoices_partner_id_invoice_date_key",
+		"billing_invoice_partner_date_idx",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("START-23.11.2 invoice-date recovery missing %q", token)
+		}
+	}
+}
