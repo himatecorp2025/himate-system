@@ -40,7 +40,7 @@ func (a *app) internalJSON(ctx context.Context,method,host,path string,payload a
 	common.BindInternalRequest(req,a.internalToken)
 	req.Header.Set("X-Himate-User-ID","service:backups")
 	if payload!=nil{req.Header.Set("Content-Type","application/json")}
-	resp,err:=a.client.Do(req);if err!=nil{return err}
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err}
 	defer resp.Body.Close()
 	if optional&&resp.StatusCode==http.StatusNotFound{return nil}
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("private service returned status %d",resp.StatusCode)}
@@ -53,7 +53,7 @@ func (a *app) fetchToFile(ctx context.Context,host,path,target string)error{
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+host+path,nil);if err!=nil{return err}
 	common.BindInternalRequest(req,a.internalToken)
 	req.Header.Set("X-Himate-User-ID","service:backups")
-	resp,err:=a.client.Do(req);if err!=nil{return err}
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("media archive returned status %d",resp.StatusCode)}
 	f,err:=os.OpenFile(target,os.O_CREATE|os.O_TRUNC|os.O_WRONLY,0600);if err!=nil{return err}
