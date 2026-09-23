@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 root = Path(__file__).resolve().parents[1]
 
@@ -32,7 +33,8 @@ for token in [
 ]:
     require(token in catalog_marketplace, "marketplace model missing " + token)
 
-require(catalog_marketplace.count('":             {"') + catalog_marketplace.count('":    {"') >= 0, "marketplace summary file could not be parsed")
+summary_entries = re.findall(r'^\s*"[^"]+"\s*:\s*\{', catalog_marketplace, flags=re.MULTILINE)
+require(len(summary_entries) == 38, f"expected 38 canonical marketplace summaries, got {len(summary_entries)}")
 require("len(marketplaceSummaries) != len(seedModules)" in catalog_marketplace, "canonical marketplace summary count is not fail-closed")
 
 for token in [
