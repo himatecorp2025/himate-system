@@ -2899,6 +2899,7 @@ class _PartnersPageState extends State<PartnersPage> {
     final quoteReference = TextEditingController();
     final notes = TextEditingController();
     final onboardingRequestId = 'onb_${DateTime.now().microsecondsSinceEpoch}';
+    final onboardingDate = DateTime.now().toUtc().toIso8601String().substring(0, 10);
 
     html.File? partnerLogoFile;
     String category = '${categoryOptions.first['id']}';
@@ -2966,7 +2967,6 @@ class _PartnersPageState extends State<PartnersPage> {
     }
 
     Map<String, dynamic> billingTermsPayload() {
-      final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
       return {
         'currency': currency,
         'activation_fee': double.tryParse(activationFee.text) ?? 0,
@@ -2976,8 +2976,8 @@ class _PartnersPageState extends State<PartnersPage> {
         'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 1500,
         'quote_reference': quoteReference.text.trim(),
         'annual_increase_percent': 10,
-        'price_effective_from': today,
-        'service_anchor_date': today,
+        'price_effective_from': onboardingDate,
+        'service_anchor_date': onboardingDate,
         'reason': 'New Partner master-data onboarding',
       };
     }
