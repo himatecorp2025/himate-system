@@ -2906,6 +2906,13 @@ class _PartnersPageState extends State<PartnersPage> {
     String? modalCategoryWarning = categoryRegistryWarning;
     bool categoryRefreshStarted = false;
     bool dialogOpen = true;
+    bool submitting = false;
+    String? formError;
+    Map<String, dynamic>? stagedPartner;
+    String? stagedPartnerId;
+    bool portalOwnerCreated = false;
+    bool logoUploaded = false;
+    bool billingTermsSaved = false;
     int step = 0;
 
     bool validPortalPassword(String value) {
@@ -2922,7 +2929,35 @@ class _PartnersPageState extends State<PartnersPage> {
     bool validOptionalEmail(TextEditingController controller) =>
         controller.text.trim().isEmpty || validEmail(controller.text);
 
-    final ok = await showDialog<bool>(
+    Map<String, dynamic> partnerPayload() => {
+      'display_name': displayName.text.trim(),
+      'legal_name': legalName.text.trim(),
+      'brand_name': brandName.text.trim().isEmpty ? displayName.text.trim() : brandName.text.trim(),
+      'category_id': category,
+      'lifecycle': 'PROSPECT',
+      'registration_number': registrationNumber.text.trim(),
+      'tax_id': taxId.text.trim(),
+      'country': country.text.trim(),
+      'state_region': stateRegion.text.trim(),
+      'city': city.text.trim(),
+      'postal_code': postalCode.text.trim(),
+      'address_line1': addressLine1.text.trim(),
+      'address_line2': addressLine2.text.trim(),
+      'website': website.text.trim(),
+      'phone': phone.text.trim(),
+      'primary_domain': primaryDomain.text.trim(),
+      'contact_name': contactName.text.trim(),
+      'contact_email': contactEmail.text.trim(),
+      'finance_contact_name': financeContactName.text.trim(),
+      'finance_contact_email': financeContactEmail.text.trim(),
+      'technical_contact_name': technicalContactName.text.trim(),
+      'technical_contact_email': technicalContactEmail.text.trim(),
+      'marketing_contact_name': marketingContactName.text.trim(),
+      'marketing_contact_email': marketingContactEmail.text.trim(),
+      'notes': notes.text.trim(),
+    };
+
+    final createdResult = await showDialog<Map<String, dynamic>>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
@@ -2977,9 +3012,24 @@ class _PartnersPageState extends State<PartnersPage> {
           subtitle: 'Create the complete partner master record, billing identity, first Portal Owner and initial brand identity. Provisioning can be completed from the partner workspace.',
           icon: Icons.add_business_outlined,
           width: 900,
-          child: SizedBox(
-            height: 620,
-            child: Stepper(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (formError != null) ...[
+                _MessageCard(
+                  icon: Icons.error_outline_rounded,
+                  title: stagedPartnerId == null ? 'Partner registration needs attention' : 'Registration is not complete yet',
+                  message: formError!,
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (submitting) ...[
+                const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+                const SizedBox(height: 12),
+              ],
+              SizedBox(
+                height: formError == null ? 620 : 540,
+                child: Stepper(
               currentStep: step,
               type: StepperType.vertical,
               controlsBuilder: (context, details) => const SizedBox.shrink(),
@@ -3230,50 +3280,153 @@ class _PartnersPageState extends State<PartnersPage> {
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          primaryLabel: 'Create partner',
-          onPrimary: () {
-            final requiredMissing = displayName.text.trim().isEmpty ||
-                legalName.text.trim().isEmpty ||
-                registrationNumber.text.trim().isEmpty ||
-                taxId.text.trim().isEmpty ||
-                country.text.trim().isEmpty ||
-                city.text.trim().isEmpty ||
-                postalCode.text.trim().isEmpty ||
-                addressLine1.text.trim().isEmpty ||
-                contactName.text.trim().isEmpty ||
-                contactEmail.text.trim().isEmpty ||
-                portalPassword.text.isEmpty;
-            if (requiredMissing) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: LText('Complete the required company, registered-office and Partner Portal fields before creating the partner.'),
-                  behavior: SnackBarBehavior.floating,
+                  ],
                 ),
-              );
-              return;
-            }
-            if (!validEmail(contactEmail.text) ||
-                !validOptionalEmail(financeContactEmail) ||
+              ),
+            ],
+          ),
+          primaryLabel: submitting
+              ? (stagedPartnerId == null ? 'Creating partner…' : 'Completing setup…')
+              : (stagedPartnerId == null ? 'Create partner' : 'Retry setup'),
+          onPrimary: () async {
+            if (submitting) return;
+
+            String? validationMessage;
+            int validationStep = 0;
+            if (displayName.text.trim().isEmpty) {
+              validationMessage = 'Display name is required. This is the partner name shown inside HIMATE and Partner Portal.';
+            } else if (legalName.text.trim().isEmpty) {
+              validationMessage = 'Legal company name is required.';
+            } else if (registrationNumber.text.trim().isEmpty) {
+              validationMessage = 'Company / registration number is required.';
+            } else if (taxId.text.trim().isEmpty) {
+              validationMessage = 'Tax / VAT ID is required.';
+            } else if (country.text.trim().isEmpty) {
+              validationMessage = 'Country is required for the registered office.';
+              validationStep = 1;
+            } else if (city.text.trim().isEmpty) {
+              validationMessage = 'City is required for the registered office.';
+              validationStep = 1;
+            } else if (postalCode.text.trim().isEmpty) {
+              validationMessage = 'Postal code is required for the registered office.';
+              validationStep = 1;
+            } else if (addressLine1.text.trim().isEmpty) {
+              validationMessage = 'Registered address line 1 is required.';
+              validationStep = 1;
+            } else if (contactName.text.trim().isEmpty) {
+              validationMessage = 'Partner Portal Owner name is required.';
+              validationStep = 2;
+            } else if (contactEmail.text.trim().isEmpty) {
+              validationMessage = 'Partner Portal Owner email is required.';
+              validationStep = 2;
+            } else if (portalPassword.text.isEmpty) {
+              validationMessage = 'Initial Partner Portal password is required.';
+              validationStep = 2;
+            } else if (!validEmail(contactEmail.text)) {
+              validationMessage = 'Partner Portal Owner email address is invalid.';
+              validationStep = 2;
+            } else if (!validOptionalEmail(financeContactEmail) ||
                 !validOptionalEmail(technicalContactEmail) ||
                 !validOptionalEmail(marketingContactEmail)) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('One or more email addresses are invalid.'), behavior: SnackBarBehavior.floating),
-              );
+              validationMessage = 'One or more optional contact email addresses are invalid.';
+              validationStep = 1;
+            } else if (!validPortalPassword(portalPassword.text)) {
+              validationMessage = 'Partner Portal password must be at least 12 characters and include lowercase, uppercase, a number and a special character.';
+              validationStep = 2;
+            }
+
+            if (validationMessage != null) {
+              setLocal(() {
+                formError = validationMessage;
+                step = validationStep;
+              });
               return;
             }
-            if (!validPortalPassword(portalPassword.text)) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: LText('Partner Portal password must be at least 12 characters and include lowercase, uppercase, a number and a special character.'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-              return;
+
+            setLocal(() {
+              submitting = true;
+              formError = null;
+            });
+
+            try {
+              var created = stagedPartner;
+              if (stagedPartnerId == null) {
+                created = await widget.api.post('/api/v1/partners', partnerPayload());
+                stagedPartner = created;
+                stagedPartnerId = '${created['id']}';
+              } else {
+                created = await widget.api.patch(
+                  '/api/v1/partners/${stagedPartnerId!}',
+                  {
+                    ...partnerPayload(),
+                    'reason': 'New Partner modal retry/update before onboarding completion',
+                  },
+                );
+                stagedPartner = created;
+              }
+
+              final partnerId = stagedPartnerId!;
+
+              if (!portalOwnerCreated) {
+                await widget.api.post('/api/v1/partners/$partnerId/portal-users', {
+                  'name': contactName.text.trim(),
+                  'email': contactEmail.text.trim(),
+                  'password': portalPassword.text,
+                  'role': 'owner',
+                });
+                portalOwnerCreated = true;
+              }
+
+              if (partnerLogoFile != null && !logoUploaded) {
+                final logoFile = partnerLogoFile!;
+                final bytes = await readBrowserFile(logoFile);
+                final logo = await widget.api.multipart(
+                  '/api/v1/partners/$partnerId/logo',
+                  {
+                    'alt_text': '${displayName.text.trim()} logo',
+                    'purpose': 'logo',
+                  },
+                  bytes,
+                  logoFile.name,
+                );
+                final updated = logo['partner'];
+                if (updated is Map) {
+                  created = Map<String, dynamic>.from(updated);
+                  stagedPartner = created;
+                }
+                logoUploaded = true;
+              }
+
+              if (!billingTermsSaved) {
+                final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
+                await widget.api.put('/api/v1/billing/partners/$partnerId/terms', {
+                  'currency': currency,
+                  'activation_fee': double.tryParse(activationFee.text) ?? 0,
+                  'activation_fee_waived': false,
+                  'activation_fee_reason': '',
+                  'base_monthly_fee': double.tryParse(baseMonthlyFee.text) ?? 0,
+                  'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 1500,
+                  'quote_reference': quoteReference.text.trim(),
+                  'annual_increase_percent': 10,
+                  'price_effective_from': today,
+                  'service_anchor_date': today,
+                  'reason': 'New Partner master-data onboarding',
+                });
+                billingTermsSaved = true;
+              }
+
+              if (dialogContext.mounted) {
+                Navigator.pop(dialogContext, created ?? stagedPartner ?? <String, dynamic>{'id': partnerId});
+              }
+            } catch (e) {
+              if (!dialogContext.mounted) return;
+              setLocal(() {
+                submitting = false;
+                formError = stagedPartnerId == null
+                    ? 'Partner could not be created: $e'
+                    : 'Partner ${stagedPartnerId!} exists, but onboarding is not complete: $e. Correct the data or service issue and press Retry setup. This window will stay open.';
+              });
             }
-            Navigator.pop(dialogContext, true);
           },
         );
         },
@@ -3281,121 +3434,17 @@ class _PartnersPageState extends State<PartnersPage> {
     );
     dialogOpen = false;
 
-    if (ok == true) {
-      try {
-        var created = await widget.api.post('/api/v1/partners', {
-          'display_name': displayName.text.trim(),
-          'legal_name': legalName.text.trim(),
-          'brand_name': brandName.text.trim().isEmpty ? displayName.text.trim() : brandName.text.trim(),
-          'category_id': category,
-          'lifecycle': 'PROSPECT',
-          'registration_number': registrationNumber.text.trim(),
-          'tax_id': taxId.text.trim(),
-          'country': country.text.trim(),
-          'state_region': stateRegion.text.trim(),
-          'city': city.text.trim(),
-          'postal_code': postalCode.text.trim(),
-          'address_line1': addressLine1.text.trim(),
-          'address_line2': addressLine2.text.trim(),
-          'website': website.text.trim(),
-          'phone': phone.text.trim(),
-          'primary_domain': primaryDomain.text.trim(),
-          'contact_name': contactName.text.trim(),
-          'contact_email': contactEmail.text.trim(),
-          'finance_contact_name': financeContactName.text.trim(),
-          'finance_contact_email': financeContactEmail.text.trim(),
-          'technical_contact_name': technicalContactName.text.trim(),
-          'technical_contact_email': technicalContactEmail.text.trim(),
-          'marketing_contact_name': marketingContactName.text.trim(),
-          'marketing_contact_email': marketingContactEmail.text.trim(),
-          'notes': notes.text.trim(),
-        });
-        final partnerId = '${created['id']}';
-        final warnings = <String>[];
-
-        try {
-          await widget.api.post('/api/v1/partners/$partnerId/portal-users', {
-            'name': contactName.text.trim(),
-            'email': contactEmail.text.trim(),
-            'password': portalPassword.text,
-            'role': 'owner',
-          });
-        } catch (e) {
-          warnings.add('Partner Portal Owner: $e');
-        }
-
-        if (partnerLogoFile != null) {
-          try {
-            final logoFile = partnerLogoFile!;
-            final bytes = await readBrowserFile(logoFile);
-            final logo = await widget.api.multipart(
-              '/api/v1/partners/$partnerId/logo',
-              {
-                'alt_text': '${displayName.text.trim()} logo',
-                'purpose': 'logo',
-              },
-              bytes,
-              logoFile.name,
-            );
-            final updated = logo['partner'];
-            if (updated is Map) created = Map<String, dynamic>.from(updated);
-          } catch (e) {
-            warnings.add('Partner logo: $e');
-          }
-        }
-
-        try {
-          final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
-          await widget.api.put('/api/v1/billing/partners/$partnerId/terms', {
-            'currency': currency,
-            'activation_fee': double.tryParse(activationFee.text) ?? 0,
-            'activation_fee_waived': false,
-            'activation_fee_reason': '',
-            'base_monthly_fee': double.tryParse(baseMonthlyFee.text) ?? 0,
-            'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 1500,
-            'quote_reference': quoteReference.text.trim(),
-            'annual_increase_percent': 10,
-            'price_effective_from': today,
-            'service_anchor_date': today,
-            'reason': 'New Partner master-data onboarding',
-          });
-        } catch (e) {
-          warnings.add('Commercial defaults: $e');
-        }
-
-        if (mounted) {
-          unawaited(load(reset: true));
-          if (warnings.isEmpty) {
-            success('Partner master data, Portal Owner and onboarding defaults created.');
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: LText('Partner created. Supplementary setup needs attention: ${warnings.join(' · ')}'),
-                behavior: SnackBarBehavior.floating,
-                backgroundColor: brandWarning,
-                duration: const Duration(seconds: 8),
-              ),
-            );
-          }
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              settings: RouteSettings(name: '/app/partners/$partnerId'),
-              builder: (_) => PartnerWorkspace(api: widget.api, partner: created),
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: LText('Partner could not be created: $e'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: brandDanger,
-            ),
-          );
-        }
-      }
+    if (createdResult != null && mounted) {
+      final partnerId = '${createdResult['id']}';
+      unawaited(load(reset: true));
+      success('Partner master data, Portal Owner, logo and commercial defaults were saved.');
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          settings: RouteSettings(name: '/app/partners/$partnerId'),
+          builder: (_) => PartnerWorkspace(api: widget.api, partner: createdResult),
+        ),
+      );
     }
 
     for (final controller in [
