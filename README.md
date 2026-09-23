@@ -331,6 +331,8 @@ The architecture remains microservice/container based. It is **not** being colla
 - activation/license collection is a separate prerequisite; a plan activates only after PAID or explicit waiver
 - same-frequency upgrades are immediate and collect the full plan-price difference without proration
 - monthly downgrades apply on the next calendar-month day 1; annual downgrades apply at annual renewal; no refund is generated
+- recurring card collection is automatic; failed recurring charges retry on day 1/day 3/day 6, then suspend service for 30 days before retention-safe operational account purge
+- cure-window payment restores the prior partner lifecycle and plan entitlements; purge removes operational access while retaining legally required financial/contract/audit evidence
 - Billing owns plan pricing/subscription/payment state while Catalog owns the resulting module entitlements
 - module-level commercial pricing/history from START-23.11.1 is retained for future add-ons/custom contracts but is not the recurring invoice authority for standard plans
 - release contract version is `0.8.16-start-23.11.2`
