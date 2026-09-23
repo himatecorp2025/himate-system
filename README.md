@@ -422,7 +422,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - Partner Portal Owner persistence remains part of the same end-to-end acceptance
 - Render auto-deploy remains disabled; production release completion requires all application services to be deployed from the same release
 - START-23.11.4 remains frozen until the production test partner is created successfully
-- release contract version is `0.8.26-start-23.11.3i`
+- release contract version is `0.8.27-start-23.11.3j`
 - acceptance: `docs/START-23.11.3I_ACCEPTANCE.md`, `scripts/audit_start_23_11_3i.py`, `scripts/smoke_start_23_11_3i.sh`
 
 ### Horizontal-scaling note
