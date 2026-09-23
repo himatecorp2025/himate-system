@@ -539,7 +539,7 @@ Partner entitlement is a separate tenant-scoped state. The compatibility `status
 
 Catalog-level monetary values are reference/list values only. The charging authority is the partner contract. Billing owns partner-level negotiated activation fee, base service fee, minimum monthly commitment, quote reference and terms versions; Catalog owns partner-module negotiated recurring and activation prices with effective-dated history. The quote/currency reference is carried into price history so later billing can prove which commercial agreement authorized a charge.
 
-For USD contracts the current platform policy floor is a 1,500 minimum monthly commitment. Activation/license fees have no global fixed floor and are negotiated per partner. START-23.11.1 stores these terms but deliberately leaves invoice timing, full-period charging and no-proration behavior to START-23.11.2.
+For legacy/CUSTOM USD contracts using the INDIVIDUAL_QUOTE model, the commercial guardrail is a 1,500 minimum monthly commitment. Standard Starter/Business/Flex partners are not governed by that floor; their recurring-price authority is the subscription plan. Activation/license fees have no global fixed floor and remain negotiated per partner.
 
 ## START-23.11.2 subscription-plan billing authority
 
