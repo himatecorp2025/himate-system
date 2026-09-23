@@ -245,7 +245,8 @@ func (a *app) collectActivationLicense(w http.ResponseWriter, r *http.Request, p
 	common.JSON(w,201,out)
 }
 
-func (a *app) retryPendingInvoiceCollections(ctx context.Context) error {
+func (a *app) retryPendingInvoiceCollections(ctx context.Context, at time.Time) error {
+	_ = at
 	rows,err:=a.db.QueryContext(ctx,`SELECT id,partner_id,currency,total FROM billing.invoices
 		WHERE status<>'PAID' AND provider_status='COLLECTION_PENDING'
 		ORDER BY invoice_date,id LIMIT 500`)
@@ -266,7 +267,16 @@ func (a *app) retryPendingInvoiceCollections(ctx context.Context) error {
 }
 
 func (a *app) queueInvoiceCollection(ctx context.Context, invoiceID, partnerID, currency string, total float64) {
-	out,err:=a.requestPaymentCharge(ctx,partnerID,invoiceID,"INVOICE",total,currency,"invoice:"+invoiceID)
+	eligible,attempts,invoiceDate,_,metaErr:=a.invoiceDunningMeta(ctx,invoiceID)
+	attemptNumber:=0
+	key:="invoice:"+invoiceID
+	if metaErr==nil && eligible {
+		if attempts>=dunningMaxAttempts{return}
+		attemptNumber=attempts+1
+		key=fmt.Sprintf("invoice:%s:attempt:%d",invoiceID,attemptNumber)
+	}
+
+	out,err:=a.requestPaymentCharge(ctx,partnerID,invoiceID,"INVOICE",total,currency,key)
 	if err!=nil{
 		_,_=a.db.ExecContext(ctx,`UPDATE billing.invoices SET provider_status='COLLECTION_PENDING' WHERE id=$1 AND status<>'PAID'`,invoiceID)
 		return
@@ -275,6 +285,18 @@ func (a *app) queueInvoiceCollection(ctx context.Context, invoiceID, partnerID, 
 	providerID:=strings.TrimSpace(fmt.Sprint(out["provider_payment_id"]))
 	status:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(out["status"])))
 	if status==""{status="PROCESSING"}
+
+	if eligible && attemptNumber>0 {
+		if err:=a.markCollectionAttempt(ctx,invoiceID,attemptNumber,status,attemptID,providerID);err!=nil{return}
+		if status=="FAILED" || status=="REQUIRES_ACTION" {
+			if attemptNumber>=dunningMaxAttempts {
+				_ = a.suspendForNonPayment(ctx,invoiceID,partnerID,time.Now().UTC())
+			} else {
+				_ = a.markPastDue(ctx,invoiceID,partnerID,attemptNumber,invoiceDate)
+			}
+		}
+		return
+	}
 	_,_=a.db.ExecContext(ctx,`UPDATE billing.invoices SET provider_status=$2,payment_attempt_id=$3,provider_payment_id=$4 WHERE id=$1 AND status<>'PAID'`,
 		invoiceID,status,attemptID,providerID)
 }
