@@ -228,7 +228,7 @@
     {
       "id": "partner_portal.modules",
       "name": "Partner Portal / Modules",
-      "scope": "Self-service activation and period-end cancellation"
+      "scope": "Plan-aware Module Marketplace: canonical discovery, live entitlement state, locked upgrade discovery and fail-closed execution"
     },
     {
       "id": "partner_portal.billing",
@@ -2163,7 +2163,25 @@
       "target_phase": "23.11.2",
       "e2e_proof": "scripts/smoke_start_23_11_2.sh schedules a new Flex selection and verifies Catalog entitlement convergence",
       "notes": "Flex supports at most 15 PUBLISHED+READY modules. Normal module-set changes take effect at the next calendar-month boundary."
+    },
+    {
+      "id": "MODULE-MARKETPLACE-23-11-3",
+      "surface": "partner_portal.modules",
+      "ui": "Module Marketplace with Included, Locked, Coming Soon and Unavailable canonical module cards",
+      "kind": "read",
+      "frontend_file": "frontend/lib/partner_portal.dart",
+      "source_token": "Module Marketplace",
+      "method": "GET",
+      "api_pattern": "/partner/api/v1/modules + /partner/api/v1/dashboard",
+      "backend_service": "catalog + gateway + billing",
+      "persistence": "catalog.modules marketplace visibility/summaries + catalog.partner_modules entitlement + billing.subscription_plans/partner_plan_subscriptions",
+      "audit": "START-23.11.3 static audit + Compose acceptance",
+      "localization_state": "BILINGUAL_MARKETPLACE_SUMMARY_AND_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3.sh: canonical 38 discovery -> publish/READY -> Business 10 ACTIVE + 28 LOCKED -> Flex upgrade metadata -> activation bypass rejected",
+      "notes": "Discovery visibility is not execution authority. Canonical legacy-reference modules may be COMING_SOON and visible while arbitrary unpublished non-marketplace modules remain hidden."
     }
   ],
-  "completed_through": "23.11.2"
+  "completed_through": "23.11.3"
 }
