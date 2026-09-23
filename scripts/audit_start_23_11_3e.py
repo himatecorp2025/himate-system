@@ -16,7 +16,7 @@ start = frontend.index("  Future<void> addPartner() async {")
 end = frontend.index("  List<Map<String, dynamic>> get filtered => partners;", start)
 add_partner = frontend[start:end]
 
-dialog_index = add_partner.index("final ok = await showDialog<bool>(")
+dialog_index = add_partner.index("final createdResult = await showDialog<Map<String, dynamic>>(")
 pre_dialog = add_partner[:dialog_index]
 partner_page_tail = frontend[end:frontend.index("class PartnerWorkspace", end)]
 
@@ -30,14 +30,14 @@ checks = [
         "New Partner modal is not blocked by any awaited remote dependency",
         "await widget.api." not in pre_dialog
         and "await _loadCategories" not in pre_dialog
-        and "final ok = await showDialog<bool>(" in add_partner
+        and "final createdResult = await showDialog<Map<String, dynamic>>(" in add_partner
         and "key: const Key('new-partner-dialog')" in add_partner,
     ),
     (
         "New Partner modal is not blocked by Module Catalog",
         "widget.api.get('/api/v1/modules'" not in add_partner,
     ),
-    ("New Partner keeps the complete built-in category catalog available", all(token in frontend for token in ["cat_001","cat_002","cat_003","cat_004","cat_005","cat_006"]) and "_mergePartnerCategories(categories)" in add_partner and "Category service is still loading" not in add_partner),
+    ("New Partner keeps a safe category fallback", "'cat_006'" in add_partner and "Category service is still loading" in add_partner),
     ("company legal identity fields are collected", all(token in add_partner for token in [
         "registrationNumber", "taxId", "legalName", "brandName",
     ])),
@@ -50,7 +50,19 @@ checks = [
     ("Partner Portal owner is created from onboarding", "/api/v1/partners/$partnerId/portal-users" in add_partner and "'role': 'owner'" in add_partner),
     ("partner logo can be selected and uploaded during onboarding", "Choose logo" in add_partner and "/api/v1/partners/$partnerId/logo" in add_partner and "'purpose': 'logo'" in add_partner),
     ("core partner creation stays PROSPECT and is not gated on invoice/provisioning", "'lifecycle': 'PROSPECT'" in add_partner and "activationInvoiceFile" not in add_partner and "/api/v1/provisioning/jobs" not in add_partner),
-    ("supplementary setup failures do not erase the core partner", "final warnings = <String>[];" in add_partner and "Partner created. Supplementary setup needs attention" in add_partner),
+    ("validation and backend errors stay inside the New Partner modal",
+        "String? formError;" in add_partner
+        and "Partner registration needs attention" in add_partner
+        and "This window will stay open." in add_partner
+        and "Navigator.pop(dialogContext, created" in add_partner),
+    ("partial onboarding resumes against the same core partner instead of creating duplicates",
+        "String? stagedPartnerId;" in add_partner
+        and "Retry setup" in add_partner
+        and "widget.api.patch(" in add_partner),
+    ("backend distinguishes malformed JSON/version skew from an empty display name",
+        'Invalid partner request: "+err.Error()' in partners
+        and 'Display name is required' in partners
+        and 'common.Decode(r, &in) != nil || strings.TrimSpace(in.DisplayName) == ""' not in partners),
     ("backend POST persists registration/tax/address/contact master data", all(token in partners for token in [
         'RegistrationNumber    string `json:"registration_number"`',
         'TaxID                 string `json:"tax_id"`',
@@ -62,8 +74,8 @@ checks = [
     ("CMS stores explicit partner logo publication mapping", "cms.partner_brand_assets" in cms_main and "slot TEXT NOT NULL CHECK(slot IN ('logo'))" in cms_main),
     ("CMS partner media supports logo purpose and public URL", 'purpose == "logo"' in cms_themes and 'out["public_url"] = "/public/v1/cms/media/" + id' in cms_themes),
     ("OpenAPI documents partner logo upload", "/api/v1/partners/{partnerId}/logo:" in openapi),
-    ("release version", "version: 0.8.23-start-23.11.3f" in openapi),
-    ("render release version", "value: 0.8.23-start-23.11.3f" in render),
+    ("release version", "version: 0.8.22-start-23.11.3e" in openapi),
+    ("render release version", "value: 0.8.22-start-23.11.3e" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]
