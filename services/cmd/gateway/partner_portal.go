@@ -469,11 +469,11 @@ func (a *app) partnerDesignMedia(w http.ResponseWriter,r *http.Request,u partner
 	host:=strings.TrimSpace(a.hosts["cms"]);if host==""{common.APIError(w,502,"UPSTREAM","CMS service is not configured");return}
 	req,err:=http.NewRequestWithContext(r.Context(),http.MethodPost,"http://"+host+upstream,io.LimitReader(r.Body,66<<20))
 	if err!=nil{common.APIError(w,500,"REQUEST","Could not prepare design media upload");return}
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	common.BindInternalRequest(req,a.internalToken)
 	req.Header.Set("X-Himate-User-ID",u.ID)
 	req.Header.Set("X-Correlation-ID",strings.TrimSpace(r.Header.Get("X-Correlation-ID")))
 	req.Header.Set("Content-Type",r.Header.Get("Content-Type"))
-	resp,err:=a.client.Do(req);if err!=nil{common.APIError(w,502,"UPSTREAM","Partner design media upload failed");return};defer resp.Body.Close()
+	resp,err:=common.DoInternal(a.client,req);if err!=nil{common.APIError(w,502,"UPSTREAM","Partner design media upload failed");return};defer resp.Body.Close()
 	for _,key:=range []string{"Content-Type","Content-Length"}{if value:=resp.Header.Get(key);value!=""{w.Header().Set(key,value)}}
 	w.WriteHeader(resp.StatusCode);_,_=io.Copy(w,io.LimitReader(resp.Body,2<<20))
 }
