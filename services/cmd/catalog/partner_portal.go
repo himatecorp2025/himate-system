@@ -74,7 +74,7 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 	}
 	visibilityClause := " AND (m.marketplace_visible=TRUE OR m.publication_status='PUBLISHED')"
 	if testPartner {
-		visibilityClause = ""
+		visibilityClause = " AND m.system=TRUE"
 	}
 	rows, err := a.db.Query(`
 		SELECT m.module_key,m.label_en,m.label_hu,m.description_en,m.description_hu,m.marketplace_summary_en,m.marketplace_summary_hu,
