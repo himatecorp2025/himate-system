@@ -13,6 +13,7 @@ checks = [
     ("partner fixture id", "ptr_himate_test_001" in partners),
     ("partner fixture is live", "'LIVE',FALSE,FALSE" in partners),
     ("partner fixture persistence note", "Persistent manual QA fixture" in partners),
+    ("nullable partner category reads are safe", "COALESCE(p.category_id,'')" in partners),
     ("portal fixture user id", 'persistentTestPartnerUserID = "pusr_himate_test_001"' in portal),
     ("portal fixture email", 'persistentTestPartnerEmail = "test.partner@himate.test"' in portal),
     ("portal fixture owner role", "'owner',TRUE,'en_US','UTC'" in portal),
