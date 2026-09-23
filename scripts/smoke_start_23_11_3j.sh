@@ -67,6 +67,17 @@ PROMOTED="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' 
 printf '%s' "$PROMOTED" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["test_partner"] is True,d; assert d["lifecycle"]=="LIVE",d'
 echo ok
 
+printf 'Golden Test flag cannot be casually disabled... '
+STATUS="$(curl -sS -o /tmp/himate-start23113j-disable.json -w '%{http_code}' -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"test_partner":false,"reason":"must be rejected"}' "$BASE_URL/api/v1/partners/$PARTNER_ID")"
+test "$STATUS" = "409"
+python3 - /tmp/himate-start23113j-disable.json <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+assert d["error"]["code"]=="GOLDEN_TEST_PARTNER_IMMUTABLE",d
+PY
+rm -f /tmp/himate-start23113j-disable.json
+echo ok
+
 printf 'Golden Test tenant exposes 38 canonical active modules... '
 MODULES="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$PARTNER_ID/modules")"
 python3 - "$MODULES" <<'PY'
