@@ -128,7 +128,7 @@ func (a *app) start22ImpactRetention(ctx context.Context,sourceRef,action string
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+a.impactHost+"/internal/v1/impact/retention",bytes.NewReader(raw))
 	if err!=nil{return err}
 	req.Header.Set("Content-Type","application/json")
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	common.BindInternalRequest(req,a.internalToken)
 	resp,err:=a.client.Do(req)
 	if err!=nil{return err}
 	defer resp.Body.Close()
