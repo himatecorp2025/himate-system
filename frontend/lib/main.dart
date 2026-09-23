@@ -2865,7 +2865,7 @@ class _PartnersPageState extends State<PartnersPage> {
     // The creation dialog must be available even when Catalog or supplementary
     // services are degraded. Partner master data is the primary record; modules,
     // licensing and provisioning are configured from the workspace afterwards.
-    final categoryOptions = _mergePartnerCategories(categories);
+    var categoryOptions = _mergePartnerCategories(categories);
     if (categoryRegistryWarning != null && !categoriesLoading) {
       unawaited(_loadCategories(force: true));
     }
@@ -2903,6 +2903,9 @@ class _PartnersPageState extends State<PartnersPage> {
     String category = '${categoryOptions.first['id']}';
     String currency = 'USD';
     bool portalPasswordObscure = true;
+    String? modalCategoryWarning = categoryRegistryWarning;
+    bool categoryRefreshStarted = false;
+    bool dialogOpen = true;
     int step = 0;
 
     bool validPortalPassword(String value) {
@@ -2923,7 +2926,52 @@ class _PartnersPageState extends State<PartnersPage> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setLocal) => BrandDialog(
+        builder: (context, setLocal) {
+          if (!categoryRefreshStarted) {
+            categoryRefreshStarted = true;
+            unawaited(() async {
+              try {
+                final response = await widget.api.get('/api/v1/partner-categories', force: true);
+                final loaded = items(response);
+                final merged = _mergePartnerCategories(loaded);
+                final warning = loaded.isEmpty
+                    ? 'The live category registry returned no rows. Built-in partner categories are shown.'
+                    : null;
+                if (!dialogOpen) return;
+                if (mounted) {
+                  setState(() {
+                    categories = merged;
+                    categoryRegistryWarning = warning;
+                    categoriesLoading = false;
+                  });
+                }
+                setLocal(() {
+                  categoryOptions = merged;
+                  modalCategoryWarning = warning;
+                  if (!categoryOptions.any((item) => '${item['id']}' == category)) {
+                    category = '${categoryOptions.first['id']}';
+                  }
+                });
+              } catch (_) {
+                if (!dialogOpen) return;
+                final fallback = _mergePartnerCategories(categoryOptions);
+                const warning =
+                    'The live category registry is temporarily unavailable. Built-in partner categories remain available.';
+                if (mounted) {
+                  setState(() {
+                    categories = fallback;
+                    categoryRegistryWarning = warning;
+                    categoriesLoading = false;
+                  });
+                }
+                setLocal(() {
+                  categoryOptions = fallback;
+                  modalCategoryWarning = warning;
+                });
+              }
+            }());
+          }
+          return BrandDialog(
           key: const Key('new-partner-dialog'),
           title: 'New Partner',
           subtitle: 'Create the complete partner master record, billing identity, first Portal Owner and initial brand identity. Provisioning can be completed from the partner workspace.',
@@ -2999,12 +3047,12 @@ class _PartnersPageState extends State<PartnersPage> {
                         controller: primaryDomain,
                         decoration: InputDecoration(labelText: uiLiteral('Primary domain'), hintText: uiLiteral('example.com')),
                       ),
-                      if (categoryRegistryWarning != null) ...[
+                      if (modalCategoryWarning != null) ...[
                         const SizedBox(height: 12),
                         _MessageCard(
                           icon: Icons.info_outline_rounded,
                           title: 'Built-in partner categories are available',
-                          message: categoryRegistryWarning!,
+                          message: modalCategoryWarning!,
                         ),
                       ],
                     ],
@@ -3227,9 +3275,11 @@ class _PartnersPageState extends State<PartnersPage> {
             }
             Navigator.pop(dialogContext, true);
           },
-        ),
+        );
+        },
       ),
     );
+    dialogOpen = false;
 
     if (ok == true) {
       try {
