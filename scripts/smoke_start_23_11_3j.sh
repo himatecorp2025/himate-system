@@ -69,9 +69,9 @@ echo ok
 
 printf 'Golden Test tenant exposes 38 canonical active modules... '
 MODULES="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$PARTNER_ID/modules")"
-printf '%s' "$MODULES" | python3 - <<'PY'
+python3 - "$MODULES" <<'PY'
 import json,sys
-d=json.load(sys.stdin)
+d=json.loads(sys.argv[1])
 golden=[x for x in d["items"] if x.get("quote_reference")=="GOLDEN-TEST-PARTNER"]
 assert len(golden)==38,(len(golden),[x.get("key") for x in golden])
 for item in golden:
