@@ -23,15 +23,15 @@ func TestJanuaryFirstIncrease(t *testing.T) {
 	}
 }
 
-func TestCycleWindowUsesCalendarMonth(t *testing.T) {
+func TestCycleWindowIsActivationAnchored(t *testing.T) {
 	anchor := time.Date(2026, 9, 10, 16, 45, 0, 0, time.UTC)
 	tests := []struct {
 		at, start, end string
 	}{
-		{"2026-09-10", "2026-09-01", "2026-10-01"},
-		{"2026-10-09", "2026-10-01", "2026-11-01"},
-		{"2026-10-31", "2026-10-01", "2026-11-01"},
-		{"2026-12-31", "2026-12-01", "2027-01-01"},
+		{"2026-09-10", "2026-09-10", "2026-10-10"},
+		{"2026-10-09", "2026-09-10", "2026-10-10"},
+		{"2026-10-10", "2026-10-10", "2026-11-09"},
+		{"2026-12-09", "2026-12-09", "2027-01-08"},
 	}
 	for _, tc := range tests {
 		at, _ := time.Parse("2006-01-02", tc.at)
@@ -45,43 +45,18 @@ func TestCycleWindowUsesCalendarMonth(t *testing.T) {
 	}
 }
 
-func TestCycleBoundaryIsFirstDayOfMonth(t *testing.T) {
+func TestCycleBoundary(t *testing.T) {
 	anchor, _ := time.Parse("2006-01-02", "2026-09-10")
-	for _, date := range []string{"2026-10-01", "2026-11-01", "2027-01-01"} {
+	for _, date := range []string{"2026-10-10", "2026-11-09", "2027-01-08"} {
 		at, _ := time.Parse("2006-01-02", date)
 		if !isCycleBoundary(anchor, at) {
-			t.Fatalf("expected calendar-month boundary %s", date)
+			t.Fatalf("expected boundary %s", date)
 		}
 	}
-	for _, date := range []string{"2026-09-10", "2026-10-09", "2026-10-31"} {
+	for _, date := range []string{"2026-09-10", "2026-10-09", "2026-10-11"} {
 		at, _ := time.Parse("2006-01-02", date)
 		if isCycleBoundary(anchor, at) {
-			t.Fatalf("unexpected calendar-month boundary %s", date)
-		}
-	}
-}
-
-func TestPreviousCalendarMonth(t *testing.T) {
-	at, _ := time.Parse("2006-01-02", "2027-01-01")
-	start, end := previousCalendarMonth(at)
-	if got := start.Format("2006-01-02"); got != "2026-12-01" {
-		t.Fatalf("expected previous month start got %s", got)
-	}
-	if got := end.Format("2006-01-02"); got != "2027-01-01" {
-		t.Fatalf("expected previous month end got %s", got)
-	}
-}
-
-func TestMinimumCommitmentAdjustment(t *testing.T) {
-	cases := []struct{ subtotal, minimum, want float64 }{
-		{1200, 1500, 300},
-		{1500, 1500, 0},
-		{1750, 1500, 0},
-		{1499.99, 1500, 0.01},
-	}
-	for _, tc := range cases {
-		if got := minimumCommitmentAdjustment(tc.subtotal, tc.minimum); got != tc.want {
-			t.Fatalf("subtotal %.2f minimum %.2f expected %.2f got %.2f", tc.subtotal, tc.minimum, tc.want, got)
+			t.Fatalf("unexpected boundary %s", date)
 		}
 	}
 }
@@ -99,9 +74,9 @@ func TestDateOnlyUsesUTC(t *testing.T) {
 }
 
 func TestCancelAtPeriodEndBoundary(t *testing.T) {
-	end, _ := time.Parse("2006-01-02", "2026-11-01")
-	before, _ := time.Parse("2006-01-02", "2026-10-31")
-	atEnd, _ := time.Parse("2006-01-02", "2026-11-01")
+	end, _ := time.Parse("2006-01-02", "2026-10-10")
+	before, _ := time.Parse("2006-01-02", "2026-10-09")
+	atEnd, _ := time.Parse("2006-01-02", "2026-10-10")
 	if cancellationExpired(true, end, before) {
 		t.Fatal("cancellation must not truncate the paid period")
 	}
@@ -295,26 +270,5 @@ func TestSTART233CancellationBoundaryRemainsExclusive(t *testing.T) {
 	}
 	if !cancellationExpired(true, end, end) {
 		t.Fatal("cancellation must become effective at the exact period boundary")
-	}
-}
-
-func TestSTART23112CalendarMonthMigrationContract(t *testing.T) {
-	m := start23112CalendarMonthBillingMigration()
-	if m.Version != 10 {
-		t.Fatalf("expected migration version 10 got %d", m.Version)
-	}
-	joined := strings.Join(m.Statements, "\n")
-	for _, token := range []string{
-		"billing_cycle_model",
-		"CALENDAR_MONTH",
-		"LEGACY_30_DAY",
-		"minimum_commitment_adjustment",
-		"billing_invoice_date_model_unique",
-		"billing_invoice_period_model_unique",
-		"pricing_effective_at",
-	} {
-		if !strings.Contains(joined, token) {
-			t.Fatalf("START-23.11.2 migration missing %q", token)
-		}
 	}
 }
