@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.17-start-23.11.3
+  version: 0.8.18-start-23.11.3a
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.3 HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.3a HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -230,6 +230,41 @@ paths:
         "200": {description: User updated}
         "403": {description: System owner required}
         "409": {description: Owner protection or continuity guard}
+  /api/v1/admin/secrets:
+    get:
+      tags: [Administration]
+      summary: List write-only platform secret configuration status
+      description: Returns metadata and CONFIGURED/MISSING state only. Raw secret values are never returned.
+      responses:
+        "200": {description: Supported provider-secret metadata and configuration state}
+  /api/v1/admin/secrets/{secretKey}:
+    parameters:
+      - {name: secretKey, in: path, required: true, schema: {type: string, enum: [stripe_secret_key, stripe_webhook_secret, render_api_key]}}
+    put:
+      tags: [Administration]
+      summary: Create or replace one encrypted platform secret
+      description: System-owner only. The request value is AES-256-GCM encrypted before storage and is redacted from audit state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [secret]
+              properties:
+                secret: {type: string, format: password, minLength: 1, maxLength: 8192, writeOnly: true}
+      responses:
+        "200": {description: Secret stored; response contains metadata only}
+        "403": {description: System owner required}
+        "404": {description: Secret key is not allowlisted}
+    delete:
+      tags: [Administration]
+      summary: Remove one encrypted platform secret
+      description: System-owner only. Dependent provider operations return configuration-required errors until a replacement is configured.
+      responses:
+        "204": {description: Secret removed}
+        "403": {description: System owner required}
+        "404": {description: Secret not configured or not allowlisted}
   /api/v1/audit/events:
     get:
       tags: [Audit]

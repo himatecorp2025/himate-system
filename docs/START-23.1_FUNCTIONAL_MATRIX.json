@@ -186,6 +186,11 @@
       "scope": "Policies, restore points and restore verification"
     },
     {
+      "id": "administration.secrets",
+      "name": "Administration / Secrets & API Keys",
+      "scope": "Write-only encrypted provider credential management and provider-readiness status"
+    },
+    {
       "id": "administration.audit",
       "name": "Administration / Audit",
       "scope": "Server-side filters, pagination and immutable audit stream"
@@ -2181,6 +2186,42 @@
       "target_phase": "23.11.3",
       "e2e_proof": "scripts/smoke_start_23_11_3.sh: canonical 38 discovery -> publish/READY -> Business 10 ACTIVE + 28 LOCKED -> Flex upgrade metadata -> activation bypass rejected",
       "notes": "Discovery visibility is not execution authority. Canonical legacy-reference modules may be COMING_SOON and visible while arbitrary unpublished non-marketplace modules remain hidden."
+    },
+    {
+      "id": "PLATFORM-SECRET-UPSERT-23-11-3A",
+      "surface": "administration.secrets",
+      "ui": "Administration → Secrets & API Keys: securely create or replace an allowlisted provider credential",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/secrets_admin.dart",
+      "source_token": "widget.api.put('/api/v1/admin/secrets/",
+      "method": "PUT",
+      "api_pattern": "/api/v1/admin/secrets/{secretKey}",
+      "backend_service": "gateway / identity",
+      "persistence": "identity.platform_secrets encrypted_value (AES-256-GCM)",
+      "audit": "central gateway mutation audit with secret request fields redacted",
+      "localization_state": "EN_UI_WITH_CENTRAL_LOCALIZATION_FOLLOWUP",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3a.sh: owner PUT -> configured metadata -> raw secret absent from response/readback",
+      "notes": "Only explicitly allowlisted provider keys are accepted. Only system_owner may mutate; raw values are write-only."
+    },
+    {
+      "id": "PLATFORM-SECRET-DELETE-23-11-3A",
+      "surface": "administration.secrets",
+      "ui": "Administration → Secrets & API Keys: remove an encrypted provider credential",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/secrets_admin.dart",
+      "source_token": "widget.api.delete('/api/v1/admin/secrets/",
+      "method": "DELETE",
+      "api_pattern": "/api/v1/admin/secrets/{secretKey}",
+      "backend_service": "gateway / identity",
+      "persistence": "identity.platform_secrets",
+      "audit": "central gateway mutation audit; no raw secret state is emitted",
+      "localization_state": "EN_UI_WITH_CENTRAL_LOCALIZATION_FOLLOWUP",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3a.sh: owner DELETE -> configuration-required metadata state",
+      "notes": "Removing a secret disables only the dependent provider operation; Payments/Runtime remain healthy and fail closed for unavailable provider actions."
     }
   ],
   "completed_through": "23.11.3"

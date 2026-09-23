@@ -2,8 +2,13 @@ package common
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -144,6 +149,84 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 		current = migration.Version
 	}
 	return nil
+}
+
+func platformSecretKey(master string) ([32]byte, error) {
+	if len(strings.TrimSpace(master)) < 24 {
+		return [32]byte{}, errors.New("platform secret master credential is not configured")
+	}
+	return sha256.Sum256([]byte("himate-platform-secrets-v1\x00" + master)), nil
+}
+
+func EncryptPlatformSecret(master, plaintext string) (string, error) {
+	if plaintext == "" {
+		return "", errors.New("secret value is required")
+	}
+	key, err := platformSecretKey(master)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nil, nonce, []byte(plaintext), []byte("himate-platform-secret"))
+	payload := append(nonce, sealed...)
+	return base64.RawStdEncoding.EncodeToString(payload), nil
+}
+
+func DecryptPlatformSecret(master, encoded string) (string, error) {
+	key, err := platformSecretKey(master)
+	if err != nil {
+		return "", err
+	}
+	raw, err := base64.RawStdEncoding.DecodeString(strings.TrimSpace(encoded))
+	if err != nil {
+		return "", errors.New("platform secret payload is invalid")
+	}
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) <= gcm.NonceSize() {
+		return "", errors.New("platform secret payload is truncated")
+	}
+	plain, err := gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], []byte("himate-platform-secret"))
+	if err != nil {
+		return "", errors.New("platform secret could not be decrypted")
+	}
+	return string(plain), nil
+}
+
+func LoadPlatformSecret(ctx context.Context, db *sql.DB, master, secretKey string) (string, bool, error) {
+	if db == nil {
+		return "", false, errors.New("database is unavailable")
+	}
+	var encrypted string
+	err := db.QueryRowContext(ctx, `SELECT encrypted_value FROM identity.platform_secrets WHERE secret_key=$1 AND active=TRUE`, strings.TrimSpace(secretKey)).Scan(&encrypted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	value, err := DecryptPlatformSecret(master, encrypted)
+	if err != nil {
+		return "", false, err
+	}
+	return value, true, nil
 }
 
 func MarshalJSON(value any) ([]byte, error) {
