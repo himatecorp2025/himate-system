@@ -115,7 +115,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test --platform chrome
+      - run: flutter test --platform chrome --reporter expanded
       - name: Run START-23 responsive and bilingual frontend audit
         run: python3 ../scripts/audit_start_23_frontend.py
       - name: Run START-23.1 functional-contract audit
