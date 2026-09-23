@@ -165,6 +165,7 @@ class PartnerPortalLoginPage extends StatefulWidget {
 class _PartnerPortalLoginPageState extends State<PartnerPortalLoginPage> {
   final email = TextEditingController();
   final password = TextEditingController();
+  final passwordFocus = FocusNode();
   bool busy = false;
   bool obscure = true;
   bool remember = true;
@@ -174,6 +175,7 @@ class _PartnerPortalLoginPageState extends State<PartnerPortalLoginPage> {
   void dispose() {
     email.dispose();
     password.dispose();
+    passwordFocus.dispose();
     super.dispose();
   }
 
@@ -270,15 +272,34 @@ class _PartnerPortalLoginPageState extends State<PartnerPortalLoginPage> {
                                 const SizedBox(height: 12),
                                 TextField(
                                   controller: password,
+                                  focusNode: passwordFocus,
                                   obscureText: obscure,
+                                  enableSuggestions: false,
+                                  autocorrect: false,
                                   autofillHints: const [AutofillHints.password],
                                   onSubmitted: (_) => submit(),
                                   decoration: InputDecoration(
                                     labelText: uiLiteral('Password'),
                                     prefixIcon: const Icon(Icons.lock_outline_rounded),
-                                    suffixIcon: IconButton(
-                                      onPressed: () => setState(() => obscure = !obscure),
-                                      icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                                    suffixIcon: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          tooltip: uiLiteral('Clear password'),
+                                          onPressed: () {
+                                            TextInput.finishAutofillContext(shouldSave: false);
+                                            password.clear();
+                                            passwordFocus.requestFocus();
+                                            if (mounted) setState(() => error = null);
+                                          },
+                                          icon: const Icon(Icons.close_rounded),
+                                        ),
+                                        IconButton(
+                                          tooltip: uiLiteral(obscure ? 'Show password' : 'Hide password'),
+                                          onPressed: () => setState(() => obscure = !obscure),
+                                          icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
