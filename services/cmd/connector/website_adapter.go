@@ -240,7 +240,7 @@ func (a *app) connectorInternalGET(ctx context.Context,host,path string,dst any)
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+host+path,nil)
 	if err!=nil{return err}
 	common.BindInternalRequest(req,a.internalToken)
-	resp,err:=a.client.Do(req)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return err}
 	defer resp.Body.Close()
 	raw,err:=io.ReadAll(io.LimitReader(resp.Body,1<<20))
