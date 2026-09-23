@@ -162,6 +162,7 @@ func start23112PlanBillingMigration() common.Migration {
 			`ALTER TABLE billing.invoices ALTER COLUMN billing_model SET DEFAULT 'LEGACY_MODULE'`,
 			`ALTER TABLE billing.invoice_items ALTER COLUMN billing_model SET DEFAULT 'LEGACY_MODULE'`,
 			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS billing_invoices_partner_id_invoice_date_key`,
+			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS invoices_partner_id_invoice_date_key`,
 			`DROP INDEX IF EXISTS billing.billing_invoice_period_unique`,
 			`DROP INDEX IF EXISTS billing.billing_invoice_date_model_unique`,
 			`DROP INDEX IF EXISTS billing.billing_invoice_period_model_unique`,
@@ -192,6 +193,18 @@ func start23112PlanBillingRecoveryMigration() common.Migration {
 		Statements: []string{
 			`DROP INDEX IF EXISTS billing.billing_invoice_key_unique`,
 			`CREATE UNIQUE INDEX billing_invoice_key_unique ON billing.invoices(invoice_key)`,
+		},
+	}
+}
+
+func start23112InvoiceDateConstraintRecoveryMigration() common.Migration {
+	return common.Migration{
+		Version: 14,
+		Name: "start-23-11-2-remove-legacy-one-invoice-per-day-constraint",
+		Statements: []string{
+			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS billing_invoices_partner_id_invoice_date_key`,
+			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS invoices_partner_id_invoice_date_key`,
+			`CREATE INDEX IF NOT EXISTS billing_invoice_partner_date_idx ON billing.invoices(partner_id,invoice_date DESC)`,
 		},
 	}
 }
