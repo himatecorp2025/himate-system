@@ -33,3 +33,7 @@ If a deployed frontend sends fields that an older `himate-partners` service does
 - full Flutter analyze/test/build, Go test/race/build and Compose regression suite remain mandatory.
 
 Release contract: `0.8.24-start-23.11.3g`.
+
+## START-23.11.3h supersession
+
+START-23.11.3h intentionally supersedes the earlier display-name-derived slug conflict rule. Partner display names are presentation data and may repeat. HIMATE now generates the unique technical slug from the display name plus immutable partner ID. Primary-domain uniqueness remains independently enforced.
