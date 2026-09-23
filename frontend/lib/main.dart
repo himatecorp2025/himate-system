@@ -2859,6 +2859,7 @@ class _PartnersPageState extends State<PartnersPage> {
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
+          key: const Key('new-partner-dialog'),
           title: 'New Partner',
           subtitle: 'Create the complete partner master record, billing identity, first Portal Owner and initial brand identity. Provisioning can be completed from the partner workspace.',
           icon: Icons.add_business_outlined,
@@ -3332,7 +3333,12 @@ class _PartnersPageState extends State<PartnersPage> {
       subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
       actions: [
         OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const LText('Add category')),
-        FilledButton.icon(onPressed: addPartner, icon: const Icon(Icons.add_business_outlined), label: const LText('New Partner')),
+        FilledButton.icon(
+          key: const Key('partners-new-partner-button'),
+          onPressed: addPartner,
+          icon: const Icon(Icons.add_business_outlined),
+          label: const LText('New Partner'),
+        ),
       ],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
