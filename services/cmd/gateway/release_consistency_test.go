@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,7 +33,7 @@ func TestServiceReleaseAcceptsMatchingMicroservice(t *testing.T) {
 		client: &http.Client{Timeout: time.Second},
 		hosts: map[string]string{"partners": strings.TrimPrefix(server.URL, "http://")},
 	}
-	got, err := a.serviceRelease(t.Context(), "partners")
+	got, err := a.serviceRelease(context.Background(), "partners")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestServiceReleaseRejectsOldOrUnversionedMicroservice(t *testing.T) {
 				client: &http.Client{Timeout: time.Second},
 				hosts: map[string]string{"partners": strings.TrimPrefix(server.URL, "http://")},
 			}
-			if _, err := a.serviceRelease(t.Context(), "partners"); err == nil {
+			if _, err := a.serviceRelease(context.Background(), "partners"); err == nil {
 				t.Fatal("expected release mismatch to be rejected")
 			}
 		})
