@@ -275,8 +275,8 @@ func TestSTART233CancellationBoundaryRemainsExclusive(t *testing.T) {
 
 func TestSTART23112PlanPricingContract(t *testing.T) {
 	m := start23112PlanBillingMigration()
-	if m.Version != 10 {
-		t.Fatalf("expected migration version 10 got %d", m.Version)
+	if m.Version != 11 {
+		t.Fatalf("expected migration version 11 got %d", m.Version)
 	}
 	joined := strings.Join(m.Statements, "\n")
 	for _, token := range []string{
