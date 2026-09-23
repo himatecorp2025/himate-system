@@ -197,7 +197,8 @@ jobs:
           test -s test/start23_responsive_qa_test.dart
           grep -q 'start223CommercialWorkflowPanel' lib/commercial_automation_ui.dart
           grep -q 'start223WebsiteAdapterPanel' lib/commercial_automation_ui.dart
-          grep -q 'Commercial agreement reference' lib/main.dart
+          grep -q 'Agreement reference' lib/commercial_automation_ui.dart
+          grep -Fq "/api/v1/billing/partners/\${partner['id']}/agreement" lib/commercial_automation_ui.dart
           grep -q 'class PartnerPortalApp' lib/partner_portal.dart
           grep -q 'class PartnerPortalShell' lib/partner_portal.dart
           grep -q '/partner/api/v1/modules' lib/partner_portal.dart
