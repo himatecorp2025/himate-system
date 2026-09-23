@@ -13,7 +13,7 @@ workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 fast_workflow = (root / ".github/workflows/ci-fast.yml").read_text(encoding="utf-8")
 schema_guard = (root / "scripts/audit_smoke_schema_contracts.py").read_text(encoding="utf-8")
 execution_guard = (root / "scripts/audit_smoke_execution_contracts.py").read_text(encoding="utf-8")
-release_wrapper = (root / "scripts/smoke_start_23_11_3i.sh").read_text(encoding="utf-8")
+release_smoke = (root / "scripts/smoke_start_23_11_3i.sh").read_text(encoding="utf-8")
 
 release = "0.8.26-start-23.11.3i"
 frontend_start = frontend.index("  Future<void> addPartner() async {")
@@ -116,12 +116,20 @@ checks = [
         and '"role", "role_key"' in schema_guard,
     ),
     (
-        "smoke shell delegation is validated before expensive Compose build",
+        "smoke shell execution is validated before expensive Compose build",
         "Validate smoke shell execution contracts" in workflow
         and "python3 scripts/audit_smoke_execution_contracts.py" in workflow
         and workflow.index("Validate smoke shell execution contracts") < workflow.index("Build and start containerized microservices")
         and "Smoke shell execution contract audit: PASS" in execution_guard
-        and 'exec sh "$SCRIPT_DIR/smoke_start_23_11_3h.sh"' in release_wrapper,
+        and "direct exec of a .sh file is not portable" in execution_guard,
+    ),
+    (
+        "START-23.11.3i release smoke is standalone and non-duplicative",
+        "gateway reports one synchronized application release" in release_smoke
+        and "release_consistent" in release_smoke
+        and "RELEASE_MISMATCH" in release_smoke
+        and "X-Himate-Expected-Version" in release_smoke
+        and "smoke_start_23_11_3h.sh" not in release_smoke,
     ),
     (
         "Compose pins one current release across every application microservice",
