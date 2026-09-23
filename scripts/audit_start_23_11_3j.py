@@ -30,6 +30,12 @@ checks = [
         and "!goldenActivation && requiresProvisioningGate" in partners,
     ),
     (
+        "Golden Test flag cannot be casually removed and contaminate real aggregates",
+        "GOLDEN_TEST_PARTNER_IMMUTABLE" in partners
+        and "dedicated test-tenant purge workflow" in partners
+        and "partner['test_partner'] == true" in frontend,
+    ),
+    (
         "Golden Test receives every canonical module as active entitlement",
         "quote_reference='GOLDEN-TEST-PARTNER'" in catalog
         and "entitlement_source='TEST'" in catalog
