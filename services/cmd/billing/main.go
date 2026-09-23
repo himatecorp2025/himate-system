@@ -1687,7 +1687,7 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		base := effectiveBaseFee(t, start)
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
 		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
-			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT(partner_id,service_period_start,service_period_end) DO NOTHING`,
+			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT DO NOTHING`,
 			invoiceID, id, at, start, at, t.Currency, base)
 		if err != nil { return err }
 		inserted, _ := result.RowsAffected()
