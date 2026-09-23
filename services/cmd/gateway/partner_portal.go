@@ -286,6 +286,14 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	case path=="/company":
 		permission:="company.read";if r.Method==http.MethodPatch{permission="company.write"}
 		if a.requirePartnerPermission(w,u,permission){a.partnerCompany(w,r,u)}
+	case path=="/plans"&&r.Method==http.MethodGet:
+		if a.requirePartnerPermission(w,u,"billing.read"){a.partnerPlans(w,r,u)}
+	case path=="/plan"&&(r.Method==http.MethodGet||r.Method==http.MethodPatch||r.Method==http.MethodPut):
+		permission:="billing.read";if r.Method!=http.MethodGet{permission="modules.write"}
+		if a.requirePartnerPermission(w,u,permission){a.partnerPlan(w,r,u)}
+	case path=="/plan/modules"&&(r.Method==http.MethodGet||r.Method==http.MethodPut):
+		permission:="modules.read";if r.Method==http.MethodPut{permission="modules.write"}
+		if a.requirePartnerPermission(w,u,permission){a.partnerPlanModules(w,r,u)}
 	case path=="/modules"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"modules.read"){a.partnerModulesView(w,r,u)}
 	case strings.HasPrefix(path,"/modules/")&&strings.HasSuffix(path,"/activate")&&r.Method==http.MethodPost:
@@ -423,6 +431,62 @@ func anyItems(value any) []map[string]any {
 	return out
 }
 
+func (a *app) partnerPlans(w http.ResponseWriter,r *http.Request,u partnerUser){
+	var out map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/plans",&out);err!=nil{
+		writeInternalError(w,err,"Subscription plans are temporarily unavailable");return
+	}
+	if raw,ok:=out["items"].([]any);ok{
+		filtered:=[]any{}
+		for _,item:=range raw{
+			if m,ok:=item.(map[string]any);ok && m["customer_selectable"]==true && m["active"]==true{filtered=append(filtered,m)}
+		}
+		out["items"]=filtered;out["count"]=len(filtered)
+	}
+	common.JSON(w,200,out)
+}
+
+func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,u partnerUser){
+	upstream:="/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/plan"
+	if r.Method==http.MethodGet{
+		var out map[string]any
+		if err:=a.internalGET(r.Context(),a.hosts["billing"],upstream,&out);err!=nil{writeInternalError(w,err,"Subscription plan is temporarily unavailable");return}
+		common.JSON(w,200,out);return
+	}
+	var payload map[string]any
+	if common.Decode(r,&payload)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	if strings.ToUpper(strings.TrimSpace(fmt.Sprint(payload["plan_key"])))=="CUSTOM"{
+		common.APIError(w,403,"CUSTOM_ADMIN_ONLY","Custom commercial plans are assigned only by HIMATE administrators");return
+	}
+	var out map[string]any
+	err:=a.internalJSON(r.Context(),http.MethodPatch,a.hosts["billing"],upstream,payload,map[string]string{"X-Himate-User-ID":"partner:"+u.ID},&out)
+	if err!=nil{writeInternalError(w,err,"Subscription plan could not be changed");return}
+	common.JSON(w,200,out)
+}
+
+func (a *app) partnerPlanModules(w http.ResponseWriter,r *http.Request,u partnerUser){
+	upstream:="/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/plan/modules"
+	if r.Method==http.MethodGet{
+		var out map[string]any
+		if err:=a.internalGET(r.Context(),a.hosts["billing"],upstream,&out);err!=nil{writeInternalError(w,err,"Plan modules are temporarily unavailable");return}
+		common.JSON(w,200,out);return
+	}
+	var payload map[string]any
+	if common.Decode(r,&payload)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	var out map[string]any
+	err:=a.internalJSON(r.Context(),http.MethodPut,a.hosts["billing"],upstream,payload,map[string]string{"X-Himate-User-ID":"partner:"+u.ID},&out)
+	if err!=nil{writeInternalError(w,err,"Flex module selection could not be updated");return}
+	common.JSON(w,200,out)
+}
+
+func (a *app) partnerHasManagedPlan(ctx context.Context,partnerID string)(bool,error){
+	var out map[string]any
+	err:=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(partnerID)+"/plan",&out)
+	if err!=nil{return false,err}
+	configured,ok:=out["configured"].(bool)
+	return ok&&configured,nil
+}
+
 func (a *app) partnerModulesView(w http.ResponseWriter,r *http.Request,u partnerUser){
 	var out map[string]any
 	if err:=a.internalGET(r.Context(),a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules",&out);err!=nil{
@@ -436,6 +500,9 @@ func partnerModuleKey(path,suffix string)string{
 }
 
 func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u partnerUser){
+	if managed,err:=a.partnerHasManagedPlan(r.Context(),u.PartnerID);err==nil&&managed{
+		common.APIError(w,409,"PLAN_MANAGED_MODULES","Modules are controlled by your subscription plan; use Flex plan selection where available");return
+	}
 	key:=partnerModuleKey(r.URL.Path,"/activate");if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Module not found");return}
 	var module map[string]any
 	err:=a.internalJSON(r.Context(),http.MethodPost,a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules/"+url.PathEscape(key)+"/activate",
@@ -448,6 +515,9 @@ func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u part
 }
 
 func (a *app) partnerSubscription(w http.ResponseWriter,r *http.Request,u partnerUser){
+	if managed,err:=a.partnerHasManagedPlan(r.Context(),u.PartnerID);err==nil&&managed{
+		common.APIError(w,409,"PLAN_MANAGED_MODULES","Individual module cancellation is disabled for subscription-plan partners");return
+	}
 	key:=partnerModuleKey(r.URL.Path,"/subscription");if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Subscription not found");return}
 	var catalog map[string]any
 	if err:=a.internalGET(r.Context(),a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules",&catalog);err!=nil{
