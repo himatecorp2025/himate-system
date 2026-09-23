@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.21-start-23.11.3d
+  version: 0.8.22-start-23.11.3e
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.3d HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.3e HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -619,6 +619,33 @@ paths:
       responses:
         "201": {description: Partner created}
         "409": {description: Duplicate slug or domain}
+  /api/v1/partners/{partnerId}/logo:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    post:
+      tags: [Partners]
+      summary: Upload and assign the partner company logo
+      description: >
+        Stores a PNG, JPEG or WebP image in the partner-scoped CMS media library,
+        registers it as the partner's public logo asset, and updates logo_url on
+        the authoritative partner master record.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, purpose]
+              properties:
+                file: {type: string, format: binary}
+                purpose: {type: string, const: logo}
+                alt_text: {type: string, maxLength: 240}
+      responses:
+        "201": {description: Logo stored, published for partner-brand use and linked to the partner}
+        "400": {description: Invalid multipart request or unsupported purpose}
+        "404": {description: Partner not found}
+        "415": {description: Logo must be PNG, JPEG or WebP}
+        "502": {description: CMS or storage unavailable}
   /api/v1/partners/{partnerId}/portal-users:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -2275,7 +2302,23 @@ components:
         primary_domain: {type: string}
         contact_name: {type: string}
         contact_email: {type: string, format: email}
+        finance_contact_name: {type: string}
+        finance_contact_email: {type: string, format: email}
+        technical_contact_name: {type: string}
+        technical_contact_email: {type: string, format: email}
+        marketing_contact_name: {type: string}
+        marketing_contact_email: {type: string, format: email}
+        registration_number: {type: string}
+        tax_id: {type: string}
         country: {type: string}
+        state_region: {type: string}
+        city: {type: string}
+        postal_code: {type: string}
+        address_line1: {type: string}
+        address_line2: {type: string}
+        website: {type: string}
+        phone: {type: string}
+        notes: {type: string}
     Partner:
       type: object
       properties:
@@ -2283,11 +2326,33 @@ components:
         display_name: {type: string}
         legal_name: {type: string}
         brand_name: {type: string}
+        category_id: {type: string}
+        category_name: {type: string}
         lifecycle:
           type: string
           enum: [PROSPECT, LICENSE_PENDING, READY_TO_PROVISION, PROVISIONING, CONFIGURATION, TESTING, READY_FOR_LAUNCH, LIVE, SUSPENDED, ARCHIVED]
+        registration_number: {type: string}
+        tax_id: {type: string}
+        country: {type: string}
+        state_region: {type: string}
+        city: {type: string}
+        postal_code: {type: string}
+        address_line1: {type: string}
+        address_line2: {type: string}
+        website: {type: string}
+        phone: {type: string}
+        contact_name: {type: string}
+        contact_email: {type: string}
+        finance_contact_name: {type: string}
+        finance_contact_email: {type: string}
+        technical_contact_name: {type: string}
+        technical_contact_email: {type: string}
+        marketing_contact_name: {type: string}
+        marketing_contact_email: {type: string}
         primary_domain: {type: string}
         staging_domain: {type: string}
+        logo_url: {type: string}
+        notes: {type: string}
         platform_version: {type: string}
         system_health: {type: string}
         health_checked_at: {type: [string, "null"], format: date-time}

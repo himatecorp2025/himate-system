@@ -1099,6 +1099,8 @@ func auditAction(r *http.Request) string {
 		return "MODULE_IMPACT_MAPPING_CHANGED"
 	case strings.HasPrefix(path, "/api/v1/admin/users/") && r.Method == http.MethodPatch:
 		return "ADMIN_USER_UPDATED"
+	case strings.HasPrefix(path, "/api/v1/partners/") && strings.HasSuffix(path, "/logo") && r.Method == http.MethodPost:
+		return "PARTNER_LOGO_UPLOADED"
 	case strings.HasSuffix(path, "/publish"):
 		return "CMS_PAGE_PUBLISHED"
 	case strings.HasSuffix(path, "/rollback"):
@@ -1244,6 +1246,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
 		a.serveProxy(w, r, "partners")
+	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.HasSuffix(r.URL.Path, "/logo"):
+		a.adminPartnerLogo(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/portal-users"):
 		a.adminPartnerUsers(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/modules"):

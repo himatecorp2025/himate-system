@@ -158,6 +158,7 @@ func TestSTART19RequiredPermissionClassification(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/roles", "administration.approve"},
 		{http.MethodGet, "/api/v1/partners", "partners.read"},
 		{http.MethodPatch, "/api/v1/partners/ptr_1", "partners.write"},
+		{http.MethodPost, "/api/v1/partners/ptr_1/logo", "partners.write"},
 		{http.MethodGet, "/api/v1/partners/ptr_1/modules", "catalog.read"},
 		{http.MethodPatch, "/api/v1/module-groups/marketing", "catalog.write"},
 		{http.MethodPatch, "/api/v1/partners/ptr_1/modules/mod_1", "catalog.write"},
@@ -449,6 +450,17 @@ func TestAuditActionClassification(t *testing.T) {
 		if got := auditAction(req); got != tc.want {
 			t.Fatalf("%s %s: expected %s, got %s", tc.method, tc.path, tc.want, got)
 		}
+	}
+}
+
+func TestSTART23113ePartnerLogoAuditClassification(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://himate.example/api/v1/partners/ptr_123/logo", nil)
+	if got := auditAction(req); got != "PARTNER_LOGO_UPLOADED" {
+		t.Fatalf("expected PARTNER_LOGO_UPLOADED, got %s", got)
+	}
+	resource, partnerID := auditResource(req)
+	if resource != "partners" || partnerID != "ptr_123" {
+		t.Fatalf("unexpected audit scope: resource=%s partner=%s", resource, partnerID)
 	}
 }
 

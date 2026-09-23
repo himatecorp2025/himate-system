@@ -373,6 +373,16 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.21-start-23.11.3d`
 - acceptance: `docs/START-23.11.3D_ACCEPTANCE.md`, `scripts/audit_start_23_11_3d.py`, `scripts/smoke_start_23_11_3d.sh`
 
+### START-23.11.3e — New Partner Master-Data Onboarding
+- fixes the deployed **New Partner** button no-op: the modal no longer waits for Module Catalog or any other supplementary backend before opening
+- rebuilds New Partner as a complete company master-data workflow with legal name, brand name, registration/tax identifiers, registered office, operational contacts, website/phone/domain and internal notes
+- creates the first Partner Portal Owner during the same onboarding workflow
+- supports partner company-logo upload through a partner-scoped CMS asset with an explicit public logo binding and authoritative `logo_url`
+- partner creation stays in `PROSPECT`; licensing, evidence, module entitlement and environment launch remain controlled follow-up workflows in the partner workspace
+- supplementary onboarding failures are reported without losing an already-created core partner record
+- release contract version is `0.8.22-start-23.11.3e`
+- acceptance: `docs/START-23.11.3E_ACCEPTANCE.md`, `scripts/audit_start_23_11_3e.py`, `scripts/smoke_start_23_11_3e.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 

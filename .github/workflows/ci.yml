@@ -30,7 +30,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.21-start-23.11.3d' ../docs/openapi.yaml
+          grep -q 'version: 0.8.22-start-23.11.3e' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
@@ -115,7 +115,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test --platform chrome
+      - run: flutter test --platform chrome --reporter expanded
       - name: Run START-23 responsive and bilingual frontend audit
         run: python3 ../scripts/audit_start_23_frontend.py
       - name: Run START-23.1 functional-contract audit
@@ -150,6 +150,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_3a.py
       - name: Run START-23.11.3d Real Partner Onboarding audit
         run: python3 ../scripts/audit_start_23_11_3d.py
+      - name: Run START-23.11.3e New Partner Master Data audit
+        run: python3 ../scripts/audit_start_23_11_3e.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -195,7 +197,8 @@ jobs:
           test -s test/start23_responsive_qa_test.dart
           grep -q 'start223CommercialWorkflowPanel' lib/commercial_automation_ui.dart
           grep -q 'start223WebsiteAdapterPanel' lib/commercial_automation_ui.dart
-          grep -q 'Commercial agreement reference' lib/main.dart
+          grep -q 'Agreement reference' lib/commercial_automation_ui.dart
+          grep -Fq "/api/v1/billing/partners/\${partner['id']}/agreement" lib/commercial_automation_ui.dart
           grep -q 'class PartnerPortalApp' lib/partner_portal.dart
           grep -q 'class PartnerPortalShell' lib/partner_portal.dart
           grep -q '/partner/api/v1/modules' lib/partner_portal.dart
@@ -389,6 +392,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_3a.sh http://127.0.0.1:8080
       - name: Run START-23.11.3d Real Partner Onboarding smoke
         run: sh scripts/smoke_start_23_11_3d.sh http://127.0.0.1:8080
+      - name: Run START-23.11.3e New Partner Master Data smoke
+        run: sh scripts/smoke_start_23_11_3e.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

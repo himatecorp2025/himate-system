@@ -287,6 +287,17 @@ func (a *app)migrate(ctx context.Context)error{
 			 ('theme_minimal','CATALOG','_catalog','Minimal','Minimal high-contrast visual family','{"layout_key":"minimal","navy":"#111827","gold":"#B8893C","background":"#FFFFFF","text_color":"#111827","heading_font":"Georgia","body_font":"Arial","button_radius":2,"assets":{}}'::jsonb,TRUE,'system','system')
 			 ON CONFLICT(id) DO NOTHING`,
 		}},
+		{Version:8,Name:"start-23-11-3e-partner-brand-assets",Statements:[]string{
+			`CREATE TABLE IF NOT EXISTS cms.partner_brand_assets(
+				partner_id TEXT NOT NULL,
+				slot TEXT NOT NULL CHECK(slot IN ('logo')),
+				media_id TEXT NOT NULL REFERENCES cms.media_assets(id) ON DELETE CASCADE,
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				PRIMARY KEY(partner_id,slot)
+			)`,
+			`CREATE INDEX IF NOT EXISTS cms_partner_brand_media_idx ON cms.partner_brand_assets(media_id)`,
+		}},
 	})
 }
 
@@ -859,6 +870,7 @@ func (a *app)publicMedia(w http.ResponseWriter,r *http.Request){
 			CROSS JOIN LATERAL jsonb_each_text(COALESCE(p.theme->'assets','{}'::jsonb)) AS asset
 			WHERE s.scope_type='PARTNER' AND asset.value=$1
 		)
+		OR EXISTS(SELECT 1 FROM cms.partner_brand_assets WHERE media_id=$1 AND slot='logo')
 		OR EXISTS(SELECT 1 FROM cms.seo_settings WHERE id=1 AND published->>'default_og_image_asset_id'=$1)`,id).Scan(&exists)
 	if !exists{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Published media not found");return}

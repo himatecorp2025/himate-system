@@ -147,21 +147,40 @@ for token in (
 require("Register commercial document metadata with a persistent storage URL" not in frontend,
         "legacy free-form commercial storage URL UI remains")
 
-# New Partner provisioning wizard must use real file-backed Evidence too.
-for token in (
-    "html.File? activationInvoiceFile",
-    "html.File? paymentEvidenceFile",
-    "Choose activation invoice *",
-    "'evidence_type': 'INVOICE'",
-    "invoiceEvidenceId",
-    "'storage_url': 'evidence://$invoiceEvidenceId'",
-    "paymentEvidenceId",
-    "'storage_url': 'evidence://$paymentEvidenceId'",
+# START-23.11.3e deliberately removed Evidence/Billing hard dependencies from
+# New Partner creation. Commercial documents remain file-backed, but they are
+# completed from Partner Workspace after the authoritative partner record exists.
+add_partner_start = frontend.index("  Future<void> addPartner() async {")
+add_partner_end = frontend.index("\n  List<Map<String, dynamic>> get filtered", add_partner_start)
+add_partner = frontend[add_partner_start:add_partner_end]
+for stale in (
+    "activationInvoiceFile",
+    "paymentEvidenceFile",
+    "activationInvoiceReference",
+    "evidenceReference",
+    "widget.api.multipart('/api/v1/evidence'",
+    "/documents'",
 ):
-    require(token in frontend, f"New Partner Evidence wizard missing {token!r}")
-for stale in ("activationInvoiceReference", "evidenceReference"):
-    require(stale not in frontend,
-            f"New Partner wizard still exposes free-form commercial Evidence reference: {stale}")
+    require(stale not in add_partner,
+            f"New Partner creation must not be hard-coupled to commercial Evidence: {stale}")
+require(
+    "Agreements, invoices, payment evidence, modules and environments can be completed from the partner workspace." in add_partner,
+    "New Partner UI does not explain the deferred commercial Evidence workflow",
+)
+# The authoritative post-create workspace still owns the real Evidence pipeline.
+# START-23.11.3e generalized the document uploader, so verify the semantic
+# INVOICE -> Evidence INVOICE mapping rather than requiring a hard-coded payload.
+add_document_start = frontend.index("  Future<void> addDocument() async {")
+add_document_end = frontend.index("\n  Map<String, dynamic>? subscriptionFor", add_document_start)
+add_document = frontend[add_document_start:add_document_end]
+for token in (
+    "final evidenceType = switch (kind)",
+    "'INVOICE' => 'INVOICE'",
+    "'evidence_type': evidenceType",
+    "'storage_url': 'evidence://$evidenceId'",
+    "Commercial document uploaded and registered.",
+):
+    require(token in add_document, f"Partner Workspace Evidence flow missing {token!r}")
 
 # Matrix closure.
 require(tuple(map(int, str(matrix.get("completed_through", "0")).split("."))) >= (23, 7),

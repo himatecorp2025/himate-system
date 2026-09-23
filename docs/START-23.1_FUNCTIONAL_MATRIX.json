@@ -515,11 +515,11 @@
     },
     {
       "id": "PART-WIZ-AGREEMENT",
-      "surface": "partners.create",
-      "ui": "New Partner agreement",
+      "surface": "partner.commercial",
+      "ui": "Partner Workspace · Commercial Agreement",
       "kind": "mutation",
-      "frontend_file": "frontend/lib/main.dart",
-      "source_token": "'/api/v1/billing/partners/$partnerId/agreement'",
+      "frontend_file": "frontend/lib/commercial_automation_ui.dart",
+      "source_token": "'/api/v1/billing/partners/${partner['id']}/agreement'",
       "method": "PUT",
       "api_pattern": "/api/v1/billing/partners/{partnerId}/agreement",
       "backend_service": "billing",
@@ -529,15 +529,15 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.2",
       "e2e_proof": "scripts/smoke_start_23_2.sh: mutation -> persistence -> readback",
-      "notes": ""
+      "notes": "START-23.11.3e moved this operation out of New Partner creation so partner master-data onboarding cannot be blocked by secondary commercial/provisioning services. The historical contract ID is retained for traceability; the canonical mutation now lives in Partner Workspace."
     },
     {
       "id": "PART-WIZ-INVOICE",
-      "surface": "partners.create",
-      "ui": "New Partner activation invoice reference",
+      "surface": "partner.documents",
+      "ui": "Partner Workspace · Upload commercial invoice/evidence",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
-      "source_token": "'/api/v1/billing/partners/$partnerId/documents'",
+      "source_token": "'/api/v1/billing/partners/${partner['id']}/documents'",
       "method": "POST",
       "api_pattern": "/api/v1/billing/partners/{partnerId}/documents",
       "backend_service": "evidence + storage + billing",
@@ -547,15 +547,15 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.7",
       "e2e_proof": "scripts/smoke_start_23_7.sh: fake Evidence rejected -> real PDF Evidence -> Billing invoice readback with authoritative SHA/size",
-      "notes": "Commercial Billing documents are accepted only through same-partner file-backed Evidence references with fresh SHA-256/size integrity validation."
+      "notes": "START-23.11.3e moved invoice/evidence registration out of New Partner creation. Commercial Billing documents remain file-backed Evidence/Storage records with SHA-256/size integrity validation."
     },
     {
       "id": "PART-WIZ-LIFECYCLE",
-      "surface": "partners.create",
-      "ui": "Advance lifecycle",
+      "surface": "partner.profile",
+      "ui": "Partner Workspace · Lifecycle transition",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
-      "source_token": "'/api/v1/partners/$partnerId'",
+      "source_token": "'/api/v1/partners/${partner['id']}'",
       "method": "PATCH",
       "api_pattern": "/api/v1/partners/{partnerId}",
       "backend_service": "partners",
@@ -565,12 +565,12 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
       "e2e_proof": "scripts/smoke_start_23_6.sh: PROSPECT -> LICENSE_PENDING state-machine transition",
-      "notes": ""
+      "notes": "START-23.11.3e moved this operation out of New Partner creation so partner master-data onboarding cannot be blocked by secondary commercial/provisioning services. The historical contract ID is retained for traceability; the canonical mutation now lives in Partner Workspace."
     },
     {
       "id": "PART-WIZ-PROVISION",
-      "surface": "partners.create",
-      "ui": "Provisioning job",
+      "surface": "partner.environments",
+      "ui": "Partner Workspace · Start/resume provisioning",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
       "source_token": "'/api/v1/provisioning/jobs'",
@@ -583,15 +583,15 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.10",
       "e2e_proof": "scripts/smoke_start_23_10.sh: prepare -> execute -> persisted steps -> idempotent retry",
-      "notes": "START-23.10 mutation-proven in containerized CI. Live Render/DNS/TLS production proof is reserved for START-23.12."
+      "notes": "START-23.11.3e moved provisioning out of New Partner creation. Provisioning is initiated from Partner Workspace only after lifecycle/commercial gates permit it. START-23.10 remains mutation-proven in containerized CI; live Render/DNS/TLS proof is reserved for START-23.12."
     },
     {
       "id": "PART-WIZ-LICENSE",
-      "surface": "partners.create",
-      "ui": "Activation license payment",
+      "surface": "partner.commercial",
+      "ui": "Partner Workspace · Initial license configuration",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
-      "source_token": "'/api/v1/billing/partners/$partnerId/license'",
+      "source_token": "'/api/v1/billing/partners/${partner['id']}/license'",
       "method": "PUT",
       "api_pattern": "/api/v1/billing/partners/{partnerId}/license",
       "backend_service": "billing + payments",
@@ -601,7 +601,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.4",
       "e2e_proof": "scripts/smoke_start_23_4.sh: manual PAID rejected -> provider attempt -> signed webhook -> Billing PAID",
-      "notes": "New Partner wizard configures provider profile and starts provider-backed collection; provisioning remains gated until verified settlement."
+      "notes": "START-23.11.3e moved initial-license configuration out of New Partner creation. Partner Workspace configures required amount/waiver; provider settlement remains authoritative and provisioning remains gated."
     },
     {
       "id": "PART-PORTALUSER-CREATE",
@@ -1901,11 +1901,11 @@
     },
     {
       "id": "PART-WIZ-PAYMENT-PROFILE",
-      "surface": "partners.create",
-      "ui": "Configure provider customer and saved payment method",
+      "surface": "partner.commercial",
+      "ui": "Partner Workspace · Provider customer/payment profile",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
-      "source_token": "'/api/v1/payments/partners/$partnerId/profile'",
+      "source_token": "'/api/v1/payments/partners/${partner['id']}/profile'",
       "method": "PUT",
       "api_pattern": "/api/v1/payments/partners/{partnerId}/profile",
       "backend_service": "payments",
@@ -1915,15 +1915,15 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.4",
       "e2e_proof": "scripts/smoke_start_23_4.sh: provider customer/payment method/autopay persists and reads back",
-      "notes": "New Partner wizard configures provider identifiers only; no raw card/payment secret is stored."
+      "notes": "START-23.11.3e moved provider-profile setup out of New Partner creation. Partner Workspace stores provider identifiers only; no raw card/payment secret is stored."
     },
     {
       "id": "PART-WIZ-LICENSE-COLLECT",
-      "surface": "partners.create",
-      "ui": "Collect activation license through provider",
+      "surface": "partner.commercial",
+      "ui": "Partner Workspace · Collect activation license through provider",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
-      "source_token": "'/api/v1/billing/partners/$partnerId/license/collect'",
+      "source_token": "'/api/v1/billing/partners/${partner['id']}/license/collect'",
       "method": "POST",
       "api_pattern": "/api/v1/billing/partners/{partnerId}/license/collect",
       "backend_service": "billing + payments",
@@ -1933,7 +1933,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.4",
       "e2e_proof": "scripts/smoke_start_23_4.sh: idempotent activation charge -> signed webhook -> PAID",
-      "notes": "Collection command creates an idempotent provider attempt; PAID remains webhook-authoritative."
+      "notes": "START-23.11.3e moved provider-backed collection out of New Partner creation. Collection remains idempotent and PAID remains signed-webhook authoritative."
     },
     {
       "id": "PART-PAYMENT-PROFILE-EDIT",
@@ -2222,6 +2222,42 @@
       "target_phase": "23.11.3",
       "e2e_proof": "scripts/smoke_start_23_11_3a.sh: owner DELETE -> configuration-required metadata state",
       "notes": "Removing a secret disables only the dependent provider operation; Payments/Runtime remain healthy and fail closed for unavailable provider actions."
+    },
+    {
+      "id": "PART-WIZ-PORTALOWNER-CREATE",
+      "surface": "partners.create",
+      "ui": "New Partner · Initial Partner Portal Owner",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/main.dart",
+      "source_token": "'/api/v1/partners/$partnerId/portal-users'",
+      "method": "POST",
+      "api_pattern": "/api/v1/partners/{partnerId}/portal-users",
+      "backend_service": "gateway/identity",
+      "persistence": "identity.partner_users",
+      "audit": "central gateway mutation audit",
+      "localization_state": "PARTIAL",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3e.sh: create fake partner -> create initial Owner -> Partner Portal login/readback",
+      "notes": "START-23.11.3e onboarding creates the initial owner as a supplementary step. Failure is surfaced as a warning and does not roll back the authoritative partner master record."
+    },
+    {
+      "id": "PART-WIZ-LOGO",
+      "surface": "partners.create",
+      "ui": "New Partner · Company logo upload",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/main.dart",
+      "source_token": "'/api/v1/partners/$partnerId/logo'",
+      "method": "POST",
+      "api_pattern": "/api/v1/partners/{partnerId}/logo",
+      "backend_service": "gateway + cms + storage + partners",
+      "persistence": "cms.media_assets + cms.partner_brand_assets + partners.partners.logo_url",
+      "audit": "PARTNER_LOGO_UPLOADED + CMS media audit",
+      "localization_state": "PARTIAL",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3e.sh: multipart fake logo -> public CMS media -> partner logo_url readback -> Partner Portal company readback",
+      "notes": "Logo is optional during onboarding. It is stored as partner-scoped media and linked to the authoritative partner record for later personalization."
     }
   ],
   "completed_through": "23.11.3"

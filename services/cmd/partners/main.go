@@ -406,15 +406,31 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 		})
 	case http.MethodPost:
 		var in struct {
-			DisplayName   string `json:"display_name"`
-			LegalName     string `json:"legal_name"`
-			BrandName     string `json:"brand_name"`
-			CategoryID    string `json:"category_id"`
-			Lifecycle     string `json:"lifecycle"`
-			PrimaryDomain string `json:"primary_domain"`
-			ContactName   string `json:"contact_name"`
-			ContactEmail  string `json:"contact_email"`
-			Country       string `json:"country"`
+			DisplayName           string `json:"display_name"`
+			LegalName             string `json:"legal_name"`
+			BrandName             string `json:"brand_name"`
+			CategoryID            string `json:"category_id"`
+			Lifecycle             string `json:"lifecycle"`
+			PrimaryDomain         string `json:"primary_domain"`
+			ContactName           string `json:"contact_name"`
+			ContactEmail          string `json:"contact_email"`
+			FinanceContactName    string `json:"finance_contact_name"`
+			FinanceContactEmail   string `json:"finance_contact_email"`
+			TechnicalContactName  string `json:"technical_contact_name"`
+			TechnicalContactEmail string `json:"technical_contact_email"`
+			MarketingContactName  string `json:"marketing_contact_name"`
+			MarketingContactEmail string `json:"marketing_contact_email"`
+			RegistrationNumber    string `json:"registration_number"`
+			TaxID                 string `json:"tax_id"`
+			Country               string `json:"country"`
+			StateRegion           string `json:"state_region"`
+			City                  string `json:"city"`
+			PostalCode            string `json:"postal_code"`
+			AddressLine1          string `json:"address_line1"`
+			AddressLine2          string `json:"address_line2"`
+			Website               string `json:"website"`
+			Phone                 string `json:"phone"`
+			Notes                 string `json:"notes"`
 		}
 		if common.Decode(r, &in) != nil || strings.TrimSpace(in.DisplayName) == "" {
 			common.APIError(w, 400, "VALIDATION", "Display name is required")
@@ -444,11 +460,25 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 		}
 		id := fmt.Sprintf("ptr_%06d", seq)
 		_, err := a.db.Exec(`INSERT INTO partners.partners(
-				id,slug,display_name,legal_name,brand_name,category_id,lifecycle,primary_domain,contact_name,contact_email,country
-			) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+				id,slug,display_name,legal_name,brand_name,category_id,lifecycle,primary_domain,
+				contact_name,contact_email,finance_contact_name,finance_contact_email,
+				technical_contact_name,technical_contact_email,marketing_contact_name,marketing_contact_email,
+				registration_number,tax_id,country,state_region,city,postal_code,address_line1,address_line2,website,phone,notes
+			) VALUES(
+				$1,$2,$3,$4,$5,$6,$7,$8,
+				$9,$10,$11,$12,$13,$14,$15,$16,
+				$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
+			)`,
 			id, slugify(in.DisplayName), in.DisplayName, strings.TrimSpace(in.LegalName), strings.TrimSpace(in.BrandName),
-			in.CategoryID, in.Lifecycle, strings.TrimSpace(in.PrimaryDomain), strings.TrimSpace(in.ContactName),
-			strings.ToLower(strings.TrimSpace(in.ContactEmail)), strings.TrimSpace(in.Country))
+			in.CategoryID, in.Lifecycle, strings.TrimSpace(in.PrimaryDomain),
+			strings.TrimSpace(in.ContactName), strings.ToLower(strings.TrimSpace(in.ContactEmail)),
+			strings.TrimSpace(in.FinanceContactName), strings.ToLower(strings.TrimSpace(in.FinanceContactEmail)),
+			strings.TrimSpace(in.TechnicalContactName), strings.ToLower(strings.TrimSpace(in.TechnicalContactEmail)),
+			strings.TrimSpace(in.MarketingContactName), strings.ToLower(strings.TrimSpace(in.MarketingContactEmail)),
+			strings.TrimSpace(in.RegistrationNumber), strings.TrimSpace(in.TaxID), strings.TrimSpace(in.Country),
+			strings.TrimSpace(in.StateRegion), strings.TrimSpace(in.City), strings.TrimSpace(in.PostalCode),
+			strings.TrimSpace(in.AddressLine1), strings.TrimSpace(in.AddressLine2), strings.TrimSpace(in.Website),
+			strings.TrimSpace(in.Phone), strings.TrimSpace(in.Notes))
 		if err != nil {
 			common.APIError(w, 409, "CONFLICT", "Partner, slug, or domain already exists")
 			return
