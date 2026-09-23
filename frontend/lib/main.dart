@@ -2898,7 +2898,7 @@ class _PartnersPageState extends State<PartnersPage> {
     final marketingContactEmail = TextEditingController();
     final activationFee = TextEditingController(text: '0');
     final baseMonthlyFee = TextEditingController(text: '0');
-    final minimumMonthlyCommitment = TextEditingController(text: '1500');
+    final minimumMonthlyCommitment = TextEditingController(text: '0');
     final quoteReference = TextEditingController();
     final notes = TextEditingController();
     final onboardingRequestId = 'onb_${DateTime.now().microsecondsSinceEpoch}';
@@ -2976,9 +2976,9 @@ class _PartnersPageState extends State<PartnersPage> {
         'activation_fee_waived': false,
         'activation_fee_reason': '',
         'base_monthly_fee': double.tryParse(baseMonthlyFee.text) ?? 0,
-        'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 1500,
+        'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 0,
         'quote_reference': quoteReference.text.trim(),
-        'annual_increase_percent': 10,
+        'annual_increase_percent': 5,
         'price_effective_from': onboardingDate,
         'service_anchor_date': onboardingDate,
         'reason': 'New Partner master-data onboarding',
