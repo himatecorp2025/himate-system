@@ -14,7 +14,7 @@ add_partner = frontend[start:end]
 
 dialog_start = add_partner.index("final createdResult = await showDialog<Map<String, dynamic>>(")
 partner_post = add_partner.index("widget.api.post('/api/v1/partners'")
-success_pop = add_partner.index("Navigator.pop(dialogContext, created")
+success_pop = add_partner.index("Navigator.pop<Map<String, dynamic>>(dialogContext, created")
 
 checks = [
     (
@@ -52,11 +52,12 @@ checks = [
         and '"Display name is required"' in partners,
     ),
     (
-        "display-name-derived slug conflicts are explicit",
-        'display-name slug or primary domain is already in use' in partners,
+        "primary-domain conflicts remain explicit while display names may repeat",
+        'PRIMARY_DOMAIN_EXISTS' in partners
+        and 'partnerTechnicalSlug(in.DisplayName, id)' in partners,
     ),
-    ("release version", "version: 0.8.24-start-23.11.3g" in openapi),
-    ("render release version", "value: 0.8.24-start-23.11.3g" in render),
+    ("release version", "version: 0.8.25-start-23.11.3h" in openapi),
+    ("render release version", "value: 0.8.25-start-23.11.3h" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]

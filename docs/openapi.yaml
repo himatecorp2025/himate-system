@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.24-start-23.11.3g
+  version: 0.8.25-start-23.11.3h
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.3g HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.3h HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -617,9 +617,10 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/NewPartner"}
       responses:
+        "200": {description: Existing partner returned for an idempotent onboarding replay}
         "201": {description: Partner created}
         "400": {description: Invalid JSON payload or partner validation error}
-        "409": {description: Display-name-derived slug or primary domain is already in use}
+        "409": {description: Primary domain is already assigned to another partner}
   /api/v1/partners/{partnerId}/logo:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -2293,7 +2294,7 @@ components:
       type: object
       required: [display_name]
       properties:
-        display_name: {type: string}
+        display_name: {type: string, minLength: 1, description: Presentation name; duplicate display names are allowed}
         legal_name: {type: string}
         brand_name: {type: string}
         category_id: {type: string}
@@ -2320,6 +2321,10 @@ components:
         website: {type: string}
         phone: {type: string}
         notes: {type: string}
+        onboarding_request_id:
+          type: string
+          maxLength: 160
+          description: Stable client-generated idempotency key for one New Partner onboarding attempt
     Partner:
       type: object
       properties:

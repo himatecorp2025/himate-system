@@ -56,26 +56,40 @@ assert d["error"]["message"]=="Display name is required", d
 PY
 echo ok
 
-printf 'duplicate display-name slug returns a conflict instead of pretending the display name is missing... '
-valid_payload="$(python3 - "$STAMP" <<'PY'
+printf 'a duplicate primary domain returns a precise conflict without blaming the display name... '
+domain_one="$(python3 - "$STAMP" <<'PY'
 import json,sys
 stamp=sys.argv[1]
 print(json.dumps({
-  "display_name":"Duplicate Display QA "+stamp,
-  "legal_name":"Duplicate Display QA "+stamp+" LLC",
+  "display_name":"Domain QA A "+stamp,
+  "legal_name":"Domain QA A "+stamp+" LLC",
   "category_id":"cat_006",
-  "lifecycle":"PROSPECT"
+  "lifecycle":"PROSPECT",
+  "primary_domain":"domain-qa-"+stamp+".example"
 }))
 PY
 )"
-curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$valid_payload" "$BASE_URL/api/v1/partners" >/dev/null
-code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$valid_payload" "$BASE_URL/api/v1/partners")"
+domain_two="$(python3 - "$STAMP" <<'PY'
+import json,sys
+stamp=sys.argv[1]
+print(json.dumps({
+  "display_name":"Domain QA B "+stamp,
+  "legal_name":"Domain QA B "+stamp+" LLC",
+  "category_id":"cat_006",
+  "lifecycle":"PROSPECT",
+  "primary_domain":"domain-qa-"+stamp+".example"
+}))
+PY
+)"
+curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$domain_one" "$BASE_URL/api/v1/partners" >/dev/null
+code="$(curl -sS -o "$BODY" -w '%{http_code}' -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$domain_two" "$BASE_URL/api/v1/partners")"
 test "$code" = "409"
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
 message=d["error"]["message"]
-assert "display-name slug" in message, message
+assert "Primary domain" in message, message
+assert "Display name is required" not in message, message
 PY
 echo ok
 

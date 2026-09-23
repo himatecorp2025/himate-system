@@ -71,4 +71,44 @@ void main() {
     expect(second.dx, greaterThan(first.dx));
     expect(tester.takeException(), isNull);
   });
+  testWidgets('BrandDialog can disable close and cancel during protected onboarding', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () {
+                  showDialog<void>(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => BrandDialog(
+                      title: 'Protected onboarding',
+                      subtitle: 'Incomplete partner setup',
+                      icon: Icons.add_business_outlined,
+                      child: const SizedBox(height: 40),
+                      primaryLabel: 'Retry setup',
+                      dismissEnabled: false,
+                      onPrimary: () {},
+                    ),
+                  );
+                },
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    final close = tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.close_rounded));
+    final cancel = tester.widget<TextButton>(find.byType(TextButton));
+    expect(close.onPressed, isNull);
+    expect(cancel.onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
 }
