@@ -438,7 +438,8 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.7_ACCEPTANCE.md`
 - `docs/START-23.8_ACCEPTANCE.md`
 - `docs/START-23.9_ACCEPTANCE.md`
-- `docs/START-23.10_ACCEPTANCE.md`\n- `docs/START-23.11.3H_ACCEPTANCE.md`
+- `docs/START-23.10_ACCEPTANCE.md`
+- `docs/START-23.11.3H_ACCEPTANCE.md`
 - `docs/START-23.11.1_ACCEPTANCE.md`
 - `docs/START-23.11.2_ACCEPTANCE.md`
 - `docs/START-23.11.3_ACCEPTANCE.md`
