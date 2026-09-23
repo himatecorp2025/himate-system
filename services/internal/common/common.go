@@ -342,6 +342,10 @@ func ReleaseGuard(service string, next http.Handler) http.Handler {
 }
 
 func Run(log *slog.Logger, service, port string, handler http.Handler) {
+	if AppVersion() == "" {
+		log.Error("HIMATE_APP_VERSION is required", "service", service)
+		return
+	}
 	server := &http.Server{
 		Addr:              ":" + port,
 		Handler:           Logged(log, ReleaseGuard(service, handler)),
