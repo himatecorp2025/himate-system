@@ -4,6 +4,8 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 billing_main = (root / 'services/cmd/billing/main.go').read_text()
 billing_plans = (root / 'services/cmd/billing/plans.go').read_text()
+billing_dunning = (root / 'services/cmd/billing/dunning.go').read_text()
+partners_main = (root / 'services/cmd/partners/main.go').read_text()
 catalog_main = (root / 'services/cmd/catalog/main.go').read_text()
 catalog_plans = (root / 'services/cmd/catalog/plans.go').read_text()
 gateway = (root / 'services/cmd/gateway/partner_portal.go').read_text()
@@ -41,6 +43,28 @@ require('nextMonthStart(time.Now().UTC())' in billing_plans, 'next-month boundar
 require("billing_model':'PLAN'" in billing_plans.replace(' ', '') or "'PLAN'" in billing_plans, 'PLAN ledger marker is missing')
 
 for token in [
+    'start23112DunningMigration()',
+    'dunningMaxAttempts = 3',
+    'dunningSecondOffset = 2',
+    'dunningThirdOffset  = 5',
+    'dunningCureDays     = 30',
+    'PAYMENT_RETRY_SCHEDULED',
+    'PARTNER_SUSPENDED_NONPAYMENT',
+    'PARTNER_OPERATIONAL_ACCOUNT_PURGED',
+    'recoverDunningPayment',
+    'purgePartnerOperationalAccess',
+]:
+    require(token in billing_dunning, 'missing dunning lifecycle token: ' + token)
+
+for token in [
+    'purge-operational',
+    'identity.partner_users',
+    "lifecycle='ARCHIVED'",
+]:
+    require(token in partners_main, 'missing retention-safe operational purge token: ' + token)
+
+
+for token in [
     'start23112CatalogPlanMigration()',
     'entitlement_source',
     'plan-entitlements',
@@ -71,6 +95,9 @@ for token in [
 require('18,000' in acceptance and '16,500' in acceptance, 'Business annual full/discounted amounts are not documented')
 require('30,000' in acceptance and '22,500' in acceptance, 'Flex annual full/discounted amounts are not documented')
 require('module recurring charge' in acceptance.lower(), 'acceptance does not state that modules are not recurring invoice authority')
+require('attempt 1: due date / day 1' in acceptance.lower(), 'day-1/day-3/day-6 dunning schedule is not documented')
+require('30-day cure window' in acceptance.lower(), 'dunning cure window is not documented')
+require('financial invoices, payment settlements' in acceptance.lower(), 'legal-ledger retention carve-out is not documented')
 
 for token in [
     '/api/v1/billing/plans:',
