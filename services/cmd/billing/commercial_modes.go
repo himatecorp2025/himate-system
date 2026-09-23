@@ -77,6 +77,33 @@ func start23113kCommercialModeMigration() common.Migration {
 			)`,
 			`CREATE INDEX IF NOT EXISTS billing_charity_module_selection_idx
 				ON billing.partner_charity_module_selections(partner_id,effective_from,effective_to,module_key)`,
+			`ALTER TABLE billing.partner_terms ALTER COLUMN annual_increase_percent SET DEFAULT 5`,
+			`ALTER TABLE billing.subscription_plans ADD COLUMN IF NOT EXISTS annual_increase_percent NUMERIC(6,2) NOT NULL DEFAULT 5`,
+			`UPDATE billing.subscription_plans SET annual_increase_percent=5 WHERE plan_key IN ('STARTER','BUSINESS','FLEX')`,
+			`CREATE TABLE IF NOT EXISTS billing.subscription_plan_price_history(
+				id BIGSERIAL PRIMARY KEY,
+				plan_key TEXT NOT NULL REFERENCES billing.subscription_plans(plan_key),
+				currency TEXT NOT NULL DEFAULT 'USD',
+				monthly_price NUMERIC(12,2) NOT NULL,
+				annual_list_price NUMERIC(12,2) NOT NULL,
+				annual_price NUMERIC(12,2) NOT NULL,
+				effective_from DATE NOT NULL,
+				change_type TEXT NOT NULL,
+				annual_increase_percent NUMERIC(6,2) NOT NULL DEFAULT 5,
+				actor TEXT NOT NULL DEFAULT '',
+				reason TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				CHECK(monthly_price>=0 AND annual_list_price>=0 AND annual_price>=0),
+				CHECK(annual_increase_percent>=0)
+			)`,
+			`CREATE INDEX IF NOT EXISTS billing_plan_price_history_lookup
+				ON billing.subscription_plan_price_history(plan_key,effective_from DESC,id DESC)`,
+			`INSERT INTO billing.subscription_plan_price_history(
+				plan_key,currency,monthly_price,annual_list_price,annual_price,effective_from,change_type,annual_increase_percent,actor,reason)
+				SELECT p.plan_key,p.currency,p.monthly_price,p.annual_list_price,p.annual_price,CURRENT_DATE,'BASELINE',
+					p.annual_increase_percent,'migration','START-23.11.3k package pricing baseline'
+				FROM billing.subscription_plans p
+				WHERE NOT EXISTS(SELECT 1 FROM billing.subscription_plan_price_history h WHERE h.plan_key=p.plan_key)`,
 		},
 	}
 }
