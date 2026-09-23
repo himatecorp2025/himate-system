@@ -133,6 +133,14 @@ Direct activation of a locked module for a plan-managed partner remains blocked 
 
 An unpublished arbitrary module that is not marketplace_visible remains hidden, preserving START-23.11.1 behavior.
 
+## Stabilization closure
+
+The current START-23.11.3 baseline is the base Marketplace contract plus the active readiness/onboarding chain A and D through K.
+
+START-23.11.3B and START-23.11.3C are historical, superseded fixed-fixture approaches. START-23.11.3D deliberately replaced them with real Partner onboarding. Their obsolete acceptance documents and executable audit/smoke scripts are therefore not part of the current source tree; the Git history remains the audit trail.
+
+The forward migrations that remove the retired fixed fixture from long-lived databases remain required and must not be deleted.
+
 ## Automated evidence
 
 Static audit:

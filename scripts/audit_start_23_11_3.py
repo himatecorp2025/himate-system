@@ -8,6 +8,7 @@ catalog_main = (root / "services/cmd/catalog/main.go").read_text()
 catalog_marketplace = (root / "services/cmd/catalog/marketplace.go").read_text()
 catalog_portal = (root / "services/cmd/catalog/partner_portal.go").read_text()
 gateway_portal = (root / "services/cmd/gateway/partner_portal.go").read_text()
+partners_main = (root / "services/cmd/partners/main.go").read_text()
 frontend_portal = (root / "frontend/lib/partner_portal.dart").read_text()
 localization = (root / "frontend/lib/localization.dart").read_text()
 openapi = (root / "docs/openapi.yaml").read_text()
@@ -98,5 +99,42 @@ require("/partner/api/v1/modules:" in openapi, "Partner Marketplace API is not d
 require("Discovery visibility is not execution authority." in acceptance, "acceptance does not preserve discovery/execution boundary")
 require("exactly 10 canonical modules are ACTIVE" in acceptance, "Business 10-module acceptance is missing")
 require("remaining 28 canonical modules are LOCKED" in acceptance, "Business locked-module acceptance is missing")
+
+
+active_closure_files = [
+    "docs/START-23.11.3A_ACCEPTANCE.md",
+    "docs/START-23.11.3D_ACCEPTANCE.md",
+    "docs/START-23.11.3E_ACCEPTANCE.md",
+    "docs/START-23.11.3F_ACCEPTANCE.md",
+    "docs/START-23.11.3G_ACCEPTANCE.md",
+    "docs/START-23.11.3H_ACCEPTANCE.md",
+    "docs/START-23.11.3I_ACCEPTANCE.md",
+    "docs/START-23.11.3J_ACCEPTANCE.md",
+    "docs/START-23.11.3K_ACCEPTANCE.md",
+]
+for rel in active_closure_files:
+    require((root / rel).is_file(), "active START-23.11.3 closure artifact missing: " + rel)
+
+superseded_fixture_files = [
+    "docs/START-23.11.3B_ACCEPTANCE.md",
+    "docs/START-23.11.3C_ACCEPTANCE.md",
+    "scripts/audit_start_23_11_3b.py",
+    "scripts/audit_start_23_11_3c.py",
+    "scripts/smoke_start_23_11_3b.sh",
+    "scripts/smoke_start_23_11_3c.sh",
+]
+for rel in superseded_fixture_files:
+    require(not (root / rel).exists(), "superseded fixed-fixture artifact must not remain active: " + rel)
+
+require(
+    'Name: "retire-fixed-manual-qa-partner"' in partners_main
+    and "ptr_himate_test_001" in partners_main,
+    "required forward migration for retired partner fixture was removed",
+)
+require(
+    'Name:    "retire-fixed-manual-qa-partner-identity"' in gateway_portal
+    and "pusr_himate_test_001" in gateway_portal,
+    "required forward migration for retired Partner Portal identity was removed",
+)
 
 print("HIMATE START-23.11.3 Module Marketplace audit passed")
