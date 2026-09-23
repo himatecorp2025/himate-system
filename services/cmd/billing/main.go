@@ -20,8 +20,9 @@ type app struct {
 	catalogHost  string
 	partnersHost string
 	paymentsHost string
-	evidenceHost string
-	token        string
+	evidenceHost      string
+	notificationsHost string
+	token             string
 	client       *http.Client
 }
 
@@ -76,6 +77,7 @@ func main() {
 		partnersHost: os.Getenv("PARTNERS_HOSTPORT"),
 		paymentsHost: os.Getenv("PAYMENTS_HOSTPORT"),
 		evidenceHost: os.Getenv("EVIDENCE_HOSTPORT"),
+		notificationsHost: os.Getenv("NOTIFICATIONS_HOSTPORT"),
 		token: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		client: &http.Client{Timeout: 8 * time.Second},
 	}
@@ -221,6 +223,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23112PlanBillingRecoveryMigration(),
 		start23112PlanLedgerImmutabilityMigration(),
 		start23112InvoiceDateConstraintRecoveryMigration(),
+		start23112DunningMigration(),
 	}); err != nil {
 		return err
 	}
@@ -1661,9 +1664,10 @@ func isCycleBoundary(anchor, at time.Time) bool {
 
 func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 	at = dateOnly(at)
-	if err := a.retryPendingInvoiceCollections(ctx); err != nil { return err }
+	if err := a.retryPendingInvoiceCollections(ctx, at); err != nil { return err }
 	planManaged, err := a.runPlanBillingCycle(ctx, at)
 	if err != nil { return err }
+	if err := a.runDunningCycle(ctx, at); err != nil { return err }
 	rows, err := a.db.QueryContext(ctx, `SELECT partner_id FROM billing.partner_terms`)
 	if err != nil { return err }
 	defer rows.Close()
