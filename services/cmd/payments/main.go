@@ -88,9 +88,8 @@ func main() {
 		log.Error("unsupported payment provider", "provider", a.provider)
 		os.Exit(1)
 	}
-	if a.provider == "stripe" && (a.stripeKey == "" || a.webhookSecret == "") {
-		log.Error("Stripe provider requires STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET")
-		os.Exit(1)
+	if a.provider == "stripe" && !a.providerConfigured() {
+		log.Warn("Stripe provider is not configured yet; payment execution is disabled until STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are set")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -100,7 +99,8 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{
 			"status": "ok", "service": "payments", "provider": a.provider,
-			"provider_configured": a.provider == "mock" || (a.stripeKey != "" && a.webhookSecret != ""),
+			"provider_configured": a.providerConfigured(),
+			"configuration_required": !a.providerConfigured(),
 			"time": time.Now().UTC(),
 		})
 	})
@@ -154,6 +154,24 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 		}},
 	})
+}
+
+func (a *app) providerConfigured() bool {
+	if a.provider == "mock" {
+		return true
+	}
+	if a.provider == "stripe" {
+		return strings.TrimSpace(a.stripeKey) != "" && strings.TrimSpace(a.webhookSecret) != ""
+	}
+	return false
+}
+
+func (a *app) requireProviderConfigured(w http.ResponseWriter) bool {
+	if a.providerConfigured() {
+		return true
+	}
+	common.APIError(w, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNCONFIGURED", "Payment provider credentials are not configured yet")
+	return false
 }
 
 func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
@@ -250,6 +268,7 @@ func attemptID(idempotency string) string {
 
 func (a *app) createCharge(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost { common.APIError(w, 405, "METHOD", "Use POST"); return }
+	if !a.requireProviderConfigured(w) { return }
 	var in chargeRequest
 	if common.Decode(r, &in) != nil { common.APIError(w, 400, "JSON", "Invalid request"); return }
 	in.PartnerID = strings.TrimSpace(in.PartnerID)
@@ -378,6 +397,7 @@ func attemptMap(x attempt) map[string]any {
 
 func (a *app) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost { common.APIError(w, 405, "METHOD", "Use POST"); return }
+	if !a.requireProviderConfigured(w) { return }
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil { common.APIError(w, 400, "BODY", "Could not read webhook body"); return }
 	if err := verifyStripeSignature(raw, r.Header.Get("Stripe-Signature"), a.webhookSecret, time.Now().UTC(), 5*time.Minute); err != nil {
