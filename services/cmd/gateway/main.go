@@ -1411,8 +1411,9 @@ func (a *app) emitNotification(event auditEvent) {
 	})
 	ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);defer cancel()
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+host+"/internal/v1/notifications/events",bytes.NewReader(body));if err!=nil{return}
-	req.Header.Set("Content-Type","application/json");req.Header.Set("X-Himate-Internal-Token",a.internalToken)
-	resp,err:=a.client.Do(req);if err==nil&&resp!=nil{resp.Body.Close()}
+	req.Header.Set("Content-Type","application/json")
+	common.BindInternalRequest(req,a.internalToken)
+	resp,err:=common.DoInternal(a.client,req);if err==nil&&resp!=nil{resp.Body.Close()}
 }
 
 func auditLimit(value string, fallback, max int) int {
