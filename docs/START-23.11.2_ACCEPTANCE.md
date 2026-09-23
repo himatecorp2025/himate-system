@@ -62,9 +62,22 @@ A normal Flex module-set change becomes effective on the next calendar-month bou
 
 HIMATE administrators configure Starter and Business from Modules → Subscription Plans. The first complete fixed package can take effect immediately. Later changes default to the next calendar-month boundary and retain effective-dated history.
 
-## Payment collection
+## Payment collection and dunning
 
-Plan invoice generation is idempotent. Billing creates the immutable invoice/line first and then requests provider collection. Provider settlement/webhook verification remains authoritative for PAID status. Failed provider initiation remains collection-pending and retryable.
+Plan invoice generation is idempotent. Billing creates the immutable invoice/line first and then requests provider collection. Provider settlement/webhook verification remains authoritative for PAID status. The saved provider payment method is charged automatically; the partner is not required to manually pay each monthly invoice.
+
+Recurring monthly and annual-renewal invoices use a three-attempt dunning schedule relative to the invoice due date:
+- attempt 1: due date / day 1;
+- attempt 2: due date + 2 days / day 3;
+- attempt 3: due date + 5 days / day 6.
+
+Each charge uses a distinct idempotency key. After the first or second verified failure the subscription is PAST_DUE and the next retry date is recorded/notified. After the third verified failure the partner plan becomes SUSPENDED, the partner lifecycle becomes SUSPENDED and active plan entitlements are removed.
+
+The suspension opens a 30-day cure window. A successful payment inside that window restores the prior partner lifecycle, the plan ACTIVE state and the plan-derived entitlements without deleting tenant history.
+
+If payment is still unresolved 30 days after suspension (day 36 relative to a day-1 monthly due date), the subscription becomes CANCELLED, the partner lifecycle becomes ARCHIVED, Partner Portal login identities are deleted and current operational plan selections/entitlements are purged. Financial invoices, payment settlements, contract/commercial history and immutable audit/evidence are retained under the legal retention policy and are never deleted by the dunning purge.
+
+The commercial contract/Terms must clearly disclose automatic recurring card collection, the retry schedule, suspension, the cure period and the operational-purge consequence before the partner authorizes recurring billing.
 
 ## Legacy/custom commercial data
 
@@ -76,7 +89,7 @@ Static audit: python3 scripts/audit_start_23_11_2.py
 
 Containerized acceptance: sh scripts/smoke_start_23_11_2.sh http://127.0.0.1:8080
 
-The suite must prove exact plan amounts, annual list/saving amounts, fixed module limits, Flex selection, activation gate, monthly day-1 charging, immediate annual prepay, immediate upgrade difference, scheduled downgrade, scheduled Flex set changes, Catalog entitlement sync, PLAN-only recurring invoice items, idempotency and CUSTOM support.
+The suite must prove exact plan amounts, annual list/saving amounts, fixed module limits, Flex selection, activation gate, automatic monthly day-1 charging, immediate annual prepay, immediate upgrade difference, scheduled downgrade, scheduled Flex set changes, Catalog entitlement sync, PLAN-only recurring invoice items, idempotency, the day-1/day-3/day-6 retry schedule, third-failure suspension, cure-window recovery, day-36 operational purge with legal-ledger retention, and CUSTOM support.
 
 ## Out of scope
 
