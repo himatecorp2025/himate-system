@@ -37,7 +37,7 @@ func (a *app) internalJSON(ctx context.Context,method,host,path string,payload a
 	var body io.Reader
 	if payload!=nil{raw,err:=json.Marshal(payload);if err!=nil{return err};body=bytes.NewReader(raw)}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+host+path,body);if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	common.BindInternalRequest(req,a.internalToken)
 	req.Header.Set("X-Himate-User-ID","service:backups")
 	if payload!=nil{req.Header.Set("Content-Type","application/json")}
 	resp,err:=a.client.Do(req);if err!=nil{return err}
@@ -51,7 +51,7 @@ func (a *app) internalJSON(ctx context.Context,method,host,path string,payload a
 func (a *app) fetchToFile(ctx context.Context,host,path,target string)error{
 	if strings.TrimSpace(host)==""{return fmt.Errorf("storage service host is not configured")}
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"http://"+host+path,nil);if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	common.BindInternalRequest(req,a.internalToken)
 	req.Header.Set("X-Himate-User-ID","service:backups")
 	resp,err:=a.client.Do(req);if err!=nil{return err}
 	defer resp.Body.Close()
