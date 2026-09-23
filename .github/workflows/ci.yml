@@ -94,6 +94,7 @@ jobs:
           test -s ../docs/START-23.11.2_ACCEPTANCE.md
           test -s ../docs/START-23.11.3_ACCEPTANCE.md
           test -s ../docs/START-23.11.3I_ACCEPTANCE.md
+          test -s ../docs/START-23.11.3J_ACCEPTANCE.md
           grep -q '^  /api/v1/billing/partners/{partnerId}/terms-history:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/scheduler/run:' ../docs/openapi.yaml
           grep -q '^  /api/v1/dashboard/summary:' ../docs/openapi.yaml
@@ -161,6 +162,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_3h.py
       - name: Run START-23.11.3i Release Consistency & Partner Contract audit
         run: python3 ../scripts/audit_start_23_11_3i.py
+      - name: Run START-23.11.3j Golden Test Partner & Workspace Stabilization audit
+        run: python3 ../scripts/audit_start_23_11_3j.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -415,6 +418,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_3h.sh http://127.0.0.1:8080
       - name: Run START-23.11.3i Release Consistency & Partner Contract smoke
         run: sh scripts/smoke_start_23_11_3i.sh http://127.0.0.1:8080
+      - name: Run START-23.11.3j Golden Test Partner & Workspace Stabilization smoke
+        run: sh scripts/smoke_start_23_11_3j.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
