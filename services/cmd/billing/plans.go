@@ -797,10 +797,15 @@ func (a *app) applyDuePlanChanges(ctx context.Context,at time.Time) error{
 func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]bool,error){
 	at=dateOnly(at)
 	if err:=a.applyDuePlanChanges(ctx,at);err!=nil{return nil,err}
-	rows,err:=a.db.QueryContext(ctx,`SELECT partner_id FROM billing.partner_plan_subscriptions WHERE status='ACTIVE'`)
+	rows,err:=a.db.QueryContext(ctx,`SELECT partner_id,status FROM billing.partner_plan_subscriptions`)
 	if err!=nil{return nil,err}
 	managed:=map[string]bool{};ids:=[]string{}
-	for rows.Next(){var id string;if err:=rows.Scan(&id);err!=nil{rows.Close();return nil,err};managed[id]=true;ids=append(ids,id)}
+	for rows.Next(){
+		var id,status string
+		if err:=rows.Scan(&id,&status);err!=nil{rows.Close();return nil,err}
+		managed[id]=true
+		if status=="ACTIVE"{ids=append(ids,id)}
+	}
 	rows.Close()
 	for _,id:=range ids{
 		s,loadErr:=a.loadPartnerPlan(ctx,id)
