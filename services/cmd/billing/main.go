@@ -358,7 +358,7 @@ func (a *app) validateCommercialEvidenceReference(ctx context.Context, partnerID
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.evidenceHost+path, nil)
 		if err != nil { return err }
 		common.BindInternalRequest(req, a.token)
-		resp, err := a.client.Do(req)
+		resp, err := common.DoInternal(a.client, req)
 		if err != nil { return err }
 		defer resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -406,7 +406,7 @@ func (a *app) referencePartner(ctx context.Context, partnerID string) (bool, err
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.partnersHost+"/api/v1/partners/"+partnerID, nil)
 	if err != nil { return false, err }
 	common.BindInternalRequest(req, a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return false, err }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK { return false, fmt.Errorf("partners status %d", resp.StatusCode) }
@@ -879,7 +879,7 @@ func (a *app) catalogFees(ctx context.Context, id string) (float64, []map[string
 	if strings.TrimSpace(a.catalogHost) == "" { return 0, nil, fmt.Errorf("CATALOG_HOSTPORT is required") }
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.catalogHost+"/internal/v1/partners/"+id+"/billable-modules", nil)
 	common.BindInternalRequest(req, a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return 0, nil, err }
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 { return 0, nil, fmt.Errorf("catalog status %d", resp.StatusCode) }
@@ -978,7 +978,7 @@ func (a *app) setCatalogModuleNotLicensed(ctx context.Context, partnerID, module
 	req.Header.Set("Content-Type", "application/json")
 	common.BindInternalRequest(req, a.token)
 	req.Header.Set("X-Himate-User-ID", "billing-cycle")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -1004,7 +1004,7 @@ func (a *app) setCatalogEntitlementState(ctx context.Context, partnerID, moduleK
 	common.BindInternalRequest(req, a.token)
 	if strings.TrimSpace(actor)=="" { actor="billing" }
 	req.Header.Set("X-Himate-User-ID", actor)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -1263,7 +1263,7 @@ func (a *app) catalogPriceQuotes(ctx context.Context, requests []map[string]stri
 	if err != nil { return nil, err }
 	req.Header.Set("Content-Type", "application/json")
 	common.BindInternalRequest(req, a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return nil, err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
