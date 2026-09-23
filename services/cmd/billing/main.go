@@ -219,6 +219,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23111BillingCommercialModelMigration(),
 		start23112PlanBillingMigration(),
 		start23112PlanBillingRecoveryMigration(),
+		start23112PlanLedgerImmutabilityMigration(),
 	}); err != nil {
 		return err
 	}
