@@ -4314,12 +4314,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: testPartner,
-                onChanged: (value) => setLocal(() {
-                  testPartner = value;
-                  if (value) lifecycle = 'LIVE';
-                }),
+                onChanged: partner['test_partner'] == true
+                    ? null
+                    : (value) => setLocal(() {
+                          testPartner = value;
+                          if (value) lifecycle = 'LIVE';
+                        }),
                 title: const LText('Golden Test Partner'),
-                subtitle: const LText('38/38 modules stay active. Test revenue and impact remain visible here but are excluded from HIMATE platform aggregates.'),
+                subtitle: LText(partner['test_partner'] == true
+                    ? 'Permanent QA tenant. Remove it only through the dedicated future test-tenant purge workflow.'
+                    : '38/38 modules stay active. Test revenue and impact remain visible here but are excluded from HIMATE platform aggregates.'),
               ),
               const SizedBox(height: 18),
               const _DialogSectionLabel('REGISTRATION & ADDRESS'),
