@@ -3416,7 +3416,7 @@ class _PartnersPageState extends State<PartnersPage> {
               }
 
               if (dialogContext.mounted) {
-                Navigator.pop(dialogContext, created ?? stagedPartner ?? <String, dynamic>{'id': partnerId});
+                Navigator.pop(dialogContext, created);
               }
             } catch (e) {
               if (!dialogContext.mounted) return;
