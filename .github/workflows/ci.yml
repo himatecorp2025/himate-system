@@ -115,8 +115,6 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - name: Diagnose START-23.11.3e New Partner modal
-        run: flutter test test/new_partner_modal_test.dart --platform chrome --reporter json
       - run: flutter test --platform chrome --reporter expanded
       - name: Run START-23 responsive and bilingual frontend audit
         run: python3 ../scripts/audit_start_23_frontend.py
