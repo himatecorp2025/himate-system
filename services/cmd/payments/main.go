@@ -416,7 +416,7 @@ func attemptMap(x attempt) map[string]any {
 
 func (a *app) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost { common.APIError(w, 405, "METHOD", "Use POST"); return }
-	if !a.requireProviderConfigured(w) { return }
+	if !a.requireProviderConfigured(r.Context(), w) { return }
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil { common.APIError(w, 400, "BODY", "Could not read webhook body"); return }
 	_, webhookSecret := a.stripeCredentials(r.Context())
