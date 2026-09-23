@@ -343,6 +343,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS identity_password_reset_user_idx ON identity.password_reset_tokens(user_id,expires_at DESC)`,
 			`CREATE INDEX IF NOT EXISTS identity_password_reset_active_idx ON identity.password_reset_tokens(token_hash,expires_at) WHERE used_at IS NULL`,
 		}},
+		platformSecretsMigration(),
 	}); err != nil {
 		return err
 	}
@@ -901,7 +902,8 @@ func permissionResource(r *http.Request) string {
 		return "audit"
 	case path == "/api/v1/notifications", strings.HasPrefix(path, "/api/v1/notifications/"):
 		return "notifications"
-	case path == "/api/v1/admin/roles", strings.HasPrefix(path, "/api/v1/admin/roles/"), path == "/api/v1/admin/users", strings.HasPrefix(path, "/api/v1/admin/users/"):
+	case path == "/api/v1/admin/roles", strings.HasPrefix(path, "/api/v1/admin/roles/"), path == "/api/v1/admin/users", strings.HasPrefix(path, "/api/v1/admin/users/"),
+		path == "/api/v1/admin/secrets", strings.HasPrefix(path, "/api/v1/admin/secrets/"):
 		return "administration"
 	case strings.HasPrefix(path, "/api/v1/partners/") && strings.Contains(path, "/portal-users"):
 		return "administration"
@@ -1226,6 +1228,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.adminUsers(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/"):
 		a.adminUser(w, r, u)
+	case r.URL.Path == "/api/v1/admin/secrets" || strings.HasPrefix(r.URL.Path, "/api/v1/admin/secrets/"):
+		a.adminSecrets(w, r, u)
 	case r.URL.Path == "/api/v1/audit/events" && r.Method == http.MethodGet:
 		a.auditEvents(w, r)
 	case r.URL.Path == "/api/v1/search" && r.Method == http.MethodGet:
@@ -1320,6 +1324,8 @@ func auditResource(r *http.Request) (string, string) {
 		resource = "catalog"
 	case "notifications":
 		resource = "notifications"
+	case "admin":
+		resource = "administration"
 	case "partner-categories":
 		resource = "partners"
 	}
