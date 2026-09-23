@@ -41,15 +41,15 @@ var lifecycleValues = map[string]bool{
 }
 
 var lifecycleTransitions = map[string]map[string]bool{
-	"PROSPECT":            {"LICENSE_PENDING": true, "ARCHIVED": true},
-	"LICENSE_PENDING":     {"PROSPECT": true, "READY_TO_PROVISION": true, "ARCHIVED": true},
-	"READY_TO_PROVISION":  {"LICENSE_PENDING": true, "PROVISIONING": true, "ARCHIVED": true},
+	"PROSPECT":            {"LICENSE_PENDING": true, "SUSPENDED": true, "ARCHIVED": true},
+	"LICENSE_PENDING":     {"PROSPECT": true, "READY_TO_PROVISION": true, "SUSPENDED": true, "ARCHIVED": true},
+	"READY_TO_PROVISION":  {"LICENSE_PENDING": true, "PROVISIONING": true, "SUSPENDED": true, "ARCHIVED": true},
 	"PROVISIONING":        {"READY_TO_PROVISION": true, "CONFIGURATION": true, "SUSPENDED": true},
 	"CONFIGURATION":       {"PROVISIONING": true, "TESTING": true, "SUSPENDED": true},
 	"TESTING":             {"CONFIGURATION": true, "READY_FOR_LAUNCH": true, "SUSPENDED": true},
 	"READY_FOR_LAUNCH":    {"TESTING": true, "LIVE": true, "SUSPENDED": true},
 	"LIVE":                {"SUSPENDED": true, "ARCHIVED": true},
-	"SUSPENDED":           {"CONFIGURATION": true, "TESTING": true, "READY_FOR_LAUNCH": true, "LIVE": true, "ARCHIVED": true},
+	"SUSPENDED":           {"PROSPECT": true, "LICENSE_PENDING": true, "READY_TO_PROVISION": true, "PROVISIONING": true, "CONFIGURATION": true, "TESTING": true, "READY_FOR_LAUNCH": true, "LIVE": true, "ARCHIVED": true},
 	"ARCHIVED":            {},
 }
 
