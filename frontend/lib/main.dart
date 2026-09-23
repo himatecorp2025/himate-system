@@ -2898,6 +2898,7 @@ class _PartnersPageState extends State<PartnersPage> {
     final minimumMonthlyCommitment = TextEditingController(text: '1500');
     final quoteReference = TextEditingController();
     final notes = TextEditingController();
+    final onboardingRequestId = 'onb_${DateTime.now().microsecondsSinceEpoch}';
 
     html.File? partnerLogoFile;
     String category = '${categoryOptions.first['id']}';
@@ -2913,6 +2914,7 @@ class _PartnersPageState extends State<PartnersPage> {
     bool portalOwnerCreated = false;
     bool logoUploaded = false;
     bool billingTermsSaved = false;
+    bool completionReady = false;
     int step = 0;
 
     bool validPortalPassword(String value) {
@@ -2929,7 +2931,7 @@ class _PartnersPageState extends State<PartnersPage> {
     bool validOptionalEmail(TextEditingController controller) =>
         controller.text.trim().isEmpty || validEmail(controller.text);
 
-    Map<String, dynamic> partnerPayload() => {
+    Map<String, dynamic> partnerPayload({bool includeOnboardingRequest = true}) => {
       'display_name': displayName.text.trim(),
       'legal_name': legalName.text.trim(),
       'brand_name': brandName.text.trim().isEmpty ? displayName.text.trim() : brandName.text.trim(),
@@ -2955,7 +2957,42 @@ class _PartnersPageState extends State<PartnersPage> {
       'marketing_contact_name': marketingContactName.text.trim(),
       'marketing_contact_email': marketingContactEmail.text.trim(),
       'notes': notes.text.trim(),
+      if (includeOnboardingRequest) 'onboarding_request_id': onboardingRequestId,
     };
+
+    double asDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse('$value') ?? double.nan;
+    }
+
+    Map<String, dynamic> billingTermsPayload() {
+      final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
+      return {
+        'currency': currency,
+        'activation_fee': double.tryParse(activationFee.text) ?? 0,
+        'activation_fee_waived': false,
+        'activation_fee_reason': '',
+        'base_monthly_fee': double.tryParse(baseMonthlyFee.text) ?? 0,
+        'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 1500,
+        'quote_reference': quoteReference.text.trim(),
+        'annual_increase_percent': 10,
+        'price_effective_from': today,
+        'service_anchor_date': today,
+        'reason': 'New Partner master-data onboarding',
+      };
+    }
+
+    bool billingTermsMatch(Map<String, dynamic> current, Map<String, dynamic> desired) {
+      bool sameAmount(String key) => (asDouble(current[key]) - asDouble(desired[key])).abs() < 0.000001;
+      return '${current['currency'] ?? ''}' == '${desired['currency'] ?? ''}' &&
+          sameAmount('activation_fee') &&
+          sameAmount('base_monthly_fee') &&
+          sameAmount('minimum_monthly_commitment') &&
+          '${current['quote_reference'] ?? ''}' == '${desired['quote_reference'] ?? ''}' &&
+          sameAmount('annual_increase_percent') &&
+          '${current['price_effective_from'] ?? ''}' == '${desired['price_effective_from'] ?? ''}' &&
+          '${current['service_anchor_date'] ?? ''}' == '${desired['service_anchor_date'] ?? ''}';
+    }
 
     final createdResult = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -3006,12 +3043,17 @@ class _PartnersPageState extends State<PartnersPage> {
               }
             }());
           }
-          return BrandDialog(
+          final canDismiss = !submitting && stagedPartnerId == null;
+          return PopScope(
+            canPop: completionReady || canDismiss,
+            child: BrandDialog(
           key: const Key('new-partner-dialog'),
           title: 'New Partner',
           subtitle: 'Create the complete partner master record, billing identity, first Portal Owner and initial brand identity. Provisioning can be completed from the partner workspace.',
           icon: Icons.add_business_outlined,
           width: 900,
+          dismissEnabled: canDismiss,
+          onDismiss: () => Navigator.pop<Map<String, dynamic>>(dialogContext),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -3043,7 +3085,7 @@ class _PartnersPageState extends State<PartnersPage> {
                       ResponsiveFieldPair(
                         first: TextField(
                           controller: displayName,
-                          decoration: InputDecoration(labelText: uiLiteral('Display name *'), hintText: uiLiteral('Name shown inside HIMATE')),
+                          decoration: InputDecoration(labelText: uiLiteral('Display name *'), hintText: uiLiteral('Name shown inside HIMATE'), helperText: uiLiteral('Display names do not need to be unique.')),
                         ),
                         second: TextField(
                           controller: legalName,
@@ -3358,7 +3400,7 @@ class _PartnersPageState extends State<PartnersPage> {
                 created = await widget.api.patch(
                   '/api/v1/partners/${stagedPartnerId!}',
                   {
-                    ...partnerPayload(),
+                    ...partnerPayload(includeOnboardingRequest: false),
                     'reason': 'New Partner modal retry/update before onboarding completion',
                   },
                 );
@@ -3368,6 +3410,15 @@ class _PartnersPageState extends State<PartnersPage> {
               final partnerId = stagedPartnerId!;
 
               if (!portalOwnerCreated) {
+                final existingUsers = await widget.api.get('/api/v1/partners/$partnerId/portal-users', force: true);
+                final ownerEmail = contactEmail.text.trim().toLowerCase();
+                portalOwnerCreated = items(existingUsers).any((item) =>
+                    '${item['email'] ?? ''}'.trim().toLowerCase() == ownerEmail &&
+                    '${item['role'] ?? ''}'.toLowerCase() == 'owner' &&
+                    item['active'] != false);
+              }
+
+              if (!portalOwnerCreated) {
                 await widget.api.post('/api/v1/partners/$partnerId/portal-users', {
                   'name': contactName.text.trim(),
                   'email': contactEmail.text.trim(),
@@ -3375,6 +3426,10 @@ class _PartnersPageState extends State<PartnersPage> {
                   'role': 'owner',
                 });
                 portalOwnerCreated = true;
+              }
+
+              if (!logoUploaded && partnerLogoFile != null && '${created?['logo_url'] ?? ''}'.trim().isNotEmpty) {
+                logoUploaded = true;
               }
 
               if (partnerLogoFile != null && !logoUploaded) {
@@ -3398,25 +3453,25 @@ class _PartnersPageState extends State<PartnersPage> {
               }
 
               if (!billingTermsSaved) {
-                final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
-                await widget.api.put('/api/v1/billing/partners/$partnerId/terms', {
-                  'currency': currency,
-                  'activation_fee': double.tryParse(activationFee.text) ?? 0,
-                  'activation_fee_waived': false,
-                  'activation_fee_reason': '',
-                  'base_monthly_fee': double.tryParse(baseMonthlyFee.text) ?? 0,
-                  'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 1500,
-                  'quote_reference': quoteReference.text.trim(),
-                  'annual_increase_percent': 10,
-                  'price_effective_from': today,
-                  'service_anchor_date': today,
-                  'reason': 'New Partner master-data onboarding',
-                });
-                billingTermsSaved = true;
+                final desiredTerms = billingTermsPayload();
+                try {
+                  final currentTerms = await widget.api.get('/api/v1/billing/partners/$partnerId/terms', force: true);
+                  billingTermsSaved = billingTermsMatch(currentTerms, desiredTerms);
+                } catch (_) {
+                  billingTermsSaved = false;
+                }
+                if (!billingTermsSaved) {
+                  await widget.api.put('/api/v1/billing/partners/$partnerId/terms', desiredTerms);
+                  billingTermsSaved = true;
+                }
               }
 
               if (dialogContext.mounted) {
-                Navigator.pop(dialogContext, created);
+                setLocal(() {
+                  submitting = false;
+                  completionReady = true;
+                });
+                Navigator.pop<Map<String, dynamic>>(dialogContext, created ?? stagedPartner!);
               }
             } catch (e) {
               if (!dialogContext.mounted) return;
@@ -3428,7 +3483,8 @@ class _PartnersPageState extends State<PartnersPage> {
               });
             }
           },
-        );
+        ),
+      );
         },
       ),
     );
@@ -7035,6 +7091,8 @@ class BrandDialog extends StatelessWidget {
     required this.primaryLabel,
     required this.onPrimary,
     this.width = 620,
+    this.dismissEnabled = true,
+    this.onDismiss,
     super.key,
   });
 
@@ -7043,6 +7101,8 @@ class BrandDialog extends StatelessWidget {
   final Widget child;
   final VoidCallback onPrimary;
   final double width;
+  final bool dismissEnabled;
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -7092,7 +7152,7 @@ class BrandDialog extends StatelessWidget {
                             ),
                             const Spacer(),
                             IconButton(
-                              onPressed: () => Navigator.pop(context, false),
+                              onPressed: dismissEnabled ? (onDismiss ?? () => Navigator.pop(context, false)) : null,
                               icon: const Icon(Icons.close_rounded),
                             ),
                           ],
@@ -7142,7 +7202,7 @@ class BrandDialog extends StatelessWidget {
                           ),
                         ),
                         IconButton(
-                          onPressed: () => Navigator.pop(context, false),
+                    onPressed: dismissEnabled ? (onDismiss ?? () => Navigator.pop(context, false)) : null,
                           icon: const Icon(Icons.close_rounded),
                         ),
                       ],
