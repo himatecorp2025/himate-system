@@ -222,7 +222,7 @@ func (a *app) requestPaymentCharge(ctx context.Context, partnerID, invoiceID, pu
 	if err!=nil{return nil,err}
 	req.Header.Set("Content-Type","application/json")
 	common.BindInternalRequest(req,a.token)
-	resp,err:=a.client.Do(req)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return nil,err}
 	defer resp.Body.Close()
 	var out map[string]any
@@ -241,7 +241,7 @@ func (a *app) paymentProfileAutopayReady(ctx context.Context, partnerID string) 
 		"http://"+a.paymentsHost+"/api/v1/payments/partners/"+partnerID+"/profile", nil)
 	if err != nil { return false, err }
 	common.BindInternalRequest(req, a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return false, err }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
