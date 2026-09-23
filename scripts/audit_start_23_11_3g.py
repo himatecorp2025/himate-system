@@ -14,7 +14,7 @@ add_partner = frontend[start:end]
 
 dialog_start = add_partner.index("final createdResult = await showDialog<Map<String, dynamic>>(")
 partner_post = add_partner.index("widget.api.post('/api/v1/partners'")
-success_pop = add_partner.index("Navigator.pop<Map<String, dynamic>>(dialogContext")
+success_pop = add_partner.index("Navigator.pop<Map<String, dynamic>>(dialogContext, created")
 
 checks = [
     (
