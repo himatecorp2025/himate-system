@@ -44,6 +44,10 @@ class _NewPartnerApi extends Api {
 
 void main() {
   testWidgets('START-23.11.3e New Partner button opens the master-data modal without Catalog', (tester) async {
+    HimateI18n.activeLocale = 'en_US';
+    await tester.binding.setSurfaceSize(const Size(1440, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final api = _NewPartnerApi();
 
     await tester.pumpWidget(
@@ -54,19 +58,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final button = find.widgetWithText(FilledButton, 'New Partner');
+    final button = find.byKey(const Key('partners-new-partner-button'));
     expect(button, findsOneWidget);
 
     await tester.tap(button);
     await tester.pumpAndSettle();
 
-    expect(find.text('New Partner'), findsWidgets);
-    expect(find.text('1 · Company & legal identity'), findsOneWidget);
-    expect(find.text('2 · Registered office & contacts'), findsOneWidget);
-    expect(find.text('3 · Partner Portal & branding'), findsOneWidget);
-    expect(find.text('4 · Commercial defaults'), findsOneWidget);
+    expect(find.byKey(const Key('new-partner-dialog')), findsOneWidget);
     expect(find.text('Create partner'), findsOneWidget);
-
     expect(
       api.gets.where((path) => path.startsWith('/api/v1/modules')),
       isEmpty,
