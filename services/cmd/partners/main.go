@@ -176,6 +176,11 @@ func (a *app) migrate(ctx context.Context) error {
 			     OR slug='himate-test-partner'
 			     OR lower(contact_email)='test.partner@himate.test'`,
 		}},
+		{Version: 7, Name: "start-23-11-3h-idempotent-partner-onboarding", Statements: []string{
+			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS onboarding_request_id TEXT NOT NULL DEFAULT ''`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS partners_onboarding_request_unique
+				ON partners.partners(onboarding_request_id) WHERE onboarding_request_id<>''`,
+		}},
 	}); err != nil {
 		return err
 	}
@@ -431,6 +436,7 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			Website               string `json:"website"`
 			Phone                 string `json:"phone"`
 			Notes                 string `json:"notes"`
+			OnboardingRequestID   string `json:"onboarding_request_id"`
 		}
 		if err := common.Decode(r, &in); err != nil {
 			common.APIError(w, 400, "JSON", "Invalid partner request: "+err.Error())
@@ -441,10 +447,27 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 400, "VALIDATION", "Display name is required")
 			return
 		}
-		slug := slugify(in.DisplayName)
-		if slug == "" {
-			common.APIError(w, 400, "VALIDATION", "Display name must contain at least one letter or number")
+		in.OnboardingRequestID = strings.TrimSpace(in.OnboardingRequestID)
+		if len(in.OnboardingRequestID) > 160 {
+			common.APIError(w, 400, "VALIDATION", "Onboarding request ID is too long")
 			return
+		}
+		if in.OnboardingRequestID != "" {
+			var existingID string
+			err := a.db.QueryRow(`SELECT id FROM partners.partners WHERE onboarding_request_id=$1`, in.OnboardingRequestID).Scan(&existingID)
+			if err == nil {
+				p, getErr := a.get(existingID)
+				if getErr != nil {
+					common.APIError(w, 500, "DB", "Could not recover existing partner onboarding request")
+					return
+				}
+				common.JSON(w, 200, partnerMap(p))
+				return
+			}
+			if err != sql.ErrNoRows {
+				common.APIError(w, 500, "DB", "Could not validate onboarding request")
+				return
+			}
 		}
 		if strings.TrimSpace(in.LegalName) == "" {
 			in.LegalName = in.DisplayName
@@ -468,18 +491,33 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		id := fmt.Sprintf("ptr_%06d", seq)
+		slug := partnerTechnicalSlug(in.DisplayName, id)
+		primaryDomain := strings.TrimSpace(in.PrimaryDomain)
+		if primaryDomain != "" {
+			var domainExists bool
+			if err := a.db.QueryRow(`SELECT EXISTS(
+				SELECT 1 FROM partners.partners WHERE lower(primary_domain)=lower($1) AND primary_domain<>''
+			)`, primaryDomain).Scan(&domainExists); err != nil {
+				common.APIError(w, 500, "DB", "Could not validate primary domain")
+				return
+			}
+			if domainExists {
+				common.APIError(w, 409, "PRIMARY_DOMAIN_EXISTS", "Primary domain is already assigned to another partner")
+				return
+			}
+		}
 		_, err := a.db.Exec(`INSERT INTO partners.partners(
 				id,slug,display_name,legal_name,brand_name,category_id,lifecycle,primary_domain,
 				contact_name,contact_email,finance_contact_name,finance_contact_email,
 				technical_contact_name,technical_contact_email,marketing_contact_name,marketing_contact_email,
-				registration_number,tax_id,country,state_region,city,postal_code,address_line1,address_line2,website,phone,notes
+				registration_number,tax_id,country,state_region,city,postal_code,address_line1,address_line2,website,phone,notes,onboarding_request_id
 			) VALUES(
 				$1,$2,$3,$4,$5,$6,$7,$8,
 				$9,$10,$11,$12,$13,$14,$15,$16,
-				$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
+				$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28
 			)`,
 			id, slug, in.DisplayName, strings.TrimSpace(in.LegalName), strings.TrimSpace(in.BrandName),
-			in.CategoryID, in.Lifecycle, strings.TrimSpace(in.PrimaryDomain),
+			in.CategoryID, in.Lifecycle, primaryDomain,
 			strings.TrimSpace(in.ContactName), strings.ToLower(strings.TrimSpace(in.ContactEmail)),
 			strings.TrimSpace(in.FinanceContactName), strings.ToLower(strings.TrimSpace(in.FinanceContactEmail)),
 			strings.TrimSpace(in.TechnicalContactName), strings.ToLower(strings.TrimSpace(in.TechnicalContactEmail)),
@@ -487,9 +525,18 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			strings.TrimSpace(in.RegistrationNumber), strings.TrimSpace(in.TaxID), strings.TrimSpace(in.Country),
 			strings.TrimSpace(in.StateRegion), strings.TrimSpace(in.City), strings.TrimSpace(in.PostalCode),
 			strings.TrimSpace(in.AddressLine1), strings.TrimSpace(in.AddressLine2), strings.TrimSpace(in.Website),
-			strings.TrimSpace(in.Phone), strings.TrimSpace(in.Notes))
+			strings.TrimSpace(in.Phone), strings.TrimSpace(in.Notes), in.OnboardingRequestID)
 		if err != nil {
-			common.APIError(w, 409, "CONFLICT", "Partner could not be created because its display-name slug or primary domain is already in use")
+			if in.OnboardingRequestID != "" {
+				var existingID string
+				if lookupErr := a.db.QueryRow(`SELECT id FROM partners.partners WHERE onboarding_request_id=$1`, in.OnboardingRequestID).Scan(&existingID); lookupErr == nil {
+					if p, getErr := a.get(existingID); getErr == nil {
+						common.JSON(w, 200, partnerMap(p))
+						return
+					}
+				}
+			}
+			common.APIError(w, 500, "DB", "Could not create partner")
 			return
 		}
 		p, _ := a.get(id)
@@ -820,4 +867,13 @@ func slugify(v string) string {
 		return "custom"
 	}
 	return s
+}
+
+func partnerTechnicalSlug(displayName, partnerID string) string {
+	suffix := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(partnerID)), "ptr_")
+	suffix = strings.Trim(nonSlug.ReplaceAllString(suffix, "-"), "-")
+	if suffix == "" {
+		suffix = "partner"
+	}
+	return slugify(displayName) + "-" + suffix
 }
