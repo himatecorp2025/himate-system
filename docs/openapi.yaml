@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.25-start-23.11.3h
+  version: 0.8.26-start-23.11.3i
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.3h HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.3i HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
