@@ -344,7 +344,7 @@ func (a *app)internalJSON(ctx context.Context,method,host,path string,payload an
 	common.BindInternalRequest(req,a.token)
 	if actor!=""{req.Header.Set("X-Himate-User-ID",actor)}
 	if payload!=nil{req.Header.Set("Content-Type","application/json")}
-	resp,err:=a.client.Do(req);if err!=nil{return err}
+	resp,err:=common.DoInternal(a.client, req);if err!=nil{return err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{
 		var e map[string]any;_ = json.NewDecoder(resp.Body).Decode(&e)
