@@ -383,6 +383,15 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.22-start-23.11.3e`
 - acceptance: `docs/START-23.11.3E_ACCEPTANCE.md`, `scripts/audit_start_23_11_3e.py`, `scripts/smoke_start_23_11_3e.sh`
 
+### START-23.11.3f — Partner Category Resilience
+- New Partner always exposes all six canonical system categories immediately instead of collapsing to **Other** while the live registry loads
+- live/custom category rows are merged over the built-in catalog
+- the open New Partner modal performs one non-blocking live category refresh
+- the misleading **Category service is still loading** message is removed
+- Compose acceptance verifies the API returns all six system categories and creates a partner using **Gallery / cat_003**
+- release contract version is `0.8.23-start-23.11.3f`
+- acceptance: `docs/START-23.11.3F_ACCEPTANCE.md`, `scripts/audit_start_23_11_3f.py`, `scripts/smoke_start_23_11_3f.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
