@@ -357,7 +357,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - missing Stripe credentials no longer terminate the Payments process: health remains available with configuration-required state while charge/webhook execution fails closed.
 - audit snapshots redact submitted secret values.
 - release contract version is `0.8.18-start-23.11.3a`
-- acceptance: `docs/START-23.11.3A_ACCEPTANCE.md`, `scripts/audit_start_23_11_3a.py`
+- acceptance: `docs/START-23.11.3A_ACCEPTANCE.md`, `scripts/audit_start_23_11_3a.py`, `scripts/smoke_start_23_11_3a.sh`
 
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
