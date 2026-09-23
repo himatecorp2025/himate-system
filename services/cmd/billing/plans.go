@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +21,8 @@ type subscriptionPlan struct {
 	MonthlyPrice       float64
 	AnnualListPrice    float64
 	AnnualPrice        float64
+	AnnualIncreasePercent float64
+	PriceEffectiveFrom time.Time
 	AnnualFreeMonths   int
 	ModuleLimit        int
 	SelectionMode      string
@@ -302,11 +305,82 @@ func normalizeBillingFrequency(value string) string {
 func (a *app) loadPlan(ctx context.Context, key string) (subscriptionPlan, error) {
 	var p subscriptionPlan
 	err := a.db.QueryRowContext(ctx, `SELECT plan_key,display_name,currency,monthly_price,annual_list_price,annual_price,
-		annual_free_months,module_limit,selection_mode,customer_selectable,active,sort_order
+		annual_increase_percent,annual_free_months,module_limit,selection_mode,customer_selectable,active,sort_order
 		FROM billing.subscription_plans WHERE plan_key=$1`, strings.ToUpper(strings.TrimSpace(key))).
 		Scan(&p.Key,&p.Name,&p.Currency,&p.MonthlyPrice,&p.AnnualListPrice,&p.AnnualPrice,
-			&p.AnnualFreeMonths,&p.ModuleLimit,&p.SelectionMode,&p.CustomerSelectable,&p.Active,&p.SortOrder)
+			&p.AnnualIncreasePercent,&p.AnnualFreeMonths,&p.ModuleLimit,&p.SelectionMode,&p.CustomerSelectable,&p.Active,&p.SortOrder)
 	return p, err
+}
+
+func roundPlanAmount(value float64) float64 {
+	return math.Round(value*100) / 100
+}
+
+func standardPlanLimit(key string) (int,bool) {
+	switch strings.ToUpper(strings.TrimSpace(key)) {
+	case "STARTER":
+		return 3,true
+	case "BUSINESS":
+		return 10,true
+	case "FLEX":
+		return 15,true
+	default:
+		return 0,false
+	}
+}
+
+func (a *app) loadPlanAt(ctx context.Context, key string, at time.Time) (subscriptionPlan,error) {
+	p,err:=a.loadPlan(ctx,key)
+	if err!=nil{return p,err}
+	at=dateOnly(at)
+	var effective time.Time
+	err=a.db.QueryRowContext(ctx,`SELECT monthly_price,annual_list_price,annual_price,effective_from
+		FROM billing.subscription_plan_price_history
+		WHERE plan_key=$1 AND effective_from<=$2
+		ORDER BY effective_from DESC,
+			CASE change_type WHEN 'MANUAL' THEN 3 WHEN 'ANNUAL_INCREASE' THEN 2 ELSE 1 END DESC,
+			id DESC LIMIT 1`,p.Key,at).
+		Scan(&p.MonthlyPrice,&p.AnnualListPrice,&p.AnnualPrice,&effective)
+	if err==sql.ErrNoRows{return p,nil}
+	if err!=nil{return p,err}
+	p.PriceEffectiveFrom=dateOnly(effective)
+	return p,nil
+}
+
+func (a *app) ensureAnnualPlanIncreases(ctx context.Context, at time.Time) error {
+	at=dateOnly(at)
+	rows,err:=a.db.QueryContext(ctx,`SELECT plan_key,annual_increase_percent FROM billing.subscription_plans
+		WHERE plan_key IN ('STARTER','BUSINESS','FLEX') ORDER BY sort_order,plan_key`)
+	if err!=nil{return err}
+	type item struct{ key string; rate float64 }
+	plans:=[]item{}
+	for rows.Next(){var x item;if err:=rows.Scan(&x.key,&x.rate);err!=nil{rows.Close();return err};plans=append(plans,x)}
+	rows.Close()
+	for _,x:=range plans{
+		var first time.Time
+		if err:=a.db.QueryRowContext(ctx,`SELECT MIN(effective_from) FROM billing.subscription_plan_price_history WHERE plan_key=$1`,x.key).Scan(&first);err!=nil{return err}
+		for year:=first.Year()+1;year<=at.Year();year++{
+			jan1:=time.Date(year,time.January,1,0,0,0,0,time.UTC)
+			if at.Before(jan1){continue}
+			var exists bool
+			if err:=a.db.QueryRowContext(ctx,`SELECT EXISTS(
+				SELECT 1 FROM billing.subscription_plan_price_history
+				WHERE plan_key=$1 AND effective_from=$2 AND change_type='ANNUAL_INCREASE')`,x.key,jan1).Scan(&exists);err!=nil{return err}
+			if exists{continue}
+			prior,err:=a.loadPlanAt(ctx,x.key,jan1.AddDate(0,0,-1));if err!=nil{return err}
+			factor:=1+x.rate/100
+			monthly:=roundPlanAmount(prior.MonthlyPrice*factor)
+			list:=roundPlanAmount(prior.AnnualListPrice*factor)
+			annual:=roundPlanAmount(prior.AnnualPrice*factor)
+			if _,err=a.db.ExecContext(ctx,`INSERT INTO billing.subscription_plan_price_history(
+				plan_key,currency,monthly_price,annual_list_price,annual_price,effective_from,change_type,
+				annual_increase_percent,actor,reason)
+				VALUES($1,$2,$3,$4,$5,$6,'ANNUAL_INCREASE',$7,'billing-cycle',$8)`,
+				x.key,prior.Currency,monthly,list,annual,jan1,x.rate,
+				fmt.Sprintf("Automatic %.2f%% January 1 package increase",x.rate));err!=nil{return err}
+		}
+	}
+	return nil
 }
 
 func (a *app) planModulesAt(ctx context.Context, planKey string, at time.Time) ([]string, error) {
@@ -353,6 +427,8 @@ func planMap(p subscriptionPlan, fixed []string, ready bool) map[string]any {
 		"plan_key":p.Key,"display_name":p.Name,"currency":p.Currency,
 		"monthly_price":p.MonthlyPrice,"annual_list_price":p.AnnualListPrice,"annual_price":p.AnnualPrice,
 		"annual_savings":savings,"annual_free_months":p.AnnualFreeMonths,
+		"annual_increase_percent":p.AnnualIncreasePercent,
+		"price_effective_from":func() any { if p.PriceEffectiveFrom.IsZero(){return nil}; return p.PriceEffectiveFrom.Format("2006-01-02") }(),
 		"module_limit":p.ModuleLimit,"selection_mode":p.SelectionMode,
 		"customer_selectable":p.CustomerSelectable,"active":p.Active,"sort_order":p.SortOrder,
 		"fixed_module_keys":fixed,"ready":ready,
@@ -361,19 +437,19 @@ func planMap(p subscriptionPlan, fixed []string, ready bool) map[string]any {
 
 func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }
-	rows, err := a.db.QueryContext(r.Context(), `SELECT plan_key,display_name,currency,monthly_price,annual_list_price,annual_price,
-		annual_free_months,module_limit,selection_mode,customer_selectable,active,sort_order
-		FROM billing.subscription_plans ORDER BY sort_order,plan_key`)
+	if err:=a.ensureAnnualPlanIncreases(r.Context(),time.Now().UTC());err!=nil{common.APIError(w,500,"DB","Could not apply annual package pricing");return}
+	rows, err := a.db.QueryContext(r.Context(), `SELECT plan_key FROM billing.subscription_plans ORDER BY sort_order,plan_key`)
 	if err != nil { common.APIError(w,500,"DB","Could not load subscription plans"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	now := time.Now().UTC()
 	for rows.Next() {
-		var p subscriptionPlan
-		if err := rows.Scan(&p.Key,&p.Name,&p.Currency,&p.MonthlyPrice,&p.AnnualListPrice,&p.AnnualPrice,
-			&p.AnnualFreeMonths,&p.ModuleLimit,&p.SelectionMode,&p.CustomerSelectable,&p.Active,&p.SortOrder); err != nil {
+		var key string
+		if err := rows.Scan(&key); err != nil {
 			common.APIError(w,500,"DB","Could not decode subscription plan"); return
 		}
+		p,err:=a.loadPlanAt(r.Context(),key,now)
+		if err!=nil{common.APIError(w,500,"DB","Could not resolve subscription plan price");return}
 		ready, fixed, err := a.planReady(r.Context(), p, now)
 		if err != nil { common.APIError(w,500,"DB","Could not load plan modules"); return }
 		items = append(items, planMap(p,fixed,ready))
