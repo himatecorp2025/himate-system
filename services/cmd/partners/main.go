@@ -681,6 +681,10 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 		set(in.LogoURL, &p.LogoURL)
 		set(in.Notes, &p.Notes)
 		if in.TestPartner != nil {
+			if oldTestPartner && !*in.TestPartner {
+				common.APIError(w, 409, "GOLDEN_TEST_PARTNER_IMMUTABLE", "Golden Test Partner mode can only be removed by the dedicated test-tenant purge workflow")
+				return
+			}
 			p.TestPartner = *in.TestPartner
 			if p.TestPartner && !oldTestPartner {
 				p.Lifecycle = "LIVE"
