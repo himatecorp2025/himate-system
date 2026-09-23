@@ -79,6 +79,16 @@ Unassigned partner design media remains private.
 
 This prevents the onboarding path from creating an incomplete record that later has to be manually reconstructed for billing or Partner Portal personalization.
 
+## Error-handling contract
+
+The **New Partner** modal is the source of truth for validation and creation feedback.
+
+- client-side validation errors are rendered inside the modal and move the user to the relevant step;
+- the modal does not close before the authoritative partner POST succeeds;
+- backend/API errors are rendered inside the same modal, not as a bottom-page snackbar;
+- if the core partner already exists but Portal Owner, logo or commercial-default persistence fails, the modal remains open and the next attempt resumes against the same partner ID instead of creating a duplicate;
+- malformed JSON or frontend/backend version skew is reported as an invalid partner request, never mislabeled as **Display name is required**.
+
 ## Automated evidence
 
 - Deterministic frontend contract audit: `python3 scripts/audit_start_23_11_3e.py`
