@@ -39,6 +39,28 @@ func TestReleaseGuardPublishesVersionHeaders(t *testing.T) {
 	}
 }
 
+func TestReleaseGuardRejectsUnversionedPrivateMutation(t *testing.T) {
+	t.Setenv("HIMATE_APP_VERSION", "0.8.26-start-23.11.3i")
+	called := false
+	handler := ReleaseGuard("partners", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		JSON(w, http.StatusOK, map[string]any{"ok": true})
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/partners", strings.NewReader("{}"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+	if called {
+		t.Fatal("unversioned private mutation must not reach application handler")
+	}
+	if !strings.Contains(rec.Body.String(), "RELEASE_VERSION_REQUIRED") {
+		t.Fatalf("expected RELEASE_VERSION_REQUIRED, got %s", rec.Body.String())
+	}
+}
+
 func TestReleaseGuardBlocksMismatchedInternalMutation(t *testing.T) {
 	t.Setenv("HIMATE_APP_VERSION", "0.8.26-start-23.11.3i")
 	called := false
