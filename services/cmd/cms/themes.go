@@ -515,10 +515,30 @@ func (a *app) partnerMediaInternal(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, http.StatusInternalServerError, "DB", "Could not record partner design media")
 			return
 		}
+		purpose := strings.ToLower(strings.TrimSpace(r.FormValue("purpose")))
+		if purpose != "" && purpose != "logo" {
+			common.APIError(w, http.StatusBadRequest, "VALIDATION", "Unsupported partner media purpose")
+			return
+		}
+		if purpose == "logo" {
+			_, err = a.db.ExecContext(r.Context(), `INSERT INTO cms.partner_brand_assets(partner_id,slot,media_id,updated_by,updated_at)
+				VALUES($1,'logo',$2,$3,NOW())
+				ON CONFLICT(partner_id,slot) DO UPDATE SET media_id=EXCLUDED.media_id,updated_by=EXCLUDED.updated_by,updated_at=NOW()`,
+				partnerID, id, actor(r))
+			if err != nil {
+				common.APIError(w, http.StatusInternalServerError, "DB", "Could not register partner logo")
+				return
+			}
+		}
 		media, _ := a.getMedia(id)
+		out := mapMedia(media)
+		if purpose == "logo" {
+			out["purpose"] = "logo"
+			out["public_url"] = "/public/v1/cms/media/" + id
+		}
 		_ = a.audit(r.Context(), "", id, "PARTNER_DESIGN_MEDIA_UPLOADED", actor(r), correlationID(r),
-			map[string]any{}, map[string]any{"partner_id": partnerID, "media_id": id, "sha256": sum})
-		common.JSON(w, http.StatusCreated, mapMedia(media))
+			map[string]any{}, map[string]any{"partner_id": partnerID, "media_id": id, "purpose": purpose, "sha256": sum})
+		common.JSON(w, http.StatusCreated, out)
 	default:
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or POST")
 	}
