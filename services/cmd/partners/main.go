@@ -674,6 +674,10 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 		set(in.Phone, &p.Phone)
 		set(in.LogoURL, &p.LogoURL)
 		set(in.Notes, &p.Notes)
+		if p.DisplayName == "" {
+			common.APIError(w, 400, "VALIDATION", "Display name is required")
+			return
+		}
 		p.ContactEmail = strings.ToLower(p.ContactEmail)
 		p.FinanceContactEmail = strings.ToLower(p.FinanceContactEmail)
 		p.TechnicalContactEmail = strings.ToLower(p.TechnicalContactEmail)
