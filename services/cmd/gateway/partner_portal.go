@@ -259,11 +259,20 @@ func (a *app) internalJSON(ctx context.Context,method,host,path string,body any,
 	if body!=nil{raw,err:=json.Marshal(body);if err!=nil{return err};reader=bytes.NewReader(raw)}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+host+path,reader);if err!=nil{return err}
 	req.Header.Set("X-Himate-Internal-Token",a.internalToken)
+	req.Header.Set("X-Himate-Expected-Version",a.version)
 	if body!=nil{req.Header.Set("Content-Type","application/json")}
 	for k,v:=range headers{req.Header.Set(k,v)}
 	resp,err:=a.client.Do(req);if err!=nil{return err};defer resp.Body.Close()
 	raw,err:=io.ReadAll(io.LimitReader(resp.Body,1<<20));if err!=nil{return err}
 	if resp.StatusCode>=300{return internalHTTPError{Status:resp.StatusCode,Body:raw}}
+	gotVersion:=strings.TrimSpace(resp.Header.Get("X-Himate-App-Version"))
+	if gotVersion==""||gotVersion!=a.version{
+		payload,_:=json.Marshal(map[string]any{"error":map[string]string{
+			"code":"RELEASE_MISMATCH",
+			"message":fmt.Sprintf("Upstream service release %q does not match required release %q",gotVersion,a.version),
+		}})
+		return internalHTTPError{Status:http.StatusServiceUnavailable,Body:payload}
+	}
 	if dst!=nil&&len(bytes.TrimSpace(raw))>0{return json.Unmarshal(raw,dst)}
 	return nil
 }
