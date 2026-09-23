@@ -4078,7 +4078,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Pricing & Subscription',
-          subtitle: 'Partner-specific license, provider-backed payment and calendar-month terms.',
+          subtitle: 'Partner-specific license, provider-backed payment and recurring 30-day terms.',
           icon: Icons.payments_outlined,
           width: 760,
           child: Column(
@@ -4181,7 +4181,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               const SizedBox(height: 12),
               const _RuleStrip(items: [
                 _RuleItem(Icons.verified_user_outlined, 'Payment authority', 'Signed provider webhook only'),
-                _RuleItem(Icons.event_repeat_outlined, 'Renewal', 'Automatic calendar-month collection'),
+                _RuleItem(Icons.event_repeat_outlined, 'Renewal', 'Automatic 30-day collection'),
                 _RuleItem(Icons.lock_clock_outlined, 'Provisioning', 'Opens only after verified PAID state'),
               ]),
             ],
@@ -4394,7 +4394,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: '${module['label']}',
-          subtitle: 'Control entitlement, partner visibility and calendar-month pricing without removing the underlying module code or data.',
+          subtitle: 'Control entitlement, partner visibility and 30-day pricing without removing the underlying module code or data.',
           icon: Icons.grid_view_outlined,
           width: 680,
           child: Column(
@@ -4414,7 +4414,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               if ('${module['status']}' == 'ACTIVE') ...[
                 const SizedBox(height: 6),
                 const LText(
-                  'Paid-period deactivation is Billing-managed. Use Cancel at period end; access remains active until the current calendar month closes.',
+                  'Paid-period deactivation is Billing-managed. Use Cancel at period end; access remains active until the current 30-day period closes.',
                   style: TextStyle(color: brandTextSoft, fontSize: 9.5),
                 ),
               ],
@@ -4440,7 +4440,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 title: const LText('Cancel at period end'),
                 subtitle: LText(
                   subscription == null
-                      ? 'A calendar-month subscription record is created when the active module is synchronized.'
+                      ? 'A 30-day subscription record is created when the active module is synchronized.'
                       : 'Current period ends ${subscription['period_end_exclusive'] ?? '—'}. Cancellation keeps access through that date.',
                 ),
               ),
@@ -4449,7 +4449,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                 first: TextField(
                   controller: price,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(labelText: uiLiteral('Partner monthly price')),
+                  decoration: InputDecoration(labelText: uiLiteral('Partner 30-day price')),
                 ),
                 second: TextField(
                   controller: effectiveAt,
@@ -7322,7 +7322,7 @@ class _PartnerModuleCardState extends State<PartnerModuleCard> {
                 ]),
                 const SizedBox(height: 9),
                 Row(children: [
-                  const LText('Monthly price', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const LText('30-day price', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
                   const Spacer(),
                   LText(included ? 'Included' : money(m['partner_price']), style: const TextStyle(color: brandNavy, fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(width: 7),
@@ -7402,7 +7402,7 @@ class _CommercialSummaryCard extends StatelessWidget {
       _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
       _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),
       _DefinitionRow(label: 'Next cycle', value: '${billing['next_billing_date'] ?? '—'}'),
-      const _DefinitionRow(label: 'Billing rule', value: 'Calendar month · full monthly charge · no proration'),
+      const _DefinitionRow(label: 'Billing rule', value: 'Activation-date anchored · 30 days'),
     ],
   );
 }
@@ -7717,8 +7717,8 @@ class _BillingRulesCard extends StatelessWidget {
     title: 'Commercial Rules',
     icon: Icons.rule_folder_outlined,
     children: [
-      _DefinitionRow(label: 'Service period', value: 'Current calendar month'),
-      _DefinitionRow(label: 'Renewal', value: 'Every calendar month'),
+      _DefinitionRow(label: 'Service period', value: '30 days from activation'),
+      _DefinitionRow(label: 'Renewal', value: 'Every 30 days'),
       _DefinitionRow(label: 'Invoice trigger', value: 'Partner cycle boundary'),
       _DefinitionRow(label: 'Annual base-fee uplift', value: 'January 1'),
       _DefinitionRow(label: 'Default uplift', value: '10% · admin-overridable'),
