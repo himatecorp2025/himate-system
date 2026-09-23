@@ -55,8 +55,7 @@ func (a *app) adminPartnerLogo(w http.ResponseWriter, r *http.Request, actor use
 		common.APIError(w, http.StatusInternalServerError, "REQUEST", "Could not prepare partner logo upload")
 		return
 	}
-	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
-	req.Header.Set("X-Himate-Expected-Version", a.version)
+	common.BindInternalRequest(req, a.internalToken)
 	req.Header.Set("X-Himate-User-ID", actor.ID)
 	req.Header.Set("X-Correlation-ID", strings.TrimSpace(r.Header.Get("X-Correlation-ID")))
 	req.Header.Set("Content-Type", contentType)
