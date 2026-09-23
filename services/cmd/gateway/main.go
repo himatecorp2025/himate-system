@@ -2024,22 +2024,14 @@ func (a *app) internalGET(ctx context.Context, host, path string, dst any) error
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
-	req.Header.Set("X-Himate-Expected-Version", a.version)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	gotVersion := strings.TrimSpace(resp.Header.Get("X-Himate-App-Version"))
-	if gotVersion == "" {
-		return fmt.Errorf("service at %s does not report a release version", host)
-	}
-	if gotVersion != a.version {
-		return fmt.Errorf("service at %s is running %s; expected %s", host, gotVersion, a.version)
 	}
 	return json.NewDecoder(resp.Body).Decode(dst)
 }
