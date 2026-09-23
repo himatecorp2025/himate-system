@@ -490,11 +490,17 @@ func (a *app) provisioningAllowed(ctx context.Context, partnerID string) (bool, 
 }
 
 func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
-	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/partners/"), "/")
-	if id == "" || strings.Contains(id, "/") {
+	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/partners/"), "/")
+	parts := strings.Split(raw, "/")
+	if len(parts) == 2 && parts[0] != "" && parts[1] == "purge-operational" {
+		a.purgeOperationalPartner(w, r, parts[0])
+		return
+	}
+	if len(parts) != 1 || parts[0] == "" {
 		common.APIError(w, 404, "NOT_FOUND", "Partner not found")
 		return
 	}
+	id := parts[0]
 	switch r.Method {
 	case http.MethodGet:
 		p, err := a.get(id)
@@ -645,6 +651,71 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or PATCH")
 	}
+}
+
+func (a *app) purgeOperationalPartner(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, 405, "METHOD", "Use POST")
+		return
+	}
+	p, err := a.get(id)
+	if err != nil {
+		common.APIError(w, 404, "NOT_FOUND", "Partner not found")
+		return
+	}
+	if p.Lifecycle != "SUSPENDED" && p.Lifecycle != "ARCHIVED" {
+		common.APIError(w, 409, "PARTNER_NOT_SUSPENDED", "Operational purge requires a suspended or archived partner")
+		return
+	}
+	var in struct{ Reason string `json:"reason"` }
+	_ = common.Decode(r, &in)
+	reason := strings.TrimSpace(in.Reason)
+	if reason == "" { reason = "Operational account purge" }
+	actor := strings.TrimSpace(r.Header.Get("X-Himate-User-ID"))
+	if actor == "" { actor = "system" }
+
+	tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{})
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not start operational purge")
+		return
+	}
+	defer tx.Rollback()
+
+	deletedUsers := int64(0)
+	var identityExists bool
+	if err = tx.QueryRow(`SELECT to_regclass('identity.partner_users') IS NOT NULL`).Scan(&identityExists); err != nil {
+		common.APIError(w, 500, "DB", "Could not inspect partner identity storage")
+		return
+	}
+	if identityExists {
+		res, deleteErr := tx.Exec(`DELETE FROM identity.partner_users WHERE partner_id=$1`, id)
+		if deleteErr != nil {
+			common.APIError(w, 500, "DB", "Could not purge partner login identities")
+			return
+		}
+		deletedUsers, _ = res.RowsAffected()
+	}
+	if p.Lifecycle != "ARCHIVED" {
+		if _, err = tx.Exec(`UPDATE partners.partners SET lifecycle='ARCHIVED',system_health='ARCHIVED',updated_at=NOW() WHERE id=$1`, id); err != nil {
+			common.APIError(w, 500, "DB", "Could not archive partner")
+			return
+		}
+		if _, err = tx.Exec(`INSERT INTO partners.lifecycle_history(partner_id,from_state,to_state,changed_by,reason)
+			VALUES($1,$2,'ARCHIVED',$3,$4)`, id, p.Lifecycle, actor, reason); err != nil {
+			common.APIError(w, 500, "DB", "Could not record operational purge lifecycle")
+			return
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		common.APIError(w, 500, "DB", "Could not commit operational purge")
+		return
+	}
+	common.JSON(w, 200, map[string]any{
+		"partner_id": id,
+		"lifecycle": "ARCHIVED",
+		"operational_identity_records_deleted": deletedUsers,
+		"legal_financial_records_retained": true,
+	})
 }
 
 const selectPartner = `SELECT
