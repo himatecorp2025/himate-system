@@ -885,8 +885,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   }
 
   Widget overview() {
-    final activeModules = modules.where((m) => m['status'] == 'ACTIVE').length;
-    final available = modules.where((m) => m['can_activate'] == true).length;
+    final activeModules = modules.where((m) => '${m['access_state']}' == 'ACTIVE').length;
+    final available = modules.length;
     return Content(
       eyebrow: 'PARTNER PORTAL',
       title: company['display_name']?.toString() ?? 'Your organization',
@@ -895,7 +895,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ResponsiveKpiGrid(children: [
           Kpi(label: 'Active modules', value: activeModules.toString(), note: 'Currently enabled services', icon: Icons.extension_outlined, accent: brandNavy),
-          Kpi(label: 'Available modules', value: available.toString(), note: 'Eligible for activation', icon: Icons.add_circle_outline_rounded, accent: brandSteel),
+          Kpi(label: 'Catalog modules', value: available.toString(), note: 'Visible in Module Marketplace', icon: Icons.grid_view_rounded, accent: brandSteel),
           Kpi(label: 'Current 30-day total', value: money(billing['current_total']), note: 'Base + active extras', icon: Icons.payments_outlined, accent: brandGold),
           Kpi(label: 'Impact metrics', value: impact.length.toString(), note: 'Results currently reported', icon: Icons.insights_outlined, accent: brandSuccess),
         ]),
@@ -921,49 +921,168 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     );
   }
 
+  List<String> marketplaceStrings(dynamic raw) =>
+      raw is List ? raw.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList() : <String>[];
+
+  void openBillingFromMarketplace() {
+    final target = visibleNav.indexWhere((item) => item.label == 'Billing');
+    if (target >= 0) setState(() => selected = target);
+  }
+
   Widget moduleCard(Map<String, dynamic> module) {
-    final active = module['status'] == 'ACTIVE';
+    final access = '${module['access_state'] ?? 'LOCKED'}'.toUpperCase();
+    final active = access == 'ACTIVE';
+    final locked = access == 'LOCKED';
+    final comingSoon = access == 'COMING_SOON';
+    final unavailable = access == 'UNAVAILABLE';
     final sub = subscriptionFor('${module['key']}');
     final cancelling = sub?['cancel_at_period_end'] == true;
-    final blockers = (module['activation_blockers'] is List)
-        ? (module['activation_blockers'] as List).map((e) => e.toString()).toList()
-        : <String>[];
+    final blockers = marketplaceStrings(module['activation_blockers']);
+    final availablePlans = marketplaceStrings(module['available_in_plan_names']);
+    final upgradePlans = marketplaceStrings(module['upgrade_plan_names']);
+    final currentPlan = '${plan['display_name'] ?? plan['plan_key'] ?? ''}'.trim();
+    final summary = '${module['marketplace_summary'] ?? module['description'] ?? ''}'.trim();
+    final statusLabel = active
+        ? 'INCLUDED'
+        : locked
+            ? 'LOCKED'
+            : comingSoon
+                ? 'COMING SOON'
+                : unavailable
+                    ? 'UNAVAILABLE'
+                    : access;
+
+    String planAccessText;
+    if (active) {
+      planAccessText = currentPlan.isEmpty ? 'Included in your subscription' : 'Included in $currentPlan';
+    } else if (upgradePlans.isNotEmpty) {
+      planAccessText = 'Available with ${upgradePlans.join(' / ')}';
+    } else if (comingSoon) {
+      planAccessText = 'Catalog preview · live access not released yet';
+    } else if (availablePlans.isNotEmpty) {
+      planAccessText = 'Available in ${availablePlans.join(' / ')}';
+    } else {
+      planAccessText = 'Not available with your current subscription';
+    }
+
+    Widget accessMessage() {
+      if (active) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: brandSuccess.withOpacity(.07),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: brandSuccess.withOpacity(.18)),
+          ),
+          child: const LText(
+            'This module is included in your current subscription and is available to your organization.',
+            style: TextStyle(color: brandSuccess, fontSize: 9.5, fontWeight: FontWeight.w600, height: 1.4),
+          ),
+        );
+      }
+      if (locked) {
+        final extra = upgradePlans.isEmpty ? '' : ' Available with ${upgradePlans.join(' / ')}.';
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: brandWarning.withOpacity(.07),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: brandWarning.withOpacity(.18)),
+          ),
+          child: LText(
+            'This module is not available with your current subscription.$extra',
+            style: const TextStyle(color: brandWarning, fontSize: 9.5, fontWeight: FontWeight.w600, height: 1.4),
+          ),
+        );
+      }
+      if (comingSoon) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: brandSteel.withOpacity(.07),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: brandSteel.withOpacity(.18)),
+          ),
+          child: const LText(
+            'This canonical HIMATE module is visible for discovery, but live access is not available until its implementation is READY and PUBLISHED.',
+            style: TextStyle(color: brandSteel, fontSize: 9.5, fontWeight: FontWeight.w600, height: 1.4),
+          ),
+        );
+      }
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: brandTextSoft.withOpacity(.06),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: brandTextSoft.withOpacity(.15)),
+        ),
+        child: const LText(
+          'This module is currently unavailable for live use.',
+          style: TextStyle(color: brandTextSoft, fontSize: 9.5, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(17),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Expanded(child: LText('${module['label']}', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
-            _StatusPill(label: '${module['status'] ?? 'NOT_LICENSED'}'),
+            Expanded(
+              child: LText(
+                '${module['label']}',
+                style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+            ),
+            _StatusPill(label: statusLabel),
           ]),
           const SizedBox(height: 7),
-          LText('${module['description'] ?? ''}', maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10, height: 1.4)),
+          LText(
+            summary,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: brandTextSoft, fontSize: 10, height: 1.4),
+          ),
           const SizedBox(height: 12),
           _DefinitionRow(label: 'Group', value: '${module['group_label'] ?? '—'}'),
-          _DefinitionRow(label: 'Version', value: '${module['latest_version'] ?? '—'}'),
-          _DefinitionRow(
-            label: hasManagedPlan ? 'Plan access' : '30-day price',
-            value: hasManagedPlan
-                ? (active ? 'Included in current subscription plan' : 'Not included in current plan')
-                : module['included_in_base'] == true
-                    ? 'Included in base'
-                    : '${module['currency'] ?? 'USD'} ${number(module['partner_price']).toStringAsFixed(2)}',
-          ),
-          if (!hasManagedPlan && active && sub != null) ...[
-            _DefinitionRow(label: 'Current period ends', value: '${sub['period_end_exclusive'] ?? '—'}'),
-            _DefinitionRow(label: 'Renewal', value: cancelling ? 'Stops at period end' : 'Automatic'),
-          ],
-          if (blockers.isNotEmpty) ...[
+          _DefinitionRow(label: 'Plan access', value: planAccessText),
+          if (module['executable'] == true)
+            _DefinitionRow(label: 'Live availability', value: 'READY + PUBLISHED')
+          else
+            _DefinitionRow(label: 'Live availability', value: 'Discovery only'),
+          const SizedBox(height: 8),
+          accessMessage(),
+          if (!hasManagedPlan && blockers.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: brandWarning.withOpacity(.07), borderRadius: BorderRadius.circular(9), border: Border.all(color: brandWarning.withOpacity(.18))),
-              child: LText(blockers.join(' · '), style: const TextStyle(color: brandWarning, fontSize: 9.5, fontWeight: FontWeight.w600)),
+              decoration: BoxDecoration(
+                color: brandWarning.withOpacity(.07),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: brandWarning.withOpacity(.18)),
+              ),
+              child: LText(
+                blockers.join(' · '),
+                style: const TextStyle(color: brandWarning, fontSize: 9.5, fontWeight: FontWeight.w600),
+              ),
             ),
           ],
-          const SizedBox(height: 18),
-          if (!hasManagedPlan && !active)
+          const SizedBox(height: 16),
+          if (hasManagedPlan && locked && upgradePlans.isNotEmpty && can('billing.read'))
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: openBillingFromMarketplace,
+                icon: const Icon(Icons.upgrade_rounded),
+                label: const LText('View upgrade options'),
+              ),
+            )
+          else if (!hasManagedPlan && !active && module['executable'] == true)
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -972,7 +1091,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                 label: const LText('Activate module'),
               ),
             )
-          else if (!hasManagedPlan && sub != null && module['included_in_base'] != true && can('modules.write'))
+          else if (!hasManagedPlan && active && sub != null && module['included_in_base'] != true && can('modules.write'))
             SizedBox(
               width: double.infinity,
               child: cancelling
@@ -993,28 +1112,87 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   }
 
   Widget modulesPage() {
-    final active = modules.where((m) => m['status'] == 'ACTIVE').toList();
-    final available = modules.where((m) => m['status'] != 'ACTIVE').toList();
+    final included = modules.where((m) => '${m['access_state']}' == 'ACTIVE').toList();
+    final locked = modules.where((m) => '${m['access_state']}' == 'LOCKED').toList();
+    final comingSoon = modules.where((m) => '${m['access_state']}' == 'COMING_SOON').toList();
+    final unavailable = modules.where((m) => '${m['access_state']}' == 'UNAVAILABLE').toList();
+
     Widget grid(List<Map<String, dynamic>> data) => LayoutBuilder(builder: (context, constraints) {
-      final width = constraints.maxWidth < 650 ? constraints.maxWidth : constraints.maxWidth < 1050 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
-      return Wrap(spacing: 12, runSpacing: 12, children: [
-        for (final module in data) SizedBox(width: width, child: moduleCard(module)),
-      ]);
+      final width = constraints.maxWidth < 650
+          ? constraints.maxWidth
+          : constraints.maxWidth < 1050
+              ? (constraints.maxWidth - 12) / 2
+              : (constraints.maxWidth - 24) / 3;
+      return Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [for (final module in data) SizedBox(width: width, child: moduleCard(module))],
+      );
     });
+
     return Content(
-      eyebrow: 'MY SERVICES',
-      title: 'Modules',
+      eyebrow: 'MODULE CATALOG',
+      title: 'Module Marketplace',
       subtitle: hasManagedPlan
-          ? 'Module access is controlled by your subscription plan. Starter and Business are fixed packages; Flex module changes are managed from Billing.'
-          : 'Activate eligible HIMATE modules or schedule an active module to stop at the end of its current paid 30-day period.',
+          ? 'Explore the complete HIMATE module catalog. Your current plan modules are available now; other modules remain visible so you can see what higher plans and future releases can add.'
+          : 'Explore the HIMATE module catalog. Live activation remains subject to publication, readiness, commercial and dependency rules.',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _SectionHeader(title: 'My Modules', subtitle: 'Currently active for your organization.', trailing: _MiniCounter(label: '${active.length} active')),
-        const SizedBox(height: 12),
-        if (active.isEmpty) const _MessageCard(icon: Icons.extension_off_outlined, title: 'No active modules', message: 'Available modules are listed below.') else grid(active),
+        ResponsiveKpiGrid(children: [
+          Kpi(label: 'Catalog modules', value: modules.length.toString(), note: 'Visible across HIMATE', icon: Icons.grid_view_rounded, accent: brandNavy),
+          Kpi(label: 'Included', value: included.length.toString(), note: 'Available in your current access', icon: Icons.check_circle_outline_rounded, accent: brandSuccess),
+          Kpi(label: 'Locked', value: locked.length.toString(), note: 'Visible for plan discovery', icon: Icons.lock_outline_rounded, accent: brandGold),
+          Kpi(label: 'Coming soon', value: comingSoon.length.toString(), note: 'Canonical modules not live yet', icon: Icons.hourglass_top_rounded, accent: brandSteel),
+        ]),
         const SizedBox(height: 26),
-        _SectionHeader(title: 'Available Modules', subtitle: 'Availability, pricing and dependency rules are controlled by HIMATE.', trailing: _MiniCounter(label: '${available.length} listed')),
+        _SectionHeader(
+          title: 'Included in your plan',
+          subtitle: 'Modules currently available to your organization.',
+          trailing: _MiniCounter(label: '${included.length} included'),
+        ),
         const SizedBox(height: 12),
-        if (available.isEmpty) const _MessageCard(icon: Icons.check_circle_outline_rounded, title: 'Everything is active', message: 'There are no additional modules in your current catalog.') else grid(available),
+        if (included.isEmpty)
+          const _MessageCard(
+            icon: Icons.extension_off_outlined,
+            title: 'No live modules in the current plan',
+            message: 'The complete module catalog remains visible below.',
+          )
+        else
+          grid(included),
+        const SizedBox(height: 28),
+        _SectionHeader(
+          title: 'Explore more modules',
+          subtitle: 'Locked modules stay visible so you can understand what another subscription plan can add.',
+          trailing: _MiniCounter(label: '${locked.length} locked'),
+        ),
+        const SizedBox(height: 12),
+        if (locked.isEmpty)
+          const _MessageCard(
+            icon: Icons.check_circle_outline_rounded,
+            title: 'No additional live modules are locked',
+            message: 'Your current subscription already covers every live module available to you.',
+          )
+        else
+          grid(locked),
+        if (comingSoon.isNotEmpty) ...[
+          const SizedBox(height: 28),
+          _SectionHeader(
+            title: 'Coming soon',
+            subtitle: 'Canonical HIMATE modules that are discoverable now but are not yet released for live execution.',
+            trailing: _MiniCounter(label: '${comingSoon.length} listed'),
+          ),
+          const SizedBox(height: 12),
+          grid(comingSoon),
+        ],
+        if (unavailable.isNotEmpty) ...[
+          const SizedBox(height: 28),
+          _SectionHeader(
+            title: 'Temporarily unavailable',
+            subtitle: 'Modules currently restricted by operational availability.',
+            trailing: _MiniCounter(label: '${unavailable.length} listed'),
+          ),
+          const SizedBox(height: 12),
+          grid(unavailable),
+        ],
       ]),
     );
   }

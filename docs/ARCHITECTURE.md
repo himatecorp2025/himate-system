@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–23.11.2
+# HIMATE control-plane architecture — START-01–23.11.3
 
 ```text
 Browser / Admin / Partner Portal / Search crawler
@@ -560,4 +560,26 @@ Plan invoices are created idempotently before provider collection. Existing Paym
 Recurring plan collection includes a Billing-owned dunning state machine. The due-date attempt is followed by retry attempts on due+2 and due+5 days. Verified failure of the third attempt moves the plan to SUSPENDED, moves the partner lifecycle to SUSPENDED and removes active plan entitlements. Payment inside the 30-day cure window restores the previous partner lifecycle and entitlement set. When the cure window expires, the partner is ARCHIVED, Partner Portal login identities and current operational plan selections are purged, and the plan becomes CANCELLED. Financial invoices, provider settlement evidence, contract/commercial history and immutable audit/evidence remain under legal retention and are not deleted by the operational purge.
 
 Historical 30-day module subscriptions, module-period snapshots, partner-specific prices, activation-fee history and quote references remain intact for legacy/custom compatibility. They are not rewritten into plan invoices.
+
+## START-23.11.3 Module Marketplace boundary
+
+START-23.11.3 separates **product discovery** from **execution authority**.
+
+Catalog owns the canonical marketplace identity of modules: stable module key, canonical label, bilingual high-level marketplace summary, publication state, implementation state and operational availability. The current baseline marks the 38 canonical Klavierhaus/HIMATE modules as marketplace-visible so partners can discover the full product portfolio even while individual modules remain legacy references.
+
+Marketplace visibility never grants live access. A module is executable only when Catalog reports PUBLISHED + READY + operational ACTIVE. A plan-managed partner additionally requires an ACTIVE Catalog entitlement synchronized from Billing.
+
+Catalog exposes four Marketplace access states:
+- ACTIVE — executable and entitled;
+- LOCKED — executable but not entitled by the current partner plan;
+- COMING_SOON — discoverable but not yet both READY and PUBLISHED;
+- UNAVAILABLE — operationally unavailable.
+
+Billing remains the exclusive authority for subscription-plan composition. Gateway joins the Catalog marketplace read model with Billing plan definitions and the tenant's current plan. This enrichment produces available plan names, higher-plan upgrade candidates and an optional recommended upgrade plan without copying plan membership into Catalog.
+
+Starter and Business membership is resolved from Billing fixed_module_keys. Flex availability is derived only for modules that are already executable. Higher-plan suggestions therefore cannot advertise an unreleased module as usable.
+
+The Partner Portal presents Included, Locked and Coming Soon cards in one Module Marketplace. A locked card may navigate the user to Billing upgrade options, but the Marketplace surface itself performs no plan mutation. Direct module activation continues to fail closed for managed-plan partners through PLAN_MANAGED_MODULES.
+
+Arbitrary unpublished modules are still hidden unless explicitly marketplace-visible. This preserves the START-23.11.1 publication fail-closed contract while allowing the canonical 38-module portfolio to be visible for product discovery.
 

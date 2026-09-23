@@ -10,25 +10,31 @@ import (
 )
 
 type portalModule struct {
-	Key             string
-	Label           string
-	Description     string
-	GroupKey        string
-	GroupLabel      string
-	Status          string
-	EntitlementState string
-	IncludedInBase  bool
+	Key                  string
+	Label                string
+	Description          string
+	MarketplaceSummary   string
+	GroupKey             string
+	GroupLabel           string
+	Status               string
+	EntitlementState     string
+	IncludedInBase       bool
 	CommercialConfigured bool
-	CommercialReady bool
-	QuoteReference  string
-	PartnerPrice    float64
-	Currency        string
-	LatestVersion   string
-	Availability    string
-	ActivatedAt     any
-	Relationships   []map[string]any
-	CanActivate     bool
-	Blockers        []string
+	CommercialReady      bool
+	QuoteReference       string
+	PartnerPrice         float64
+	Currency             string
+	LatestVersion        string
+	Availability         string
+	PublicationStatus    string
+	ImplementationState  string
+	MarketplaceVisible   bool
+	Executable           bool
+	AccessState          string
+	ActivatedAt          any
+	Relationships        []map[string]any
+	CanActivate          bool
+	Blockers              []string
 }
 
 func (a *app) partnerPortal(w http.ResponseWriter, r *http.Request) {
@@ -63,12 +69,13 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 		return nil, err
 	}
 	rows, err := a.db.Query(`
-		SELECT m.module_key,m.label_en,m.label_hu,m.description_en,m.description_hu,m.group_key,g.label_en,g.label_hu,pm.status,pm.entitlement_state,pm.included_in_base,
+		SELECT m.module_key,m.label_en,m.label_hu,m.description_en,m.description_hu,m.marketplace_summary_en,m.marketplace_summary_hu,
+			m.group_key,g.label_en,g.label_hu,pm.status,pm.entitlement_state,pm.included_in_base,
 			pm.commercial_configured,
 			(pm.commercial_configured=TRUE AND (pm.included_in_base=TRUE OR pm.price_override IS NOT NULL OR ep.new_price IS NOT NULL)),
 			pm.quote_reference,
 			CASE WHEN pm.commercial_configured THEN COALESCE(ep.new_price,pm.price_override,0) ELSE 0 END,
-			COALESCE(NULLIF(pm.contract_currency,''),m.currency),m.latest_version,m.availability,pm.activated_at
+			COALESCE(NULLIF(pm.contract_currency,''),m.currency),m.latest_version,m.availability,m.publication_status,m.implementation_state,m.marketplace_visible,pm.activated_at
 		FROM catalog.partner_modules pm
 		JOIN catalog.modules m ON m.module_key=pm.module_key
 		JOIN catalog.module_groups g ON g.group_key=m.group_key
@@ -77,7 +84,7 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 			WHERE ph.partner_id=pm.partner_id AND ph.module_key=pm.module_key AND ph.effective_at<=NOW()
 			ORDER BY ph.effective_at DESC,ph.id DESC LIMIT 1
 		) ep ON TRUE
-		WHERE pm.partner_id=$1 AND m.publication_status='PUBLISHED'
+		WHERE pm.partner_id=$1 AND (m.marketplace_visible=TRUE OR m.publication_status='PUBLISHED')
 		ORDER BY g.sort_order,m.label_en`, partnerID)
 	if err != nil {
 		return nil, err
@@ -89,15 +96,22 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 	index := map[string]int{}
 	for rows.Next() {
 		var item portalModule
-		var labelEN,labelHU,descEN,descHU,groupEN,groupHU string
+		var labelEN,labelHU,descEN,descHU,summaryEN,summaryHU,groupEN,groupHU string
 		var activated sql.NullTime
-		if err := rows.Scan(&item.Key,&labelEN,&labelHU,&descEN,&descHU,&item.GroupKey,&groupEN,&groupHU,&item.Status,&item.EntitlementState,&item.IncludedInBase,
-			&item.CommercialConfigured,&item.CommercialReady,&item.QuoteReference,&item.PartnerPrice,&item.Currency,&item.LatestVersion,&item.Availability,&activated); err != nil {
+		if err := rows.Scan(&item.Key,&labelEN,&labelHU,&descEN,&descHU,&summaryEN,&summaryHU,&item.GroupKey,&groupEN,&groupHU,&item.Status,&item.EntitlementState,&item.IncludedInBase,
+			&item.CommercialConfigured,&item.CommercialReady,&item.QuoteReference,&item.PartnerPrice,&item.Currency,&item.LatestVersion,&item.Availability,
+			&item.PublicationStatus,&item.ImplementationState,&item.MarketplaceVisible,&activated); err != nil {
 			return nil, err
 		}
 		item.Label = common.Localized(labelEN,labelHU,locale)
 		item.Description = common.Localized(descEN,descHU,locale)
+		item.MarketplaceSummary = common.Localized(summaryEN,summaryHU,locale)
+		if strings.TrimSpace(item.MarketplaceSummary) == "" {
+			item.MarketplaceSummary = item.Description
+		}
 		item.GroupLabel = common.Localized(groupEN,groupHU,locale)
+		item.Executable = marketplaceExecutable(item.PublicationStatus,item.ImplementationState,item.Availability)
+		item.AccessState = marketplaceAccessState(item.Status,item.EntitlementState,item.PublicationStatus,item.ImplementationState,item.Availability)
 		if activated.Valid { item.ActivatedAt = activated.Time.UTC() }
 		item.Relationships = []map[string]any{}
 		item.Blockers = []string{}
@@ -135,6 +149,12 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 	if err := relRows.Err(); err != nil { return nil, err }
 
 	for i := range modules {
+		if modules[i].PublicationStatus != "PUBLISHED" {
+			modules[i].Blockers = append(modules[i].Blockers, "Module is visible in the marketplace but is not published for live use yet")
+		}
+		if modules[i].ImplementationState != "READY" {
+			modules[i].Blockers = append(modules[i].Blockers, "Module reconstruction is not complete")
+		}
 		if modules[i].Availability != "ACTIVE" {
 			modules[i].Blockers = append(modules[i].Blockers, "Module is not currently available")
 		}
@@ -144,7 +164,7 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 		if !modules[i].CommercialReady {
 			modules[i].Blockers = append(modules[i].Blockers, "Partner-specific commercial terms are not ready")
 		}
-		modules[i].CanActivate = modules[i].Status != "ACTIVE" && len(modules[i].Blockers) == 0
+		modules[i].CanActivate = modules[i].Executable && modules[i].Status != "ACTIVE" && len(modules[i].Blockers) == 0
 	}
 	return modules, nil
 }
@@ -158,26 +178,40 @@ func (a *app) partnerPortalModules(w http.ResponseWriter, r *http.Request, partn
 	items := make([]map[string]any, 0, len(modules))
 	activeCount := 0
 	availableCount := 0
+	lockedCount := 0
+	comingSoonCount := 0
 	for _, item := range modules {
-		if item.Status == "ACTIVE" { activeCount++ }
+		switch item.AccessState {
+		case "ACTIVE":
+			activeCount++
+		case "LOCKED":
+			lockedCount++
+		case "COMING_SOON":
+			comingSoonCount++
+		}
 		if item.CanActivate { availableCount++ }
 		items = append(items, portalModuleMap(item))
 	}
 	common.JSON(w, http.StatusOK, map[string]any{
 		"partner_id": partnerID, "items": items, "count": len(items),
-		"active_count": activeCount, "available_count": availableCount, "locale": common.RequestLocale(r),
+		"active_count": activeCount, "available_count": availableCount,
+		"locked_count": lockedCount, "coming_soon_count": comingSoonCount,
+		"marketplace_model": "DISCOVERY_SEPARATE_FROM_EXECUTION",
+		"locale": common.RequestLocale(r),
 	})
 }
 
 
 func portalModuleMap(item portalModule) map[string]any {
 	return map[string]any{
-		"key": item.Key, "label": item.Label, "description": item.Description,
+		"key": item.Key, "label": item.Label, "description": item.Description, "marketplace_summary": item.MarketplaceSummary,
 		"group_key": item.GroupKey, "group_label": item.GroupLabel,
 		"status": item.Status, "entitlement_state": item.EntitlementState, "included_in_base": item.IncludedInBase,
 		"commercial_configured":item.CommercialConfigured,"commercial_ready":item.CommercialReady,"quote_reference":item.QuoteReference,
 		"partner_price": item.PartnerPrice, "currency": item.Currency,
 		"latest_version": item.LatestVersion, "availability": item.Availability,
+		"publication_status":item.PublicationStatus,"implementation_state":item.ImplementationState,
+		"marketplace_visible":item.MarketplaceVisible,"executable":item.Executable,"access_state":item.AccessState,
 		"activated_at": item.ActivatedAt, "relationships": item.Relationships,
 		"can_activate": item.CanActivate, "activation_blockers": item.Blockers,
 	}

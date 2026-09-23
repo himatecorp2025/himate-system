@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSeedModules(t *testing.T) {
 	if len(seedModules) != 38 {
@@ -87,5 +90,52 @@ func TestSTART232PartnerIDMatrixInputIsBoundedAndDeduplicated(t *testing.T) {
 func TestSTART232CommercialDefaultsAreNonNegativeByContract(t *testing.T) {
 	if !moduleStates["ACTIVE"] || !availabilityValues["ACTIVE"] {
 		t.Fatal("commercial matrix requires active module contracts")
+	}
+}
+
+
+func TestSTART23113MarketplaceCanonicalCoverage(t *testing.T) {
+	if len(marketplaceSummaries) != 38 {
+		t.Fatalf("expected 38 marketplace summaries got %d", len(marketplaceSummaries))
+	}
+	for _, module := range seedModules {
+		summary, ok := marketplaceSummaries[module.Key]
+		if !ok {
+			t.Fatalf("missing marketplace summary for %s", module.Key)
+		}
+		if summary.EN == "" || summary.HU == "" {
+			t.Fatalf("marketplace summary must be bilingual for %s", module.Key)
+		}
+	}
+}
+
+func TestSTART23113DiscoveryDoesNotGrantExecution(t *testing.T) {
+	if got := marketplaceAccessState("NOT_LICENSED", "INACTIVE", "UNPUBLISHED", "LEGACY_REFERENCE", "ACTIVE"); got != "COMING_SOON" {
+		t.Fatalf("unpublished legacy module must be discoverable-only, got %s", got)
+	}
+	if marketplaceExecutable("UNPUBLISHED", "LEGACY_REFERENCE", "ACTIVE") {
+		t.Fatal("discoverable legacy module must not be executable")
+	}
+	if got := marketplaceAccessState("NOT_LICENSED", "INACTIVE", "PUBLISHED", "READY", "ACTIVE"); got != "LOCKED" {
+		t.Fatalf("published READY module outside entitlement must be LOCKED, got %s", got)
+	}
+	if got := marketplaceAccessState("ACTIVE", "ACTIVE", "PUBLISHED", "READY", "ACTIVE"); got != "ACTIVE" {
+		t.Fatalf("published READY entitled module must be ACTIVE, got %s", got)
+	}
+}
+
+func TestSTART23113MarketplaceMigrationContract(t *testing.T) {
+	m := start23113MarketplaceMigration()
+	if m.Version != 9 {
+		t.Fatalf("expected catalog migration 9 got %d", m.Version)
+	}
+	joined := ""
+	for _, stmt := range m.Statements {
+		joined += stmt + "\n"
+	}
+	for _, token := range []string{"marketplace_visible", "marketplace_summary_en", "marketplace_summary_hu", "catalog_modules_marketplace_idx"} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("marketplace migration missing %s", token)
+		}
 	}
 }

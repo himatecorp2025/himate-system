@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.16-start-23.11.2
+  version: 0.8.17-start-23.11.3
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.2 HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.3 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -323,13 +323,19 @@ paths:
   /partner/api/v1/modules:
     get:
       tags: [Partner Portal]
-      summary: Own published modules with contracted tenant price and dependency blockers
+      summary: Tenant-scoped Module Marketplace with plan-aware access state
       description: >
-        Unpublished modules are hidden. commercial_ready is true only when the partner
-        has an explicit effective recurring price or the module is explicitly included
-        in the base service; catalog reference prices are never charging authority.
+        Returns the discoverable HIMATE module catalog for the authenticated tenant.
+        The canonical 38-module portfolio remains visible for product discovery even
+        before live release. Marketplace visibility never grants execution: executable
+        requires PUBLISHED + READY + operational ACTIVE, and plan-managed access also
+        requires an ACTIVE tenant entitlement. access_state is ACTIVE, LOCKED,
+        COMING_SOON or UNAVAILABLE. Gateway enrichment adds available_in_plans,
+        upgrade_plan_keys and recommended_upgrade_plan from Billing without changing
+        Billing authority. Arbitrary unpublished modules that are not marketplace_visible
+        remain hidden.
       responses:
-        "200": {description: Tenant module catalog}
+        "200": {description: Tenant Module Marketplace with discovery, execution and plan-access state}
   /partner/api/v1/modules/{moduleKey}/activate:
     parameters:
       - {name: moduleKey, in: path, required: true, schema: {type: string}}
