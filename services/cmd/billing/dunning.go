@@ -101,7 +101,7 @@ func (a *app) notifyDunning(ctx context.Context, eventType, severity, title, mes
 	if err != nil { return }
 	req.Header.Set("Content-Type", "application/json")
 	common.BindInternalRequest(req, a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err == nil && resp != nil { resp.Body.Close() }
 }
 
@@ -110,7 +110,7 @@ func (a *app) partnerLifecycle(ctx context.Context, partnerID string) (string, e
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.partnersHost+"/api/v1/partners/"+partnerID, nil)
 	if err != nil { return "", err }
 	common.BindInternalRequest(req, a.token)
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return "", err }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK { return "", fmt.Errorf("partners status %d", resp.StatusCode) }
@@ -127,7 +127,7 @@ func (a *app) setPartnerLifecycle(ctx context.Context, partnerID, lifecycle, rea
 	req.Header.Set("Content-Type", "application/json")
 	common.BindInternalRequest(req, a.token)
 	req.Header.Set("X-Himate-User-ID", "billing-dunning-engine")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("partners lifecycle status %d", resp.StatusCode) }
@@ -142,7 +142,7 @@ func (a *app) purgePartnerOperationalAccess(ctx context.Context, partnerID, reas
 	req.Header.Set("Content-Type", "application/json")
 	common.BindInternalRequest(req, a.token)
 	req.Header.Set("X-Himate-User-ID", "billing-dunning-engine")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("partners operational purge status %d", resp.StatusCode) }
@@ -157,7 +157,7 @@ func (a *app) setPlanEntitlements(ctx context.Context, partnerID, planKey string
 	req.Header.Set("Content-Type", "application/json")
 	common.BindInternalRequest(req, a.token)
 	req.Header.Set("X-Himate-User-ID", "billing-dunning-engine")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("catalog entitlement status %d", resp.StatusCode) }
