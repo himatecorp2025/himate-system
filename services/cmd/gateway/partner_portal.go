@@ -338,6 +338,7 @@ func (a *app) partnerDashboard(w http.ResponseWriter,r *http.Request,u partnerUs
 	go func(){defer wg.Done();impactErr=a.internalGET(ctx,a.hosts["impact"],"/api/v1/impact/summary?partner_id="+url.QueryEscape(u.PartnerID),&impact)}()
 	wg.Wait()
 	if companyErr!=nil{common.APIError(w,502,"PARTNER_UNAVAILABLE","Partner company record is temporarily unavailable");return}
+	if modulesErr==nil{a.enrichPartnerMarketplace(ctx,u.PartnerID,modules)}
 	degraded:=[]string{}
 	if modulesErr!=nil{degraded=append(degraded,"modules")}
 	if billingErr!=nil{degraded=append(degraded,"billing")}
