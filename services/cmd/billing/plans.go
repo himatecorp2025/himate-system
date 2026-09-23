@@ -196,6 +196,84 @@ func start23112PlanBillingRecoveryMigration() common.Migration {
 	}
 }
 
+func start23112PlanLedgerImmutabilityMigration() common.Migration {
+	return common.Migration{
+		Version: 13,
+		Name: "start-23-11-2-plan-ledger-immutability",
+		Statements: []string{
+			`CREATE OR REPLACE FUNCTION billing.guard_invoice_item_mutation() RETURNS trigger LANGUAGE plpgsql AS $fn$
+			BEGIN
+				IF TG_OP='DELETE' THEN
+					RAISE EXCEPTION 'billing.invoice_items is append-only';
+				END IF;
+				IF OLD.item_key IS DISTINCT FROM NEW.item_key
+					OR OLD.partner_id IS DISTINCT FROM NEW.partner_id
+					OR OLD.module_key IS DISTINCT FROM NEW.module_key
+					OR OLD.item_type IS DISTINCT FROM NEW.item_type
+					OR OLD.description IS DISTINCT FROM NEW.description
+					OR OLD.currency IS DISTINCT FROM NEW.currency
+					OR OLD.quantity IS DISTINCT FROM NEW.quantity
+					OR OLD.unit_price IS DISTINCT FROM NEW.unit_price
+					OR OLD.amount IS DISTINCT FROM NEW.amount
+					OR OLD.period_start IS DISTINCT FROM NEW.period_start
+					OR OLD.period_end IS DISTINCT FROM NEW.period_end
+					OR OLD.snapshot_id IS DISTINCT FROM NEW.snapshot_id
+					OR OLD.billing_model IS DISTINCT FROM NEW.billing_model
+					OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+					RAISE EXCEPTION 'billing.invoice_items commercial fields are immutable';
+				END IF;
+				IF OLD.invoice_id IS NOT NULL AND OLD.invoice_id IS DISTINCT FROM NEW.invoice_id THEN
+					RAISE EXCEPTION 'billing.invoice_items invoice assignment is immutable once set';
+				END IF;
+				IF OLD.status='INVOICED' AND NEW.status IS DISTINCT FROM OLD.status THEN
+					RAISE EXCEPTION 'billing.invoice_items invoiced status cannot be reversed';
+				END IF;
+				IF OLD.invoiced_at IS NOT NULL AND OLD.invoiced_at IS DISTINCT FROM NEW.invoiced_at THEN
+					RAISE EXCEPTION 'billing.invoice_items invoiced_at is immutable once set';
+				END IF;
+				RETURN NEW;
+			END; $fn$`,
+			`CREATE OR REPLACE FUNCTION billing.guard_plan_invoice_mutation() RETURNS trigger LANGUAGE plpgsql AS $fn$
+			BEGIN
+				IF TG_OP='DELETE' THEN
+					IF OLD.billing_model='PLAN' THEN
+						RAISE EXCEPTION 'PLAN invoices are append-only';
+					END IF;
+					RETURN OLD;
+				END IF;
+				IF OLD.billing_model IS DISTINCT FROM NEW.billing_model THEN
+					RAISE EXCEPTION 'invoice billing_model is immutable';
+				END IF;
+				IF OLD.billing_model='PLAN' AND (
+					OLD.invoice_key IS DISTINCT FROM NEW.invoice_key
+					OR OLD.partner_id IS DISTINCT FROM NEW.partner_id
+					OR OLD.invoice_date IS DISTINCT FROM NEW.invoice_date
+					OR OLD.service_period_start IS DISTINCT FROM NEW.service_period_start
+					OR OLD.service_period_end IS DISTINCT FROM NEW.service_period_end
+					OR OLD.currency IS DISTINCT FROM NEW.currency
+					OR OLD.base_fee IS DISTINCT FROM NEW.base_fee
+					OR OLD.module_fee IS DISTINCT FROM NEW.module_fee
+					OR OLD.total IS DISTINCT FROM NEW.total
+					OR OLD.minimum_commitment_adjustment IS DISTINCT FROM NEW.minimum_commitment_adjustment
+					OR OLD.plan_key IS DISTINCT FROM NEW.plan_key
+					OR OLD.billing_frequency IS DISTINCT FROM NEW.billing_frequency
+					OR OLD.charge_type IS DISTINCT FROM NEW.charge_type
+					OR OLD.list_price IS DISTINCT FROM NEW.list_price
+					OR OLD.discount_amount IS DISTINCT FROM NEW.discount_amount
+					OR OLD.created_at IS DISTINCT FROM NEW.created_at
+				) THEN
+					RAISE EXCEPTION 'PLAN invoice commercial fields are immutable';
+				END IF;
+				RETURN NEW;
+			END; $fn$`,
+			`DROP TRIGGER IF EXISTS billing_plan_invoices_immutable_fields ON billing.invoices`,
+			`CREATE TRIGGER billing_plan_invoices_immutable_fields
+				BEFORE UPDATE OR DELETE ON billing.invoices
+				FOR EACH ROW EXECUTE FUNCTION billing.guard_plan_invoice_mutation()`,
+		},
+	}
+}
+
 func nextMonthStart(at time.Time) time.Time {
 	at = dateOnly(at)
 	return time.Date(at.Year(), at.Month()+1, 1, 0, 0, 0, 0, time.UTC)
