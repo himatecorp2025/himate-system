@@ -1737,6 +1737,20 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		if !isCycleBoundary(t.ServiceAnchorDate, at) { continue }
 		start := at.AddDate(0, 0, -30)
 		base := effectiveBaseFee(t, start)
+		previewModuleTotal,_,previewErr:=a.effectiveModuleFees(ctx,id,rawMods,start)
+		if previewErr!=nil{return previewErr}
+		nominalTotal:=math.Round((base+previewModuleTotal)*100)/100
+		mode,modeErr:=a.ensureCommercialMode(ctx,id)
+		if modeErr!=nil{return modeErr}
+		if mode.BillingMode!=billingModePaid || nominalTotal<=0{
+			eventKey:=fmt.Sprintf("ZERO_DOLLAR_BILLING_CYCLE:%s:LEGACY:%s",id,start.Format("2006-01-02"))
+			if err:=a.emitBillingEvent(ctx,eventKey,id,"","ZERO_DOLLAR_BILLING_CYCLE",at,map[string]any{
+				"billing_model":"LEGACY_MODULE","billing_mode":mode.BillingMode,
+				"nominal_value":nominalTotal,"total":0,
+				"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":at.Format("2006-01-02"),
+			});err!=nil{return err}
+			continue
+		}
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
 		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
 			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT DO NOTHING`,
