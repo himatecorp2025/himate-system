@@ -491,7 +491,7 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	if current.PlanKey=="CUSTOM" && target.Key!="CUSTOM" && !target.CustomerSelectable{
 		common.APIError(w,409,"PLAN_NOT_SELECTABLE","Target plan is not customer-selectable");return
 	}
-	currentMonthly,currentList,currentAnnual,_,_:=a.effectivePlanPrices(current,currentPlan)
+	currentMonthly,_,currentAnnual,_,_:=a.effectivePlanPrices(current,currentPlan)
 	targetMonthly,targetList,targetAnnual:=target.MonthlyPrice,target.AnnualListPrice,target.AnnualPrice
 	if target.Key=="CUSTOM"{
 		targetMonthly=*in.CustomMonthlyPrice
