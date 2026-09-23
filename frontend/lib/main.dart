@@ -7224,7 +7224,7 @@ class BrandDialog extends StatelessWidget {
                 breakpoint: 480,
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: dismissEnabled ? (onDismiss ?? () => Navigator.pop(context, false)) : null,
                     child: const LText('Cancel'),
                   ),
                   FilledButton(
