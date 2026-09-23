@@ -2771,8 +2771,8 @@ func (a *app) fetchPublishedCMS(ctx context.Context, slug, locale string) (publi
 		return out, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		return out, err
 	}
@@ -2798,8 +2798,8 @@ func (a *app) fetchPreviewCMS(ctx context.Context, slug, token string) (publicCM
 		return out, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		return out, err
 	}
@@ -2824,8 +2824,8 @@ func (a *app) fetchPublishedDesign(ctx context.Context) (publicSiteDesignEnvelop
 		return out, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		return out, err
 	}
@@ -2853,8 +2853,8 @@ func (a *app) fetchPreviewDesign(ctx context.Context, token string) (publicSiteD
 		return publicSiteDesign{}, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		return publicSiteDesign{}, err
 	}
@@ -2880,8 +2880,8 @@ func (a *app) fetchPublishedSEOSettings(ctx context.Context, locale string) (pub
 		return out, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		return out, err
 	}
@@ -2907,8 +2907,8 @@ func (a *app) fetchPublishedManifest(ctx context.Context, locale string) (public
 		return out, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.internalToken)
-	resp, err := a.client.Do(req)
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil {
 		return out, err
 	}
