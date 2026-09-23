@@ -341,7 +341,7 @@ func (a *app)internalJSON(ctx context.Context,method,host,path string,payload an
 	var body *bytes.Reader
 	if payload==nil{body=bytes.NewReader(nil)}else{raw,err:=json.Marshal(payload);if err!=nil{return err};body=bytes.NewReader(raw)}
 	req,err:=http.NewRequestWithContext(ctx,method,"http://"+host+path,body);if err!=nil{return err}
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	if actor!=""{req.Header.Set("X-Himate-User-ID",actor)}
 	if payload!=nil{req.Header.Set("Content-Type","application/json")}
 	resp,err:=a.client.Do(req);if err!=nil{return err}
