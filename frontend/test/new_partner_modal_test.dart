@@ -62,7 +62,8 @@ void main() {
     expect(button, findsOneWidget);
 
     await tester.tap(button);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
     expect(find.byKey(const Key('new-partner-dialog')), findsOneWidget);
     expect(
