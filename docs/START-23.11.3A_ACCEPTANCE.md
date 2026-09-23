@@ -66,4 +66,4 @@ The raw stored value is never displayed. Replacement requires entering a new val
 
 Release contract: `0.8.18-start-23.11.3a`.
 
-This is a deployment-readiness patch after START-23.11.3 and before START-23.11.4 Partner Workspace & Personalization.
+Automated evidence:\n- static audit: `python3 scripts/audit_start_23_11_3a.py`;\n- Compose smoke: `sh scripts/smoke_start_23_11_3a.sh http://127.0.0.1:8080`.\n\nThis is a deployment-readiness patch after START-23.11.3 and before START-23.11.4 Partner Workspace & Personalization.
