@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+common = (root / "services/internal/common/common.go").read_text(encoding="utf-8")
+gateway = (root / "services/cmd/gateway/main.go").read_text(encoding="utf-8")
+partners = (root / "services/cmd/partners/main.go").read_text(encoding="utf-8")
+frontend = (root / "frontend/lib/main.dart").read_text(encoding="utf-8")
+compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+render = (root / "render.yaml").read_text(encoding="utf-8")
+openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
+
+release = "0.8.26-start-23.11.3i"
+frontend_start = frontend.index("  Future<void> addPartner() async {")
+frontend_end = frontend.index("  List<Map<String, dynamic>> get filtered => partners;", frontend_start)
+add_partner = frontend[frontend_start:frontend_end]
+
+master_fields = [
+    "display_name","legal_name","brand_name","category_id","lifecycle","primary_domain",
+    "contact_name","contact_email","finance_contact_name","finance_contact_email",
+    "technical_contact_name","technical_contact_email","marketing_contact_name","marketing_contact_email",
+    "registration_number","tax_id","country","state_region","city","postal_code",
+    "address_line1","address_line2","website","phone","notes",
+]
+
+checks = [
+    (
+        "shared HTTP layer publishes and enforces release version",
+        "func ReleaseGuard(service string, next http.Handler) http.Handler" in common
+        and "X-Himate-App-Version" in common
+        and "X-Himate-Expected-Version" in common
+        and '"RELEASE_MISMATCH"' in common,
+    ),
+    (
+        "gateway preflights release compatibility before mutations",
+        "func (a *app) requireServiceReleases" in gateway
+        and "a.requireServiceReleases(w, r, service)" in gateway
+        and 'a.requireServiceReleases(w, r, "partners", "billing", "cms", "storage")' in gateway,
+    ),
+    (
+        "gateway health reports cross-service release consistency",
+        '"service_versions": serviceVersions' in gateway
+        and '"release_consistent": overall == "ok"' in gateway
+        and '"version_mismatch"' in gateway
+        and '"version_unknown"' in gateway,
+    ),
+    (
+        "Compose pins one current release across every application microservice",
+        compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-" + release + "}") == 18,
+    ),
+    (
+        "Render pins one current release across every deployable application service",
+        render.count("value: " + release) == 19
+        and render.count("autoDeploy: false") == 19,
+    ),
+    (
+        "New Partner frontend carries the complete master-data contract",
+        all("'" + field + "'" in add_partner for field in master_fields),
+    ),
+    (
+        "partners backend accepts the complete master-data JSON contract",
+        all('json:"' + field + '"' in partners for field in master_fields),
+    ),
+    (
+        "partners backend persists and returns all master-data fields",
+        all('"' + field + '"' in partners for field in master_fields)
+        and "registration_number,tax_id,country,state_region,city,postal_code,address_line1,address_line2,website,phone,notes,onboarding_request_id" in partners,
+    ),
+    (
+        "display name has no format or uniqueness restriction beyond non-empty presentation value",
+        'if in.DisplayName == "" {' in partners
+        and "partnerTechnicalSlug(in.DisplayName, id)" in partners
+        and "Display name must contain at least one letter or number" not in partners
+        and "display-name slug or primary domain is already in use" not in partners,
+    ),
+    (
+        "partner updates preserve the same non-empty display-name invariant",
+        'if p.DisplayName == "" {' in partners,
+    ),
+    (
+        "release contract",
+        "version: " + release in openapi
+        and "START-01 through START-23.11.3i" in openapi,
+    ),
+]
+
+failures = [label for label, ok in checks if not ok]
+if failures:
+    for failure in failures:
+        print("FAIL:", failure)
+    raise SystemExit(1)
+
+print("START-23.11.3i Release Consistency & Partner Contract static audit: PASS")
