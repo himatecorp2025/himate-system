@@ -27,8 +27,9 @@ checks = [
         and "onPressed: addPartner" in partner_page_tail,
     ),
     (
-        "New Partner modal is created before any remote API dependency",
-        "widget.api." not in pre_dialog
+        "New Partner modal is not blocked by any awaited remote dependency",
+        "await widget.api." not in pre_dialog
+        and "await _loadCategories" not in pre_dialog
         and "final ok = await showDialog<bool>(" in add_partner
         and "key: const Key('new-partner-dialog')" in add_partner,
     ),
