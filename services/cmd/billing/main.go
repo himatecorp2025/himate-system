@@ -1611,27 +1611,35 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
 	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,status,provider_status,
 		payment_attempt_id,provider,provider_payment_id,paid_at,payment_failure_code,payment_failure_message,created_at,
-		COALESCE(plan_key,''),COALESCE(billing_frequency,''),COALESCE(charge_type,'LEGACY'),COALESCE(list_price,0),COALESCE(discount_amount,0),COALESCE(billing_model,'LEGACY_MODULE')
+		COALESCE(plan_key,''),COALESCE(billing_frequency,''),COALESCE(charge_type,'LEGACY'),COALESCE(list_price,0),COALESCE(discount_amount,0),COALESCE(billing_model,'LEGACY_MODULE'),
+		COALESCE(collection_attempts,0),COALESCE(dunning_state,'NONE'),dunning_suspended_at,purge_due_at,operational_purged_at
 		FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC,created_at DESC`, id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load invoices"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
 		var invoiceID, currency, status, providerStatus, attemptID, provider, providerPaymentID, failureCode, failureMessage string
-		var planKey, billingFrequency, chargeType, billingModel string
+		var planKey, billingFrequency, chargeType, billingModel, dunningState string
 		var invoiceDate, start, end, created time.Time
-		var paidAt sql.NullTime
+		var paidAt, dunningSuspendedAt, purgeDueAt, operationalPurgedAt sql.NullTime
 		var base, module, total, listPrice, discountAmount float64
+		var collectionAttempts int
 		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &status, &providerStatus,
 			&attemptID, &provider, &providerPaymentID, &paidAt, &failureCode, &failureMessage, &created,
-			&planKey,&billingFrequency,&chargeType,&listPrice,&discountAmount,&billingModel) == nil {
-			var paid any
+			&planKey,&billingFrequency,&chargeType,&listPrice,&discountAmount,&billingModel,
+			&collectionAttempts,&dunningState,&dunningSuspendedAt,&purgeDueAt,&operationalPurgedAt) == nil {
+			var paid, suspended, purgeDue, purged any
 			if paidAt.Valid { paid = paidAt.Time }
+			if dunningSuspendedAt.Valid { suspended = dunningSuspendedAt.Time }
+			if purgeDueAt.Valid { purgeDue = purgeDueAt.Time }
+			if operationalPurgedAt.Valid { purged = operationalPurgedAt.Time }
 			items = append(items, map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
 				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": providerStatus,
 				"plan_key":planKey,"billing_frequency":billingFrequency,"charge_type":chargeType,"billing_model":billingModel,
 				"list_price":listPrice,"discount_amount":discountAmount,
+				"collection_attempts":collectionAttempts,"dunning_state":dunningState,
+				"dunning_suspended_at":suspended,"purge_due_at":purgeDue,"operational_purged_at":purged,
 				"payment_attempt_id": attemptID, "provider": provider, "provider_payment_id": providerPaymentID, "paid_at": paid,
 				"payment_failure_code": failureCode, "payment_failure_message": failureMessage, "created_at": created,
 				"items": a.invoiceItemsFor(invoiceID),
