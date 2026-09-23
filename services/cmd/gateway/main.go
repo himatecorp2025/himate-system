@@ -344,23 +344,10 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS identity_password_reset_active_idx ON identity.password_reset_tokens(token_hash,expires_at) WHERE used_at IS NULL`,
 		}},
 		platformSecretsMigration(),
-		persistentTestPartnerMigration(),
+		retiredTestPartnerIdentityMigration(),
 	}); err != nil {
 		return err
 	}
-	if _, err := a.db.ExecContext(ctx, `INSERT INTO identity.partner_users(
-		id,partner_id,name,email,password_hash,role_key,active,preferred_locale,timezone
-	)
-	VALUES($1,$2,'HIMATE Test Partner Owner',$3,$4,'owner',TRUE,'en_US','UTC')
-	ON CONFLICT(email) DO NOTHING`,
-		persistentTestPartnerUserID,
-		persistentTestPartnerID,
-		persistentTestPartnerEmail,
-		persistentTestPartnerPasswordHash,
-	); err != nil {
-		return err
-	}
-
 	email := strings.ToLower(strings.TrimSpace(os.Getenv("HIMATE_BOOTSTRAP_ADMIN_EMAIL")))
 	password := os.Getenv("HIMATE_BOOTSTRAP_ADMIN_PASSWORD")
 	name := common.Env("HIMATE_BOOTSTRAP_ADMIN_NAME", "HIMATE Administrator")
