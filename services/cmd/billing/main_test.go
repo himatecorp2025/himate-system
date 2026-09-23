@@ -339,3 +339,53 @@ func TestSTART23112LegacyInvoiceDateConstraintRecovery(t *testing.T) {
 		}
 	}
 }
+
+
+func TestSTART23112DunningSchedule(t *testing.T) {
+	invoiceDate := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	if collectionRetryDue(invoiceDate, time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), 1) {
+		t.Fatal("second collection attempt must not run before day 3")
+	}
+	if !collectionRetryDue(invoiceDate, time.Date(2026, 2, 3, 0, 0, 0, 0, time.UTC), 1) {
+		t.Fatal("second collection attempt must run on day 3")
+	}
+	if collectionRetryDue(invoiceDate, time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC), 2) {
+		t.Fatal("third collection attempt must not run before day 6")
+	}
+	if !collectionRetryDue(invoiceDate, time.Date(2026, 2, 6, 0, 0, 0, 0, time.UTC), 2) {
+		t.Fatal("third collection attempt must run on day 6")
+	}
+}
+
+func TestSTART23112DunningMigrationContract(t *testing.T) {
+	m := start23112DunningMigration()
+	if m.Version != 15 {
+		t.Fatalf("expected migration version 15 got %d", m.Version)
+	}
+	joined := strings.Join(m.Statements, "\n")
+	for _, token := range []string{
+		"collection_attempts",
+		"dunning_state",
+		"dunning_suspended_at",
+		"purge_due_at",
+		"pre_suspend_partner_lifecycle",
+		"operational_purged_at",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("START-23.11.2 dunning migration missing %q", token)
+		}
+	}
+}
+
+func TestSTART23112DunningEligibility(t *testing.T) {
+	for _, chargeType := range []string{"PLAN_MONTHLY", "PLAN_ANNUAL_RENEWAL"} {
+		if !dunningEligible("PLAN", chargeType) {
+			t.Fatalf("%s must use recurring-payment dunning", chargeType)
+		}
+	}
+	for _, chargeType := range []string{"PLAN_UPGRADE", "PLAN_ANNUAL_PREPAY", "LEGACY"} {
+		if dunningEligible("PLAN", chargeType) {
+			t.Fatalf("%s must not use recurring-payment dunning", chargeType)
+		}
+	}
+}
