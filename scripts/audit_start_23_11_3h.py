@@ -60,6 +60,13 @@ checks = [
         '"PRIMARY_DOMAIN_EXISTS"' in partners
         and "Primary domain is already assigned to another partner" in partners,
     ),
+    (
+        "OpenAPI matches idempotent duplicate-name onboarding contract",
+        "duplicate display names are allowed" in openapi
+        and "onboarding_request_id:" in openapi
+        and "Existing partner returned for an idempotent onboarding replay" in openapi
+        and "Display-name-derived slug or primary domain is already in use" not in openapi,
+    ),
     ("release version", "version: 0.8.25-start-23.11.3h" in openapi),
     ("render release version", "value: 0.8.25-start-23.11.3h" in render),
 ]
