@@ -23,6 +23,16 @@ master_fields = [
     "address_line1","address_line2","website","phone","notes",
 ]
 
+service_go_files = [
+    path for path in (root / "services/cmd").rglob("*.go")
+    if not path.name.endswith("_test.go") and "gateway" not in path.parts
+]
+raw_internal_header_writes = []
+for path in service_go_files:
+    source = path.read_text(encoding="utf-8")
+    if '.Header.Set("X-Himate-Internal-Token"' in source:
+        raw_internal_header_writes.append(str(path.relative_to(root)))
+
 checks = [
     (
         "shared HTTP layer publishes and enforces release version",
@@ -30,6 +40,17 @@ checks = [
         and "X-Himate-App-Version" in common
         and "X-Himate-Expected-Version" in common
         and '"RELEASE_MISMATCH"' in common,
+    ),
+    (
+        "shared internal-request helper binds credentials and expected release",
+        "func BindInternalRequest(req *http.Request, token string)" in common
+        and 'req.Header.Set("X-Himate-Expected-Version", version)' in common
+        and not raw_internal_header_writes,
+    ),
+    (
+        "unversioned application services cannot enter the serving loop",
+        'if AppVersion() == "" {' in common
+        and 'HIMATE_APP_VERSION is required' in common,
     ),
     (
         "gateway preflights release compatibility before mutations",
@@ -90,6 +111,9 @@ checks = [
 ]
 
 failures = [label for label, ok in checks if not ok]
+if raw_internal_header_writes:
+    print("FAIL: raw internal-token header writes bypass shared release binding:", ", ".join(raw_internal_header_writes))
+
 if failures:
     for failure in failures:
         print("FAIL:", failure)
