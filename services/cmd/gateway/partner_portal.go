@@ -500,7 +500,9 @@ func partnerModuleKey(path,suffix string)string{
 }
 
 func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u partnerUser){
-	if managed,err:=a.partnerHasManagedPlan(r.Context(),u.PartnerID);err==nil&&managed{
+	managed,planErr:=a.partnerHasManagedPlan(r.Context(),u.PartnerID)
+	if planErr!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return}
+	if managed{
 		common.APIError(w,409,"PLAN_MANAGED_MODULES","Modules are controlled by your subscription plan; use Flex plan selection where available");return
 	}
 	key:=partnerModuleKey(r.URL.Path,"/activate");if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Module not found");return}
@@ -515,7 +517,9 @@ func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u part
 }
 
 func (a *app) partnerSubscription(w http.ResponseWriter,r *http.Request,u partnerUser){
-	if managed,err:=a.partnerHasManagedPlan(r.Context(),u.PartnerID);err==nil&&managed{
+	managed,planErr:=a.partnerHasManagedPlan(r.Context(),u.PartnerID)
+	if planErr!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return}
+	if managed{
 		common.APIError(w,409,"PLAN_MANAGED_MODULES","Individual module cancellation is disabled for subscription-plan partners");return
 	}
 	key:=partnerModuleKey(r.URL.Path,"/subscription");if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Subscription not found");return}
