@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.26-start-23.11.3i
+  version: 0.8.27-start-23.11.3j
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.3i HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.3j HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -2376,6 +2376,9 @@ components:
         last_sync_at: {type: [string, "null"], format: date-time}
         active_modules: {type: integer}
         service_value_30d: {type: number}
+        test_partner:
+          type: boolean
+          description: Golden test tenant marker. Test data remains partner-visible but is excluded from platform business aggregates.
     PartnerUpdate:
       type: object
       properties:
@@ -2408,5 +2411,8 @@ components:
         phone: {type: string}
         logo_url: {type: string}
         notes: {type: string}
+        test_partner:
+          type: boolean
+          description: HIMATE admin-only Golden Test Partner flag. Enabling it activates the LIVE test tenant and its full canonical module entitlement set.
 security:
   - sessionCookie: []
