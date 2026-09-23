@@ -307,6 +307,8 @@ jobs:
           python3 scripts/audit_start_23_4.py
       - name: Validate Docker Compose topology
         run: docker compose config --quiet
+      - name: Validate smoke database schema contracts
+        run: python3 scripts/audit_smoke_schema_contracts.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
