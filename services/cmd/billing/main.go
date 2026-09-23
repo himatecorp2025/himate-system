@@ -1745,20 +1745,24 @@ func (a *app) dashboardAnalytics(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := a.db.Query(`
 		WITH revenue AS (
-			SELECT currency, paid_amount::numeric AS amount, 'ACTIVATION'::text AS kind
-			FROM billing.initial_licenses
-			WHERE status='PAID'
-			  AND provider_payment_id<>''
-			  AND payment_date >= make_date($1,1,1)
-			  AND payment_date < make_date($1+1,1,1)
+			SELECT l.currency, l.paid_amount::numeric AS amount, 'ACTIVATION'::text AS kind
+			FROM billing.initial_licenses l
+			JOIN partners.partners p ON p.id=l.partner_id
+			WHERE l.status='PAID'
+			  AND p.test_partner=FALSE
+			  AND l.provider_payment_id<>''
+			  AND l.payment_date >= make_date($1,1,1)
+			  AND l.payment_date < make_date($1+1,1,1)
 			UNION ALL
-			SELECT currency, total::numeric AS amount, 'INVOICE'::text AS kind
-			FROM billing.invoices
-			WHERE status='PAID'
-			  AND provider_status='SUCCEEDED'
-			  AND provider_payment_id<>''
-			  AND paid_at >= make_date($1,1,1)::timestamptz
-			  AND paid_at < make_date($1+1,1,1)::timestamptz
+			SELECT i.currency, i.total::numeric AS amount, 'INVOICE'::text AS kind
+			FROM billing.invoices i
+			JOIN partners.partners p ON p.id=i.partner_id
+			WHERE i.status='PAID'
+			  AND p.test_partner=FALSE
+			  AND i.provider_status='SUCCEEDED'
+			  AND i.provider_payment_id<>''
+			  AND i.paid_at >= make_date($1,1,1)::timestamptz
+			  AND i.paid_at < make_date($1+1,1,1)::timestamptz
 		)
 		SELECT currency,
 			COALESCE(SUM(amount),0),

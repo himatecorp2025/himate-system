@@ -561,9 +561,37 @@ func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 }
 
 func (a *app) ensurePartnerModules(partnerID string) error {
-	_, err := a.db.Exec(`INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,entitlement_state,commercial_configured,contract_currency)
+	if _, err := a.db.Exec(`INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,entitlement_state,commercial_configured,contract_currency)
 		SELECT $1,module_key,'NOT_LICENSED',FALSE,FALSE,'INACTIVE',FALSE,currency FROM catalog.modules
-		ON CONFLICT(partner_id,module_key) DO NOTHING`, partnerID)
+		ON CONFLICT(partner_id,module_key) DO NOTHING`, partnerID); err != nil {
+		return err
+	}
+	var testPartner bool
+	err := a.db.QueryRow(`SELECT test_partner FROM partners.partners WHERE id=$1`, partnerID).Scan(&testPartner)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+	if !testPartner {
+		return nil
+	}
+	_, err = a.db.Exec(`UPDATE catalog.partner_modules
+		SET status='ACTIVE',
+			entitlement_state='ACTIVE',
+			visible=TRUE,
+			included_in_base=TRUE,
+			commercial_configured=TRUE,
+			contract_currency=CASE WHEN contract_currency='' THEN 'USD' ELSE contract_currency END,
+			quote_reference='GOLDEN-TEST-PARTNER',
+			entitlement_source='TEST',
+			plan_key='GOLDEN_TEST',
+			plan_effective_at=COALESCE(plan_effective_at,NOW()),
+			activated_at=COALESCE(activated_at,NOW()),
+			updated_at=NOW()
+		WHERE partner_id=$1
+		  AND module_key IN (SELECT module_key FROM catalog.modules WHERE system=TRUE)`, partnerID)
 	return err
 }
 

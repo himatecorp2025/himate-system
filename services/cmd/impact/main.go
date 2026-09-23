@@ -650,14 +650,16 @@ func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = a.db.QueryRow(`SELECT
 			CASE $3
-				WHEN 'LATEST' THEN (ARRAY_AGG(numeric_value ORDER BY period_end DESC,id DESC))[1]
-				WHEN 'AVERAGE' THEN AVG(numeric_value)
-				ELSE SUM(numeric_value)
+				WHEN 'LATEST' THEN (ARRAY_AGG(v.numeric_value ORDER BY v.period_end DESC,v.id DESC))[1]
+				WHEN 'AVERAGE' THEN AVG(v.numeric_value)
+				ELSE SUM(v.numeric_value)
 			END
-		FROM impact.metric_values
-		WHERE metric_key=$1 AND numeric_value IS NOT NULL
-		  AND period_end >= make_date($2,1,1)
-		  AND period_end < make_date($2+1,1,1)`, dashboardPeopleMetricKey, year, aggregation).Scan(&ytd)
+		FROM impact.metric_values v
+		LEFT JOIN partners.partners p ON p.id=v.partner_id
+		WHERE v.metric_key=$1 AND v.numeric_value IS NOT NULL
+		  AND COALESCE(p.test_partner,FALSE)=FALSE
+		  AND v.period_end >= make_date($2,1,1)
+		  AND v.period_end < make_date($2+1,1,1)`, dashboardPeopleMetricKey, year, aggregation).Scan(&ytd)
 		if err != nil {
 			common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate People Reached")
 			return
@@ -666,17 +668,19 @@ func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
 
 	monthly := map[int]float64{}
 	if err == nil {
-		rows, queryErr := a.db.Query(`SELECT EXTRACT(MONTH FROM period_end)::int AS month_no,
+		rows, queryErr := a.db.Query(`SELECT EXTRACT(MONTH FROM v.period_end)::int AS month_no,
 			CASE $3
-				WHEN 'LATEST' THEN (ARRAY_AGG(numeric_value ORDER BY period_end DESC,id DESC))[1]
-				WHEN 'AVERAGE' THEN AVG(numeric_value)
-				ELSE SUM(numeric_value)
+				WHEN 'LATEST' THEN (ARRAY_AGG(v.numeric_value ORDER BY v.period_end DESC,v.id DESC))[1]
+				WHEN 'AVERAGE' THEN AVG(v.numeric_value)
+				ELSE SUM(v.numeric_value)
 			END AS value
-		FROM impact.metric_values
-		WHERE metric_key=$1 AND numeric_value IS NOT NULL
-		  AND period_end >= make_date($2,1,1)
-		  AND period_end < make_date($2+1,1,1)
-		GROUP BY EXTRACT(MONTH FROM period_end)
+		FROM impact.metric_values v
+		LEFT JOIN partners.partners p ON p.id=v.partner_id
+		WHERE v.metric_key=$1 AND v.numeric_value IS NOT NULL
+		  AND COALESCE(p.test_partner,FALSE)=FALSE
+		  AND v.period_end >= make_date($2,1,1)
+		  AND v.period_end < make_date($2+1,1,1)
+		GROUP BY EXTRACT(MONTH FROM v.period_end)
 		ORDER BY month_no`, dashboardPeopleMetricKey, year, aggregation)
 		if queryErr != nil {
 			common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate Impact trend")
@@ -725,7 +729,12 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 	periodEnd:=strings.TrimSpace(r.URL.Query().Get("period_end"))
 	args:=[]any{}
 	whereParts:=[]string{}
-	if partnerID!="" { args=append(args,partnerID); whereParts=append(whereParts,fmt.Sprintf("v.partner_id=$%d",len(args))) }
+	if partnerID!="" {
+		args=append(args,partnerID)
+		whereParts=append(whereParts,fmt.Sprintf("v.partner_id=$%d",len(args)))
+	} else {
+		whereParts=append(whereParts,"COALESCE(p.test_partner,FALSE)=FALSE")
+	}
 	if periodStart!="" {
 		start,err:=time.Parse("2006-01-02",periodStart)
 		if err!=nil { common.APIError(w,400,"VALIDATION","period_start must be YYYY-MM-DD"); return }
@@ -747,7 +756,9 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 		END AS numeric_value,
 		MAX(v.period_end) AS latest_period_end,
 		COUNT(*) AS observations
-		FROM impact.metric_values v JOIN impact.metric_definitions d ON d.metric_key=v.metric_key `+where+`
+		FROM impact.metric_values v
+		JOIN impact.metric_definitions d ON d.metric_key=v.metric_key
+		LEFT JOIN partners.partners p ON p.id=v.partner_id `+where+`
 		GROUP BY v.metric_key,d.label_en,d.label_hu,d.unit,d.aggregation ORDER BY d.label_en`,args...)
 	if err!=nil { common.APIError(w,500,"DB","Could not calculate impact summary"); return }
 	defer rows.Close()

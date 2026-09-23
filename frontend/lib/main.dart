@@ -3764,6 +3764,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   final GlobalKey _usersKey = GlobalKey();
   final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
+  int _supplementalLoadGeneration = 0;
 
   static const workspaceCards = <_WorkspaceSpec>[
     _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
@@ -3789,7 +3790,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
   Future<Map<String, dynamic>?> _safeWorkspaceGet(String path, List<String> errors) async {
     try {
-      return await widget.api.get(path);
+      return await widget.api.get(path).timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      errors.add('$path: timed out after 8 seconds');
+      return null;
     } catch (e) {
       errors.add('$path: $e');
       return null;
@@ -3797,6 +3801,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   }
 
   Future<void> _loadSupplementary() async {
+    final generation = ++_supplementalLoadGeneration;
     final id = '${partner['id']}';
     if (mounted) setState(() { supplementalLoading = true; supplementalError = null; });
     final errors = <String>[];
@@ -3819,7 +3824,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       _safeWorkspaceGet('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', errors),
       _safeWorkspaceGet('/api/v1/payments/partners/$id/profile', errors),
     ]);
-    if (!mounted) return;
+    if (!mounted || generation != _supplementalLoadGeneration) return;
     setState(() {
       if (r[0] != null) modules = items(r[0]!);
       if (r[1] != null) billing = r[1];
@@ -3839,7 +3844,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       if (r[15] != null) websiteAdapter = r[15];
       if (r[16] != null) paymentProfile = r[16];
       supplementalLoading = false;
-      supplementalError = errors.isEmpty ? null : 'Some secondary services are still loading or temporarily unavailable.';
+      supplementalError = errors.isEmpty
+          ? null
+          : 'Some secondary services timed out or are temporarily unavailable. Loaded data remains usable.';
     });
   }
 
@@ -4268,6 +4275,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final notes = TextEditingController(text: '${partner['notes'] ?? ''}');
     final lifecycleReason = TextEditingController();
     String lifecycle = '${partner['lifecycle'] ?? 'PROSPECT'}';
+    bool testPartner = partner['test_partner'] == true;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -4301,6 +4309,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               TextField(
                 controller: lifecycleReason,
                 decoration: InputDecoration(labelText: uiLiteral('Lifecycle change reason'), hintText: uiLiteral('Required for traceability when status changes')),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: testPartner,
+                onChanged: partner['test_partner'] == true
+                    ? null
+                    : (value) => setLocal(() {
+                          testPartner = value;
+                          if (value) lifecycle = 'LIVE';
+                        }),
+                title: const LText('Golden Test Partner'),
+                subtitle: LText(partner['test_partner'] == true
+                    ? 'Permanent QA tenant. Remove it only through the dedicated future test-tenant purge workflow.'
+                    : '38/38 modules stay active. Test revenue and impact remain visible here but are excluded from HIMATE platform aggregates.'),
               ),
               const SizedBox(height: 18),
               const _DialogSectionLabel('REGISTRATION & ADDRESS'),
@@ -4398,10 +4421,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         'staging_domain': staging.text.trim(),
         'logo_url': logo.text.trim(),
         'notes': notes.text.trim(),
+        'test_partner': testPartner,
       });
       if (mounted) {
         setState(() => partner = updated);
-        success('Partner data updated.');
+        await _loadSupplementary();
+        if (mounted) {
+          success(updated['test_partner'] == true
+              ? 'Golden Test Partner active with full test entitlements.'
+              : 'Partner data updated.');
+        }
       }
     }
 
@@ -4910,6 +4939,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             ? const HimateLogo(compact: true, width: 34)
             : const HimateLogo(width: 170),
         actions: [
+          if (partner['test_partner'] == true) ...[
+            const _StatusPill(label: 'GOLDEN TEST'),
+            const SizedBox(width: 8),
+          ],
           _StatusPill(label: '${partner['lifecycle'] ?? 'PROSPECT'}'),
           const SizedBox(width: 12),
           IconButton(onPressed: editPartner, tooltip: uiLiteral('Edit partner'), icon: const Icon(Icons.edit_outlined)),
@@ -4933,6 +4966,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     if ('${partner['primary_domain'] ?? ''}'.isNotEmpty) '${partner['primary_domain']}',
                     'Health: ${_humanize('${partner['system_health'] ?? 'UNKNOWN'}')}',
                     'Version: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
+                    if (partner['test_partner'] == true) 'TEST DATA · excluded from platform aggregates',
                   ].join(' · '),
                   actions: [
                     OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const LText('Company data')),
@@ -7374,6 +7408,10 @@ class _PartnerCardState extends State<PartnerCard> {
                     children: [
                       _PartnerLogo(url: '${p['logo_url'] ?? ''}'),
                       const Spacer(),
+                      if (p['test_partner'] == true) ...[
+                        const _StatusPill(label: 'TEST'),
+                        const SizedBox(width: 7),
+                      ],
                       if (p['reference_partner'] == true)
                         Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
                     ],

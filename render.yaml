@@ -12,7 +12,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -28,7 +28,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -52,7 +52,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -96,7 +96,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -128,7 +128,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -163,7 +163,7 @@ services:
       sizeGB: 10
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -188,7 +188,7 @@ services:
       sizeGB: 10
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -237,7 +237,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -264,7 +264,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -288,7 +288,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -312,7 +312,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -351,7 +351,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -375,7 +375,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -404,7 +404,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -452,7 +452,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -505,7 +505,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -524,7 +524,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
@@ -625,7 +625,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: HIMATE_ENV
         value: production
       - key: COOKIE_SECURE
@@ -759,7 +759,7 @@ services:
     autoDeploy: false
     envVars:
       - key: HIMATE_APP_VERSION
-        value: 0.8.26-start-23.11.3i
+        value: 0.8.27-start-23.11.3j
       - key: DATABASE_URL
         fromDatabase:
           name: himate-db
