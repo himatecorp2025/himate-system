@@ -48,17 +48,7 @@ echo ok
 
 printf 'canonical 38 modules are discoverable before live release without becoming executable... '
 before="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-printf '%s' "$before" | python3 - <<'PY'
-import json,sys
-d=json.load(sys.stdin)
-canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]
-assert len(canonical)==38,len(canonical)
-assert all(m.get("marketplace_summary","").strip() for m in canonical)
-assert all(m["access_state"]=="COMING_SOON" for m in canonical),canonical
-assert all(m["executable"] is False for m in canonical),canonical
-assert all(m["can_activate"] is False for m in canonical),canonical
-assert d["marketplace_model"]=="DISCOVERY_SEPARATE_FROM_EXECUTION",d
-PY
+printf '%s' "$before" | python3 -c 'import json,sys; d=json.load(sys.stdin); canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(canonical)==38,len(canonical); assert all(m.get("marketplace_summary","").strip() for m in canonical); assert all(m["access_state"]=="COMING_SOON" for m in canonical),canonical; assert all(m["executable"] is False for m in canonical),canonical; assert all(m["can_activate"] is False for m in canonical),canonical; assert d["marketplace_model"]=="DISCOVERY_SEPARATE_FROM_EXECUTION",d'
 echo ok
 
 printf 'publish the canonical Marketplace portfolio for plan-entitlement acceptance... '
@@ -105,35 +95,12 @@ echo ok
 
 printf 'Business Marketplace exposes 10 included canonical modules and 28 locked Flex-upgrade modules... '
 marketplace="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-printf '%s' "$marketplace" | python3 - <<'PY'
-import json,sys
-d=json.load(sys.stdin)
-canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]
-assert len(canonical)==38,len(canonical)
-active=[m for m in canonical if m["access_state"]=="ACTIVE"]
-locked=[m for m in canonical if m["access_state"]=="LOCKED"]
-assert len(active)==10,len(active)
-assert len(locked)==28,len(locked)
-assert all(m["executable"] is True for m in canonical),canonical
-assert all(m.get("in_current_plan") is True for m in active),active
-assert all("FLEX" in m.get("upgrade_plan_keys",[]) for m in locked),locked
-assert all(m.get("recommended_upgrade_plan")=="FLEX" for m in locked),locked
-assert all(m.get("marketplace_summary","").strip() for m in canonical)
-assert d.get("current_plan_key")=="BUSINESS",d
-PY
+printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(canonical)==38,len(canonical); active=[m for m in canonical if m["access_state"]=="ACTIVE"]; locked=[m for m in canonical if m["access_state"]=="LOCKED"]; assert len(active)==10,len(active); assert len(locked)==28,len(locked); assert all(m["executable"] is True for m in canonical),canonical; assert all(m.get("in_current_plan") is True for m in active),active; assert all("FLEX" in m.get("upgrade_plan_keys",[]) for m in locked),locked; assert all(m.get("recommended_upgrade_plan")=="FLEX" for m in locked),locked; assert all(m.get("marketplace_summary","").strip() for m in canonical); assert d.get("current_plan_key")=="BUSINESS",d'
 echo ok
 
 printf 'dashboard uses the same enriched Marketplace read model... '
 dashboard="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/dashboard")"
-printf '%s' "$dashboard" | python3 - <<'PY'
-import json,sys
-d=json.load(sys.stdin)
-mods=d["modules"]["items"]
-canonical=[m for m in mods if m.get("marketplace_visible") is True]
-assert len(canonical)==38,len(canonical)
-assert sum(1 for m in canonical if m["access_state"]=="ACTIVE")==10
-assert sum(1 for m in canonical if m["access_state"]=="LOCKED")==28
-PY
+printf '%s' "$dashboard" | python3 -c 'import json,sys; d=json.load(sys.stdin); mods=d["modules"]["items"]; canonical=[m for m in mods if m.get("marketplace_visible") is True]; assert len(canonical)==38,len(canonical); assert sum(1 for m in canonical if m["access_state"]=="ACTIVE")==10; assert sum(1 for m in canonical if m["access_state"]=="LOCKED")==28'
 echo ok
 
 printf 'locked managed-plan module cannot bypass plan entitlement through direct activation... '
