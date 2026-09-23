@@ -688,9 +688,16 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
 	targetKey:=strings.ToUpper(strings.TrimSpace(in.PlanKey));frequency:=normalizeBillingFrequency(in.BillingFrequency)
 	if targetKey==""||frequency==""{common.APIError(w,400,"VALIDATION","plan_key and MONTHLY/ANNUAL billing_frequency are required");return}
-	target,err:=a.loadPlan(r.Context(),targetKey);if err==sql.ErrNoRows{common.APIError(w,404,"PLAN_NOT_FOUND","Plan not found");return};if err!=nil{common.APIError(w,500,"DB","Could not load target plan");return}
-	if !target.Active{common.APIError(w,409,"PLAN_INACTIVE","Plan is inactive");return}
 	now:=dateOnly(time.Now().UTC())
+	if err:=a.ensureAnnualPlanIncreases(r.Context(),now);err!=nil{common.APIError(w,500,"DB","Could not apply annual package pricing");return}
+	target,err:=a.loadPlanAt(r.Context(),targetKey,now);if err==sql.ErrNoRows{common.APIError(w,404,"PLAN_NOT_FOUND","Plan not found");return};if err!=nil{common.APIError(w,500,"DB","Could not load target plan");return}
+	if !target.Active{common.APIError(w,409,"PLAN_INACTIVE","Plan is inactive");return}
+	commercialMode,err:=a.ensureCommercialMode(r.Context(),partnerID)
+	if err!=nil{common.APIError(w,500,"DB","Could not load partner commercial mode");return}
+	if commercialMode.BillingMode==billingModeCharity && commercialMode.CharityStatus==charityApproved{
+		common.APIError(w,409,"CHARITY_USES_MODULE_SELECTION","Approved Charity partners select modules directly and do not use paid subscription packages")
+		return
+	}
 	ready,_,err:=a.planReady(r.Context(),target,now);if err!=nil{common.APIError(w,500,"DB","Could not validate target plan");return}
 	if !ready{common.APIError(w,409,"PLAN_NOT_READY","Fixed plan module set is not fully configured");return}
 	keys,err:=uniqueModuleKeys(in.ModuleKeys);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
@@ -709,10 +716,12 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		if license.Status!="PAID" && !license.Waived {
 			common.APIError(w,409,"ACTIVATION_LICENSE_REQUIRED","Activation license must be paid or explicitly waived before a subscription plan can be activated");return
 		}
-		autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
-		if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
-		if !autopayReady{
-			common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before a subscription plan can be activated");return
+		if commercialMode.BillingMode==billingModePaid{
+			autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
+			if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
+			if !autopayReady{
+				common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before a paid subscription plan can be activated");return
+			}
 		}
 	}
 	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"));if actor==""{actor="partner"}
@@ -741,9 +750,11 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 			if err=a.replaceFlexSelection(r.Context(),partnerID,keys,now,"INITIAL_SELECTION");err!=nil{common.APIError(w,500,"DB","Could not save Flex module selection");return}
 		}
 		if frequency=="ANNUAL"{
-			invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_ANNUAL_PREPAY",start,end,list,annual)
+			actualAnnual:=annual
+			if commercialMode.BillingMode!=billingModePaid{actualAnnual=0}
+			invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_ANNUAL_PREPAY",start,end,list,actualAnnual)
 			if err!=nil{common.APIError(w,500,"INVOICE","Could not create annual prepayment invoice");return}
-			a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,annual)
+			if invoiceID!=""{a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,actualAnnual)}
 		}
 		_,_=a.db.ExecContext(r.Context(),`INSERT INTO billing.plan_change_history(partner_id,new_plan_key,new_billing_frequency,change_type,effective_at,actor,reason)
 			VALUES($1,$2,$3,'INITIAL',$4,$5,$6)`,partnerID,target.Key,frequency,now,actor,reason)
@@ -757,7 +768,7 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		}
 		common.JSON(w,201,out);return
 	}
-	currentPlan,err:=a.loadPlan(r.Context(),current.PlanKey);if err!=nil{common.APIError(w,500,"DB","Could not load current plan definition");return}
+	currentPlan,err:=a.loadPlanAt(r.Context(),current.PlanKey,now);if err!=nil{common.APIError(w,500,"DB","Could not load current plan definition");return}
 	if current.PlanKey=="CUSTOM" && target.Key!="CUSTOM" && !target.CustomerSelectable{
 		common.APIError(w,409,"PLAN_NOT_SELECTABLE","Target plan is not customer-selectable");return
 	}
@@ -804,10 +815,12 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	currentPrice:=currentMonthly;targetPrice:=targetMonthly
 	if frequency=="ANNUAL"{currentPrice=currentAnnual;targetPrice=targetAnnual}
 	if targetPrice>currentPrice{
-		autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
-		if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
-		if !autopayReady{
-			common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before an immediate paid upgrade");return
+		if commercialMode.BillingMode==billingModePaid{
+			autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
+			if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
+			if !autopayReady{
+				common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before an immediate paid upgrade");return
+			}
 		}
 		diff:=targetPrice-currentPrice
 		_,err=a.db.ExecContext(r.Context(),`UPDATE billing.partner_plan_subscriptions SET
@@ -818,14 +831,16 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		if target.SelectionMode=="SELECTABLE"{
 			if err=a.replaceFlexSelection(r.Context(),partnerID,keys,now,"UPGRADE_SELECTION");err!=nil{common.APIError(w,500,"DB","Could not save Flex module selection");return}
 		}
-		invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_UPGRADE",now,current.CurrentPeriodEnd,diff,diff)
+		actualUpgradeCharge:=diff
+		if commercialMode.BillingMode!=billingModePaid{actualUpgradeCharge=0}
+		invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_UPGRADE",now,current.CurrentPeriodEnd,diff,actualUpgradeCharge)
 		if err!=nil{common.APIError(w,500,"INVOICE","Could not create upgrade invoice");return}
-		a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,diff)
+		if invoiceID!=""{a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,actualUpgradeCharge)}
 		_,_=a.db.ExecContext(r.Context(),`INSERT INTO billing.plan_change_history(partner_id,old_plan_key,new_plan_key,old_billing_frequency,new_billing_frequency,change_type,effective_at,upgrade_charge,actor,reason)
-			VALUES($1,$2,$3,$4,$5,'IMMEDIATE_UPGRADE',$6,$7,$8,$9)`,partnerID,current.PlanKey,target.Key,frequency,frequency,now,diff,actor,reason)
+			VALUES($1,$2,$3,$4,$5,'IMMEDIATE_UPGRADE',$6,$7,$8,$9)`,partnerID,current.PlanKey,target.Key,frequency,frequency,now,actualUpgradeCharge,actor,reason)
 		s,_:=a.loadPartnerPlan(r.Context(),partnerID)
 		out,_:=a.partnerPlanMap(r.Context(),s)
-		out["change_type"]="IMMEDIATE_UPGRADE";out["upgrade_charge"]=diff
+		out["change_type"]="IMMEDIATE_UPGRADE";out["upgrade_charge"]=actualUpgradeCharge
 		if err=a.syncPlanEntitlements(r.Context(),partnerID,target.Key,now);err!=nil{
 			out["entitlement_sync_pending"]=true
 			out["warning"]="Upgrade and charge saved; module entitlement synchronization will retry automatically."
