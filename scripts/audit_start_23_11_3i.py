@@ -15,6 +15,14 @@ frontend_start = frontend.index("  Future<void> addPartner() async {")
 frontend_end = frontend.index("  List<Map<String, dynamic>> get filtered => partners;", frontend_start)
 add_partner = frontend[frontend_start:frontend_end]
 
+cms_fetch_start = gateway.index("func (a *app) fetchPublishedCMS")
+cms_fetch_end = gateway.index("func publicOrigin", cms_fetch_start)
+cms_fetches = gateway[cms_fetch_start:cms_fetch_end]
+
+notification_start = gateway.index("func (a *app) emitNotification")
+notification_end = gateway.index("func auditLimit", notification_start)
+notification_dispatch = gateway[notification_start:notification_end]
+
 master_fields = [
     "display_name","legal_name","brand_name","category_id","lifecycle","primary_domain",
     "contact_name","contact_email","finance_contact_name","finance_contact_email",
@@ -69,6 +77,18 @@ checks = [
         "gateway direct internal calls are version-bound too",
         'req.Header.Set("X-Himate-Expected-Version",a.version)' in (root / "services/cmd/gateway/partner_portal.go").read_text(encoding="utf-8")
         and 'req.Header.Set("X-Himate-Expected-Version", a.version)' in (root / "services/cmd/gateway/partner_branding.go").read_text(encoding="utf-8"),
+    ),
+    (
+        "gateway SSR CMS reads are version-bound and validate downstream release",
+        'Header.Set("X-Himate-Internal-Token"' not in cms_fetches
+        and cms_fetches.count("common.BindInternalRequest(req, a.internalToken)") == 6
+        and cms_fetches.count("common.DoInternal(a.client, req)") == 6,
+    ),
+    (
+        "gateway notification dispatch is version-bound",
+        "common.BindInternalRequest(req,a.internalToken)" in notification_dispatch
+        and "common.DoInternal(a.client,req)" in notification_dispatch
+        and 'Header.Set("X-Himate-Internal-Token"' not in notification_dispatch,
     ),
     (
         "Compose pins one current release across every application microservice",
