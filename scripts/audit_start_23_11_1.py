@@ -92,7 +92,7 @@ for token in [
 
 for token in [
     "Minimum monthly commitment",
-    "Individual activation fee",
+    "Initial license / activation fee",
     "Quote / offer reference",
 ]:
     require(token in main_ui, f"partner commercial UI missing: {token}")
