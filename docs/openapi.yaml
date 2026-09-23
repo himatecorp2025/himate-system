@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.27-start-23.11.3j
+  version: 0.8.28-start-23.11.3k
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.3j HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.3k HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -438,6 +438,32 @@ paths:
       responses:
         "200": {description: Flex module set scheduled}
         "409": {description: Current plan is fixed or module is not ready}
+  /partner/api/v1/charity:
+    get:
+      tags: [Partner Portal]
+      summary: Read own Charity review and commercial-mode state
+      responses:
+        "200": {description: Own Charity/commercial state}
+  /partner/api/v1/charity/request:
+    post:
+      tags: [Partner Portal]
+      summary: Submit own organization for HIMATE Charity review
+      description: Submission only creates a PENDING review; Partner Portal users cannot approve themselves.
+      responses:
+        "202": {description: Charity review request submitted}
+  /partner/api/v1/charity/modules:
+    get:
+      tags: [Partner Portal]
+      summary: Read own approved Charity module selection
+      responses:
+        "200": {description: Own Charity module selection}
+    put:
+      tags: [Partner Portal]
+      summary: Choose modules after HIMATE Charity approval
+      description: No module-count cap applies to approved Charity partners. Only PUBLISHED and READY modules are accepted.
+      responses:
+        "200": {description: Charity module selection updated}
+        "409": {description: HIMATE Charity approval is required}
   /partner/api/v1/billing/subscriptions:
     get:
       tags: [Partner Portal]
@@ -859,7 +885,12 @@ paths:
     get:
       tags: [Billing]
       summary: Subscription plan catalog
-      description: Starter is USD 500 monthly / USD 6,000 annual. Business is USD 1,500 monthly with USD 18,000 annual list price and USD 16,500 annual charged price. Flex is USD 2,500 monthly with USD 30,000 annual list price and USD 22,500 annual charged price.
+      description: >
+        Central package catalog. Initial standard monthly prices are Starter USD 500,
+        Business USD 1,500 and Flex USD 2,500; HIMATE may change package prices with an
+        effective date. Standard package prices apply to active customers from the
+        applicable billing boundary. Every January 1 the then-effective package price
+        automatically increases by 5 percent. Historical invoices are immutable.
       responses:
         "200": {description: Plans with module limits, selection modes, annual savings and readiness}
   /api/v1/billing/plans/{planKey}:
@@ -876,7 +907,11 @@ paths:
     patch:
       tags: [Billing]
       summary: Update plan commercial fields or fixed module package
-      description: Starter and Business fixed packages must contain exactly their configured module limit and every module must be PUBLISHED and READY. Existing package changes default to next calendar-month day 1.
+      description: >
+        Starter is fixed at 3 modules and Business at 10 modules, both selected by HIMATE.
+        Flex is fixed at a maximum capacity of 15 partner-selected modules. Price changes
+        accept effective_at and reason, are stored in effective-dated price history, and
+        apply to all active customers from the applicable billing boundary.
       responses:
         "200": {description: Plan updated}
         "400": {description: Invalid plan values or module count}
@@ -933,14 +968,15 @@ paths:
       tags: [Billing]
       summary: Update partner-specific commercial terms
       description: >
-        Persists negotiated activation fee, base fee, minimum monthly commitment,
-        quote reference and a monotonic terms version for legacy/CUSTOM INDIVIDUAL_QUOTE
-        partners. The USD 1,500 minimum applies only to that negotiated model.
-        Starter/Business/Flex recurring charges are controlled by subscription-plan prices,
-        while activation fees remain individually negotiated.
+        Persists partner-specific activation fee, legacy/CUSTOM service fee, optional
+        minimum monthly commitment, quote reference and a monotonic terms version.
+        There is no platform-enforced positive minimum: zero-dollar and discounted
+        commercial terms are valid HIMATE administrator decisions. Starter/Business/Flex
+        recurring charges are controlled by central package prices, while activation fees
+        remain partner-specific.
       responses:
-        "200": {description: Updated individual commercial terms}
-        "400": {description: Invalid amount or USD minimum commitment below 1,500}
+        "200": {description: Updated individual commercial terms and commercial mode}
+        "400": {description: Invalid commercial amount or date}
         "409": {description: Commercial terms changed concurrently}
   /api/v1/billing/partners/{partnerId}/terms-history:
     parameters:
@@ -975,11 +1011,55 @@ paths:
       tags: [Billing]
       summary: Commercial activation workflow and provisioning readiness
       description: >
-        Aggregates agreement, activation-fee invoice evidence, payment evidence,
-        payment verification and initial-license state without duplicating their
-        authoritative records.
+        Aggregates agreement, activation-fee state, payment evidence, commercial mode
+        and initial-license state. PAID partners retain provider-backed payment gates.
+        HIMATE-approved COMPLIMENTARY and approved CHARITY partners with a valid waiver
+        may proceed without fabricated invoice or payment evidence.
       responses:
         "200": {description: Workflow steps, next action and provisioning gate}
+  /api/v1/billing/partners/{partnerId}/commercial-mode:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Read PAID, COMPLIMENTARY or CHARITY commercial mode
+      responses:
+        "200": {description: Billing mode, Charity review state and invoice-generation policy}
+    patch:
+      tags: [Billing]
+      summary: HIMATE approval of commercial mode and Charity review state
+      description: >
+        Requires billing approval authority. CHARITY cannot become effective until
+        charity_status is APPROVED. Changes are audit-history and billing-event backed.
+      responses:
+        "200": {description: Updated commercial mode}
+        "409": {description: Charity approval is required}
+  /api/v1/billing/partners/{partnerId}/charity/request:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    post:
+      tags: [Billing]
+      summary: Request Charity eligibility review
+      responses:
+        "202": {description: Charity review pending}
+  /api/v1/billing/partners/{partnerId}/charity/modules:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Read approved Charity module selection
+      responses:
+        "200": {description: Selected modules with no Charity module-count cap}
+    put:
+      tags: [Billing]
+      summary: Replace approved Charity module selection
+      description: >
+        Available only after HIMATE Charity approval. Any number of PUBLISHED and READY
+        canonical modules may be selected; Catalog entitlements are synchronized with
+        CHARITY as the entitlement source.
+      responses:
+        "200": {description: Charity module selection applied}
+        "409": {description: Charity approval required or module unavailable}
   /api/v1/billing/partners/{partnerId}/events:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
