@@ -112,6 +112,54 @@ assert got["id"] and got["slug"], got
 PY
 echo ok
 
+printf 'partner master data is physically persisted in PostgreSQL... '
+DB_PARTNER="$(docker compose exec -T postgres psql -U himate -d himate -At -v partner_id="$FIRST_ID" <<'SQL'
+SELECT json_build_object(
+  'display_name',display_name,
+  'legal_name',legal_name,
+  'brand_name',brand_name,
+  'category_id',category_id,
+  'lifecycle',lifecycle,
+  'primary_domain',primary_domain,
+  'contact_name',contact_name,
+  'contact_email',contact_email,
+  'finance_contact_name',finance_contact_name,
+  'finance_contact_email',finance_contact_email,
+  'technical_contact_name',technical_contact_name,
+  'technical_contact_email',technical_contact_email,
+  'marketing_contact_name',marketing_contact_name,
+  'marketing_contact_email',marketing_contact_email,
+  'registration_number',registration_number,
+  'tax_id',tax_id,
+  'country',country,
+  'state_region',state_region,
+  'city',city,
+  'postal_code',postal_code,
+  'address_line1',address_line1,
+  'address_line2',address_line2,
+  'website',website,
+  'phone',phone,
+  'notes',notes
+)::text
+FROM partners.partners
+WHERE id=:'partner_id';
+SQL
+)"
+python3 - "$PAYLOAD_ONE" "$DB_PARTNER" <<'PY'
+import json,sys
+want=json.loads(sys.argv[1]); got=json.loads(sys.argv[2])
+fields=[
+"display_name","legal_name","brand_name","category_id","lifecycle","primary_domain",
+"contact_name","contact_email","finance_contact_name","finance_contact_email",
+"technical_contact_name","technical_contact_email","marketing_contact_name","marketing_contact_email",
+"registration_number","tax_id","country","state_region","city","postal_code",
+"address_line1","address_line2","website","phone","notes"
+]
+for key in fields:
+    assert got.get(key)==want.get(key), (key,want.get(key),got.get(key))
+PY
+echo ok
+
 printf 'replaying the same onboarding request returns the same partner instead of creating a duplicate... '
 REPLAY="$(curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$PAYLOAD_ONE" "$BASE_URL/api/v1/partners")"
 python3 - "$FIRST" "$REPLAY" <<'PY'
@@ -153,6 +201,19 @@ d=json.loads(sys.argv[1]); email="owner.retry."+sys.argv[2]+"@himate.test"
 matches=[x for x in d["items"] if x["email"].lower()==email.lower() and x["role"]=="owner" and x["active"]]
 assert len(matches)==1, d
 PY
+echo ok
+
+printf 'Partner Portal Owner is physically persisted in PostgreSQL... '
+OWNER_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -v partner_id="$FIRST_ID" -v owner_email="owner.retry.$STAMP@himate.test" <<'SQL'
+SELECT COUNT(*)
+FROM identity.partner_users
+WHERE partner_id=:'partner_id'
+  AND lower(email)=lower(:'owner_email')
+  AND role='owner'
+  AND active=TRUE;
+SQL
+)"
+test "$OWNER_COUNT" = "1"
 echo ok
 
 printf 'commercial defaults can be read back and recognized before a retry writes again... '
