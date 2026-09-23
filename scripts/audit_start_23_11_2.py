@@ -57,9 +57,9 @@ for token in [
 
 for token in [
     'Subscription Plans',
-    'Starter: $500/month',
-    'Business: $1,500/month',
-    'Flex: $2,500/month',
+    'Starter: USD 500/month',
+    'Business: USD 1,500/month',
+    'Flex: USD 2,500/month',
     'annual_list_price',
     'annual_price',
     'TextDecoration.lineThrough',
