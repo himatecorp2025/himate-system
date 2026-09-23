@@ -1244,6 +1244,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
 		a.serveProxy(w, r, "partners")
+	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.HasSuffix(r.URL.Path, "/logo"):
+		a.adminPartnerLogo(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/portal-users"):
 		a.adminPartnerUsers(w, r, u)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/modules"):
