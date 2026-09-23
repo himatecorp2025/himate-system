@@ -221,7 +221,7 @@ func (a *app) requestPaymentCharge(ctx context.Context, partnerID, invoiceID, pu
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+a.paymentsHost+"/internal/v1/charges",bytes.NewReader(raw))
 	if err!=nil{return nil,err}
 	req.Header.Set("Content-Type","application/json")
-	req.Header.Set("X-Himate-Internal-Token",a.token)
+	common.BindInternalRequest(req,a.token)
 	resp,err:=a.client.Do(req)
 	if err!=nil{return nil,err}
 	defer resp.Body.Close()
@@ -240,7 +240,7 @@ func (a *app) paymentProfileAutopayReady(ctx context.Context, partnerID string) 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		"http://"+a.paymentsHost+"/api/v1/payments/partners/"+partnerID+"/profile", nil)
 	if err != nil { return false, err }
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	resp, err := a.client.Do(req)
 	if err != nil { return false, err }
 	defer resp.Body.Close()
