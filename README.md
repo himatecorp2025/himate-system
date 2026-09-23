@@ -401,6 +401,17 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.24-start-23.11.3g`
 - acceptance: `docs/START-23.11.3G_ACCEPTANCE.md`, `scripts/audit_start_23_11_3g.py`, `scripts/smoke_start_23_11_3g.sh`
 
+### START-23.11.3h — Test Partner Onboarding Hardening
+- duplicate partner display names are explicitly allowed; display name is presentation data, not the unique identity key
+- immutable partner IDs generate collision-free internal technical slugs even when company names are identical
+- one stable onboarding request ID makes core partner creation idempotent after a lost client response
+- X, Cancel and route-back dismissal are blocked once partner creation is in flight or a partial partner already exists
+- Retry reconciles persisted Partner Portal Owner, partner logo and commercial terms before writing those steps again
+- exact duplicate-display-name and onboarding-replay behavior is covered by Compose acceptance
+- START-23.11.4 remains frozen until a real production test partner is created successfully
+- release contract version is `0.8.25-start-23.11.3h`
+- acceptance: `docs/START-23.11.3H_ACCEPTANCE.md`, `scripts/audit_start_23_11_3h.py`, `scripts/smoke_start_23_11_3h.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -427,7 +438,7 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.7_ACCEPTANCE.md`
 - `docs/START-23.8_ACCEPTANCE.md`
 - `docs/START-23.9_ACCEPTANCE.md`
-- `docs/START-23.10_ACCEPTANCE.md`
+- `docs/START-23.10_ACCEPTANCE.md`\n- `docs/START-23.11.3H_ACCEPTANCE.md`
 - `docs/START-23.11.1_ACCEPTANCE.md`
 - `docs/START-23.11.2_ACCEPTANCE.md`
 - `docs/START-23.11.3_ACCEPTANCE.md`
