@@ -315,8 +315,8 @@ The architecture remains microservice/container based. It is **not** being colla
 ### START-23.11.1 — Module Registry & Individual Commercial Model
 - the canonical Klavierhaus portfolio is represented by 38 real legacy-reference modules across exactly four primary groups: Finance & Invoicing (3), Technical Operations (16), Marketing (8), Website & Events (11)
 - module publication is independent from partner entitlement; only READY modules may become PUBLISHED and unpublished modules fail closed in Partner Portal
-- partner commercial terms are individual contracts/quotes: activation fee, base service fee, USD minimum monthly commitment, contract currency and offer reference are versioned per partner
-- the current USD minimum monthly commitment is 1,500; the obsolete fixed USD 13,000 activation-fee floor is removed
+- legacy/CUSTOM partner commercial terms remain individual contracts/quotes: activation fee, base service fee, USD minimum monthly commitment, contract currency and offer reference are versioned per partner
+- the USD 1,500 minimum applies to the legacy/CUSTOM INDIVIDUAL_QUOTE model only; standard Starter/Business/Flex recurring charges are controlled by their plan prices. The obsolete fixed USD 13,000 activation-fee floor is removed
 - catalog/list prices are reference values only; partner-specific contract pricing is the charging authority
 - partner-module recurring and activation prices retain quote/currency history and remain tenant-isolated
 - release contract version is `0.8.15-start-23.11.1`
