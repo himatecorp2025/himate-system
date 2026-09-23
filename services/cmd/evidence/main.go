@@ -188,7 +188,7 @@ func (a *app)ensureStorageNamespace(ctx context.Context,namespace string)error{
 	if err!=nil{return err}
 	common.BindInternalRequest(req,a.token)
 	req.Header.Set("Content-Type","application/json")
-	resp,err:=a.client.Do(req)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("storage namespace status %d",resp.StatusCode)}
@@ -203,7 +203,7 @@ func (a *app)putObject(ctx context.Context,namespace,key string,file *os.File,si
 	if err!=nil{return nil,err}
 	req.ContentLength=size
 	common.BindInternalRequest(req,a.token)
-	resp,err:=a.client.Do(req)
+	resp,err:=common.DoInternal(a.client, req)
 	if err!=nil{return nil,err}
 	defer resp.Body.Close()
 	if resp.StatusCode<200||resp.StatusCode>=300{return nil,fmt.Errorf("storage put status %d",resp.StatusCode)}
@@ -217,7 +217,7 @@ func (a *app)getObject(ctx context.Context,namespace,key,mime string)(*http.Resp
 	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,path,nil)
 	if err!=nil{return nil,err}
 	common.BindInternalRequest(req,a.token)
-	return a.client.Do(req)
+	return common.DoInternal(a.client, req)
 }
 
 func readMultipartFile(file multipart.File)(*os.File,int64,string,error){
