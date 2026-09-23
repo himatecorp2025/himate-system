@@ -37,7 +37,7 @@ checks = [
         "New Partner modal is not blocked by Module Catalog",
         "widget.api.get('/api/v1/modules'" not in add_partner,
     ),
-    ("New Partner keeps the complete built-in category catalog available", all(token in add_partner for token in ["cat_001","cat_002","cat_003","cat_004","cat_005","cat_006"]) and "Category service is still loading" not in add_partner),
+    ("New Partner keeps the complete built-in category catalog available", all(token in frontend for token in ["cat_001","cat_002","cat_003","cat_004","cat_005","cat_006"]) and "_mergePartnerCategories(categories)" in add_partner and "Category service is still loading" not in add_partner),
     ("company legal identity fields are collected", all(token in add_partner for token in [
         "registrationNumber", "taxId", "legalName", "brandName",
     ])),
