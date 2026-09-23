@@ -268,7 +268,7 @@
     {
       "id": "automation.billing",
       "name": "Automation / Billing",
-      "scope": "Calendar-month invoice cycle, full-month/no-proration charging, minimum commitment and subscription expiry"
+      "scope": "Subscription-plan recurring billing, monthly/annual collection, immediate upgrades, scheduled downgrades and plan-entitlement synchronization"
     },
     {
       "id": "automation.payments",
@@ -2111,22 +2111,22 @@
       "notes": "Catalog prices are reference-only. PARTNER_CONTRACT is the pricing authority; unpublished modules remain invisible and non-activatable to Partner Portal."
     },
     {
-      "id": "CALENDAR-MONTH-BILLING-23-11-2",
+      "id": "SUBSCRIPTION-PLAN-BILLING-23-11-2",
       "surface": "automation.billing",
-      "ui": "Calendar-month billing, no-proration charging and minimum monthly commitment",
+      "ui": "Starter / Business / Flex / Custom subscription plans with monthly or annual billing",
       "kind": "mutation",
-      "frontend_file": "frontend/lib/main.dart",
-      "source_token": "Calendar month · full monthly charge · no proration",
-      "method": "POST/GET/PATCH",
-      "api_pattern": "/internal/v1/invoices/run + /api/v1/billing/partners/{partnerId}/summary + /subscriptions",
-      "backend_service": "billing",
-      "persistence": "billing.module_subscriptions + module_period_snapshots + invoice_items + invoices + billing_events",
-      "audit": "immutable calendar-month ledger + START-23.11.2 acceptance",
-      "localization_state": "BILINGUAL_UI",
+      "frontend_file": "frontend/lib/module_control_plane.dart + frontend/lib/partner_portal.dart",
+      "source_token": "Subscription Plans",
+      "method": "GET/PATCH/PUT",
+      "api_pattern": "/api/v1/billing/plans + /api/v1/billing/partners/{partnerId}/plan + /plan/modules",
+      "backend_service": "billing + catalog",
+      "persistence": "billing.subscription_plans + subscription_plan_modules + partner_plan_subscriptions + partner_plan_module_selections + plan_change_history + invoices + invoice_items; catalog.partner_modules",
+      "audit": "START-23.11.2 plan billing acceptance + immutable invoice/payment ledger",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11.2",
-      "e2e_proof": "scripts/smoke_start_23_11_2.sh: mid-month activation -> full monthly item -> month-boundary cancellation -> next-month-day-1 invoice -> minimum commitment",
-      "notes": "CALENDAR_MONTH is authoritative for new recurring evidence. Historical 30-day rows remain retained as LEGACY_30_DAY and are not rewritten."
+      "e2e_proof": "scripts/smoke_start_23_11_2.sh: configure fixed packages -> activation gate -> monthly upgrades/downgrade -> plan invoice -> annual Flex prepay -> scheduled Flex selection",
+      "notes": "Standard pilot recurring invoices are plan-priced: Starter USD 500 / 3 fixed modules; Business USD 1500 / 10 fixed modules; Flex USD 2500 / up to 15 selectable modules. Annual Business USD 18000 list -> 16500 charge; Flex USD 30000 list -> 22500 charge. Individual module pricing remains retained for future/custom use."
     }
   ],
   "completed_through": "23.11.2"
