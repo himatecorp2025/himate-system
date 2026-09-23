@@ -368,6 +368,14 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.19-start-23.11.3b`
 - acceptance: `docs/START-23.11.3B_ACCEPTANCE.md`, `scripts/audit_start_23_11_3b.py`, `scripts/smoke_start_23_11_3b.sh`
 
+### START-23.11.3c — Production Fixture Readiness
+- persistent TEST partner and Partner Portal owner are now re-ensured idempotently on service startup, so long-lived production migration history cannot skip the fixture
+- Partner Portal access failures now distinguish missing partner registry data, internal credential mismatches, timeouts, missing host wiring and true suspended/archived access
+- infrastructure failures no longer count as bad login attempts
+- production-like smoke deletes both fixture rows, restarts only the owning services, verifies automatic repair and performs a real Partner Portal login
+- release contract version is `0.8.20-start-23.11.3c`
+- acceptance: `docs/START-23.11.3C_ACCEPTANCE.md`, `scripts/audit_start_23_11_3c.py`, `scripts/smoke_start_23_11_3c.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
