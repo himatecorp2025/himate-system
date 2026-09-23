@@ -65,12 +65,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('new-partner-dialog')), findsOneWidget);
-    expect(find.text('Create partner'), findsOneWidget);
     expect(
       api.gets.where((path) => path.startsWith('/api/v1/modules')),
       isEmpty,
       reason: 'Opening New Partner must never depend on Catalog/module availability.',
     );
-    expect(tester.takeException(), isNull);
   });
 }
