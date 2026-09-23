@@ -61,9 +61,9 @@ PY
 
 printf 'the same admin onboarding flow can register the first Partner Portal Owner... '
 portal_user="$(curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$portal_payload" "$BASE_URL/api/v1/partners/$PARTNER_ID/portal-users")"
-printf '%s' "$portal_user" | python3 - "$PARTNER_ID" "$EMAIL" <<'PY'
+python3 - "$PARTNER_ID" "$EMAIL" "$portal_user" <<'PY'
 import json,sys
-d=json.load(sys.stdin)
+d=json.loads(sys.argv[3])
 assert d["partner_id"]==sys.argv[1]
 assert d["email"]==sys.argv[2]
 assert d["role"]=="owner"
@@ -78,9 +78,9 @@ print(json.dumps({"email":sys.argv[1],"password":sys.argv[2],"remember":False}))
 PY
 )"
 login_response="$(curl -fsS -c "$PARTNER_COOKIE" -H 'Content-Type: application/json' -d "$login_payload" "$BASE_URL/partner/api/v1/auth/login")"
-printf '%s' "$login_response" | python3 - "$PARTNER_ID" "$EMAIL" <<'PY'
+python3 - "$PARTNER_ID" "$EMAIL" "$login_response" <<'PY'
 import json,sys
-d=json.load(sys.stdin)
+d=json.loads(sys.argv[3])
 assert d["partner_id"]==sys.argv[1]
 assert d["email"]==sys.argv[2]
 assert d["role"]=="owner"
