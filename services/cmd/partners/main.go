@@ -432,11 +432,20 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			Phone                 string `json:"phone"`
 			Notes                 string `json:"notes"`
 		}
-		if common.Decode(r, &in) != nil || strings.TrimSpace(in.DisplayName) == "" {
-			common.APIError(w, 400, "VALIDATION", "Display name is required")
+		if err := common.Decode(r, &in); err != nil {
+			common.APIError(w, 400, "JSON", "Invalid partner request: "+err.Error())
 			return
 		}
 		in.DisplayName = strings.TrimSpace(in.DisplayName)
+		if in.DisplayName == "" {
+			common.APIError(w, 400, "VALIDATION", "Display name is required")
+			return
+		}
+		slug := slugify(in.DisplayName)
+		if slug == "" {
+			common.APIError(w, 400, "VALIDATION", "Display name must contain at least one letter or number")
+			return
+		}
 		if strings.TrimSpace(in.LegalName) == "" {
 			in.LegalName = in.DisplayName
 		}
@@ -469,7 +478,7 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 				$9,$10,$11,$12,$13,$14,$15,$16,
 				$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
 			)`,
-			id, slugify(in.DisplayName), in.DisplayName, strings.TrimSpace(in.LegalName), strings.TrimSpace(in.BrandName),
+			id, slug, in.DisplayName, strings.TrimSpace(in.LegalName), strings.TrimSpace(in.BrandName),
 			in.CategoryID, in.Lifecycle, strings.TrimSpace(in.PrimaryDomain),
 			strings.TrimSpace(in.ContactName), strings.ToLower(strings.TrimSpace(in.ContactEmail)),
 			strings.TrimSpace(in.FinanceContactName), strings.ToLower(strings.TrimSpace(in.FinanceContactEmail)),
@@ -480,7 +489,7 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 			strings.TrimSpace(in.AddressLine1), strings.TrimSpace(in.AddressLine2), strings.TrimSpace(in.Website),
 			strings.TrimSpace(in.Phone), strings.TrimSpace(in.Notes))
 		if err != nil {
-			common.APIError(w, 409, "CONFLICT", "Partner, slug, or domain already exists")
+			common.APIError(w, 409, "CONFLICT", "Partner could not be created because its display-name slug or primary domain is already in use")
 			return
 		}
 		p, _ := a.get(id)
