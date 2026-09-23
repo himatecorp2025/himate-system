@@ -3428,7 +3428,7 @@ class _PartnersPageState extends State<PartnersPage> {
                 portalOwnerCreated = true;
               }
 
-              if (!logoUploaded && partnerLogoFile != null && '${created?['logo_url'] ?? ''}'.trim().isNotEmpty) {
+              if (!logoUploaded && partnerLogoFile != null && '${created['logo_url'] ?? ''}'.trim().isNotEmpty) {
                 logoUploaded = true;
               }
 
@@ -3471,7 +3471,7 @@ class _PartnersPageState extends State<PartnersPage> {
                   submitting = false;
                   completionReady = true;
                 });
-                Navigator.pop<Map<String, dynamic>>(dialogContext, created ?? stagedPartner!);
+                Navigator.pop<Map<String, dynamic>>(dialogContext, created);
               }
             } catch (e) {
               if (!dialogContext.mounted) return;
