@@ -338,6 +338,18 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.16-start-23.11.2`
 - acceptance: `docs/START-23.11.2_ACCEPTANCE.md`, `scripts/audit_start_23_11_2.py`, `scripts/smoke_start_23_11_2.sh`
 
+### START-23.11.3 — Module Marketplace
+- Partner Portal Modules becomes a discovery-first Module Marketplace.
+- all 38 canonical HIMATE/Klavierhaus modules remain discoverable by stable name and bilingual high-level summary, including unreleased legacy-reference modules
+- discovery visibility is strictly separate from execution: live use still requires PUBLISHED + READY + operational ACTIVE + tenant entitlement
+- Marketplace access states are ACTIVE, LOCKED, COMING_SOON and UNAVAILABLE
+- Billing remains the plan-membership authority; Gateway enriches Catalog cards with available plan and higher-plan upgrade information
+- Starter/Business fixed package membership and Flex selectability are never inferred from Catalog
+- locked modules remain visible to support upgrade discovery but cannot bypass PLAN_MANAGED_MODULES or direct entitlement gates
+- arbitrary unpublished non-marketplace modules remain hidden, preserving START-23.11.1 fail-closed behavior
+- release contract version is `0.8.17-start-23.11.3`
+- acceptance: `docs/START-23.11.3_ACCEPTANCE.md`, `scripts/audit_start_23_11_3.py`, `scripts/smoke_start_23_11_3.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -367,10 +379,11 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.10_ACCEPTANCE.md`
 - `docs/START-23.11.1_ACCEPTANCE.md`
 - `docs/START-23.11.2_ACCEPTANCE.md`
+- `docs/START-23.11.3_ACCEPTANCE.md`
 - `docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
 - `docs/START-23.1_SURFACE_INVENTORY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/openapi.yaml`
 
-START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. START-23.9 protects authoritative Dashboard revenue/Impact analytics, audit-backed Recent Activity and permission-scoped global search. START-23.10 protects provisioning, connector credentials, Website Adapter binding, environment/provider operations and backup policy scheduling. START-23.11.1 protects the canonical 38-module registry, publish-ready lifecycle gates and partner-specific versioned commercial terms. START-23.11.2 protects plan packaging, fixed/selectable entitlements, monthly/annual recurring prices, provider-backed collection and upgrade/downgrade lifecycle. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
+START-22 through START-23.2 remain protected by their historical acceptance suites. START-23.3 remains protected by its lifecycle acceptance suite. START-23.4 additionally protects provider-backed activation and recurring collection. START-23.5 protects the dynamic bilingual data model. START-23.6 protects Administration, Identity and core-business CRUD with session-invalidation and password-reset mutation evidence. START-23.7 protects real commercial Evidence, Impact mutation flows and reproducible snapshot-backed reporting. START-23.8 protects full CMS/Design/SEO mutation-to-initial-HTML behavior, arbitrary pages/sections, real multi-viewport previews, multi-surface brand assets, tenant-isolated partner design profiles and logic-preserving theme swaps. START-23.9 protects authoritative Dashboard revenue/Impact analytics, audit-backed Recent Activity and permission-scoped global search. START-23.10 protects provisioning, connector credentials, Website Adapter binding, environment/provider operations and backup policy scheduling. START-23.11.1 protects the canonical 38-module registry, publish-ready lifecycle gates and partner-specific versioned commercial terms. START-23.11.2 protects plan packaging, fixed/selectable entitlements, monthly/annual recurring prices, provider-backed collection and upgrade/downgrade lifecycle. START-23.11.3 protects the 38-module discovery Marketplace, discovery/execution separation and plan-aware locked-module upsell without entitlement bypass. The START-23.1–23.6 cross-phase closure audit remains an enforced CI gate during later work. Final live-provider proof remains reserved for START-23.12. START-24 Security Acceptance remains blocked until START-23.7–23.12 close the remaining matrix blockers.
