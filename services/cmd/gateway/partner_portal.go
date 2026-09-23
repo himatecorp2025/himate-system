@@ -333,7 +333,7 @@ func (a *app) partnerDashboard(w http.ResponseWriter,r *http.Request,u partnerUs
 	var companyErr,modulesErr,billingErr,impactErr error
 	var wg sync.WaitGroup;wg.Add(4)
 	go func(){defer wg.Done();companyErr=a.internalGET(ctx,a.hosts["partners"],"/api/v1/partners/"+url.PathEscape(u.PartnerID),&company)}()
-	go func(){defer wg.Done();modulesErr=a.internalGET(ctx,a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules",&modules)}()
+	go func(){defer wg.Done();modulesErr=a.internalGET(ctx,a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules?locale="+url.QueryEscape(u.PreferredLocale),&modules)}()
 	go func(){defer wg.Done();billingErr=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/summary",&billing)}()
 	go func(){defer wg.Done();impactErr=a.internalGET(ctx,a.hosts["impact"],"/api/v1/impact/summary?partner_id="+url.QueryEscape(u.PartnerID),&impact)}()
 	wg.Wait()
@@ -581,7 +581,7 @@ func (a *app) enrichPartnerMarketplace(ctx context.Context,partnerID string,out 
 
 func (a *app) partnerModulesView(w http.ResponseWriter,r *http.Request,u partnerUser){
 	var out map[string]any
-	if err:=a.internalGET(r.Context(),a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules",&out);err!=nil{
+	if err:=a.internalGET(r.Context(),a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules?locale="+url.QueryEscape(u.PreferredLocale),&out);err!=nil{
 		common.APIError(w,502,"CATALOG_UNAVAILABLE","Module catalog is temporarily unavailable");return}
 	a.enrichPartnerMarketplace(r.Context(),u.PartnerID,out)
 	common.JSON(w,200,out)
