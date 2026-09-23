@@ -202,6 +202,11 @@ func (a *app) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	if _, err := a.db.ExecContext(ctx,
+		`UPDATE partners.partners SET category_id='cat_006',updated_at=NOW()
+		 WHERE id='ptr_himate_test_001' AND category_id IS NULL`); err != nil {
+		return err
+	}
 	_, err := a.db.ExecContext(ctx,
 		`INSERT INTO partners.partners(
 			id,slug,display_name,legal_name,brand_name,category_id,lifecycle,existing_partner,reference_partner,
@@ -731,7 +736,7 @@ func (a *app) purgeOperationalPartner(w http.ResponseWriter, r *http.Request, id
 }
 
 const selectPartner = `SELECT
-	p.id,p.slug,p.display_name,p.legal_name,p.brand_name,p.category_id,COALESCE(c.name,''),p.lifecycle,
+	p.id,p.slug,p.display_name,p.legal_name,p.brand_name,COALESCE(p.category_id,''),COALESCE(c.name,''),p.lifecycle,
 	p.existing_partner,p.reference_partner,p.primary_domain,p.staging_domain,p.logo_url,p.platform_version,p.system_health,
 	p.contact_name,p.contact_email,p.finance_contact_name,p.finance_contact_email,p.technical_contact_name,p.technical_contact_email,
 	p.marketing_contact_name,p.marketing_contact_email,p.registration_number,p.tax_id,p.country,p.state_region,p.city,p.postal_code,
