@@ -557,5 +557,7 @@ Same-frequency upgrades are immediate and charge the full plan-price difference 
 
 Plan invoices are created idempotently before provider collection. Existing Payments settlement/webhook verification remains authoritative for PAID state. Standard plan partners are excluded from legacy per-module recurring invoice generation and from Partner Portal individual module activation/cancellation commands, preventing a second billing authority from emerging.
 
+Recurring plan collection includes a Billing-owned dunning state machine. The due-date attempt is followed by retry attempts on due+2 and due+5 days. Verified failure of the third attempt moves the plan to SUSPENDED, moves the partner lifecycle to SUSPENDED and removes active plan entitlements. Payment inside the 30-day cure window restores the previous partner lifecycle and entitlement set. When the cure window expires, the partner is ARCHIVED, Partner Portal login identities and current operational plan selections are purged, and the plan becomes CANCELLED. Financial invoices, provider settlement evidence, contract/commercial history and immutable audit/evidence remain under legal retention and are not deleted by the operational purge.
+
 Historical 30-day module subscriptions, module-period snapshots, partner-specific prices, activation-fee history and quote references remain intact for legacy/custom compatibility. They are not rewritten into plan invoices.
 
