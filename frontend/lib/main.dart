@@ -2812,6 +2812,7 @@ class _PartnersPageState extends State<PartnersPage> {
     final legalName = TextEditingController();
     final contactName = TextEditingController();
     final contactEmail = TextEditingController();
+    final portalPassword = TextEditingController();
     final primaryDomain = TextEditingController();
     final country = TextEditingController(text: 'United States');
     final activationFee = TextEditingController(text: '0');
@@ -2828,8 +2829,20 @@ class _PartnersPageState extends State<PartnersPage> {
     final release = TextEditingController(text: '0.3.0-start-09-13');
     String category = '${categories.first['id']}';
     String environment = 'STAGING';
+    bool portalPasswordObscure = true;
     int step = 0;
     final selectedModules = <String>{};
+
+    bool validPortalPassword(String value) {
+      return value.runes.length >= 12 &&
+          RegExp(r'[a-z]').hasMatch(value) &&
+          RegExp(r'[A-Z]').hasMatch(value) &&
+          RegExp(r'[0-9]').hasMatch(value) &&
+          RegExp(r'[^A-Za-z0-9\s]').hasMatch(value);
+    }
+
+    bool validPortalEmail(String value) =>
+        RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim());
 
     final ok = await showDialog<bool>(
       context: context,
@@ -2869,8 +2882,24 @@ class _PartnersPageState extends State<PartnersPage> {
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
-                        first: TextField(controller: contactName, decoration: InputDecoration(labelText: uiLiteral('Primary contact'))),
-                        second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Administrator / contact email *'))),
+                        first: TextField(controller: contactName, decoration: InputDecoration(labelText: uiLiteral('Primary contact / Portal owner name *'))),
+                        second: TextField(controller: contactEmail, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Administrator / Partner Portal email *'))),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: portalPassword,
+                        obscureText: portalPasswordObscure,
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        decoration: InputDecoration(
+                          labelText: uiLiteral('Initial Partner Portal password *'),
+                          helperText: uiLiteral('This creates the first Owner account for the partner. The password is never stored in plain text.'),
+                          prefixIcon: const Icon(Icons.lock_outline_rounded),
+                          suffixIcon: IconButton(
+                            onPressed: () => setLocal(() => portalPasswordObscure = !portalPasswordObscure),
+                            icon: Icon(portalPasswordObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       ResponsiveFieldPair(
@@ -3013,10 +3042,23 @@ class _PartnersPageState extends State<PartnersPage> {
           ),
           primaryLabel: 'Create & validate provisioning',
           onPrimary: () {
-            if (displayName.text.trim().isEmpty || contactEmail.text.trim().isEmpty ||
+            if (displayName.text.trim().isEmpty || contactName.text.trim().isEmpty ||
+                contactEmail.text.trim().isEmpty || portalPassword.text.isEmpty ||
                 agreementReference.text.trim().isEmpty || activationInvoiceFile == null) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: LText('Display name, administrator email, commercial agreement and an activation invoice file are required.'), behavior: SnackBarBehavior.floating),
+                const SnackBar(content: LText('Display name, Portal owner name/email/password, commercial agreement and an activation invoice file are required.'), behavior: SnackBarBehavior.floating),
+              );
+              return;
+            }
+            if (!validPortalEmail(contactEmail.text)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: LText('Enter a valid Partner Portal email address before creating the partner.'), behavior: SnackBarBehavior.floating),
+              );
+              return;
+            }
+            if (!validPortalPassword(portalPassword.text)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: LText('Partner Portal password must be at least 12 characters and include lowercase, uppercase, a number and a special character.'), behavior: SnackBarBehavior.floating),
               );
               return;
             }
@@ -3039,6 +3081,14 @@ class _PartnersPageState extends State<PartnersPage> {
           'primary_domain': primaryDomain.text.trim(),
         });
         final partnerId = '${created['id']}';
+
+        await widget.api.post('/api/v1/partners/$partnerId/portal-users', {
+          'name': contactName.text.trim(),
+          'email': contactEmail.text.trim(),
+          'password': portalPassword.text,
+          'role': 'owner',
+        });
+
         final fee = double.tryParse(activationFee.text) ?? 0;
         final monthly = double.tryParse(baseMonthlyFee.text) ?? 0;
         final minimumMonthly = double.tryParse(minimumMonthlyCommitment.text) ?? 1500;
@@ -3155,8 +3205,8 @@ class _PartnersPageState extends State<PartnersPage> {
         if (mounted) {
           unawaited(load(reset: true));
           success(hasProviderProfile
-              ? 'Partner created. Provider-backed activation payment was initiated; provisioning remains gated until the signed webhook confirms payment.'
-              : 'Partner created in LICENSE_PENDING. Configure a payment method before collecting the activation license.');
+              ? 'Partner and Partner Portal Owner created. Provider-backed activation payment was initiated; provisioning remains gated until the signed webhook confirms payment.'
+              : 'Partner and Partner Portal Owner created in LICENSE_PENDING. The administrator can sign in at /partner/login; configure a payment method before collecting the activation license.');
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -3175,7 +3225,7 @@ class _PartnersPageState extends State<PartnersPage> {
     }
 
     for (final controller in [
-      displayName, legalName, contactName, contactEmail, primaryDomain, country,
+      displayName, legalName, contactName, contactEmail, portalPassword, primaryDomain, country,
       activationFee, baseMonthlyFee, minimumMonthlyCommitment, quoteReference, providerCustomerId, paymentMethodId, agreementReference,
       evidenceName, systemName, release,
     ]) {

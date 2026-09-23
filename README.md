@@ -359,22 +359,19 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.18-start-23.11.3a`
 - acceptance: `docs/START-23.11.3A_ACCEPTANCE.md`, `scripts/audit_start_23_11_3a.py`, `scripts/smoke_start_23_11_3a.sh`
 
-### START-23.11.3b — Persistent Manual QA Partner
-- adds a durable **HIMATE TEST PARTNER** tenant for manual deployed-environment validation through START-23.12
-- fixed partner ID: `ptr_himate_test_001`
-- fixed Partner Portal owner: `test.partner@himate.test`
-- raw test password is never committed; only its PBKDF2-SHA256 hash is persisted
-- the fixture is intentionally retained across Blueprint syncs and deployments until the system owner explicitly requests deletion
-- release contract version is `0.8.19-start-23.11.3b`
-- acceptance: `docs/START-23.11.3B_ACCEPTANCE.md`, `scripts/audit_start_23_11_3b.py`, `scripts/smoke_start_23_11_3b.sh`
+### START-23.11.3b / 23.11.3c — Superseded QA fixture approach
+- these releases introduced and hardened a fixed manual-QA partner fixture
+- START-23.11.3d intentionally retires that fixture in favor of testing the real New Partner onboarding path
+- historical acceptance documents remain for traceability, but their fixed-fixture CI gates are no longer active
 
-### START-23.11.3c — Production Fixture Readiness
-- persistent TEST partner and Partner Portal owner are now re-ensured idempotently on service startup, so long-lived production migration history cannot skip the fixture
-- Partner Portal access failures now distinguish missing partner registry data, internal credential mismatches, timeouts, missing host wiring and true suspended/archived access
-- infrastructure failures no longer count as bad login attempts
-- production-like smoke deletes both fixture rows, restarts only the owning services, verifies automatic repair and performs a real Partner Portal login
-- release contract version is `0.8.20-start-23.11.3c`
-- acceptance: `docs/START-23.11.3C_ACCEPTANCE.md`, `scripts/audit_start_23_11_3c.py`, `scripts/smoke_start_23_11_3c.sh`
+### START-23.11.3d — Real Partner Onboarding
+- **New Partner** now creates the partner record and immediately registers the first Partner Portal **Owner**
+- the administrator/contact email becomes the initial Partner Portal login email and the wizard requires an explicit initial password
+- the fixed `ptr_himate_test_001` / `test.partner@himate.test` QA records are removed by forward migrations and are no longer recreated on startup
+- Partner Login now has an explicit **Clear password** control that also terminates the active browser autofill context
+- Partner Portal registry errors remain precise instead of collapsing infrastructure failures into a generic access-disabled 403
+- release contract version is `0.8.21-start-23.11.3d`
+- acceptance: `docs/START-23.11.3D_ACCEPTANCE.md`, `scripts/audit_start_23_11_3d.py`, `scripts/smoke_start_23_11_3d.sh`
 
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
