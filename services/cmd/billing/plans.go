@@ -641,7 +641,7 @@ func (a *app) effectivePlanPrices(s partnerPlanSubscription,p subscriptionPlan)(
 }
 
 func (a *app) partnerPlanMap(ctx context.Context,s partnerPlanSubscription) (map[string]any,error) {
-	p,err:=a.loadPlan(ctx,s.PlanKey);if err!=nil{return nil,err}
+	p,err:=a.loadPlanAt(ctx,s.PlanKey,time.Now().UTC());if err!=nil{return nil,err}
 	monthly,list,annual,limit,mode:=a.effectivePlanPrices(s,p)
 	var modules []string
 	if mode=="FIXED"{modules,err=a.planModulesAt(ctx,p.Key,time.Now().UTC())}else if mode=="SELECTABLE"{modules,err=a.flexModulesAt(ctx,s.PartnerID,time.Now().UTC())}
@@ -896,6 +896,15 @@ func (a *app) syncPlanEntitlements(ctx context.Context,partnerID,planKey string,
 func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,chargeType string,start,end time.Time,listPrice,amount float64)(string,error){
 	start,end=dateOnly(start),dateOnly(end)
 	key:=fmt.Sprintf("PLAN:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
+	if amount <= 0 {
+		eventKey:=fmt.Sprintf("ZERO_DOLLAR_BILLING_CYCLE:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
+		_ = a.emitBillingEvent(ctx,eventKey,partnerID,"","ZERO_DOLLAR_BILLING_CYCLE",time.Now().UTC(),map[string]any{
+			"billing_model":"PLAN","plan_key":planKey,"billing_frequency":frequency,"charge_type":chargeType,
+			"list_price":listPrice,"total":0,
+			"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":end.Format("2006-01-02"),
+		})
+		return "",nil
+	}
 	id:="inv_plan_"+strings.ReplaceAll(partnerID,"_","")+"_"+strings.ToLower(chargeType)+"_"+strings.ToLower(planKey)+"_"+start.Format("20060102")
 	discount:=listPrice-amount;if discount<0{discount=0}
 	result,err:=a.db.ExecContext(ctx,`INSERT INTO billing.invoices(
@@ -932,7 +941,7 @@ func (a *app) applyDuePlanChanges(ctx context.Context,at time.Time) error{
 	for rows.Next(){var x item;if err:=rows.Scan(&x.partner,&x.plan,&x.freq);err!=nil{rows.Close();return err};items=append(items,x)}
 	rows.Close()
 	for _,x:=range items{
-		p,err:=a.loadPlan(ctx,x.plan);if err!=nil{return err}
+		p,err:=a.loadPlanAt(ctx,x.plan,at);if err!=nil{return err}
 		monthly,list,annual:=p.MonthlyPrice,p.AnnualListPrice,p.AnnualPrice
 		if _,err=a.db.ExecContext(ctx,`UPDATE billing.partner_plan_subscriptions SET plan_key=$2,billing_frequency=$3,
 			monthly_price_snapshot=$4,annual_list_price_snapshot=$5,annual_price_snapshot=$6,
@@ -945,6 +954,7 @@ func (a *app) applyDuePlanChanges(ctx context.Context,at time.Time) error{
 
 func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]bool,error){
 	at=dateOnly(at)
+	if err:=a.ensureAnnualPlanIncreases(ctx,at);err!=nil{return nil,err}
 	if err:=a.applyDuePlanChanges(ctx,at);err!=nil{return nil,err}
 	rows,err:=a.db.QueryContext(ctx,`SELECT partner_id,status FROM billing.partner_plan_subscriptions`)
 	if err!=nil{return nil,err}
@@ -959,7 +969,15 @@ func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]
 	for _,id:=range ids{
 		s,loadErr:=a.loadPartnerPlan(ctx,id)
 		if loadErr!=nil{return nil,loadErr}
-		if syncErr:=a.syncPlanEntitlements(ctx,id,s.PlanKey,at);syncErr!=nil{
+		mode,modeErr:=a.ensureCommercialMode(ctx,id)
+		if modeErr!=nil{return nil,modeErr}
+		var syncErr error
+		if mode.BillingMode==billingModeCharity && mode.CharityStatus==charityApproved{
+			syncErr=a.syncCharityEntitlements(ctx,id)
+		}else{
+			syncErr=a.syncPlanEntitlements(ctx,id,s.PlanKey,at)
+		}
+		if syncErr!=nil{
 			_ = a.emitBillingEvent(ctx,
 				"PLAN_ENTITLEMENT_SYNC_FAILED:"+id+":"+at.Format("2006-01-02"),
 				id,"","PLAN_ENTITLEMENT_SYNC_FAILED",time.Now().UTC(),
@@ -973,12 +991,16 @@ func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]
 	due:=[]string{};for dueRows.Next(){var id string;if err:=dueRows.Scan(&id);err!=nil{dueRows.Close();return nil,err};due=append(due,id)};dueRows.Close()
 	for _,id:=range due{
 		s,err:=a.loadPartnerPlan(ctx,id);if err!=nil{return nil,err}
-		p,err:=a.loadPlan(ctx,s.PlanKey);if err!=nil{return nil,err}
+		start:=dateOnly(s.NextBillingAt)
+		p,err:=a.loadPlanAt(ctx,s.PlanKey,start);if err!=nil{return nil,err}
 		monthly,list,annual,_,_:=a.effectivePlanPrices(s,p)
-		start:=dateOnly(s.NextBillingAt);end:=nextMonthStart(start);amount:=monthly;listPrice:=monthly;chargeType:="PLAN_MONTHLY"
+		end:=nextMonthStart(start);amount:=monthly;listPrice:=monthly;chargeType:="PLAN_MONTHLY"
 		if s.BillingFrequency=="ANNUAL"{end=start.AddDate(1,0,0);amount=annual;listPrice=list;chargeType="PLAN_ANNUAL_RENEWAL"}
-		invoiceID,err:=a.createPlanInvoice(ctx,id,p.Key,s.BillingFrequency,chargeType,start,end,listPrice,amount);if err!=nil{return nil,err}
-		a.queueInvoiceCollection(ctx,invoiceID,id,p.Currency,amount)
+		mode,err:=a.ensureCommercialMode(ctx,id);if err!=nil{return nil,err}
+		actualAmount:=amount
+		if mode.BillingMode!=billingModePaid{actualAmount=0}
+		invoiceID,err:=a.createPlanInvoice(ctx,id,p.Key,s.BillingFrequency,chargeType,start,end,listPrice,actualAmount);if err!=nil{return nil,err}
+		if invoiceID!=""{a.queueInvoiceCollection(ctx,invoiceID,id,p.Currency,actualAmount)}
 		next:=end
 		if _,err=a.db.ExecContext(ctx,`UPDATE billing.partner_plan_subscriptions SET current_period_start=$2,current_period_end=$3,next_billing_at=$4,
 			monthly_price_snapshot=$5,annual_list_price_snapshot=$6,annual_price_snapshot=$7,updated_at=NOW() WHERE partner_id=$1`,
