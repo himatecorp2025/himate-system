@@ -570,6 +570,11 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		if license.Status!="PAID" && !license.Waived {
 			common.APIError(w,409,"ACTIVATION_LICENSE_REQUIRED","Activation license must be paid or explicitly waived before a subscription plan can be activated");return
 		}
+		autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
+		if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
+		if !autopayReady{
+			common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before a subscription plan can be activated");return
+		}
 	}
 	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"));if actor==""{actor="partner"}
 	reason:=strings.TrimSpace(in.Reason);if reason==""{reason="Subscription plan selection"}
@@ -660,6 +665,11 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	currentPrice:=currentMonthly;targetPrice:=targetMonthly
 	if frequency=="ANNUAL"{currentPrice=currentAnnual;targetPrice=targetAnnual}
 	if targetPrice>currentPrice{
+		autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
+		if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
+		if !autopayReady{
+			common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before an immediate paid upgrade");return
+		}
 		diff:=targetPrice-currentPrice
 		_,err=a.db.ExecContext(r.Context(),`UPDATE billing.partner_plan_subscriptions SET
 			plan_key=$2,monthly_price_snapshot=$3,annual_list_price_snapshot=$4,annual_price_snapshot=$5,
