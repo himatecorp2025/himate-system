@@ -2880,7 +2880,6 @@ class _PartnersPageState extends State<PartnersPage> {
                       ResponsiveFieldPair(
                         first: TextField(
                           controller: displayName,
-                          autofocus: true,
                           decoration: InputDecoration(labelText: uiLiteral('Display name *'), hintText: uiLiteral('Name shown inside HIMATE')),
                         ),
                         second: TextField(
