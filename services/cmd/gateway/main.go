@@ -152,7 +152,7 @@ func main() {
 	a := &app{
 		db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
-		version: common.Env("HIMATE_APP_VERSION", "0.8.27-start-23.11.3j"),
+		version: common.Env("HIMATE_APP_VERSION", "0.8.28-start-23.11.3k"),
 		ttl: time.Duration(ttlHours) * time.Hour, rememberTTL: time.Duration(rememberTTLHours) * time.Hour,
 		passwordResetTTL: time.Duration(resetTTLMinutes) * time.Minute,
 		resetBaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("HIMATE_PASSWORD_RESET_BASE_URL")), "/"),
@@ -976,6 +976,8 @@ func requiredPermission(r *http.Request) string {
 		action = "approve"
 	case resource == "evidence" && r.Method == http.MethodPatch:
 		action = "approve"
+	case resource == "billing" && strings.Contains(path,"/commercial-mode") && r.Method == http.MethodPatch:
+		action = "approve"
 	case resource == "billing" &&
 		((r.Method == http.MethodPut && (strings.Contains(path, "/license") || strings.Contains(path, "/agreement") || strings.Contains(path, "/payments/"))) ||
 		 (r.Method == http.MethodPost && strings.HasSuffix(path, "/license/collect"))):
@@ -1559,7 +1561,7 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 		"service": "himate-gateway",
 		"environment": a.env,
 		"version": a.version,
-		"architecture": "containerized-microservices-start-23.11.3j",
+		"architecture": "containerized-microservices-start-23.11.3k",
 		"checked_at": checkedAt,
 		"services": services,
 		"service_versions": serviceVersions,

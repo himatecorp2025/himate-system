@@ -13,7 +13,7 @@ openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
 
-release = "0.8.27-start-23.11.3j"
+release = "0.8.28-start-23.11.3k"
 
 checks = [
     (
@@ -75,7 +75,7 @@ checks = [
         "test_partner:" in openapi
         and "Golden test tenant marker" in openapi
         and "version: " + release in openapi
-        and "START-01 through START-23.11.3j" in openapi,
+        and "START-01 through START-23.11.3k" in openapi,
     ),
     (
         "all application services share the START-23.11.3j release",

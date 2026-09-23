@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +21,8 @@ type subscriptionPlan struct {
 	MonthlyPrice       float64
 	AnnualListPrice    float64
 	AnnualPrice        float64
+	AnnualIncreasePercent float64
+	PriceEffectiveFrom time.Time
 	AnnualFreeMonths   int
 	ModuleLimit        int
 	SelectionMode      string
@@ -302,11 +305,82 @@ func normalizeBillingFrequency(value string) string {
 func (a *app) loadPlan(ctx context.Context, key string) (subscriptionPlan, error) {
 	var p subscriptionPlan
 	err := a.db.QueryRowContext(ctx, `SELECT plan_key,display_name,currency,monthly_price,annual_list_price,annual_price,
-		annual_free_months,module_limit,selection_mode,customer_selectable,active,sort_order
+		annual_increase_percent,annual_free_months,module_limit,selection_mode,customer_selectable,active,sort_order
 		FROM billing.subscription_plans WHERE plan_key=$1`, strings.ToUpper(strings.TrimSpace(key))).
 		Scan(&p.Key,&p.Name,&p.Currency,&p.MonthlyPrice,&p.AnnualListPrice,&p.AnnualPrice,
-			&p.AnnualFreeMonths,&p.ModuleLimit,&p.SelectionMode,&p.CustomerSelectable,&p.Active,&p.SortOrder)
+			&p.AnnualIncreasePercent,&p.AnnualFreeMonths,&p.ModuleLimit,&p.SelectionMode,&p.CustomerSelectable,&p.Active,&p.SortOrder)
 	return p, err
+}
+
+func roundPlanAmount(value float64) float64 {
+	return math.Round(value*100) / 100
+}
+
+func standardPlanLimit(key string) (int,bool) {
+	switch strings.ToUpper(strings.TrimSpace(key)) {
+	case "STARTER":
+		return 3,true
+	case "BUSINESS":
+		return 10,true
+	case "FLEX":
+		return 15,true
+	default:
+		return 0,false
+	}
+}
+
+func (a *app) loadPlanAt(ctx context.Context, key string, at time.Time) (subscriptionPlan,error) {
+	p,err:=a.loadPlan(ctx,key)
+	if err!=nil{return p,err}
+	at=dateOnly(at)
+	var effective time.Time
+	err=a.db.QueryRowContext(ctx,`SELECT monthly_price,annual_list_price,annual_price,effective_from
+		FROM billing.subscription_plan_price_history
+		WHERE plan_key=$1 AND effective_from<=$2
+		ORDER BY effective_from DESC,
+			CASE change_type WHEN 'MANUAL' THEN 3 WHEN 'ANNUAL_INCREASE' THEN 2 ELSE 1 END DESC,
+			id DESC LIMIT 1`,p.Key,at).
+		Scan(&p.MonthlyPrice,&p.AnnualListPrice,&p.AnnualPrice,&effective)
+	if err==sql.ErrNoRows{return p,nil}
+	if err!=nil{return p,err}
+	p.PriceEffectiveFrom=dateOnly(effective)
+	return p,nil
+}
+
+func (a *app) ensureAnnualPlanIncreases(ctx context.Context, at time.Time) error {
+	at=dateOnly(at)
+	rows,err:=a.db.QueryContext(ctx,`SELECT plan_key,annual_increase_percent FROM billing.subscription_plans
+		WHERE plan_key IN ('STARTER','BUSINESS','FLEX') ORDER BY sort_order,plan_key`)
+	if err!=nil{return err}
+	type item struct{ key string; rate float64 }
+	plans:=[]item{}
+	for rows.Next(){var x item;if err:=rows.Scan(&x.key,&x.rate);err!=nil{rows.Close();return err};plans=append(plans,x)}
+	rows.Close()
+	for _,x:=range plans{
+		var first time.Time
+		if err:=a.db.QueryRowContext(ctx,`SELECT MIN(effective_from) FROM billing.subscription_plan_price_history WHERE plan_key=$1`,x.key).Scan(&first);err!=nil{return err}
+		for year:=first.Year()+1;year<=at.Year();year++{
+			jan1:=time.Date(year,time.January,1,0,0,0,0,time.UTC)
+			if at.Before(jan1){continue}
+			var exists bool
+			if err:=a.db.QueryRowContext(ctx,`SELECT EXISTS(
+				SELECT 1 FROM billing.subscription_plan_price_history
+				WHERE plan_key=$1 AND effective_from=$2 AND change_type='ANNUAL_INCREASE')`,x.key,jan1).Scan(&exists);err!=nil{return err}
+			if exists{continue}
+			prior,err:=a.loadPlanAt(ctx,x.key,jan1.AddDate(0,0,-1));if err!=nil{return err}
+			factor:=1+x.rate/100
+			monthly:=roundPlanAmount(prior.MonthlyPrice*factor)
+			list:=roundPlanAmount(prior.AnnualListPrice*factor)
+			annual:=roundPlanAmount(prior.AnnualPrice*factor)
+			if _,err=a.db.ExecContext(ctx,`INSERT INTO billing.subscription_plan_price_history(
+				plan_key,currency,monthly_price,annual_list_price,annual_price,effective_from,change_type,
+				annual_increase_percent,actor,reason)
+				VALUES($1,$2,$3,$4,$5,$6,'ANNUAL_INCREASE',$7,'billing-cycle',$8)`,
+				x.key,prior.Currency,monthly,list,annual,jan1,x.rate,
+				fmt.Sprintf("Automatic %.2f%% January 1 package increase",x.rate));err!=nil{return err}
+		}
+	}
+	return nil
 }
 
 func (a *app) planModulesAt(ctx context.Context, planKey string, at time.Time) ([]string, error) {
@@ -353,6 +427,8 @@ func planMap(p subscriptionPlan, fixed []string, ready bool) map[string]any {
 		"plan_key":p.Key,"display_name":p.Name,"currency":p.Currency,
 		"monthly_price":p.MonthlyPrice,"annual_list_price":p.AnnualListPrice,"annual_price":p.AnnualPrice,
 		"annual_savings":savings,"annual_free_months":p.AnnualFreeMonths,
+		"annual_increase_percent":p.AnnualIncreasePercent,
+		"price_effective_from":func() any { if p.PriceEffectiveFrom.IsZero(){return nil}; return p.PriceEffectiveFrom.Format("2006-01-02") }(),
 		"module_limit":p.ModuleLimit,"selection_mode":p.SelectionMode,
 		"customer_selectable":p.CustomerSelectable,"active":p.Active,"sort_order":p.SortOrder,
 		"fixed_module_keys":fixed,"ready":ready,
@@ -361,19 +437,19 @@ func planMap(p subscriptionPlan, fixed []string, ready bool) map[string]any {
 
 func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { common.APIError(w,405,"METHOD","Use GET"); return }
-	rows, err := a.db.QueryContext(r.Context(), `SELECT plan_key,display_name,currency,monthly_price,annual_list_price,annual_price,
-		annual_free_months,module_limit,selection_mode,customer_selectable,active,sort_order
-		FROM billing.subscription_plans ORDER BY sort_order,plan_key`)
+	if err:=a.ensureAnnualPlanIncreases(r.Context(),time.Now().UTC());err!=nil{common.APIError(w,500,"DB","Could not apply annual package pricing");return}
+	rows, err := a.db.QueryContext(r.Context(), `SELECT plan_key FROM billing.subscription_plans ORDER BY sort_order,plan_key`)
 	if err != nil { common.APIError(w,500,"DB","Could not load subscription plans"); return }
 	defer rows.Close()
 	items := []map[string]any{}
 	now := time.Now().UTC()
 	for rows.Next() {
-		var p subscriptionPlan
-		if err := rows.Scan(&p.Key,&p.Name,&p.Currency,&p.MonthlyPrice,&p.AnnualListPrice,&p.AnnualPrice,
-			&p.AnnualFreeMonths,&p.ModuleLimit,&p.SelectionMode,&p.CustomerSelectable,&p.Active,&p.SortOrder); err != nil {
+		var key string
+		if err := rows.Scan(&key); err != nil {
 			common.APIError(w,500,"DB","Could not decode subscription plan"); return
 		}
+		p,err:=a.loadPlanAt(r.Context(),key,now)
+		if err!=nil{common.APIError(w,500,"DB","Could not resolve subscription plan price");return}
 		ready, fixed, err := a.planReady(r.Context(), p, now)
 		if err != nil { common.APIError(w,500,"DB","Could not load plan modules"); return }
 		items = append(items, planMap(p,fixed,ready))
@@ -425,11 +501,13 @@ func uniqueModuleKeys(values []string) ([]string,error) {
 func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 	key := strings.ToUpper(strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/billing/plans/"),"/"))
 	if key=="" || strings.Contains(key,"/") { common.APIError(w,404,"NOT_FOUND","Plan not found"); return }
-	p,err:=a.loadPlan(r.Context(),key)
+	now:=dateOnly(time.Now().UTC())
+	if err:=a.ensureAnnualPlanIncreases(r.Context(),now);err!=nil{common.APIError(w,500,"DB","Could not apply annual package pricing");return}
+	p,err:=a.loadPlanAt(r.Context(),key,now)
 	if err==sql.ErrNoRows { common.APIError(w,404,"NOT_FOUND","Plan not found");return }
 	if err!=nil { common.APIError(w,500,"DB","Could not load plan");return }
 	if r.Method==http.MethodGet{
-		ready,fixed,err:=a.planReady(r.Context(),p,time.Now().UTC())
+		ready,fixed,err:=a.planReady(r.Context(),p,now)
 		if err!=nil{common.APIError(w,500,"DB","Could not load plan modules");return}
 		common.JSON(w,200,planMap(p,fixed,ready));return
 	}
@@ -443,43 +521,104 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 		Active *bool `json:"active"`
 		FixedModuleKeys []string `json:"fixed_module_keys"`
 		EffectiveAt string `json:"effective_at"`
+		Reason string `json:"reason"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
-	tx,err:=a.db.BeginTx(r.Context(),nil);if err!=nil{common.APIError(w,500,"DB","Could not start plan update");return};defer tx.Rollback()
-	if in.MonthlyPrice!=nil || in.AnnualListPrice!=nil || in.AnnualPrice!=nil || in.AnnualFreeMonths!=nil || in.ModuleLimit!=nil || in.Active!=nil {
-		nextMonthly:=p.MonthlyPrice;nextList:=p.AnnualListPrice;nextAnnual:=p.AnnualPrice;nextFree:=p.AnnualFreeMonths;nextLimit:=p.ModuleLimit;nextActive:=p.Active
-		if in.MonthlyPrice!=nil{nextMonthly=*in.MonthlyPrice};if in.AnnualListPrice!=nil{nextList=*in.AnnualListPrice};if in.AnnualPrice!=nil{nextAnnual=*in.AnnualPrice}
-		if in.AnnualFreeMonths!=nil{nextFree=*in.AnnualFreeMonths};if in.ModuleLimit!=nil{nextLimit=*in.ModuleLimit};if in.Active!=nil{nextActive=*in.Active}
-		if nextMonthly<0||nextList<0||nextAnnual<0||nextAnnual>nextList||nextFree<0||nextLimit<0{common.APIError(w,400,"VALIDATION","Invalid plan commercial values");return}
-		if _,err=tx.ExecContext(r.Context(),`UPDATE billing.subscription_plans SET monthly_price=$2,annual_list_price=$3,annual_price=$4,
-			annual_free_months=$5,module_limit=$6,active=$7,updated_at=NOW() WHERE plan_key=$1`,
-			key,nextMonthly,nextList,nextAnnual,nextFree,nextLimit,nextActive);err!=nil{common.APIError(w,500,"DB","Could not update plan");return}
-		p.MonthlyPrice,p.AnnualListPrice,p.AnnualPrice,p.AnnualFreeMonths,p.ModuleLimit,p.Active=nextMonthly,nextList,nextAnnual,nextFree,nextLimit,nextActive
+	effective:=now
+	if strings.TrimSpace(in.EffectiveAt)!=""{
+		parsed,e:=time.Parse("2006-01-02",strings.TrimSpace(in.EffectiveAt))
+		if e!=nil{common.APIError(w,400,"VALIDATION","effective_at must be YYYY-MM-DD");return}
+		effective=dateOnly(parsed)
 	}
+	if effective.Before(now){common.APIError(w,400,"VALIDATION","effective_at cannot be in the past");return}
+	reason:=strings.TrimSpace(in.Reason);if reason==""{reason="HIMATE administrator package update"}
+	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"));if actor==""{actor="himate-admin"}
+
+	tx,err:=a.db.BeginTx(r.Context(),nil)
+	if err!=nil{common.APIError(w,500,"DB","Could not start plan update");return}
+	defer tx.Rollback()
+
+	nextMonthly:=p.MonthlyPrice
+	nextList:=p.AnnualListPrice
+	nextAnnual:=p.AnnualPrice
+	nextFree:=p.AnnualFreeMonths
+	nextLimit:=p.ModuleLimit
+	nextActive:=p.Active
+	if in.MonthlyPrice!=nil{nextMonthly=*in.MonthlyPrice}
+	if in.AnnualFreeMonths!=nil{nextFree=*in.AnnualFreeMonths}
+	if in.ModuleLimit!=nil{nextLimit=*in.ModuleLimit}
+	if in.Active!=nil{nextActive=*in.Active}
+	if in.MonthlyPrice!=nil || in.AnnualFreeMonths!=nil {
+		if in.AnnualListPrice==nil{nextList=roundPlanAmount(nextMonthly*12)}
+		if in.AnnualPrice==nil{nextAnnual=roundPlanAmount(nextMonthly*float64(12-nextFree))}
+	}
+	if in.AnnualListPrice!=nil{nextList=*in.AnnualListPrice}
+	if in.AnnualPrice!=nil{nextAnnual=*in.AnnualPrice}
+	if fixedLimit,standard:=standardPlanLimit(key);standard{
+		if in.ModuleLimit!=nil && *in.ModuleLimit!=fixedLimit{
+			common.APIError(w,409,"STANDARD_PACKAGE_LIMIT","Standard package module limits are fixed: Starter 3, Business 10, Flex 15")
+			return
+		}
+		nextLimit=fixedLimit
+	}
+	if nextMonthly<0||nextList<0||nextAnnual<0||nextAnnual>nextList||nextFree<0||nextFree>12||nextLimit<0{
+		common.APIError(w,400,"VALIDATION","Invalid plan commercial values");return
+	}
+	priceChanged:=nextMonthly!=p.MonthlyPrice||nextList!=p.AnnualListPrice||nextAnnual!=p.AnnualPrice
+	metadataChanged:=nextFree!=p.AnnualFreeMonths||nextLimit!=p.ModuleLimit||nextActive!=p.Active
+	if priceChanged {
+		if _,err=tx.ExecContext(r.Context(),`INSERT INTO billing.subscription_plan_price_history(
+			plan_key,currency,monthly_price,annual_list_price,annual_price,effective_from,change_type,
+			annual_increase_percent,actor,reason)
+			VALUES($1,$2,$3,$4,$5,$6,'MANUAL',$7,$8,$9)`,
+			key,p.Currency,nextMonthly,nextList,nextAnnual,effective,p.AnnualIncreasePercent,actor,reason);err!=nil{
+			common.APIError(w,500,"DB","Could not save package price history");return
+		}
+	}
+	if priceChanged||metadataChanged{
+		if _,err=tx.ExecContext(r.Context(),`UPDATE billing.subscription_plans SET
+			monthly_price=CASE WHEN $8<=CURRENT_DATE THEN $2 ELSE monthly_price END,
+			annual_list_price=CASE WHEN $8<=CURRENT_DATE THEN $3 ELSE annual_list_price END,
+			annual_price=CASE WHEN $8<=CURRENT_DATE THEN $4 ELSE annual_price END,
+			annual_free_months=$5,module_limit=$6,active=$7,updated_at=NOW()
+			WHERE plan_key=$1`,
+			key,nextMonthly,nextList,nextAnnual,nextFree,nextLimit,nextActive,effective);err!=nil{
+			common.APIError(w,500,"DB","Could not update plan");return
+		}
+	}
+
 	if in.FixedModuleKeys!=nil {
 		if p.SelectionMode!="FIXED"{common.APIError(w,409,"PLAN_SELECTION_MODE","Only FIXED plans have administrator-defined module sets");return}
 		keys,err:=uniqueModuleKeys(in.FixedModuleKeys);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
-		if len(keys)!=p.ModuleLimit{common.APIError(w,400,"MODULE_LIMIT",fmt.Sprintf("%s requires exactly %d modules",p.Key,p.ModuleLimit));return}
+		if len(keys)!=nextLimit{common.APIError(w,400,"MODULE_LIMIT",fmt.Sprintf("%s requires exactly %d modules",p.Key,nextLimit));return}
 		if err=a.validatePublishedModuleKeys(r.Context(),keys);err!=nil{common.APIError(w,409,"MODULE_NOT_READY",err.Error());return}
-		effective:=dateOnly(time.Now().UTC())
-		var existing int
-		_ = tx.QueryRowContext(r.Context(),`SELECT COUNT(*) FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_to IS NULL`,key).Scan(&existing)
-		if existing>0 { effective=nextMonthStart(time.Now().UTC()) }
-		if strings.TrimSpace(in.EffectiveAt)!="" {
-			parsed,e:=time.Parse("2006-01-02",strings.TrimSpace(in.EffectiveAt));if e!=nil{common.APIError(w,400,"VALIDATION","effective_at must be YYYY-MM-DD");return};effective=dateOnly(parsed)
+		moduleEffective:=effective
+		if strings.TrimSpace(in.EffectiveAt)==""{
+			var existing int
+			_ = tx.QueryRowContext(r.Context(),`SELECT COUNT(*) FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_to IS NULL`,key).Scan(&existing)
+			if existing>0{moduleEffective=nextMonthStart(now)}
 		}
 		if _,err=tx.ExecContext(r.Context(),`UPDATE billing.subscription_plan_modules SET effective_to=$2
-			WHERE plan_key=$1 AND effective_from<$2 AND (effective_to IS NULL OR effective_to>$2)`,key,effective);err!=nil{common.APIError(w,500,"DB","Could not close prior module set");return}
-		if _,err=tx.ExecContext(r.Context(),`DELETE FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_from=$2`,key,effective);err!=nil{common.APIError(w,500,"DB","Could not replace scheduled module set");return}
+			WHERE plan_key=$1 AND effective_from<$2 AND (effective_to IS NULL OR effective_to>$2)`,key,moduleEffective);err!=nil{
+			common.APIError(w,500,"DB","Could not close prior module set");return
+		}
+		if _,err=tx.ExecContext(r.Context(),`DELETE FROM billing.subscription_plan_modules WHERE plan_key=$1 AND effective_from=$2`,key,moduleEffective);err!=nil{
+			common.APIError(w,500,"DB","Could not replace scheduled module set");return
+		}
 		for i,moduleKey:=range keys{
 			if _,err=tx.ExecContext(r.Context(),`INSERT INTO billing.subscription_plan_modules(plan_key,module_key,position,effective_from)
-				VALUES($1,$2,$3,$4) ON CONFLICT(plan_key,module_key,effective_from) DO UPDATE SET position=EXCLUDED.position,effective_to=NULL`,
-				key,moduleKey,i,effective);err!=nil{common.APIError(w,500,"DB","Could not save plan module");return}
+				VALUES($1,$2,$3,$4) ON CONFLICT(plan_key,module_key,effective_from)
+				DO UPDATE SET position=EXCLUDED.position,effective_to=NULL`,
+				key,moduleKey,i,moduleEffective);err!=nil{common.APIError(w,500,"DB","Could not save plan module");return}
 		}
 	}
 	if err=tx.Commit();err!=nil{common.APIError(w,500,"DB","Could not commit plan update");return}
-	ready,fixed,_:=a.planReady(r.Context(),p,time.Now().UTC())
-	common.JSON(w,200,planMap(p,fixed,ready))
+	current,err:=a.loadPlanAt(r.Context(),key,now)
+	if err!=nil{common.APIError(w,500,"DB","Could not reload plan");return}
+	ready,fixed,_:=a.planReady(r.Context(),current,now)
+	out:=planMap(current,fixed,ready)
+	if priceChanged&&effective.After(now){out["scheduled_price_effective_at"]=effective.Format("2006-01-02")}
+	common.JSON(w,200,out)
 }
 
 func (a *app) loadPartnerPlan(ctx context.Context, partnerID string) (partnerPlanSubscription,error) {
@@ -502,7 +641,7 @@ func (a *app) effectivePlanPrices(s partnerPlanSubscription,p subscriptionPlan)(
 }
 
 func (a *app) partnerPlanMap(ctx context.Context,s partnerPlanSubscription) (map[string]any,error) {
-	p,err:=a.loadPlan(ctx,s.PlanKey);if err!=nil{return nil,err}
+	p,err:=a.loadPlanAt(ctx,s.PlanKey,time.Now().UTC());if err!=nil{return nil,err}
 	monthly,list,annual,limit,mode:=a.effectivePlanPrices(s,p)
 	var modules []string
 	if mode=="FIXED"{modules,err=a.planModulesAt(ctx,p.Key,time.Now().UTC())}else if mode=="SELECTABLE"{modules,err=a.flexModulesAt(ctx,s.PartnerID,time.Now().UTC())}
@@ -549,9 +688,16 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
 	targetKey:=strings.ToUpper(strings.TrimSpace(in.PlanKey));frequency:=normalizeBillingFrequency(in.BillingFrequency)
 	if targetKey==""||frequency==""{common.APIError(w,400,"VALIDATION","plan_key and MONTHLY/ANNUAL billing_frequency are required");return}
-	target,err:=a.loadPlan(r.Context(),targetKey);if err==sql.ErrNoRows{common.APIError(w,404,"PLAN_NOT_FOUND","Plan not found");return};if err!=nil{common.APIError(w,500,"DB","Could not load target plan");return}
-	if !target.Active{common.APIError(w,409,"PLAN_INACTIVE","Plan is inactive");return}
 	now:=dateOnly(time.Now().UTC())
+	if err:=a.ensureAnnualPlanIncreases(r.Context(),now);err!=nil{common.APIError(w,500,"DB","Could not apply annual package pricing");return}
+	target,err:=a.loadPlanAt(r.Context(),targetKey,now);if err==sql.ErrNoRows{common.APIError(w,404,"PLAN_NOT_FOUND","Plan not found");return};if err!=nil{common.APIError(w,500,"DB","Could not load target plan");return}
+	if !target.Active{common.APIError(w,409,"PLAN_INACTIVE","Plan is inactive");return}
+	commercialMode,err:=a.ensureCommercialMode(r.Context(),partnerID)
+	if err!=nil{common.APIError(w,500,"DB","Could not load partner commercial mode");return}
+	if commercialMode.BillingMode==billingModeCharity && commercialMode.CharityStatus==charityApproved{
+		common.APIError(w,409,"CHARITY_USES_MODULE_SELECTION","Approved Charity partners select modules directly and do not use paid subscription packages")
+		return
+	}
 	ready,_,err:=a.planReady(r.Context(),target,now);if err!=nil{common.APIError(w,500,"DB","Could not validate target plan");return}
 	if !ready{common.APIError(w,409,"PLAN_NOT_READY","Fixed plan module set is not fully configured");return}
 	keys,err:=uniqueModuleKeys(in.ModuleKeys);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
@@ -570,10 +716,12 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		if license.Status!="PAID" && !license.Waived {
 			common.APIError(w,409,"ACTIVATION_LICENSE_REQUIRED","Activation license must be paid or explicitly waived before a subscription plan can be activated");return
 		}
-		autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
-		if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
-		if !autopayReady{
-			common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before a subscription plan can be activated");return
+		if commercialMode.BillingMode==billingModePaid{
+			autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
+			if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
+			if !autopayReady{
+				common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before a paid subscription plan can be activated");return
+			}
 		}
 	}
 	actor:=strings.TrimSpace(r.Header.Get("X-Himate-User-ID"));if actor==""{actor="partner"}
@@ -602,9 +750,11 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 			if err=a.replaceFlexSelection(r.Context(),partnerID,keys,now,"INITIAL_SELECTION");err!=nil{common.APIError(w,500,"DB","Could not save Flex module selection");return}
 		}
 		if frequency=="ANNUAL"{
-			invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_ANNUAL_PREPAY",start,end,list,annual)
+			actualAnnual:=annual
+			if commercialMode.BillingMode!=billingModePaid{actualAnnual=0}
+			invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_ANNUAL_PREPAY",start,end,list,actualAnnual)
 			if err!=nil{common.APIError(w,500,"INVOICE","Could not create annual prepayment invoice");return}
-			a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,annual)
+			if invoiceID!=""{a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,actualAnnual)}
 		}
 		_,_=a.db.ExecContext(r.Context(),`INSERT INTO billing.plan_change_history(partner_id,new_plan_key,new_billing_frequency,change_type,effective_at,actor,reason)
 			VALUES($1,$2,$3,'INITIAL',$4,$5,$6)`,partnerID,target.Key,frequency,now,actor,reason)
@@ -618,7 +768,7 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		}
 		common.JSON(w,201,out);return
 	}
-	currentPlan,err:=a.loadPlan(r.Context(),current.PlanKey);if err!=nil{common.APIError(w,500,"DB","Could not load current plan definition");return}
+	currentPlan,err:=a.loadPlanAt(r.Context(),current.PlanKey,now);if err!=nil{common.APIError(w,500,"DB","Could not load current plan definition");return}
 	if current.PlanKey=="CUSTOM" && target.Key!="CUSTOM" && !target.CustomerSelectable{
 		common.APIError(w,409,"PLAN_NOT_SELECTABLE","Target plan is not customer-selectable");return
 	}
@@ -665,10 +815,12 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	currentPrice:=currentMonthly;targetPrice:=targetMonthly
 	if frequency=="ANNUAL"{currentPrice=currentAnnual;targetPrice=targetAnnual}
 	if targetPrice>currentPrice{
-		autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
-		if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
-		if !autopayReady{
-			common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before an immediate paid upgrade");return
+		if commercialMode.BillingMode==billingModePaid{
+			autopayReady,profileErr:=a.paymentProfileAutopayReady(r.Context(),partnerID)
+			if profileErr!=nil{common.APIError(w,502,"PAYMENT_PROFILE_UNAVAILABLE","Payment profile could not be verified");return}
+			if !autopayReady{
+				common.APIError(w,409,"AUTOPAY_REQUIRED","A saved payment method with automatic recurring collection enabled is required before an immediate paid upgrade");return
+			}
 		}
 		diff:=targetPrice-currentPrice
 		_,err=a.db.ExecContext(r.Context(),`UPDATE billing.partner_plan_subscriptions SET
@@ -679,14 +831,16 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		if target.SelectionMode=="SELECTABLE"{
 			if err=a.replaceFlexSelection(r.Context(),partnerID,keys,now,"UPGRADE_SELECTION");err!=nil{common.APIError(w,500,"DB","Could not save Flex module selection");return}
 		}
-		invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_UPGRADE",now,current.CurrentPeriodEnd,diff,diff)
+		actualUpgradeCharge:=diff
+		if commercialMode.BillingMode!=billingModePaid{actualUpgradeCharge=0}
+		invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_UPGRADE",now,current.CurrentPeriodEnd,diff,actualUpgradeCharge)
 		if err!=nil{common.APIError(w,500,"INVOICE","Could not create upgrade invoice");return}
-		a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,diff)
+		if invoiceID!=""{a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,actualUpgradeCharge)}
 		_,_=a.db.ExecContext(r.Context(),`INSERT INTO billing.plan_change_history(partner_id,old_plan_key,new_plan_key,old_billing_frequency,new_billing_frequency,change_type,effective_at,upgrade_charge,actor,reason)
-			VALUES($1,$2,$3,$4,$5,'IMMEDIATE_UPGRADE',$6,$7,$8,$9)`,partnerID,current.PlanKey,target.Key,frequency,frequency,now,diff,actor,reason)
+			VALUES($1,$2,$3,$4,$5,'IMMEDIATE_UPGRADE',$6,$7,$8,$9)`,partnerID,current.PlanKey,target.Key,frequency,frequency,now,actualUpgradeCharge,actor,reason)
 		s,_:=a.loadPartnerPlan(r.Context(),partnerID)
 		out,_:=a.partnerPlanMap(r.Context(),s)
-		out["change_type"]="IMMEDIATE_UPGRADE";out["upgrade_charge"]=diff
+		out["change_type"]="IMMEDIATE_UPGRADE";out["upgrade_charge"]=actualUpgradeCharge
 		if err=a.syncPlanEntitlements(r.Context(),partnerID,target.Key,now);err!=nil{
 			out["entitlement_sync_pending"]=true
 			out["warning"]="Upgrade and charge saved; module entitlement synchronization will retry automatically."
@@ -757,6 +911,15 @@ func (a *app) syncPlanEntitlements(ctx context.Context,partnerID,planKey string,
 func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,chargeType string,start,end time.Time,listPrice,amount float64)(string,error){
 	start,end=dateOnly(start),dateOnly(end)
 	key:=fmt.Sprintf("PLAN:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
+	if amount <= 0 {
+		eventKey:=fmt.Sprintf("ZERO_DOLLAR_BILLING_CYCLE:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
+		_ = a.emitBillingEvent(ctx,eventKey,partnerID,"","ZERO_DOLLAR_BILLING_CYCLE",time.Now().UTC(),map[string]any{
+			"billing_model":"PLAN","plan_key":planKey,"billing_frequency":frequency,"charge_type":chargeType,
+			"list_price":listPrice,"total":0,
+			"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":end.Format("2006-01-02"),
+		})
+		return "",nil
+	}
 	id:="inv_plan_"+strings.ReplaceAll(partnerID,"_","")+"_"+strings.ToLower(chargeType)+"_"+strings.ToLower(planKey)+"_"+start.Format("20060102")
 	discount:=listPrice-amount;if discount<0{discount=0}
 	result,err:=a.db.ExecContext(ctx,`INSERT INTO billing.invoices(
@@ -793,7 +956,7 @@ func (a *app) applyDuePlanChanges(ctx context.Context,at time.Time) error{
 	for rows.Next(){var x item;if err:=rows.Scan(&x.partner,&x.plan,&x.freq);err!=nil{rows.Close();return err};items=append(items,x)}
 	rows.Close()
 	for _,x:=range items{
-		p,err:=a.loadPlan(ctx,x.plan);if err!=nil{return err}
+		p,err:=a.loadPlanAt(ctx,x.plan,at);if err!=nil{return err}
 		monthly,list,annual:=p.MonthlyPrice,p.AnnualListPrice,p.AnnualPrice
 		if _,err=a.db.ExecContext(ctx,`UPDATE billing.partner_plan_subscriptions SET plan_key=$2,billing_frequency=$3,
 			monthly_price_snapshot=$4,annual_list_price_snapshot=$5,annual_price_snapshot=$6,
@@ -806,6 +969,7 @@ func (a *app) applyDuePlanChanges(ctx context.Context,at time.Time) error{
 
 func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]bool,error){
 	at=dateOnly(at)
+	if err:=a.ensureAnnualPlanIncreases(ctx,at);err!=nil{return nil,err}
 	if err:=a.applyDuePlanChanges(ctx,at);err!=nil{return nil,err}
 	rows,err:=a.db.QueryContext(ctx,`SELECT partner_id,status FROM billing.partner_plan_subscriptions`)
 	if err!=nil{return nil,err}
@@ -820,7 +984,15 @@ func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]
 	for _,id:=range ids{
 		s,loadErr:=a.loadPartnerPlan(ctx,id)
 		if loadErr!=nil{return nil,loadErr}
-		if syncErr:=a.syncPlanEntitlements(ctx,id,s.PlanKey,at);syncErr!=nil{
+		mode,modeErr:=a.ensureCommercialMode(ctx,id)
+		if modeErr!=nil{return nil,modeErr}
+		var syncErr error
+		if mode.BillingMode==billingModeCharity && mode.CharityStatus==charityApproved{
+			syncErr=a.syncCharityEntitlements(ctx,id)
+		}else{
+			syncErr=a.syncPlanEntitlements(ctx,id,s.PlanKey,at)
+		}
+		if syncErr!=nil{
 			_ = a.emitBillingEvent(ctx,
 				"PLAN_ENTITLEMENT_SYNC_FAILED:"+id+":"+at.Format("2006-01-02"),
 				id,"","PLAN_ENTITLEMENT_SYNC_FAILED",time.Now().UTC(),
@@ -834,12 +1006,16 @@ func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]
 	due:=[]string{};for dueRows.Next(){var id string;if err:=dueRows.Scan(&id);err!=nil{dueRows.Close();return nil,err};due=append(due,id)};dueRows.Close()
 	for _,id:=range due{
 		s,err:=a.loadPartnerPlan(ctx,id);if err!=nil{return nil,err}
-		p,err:=a.loadPlan(ctx,s.PlanKey);if err!=nil{return nil,err}
+		start:=dateOnly(s.NextBillingAt)
+		p,err:=a.loadPlanAt(ctx,s.PlanKey,start);if err!=nil{return nil,err}
 		monthly,list,annual,_,_:=a.effectivePlanPrices(s,p)
-		start:=dateOnly(s.NextBillingAt);end:=nextMonthStart(start);amount:=monthly;listPrice:=monthly;chargeType:="PLAN_MONTHLY"
+		end:=nextMonthStart(start);amount:=monthly;listPrice:=monthly;chargeType:="PLAN_MONTHLY"
 		if s.BillingFrequency=="ANNUAL"{end=start.AddDate(1,0,0);amount=annual;listPrice=list;chargeType="PLAN_ANNUAL_RENEWAL"}
-		invoiceID,err:=a.createPlanInvoice(ctx,id,p.Key,s.BillingFrequency,chargeType,start,end,listPrice,amount);if err!=nil{return nil,err}
-		a.queueInvoiceCollection(ctx,invoiceID,id,p.Currency,amount)
+		mode,err:=a.ensureCommercialMode(ctx,id);if err!=nil{return nil,err}
+		actualAmount:=amount
+		if mode.BillingMode!=billingModePaid{actualAmount=0}
+		invoiceID,err:=a.createPlanInvoice(ctx,id,p.Key,s.BillingFrequency,chargeType,start,end,listPrice,actualAmount);if err!=nil{return nil,err}
+		if invoiceID!=""{a.queueInvoiceCollection(ctx,invoiceID,id,p.Currency,actualAmount)}
 		next:=end
 		if _,err=a.db.ExecContext(ctx,`UPDATE billing.partner_plan_subscriptions SET current_period_start=$2,current_period_end=$3,next_billing_at=$4,
 			monthly_price_snapshot=$5,annual_list_price_snapshot=$6,annual_price_snapshot=$7,updated_at=NOW() WHERE partner_id=$1`,

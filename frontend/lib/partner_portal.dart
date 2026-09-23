@@ -379,6 +379,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   Map<String, dynamic> billing = <String, dynamic>{};
   Map<String, dynamic> plan = <String, dynamic>{};
   List<Map<String, dynamic>> plans = <Map<String, dynamic>>[];
+  Map<String, dynamic> charity = <String, dynamic>{};
+  Map<String, dynamic> charityModules = <String, dynamic>{};
   String planBillingFrequency = 'MONTHLY';
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> impact = <Map<String, dynamic>>[];
@@ -438,6 +440,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         can('design.read') ? safeGet('/partner/api/v1/design/media') : Future.value(null),
         can('billing.read') ? safeGet('/partner/api/v1/plans') : Future.value(null),
         can('billing.read') ? safeGet('/partner/api/v1/plan') : Future.value(null),
+        can('billing.read') ? safeGet('/partner/api/v1/charity') : Future.value(null),
+        can('modules.read') ? safeGet('/partner/api/v1/charity/modules') : Future.value(null),
       ]);
       if (!mounted) return;
       setState(() {
@@ -458,6 +462,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         designMedia = extras[4] == null ? <Map<String, dynamic>>[] : items(extras[4]!);
         plans = extras[5] == null ? <Map<String, dynamic>>[] : items(extras[5]!);
         plan = extras[6] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[6]!);
+        charity = extras[7] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[7]!);
+        charityModules = extras[8] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[8]!);
         final loadedFrequency = '${plan['billing_frequency'] ?? ''}'.toUpperCase();
         if (loadedFrequency == 'MONTHLY' || loadedFrequency == 'ANNUAL') {
           planBillingFrequency = loadedFrequency;
@@ -481,7 +487,11 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
 
   bool get hasManagedPlan => plan['configured'] == true;
   String get currentPlanKey => '${plan['plan_key'] ?? ''}'.toUpperCase();
-  String planMoney(dynamic value) => intl.NumberFormat.currency(symbol: '\$', decimalDigits: 0).format(number(value));
+  bool get charityApproved =>
+      '${charity['billing_mode'] ?? ''}' == 'CHARITY' &&
+      '${charity['charity_status'] ?? ''}' == 'APPROVED';
+  String get charityStatus => '${charity['charity_status'] ?? 'NOT_REQUESTED'}'.toUpperCase();
+  String planMoney(dynamic value) => intl.NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(number(value));
 
   Future<List<String>?> chooseFlexModules({List<String>? initial}) async {
     final selected = <String>{...(initial ?? const <String>[])};
@@ -541,6 +551,134 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         ),
       ),
     );
+  }
+
+  Future<void> requestCharityReview() async {
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const LText('Request Charity review?'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const LText(
+                'HIMATE reviews Charity eligibility before zero-dollar Charity access can be enabled. Approval is never automatic.',
+                style: TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reason,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: uiLiteral('Reason / organization context'),
+                  hintText: uiLiteral('Optional information for the HIMATE review'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const LText('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const LText('Submit request')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      try {
+        await widget.api.post('/partner/api/v1/charity/request', {
+          'reason': reason.text.trim(),
+        });
+        await load();
+        if (mounted) toast('Charity review request submitted to HIMATE.');
+      } catch (e) {
+        if (mounted) toast(e.toString(), failure: true);
+      }
+    }
+    reason.dispose();
+  }
+
+  Future<List<String>?> chooseCharityModules({List<String>? initial}) async {
+    final selected = <String>{...(initial ?? const <String>[])};
+    final candidates = modules.where((m) =>
+      m['publication_status'] == 'PUBLISHED' &&
+      m['implementation_state'] == 'READY'
+    ).toList();
+
+    return showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: const LText('Choose Charity modules'),
+          content: SizedBox(
+            width: 640,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const LText(
+                  'Your Charity access has been approved. Choose every published and ready module that is useful for your organization. There is no module-count limit.',
+                  style: TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+                ),
+                const SizedBox(height: 12),
+                for (final module in candidates)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: selected.contains('${module['key']}'),
+                    title: LText('${module['label']}'),
+                    subtitle: LText(
+                      '${module['group_label'] ?? ''}',
+                      style: const TextStyle(color: brandTextSoft, fontSize: 9),
+                    ),
+                    onChanged: (value) => setLocal(() {
+                      final key = '${module['key']}';
+                      if (value == true) {
+                        selected.add(key);
+                      } else {
+                        selected.remove(key);
+                      }
+                    }),
+                  ),
+                const SizedBox(height: 8),
+                LText(
+                  '${selected.length} selected · no Charity limit',
+                  style: const TextStyle(color: brandSuccess, fontWeight: FontWeight.w700),
+                ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const LText('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selected.toList()..sort()),
+              child: const LText('Save Charity modules'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> manageCharityModules() async {
+    if (!charityApproved) {
+      toast('Charity module selection becomes available only after HIMATE approval.', failure: true);
+      return;
+    }
+    final raw = charityModules['module_keys'];
+    final current = raw is List ? raw.map((e) => e.toString()).toList() : <String>[];
+    final chosen = await chooseCharityModules(initial: current);
+    if (chosen == null) return;
+    try {
+      await widget.api.put('/partner/api/v1/charity/modules', {
+        'module_keys': chosen,
+        'reason': 'Partner Portal approved Charity module selection',
+      });
+      await load();
+      if (mounted) toast('Charity module access updated.');
+    } catch (e) {
+      if (mounted) toast(e.toString(), failure: true);
+    }
   }
 
   Future<void> selectSubscriptionPlan(Map<String, dynamic> target) async {
@@ -961,7 +1099,9 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     final blockers = marketplaceStrings(module['activation_blockers']);
     final availablePlans = marketplaceStrings(module['available_in_plan_names']);
     final upgradePlans = marketplaceStrings(module['upgrade_plan_names']);
-    final currentPlan = '${plan['display_name'] ?? plan['plan_key'] ?? ''}'.trim();
+    final currentPlan = charityApproved
+        ? 'Charity access'
+        : '${plan['display_name'] ?? plan['plan_key'] ?? ''}'.trim();
     final summary = '${module['marketplace_summary'] ?? module['description'] ?? ''}'.trim();
     final statusLabel = active
         ? 'INCLUDED'
@@ -1094,7 +1234,16 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             ),
           ],
           const SizedBox(height: 16),
-          if (hasManagedPlan && locked && upgradePlans.isNotEmpty && can('billing.read'))
+          if (charityApproved && module['executable'] == true && can('modules.write'))
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: manageCharityModules,
+                icon: const Icon(Icons.volunteer_activism_outlined),
+                label: const LText('Manage Charity modules'),
+              ),
+            )
+          else if (hasManagedPlan && locked && upgradePlans.isNotEmpty && can('billing.read'))
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -1154,10 +1303,30 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     return Content(
       eyebrow: 'MODULE CATALOG',
       title: 'Module Marketplace',
-      subtitle: hasManagedPlan
-          ? 'Explore the complete HIMATE module catalog. Your current plan modules are available now; other modules remain visible so you can see what higher plans and future releases can add.'
-          : 'Explore the HIMATE module catalog. Live activation remains subject to publication, readiness, commercial and dependency rules.',
+      subtitle: charityApproved
+          ? 'Your Charity access is approved. Choose the published and ready HIMATE modules that support your organization; Charity access has no module-count limit.'
+          : hasManagedPlan
+              ? 'Explore the complete HIMATE module catalog. Your current plan modules are available now; other modules remain visible so you can see what higher plans and future releases can add.'
+              : 'Explore the HIMATE module catalog. Live activation remains subject to publication, readiness, commercial and dependency rules.',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (charityApproved) ...[
+          _MessageCard(
+            icon: Icons.volunteer_activism_outlined,
+            title: 'Charity access approved',
+            message: 'Recurring service is complimentary. Choose any number of published and ready modules that fit your organization.',
+          ),
+          const SizedBox(height: 12),
+          if (can('modules.write'))
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: manageCharityModules,
+                icon: const Icon(Icons.checklist_rounded),
+                label: const LText('Choose Charity modules'),
+              ),
+            ),
+          const SizedBox(height: 20),
+        ],
         ResponsiveKpiGrid(children: [
           Kpi(label: 'Catalog modules', value: modules.length.toString(), note: 'Visible across HIMATE', icon: Icons.grid_view_rounded, accent: brandNavy),
           Kpi(label: 'Included', value: included.length.toString(), note: 'Available in your current access', icon: Icons.check_circle_outline_rounded, accent: brandSuccess),
@@ -1252,9 +1421,45 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     return Content(
       eyebrow: 'COMMERCIAL',
       title: 'Billing & Subscription',
-      subtitle: 'Choose monthly or annual billing, manage your subscription plan and review provider-backed invoice history.',
+      subtitle: charityApproved
+          ? 'Charity access is approved. Recurring service is complimentary and module access is managed through your approved Charity selection.'
+          : 'Choose monthly or annual billing, manage your subscription plan and review provider-backed invoice history.',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (plans.isNotEmpty) ...[
+        _InfoCard(
+          title: 'Charity status',
+          icon: Icons.volunteer_activism_outlined,
+          children: [
+            _DefinitionRow(label: 'Review status', value: _humanize(charityStatus), emphasis: charityApproved),
+            _DefinitionRow(label: 'Billing mode', value: _humanize('${charity['billing_mode'] ?? 'PAID'}')),
+            if (charityApproved)
+              const _DefinitionRow(label: 'Recurring charge', value: '\$0 · no Charity invoice'),
+          ],
+          action: charityApproved
+              ? (can('modules.write')
+                    ? OutlinedButton.icon(
+                        onPressed: manageCharityModules,
+                        icon: const Icon(Icons.checklist_rounded),
+                        label: const LText('Manage modules'),
+                      )
+                    : null)
+              : ((charityStatus == 'PENDING' || !can('modules.write'))
+                    ? null
+                    : OutlinedButton.icon(
+                        onPressed: requestCharityReview,
+                        icon: const Icon(Icons.volunteer_activism_outlined),
+                        label: const LText('Request Charity review'),
+                      )),
+        ),
+        const SizedBox(height: 20),
+        if (charityStatus == 'PENDING') ...[
+          const _MessageCard(
+            icon: Icons.hourglass_top_rounded,
+            title: 'Charity review pending',
+            message: 'HIMATE must approve Charity eligibility before zero-dollar Charity access and unrestricted module selection become available.',
+          ),
+          const SizedBox(height: 20),
+        ],
+        if (plans.isNotEmpty && !charityApproved) ...[
           LayoutBuilder(builder: (context, constraints) {
             if (constraints.maxWidth < 760) {
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

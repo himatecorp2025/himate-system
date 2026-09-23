@@ -224,6 +224,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23112PlanLedgerImmutabilityMigration(),
 		start23112InvoiceDateConstraintRecoveryMigration(),
 		start23112DunningMigration(),
+		start23113kCommercialModeMigration(),
 	}); err != nil {
 		return err
 	}
@@ -231,7 +232,7 @@ func (a *app) migrate(ctx context.Context) error {
 	if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.partner_terms(
 		partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,minimum_monthly_commitment,quote_reference,commercial_configured,terms_version,contracted_at,pricing_model,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date
 	) VALUES('ptr_000001','USD',0,TRUE,'Existing reference partner; activation fee not applicable',2000,1500,'REFERENCE-PARTNER',TRUE,1,NOW(),'INDIVIDUAL_QUOTE',10,30,1,'2026-01-01','2026-01-01')
-	ON CONFLICT(partner_id) DO UPDATE SET minimum_monthly_commitment=GREATEST(billing.partner_terms.minimum_monthly_commitment,1500),commercial_configured=TRUE,quote_reference=CASE WHEN billing.partner_terms.quote_reference='' THEN 'REFERENCE-PARTNER' ELSE billing.partner_terms.quote_reference END,contracted_at=COALESCE(billing.partner_terms.contracted_at,NOW())`); err != nil {
+	ON CONFLICT(partner_id) DO UPDATE SET commercial_configured=TRUE,quote_reference=CASE WHEN billing.partner_terms.quote_reference='' THEN 'REFERENCE-PARTNER' ELSE billing.partner_terms.quote_reference END,contracted_at=COALESCE(billing.partner_terms.contracted_at,NOW())`); err != nil {
 		return err
 	}
 	_, err := a.db.ExecContext(ctx, `INSERT INTO billing.initial_licenses(
@@ -494,6 +495,14 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 			a.collectActivationLicense(w, r, id)
 			return
 		}
+		if section == "charity" && parts[2] == "request" {
+			a.requestCharity(w, r, id)
+			return
+		}
+		if section == "charity" && parts[2] == "modules" {
+			a.charityModules(w, r, id)
+			return
+		}
 		common.APIError(w, 404, "NOT_FOUND", "Route not found")
 		return
 	}
@@ -510,6 +519,8 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 		a.agreement(w, r, id)
 	case "commercial-status":
 		a.commercialStatus(w, r, id)
+	case "commercial-mode":
+		a.commercialMode(w, r, id)
 	case "events":
 		a.billingEvents(w, r, id)
 	case "summary":
@@ -533,7 +544,11 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			common.APIError(w, 500, "DB", "Could not load terms")
 			return
 		}
-		common.JSON(w, 200, termsMap(t))
+		out:=termsMap(t)
+		if mode,modeErr:=a.ensureCommercialMode(r.Context(),id);modeErr==nil{
+			for key,value:=range commercialModeMap(mode){out[key]=value}
+		}
+		common.JSON(w, 200, out)
 	case http.MethodPut:
 		current, err := a.ensureTerms(id)
 		if err != nil {
@@ -582,9 +597,11 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			common.APIError(w, 400, "VALIDATION", "Commercial amounts cannot be negative")
 			return
 		}
-		if next.Currency=="USD" && next.MinimumMonthlyCommitment < 1500 {
-			common.APIError(w,400,"MINIMUM_MONTHLY_COMMITMENT","USD minimum monthly commitment cannot be below 1500")
-			return
+		if next.ActivationFee == 0 {
+			next.ActivationFeeWaived = true
+			if strings.TrimSpace(next.ActivationFeeReason) == "" {
+				next.ActivationFeeReason = "Zero-dollar activation fee"
+			}
 		}
 		next.CommercialConfigured=true
 		next.TermsVersion=current.TermsVersion+1
@@ -645,7 +662,11 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 		}
 		if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit terms update"); return }
 		t, _ := a.ensureTerms(id)
-		common.JSON(w, 200, termsMap(t))
+		out:=termsMap(t)
+		if mode,modeErr:=a.ensureCommercialMode(r.Context(),id);modeErr==nil{
+			for key,value:=range commercialModeMap(mode){out[key]=value}
+		}
+		common.JSON(w, 200, out)
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or PUT")
 	}
@@ -744,8 +765,20 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 		// START-23.11.1: activation/license fees are partner-specific contract terms.
 		// There is intentionally no platform-wide minimum activation fee.
 
+		if next.Required == 0 {
+			next.Waived = true
+			if strings.TrimSpace(next.WaiverReason) == "" {
+				next.WaiverReason = "Zero-dollar activation fee"
+			}
+		}
 		status := current.Status
-		if next.Waived {
+		if current.Status == "PAID" {
+			status = "PAID"
+			next.Paid = current.Paid
+			next.PaymentDate = current.PaymentDate
+			next.Reference = current.Reference
+			next.VerifiedBy = current.VerifiedBy
+		} else if next.Waived {
 			status = "WAIVED"
 			next.Paid = 0
 			next.PaymentDate = sql.NullTime{}
@@ -753,13 +786,6 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 			next.VerifiedBy = ""
 		} else if current.Status == "WAIVED" {
 			status = "NOT_PAID"
-		}
-		if current.Status == "PAID" && !next.Waived {
-			status = "PAID"
-			next.Paid = current.Paid
-			next.PaymentDate = current.PaymentDate
-			next.Reference = current.Reference
-			next.VerifiedBy = current.VerifiedBy
 		}
 		var payment any
 		if next.PaymentDate.Valid { payment = next.PaymentDate.Time }
@@ -831,11 +857,16 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	if planSub, planErr := a.loadPartnerPlan(r.Context(), id); planErr == nil {
 		planState, err := a.partnerPlanMap(r.Context(), planSub)
 		if err != nil { common.APIError(w, 500, "DB", "Could not load subscription plan summary"); return }
-		currentTotal := planSub.MonthlyPriceSnapshot
-		if planSub.BillingFrequency == "ANNUAL" { currentTotal = planSub.AnnualPriceSnapshot }
+		nominalTotal := planSub.MonthlyPriceSnapshot
+		if planSub.BillingFrequency == "ANNUAL" { nominalTotal = planSub.AnnualPriceSnapshot }
+		mode,_:=a.ensureCommercialMode(r.Context(),id)
+		currentTotal:=nominalTotal
+		if mode.BillingMode!=billingModePaid{currentTotal=0}
 		common.JSON(w, 200, map[string]any{
 			"partner_id": id, "currency": planState["currency"], "billing_cycle_model": "PLAN_BASED",
 			"pricing_authority": "SUBSCRIPTION_PLAN", "plan": planState,
+			"billing_mode":mode.BillingMode,"charity_status":mode.CharityStatus,
+			"nominal_package_value":nominalTotal,
 			"effective_base_fee": currentTotal, "extra_module_fee": 0, "current_total": currentTotal,
 			"billing_frequency": planSub.BillingFrequency,
 			"current_period_start": planState["current_period_start"],
@@ -864,9 +895,15 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 		common.APIError(w, 500, "DB", "Could not calculate effective module fees")
 		return
 	}
+	nominalTotal:=math.Round((base+extra)*100)/100
+	mode,_:=a.ensureCommercialMode(r.Context(),id)
+	actualBase,actualExtra,actualTotal:=base,extra,nominalTotal
+	if mode.BillingMode!=billingModePaid{actualBase=0;actualExtra=0;actualTotal=0}
 	common.JSON(w, 200, map[string]any{
-		"partner_id": id, "currency": t.Currency, "effective_base_fee": base, "extra_module_fee": extra,
-		"current_total": math.Round((base+extra)*100) / 100, "annual_increase_percent": t.AnnualIncreasePercent,
+		"partner_id": id, "currency": t.Currency, "effective_base_fee": actualBase, "extra_module_fee": actualExtra,
+		"current_total": actualTotal, "nominal_package_value":nominalTotal,
+		"billing_mode":mode.BillingMode,"charity_status":mode.CharityStatus,
+		"annual_increase_percent": t.AnnualIncreasePercent,
 		"annual_increase_date": "January 1", "cycle_days": 30, "invoice_day": 1,
 		"billing_cycle_model": "LEGACY_MODULE", "pricing_authority": "PARTNER_CONTRACT",
 		"service_period": "activation-date anchored 30-day cycle",
@@ -1700,6 +1737,20 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		if !isCycleBoundary(t.ServiceAnchorDate, at) { continue }
 		start := at.AddDate(0, 0, -30)
 		base := effectiveBaseFee(t, start)
+		previewModuleTotal,_,previewErr:=a.effectiveModuleFees(ctx,id,rawMods,start)
+		if previewErr!=nil{return previewErr}
+		nominalTotal:=math.Round((base+previewModuleTotal)*100)/100
+		mode,modeErr:=a.ensureCommercialMode(ctx,id)
+		if modeErr!=nil{return modeErr}
+		if mode.BillingMode!=billingModePaid || nominalTotal<=0{
+			eventKey:=fmt.Sprintf("ZERO_DOLLAR_BILLING_CYCLE:%s:LEGACY:%s",id,start.Format("2006-01-02"))
+			if err:=a.emitBillingEvent(ctx,eventKey,id,"","ZERO_DOLLAR_BILLING_CYCLE",at,map[string]any{
+				"billing_model":"LEGACY_MODULE","billing_mode":mode.BillingMode,
+				"nominal_value":nominalTotal,"total":0,
+				"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":at.Format("2006-01-02"),
+			});err!=nil{return err}
+			continue
+		}
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
 		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
 			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT DO NOTHING`,

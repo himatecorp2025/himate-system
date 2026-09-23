@@ -346,6 +346,13 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	case path=="/plan/modules"&&(r.Method==http.MethodGet||r.Method==http.MethodPut):
 		permission:="modules.read";if r.Method==http.MethodPut{permission="modules.write"}
 		if a.requirePartnerPermission(w,u,permission){a.partnerPlanModules(w,r,u)}
+	case path=="/charity"&&r.Method==http.MethodGet:
+		if a.requirePartnerPermission(w,u,"billing.read"){a.partnerCharityState(w,r,u)}
+	case path=="/charity/request"&&r.Method==http.MethodPost:
+		if a.requirePartnerPermission(w,u,"modules.write"){a.partnerCharityRequest(w,r,u)}
+	case path=="/charity/modules"&&(r.Method==http.MethodGet||r.Method==http.MethodPut):
+		permission:="modules.read";if r.Method==http.MethodPut{permission="modules.write"}
+		if a.requirePartnerPermission(w,u,permission){a.partnerCharityModules(w,r,u)}
 	case path=="/modules"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"modules.read"){a.partnerModulesView(w,r,u)}
 	case strings.HasPrefix(path,"/modules/")&&strings.HasSuffix(path,"/activate")&&r.Method==http.MethodPost:
@@ -499,6 +506,43 @@ func (a *app) partnerPlans(w http.ResponseWriter,r *http.Request,u partnerUser){
 	common.JSON(w,200,out)
 }
 
+func (a *app) partnerCharityState(w http.ResponseWriter,r *http.Request,u partnerUser){
+	var out map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/commercial-mode",&out);err!=nil{
+		writeInternalError(w,err,"Charity status is temporarily unavailable");return
+	}
+	common.JSON(w,200,out)
+}
+
+func (a *app) partnerCharityRequest(w http.ResponseWriter,r *http.Request,u partnerUser){
+	var payload map[string]any
+	if common.Decode(r,&payload)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	var out map[string]any
+	err:=a.internalJSON(r.Context(),http.MethodPost,a.hosts["billing"],
+		"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/charity/request",
+		payload,map[string]string{"X-Himate-User-ID":"partner:"+u.ID},&out)
+	if err!=nil{writeInternalError(w,err,"Charity review request could not be submitted");return}
+	common.JSON(w,202,out)
+}
+
+func (a *app) partnerCharityModules(w http.ResponseWriter,r *http.Request,u partnerUser){
+	upstream:="/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/charity/modules"
+	if r.Method==http.MethodGet{
+		var out map[string]any
+		if err:=a.internalGET(r.Context(),a.hosts["billing"],upstream,&out);err!=nil{
+			writeInternalError(w,err,"Charity module selection is temporarily unavailable");return
+		}
+		common.JSON(w,200,out);return
+	}
+	var payload map[string]any
+	if common.Decode(r,&payload)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	var out map[string]any
+	err:=a.internalJSON(r.Context(),http.MethodPut,a.hosts["billing"],upstream,payload,
+		map[string]string{"X-Himate-User-ID":"partner:"+u.ID},&out)
+	if err!=nil{writeInternalError(w,err,"Charity module selection could not be updated");return}
+	common.JSON(w,200,out)
+}
+
 func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,u partnerUser){
 	upstream:="/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/plan"
 	if r.Method==http.MethodGet{
@@ -645,6 +689,13 @@ func partnerModuleKey(path,suffix string)string{
 }
 
 func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u partnerUser){
+	var commercial map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/commercial-mode",&commercial);err!=nil{
+		common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return
+	}
+	if fmt.Sprint(commercial["billing_mode"])=="CHARITY" && fmt.Sprint(commercial["charity_status"])=="APPROVED"{
+		common.APIError(w,409,"CHARITY_MODULE_SELECTION_REQUIRED","Approved Charity partners manage access through Charity module selection");return
+	}
 	managed,planErr:=a.partnerHasManagedPlan(r.Context(),u.PartnerID)
 	if planErr!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return}
 	if managed{
@@ -662,6 +713,13 @@ func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u part
 }
 
 func (a *app) partnerSubscription(w http.ResponseWriter,r *http.Request,u partnerUser){
+	var commercial map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/commercial-mode",&commercial);err!=nil{
+		common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return
+	}
+	if fmt.Sprint(commercial["billing_mode"])=="CHARITY" && fmt.Sprint(commercial["charity_status"])=="APPROVED"{
+		common.APIError(w,409,"CHARITY_MODULE_SELECTION_REQUIRED","Approved Charity partners manage access through Charity module selection");return
+	}
 	managed,planErr:=a.partnerHasManagedPlan(r.Context(),u.PartnerID)
 	if planErr!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return}
 	if managed{

@@ -469,13 +469,21 @@ func (a *app) commercialStatus(w http.ResponseWriter, r *http.Request, partnerID
 	if evidenceErr != nil { common.APIError(w, 500, "DB", "Could not resolve commercial evidence"); return }
 
 	referencePartner, _ := a.referencePartner(r.Context(), partnerID)
+	mode, modeErr := a.ensureCommercialMode(r.Context(), partnerID)
+	if modeErr != nil { common.APIError(w,500,"DB","Could not load partner commercial mode"); return }
 	paymentVerified := license.Status == "PAID" && paymentEvidenceCount > 0
-	waived := referencePartner && license.Status == "WAIVED" && license.Waived && strings.TrimSpace(license.WaiverReason) != ""
-	provisioningAllowed := (agreementStatus == "AGREED" && invoiceCount > 0 && paymentVerified) || waived
+	contractualWaiver := license.Status == "WAIVED" && license.Waived && strings.TrimSpace(license.WaiverReason) != ""
+	referenceWaiver := referencePartner && contractualWaiver
+	complimentaryApproved := mode.BillingMode == billingModeComplimentary && contractualWaiver
+	charityApproved := mode.BillingMode == billingModeCharity && mode.CharityStatus == charityApproved && contractualWaiver
+	nonPaidApproved := complimentaryApproved || charityApproved
+	provisioningAllowed := (agreementStatus == "AGREED" && invoiceCount > 0 && paymentVerified) || referenceWaiver || nonPaidApproved
 	nextAction := "CONFIRM_COMMERCIAL_AGREEMENT"
 	switch {
-	case waived:
+	case referenceWaiver || nonPaidApproved:
 		nextAction = "READY_FOR_PROVISIONING"
+	case mode.CharityStatus == charityPending:
+		nextAction = "AWAIT_CHARITY_APPROVAL"
 	case agreementStatus != "AGREED":
 		nextAction = "CONFIRM_COMMERCIAL_AGREEMENT"
 	case invoiceCount == 0:
@@ -492,6 +500,9 @@ func (a *app) commercialStatus(w http.ResponseWriter, r *http.Request, partnerID
 	if agreedAt.Valid { agreementAt = agreedAt.Time.UTC() }
 	common.JSON(w, 200, map[string]any{
 		"partner_id": partnerID,
+		"billing_mode": mode.BillingMode,
+		"charity_status": mode.CharityStatus,
+		"non_paid_approval": nonPaidApproved,
 		"agreement": map[string]any{
 			"status": agreementStatus, "reference": agreementReference, "agreed_at": agreementAt,
 		},
@@ -508,11 +519,12 @@ func (a *app) commercialStatus(w http.ResponseWriter, r *http.Request, partnerID
 		"provisioning_allowed": provisioningAllowed,
 		"next_action": nextAction,
 		"workflow": []map[string]any{
-			{"key":"COMMERCIAL_AGREEMENT","complete":agreementStatus=="AGREED" || waived},
-			{"key":"ACTIVATION_FEE_INVOICE","complete":invoiceCount>0 || waived},
-			{"key":"PAYMENT_EVIDENCE","complete":paymentEvidenceCount>0 || waived},
-			{"key":"PAYMENT_VERIFIED","complete":paymentVerified || waived},
-			{"key":"LICENSE_PAID","complete":license.Status=="PAID" || waived},
+			{"key":"COMMERCIAL_AGREEMENT","complete":agreementStatus=="AGREED" || referenceWaiver || nonPaidApproved},
+			{"key":"ACTIVATION_FEE_INVOICE","complete":invoiceCount>0 || referenceWaiver || nonPaidApproved},
+			{"key":"PAYMENT_EVIDENCE","complete":paymentEvidenceCount>0 || referenceWaiver || nonPaidApproved},
+			{"key":"PAYMENT_VERIFIED","complete":paymentVerified || referenceWaiver || nonPaidApproved},
+			{"key":"LICENSE_PAID","complete":license.Status=="PAID" || referenceWaiver || nonPaidApproved},
+			{"key":"COMMERCIAL_MODE_APPROVED","complete":mode.BillingMode==billingModePaid || complimentaryApproved || charityApproved},
 			{"key":"PROVISIONING_ALLOWED","complete":provisioningAllowed},
 		},
 	})

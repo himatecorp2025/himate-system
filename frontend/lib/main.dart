@@ -1596,12 +1596,13 @@ class _ShellState extends State<Shell> {
   int selected = 0;
   bool collapsed = false;
 
-  static const int navCount = 8;
+  static const int navCount = 9;
 
   List<NavSpec> navFor(BuildContext context) => <NavSpec>[
     NavSpec(tr(context,'nav.dashboard'), Icons.dashboard_outlined, tr(context,'nav.dashboardSub')),
     NavSpec(tr(context,'nav.partners'), Icons.groups_2_outlined, tr(context,'nav.partnersSub')),
     const NavSpec('Modules', Icons.hub_outlined, 'Registry, dependencies & partner usage'),
+    const NavSpec('Packages', Icons.inventory_2_outlined, 'Central plans, prices & included modules'),
     NavSpec(tr(context,'nav.finance'), Icons.account_balance_wallet_outlined, tr(context,'nav.financeSub')),
     NavSpec(tr(context,'nav.impact'), Icons.show_chart_rounded, tr(context,'nav.impactSub')),
     NavSpec(tr(context,'nav.website'), Icons.campaign_outlined, tr(context,'nav.websiteSub')),
@@ -1657,10 +1658,11 @@ class _ShellState extends State<Shell> {
     if (can('partners.read')) indexes.add(1);
     if (can('catalog.read')) indexes.add(2);
     if (can('billing.read')) indexes.add(3);
-    if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(4);
-    if (can('cms.read') || can('contact.read')) indexes.add(5);
-    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(6);
-    if (can('administration.read') || can('audit.read')) indexes.add(7);
+    if (can('billing.read')) indexes.add(4);
+    if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(5);
+    if (can('cms.read') || can('contact.read')) indexes.add(6);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
+    if (can('administration.read') || can('audit.read')) indexes.add(8);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
   }
@@ -1670,11 +1672,12 @@ class _ShellState extends State<Shell> {
       case 0: return DashboardPage(api: widget.api);
       case 1: return PartnersPage(api: widget.api);
       case 2: return ModuleControlPlanePage(api: widget.api);
-      case 3: return FinancePage(api: widget.api);
-      case 4: return ImpactPage(api: widget.api);
-      case 5: return WebsiteMarketingPage(api: widget.api);
-      case 6: return SystemPage(api: widget.api);
-      case 7: return AdministrationPage(api: widget.api, user: widget.user);
+      case 3: return PackagesPage(api: widget.api);
+      case 4: return FinancePage(api: widget.api);
+      case 5: return ImpactPage(api: widget.api);
+      case 6: return WebsiteMarketingPage(api: widget.api);
+      case 7: return SystemPage(api: widget.api);
+      case 8: return AdministrationPage(api: widget.api, user: widget.user);
       default: return const SizedBox.shrink();
     }
   }
@@ -2895,7 +2898,7 @@ class _PartnersPageState extends State<PartnersPage> {
     final marketingContactEmail = TextEditingController();
     final activationFee = TextEditingController(text: '0');
     final baseMonthlyFee = TextEditingController(text: '0');
-    final minimumMonthlyCommitment = TextEditingController(text: '1500');
+    final minimumMonthlyCommitment = TextEditingController(text: '0');
     final quoteReference = TextEditingController();
     final notes = TextEditingController();
     final onboardingRequestId = 'onb_${DateTime.now().microsecondsSinceEpoch}';
@@ -2973,9 +2976,9 @@ class _PartnersPageState extends State<PartnersPage> {
         'activation_fee_waived': false,
         'activation_fee_reason': '',
         'base_monthly_fee': double.tryParse(baseMonthlyFee.text) ?? 0,
-        'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 1500,
+        'minimum_monthly_commitment': double.tryParse(minimumMonthlyCommitment.text) ?? 0,
         'quote_reference': quoteReference.text.trim(),
-        'annual_increase_percent': 10,
+        'annual_increase_percent': 5,
         'price_effective_from': onboardingDate,
         'service_anchor_date': onboardingDate,
         'reason': 'New Partner master-data onboarding',
@@ -4450,9 +4453,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final paymentMethod = TextEditingController(text: '${paymentProfile?['payment_method_id'] ?? ''}');
     final licenseNote = TextEditingController(text: '${license?['note'] ?? ''}');
     final base = TextEditingController(text: number(terms?['base_monthly_fee']).toStringAsFixed(2));
-    final minimumMonthly = TextEditingController(text: number(terms?['minimum_monthly_commitment'] ?? 1500).toStringAsFixed(2));
+    final minimumMonthly = TextEditingController(text: number(terms?['minimum_monthly_commitment'] ?? 0).toStringAsFixed(2));
     final quoteReference = TextEditingController(text: '${terms?['quote_reference'] ?? ''}');
-    final uplift = TextEditingController(text: number(terms?['annual_increase_percent']).toStringAsFixed(2));
+    final uplift = TextEditingController(text: number(terms?['annual_increase_percent'] ?? 5).toStringAsFixed(2));
     final effective = TextEditingController(text: '${terms?['price_effective_from'] ?? ''}');
     final anchor = TextEditingController(text: '${terms?['service_anchor_date'] ?? ''}');
     final waiverReason = TextEditingController(text: '${terms?['activation_fee_reason'] ?? ''}');
@@ -4461,6 +4464,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     bool autopay = paymentProfile?['autopay_enabled'] == true;
     bool collectActivationNow = false;
     String currency = '${terms?['currency'] ?? 'USD'}';
+    String billingMode = '${terms?['billing_mode'] ?? 'PAID'}';
+    String charityStatus = '${terms?['charity_status'] ?? 'NOT_REQUESTED'}';
 
     final ok = await showDialog<bool>(
       context: context,
@@ -4473,6 +4478,56 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const _DialogSectionLabel('COMMERCIAL MODE'),
+              const SizedBox(height: 10),
+              ResponsiveFieldPair(
+                first: DropdownButtonFormField<String>(
+                  value: billingMode,
+                  decoration: InputDecoration(labelText: uiLiteral('Billing mode')),
+                  items: const [
+                    DropdownMenuItem(value: 'PAID', child: LText('Paid')),
+                    DropdownMenuItem(value: 'COMPLIMENTARY', child: LText('Complimentary')),
+                    DropdownMenuItem(value: 'CHARITY', child: LText('Charity')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setLocal(() {
+                      billingMode = v;
+                      if (v != 'CHARITY' && charityStatus == 'APPROVED') {
+                        charityStatus = 'NOT_REQUESTED';
+                      }
+                    });
+                  },
+                ),
+                second: DropdownButtonFormField<String>(
+                  value: charityStatus,
+                  decoration: InputDecoration(labelText: uiLiteral('Charity review status')),
+                  items: const [
+                    DropdownMenuItem(value: 'NOT_REQUESTED', child: LText('Not requested')),
+                    DropdownMenuItem(value: 'PENDING', child: LText('Pending review')),
+                    DropdownMenuItem(value: 'APPROVED', child: LText('Approved')),
+                    DropdownMenuItem(value: 'REJECTED', child: LText('Rejected')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setLocal(() {
+                      charityStatus = v;
+                      if (v == 'APPROVED') billingMode = 'CHARITY';
+                    });
+                  },
+                ),
+              ),
+              if (billingMode == 'CHARITY' && charityStatus != 'APPROVED') ...[
+                const SizedBox(height: 8),
+                const _MessageCard(
+                  icon: Icons.policy_outlined,
+                  title: 'Charity requires HIMATE approval',
+                  message: 'Set Charity review status to Approved only after the application or negotiated eligibility has been verified.',
+                ),
+              ],
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('ACTIVATION & PAYMENT'),
+              const SizedBox(height: 10),
               ResponsiveFieldPair(
                 first: DropdownButtonFormField<String>(
                   value: currency,
@@ -4522,7 +4577,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: autopay,
-                onChanged: waived ? null : (v) => setLocal(() => autopay = v),
+                onChanged: (waived || billingMode != 'PAID') ? null : (v) => setLocal(() => autopay = v),
                 title: const LText('Automatic recurring collection'),
                 subtitle: const LText('Recurring invoices are charged off-session through the configured provider.'),
               ),
@@ -4582,41 +4637,64 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     );
 
     if (ok == true) {
-      await widget.api.put('/api/v1/billing/partners/${partner['id']}/terms', {
-        'currency': currency,
-        'activation_fee': double.tryParse(activation.text) ?? 0,
-        'activation_fee_waived': waived,
-        'activation_fee_reason': waiverReason.text.trim(),
-        'base_monthly_fee': double.tryParse(base.text) ?? 0,
-        'minimum_monthly_commitment': double.tryParse(minimumMonthly.text) ?? 1500,
-        'quote_reference': quoteReference.text.trim(),
-        'annual_increase_percent': double.tryParse(uplift.text) ?? 10,
-        'price_effective_from': effective.text.trim(),
-        'service_anchor_date': anchor.text.trim(),
-        'reason': commercialReason.text.trim(),
-      });
-      await widget.api.put('/api/v1/billing/partners/${partner['id']}/license', {
-        'currency': currency,
-        'required_amount': double.tryParse(activation.text) ?? 0,
-        'note': licenseNote.text.trim(),
-        'waived': waived,
-        'waiver_reason': waiverReason.text.trim(),
-      });
-      if (!waived) {
-        await widget.api.put('/api/v1/payments/partners/${partner['id']}/profile', {
-          'provider_customer_id': providerCustomer.text.trim(),
-          'payment_method_id': paymentMethod.text.trim(),
-          'autopay_enabled': autopay,
-        });
-        if (collectActivationNow) {
-          await widget.api.post('/api/v1/billing/partners/${partner['id']}/license/collect', {});
+      final activationAmount = double.tryParse(activation.text) ?? 0;
+      final effectiveWaived = waived || activationAmount == 0;
+      final effectiveWaiverReason = effectiveWaived && waiverReason.text.trim().isEmpty
+          ? (activationAmount == 0 ? 'Zero-dollar activation fee' : 'HIMATE administrator waiver')
+          : waiverReason.text.trim();
+      if (billingMode == 'CHARITY' && charityStatus != 'APPROVED') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: LText('Charity billing mode requires Approved charity status.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
-      }
-      await load();
-      if (mounted) {
-        success(collectActivationNow
-            ? 'Commercial terms saved and provider-backed activation collection initiated.'
-            : 'Commercial terms and payment profile updated.');
+      } else {
+        await widget.api.put('/api/v1/billing/partners/${partner['id']}/terms', {
+          'currency': currency,
+          'activation_fee': activationAmount,
+          'activation_fee_waived': effectiveWaived,
+          'activation_fee_reason': effectiveWaiverReason,
+          'base_monthly_fee': double.tryParse(base.text) ?? 0,
+          'minimum_monthly_commitment': double.tryParse(minimumMonthly.text) ?? 0,
+          'quote_reference': quoteReference.text.trim(),
+          'annual_increase_percent': double.tryParse(uplift.text) ?? 5,
+          'price_effective_from': effective.text.trim(),
+          'service_anchor_date': anchor.text.trim(),
+          'reason': commercialReason.text.trim(),
+        });
+        await widget.api.patch('/api/v1/billing/partners/${partner['id']}/commercial-mode', {
+          'billing_mode': billingMode,
+          'charity_status': charityStatus,
+          'reason': commercialReason.text.trim().isEmpty
+              ? 'HIMATE administrator commercial-mode update'
+              : commercialReason.text.trim(),
+        });
+        await widget.api.put('/api/v1/billing/partners/${partner['id']}/license', {
+          'currency': currency,
+          'required_amount': activationAmount,
+          'note': licenseNote.text.trim(),
+          'waived': effectiveWaived,
+          'waiver_reason': effectiveWaiverReason,
+        });
+        if (!effectiveWaived && billingMode == 'PAID') {
+          await widget.api.put('/api/v1/payments/partners/${partner['id']}/profile', {
+            'provider_customer_id': providerCustomer.text.trim(),
+            'payment_method_id': paymentMethod.text.trim(),
+            'autopay_enabled': autopay,
+          });
+          if (collectActivationNow) {
+            await widget.api.post('/api/v1/billing/partners/${partner['id']}/license/collect', {});
+          }
+        }
+        await load();
+        if (mounted) {
+          success(collectActivationNow && !effectiveWaived && billingMode == 'PAID'
+              ? 'Commercial terms saved and provider-backed activation collection initiated.'
+              : 'Commercial terms and billing mode updated.');
+        }
       }
     }
 
@@ -5332,6 +5410,285 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+class PackagesPage extends StatefulWidget {
+  const PackagesPage({required this.api, super.key});
+  final Api api;
+
+  @override
+  State<PackagesPage> createState() => _PackagesPageState();
+}
+
+class _PackagesPageState extends State<PackagesPage> {
+  bool loading = true;
+  String? error;
+  List<Map<String, dynamic>> plans = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(load());
+  }
+
+  Future<void> load() async {
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final result = await Future.wait([
+        widget.api.get('/api/v1/billing/plans', force: true),
+        widget.api.get('/api/v1/modules', force: true),
+      ]);
+      if (!mounted) return;
+      final allPlans = items(result[0]);
+      setState(() {
+        plans = allPlans.where((p) => const {'STARTER', 'BUSINESS', 'FLEX'}.contains('${p['plan_key']}')).toList();
+        modules = items(result[1]).where((m) => m['system'] == true).toList();
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { loading = false; error = e.toString(); });
+    }
+  }
+
+  String moduleLabel(Map<String, dynamic> module) =>
+      '${module['label'] ?? module['label_en'] ?? module['key'] ?? ''}';
+
+  bool moduleReady(Map<String, dynamic> module) =>
+      '${module['publication_status'] ?? ''}' == 'PUBLISHED' &&
+      '${module['implementation_state'] ?? ''}' == 'READY';
+
+  Future<void> editPackage(Map<String, dynamic> plan) async {
+    final key = '${plan['plan_key']}';
+    final limit = (plan['module_limit'] as num?)?.toInt() ?? 0;
+    final fixed = '${plan['selection_mode']}' == 'FIXED';
+    final price = TextEditingController(text: number(plan['monthly_price']).toStringAsFixed(2));
+    final effective = TextEditingController();
+    final reason = TextEditingController();
+    final selected = <String>{
+      for (final value in (plan['fixed_module_keys'] is List ? plan['fixed_module_keys'] as List : const []))
+        '$value',
+    };
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: '${plan['display_name']} package',
+          subtitle: fixed
+              ? 'HIMATE defines exactly $limit included modules. Price changes apply to all active customers from the effective date.'
+              : 'Partners select up to $limit modules. Price changes apply to all active customers from the effective date.',
+          icon: Icons.inventory_2_outlined,
+          width: 820,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: price,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: uiLiteral('Monthly package price')),
+                ),
+                second: TextField(
+                  controller: effective,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Price effective date'),
+                    hintText: uiLiteral('YYYY-MM-DD · blank = today'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const _RuleStrip(items: [
+                _RuleItem(Icons.trending_up_rounded, 'Annual uplift', '5% every January 1'),
+                _RuleItem(Icons.history_rounded, 'Pricing', 'Effective-dated · audited'),
+                _RuleItem(Icons.receipt_long_outlined, 'Existing invoices', 'Never rewritten'),
+              ]),
+              const SizedBox(height: 12),
+              _DefinitionRow(label: 'Module limit', value: '$limit'),
+              _DefinitionRow(label: 'Selection mode', value: fixed ? 'HIMATE fixed package' : 'Partner selectable'),
+              _DefinitionRow(label: 'Annual uplift', value: '${plan['annual_increase_percent'] ?? 5}% · January 1'),
+              if (fixed) ...[
+                const SizedBox(height: 16),
+                _SectionHeader(
+                  title: 'Included modules',
+                  subtitle: 'Select exactly $limit published and implementation-ready modules.',
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _MiniCounter(label: '${selected.length} / $limit SELECTED'),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 280,
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final module in modules)
+                          FilterChip(
+                            selected: selected.contains('${module['key']}'),
+                            onSelected: moduleReady(module)
+                                ? (value) => setLocal(() {
+                                      final moduleKey = '${module['key']}';
+                                      if (value) {
+                                        if (selected.length < limit) selected.add(moduleKey);
+                                      } else {
+                                        selected.remove(moduleKey);
+                                      }
+                                    })
+                                : null,
+                            label: LText(
+                              moduleLabel(module),
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            tooltip: moduleReady(module)
+                                ? '${module['key']}'
+                                : 'Not yet PUBLISHED + READY',
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              TextField(
+                controller: reason,
+                decoration: InputDecoration(
+                  labelText: uiLiteral('Change reason'),
+                  hintText: uiLiteral('Required for commercial audit trail'),
+                ),
+              ),
+            ],
+          ),
+          primaryLabel: 'Save package',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      final monthly = double.tryParse(price.text.trim());
+      if (monthly == null || monthly < 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: LText('Package price must be zero or greater.'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      } else if (fixed && selected.length != limit) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: LText('Select exactly $limit modules for $key.'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      } else {
+        final payload = <String, dynamic>{
+          'monthly_price': monthly,
+          'reason': reason.text.trim().isEmpty ? 'HIMATE administrator package update' : reason.text.trim(),
+          if (effective.text.trim().isNotEmpty) 'effective_at': effective.text.trim(),
+          if (fixed) 'fixed_module_keys': selected.toList()..sort(),
+        };
+        await widget.api.patch('/api/v1/billing/plans/$key', payload);
+        await load();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: LText('$key package updated.'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      }
+    }
+    price.dispose();
+    effective.dispose();
+    reason.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && plans.isEmpty) {
+      return const Content(
+        eyebrow: 'COMMERCIAL CONTROL PLANE',
+        title: 'Packages',
+        subtitle: 'Central subscription packages, prices and module entitlements.',
+        child: _BrandLoading(),
+      );
+    }
+    if (error != null && plans.isEmpty) {
+      return Content(
+        eyebrow: 'COMMERCIAL CONTROL PLANE',
+        title: 'Packages',
+        subtitle: 'Central subscription packages, prices and module entitlements.',
+        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Retry'))],
+        child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Packages could not be loaded', message: error!),
+      );
+    }
+    return Content(
+      eyebrow: 'COMMERCIAL CONTROL PLANE',
+      title: 'Packages',
+      subtitle: 'One authoritative package definition for every partner. Activation fees remain partner-specific.',
+      actions: [OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ResponsiveKpiGrid(
+            children: [
+              for (final plan in plans)
+                Kpi(
+                  label: '${plan['display_name']}',
+                  value: money(plan['monthly_price']),
+                  note: '${plan['module_limit']} modules · ${plan['selection_mode'] == 'FIXED' ? 'HIMATE fixed' : 'Partner selected'}',
+                  icon: Icons.inventory_2_outlined,
+                  accent: brandNavy,
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _SectionHeader(
+            title: 'Package definitions',
+            subtitle: 'Starter and Business have fixed HIMATE module sets. Flex lets the partner select up to 15 modules.',
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 720
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final plan in plans)
+                    SizedBox(
+                      width: width,
+                      child: _InfoCard(
+                        title: '${plan['display_name']} · ${plan['plan_key']}',
+                        icon: Icons.sell_outlined,
+                        action: IconButton(
+                          tooltip: uiLiteral('Edit package'),
+                          onPressed: () => unawaited(editPackage(plan)),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                        ),
+                        children: [
+                          _DefinitionRow(label: 'Monthly price', value: money(plan['monthly_price']), emphasis: true),
+                          _DefinitionRow(label: 'Annual list', value: money(plan['annual_list_price'])),
+                          _DefinitionRow(label: 'Annual charged', value: money(plan['annual_price'])),
+                          _DefinitionRow(label: 'Automatic increase', value: '${plan['annual_increase_percent'] ?? 5}% · January 1'),
+                          _DefinitionRow(label: 'Module limit', value: '${plan['module_limit']}'),
+                          _DefinitionRow(label: 'Selection', value: plan['selection_mode'] == 'FIXED' ? 'HIMATE fixed' : 'Partner selectable'),
+                          _DefinitionRow(label: 'Configured modules', value: plan['selection_mode'] == 'FIXED' ? '${(plan['fixed_module_keys'] as List?)?.length ?? 0} / ${plan['module_limit']}' : 'Up to ${plan['module_limit']}'),
+                          _DefinitionRow(label: 'Status', value: plan['active'] == true ? 'ACTIVE' : 'INACTIVE'),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
@@ -7795,6 +8152,8 @@ class _CommercialSummaryCard extends StatelessWidget {
     icon: Icons.payments_outlined,
     action: IconButton(onPressed: onEdit, tooltip: uiLiteral('Edit commercial terms'), icon: const Icon(Icons.edit_outlined, size: 18)),
     children: [
+      _DefinitionRow(label: 'Billing mode', value: _humanize('${terms['billing_mode'] ?? 'PAID'}'), emphasis: true),
+      _DefinitionRow(label: 'Charity status', value: _humanize('${terms['charity_status'] ?? 'NOT_REQUESTED'}')),
       _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
       _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
       _DefinitionRow(label: 'License paid', value: '${money(license['paid_amount'])} / ${money(license['required_amount'])}'),
@@ -7804,7 +8163,7 @@ class _CommercialSummaryCard extends StatelessWidget {
       _DefinitionRow(label: 'Terms version', value: '${terms['terms_version'] ?? 1}'),
       _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
       _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
-      _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 10}% · January 1'),
+      _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 5}% · January 1'),
       _DefinitionRow(label: 'Next cycle', value: '${billing['next_billing_date'] ?? '—'}'),
       const _DefinitionRow(label: 'Billing rule', value: 'Activation-date anchored · 30 days'),
     ],
