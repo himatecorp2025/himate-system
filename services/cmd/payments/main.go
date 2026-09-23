@@ -559,7 +559,7 @@ func (a *app) settleBilling(ctx context.Context, x attempt, status, providerPaym
 	req.Header.Set("Content-Type","application/json")
 	common.BindInternalRequest(req,a.token)
 	req.Header.Set("X-Himate-User-ID","payments-service")
-	resp, err := a.client.Do(req)
+	resp, err := common.DoInternal(a.client, req)
 	if err != nil { return err }
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
