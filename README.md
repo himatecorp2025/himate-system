@@ -422,8 +422,20 @@ The architecture remains microservice/container based. It is **not** being colla
 - Partner Portal Owner persistence remains part of the same end-to-end acceptance
 - Render auto-deploy remains disabled; production release completion requires all application services to be deployed from the same release
 - START-23.11.4 remains frozen until the production test partner is created successfully
-- release contract version is `0.8.27-start-23.11.3j`
+- release contract version is `0.8.26-start-23.11.3i`
 - acceptance: `docs/START-23.11.3I_ACCEPTANCE.md`, `scripts/audit_start_23_11_3i.py`, `scripts/smoke_start_23_11_3i.sh`
+
+
+### START-23.11.3j — Golden Test Partner & Partner Detail Stabilization
+- partners have an explicit `test_partner` master-data flag; test status is never inferred from name, email or hard-coded partner ID
+- enabling Golden Test Partner promotes that tenant to LIVE for controlled QA without forcing a fake paid-license state
+- the Golden tenant receives all 38 canonical HIMATE modules as ACTIVE, visible test entitlements while custom/temporary smoke modules remain excluded
+- the Partner Portal Marketplace exposes the full canonical module set for the Golden tenant without changing normal-partner publication and commercial gates
+- synthetic Golden tenant Billing and Impact data remain visible in partner-specific views but are excluded from platform-wide revenue and Impact aggregates
+- partner workspace supplementary requests are bounded by timeout so one slow secondary service cannot leave the global progress indicator running indefinitely
+- partner portfolio and workspace visibly identify TEST/GOLDEN TEST data
+- release contract version is `0.8.27-start-23.11.3j`
+- acceptance: `docs/START-23.11.3J_ACCEPTANCE.md`, `scripts/audit_start_23_11_3j.py`, `scripts/smoke_start_23_11_3j.sh`
 
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
@@ -454,6 +466,7 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.10_ACCEPTANCE.md`
 - `docs/START-23.11.3H_ACCEPTANCE.md`
 - `docs/START-23.11.3I_ACCEPTANCE.md`
+- `docs/START-23.11.3J_ACCEPTANCE.md`
 - `docs/START-23.11.1_ACCEPTANCE.md`
 - `docs/START-23.11.2_ACCEPTANCE.md`
 - `docs/START-23.11.3_ACCEPTANCE.md`
