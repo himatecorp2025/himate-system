@@ -51,7 +51,7 @@ type partnerPlanSubscription struct {
 
 func start23112PlanBillingMigration() common.Migration {
 	return common.Migration{
-		Version: 10,
+		Version: 11,
 		Name: "start-23-11-2-subscription-plan-recurring-billing",
 		Statements: []string{
 			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS billing_cycle_model TEXT NOT NULL DEFAULT 'PLAN_BASED'`,
@@ -159,8 +159,12 @@ func start23112PlanBillingMigration() common.Migration {
 			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS minimum_commitment_adjustment NUMERIC(12,2) NOT NULL DEFAULT 0`,
 			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'LEGACY_MODULE'`,
 			`ALTER TABLE billing.invoice_items ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'LEGACY_MODULE'`,
+			`ALTER TABLE billing.invoices ALTER COLUMN billing_model SET DEFAULT 'LEGACY_MODULE'`,
+			`ALTER TABLE billing.invoice_items ALTER COLUMN billing_model SET DEFAULT 'LEGACY_MODULE'`,
 			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS billing_invoices_partner_id_invoice_date_key`,
 			`DROP INDEX IF EXISTS billing.billing_invoice_period_unique`,
+			`DROP INDEX IF EXISTS billing.billing_invoice_date_model_unique`,
+			`DROP INDEX IF EXISTS billing.billing_invoice_period_model_unique`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_key_unique ON billing.invoices(invoice_key) WHERE invoice_key IS NOT NULL`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_period_model_unique
 				ON billing.invoices(partner_id,service_period_start,service_period_end,billing_model,charge_type,plan_key)`,
