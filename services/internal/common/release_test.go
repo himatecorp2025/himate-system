@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+func TestBindInternalRequestAddsCredentialAndRelease(t *testing.T) {
+	t.Setenv("HIMATE_APP_VERSION", "0.8.26-start-23.11.3i")
+	req := httptest.NewRequest(http.MethodGet, "http://partners:10000/api/v1/partners/ptr_000001", nil)
+	BindInternalRequest(req, "internal-token-example")
+	if got := req.Header.Get("X-Himate-Internal-Token"); got != "internal-token-example" {
+		t.Fatalf("unexpected internal token %q", got)
+	}
+	if got := req.Header.Get("X-Himate-Expected-Version"); got != "0.8.26-start-23.11.3i" {
+		t.Fatalf("unexpected expected version %q", got)
+	}
+}
+
 func TestReleaseGuardPublishesVersionHeaders(t *testing.T) {
 	t.Setenv("HIMATE_APP_VERSION", "0.8.26-start-23.11.3i")
 	handler := ReleaseGuard("partners", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
