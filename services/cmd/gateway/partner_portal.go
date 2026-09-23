@@ -54,11 +54,6 @@ var partnerRolePermissions = map[string][]string{
 	"viewer":  {"dashboard.read","company.read","modules.read","billing.read","impact.read","design.read"},
 }
 
-const persistentTestPartnerID = "ptr_himate_test_001"
-const persistentTestPartnerUserID = "pusr_himate_test_001"
-const persistentTestPartnerEmail = "test.partner@himate.test"
-const persistentTestPartnerPasswordHash = "pbkdf2-sha256$210000$x4/qTEszbEJc47HsxRASZw$JAoXyLUTfLyXG4NNAxkxAY6q1n+EavcUVINp84l3jGM"
-
 func partnerPortalMigration() common.Migration {
 	return common.Migration{
 		Version: 7,
@@ -85,21 +80,15 @@ func partnerPortalMigration() common.Migration {
 	}
 }
 
-func persistentTestPartnerMigration() common.Migration {
+func retiredTestPartnerIdentityMigration() common.Migration {
 	return common.Migration{
 		Version: 11,
-		Name:    "persistent-manual-qa-partner-identity",
+		Name:    "retire-fixed-manual-qa-partner-identity",
 		Statements: []string{
-			fmt.Sprintf(`INSERT INTO identity.partner_users(
-				id,partner_id,name,email,password_hash,role_key,active,preferred_locale,timezone
-			)
-			VALUES('%s','%s','HIMATE Test Partner Owner','%s','%s','owner',TRUE,'en_US','UTC')
-			ON CONFLICT(email) DO NOTHING`,
-				persistentTestPartnerUserID,
-				persistentTestPartnerID,
-				persistentTestPartnerEmail,
-				persistentTestPartnerPasswordHash,
-			),
+			`DELETE FROM identity.partner_users
+			  WHERE id='pusr_himate_test_001'
+			     OR partner_id='ptr_himate_test_001'
+			     OR lower(email)='test.partner@himate.test'`,
 		},
 	}
 }
