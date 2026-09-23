@@ -81,11 +81,12 @@ This prevents the onboarding path from creating an incomplete record that later 
 
 ## Automated evidence
 
-- Flutter browser widget test: `frontend/test/new_partner_modal_test.dart`
-  - presses **New Partner**;
-  - proves the modal appears;
-  - proves opening it performs no Module Catalog request.
-- Static audit: `python3 scripts/audit_start_23_11_3e.py`
+- Deterministic frontend contract audit: `python3 scripts/audit_start_23_11_3e.py`
+  - verifies the **New Partner** button is wired to `addPartner`;
+  - verifies `showDialog` is reached before any remote API dependency;
+  - verifies opening the modal contains no Module Catalog request;
+  - verifies the complete master-data, Portal Owner and logo fields remain in the onboarding path.
+- Existing Flutter browser suite continues to validate shared dialog/responsive behavior.
 - Compose acceptance: `sh scripts/smoke_start_23_11_3e.sh http://127.0.0.1:8080`
   - creates a synthetic partner with complete company/legal/address/contact data;
   - creates its Partner Portal Owner;
