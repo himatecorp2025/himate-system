@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -27,4 +28,23 @@ func TestStripeSignatureVerification(t *testing.T) {
 	if err:=verifyStripeSignature(body,header,secret,now,5*time.Minute);err!=nil{t.Fatalf("valid signature rejected: %v",err)}
 	if err:=verifyStripeSignature([]byte("tampered"),header,secret,now,5*time.Minute);err==nil{t.Fatal("tampered body accepted")}
 	if err:=verifyStripeSignature(body,header,secret,now.Add(6*time.Minute),5*time.Minute);err==nil{t.Fatal("stale signature accepted")}
+}
+
+
+func TestStripeProviderMayRemainUnconfiguredDuringPlatformTesting(t *testing.T) {
+	a := &app{provider: "stripe"}
+	if a.providerConfigured(context.Background()) {
+		t.Fatal("Stripe without credentials must report configuration required")
+	}
+}
+
+func TestStripeProviderConfiguredFromProcessSecrets(t *testing.T) {
+	a := &app{
+		provider: "stripe",
+		stripeKey: "sk_test_configured",
+		webhookSecret: "whsec_test_configured",
+	}
+	if !a.providerConfigured(context.Background()) {
+		t.Fatal("Stripe with both credentials must be configured")
+	}
 }
