@@ -209,7 +209,7 @@ SELECT COUNT(*)
 FROM identity.partner_users
 WHERE partner_id=:'partner_id'
   AND lower(email)=lower(:'owner_email')
-  AND role='owner'
+  AND role_key='owner'
   AND active=TRUE;
 SQL
 )"
