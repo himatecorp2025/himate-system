@@ -21,6 +21,8 @@ jobs:
         run: python3 scripts/audit_smoke_schema_contracts.py
       - name: Validate smoke shell execution contracts
         run: python3 scripts/audit_smoke_execution_contracts.py
+      - name: Validate global START-23.1 frontend mutation contract
+        run: python3 scripts/audit_start_23_1_contract.py
       - name: Validate current START-23.11.3i contract
         run: python3 scripts/audit_start_23_11_3i.py
       - name: Validate current START-23.11.3j contract
