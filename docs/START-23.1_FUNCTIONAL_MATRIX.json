@@ -2090,7 +2090,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11.1",
       "e2e_proof": "scripts/smoke_start_23_11_1.sh: USD 1499 rejection -> negotiated activation/base/minimum/quote -> versioned readback",
-      "notes": "USD 1500 is the minimum monthly commitment. Activation fees are partner-specific; the former fixed USD 13000 floor is removed. Invoice-cycle semantics remain START-23.11.2."
+      "notes": "USD 1500 is the minimum monthly commitment for legacy/CUSTOM INDIVIDUAL_QUOTE contracts only; standard plan prices are authoritative for Starter/Business/Flex. Activation fees are partner-specific; the former fixed USD 13000 floor is removed. Invoice-cycle semantics remain START-23.11.2."
     },
     {
       "id": "PARTNER-MODULE-CONTRACT-PRICING-23-11-1",
