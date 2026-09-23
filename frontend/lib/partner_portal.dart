@@ -1098,7 +1098,9 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     final blockers = marketplaceStrings(module['activation_blockers']);
     final availablePlans = marketplaceStrings(module['available_in_plan_names']);
     final upgradePlans = marketplaceStrings(module['upgrade_plan_names']);
-    final currentPlan = '${plan['display_name'] ?? plan['plan_key'] ?? ''}'.trim();
+    final currentPlan = charityApproved
+        ? 'Charity access'
+        : '${plan['display_name'] ?? plan['plan_key'] ?? ''}'.trim();
     final summary = '${module['marketplace_summary'] ?? module['description'] ?? ''}'.trim();
     final statusLabel = active
         ? 'INCLUDED'
@@ -1231,7 +1233,16 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             ),
           ],
           const SizedBox(height: 16),
-          if (hasManagedPlan && locked && upgradePlans.isNotEmpty && can('billing.read'))
+          if (charityApproved && module['executable'] == true && can('modules.write'))
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: manageCharityModules,
+                icon: const Icon(Icons.volunteer_activism_outlined),
+                label: const LText('Manage Charity modules'),
+              ),
+            )
+          else if (hasManagedPlan && locked && upgradePlans.isNotEmpty && can('billing.read'))
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
