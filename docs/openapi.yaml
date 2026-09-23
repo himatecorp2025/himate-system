@@ -617,9 +617,10 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/NewPartner"}
       responses:
+        "200": {description: Existing partner returned for an idempotent onboarding replay}
         "201": {description: Partner created}
         "400": {description: Invalid JSON payload or partner validation error}
-        "409": {description: Display-name-derived slug or primary domain is already in use}
+        "409": {description: Primary domain is already assigned to another partner}
   /api/v1/partners/{partnerId}/logo:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -2320,6 +2321,10 @@ components:
         website: {type: string}
         phone: {type: string}
         notes: {type: string}
+        onboarding_request_id:
+          type: string
+          maxLength: 160
+          description: Stable client-generated idempotency key for one New Partner onboarding attempt
     Partner:
       type: object
       properties:
