@@ -80,7 +80,10 @@ for literal in [
 ]:
     require("'" + literal.replace("'", "\\'") + "':" in localization, "Hungarian Marketplace literal missing " + literal)
 
-require("version: 0.8.17-start-23.11.3" in openapi, "OpenAPI contract version is not START-23.11.3")
+require(
+    "version: 0.8.17-start-23.11.3" in openapi or "version: 0.8.18-start-23.11.3a" in openapi,
+    "OpenAPI contract version is neither START-23.11.3 nor its START-23.11.3a readiness patch",
+)
 require("/partner/api/v1/modules:" in openapi, "Partner Marketplace API is not documented")
 require("Discovery visibility is not execution authority." in acceptance, "acceptance does not preserve discovery/execution boundary")
 require("exactly 10 canonical modules are ACTIVE" in acceptance, "Business 10-module acceptance is missing")
