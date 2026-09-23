@@ -357,7 +357,7 @@ func (a *app) validateCommercialEvidenceReference(ctx context.Context, partnerID
 	get := func(path string, dst any) error {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.evidenceHost+path, nil)
 		if err != nil { return err }
-		req.Header.Set("X-Himate-Internal-Token", a.token)
+		common.BindInternalRequest(req, a.token)
 		resp, err := a.client.Do(req)
 		if err != nil { return err }
 		defer resp.Body.Close()
@@ -405,7 +405,7 @@ func (a *app) referencePartner(ctx context.Context, partnerID string) (bool, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.partnersHost+"/api/v1/partners/"+partnerID, nil)
 	if err != nil { return false, err }
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	resp, err := a.client.Do(req)
 	if err != nil { return false, err }
 	defer resp.Body.Close()
@@ -878,7 +878,7 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 func (a *app) catalogFees(ctx context.Context, id string) (float64, []map[string]any, error) {
 	if strings.TrimSpace(a.catalogHost) == "" { return 0, nil, fmt.Errorf("CATALOG_HOSTPORT is required") }
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.catalogHost+"/internal/v1/partners/"+id+"/billable-modules", nil)
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	resp, err := a.client.Do(req)
 	if err != nil { return 0, nil, err }
 	defer resp.Body.Close()
@@ -976,7 +976,7 @@ func (a *app) setCatalogModuleNotLicensed(ctx context.Context, partnerID, module
 		bytes.NewReader(body))
 	if err != nil { return err }
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	req.Header.Set("X-Himate-User-ID", "billing-cycle")
 	resp, err := a.client.Do(req)
 	if err != nil { return err }
@@ -1001,7 +1001,7 @@ func (a *app) setCatalogEntitlementState(ctx context.Context, partnerID, moduleK
 		bytes.NewReader(body))
 	if err != nil { return err }
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	if strings.TrimSpace(actor)=="" { actor="billing" }
 	req.Header.Set("X-Himate-User-ID", actor)
 	resp, err := a.client.Do(req)
@@ -1262,7 +1262,7 @@ func (a *app) catalogPriceQuotes(ctx context.Context, requests []map[string]stri
 		"http://"+a.catalogHost+"/internal/v1/module-price-quotes", bytes.NewReader(body))
 	if err != nil { return nil, err }
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Himate-Internal-Token", a.token)
+	common.BindInternalRequest(req, a.token)
 	resp, err := a.client.Do(req)
 	if err != nil { return nil, err }
 	defer resp.Body.Close()
