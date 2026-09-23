@@ -689,6 +689,13 @@ func partnerModuleKey(path,suffix string)string{
 }
 
 func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u partnerUser){
+	var commercial map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/commercial-mode",&commercial);err!=nil{
+		common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return
+	}
+	if fmt.Sprint(commercial["billing_mode"])=="CHARITY" && fmt.Sprint(commercial["charity_status"])=="APPROVED"{
+		common.APIError(w,409,"CHARITY_MODULE_SELECTION_REQUIRED","Approved Charity partners manage access through Charity module selection");return
+	}
 	managed,planErr:=a.partnerHasManagedPlan(r.Context(),u.PartnerID)
 	if planErr!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return}
 	if managed{
@@ -706,6 +713,13 @@ func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u part
 }
 
 func (a *app) partnerSubscription(w http.ResponseWriter,r *http.Request,u partnerUser){
+	var commercial map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/commercial-mode",&commercial);err!=nil{
+		common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return
+	}
+	if fmt.Sprint(commercial["billing_mode"])=="CHARITY" && fmt.Sprint(commercial["charity_status"])=="APPROVED"{
+		common.APIError(w,409,"CHARITY_MODULE_SELECTION_REQUIRED","Approved Charity partners manage access through Charity module selection");return
+	}
 	managed,planErr:=a.partnerHasManagedPlan(r.Context(),u.PartnerID)
 	if planErr!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return}
 	if managed{
