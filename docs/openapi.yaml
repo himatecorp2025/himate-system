@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.23-start-23.11.3f
+  version: 0.8.24-start-23.11.3g
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.3f HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.3g HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -618,7 +618,8 @@ paths:
             schema: {$ref: "#/components/schemas/NewPartner"}
       responses:
         "201": {description: Partner created}
-        "409": {description: Duplicate slug or domain}
+        "400": {description: Invalid JSON payload or partner validation error}
+        "409": {description: Display-name-derived slug or primary domain is already in use}
   /api/v1/partners/{partnerId}/logo:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}

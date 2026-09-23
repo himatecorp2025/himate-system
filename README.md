@@ -392,6 +392,15 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.23-start-23.11.3f`
 - acceptance: `docs/START-23.11.3F_ACCEPTANCE.md`, `scripts/audit_start_23_11_3f.py`, `scripts/smoke_start_23_11_3f.sh`
 
+### START-23.11.3g — Partner Registration Error Handling
+- fixes the misleading **Display name is required** response that could actually be caused by strict JSON decode/version-skew errors
+- New Partner validation and API failures are rendered inside the modal instead of a bottom-page snackbar
+- the modal stays open until the authoritative partner + Portal Owner + selected logo + commercial-default setup completes
+- partial onboarding resumes against the already-created partner ID with **Retry setup**, preventing duplicate partners
+- preserves START-23.11.3f category resilience and all existing onboarding fields
+- release contract version is `0.8.24-start-23.11.3g`
+- acceptance: `docs/START-23.11.3G_ACCEPTANCE.md`, `scripts/audit_start_23_11_3g.py`, `scripts/smoke_start_23_11_3g.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
