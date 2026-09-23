@@ -54,7 +54,7 @@ checks = [
         "String? formError;" in add_partner
         and "Partner registration needs attention" in add_partner
         and "This window will stay open." in add_partner
-        and "Navigator.pop(dialogContext, created" in add_partner),
+        and "Navigator.pop<Map<String, dynamic>>(dialogContext" in add_partner),
     ("partial onboarding resumes against the same core partner instead of creating duplicates",
         "String? stagedPartnerId;" in add_partner
         and "Retry setup" in add_partner
