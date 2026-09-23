@@ -165,7 +165,7 @@ func start23112PlanBillingMigration() common.Migration {
 			`DROP INDEX IF EXISTS billing.billing_invoice_period_unique`,
 			`DROP INDEX IF EXISTS billing.billing_invoice_date_model_unique`,
 			`DROP INDEX IF EXISTS billing.billing_invoice_period_model_unique`,
-			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_key_unique ON billing.invoices(invoice_key) WHERE invoice_key IS NOT NULL`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_key_unique ON billing.invoices(invoice_key)`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_period_model_unique
 				ON billing.invoices(partner_id,service_period_start,service_period_end,billing_model,charge_type,plan_key)`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS billing_invoice_legacy_period_unique
@@ -419,6 +419,12 @@ func (a *app) partnerPlanMap(ctx context.Context,s partnerPlanSubscription) (map
 	},nil
 }
 
+func sameModuleKeys(aKeys,bKeys []string) bool {
+	if len(aKeys)!=len(bKeys){return false}
+	for i:=range aKeys{if aKeys[i]!=bKeys[i]{return false}}
+	return true
+}
+
 func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string){
 	if r.Method==http.MethodGet{
 		s,err:=a.loadPartnerPlan(r.Context(),partnerID)
@@ -488,7 +494,6 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		if target.SelectionMode=="SELECTABLE"{
 			if err=a.replaceFlexSelection(r.Context(),partnerID,keys,now,"INITIAL_SELECTION");err!=nil{common.APIError(w,500,"DB","Could not save Flex module selection");return}
 		}
-		if err=a.syncPlanEntitlements(r.Context(),partnerID,target.Key,now);err!=nil{common.APIError(w,502,"CATALOG_SYNC","Plan saved but module entitlement synchronization failed");return}
 		if frequency=="ANNUAL"{
 			invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_ANNUAL_PREPAY",start,end,list,annual)
 			if err!=nil{common.APIError(w,500,"INVOICE","Could not create annual prepayment invoice");return}
@@ -496,7 +501,15 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		}
 		_,_=a.db.ExecContext(r.Context(),`INSERT INTO billing.plan_change_history(partner_id,new_plan_key,new_billing_frequency,change_type,effective_at,actor,reason)
 			VALUES($1,$2,$3,'INITIAL',$4,$5,$6)`,partnerID,target.Key,frequency,now,actor,reason)
-		s,_:=a.loadPartnerPlan(r.Context(),partnerID);out,_:=a.partnerPlanMap(r.Context(),s);out["change_type"]="INITIAL";common.JSON(w,201,out);return
+		s,_:=a.loadPartnerPlan(r.Context(),partnerID)
+		out,_:=a.partnerPlanMap(r.Context(),s)
+		out["change_type"]="INITIAL"
+		if err=a.syncPlanEntitlements(r.Context(),partnerID,target.Key,now);err!=nil{
+			out["entitlement_sync_pending"]=true
+			out["warning"]="Plan and billing state saved; module entitlement synchronization will retry automatically."
+			common.JSON(w,202,out);return
+		}
+		common.JSON(w,201,out);return
 	}
 	currentPlan,err:=a.loadPlan(r.Context(),current.PlanKey);if err!=nil{common.APIError(w,500,"DB","Could not load current plan definition");return}
 	if current.PlanKey=="CUSTOM" && target.Key!="CUSTOM" && !target.CustomerSelectable{
@@ -508,6 +521,31 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		targetMonthly=*in.CustomMonthlyPrice
 		if in.CustomAnnualListPrice!=nil{targetList=*in.CustomAnnualListPrice}else{targetList=targetMonthly*12}
 		if in.CustomAnnualPrice!=nil{targetAnnual=*in.CustomAnnualPrice}else{targetAnnual=targetList}
+	}
+	if current.PlanKey==target.Key && current.BillingFrequency==frequency {
+		if target.SelectionMode=="SELECTABLE" && len(keys)>0 {
+			currentKeys,keyErr:=a.flexModulesAt(r.Context(),partnerID,now)
+			if keyErr!=nil{common.APIError(w,500,"DB","Could not load current Flex module selection");return}
+			if !sameModuleKeys(currentKeys,keys) {
+				effective:=now
+				changeType:="RECOVERY_SELECTION"
+				if len(currentKeys)>0 {effective=nextMonthStart(now);changeType="SCHEDULED_MODULE_SET"}
+				if err=a.replaceFlexSelection(r.Context(),partnerID,keys,effective,changeType);err!=nil{common.APIError(w,500,"DB","Could not update Flex module selection");return}
+				if !effective.Equal(now) {
+					s,_:=a.loadPartnerPlan(r.Context(),partnerID);out,_:=a.partnerPlanMap(r.Context(),s)
+					out["change_type"]=changeType;out["module_change_effective_at"]=effective.Format("2006-01-02")
+					common.JSON(w,200,out);return
+				}
+			}
+		}
+		syncErr:=a.syncPlanEntitlements(r.Context(),partnerID,target.Key,now)
+		s,_:=a.loadPartnerPlan(r.Context(),partnerID);out,_:=a.partnerPlanMap(r.Context(),s);out["change_type"]="NO_CHANGE"
+		if syncErr!=nil {
+			out["entitlement_sync_pending"]=true
+			out["warning"]="Billing plan is unchanged; module entitlement synchronization will retry automatically."
+			common.JSON(w,202,out);return
+		}
+		common.JSON(w,200,out);return
 	}
 	if current.BillingFrequency!=frequency {
 		effective:=current.NextBillingAt
@@ -529,13 +567,20 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		if target.SelectionMode=="SELECTABLE"{
 			if err=a.replaceFlexSelection(r.Context(),partnerID,keys,now,"UPGRADE_SELECTION");err!=nil{common.APIError(w,500,"DB","Could not save Flex module selection");return}
 		}
-		if err=a.syncPlanEntitlements(r.Context(),partnerID,target.Key,now);err!=nil{common.APIError(w,502,"CATALOG_SYNC","Upgrade saved but module entitlement synchronization failed");return}
 		invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_UPGRADE",now,current.CurrentPeriodEnd,diff,diff)
 		if err!=nil{common.APIError(w,500,"INVOICE","Could not create upgrade invoice");return}
 		a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,diff)
 		_,_=a.db.ExecContext(r.Context(),`INSERT INTO billing.plan_change_history(partner_id,old_plan_key,new_plan_key,old_billing_frequency,new_billing_frequency,change_type,effective_at,upgrade_charge,actor,reason)
 			VALUES($1,$2,$3,$4,$5,'IMMEDIATE_UPGRADE',$6,$7,$8,$9)`,partnerID,current.PlanKey,target.Key,frequency,frequency,now,diff,actor,reason)
-		s,_:=a.loadPartnerPlan(r.Context(),partnerID);out,_:=a.partnerPlanMap(r.Context(),s);out["change_type"]="IMMEDIATE_UPGRADE";out["upgrade_charge"]=diff;common.JSON(w,200,out);return
+		s,_:=a.loadPartnerPlan(r.Context(),partnerID)
+		out,_:=a.partnerPlanMap(r.Context(),s)
+		out["change_type"]="IMMEDIATE_UPGRADE";out["upgrade_charge"]=diff
+		if err=a.syncPlanEntitlements(r.Context(),partnerID,target.Key,now);err!=nil{
+			out["entitlement_sync_pending"]=true
+			out["warning"]="Upgrade and charge saved; module entitlement synchronization will retry automatically."
+			common.JSON(w,202,out);return
+		}
+		common.JSON(w,200,out);return
 	}
 	effective:=nextMonthStart(now);if frequency=="ANNUAL"{effective=current.NextBillingAt}
 	if _,err=a.db.ExecContext(r.Context(),`UPDATE billing.partner_plan_subscriptions SET next_plan_key=$2,next_billing_frequency=$3,change_effective_at=$4,updated_at=NOW() WHERE partner_id=$1`,
@@ -655,10 +700,15 @@ func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]
 	managed:=map[string]bool{};ids:=[]string{}
 	for rows.Next(){var id string;if err:=rows.Scan(&id);err!=nil{rows.Close();return nil,err};managed[id]=true;ids=append(ids,id)}
 	rows.Close()
-	if at.Day()==1{
-		for _,id:=range ids{
-			s,err:=a.loadPartnerPlan(ctx,id);if err!=nil{return nil,err}
-			if err=a.syncPlanEntitlements(ctx,id,s.PlanKey,at);err!=nil{return nil,err}
+	for _,id:=range ids{
+		s,loadErr:=a.loadPartnerPlan(ctx,id)
+		if loadErr!=nil{return nil,loadErr}
+		if syncErr:=a.syncPlanEntitlements(ctx,id,s.PlanKey,at);syncErr!=nil{
+			_ = a.emitBillingEvent(ctx,
+				"PLAN_ENTITLEMENT_SYNC_FAILED:"+id+":"+at.Format("2006-01-02"),
+				id,"","PLAN_ENTITLEMENT_SYNC_FAILED",time.Now().UTC(),
+				map[string]any{"plan_key":s.PlanKey,"error":syncErr.Error()},
+			)
 		}
 	}
 	dueRows,err:=a.db.QueryContext(ctx,`SELECT partner_id FROM billing.partner_plan_subscriptions
