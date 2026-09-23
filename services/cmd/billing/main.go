@@ -544,7 +544,11 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 			common.APIError(w, 500, "DB", "Could not load terms")
 			return
 		}
-		common.JSON(w, 200, termsMap(t))
+		out:=termsMap(t)
+		if mode,modeErr:=a.ensureCommercialMode(r.Context(),id);modeErr==nil{
+			for key,value:=range commercialModeMap(mode){out[key]=value}
+		}
+		common.JSON(w, 200, out)
 	case http.MethodPut:
 		current, err := a.ensureTerms(id)
 		if err != nil {
@@ -658,7 +662,11 @@ func (a *app) terms(w http.ResponseWriter, r *http.Request, id string) {
 		}
 		if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit terms update"); return }
 		t, _ := a.ensureTerms(id)
-		common.JSON(w, 200, termsMap(t))
+		out:=termsMap(t)
+		if mode,modeErr:=a.ensureCommercialMode(r.Context(),id);modeErr==nil{
+			for key,value:=range commercialModeMap(mode){out[key]=value}
+		}
+		common.JSON(w, 200, out)
 	default:
 		common.APIError(w, 405, "METHOD", "Use GET or PUT")
 	}
@@ -757,8 +765,20 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 		// START-23.11.1: activation/license fees are partner-specific contract terms.
 		// There is intentionally no platform-wide minimum activation fee.
 
+		if next.Required == 0 {
+			next.Waived = true
+			if strings.TrimSpace(next.WaiverReason) == "" {
+				next.WaiverReason = "Zero-dollar activation fee"
+			}
+		}
 		status := current.Status
-		if next.Waived {
+		if current.Status == "PAID" {
+			status = "PAID"
+			next.Paid = current.Paid
+			next.PaymentDate = current.PaymentDate
+			next.Reference = current.Reference
+			next.VerifiedBy = current.VerifiedBy
+		} else if next.Waived {
 			status = "WAIVED"
 			next.Paid = 0
 			next.PaymentDate = sql.NullTime{}
@@ -766,13 +786,6 @@ func (a *app) license(w http.ResponseWriter, r *http.Request, id string) {
 			next.VerifiedBy = ""
 		} else if current.Status == "WAIVED" {
 			status = "NOT_PAID"
-		}
-		if current.Status == "PAID" && !next.Waived {
-			status = "PAID"
-			next.Paid = current.Paid
-			next.PaymentDate = current.PaymentDate
-			next.Reference = current.Reference
-			next.VerifiedBy = current.VerifiedBy
 		}
 		var payment any
 		if next.PaymentDate.Valid { payment = next.PaymentDate.Time }
@@ -844,11 +857,16 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	if planSub, planErr := a.loadPartnerPlan(r.Context(), id); planErr == nil {
 		planState, err := a.partnerPlanMap(r.Context(), planSub)
 		if err != nil { common.APIError(w, 500, "DB", "Could not load subscription plan summary"); return }
-		currentTotal := planSub.MonthlyPriceSnapshot
-		if planSub.BillingFrequency == "ANNUAL" { currentTotal = planSub.AnnualPriceSnapshot }
+		nominalTotal := planSub.MonthlyPriceSnapshot
+		if planSub.BillingFrequency == "ANNUAL" { nominalTotal = planSub.AnnualPriceSnapshot }
+		mode,_:=a.ensureCommercialMode(r.Context(),id)
+		currentTotal:=nominalTotal
+		if mode.BillingMode!=billingModePaid{currentTotal=0}
 		common.JSON(w, 200, map[string]any{
 			"partner_id": id, "currency": planState["currency"], "billing_cycle_model": "PLAN_BASED",
 			"pricing_authority": "SUBSCRIPTION_PLAN", "plan": planState,
+			"billing_mode":mode.BillingMode,"charity_status":mode.CharityStatus,
+			"nominal_package_value":nominalTotal,
 			"effective_base_fee": currentTotal, "extra_module_fee": 0, "current_total": currentTotal,
 			"billing_frequency": planSub.BillingFrequency,
 			"current_period_start": planState["current_period_start"],
@@ -877,9 +895,15 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 		common.APIError(w, 500, "DB", "Could not calculate effective module fees")
 		return
 	}
+	nominalTotal:=math.Round((base+extra)*100)/100
+	mode,_:=a.ensureCommercialMode(r.Context(),id)
+	actualBase,actualExtra,actualTotal:=base,extra,nominalTotal
+	if mode.BillingMode!=billingModePaid{actualBase=0;actualExtra=0;actualTotal=0}
 	common.JSON(w, 200, map[string]any{
-		"partner_id": id, "currency": t.Currency, "effective_base_fee": base, "extra_module_fee": extra,
-		"current_total": math.Round((base+extra)*100) / 100, "annual_increase_percent": t.AnnualIncreasePercent,
+		"partner_id": id, "currency": t.Currency, "effective_base_fee": actualBase, "extra_module_fee": actualExtra,
+		"current_total": actualTotal, "nominal_package_value":nominalTotal,
+		"billing_mode":mode.BillingMode,"charity_status":mode.CharityStatus,
+		"annual_increase_percent": t.AnnualIncreasePercent,
 		"annual_increase_date": "January 1", "cycle_days": 30, "invoice_day": 1,
 		"billing_cycle_model": "LEGACY_MODULE", "pricing_authority": "PARTNER_CONTRACT",
 		"service_period": "activation-date anchored 30-day cycle",
