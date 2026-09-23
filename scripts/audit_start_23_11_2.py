@@ -49,8 +49,10 @@ for token in [
     require(token in catalog_main or token in catalog_plans, 'missing Catalog plan entitlement token: ' + token)
 
 for token in [
-    '/partner/api/v1/plans',
-    '/partner/api/v1/plan',
+    'case path=="/plans"',
+    'case path=="/plan"',
+    'case path=="/plan/modules"',
+    'partnerPlans(w,r,u)',
     'PLAN_MANAGED_MODULES',
 ]:
     require(token in gateway, 'missing Partner Portal plan boundary: ' + token)
