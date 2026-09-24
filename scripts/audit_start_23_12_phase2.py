@@ -59,6 +59,9 @@ require("CREATE TABLE IF NOT EXISTS identity.partner_onboarding_sagas" in durabi
         "Partner onboarding saga table is missing")
 require("runPartnerOnboardingSaga" in durability and "onboarding_request_id" in durability,
         "Partner onboarding saga execution/idempotency is missing")
+require("himate-partner-onboarding:" in durability and "pg_advisory_lock" in durability
+        and "ON CONFLICT(request_id) DO NOTHING" in durability,
+        "Partner onboarding concurrency serialization/replay safety is missing")
 require("onboardingTermsMatch" in durability and "billing terms readback" in durability,
         "Partner onboarding Billing retry reconciliation is missing")
 require("portal_owner_password_hash" in durability and "PasswordHash" in durability,
@@ -81,6 +84,8 @@ require("ensureJobSteps" in provisioning,
         "provisioning does not defensively reconcile missing step rows")
 require("recoverInterruptedJobs" in provisioning and "status IN ('QUEUED','RUNNING')" in provisioning,
         "provisioning restart recovery worker is missing")
+require("himate-provisioning:" in provisioning and "pg_try_advisory_lock" in provisioning,
+        "provisioning job execution is not serialized against concurrent workers")
 
 # Deployment intent.
 require("CREATE TABLE IF NOT EXISTS runtime.deployment_intents" in runtime,
