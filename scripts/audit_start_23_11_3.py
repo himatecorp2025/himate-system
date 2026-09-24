@@ -101,6 +101,7 @@ require(
     or "version: 0.8.27-start-23.11.3j" in openapi
     or "version: 0.8.29-start-23.11.4" in openapi
     or "version: 0.8.30-start-23.11.5" in openapi,
+    or "version: 0.8.31-start-23.11.6" in openapi,
     "OpenAPI contract version is not START-23.11.3 or a validated START-23.11.3 readiness patch",
 )
 require("/partner/api/v1/modules:" in openapi, "Partner Marketplace API is not documented")
