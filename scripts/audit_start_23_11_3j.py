@@ -13,7 +13,7 @@ openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
 
-release = "0.8.31-start-23.11.6"
+release = "0.8.32-start-23.11.7"
 
 checks = [
     (
