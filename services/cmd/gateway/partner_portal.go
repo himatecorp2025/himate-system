@@ -298,6 +298,7 @@ func partnerAuditAction(r *http.Request)string{
 	switch{
 	case path=="/partner/api/v1/company"&&r.Method==http.MethodPatch:return "PARTNER_COMPANY_UPDATED"
 	case path=="/partner/api/v1/runtime/modules/invoice_documents/invoices"&&r.Method==http.MethodPost:return "PARTNER_MANUAL_INVOICE_DRAFT_CREATED"
+	case strings.HasPrefix(path,"/partner/api/v1/runtime/modules/invoice_documents/invoices/")&&r.Method==http.MethodPut:return "PARTNER_MANUAL_INVOICE_DRAFT_UPDATED"
 	case strings.HasPrefix(path,"/partner/api/v1/runtime/modules/invoice_documents/invoices/")&&strings.HasSuffix(path,"/finalize")&&r.Method==http.MethodPost:return "PARTNER_MANUAL_INVOICE_FINALIZED"
 	case path=="/partner/api/v1/runtime/modules/invoice_documents/policy"&&r.Method==http.MethodPut:return "PARTNER_TENANT_FINANCE_POLICY_UPDATED"
 	case strings.HasSuffix(path,"/activate")&&strings.HasPrefix(path,"/partner/api/v1/design/profiles/")&&r.Method==http.MethodPost:return "PARTNER_THEME_ACTIVATED"
