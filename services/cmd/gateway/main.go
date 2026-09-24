@@ -60,7 +60,6 @@ type app struct {
 	dashboardExpires time.Time
 	loginMu          sync.Mutex
 	loginAttempts    map[string]loginState
-	auditQueue       chan auditEvent
 }
 
 type loginState struct {
@@ -162,7 +161,6 @@ func main() {
 		secureCookie: secure, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
 		proxies: map[string]*httputil.ReverseProxy{},
 		loginAttempts: map[string]loginState{},
-		auditQueue: make(chan auditEvent, 4096),
 		hosts: map[string]string{
 			"partners":     os.Getenv("PARTNERS_HOSTPORT"),
 			"catalog":      os.Getenv("CATALOG_HOSTPORT"),
@@ -200,7 +198,6 @@ func main() {
 		os.Exit(1)
 	}
 	recoveryCancel()
-	go a.auditWriter()
 	for name, host := range a.hosts {
 		if strings.TrimSpace(host) == "" {
 			log.Warn("private service host is not configured", "service", name)
@@ -1387,12 +1384,6 @@ func (a *app) enqueueAudit(event auditEvent) {
 	// mutation outbox are written synchronously. Authenticated mutations use the
 	// durable audit_outbox path before business execution.
 	a.persistAudit(event)
-}
-
-func (a *app) auditWriter() {
-	for event := range a.auditQueue {
-		a.persistAudit(event)
-	}
 }
 
 func (a *app) persistAudit(event auditEvent) {
