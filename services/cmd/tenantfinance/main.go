@@ -265,6 +265,20 @@ func (a *app) invoiceByIDHandler(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, http.StatusOK, invoicePayload(rec))
 		return
 	}
+	if len(parts) == 1 && r.Method == http.MethodPut {
+		var in invoiceDraftUpdateInput
+		if common.Decode(r, &in) != nil {
+			common.APIError(w, http.StatusBadRequest, "JSON", "Invalid manual invoice draft update; tenant and source identity are server-controlled")
+			return
+		}
+		rec, err := a.updateManualDraft(r.Context(), partnerID, userID, invoiceID, in)
+		if err != nil {
+			writeTenantFinanceError(w, err)
+			return
+		}
+		common.JSON(w, http.StatusOK, invoicePayload(rec))
+		return
+	}
 	if len(parts) == 2 && parts[1] == "finalize" && r.Method == http.MethodPost {
 		rec, duplicate, err := a.finalizeManual(r.Context(), partnerID, userID, invoiceID, r.Header.Get("X-Correlation-ID"))
 		if err != nil {
@@ -276,7 +290,7 @@ func (a *app) invoiceByIDHandler(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, http.StatusOK, payload)
 		return
 	}
-	common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or POST /finalize")
+	common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET, PUT, or POST /finalize")
 }
 
 func (a *app) fetchIssuer(ctx context.Context, partnerID string) (issuerSnapshot, error) {
