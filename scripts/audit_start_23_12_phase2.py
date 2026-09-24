@@ -76,6 +76,8 @@ require("DEPLOYMENT_RECONCILIATION_REQUIRED" in runtime or "RECONCILIATION_REQUI
         "uncertain provider results do not fail closed against duplicate deployment")
 
 # Reload/deep links.
+require(portal_frontend.count("Widget usersPage()") == 1 and portal_frontend.count("Widget pageFor(_PortalNavSpec item)") == 1,
+        "Partner Portal source contains duplicated navigation/page blocks")
 require("portalNavSlug" in portal_frontend and "history.replaceState" in portal_frontend,
         "Partner Portal tab state is not deep-link persisted")
 require("startsWith('/partner/app/')" in portal_frontend,
