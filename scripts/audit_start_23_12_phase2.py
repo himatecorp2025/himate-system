@@ -27,6 +27,19 @@ require("migrationChecksum" in common and "checksum drift detected" in common,
         "migration source drift detection is missing")
 require("validateMigrationSafety" in common and "expand-only" in common,
         "expand-only migration safety gate is missing")
+legacy_migration_files = [
+    ROOT / "services/cmd/billing/commercial_automation.go",
+    ROOT / "services/cmd/billing/plans.go",
+    ROOT / "services/cmd/billing/commercial_modes.go",
+    ROOT / "services/cmd/catalog/main.go",
+    ROOT / "services/cmd/cms/main.go",
+    ROOT / "services/cmd/connector/main.go",
+    ROOT / "services/cmd/partners/main.go",
+    ROOT / "services/cmd/gateway/partner_portal.go",
+]
+legacy_text = "\n".join(p.read_text() for p in legacy_migration_files)
+require(legacy_text.count("AllowDestructiveSchema") >= 10,
+        "historical pre-Phase-2 destructive migrations are not explicitly grandfathered")
 require("DROP TABLE " in common and "DROP COLUMN " in common and "TRUNCATE " in common and "DELETE FROM " in common,
         "destructive schema/data patterns are not guarded")
 
