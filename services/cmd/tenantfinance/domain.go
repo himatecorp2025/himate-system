@@ -197,7 +197,13 @@ func normalizeCustomer(in customerSnapshot, final bool) (customerSnapshot, error
 }
 
 func normalizeIssuer(partnerID string, raw map[string]any) (issuerSnapshot, error) {
-	value := func(key string) string { return strings.TrimSpace(fmt.Sprint(raw[key])) }
+	value := func(key string) string {
+		v, ok := raw[key]
+		if !ok || v == nil {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
 	out := issuerSnapshot{
 		PartnerID:          strings.TrimSpace(partnerID),
 		DisplayName:        value("display_name"),
