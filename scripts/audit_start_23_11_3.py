@@ -10,6 +10,7 @@ catalog_portal = (root / "services/cmd/catalog/partner_portal.go").read_text()
 gateway_portal = (root / "services/cmd/gateway/partner_portal.go").read_text()
 partners_main = (root / "services/cmd/partners/main.go").read_text()
 frontend_portal = (root / "frontend/lib/partner_portal.dart").read_text()
+frontend_design = (root / "frontend/lib/partner_design.dart").read_text()
 localization = (root / "frontend/lib/localization.dart").read_text()
 openapi = (root / "docs/openapi.yaml").read_text()
 acceptance = (root / "docs/START-23.11.3_ACCEPTANCE.md").read_text()
@@ -67,10 +68,16 @@ for token in [
     "Explore more modules",
     "Coming soon",
     "View upgrade options",
-    "marketplace_summary",
     "access_state",
 ]:
     require(token in frontend_portal, "Partner Portal Marketplace UI missing " + token)
+
+require(
+    "moduleDisplayDescription(module)" in frontend_portal
+    and "String moduleDisplayDescription" in frontend_design
+    and "marketplace_summary" in frontend_design,
+    "Partner Portal Marketplace UI no longer resolves canonical marketplace_summary through its presentation helper",
+)
 
 for literal in [
     "Module Marketplace",
