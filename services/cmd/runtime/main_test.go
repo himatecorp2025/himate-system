@@ -9,6 +9,19 @@ import (
 	"testing"
 )
 
+func TestDeploymentRequestKeyIsDeterministicAndScopeSensitive(t *testing.T) {
+	config:=map[string]any{"provider":"render","render_commit_id":"abcdef1","clear_build_cache":true}
+	a:=deploymentRequestKey("ptr_1","PRODUCTION","one.example.com","abcdef1","render","srv_1",config)
+	b:=deploymentRequestKey("ptr_1","PRODUCTION","one.example.com","abcdef1","render","srv_1",config)
+	if a==""||a!=b{t.Fatalf("deployment request key must be deterministic: %q %q",a,b)}
+	if a==deploymentRequestKey("ptr_2","PRODUCTION","one.example.com","abcdef1","render","srv_1",config){
+		t.Fatal("different partner must produce a different deployment request key")
+	}
+	if a==deploymentRequestKey("ptr_1","STAGING","one.example.com","abcdef1","render","srv_1",config){
+		t.Fatal("different environment must produce a different deployment request key")
+	}
+}
+
 func TestNormalizedProviderStatus(t *testing.T) {
 	cases := map[string]string{
 		"live":              "READY",
