@@ -49,8 +49,8 @@ checks=[
  ("OpenAPI publishes workspace and module-presentation contracts",
   "/partner/api/v1/design/workspace:" in openapi and "/partner/api/v1/design/modules/{moduleKey}:" in openapi),
  ("release aligned in OpenAPI/Render/Compose",
-  "version: "+release in openapi and render.count("value: "+release)==19 and
-  compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==18),
+  "version: "+release in openapi and render.count("value: "+release)==20 and
+  compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==19),
  ("acceptance freezes canonical mechanics",
   "Presentation may change. Canonical system meaning may not." in acceptance and
   "user-to-module permissions: START-23.11.5" in acceptance),
