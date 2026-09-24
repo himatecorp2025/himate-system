@@ -190,7 +190,21 @@ func partnerRuntimeModuleKey(path string) string {
 
 func (a *app) partnerModuleRuntime(w http.ResponseWriter, r *http.Request, u partnerUser) {
 	key := partnerRuntimeModuleKey(r.URL.Path)
-	if _, ok := a.requirePartnerModuleExecution(w, r, u, key); !ok {
+	module, ok := a.requirePartnerModuleExecution(w, r, u, key)
+	if !ok {
+		return
+	}
+	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/partner/api/v1/runtime/modules/"), "/")
+	parts := strings.Split(raw, "/")
+	if len(parts) == 2 && parts[1] == "access" && r.Method == http.MethodGet {
+		common.JSON(w, http.StatusOK, map[string]any{
+			"partner_id": u.PartnerID,
+			"user_id": u.ID,
+			"module_key": key,
+			"module": module,
+			"access_state": "GRANTED",
+			"security_rule": "PARTNER_ENTITLEMENT_INTERSECT_USER_ASSIGNMENT",
+		})
 		return
 	}
 	common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "No runtime operation is registered for this module path")
