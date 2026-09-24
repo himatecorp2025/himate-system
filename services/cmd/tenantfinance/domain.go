@@ -95,6 +95,14 @@ type invoiceInput struct {
 	Notes            string           `json:"notes,omitempty"`
 }
 
+type invoiceDraftUpdateInput struct {
+	Currency         string             `json:"currency"`
+	Customer         customerSnapshot   `json:"customer"`
+	Items            []invoiceItemInput `json:"items"`
+	PaymentTermsDays *int               `json:"payment_terms_days,omitempty"`
+	Notes            string             `json:"notes,omitempty"`
+}
+
 type automatedInvoiceIntent struct {
 	PartnerID        string           `json:"partner_id"`
 	SourceType       string           `json:"source_type"`
