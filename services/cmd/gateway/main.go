@@ -1272,7 +1272,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("X-Himate-Permissions", strings.Join(a.permissionsForRoles(u.Roles), ","))
 		a.serveProxy(w, r, "notifications")
 	case r.URL.Path == "/api/v1/partner-onboarding" || strings.HasPrefix(r.URL.Path, "/api/v1/partner-onboarding/"):
-		if !a.requireServiceReleases(w, r, "partners", "billing") { return }
+		if r.Method != http.MethodGet && !a.requireServiceReleases(w, r, "partners", "billing") { return }
 		a.partnerOnboarding(w, r, u)
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
 		a.partnerPortfolioMetrics(w, r)
@@ -1382,12 +1382,11 @@ func auditResource(r *http.Request) (string, string) {
 }
 
 func (a *app) enqueueAudit(event auditEvent) {
-	if a == nil || a.db == nil || a.auditQueue == nil { return }
-	select {
-	case a.auditQueue <- event:
-	default:
-		go a.persistAudit(event)
-	}
+	if a == nil || a.db == nil { return }
+	// Legacy/public security events that are not routed through the authenticated
+	// mutation outbox are written synchronously. Authenticated mutations use the
+	// durable audit_outbox path before business execution.
+	a.persistAudit(event)
 }
 
 func (a *app) auditWriter() {
