@@ -1013,8 +1013,8 @@ extension PartnerDesignUI on _PartnerPortalShellState {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _RuleStrip(items: [
-            _RuleItem(Icons.layers_outlined, 'Presentation only', 'System behavior stays fixed'),
-            _RuleItem(Icons.settings_suggest_outlined, 'Canonical modules', 'Keys and routes stay unchanged'),
+            _RuleItem(Icons.layers_outlined, 'Presentation only', 'Content stays unchanged'),
+            _RuleItem(Icons.settings_suggest_outlined, 'Canonical modules', 'System logic stays unchanged'),
             _RuleItem(Icons.lock_person_outlined, 'Tenant isolated', 'Your assets only'),
             _RuleItem(Icons.contrast_outlined, 'Readable branding', 'Contrast protected'),
           ]),
