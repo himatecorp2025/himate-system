@@ -536,10 +536,16 @@ func (a *app) partnerDesignMedia(w http.ResponseWriter,r *http.Request,u partner
 }
 
 func anyItems(value any) []map[string]any {
-	raw,ok:=value.([]any);if !ok{return []map[string]any{}}
-	out:=make([]map[string]any,0,len(raw))
-	for _,item:=range raw{if mapped,ok:=item.(map[string]any);ok{out=append(out,mapped)}}
-	return out
+	switch raw:=value.(type){
+	case []map[string]any:
+		return raw
+	case []any:
+		out:=make([]map[string]any,0,len(raw))
+		for _,item:=range raw{if mapped,ok:=item.(map[string]any);ok{out=append(out,mapped)}}
+		return out
+	default:
+		return []map[string]any{}
+	}
 }
 
 func (a *app) partnerPlans(w http.ResponseWriter,r *http.Request,u partnerUser){
