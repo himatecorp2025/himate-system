@@ -75,7 +75,7 @@ checks = [
         "test_partner:" in openapi
         and "Golden test tenant marker" in openapi
         and "version: " + release in openapi
-        and "START-01 through START-23.11.6" in openapi,
+        and "START-01 through START-23.11.7" in openapi,
     ),
     (
         "all application services share the START-23.11.3j release",
