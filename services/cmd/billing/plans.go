@@ -56,6 +56,7 @@ func start23112PlanBillingMigration() common.Migration {
 	return common.Migration{
 		Version: 11,
 		Name: "start-23-11-2-subscription-plan-recurring-billing",
+		AllowDestructiveSchema: true,
 		Statements: []string{
 			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS billing_cycle_model TEXT NOT NULL DEFAULT 'PLAN_BASED'`,
 			`UPDATE billing.partner_terms SET billing_cycle_model='PLAN_BASED'`,
@@ -193,6 +194,7 @@ func start23112PlanBillingRecoveryMigration() common.Migration {
 	return common.Migration{
 		Version: 12,
 		Name: "start-23-11-2-plan-billing-index-recovery",
+		AllowDestructiveSchema: true,
 		Statements: []string{
 			`DROP INDEX IF EXISTS billing.billing_invoice_key_unique`,
 			`CREATE UNIQUE INDEX billing_invoice_key_unique ON billing.invoices(invoice_key)`,
@@ -204,6 +206,7 @@ func start23112InvoiceDateConstraintRecoveryMigration() common.Migration {
 	return common.Migration{
 		Version: 14,
 		Name: "start-23-11-2-remove-legacy-one-invoice-per-day-constraint",
+		AllowDestructiveSchema: true,
 		Statements: []string{
 			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS billing_invoices_partner_id_invoice_date_key`,
 			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS invoices_partner_id_invoice_date_key`,
