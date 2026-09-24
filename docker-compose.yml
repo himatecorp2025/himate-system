@@ -51,7 +51,6 @@ services:
       PAYMENTS_HOSTPORT: payments:10000
       EVIDENCE_HOSTPORT: evidence:10000
       NOTIFICATIONS_HOSTPORT: notifications:10000
-      AUTOMATION_HOSTPORT: automation:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -359,6 +358,7 @@ services:
       BACKUPS_HOSTPORT: backups:10000
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
       NOTIFICATIONS_HOSTPORT: notifications:10000
+      AUTOMATION_HOSTPORT: automation:10000
     depends_on:
       postgres:
         condition: service_healthy
