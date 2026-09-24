@@ -40,3 +40,16 @@ func TestMigrationSafetyAllowsExpandOnlyChanges(t *testing.T) {
 	}}
 	if err:=validateMigrationSafety(m);err!=nil{t.Fatalf("expand-only migration rejected: %v",err)}
 }
+
+
+func TestMigrationSafetyAllowsExplicitHistoricalException(t *testing.T) {
+	m:=Migration{
+		Version:99,
+		Name:"historical-grandfathered-change",
+		AllowDestructiveSchema:true,
+		Statements:[]string{"DROP INDEX IF EXISTS old_index","DELETE FROM qa_fixture WHERE test_only=TRUE"},
+	}
+	if err:=validateMigrationSafety(m);err!=nil{
+		t.Fatalf("explicit historical migration exception should be accepted: %v",err)
+	}
+}
