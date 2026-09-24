@@ -216,13 +216,21 @@ func (a *app) ensureOnboardingOwner(ctx context.Context,s partnerOnboardingSaga)
 }
 
 func onboardingTermsMatch(current, desired map[string]any) bool {
+	normalized:=map[string]any{}
+	for key,value:=range desired{normalized[key]=value}
+	if fmt.Sprint(normalized["activation_fee"])=="0" || fmt.Sprint(normalized["activation_fee"])=="0.0" {
+		normalized["activation_fee_waived"]=true
+		if strings.TrimSpace(fmt.Sprint(normalized["activation_fee_reason"]))=="" {
+			normalized["activation_fee_reason"]="Zero-dollar activation fee"
+		}
+	}
 	keys:=[]string{
 		"currency","activation_fee","activation_fee_waived","activation_fee_reason",
 		"base_monthly_fee","minimum_monthly_commitment","quote_reference",
 		"annual_increase_percent","price_effective_from","service_anchor_date",
 	}
 	for _,key:=range keys{
-		want,ok:=desired[key]
+		want,ok:=normalized[key]
 		if !ok{continue}
 		got,exists:=current[key]
 		if !exists{return false}
