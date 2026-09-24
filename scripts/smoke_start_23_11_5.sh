@@ -193,7 +193,7 @@ test "$DB_GRANT" = "$A_ID|finance"
 echo ok
 
 printf 'loss of partner entitlement overrides a persisted user grant... '
-docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE catalog.partner_modules SET status='NOT_LICENSED',entitlement_state='INACTIVE',updated_at=NOW() WHERE partner_id='$A_ID' AND module_key='finance';" >/dev/null
+curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"test_partner":false,"reason":"START-23.11.5 entitlement-loss proof"}' "$BASE_URL/api/v1/partners/$A_ID" >/dev/null
 VIEWER_AFTER_LOSS="$(curl -fsS -b "$VIEWER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
 python3 - "$VIEWER_AFTER_LOSS" <<'PY'
 import json,sys
