@@ -10,8 +10,8 @@ checks = {
         'sourceSchedule = "SCHEDULE"',
         'statusReadyForIssue = "READY_FOR_ISSUE"',
         'invoiceModuleKey = "invoice_documents"',
-        'normalizeIssuer',
-        'calculateItems',
+        "normalizeIssuer",
+        "calculateItems",
     ],
     "services/cmd/tenantfinance/storage.go": [
         "tenant_finance.invoices",
@@ -26,16 +26,31 @@ checks = {
     "services/cmd/tenantfinance/main.go": [
         "X-Himate-Partner-ID",
         "X-Himate-User-ID",
-        "/internal/v1/tenant-finance/automation/invoice-intents",
-        "automation.VerifyRequest",
+        "HIMATE_AUTOMATION_FINANCE_SECRET",
+        "ensureAutomationSubscriptions",
+        "runAutomationConsumer",
         "HIMATE_TENANT_FINANCE_DEFAULT_TERMS_DAYS",
         "HIMATE_TENANT_FINANCE_DEFAULT_ACCOUNTING_BASIS",
         "PARTNERS_HOSTPORT",
         "AUTOMATION_HOSTPORT",
     ],
+    "services/cmd/tenantfinance/automation_consumer.go": [
+        'workflowInvoiceReadyEvent = "workflow.billing_approved.v1"',
+        'scheduleInvoiceReadyEvent = "scheduler.job_closed_invoice_ready.v1"',
+        'event.ProducerService != "workshop"',
+        'event.ProducerService != "scheduler"',
+        'event.ModuleKey != "workshop_workflow"',
+        'event.ModuleKey != "scheduler"',
+        "PartnerID:        event.PartnerID",
+        "SourceID:         event.SubjectID",
+        "/internal/v1/automation/deliveries/claim",
+        "createAutomatedReady",
+        "ackAutomationDelivery",
+        "failAutomationDelivery",
+    ],
     "services/cmd/gateway/partner_user_modules.go": [
         'partnerInvoiceModuleKey     = "invoice_documents"',
-        'a.requirePartnerModuleExecution',
+        "a.requirePartnerModuleExecution",
         '"billing.write"',
         'a.hosts["tenant-finance"]',
         '"X-Himate-Partner-ID": u.PartnerID',
@@ -45,11 +60,13 @@ checks = {
         "tenantfinance:",
         "services/docker/tenantfinance.Dockerfile",
         "TENANT_FINANCE_HOSTPORT: tenantfinance:10000",
+        "HIMATE_AUTOMATION_FINANCE_SECRET: finance-automation-secret-local-123456789",
     ],
     "render.yaml": [
         "name: himate-tenant-finance",
         "dockerfilePath: ./services/docker/tenantfinance.Dockerfile",
         "key: TENANT_FINANCE_HOSTPORT",
+        "key: HIMATE_AUTOMATION_FINANCE_SECRET",
     ],
 }
 
@@ -67,18 +84,31 @@ for rel, needles in checks.items():
 domain = (ROOT / "services/cmd/tenantfinance/domain.go").read_text()
 main = (ROOT / "services/cmd/tenantfinance/main.go").read_text()
 gateway = (ROOT / "services/cmd/gateway/partner_user_modules.go").read_text()
+render = (ROOT / "render.yaml").read_text()
 
-if 'PartnerID string' in domain.split("type invoiceInput struct", 1)[1].split("}", 1)[0]:
+manual_struct = domain.split("type invoiceInput struct", 1)[1].split("}", 1)[0]
+if "PartnerID string" in manual_struct:
     errors.append("manual invoice input must never accept partner_id from the client")
-if 'SourceType string' in domain.split("type invoiceInput struct", 1)[1].split("}", 1)[0]:
+if "SourceType string" in manual_struct:
     errors.append("manual invoice input must never accept source_type from the client")
+
 invoice_runtime = gateway.split("func (a *app) partnerInvoiceModuleRuntime", 1)[1]
 invoice_runtime = invoice_runtime.split("func (a *app) applyPartnerUserModuleAccess", 1)[0]
 if '"partner_id": u.PartnerID' in invoice_runtime:
     errors.append("gateway must not inject tenant identity into the invoice JSON body; use authoritative headers")
+
+if "/internal/v1/tenant-finance/automation/invoice-intents" in main:
+    errors.append("tenant finance must consume producer intents from the durable Automation bus, not a direct producer endpoint")
+if "HIMATE_AUTOMATION_SERVICE_KEYS_JSON" in main:
+    errors.append("tenant finance must not receive or parse the global automation verifier keyring")
 if 'document_renderer": "DEFERRED"' not in main and 'document_renderer", "DEFERRED"' not in main:
-    # health marker is intentionally explicit so Phase 3B cannot pretend the legal PDF renderer exists.
-    errors.append("tenant finance service must explicitly mark the legal document renderer as DEFERRED")
+    errors.append("tenant finance service must explicitly mark the legal PDF renderer as DEFERRED")
+
+tf_render = render.split("name: himate-tenant-finance", 1)[1].split("\n  - type:", 1)[0]
+if "HIMATE_AUTOMATION_SERVICE_KEYS_JSON" in tf_render:
+    errors.append("tenant finance Render service must receive only its dedicated finance automation secret")
+if "envVarKey: HIMATE_AUTOMATION_FINANCE_SECRET" not in tf_render:
+    errors.append("tenant finance must bind the dedicated finance secret from the Automation service")
 
 if errors:
     raise SystemExit("START-23.12 Phase 3B audit failed:\n- " + "\n- ".join(errors))
