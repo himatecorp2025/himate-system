@@ -276,7 +276,11 @@ func (a *app) partnerInvoiceModuleRuntime(w http.ResponseWriter, r *http.Request
 		return
 	}
 	out["gateway_tenant_context"] = "AUTHENTICATED_PARTNER_SESSION"
-	common.JSON(w, http.StatusOK, out)
+	status := http.StatusOK
+	if r.Method == http.MethodPost && len(suffixParts) == 1 && suffixParts[0] == "invoices" && out["duplicate"] != true {
+		status = http.StatusCreated
+	}
+	common.JSON(w, status, out)
 }
 
 func partnerUserModulePolicyMap(policy partnerUserModulePolicy) map[string]any {
