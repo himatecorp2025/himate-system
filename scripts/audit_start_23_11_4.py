@@ -37,7 +37,7 @@ checks=[
  ("module card pencil editor and reset are real",
   "Future<void> editModulePresentation(" in design and "Customize module presentation" in portal and
   "widget.api.put('/partner/api/v1/design/modules/$moduleKey'" in design and
-  "widget.api.delete('/partner/api/v1/design/modules/$moduleKey')" in design),
+  "widget.api.delete(" in design and "'/partner/api/v1/design/modules/$moduleKey'" in design and "Reset to HIMATE default" in design),
  ("official HIMATE identity stays visible",
   "Official HIMATE name" in design and "Canonical module key" in design and "POWERED BY HIMATE" in portal),
  ("custom cards use presentation values without mutating Catalog fields",
