@@ -319,6 +319,40 @@ paths:
       summary: Mark all visible notifications as read for the authenticated administrator
       responses:
         "200": {description: Visible notifications marked read}
+  /api/v1/partner-onboarding:
+    post:
+      tags: [Partners]
+      summary: Start or replay one durable Partner onboarding saga
+      description: >
+        System-owner only. Persists the onboarding intent before coordinating Partner master data,
+        Partner Portal owner creation and Billing commercial defaults. Reusing the same request_id
+        resumes the same saga and cannot create a second Partner master record.
+      responses:
+        "201": {description: Onboarding saga completed}
+        "200": {description: Existing saga replayed and completed}
+        "403": {description: System owner required}
+        "409": {description: Saga persisted but one dependent step remains incomplete}
+  /api/v1/partner-onboarding/{requestId}:
+    parameters:
+      - {name: requestId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Partners]
+      summary: Read one durable Partner onboarding saga
+      responses:
+        "200": {description: Durable saga status and authoritative Partner readback}
+        "403": {description: Request belongs to another administrator}
+        "404": {description: Onboarding request not found}
+  /api/v1/partner-onboarding/{requestId}/resume:
+    parameters:
+      - {name: requestId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Partners]
+      summary: Resume an interrupted Partner onboarding saga
+      description: Replays only incomplete idempotent steps and returns the same Partner identity.
+      responses:
+        "200": {description: Saga resumed and completed}
+        "403": {description: System owner required}
+        "409": {description: Saga remains incomplete; retry is safe}
   /partner/api/v1/auth/login:
     post:
       tags: [Partner Portal]
