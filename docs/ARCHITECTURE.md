@@ -658,6 +658,6 @@ Scheduler simple job closed
 
 Finance receives only its dedicated `HIMATE_AUTOMATION_FINANCE_SECRET`; it does not receive the Workshop/Scheduler verifier secrets. Producer identity is verified at the Automation boundary, while Finance additionally binds accepted event type to producer, module and subject type. Tenant and source identity come from the immutable event envelope, not from invoice payload fields.
 
-`READY_FOR_ISSUE` is not equivalent to a legally issued invoice. Jurisdiction-aware document rendering/delivery remains a later Finance capability, and only that capability may advance the record to `ISSUED`.
+`READY_FOR_ISSUE` is not equivalent to a legally issued invoice. It freezes the numbering prefix/policy but does not consume an official invoice number. Jurisdiction-aware document rendering/delivery remains a later Finance capability; the later `ISSUED` transaction must allocate the legal invoice number atomically with issuance.
 
 ADR-0006 records the durability and separation decision.
