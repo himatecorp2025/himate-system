@@ -130,7 +130,13 @@ for contract_id in [
     require(contract_id in phase_contracts, f"functional matrix missing 23.11.1 contract: {contract_id}")
     require(phase_contracts[contract_id].get("current_state") == "MUTATION_PROVEN_PROD_UNVERIFIED", f"{contract_id} must be mutation-proven")
 portal_activation = next(item for item in matrix["contracts"] if item["id"] == "PORTAL-MODULE-ACTIVATE")
-require(portal_activation.get("current_state") == "PARTIAL_PRODUCT", "full Partner Portal module activation must remain open after 23.11.1")
 require(portal_activation.get("target_phase") == "23.11", "Partner Portal activation target phase must remain later 23.11 scope")
+if portal_activation.get("current_state") == "PARTIAL_PRODUCT":
+    require(completed in {"23.11.1", "23.11.2"}, "stale partial Partner Portal activation state survived beyond its allowed historical window")
+else:
+    require(portal_activation.get("current_state") == "MUTATION_PROVEN_PROD_UNVERIFIED",
+            "closed Partner Portal activation must remain mutation-proven")
+    require("smoke_start_23_12_phase1.sh" in str(portal_activation.get("e2e_proof", "")),
+            "closed Partner Portal activation must retain its START-23.12 Phase 1 runtime proof")
 
 print("HIMATE START-23.11.1 module registry and individual commercial model audit passed")

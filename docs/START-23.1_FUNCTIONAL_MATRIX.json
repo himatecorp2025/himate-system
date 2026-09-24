@@ -1621,10 +1621,10 @@
       "persistence": "catalog.partner_modules + billing.module_subscriptions",
       "audit": "PARTNER_MODULE_ACTIVATED",
       "localization_state": "PARTIAL",
-      "current_state": "PARTIAL_PRODUCT",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11",
-      "e2e_proof": "required: payment-first activation when charge required",
-      "notes": ""
+      "e2e_proof": "scripts/smoke_start_23_12_phase1.sh: Business entitlement readback + locked runtime denial + effective user access enforcement",
+      "notes": "START-23.12 Phase 1 re-audit closes the stale partial-product marker: activation remains a real Catalog mutation, while runtime execution is independently guarded by partner entitlement intersected with user assignment."
     },
     {
       "id": "PORTAL-MODULE-CANCEL",

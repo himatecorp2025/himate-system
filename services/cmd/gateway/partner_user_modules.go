@@ -156,6 +156,60 @@ func (a *app) loadPartnerUserModulePolicy(ctx context.Context, partnerID, userID
 	}, nil
 }
 
+func (a *app) requirePartnerModuleExecution(w http.ResponseWriter, r *http.Request, u partnerUser, moduleKey string) (map[string]any, bool) {
+	moduleKey = strings.TrimSpace(moduleKey)
+	if moduleKey == "" || strings.Contains(moduleKey, "/") {
+		common.APIError(w, http.StatusNotFound, "MODULE_NOT_FOUND", "Module not found")
+		return nil, false
+	}
+	policy, err := a.loadPartnerUserModulePolicy(r.Context(), u.PartnerID, u.ID, u.PreferredLocale)
+	if err != nil {
+		writeInternalError(w, err, "Module access could not be evaluated")
+		return nil, false
+	}
+	module, owned := policy.Owned[moduleKey]
+	if !owned {
+		common.APIError(w, http.StatusForbidden, "MODULE_NOT_OWNED", "This organization does not have active executable access to this module")
+		return nil, false
+	}
+	if policy.Mode == partnerModuleAccessSelected && !policy.Selected[moduleKey] {
+		common.APIError(w, http.StatusForbidden, "MODULE_NOT_ASSIGNED", "This module is not assigned to the authenticated user")
+		return nil, false
+	}
+	return module, true
+}
+
+func partnerRuntimeModuleKey(path string) string {
+	raw := strings.Trim(strings.TrimPrefix(path, "/partner/api/v1/runtime/modules/"), "/")
+	if raw == "" {
+		return ""
+	}
+	parts := strings.Split(raw, "/")
+	return strings.TrimSpace(parts[0])
+}
+
+func (a *app) partnerModuleRuntime(w http.ResponseWriter, r *http.Request, u partnerUser) {
+	key := partnerRuntimeModuleKey(r.URL.Path)
+	module, ok := a.requirePartnerModuleExecution(w, r, u, key)
+	if !ok {
+		return
+	}
+	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/partner/api/v1/runtime/modules/"), "/")
+	parts := strings.Split(raw, "/")
+	if len(parts) == 2 && parts[1] == "access" && r.Method == http.MethodGet {
+		common.JSON(w, http.StatusOK, map[string]any{
+			"partner_id": u.PartnerID,
+			"user_id": u.ID,
+			"module_key": key,
+			"module": module,
+			"access_state": "GRANTED",
+			"security_rule": "PARTNER_ENTITLEMENT_INTERSECT_USER_ASSIGNMENT",
+		})
+		return
+	}
+	common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "No runtime operation is registered for this module path")
+}
+
 func partnerUserModulePolicyMap(policy partnerUserModulePolicy) map[string]any {
 	ownedModules := make([]map[string]any, 0, len(policy.OwnedKeys))
 	for _, key := range policy.OwnedKeys {

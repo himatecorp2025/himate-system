@@ -362,6 +362,9 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 		if a.requirePartnerPermission(w,u,permission){a.partnerCharityModules(w,r,u)}
 	case path=="/modules"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"modules.read"){a.partnerModulesView(w,r,u)}
+	case strings.HasPrefix(path,"/runtime/modules/"):
+		permission:="modules.read";if r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions{permission="modules.write"}
+		if a.requirePartnerPermission(w,u,permission){a.partnerModuleRuntime(w,r,u)}
 	case strings.HasPrefix(path,"/modules/")&&strings.HasSuffix(path,"/activate")&&r.Method==http.MethodPost:
 		if a.requirePartnerPermission(w,u,"modules.write"){a.partnerActivateModule(w,r,u)}
 	case strings.HasPrefix(path,"/modules/")&&strings.HasSuffix(path,"/subscription")&&r.Method==http.MethodPatch:
