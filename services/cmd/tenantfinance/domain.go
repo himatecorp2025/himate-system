@@ -245,9 +245,6 @@ func normalizeIssuer(partnerID string, raw map[string]any) (issuerSnapshot, erro
 			return out, errors.New("partner company profile is incomplete: US state_region and postal_code are required")
 		}
 	}
-	if out.LogoURL == "" {
-		return out, errors.New("partner company profile is incomplete: logo_url is required for invoice documents")
-	}
 	return out, nil
 }
 
