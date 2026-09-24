@@ -270,6 +270,7 @@ func (a *app) runPartnerOnboardingSaga(ctx context.Context,requestID string,acto
 }
 
 func (a *app) partnerOnboarding(w http.ResponseWriter,r *http.Request,actor user){
+	if !actor.SystemOwner{common.APIError(w,http.StatusForbidden,"OWNER_REQUIRED","Only the HIMATE system owner can run partner onboarding");return}
 	raw:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/partner-onboarding"),"/")
 	if raw!=""{
 		parts:=strings.Split(raw,"/")
