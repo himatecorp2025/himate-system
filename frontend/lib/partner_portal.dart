@@ -427,23 +427,26 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
 
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
+
+    final extrasFuture = Future.wait<Map<String, dynamic>?>([
+      can('billing.read') ? safeGet('/partner/api/v1/billing/subscriptions') : Future.value(null),
+      can('billing.read') ? safeGet('/partner/api/v1/billing/invoices') : Future.value(null),
+      can('users.read') ? safeGet('/partner/api/v1/users') : Future.value(null),
+      can('design.read') ? safeGet('/partner/api/v1/design') : Future.value(null),
+      can('design.read') ? safeGet('/partner/api/v1/design/media') : Future.value(null),
+      can('billing.read') ? safeGet('/partner/api/v1/plans') : Future.value(null),
+      can('billing.read') ? safeGet('/partner/api/v1/plan') : Future.value(null),
+      can('billing.read') ? safeGet('/partner/api/v1/charity') : Future.value(null),
+      can('modules.read') ? safeGet('/partner/api/v1/charity/modules') : Future.value(null),
+    ]);
+
     try {
       final dashboard = await widget.api.get('/partner/api/v1/dashboard', force: true);
       final companyRaw = dashboard['company'];
       final moduleRaw = dashboard['modules'];
       final billingRaw = dashboard['billing'];
       final impactRaw = dashboard['impact'];
-      final extras = await Future.wait<Map<String, dynamic>?>([
-        can('billing.read') ? safeGet('/partner/api/v1/billing/subscriptions') : Future.value(null),
-        can('billing.read') ? safeGet('/partner/api/v1/billing/invoices') : Future.value(null),
-        can('users.read') ? safeGet('/partner/api/v1/users') : Future.value(null),
-        can('design.read') ? safeGet('/partner/api/v1/design') : Future.value(null),
-        can('design.read') ? safeGet('/partner/api/v1/design/media') : Future.value(null),
-        can('billing.read') ? safeGet('/partner/api/v1/plans') : Future.value(null),
-        can('billing.read') ? safeGet('/partner/api/v1/plan') : Future.value(null),
-        can('billing.read') ? safeGet('/partner/api/v1/charity') : Future.value(null),
-        can('modules.read') ? safeGet('/partner/api/v1/charity/modules') : Future.value(null),
-      ]);
+
       if (!mounted) return;
       setState(() {
         company = companyRaw is Map ? Map<String, dynamic>.from(companyRaw) : <String, dynamic>{};
@@ -452,6 +455,12 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         billing = billingRaw is Map ? Map<String, dynamic>.from(billingRaw) : <String, dynamic>{};
         final impactMap = impactRaw is Map ? Map<String, dynamic>.from(impactRaw) : <String, dynamic>{};
         impact = items(impactMap);
+        loading = false;
+      });
+
+      final extras = await extrasFuture;
+      if (!mounted) return;
+      setState(() {
         subscriptions = extras[0] == null ? <Map<String, dynamic>>[] : items(extras[0]!);
         invoices = extras[1] == null ? <Map<String, dynamic>>[] : items(extras[1]!);
         users = extras[2] == null ? <Map<String, dynamic>>[] : items(extras[2]!);
@@ -490,7 +499,6 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         if (loadedFrequency == 'MONTHLY' || loadedFrequency == 'ANNUAL') {
           planBillingFrequency = loadedFrequency;
         }
-        loading = false;
       });
     } catch (e) {
       if (mounted) setState(() { error = e.toString(); loading = false; });
