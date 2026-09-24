@@ -53,8 +53,8 @@ checks=[
   "/partner/api/v1/users/{userId}/modules:" in openapi and "version: "+release in openapi and
   "START-01 through START-23.11.7" in openapi),
  ("release aligned in Render and Compose",
-  render.count("value: "+release)==20 and
-  compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==19),
+  render.count("value: "+release)==21 and
+  compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==20),
  ("Fast and full CI enforce START-23.11.5",
   fast.count("audit_start_23_11_5.py")>=2 and "smoke_start_23_11_5.sh" in fast and
   "audit_start_23_11_5.py" in full and "smoke_start_23_11_5.sh" in full),
