@@ -49,8 +49,8 @@ type partnerClaims struct {
 
 var partnerRolePermissions = map[string][]string{
 	"owner":   {"*"},
-	"admin":   {"dashboard.read","company.read","company.write","modules.read","modules.write","billing.read","impact.read","users.read","users.write","design.read","design.write","notifications.read"},
-	"billing": {"dashboard.read","company.read","modules.read","modules.write","billing.read","impact.read","design.read","notifications.read"},
+	"admin":   {"dashboard.read","company.read","company.write","modules.read","modules.write","billing.read","billing.write","impact.read","users.read","users.write","design.read","design.write","notifications.read"},
+	"billing": {"dashboard.read","company.read","modules.read","modules.write","billing.read","billing.write","impact.read","design.read","notifications.read"},
 	"viewer":  {"dashboard.read","company.read","modules.read","billing.read","impact.read","design.read","notifications.read"},
 }
 
@@ -297,6 +297,9 @@ func partnerAuditAction(r *http.Request)string{
 	path:=r.URL.Path
 	switch{
 	case path=="/partner/api/v1/company"&&r.Method==http.MethodPatch:return "PARTNER_COMPANY_UPDATED"
+	case path=="/partner/api/v1/runtime/modules/invoice_documents/invoices"&&r.Method==http.MethodPost:return "PARTNER_MANUAL_INVOICE_DRAFT_CREATED"
+	case strings.HasPrefix(path,"/partner/api/v1/runtime/modules/invoice_documents/invoices/")&&strings.HasSuffix(path,"/finalize")&&r.Method==http.MethodPost:return "PARTNER_MANUAL_INVOICE_FINALIZED"
+	case path=="/partner/api/v1/runtime/modules/invoice_documents/policy"&&r.Method==http.MethodPut:return "PARTNER_TENANT_FINANCE_POLICY_UPDATED"
 	case strings.HasSuffix(path,"/activate")&&strings.HasPrefix(path,"/partner/api/v1/design/profiles/")&&r.Method==http.MethodPost:return "PARTNER_THEME_ACTIVATED"
 	case strings.Contains(path,"/activate")&&r.Method==http.MethodPost:return "PARTNER_MODULE_ACTIVATED"
 	case strings.Contains(path,"/subscription")&&r.Method==http.MethodPatch:return "PARTNER_SUBSCRIPTION_UPDATED"
