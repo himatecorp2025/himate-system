@@ -49,7 +49,7 @@ Each step is idempotent:
 
 1. Partner service receives the same `onboarding_request_id`;
 2. Portal Owner creation reconciles an existing active owner before inserting;
-3. Billing terms use idempotent PUT semantics.
+3. Billing terms are read back before retry; an identical already-committed state is accepted without issuing a second version-creating PUT.
 
 The frontend stores only the opaque request ID while work is incomplete. After F5/browser restart, the next onboarding action calls `/resume` for the same saga instead of generating a second Partner.
 
@@ -101,8 +101,8 @@ For historical rows whose checksum predates START-23.12, the checksum is backfil
 
 New production migrations are also validated as **expand-only** by default. Destructive schema patterns such as:
 
-- DROP TABLE / DROP SCHEMA / DROP COLUMN;
-- TRUNCATE;
+- DROP TABLE / DROP SCHEMA / DROP COLUMN / DROP INDEX / DROP CONSTRAINT;
+- TRUNCATE or DELETE FROM;
 - column/table rename;
 - ALTER COLUMN;
 
