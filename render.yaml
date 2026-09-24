@@ -87,11 +87,6 @@ services:
           type: pserv
           name: himate-notifications
           property: hostport
-      - key: AUTOMATION_HOSTPORT
-        fromService:
-          type: pserv
-          name: himate-automation
-          property: hostport
 
   - type: pserv
     name: himate-payments
@@ -634,6 +629,11 @@ services:
         fromService:
           type: pserv
           name: himate-notifications
+          property: hostport
+      - key: AUTOMATION_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-automation
           property: hostport
       - key: BACKUPS_HOSTPORT
         fromService:
