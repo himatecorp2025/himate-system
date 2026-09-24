@@ -7,13 +7,21 @@ frontend = (root / "frontend/lib/main.dart").read_text(encoding="utf-8")
 portal_ui = (root / "frontend/lib/partner_portal.dart").read_text(encoding="utf-8")
 partners = (root / "services/cmd/partners/main.go").read_text(encoding="utf-8")
 gateway = (root / "services/cmd/gateway/main.go").read_text(encoding="utf-8")
+durability = (root / "services/cmd/gateway/phase2_durability.go").read_text(encoding="utf-8")
 portal = (root / "services/cmd/gateway/partner_portal.go").read_text(encoding="utf-8")
 openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 
 checks = [
     ("New Partner wizard captures an initial portal password", "final portalPassword = TextEditingController();" in frontend),
-    ("New Partner wizard creates an owner portal identity", "await widget.api.post('/api/v1/partners/$partnerId/portal-users'" in frontend and "'role': 'owner'" in frontend),
+    ("New Partner wizard creates an owner portal identity through the durable saga",
+     "await widget.api.post('/api/v1/partner-onboarding'" in frontend
+     and "'portal_owner': {" in frontend
+     and "func (a *app) ensureOnboardingOwner" in durability
+     and "role_key" in durability
+     and "'owner'" in durability),
+    ("New Partner wizard no longer bypasses the durable saga with a direct owner POST",
+     "await widget.api.post('/api/v1/partners/$partnerId/portal-users'" not in frontend),
     ("New Partner wizard uses the administrator email for portal access", "'email': contactEmail.text.trim()" in frontend),
     ("Partner Login has an explicit clear-password control", "tooltip: uiLiteral('Clear password')" in portal_ui),
     ("clear-password closes the browser autofill context", "TextInput.finishAutofillContext(shouldSave: false)" in portal_ui),
