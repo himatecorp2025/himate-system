@@ -483,6 +483,17 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.31-start-23.11.6`
 - acceptance: `docs/START-23.11.6_ACCEPTANCE.md`, `scripts/audit_start_23_11_6.py`, `scripts/smoke_start_23_11_6.sh`
 
+### START-23.11.7 — Partner Portal Closure Audit
+- closes the Partner Portal as an end-to-end frontend → Partner API → microservice → PostgreSQL product surface
+- primary dashboard content renders before secondary Billing/User/Design panels finish loading; independent reads start concurrently
+- Marketplace plan context and user-module entitlement policy overlap independent upstream reads
+- Partner user listing removes per-user module metadata/count N+1 database reads
+- notification target-user filtering moves into SQL and read-all persistence uses one bulk UPSERT
+- tenant/RBAC/module-entitlement fail-closed behavior remains unchanged by the performance optimizations
+- full Partner Portal OpenAPI route coverage, responsive structure and inherited START-23.11.4–23.11.6 regression gates are mandatory
+- release contract version is `0.8.32-start-23.11.7`
+- acceptance: `docs/START-23.11.7_ACCEPTANCE.md`, `scripts/audit_start_23_11_7.py`, `scripts/smoke_start_23_11_7.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -517,6 +528,7 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.11.1_ACCEPTANCE.md`
 - `docs/START-23.11.2_ACCEPTANCE.md`
 - `docs/START-23.11.6_ACCEPTANCE.md`
+- `docs/START-23.11.7_ACCEPTANCE.md`
 - `docs/START-23.11.3_ACCEPTANCE.md`
 - `docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`
