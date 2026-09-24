@@ -200,6 +200,47 @@ assert d["presentation_only"] is True,d
 PY
 echo ok
 
+printf 'own-tenant uploaded media works as a custom module icon... '
+CUSTOM_ICON_PAYLOAD="$(python3 - "$MEDIA_ID" <<'PY'
+import json,sys
+print(json.dumps({
+ "display_name":"Workshop Operations",
+ "description":"Tenant-specific presentation of the canonical HIMATE Workshop Workflow module.",
+ "icon_key":"",
+ "custom_icon_media_id":sys.argv[1],
+ "card_color":"#2E5B87"
+}))
+PY
+)"
+CUSTOM_ICON="$(curl -fsS -b "$PARTNER_A_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$CUSTOM_ICON_PAYLOAD" "$BASE_URL/partner/api/v1/design/modules/workshop_workflow")"
+python3 - "$CUSTOM_ICON" "$MEDIA_ID" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1]); media=sys.argv[2]
+assert d["module_key"]=="workshop_workflow",d
+assert d["display_name"]=="Workshop Operations",d
+assert d["icon_key"]=="",d
+assert d["custom_icon_media_id"]==media,d
+assert d["card_color"]=="#2E5B87",d
+PY
+echo ok
+
+printf 'cross-tenant custom module icon references are rejected... '
+FOREIGN_ICON="$(python3 - "$MEDIA_ID" <<'PY'
+import json,sys
+print(json.dumps({
+ "display_name":"Foreign Asset Attempt",
+ "description":"",
+ "icon_key":"",
+ "custom_icon_media_id":sys.argv[1],
+ "card_color":"#2E5B87"
+}))
+PY
+)"
+CODE="$(status "$PARTNER_B_COOKIE" PUT "/partner/api/v1/design/modules/workshop_workflow" -H 'Content-Type: application/json' -d "$FOREIGN_ICON")"
+test "$CODE" = "403"
+grep -q 'MEDIA_SCOPE' "$BODY"
+echo ok
+
 printf 'design readback and PostgreSQL persist workspace/module presentation... '
 READBACK="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/design")"
 python3 - "$READBACK" "$MEDIA_ID" <<'PY'
@@ -209,11 +250,15 @@ w=d["workspace"]
 assert w["workspace_name"]=="Klavierhaus Daily Workspace" and w["logo_media_id"]==media,w
 x=next(i for i in d["module_presentations"] if i["module_key"]=="finance")
 assert x["display_name"]=="Business Finance" and x["card_color"]=="#2E7D32",x
+wsp=next(i for i in d["module_presentations"] if i["module_key"]=="workshop_workflow")
+assert wsp["display_name"]=="Workshop Operations" and wsp["custom_icon_media_id"]==media,wsp
 PY
 DB_WORKSPACE="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' -c "SELECT workspace_name,default_module_key FROM cms.partner_workspace_settings WHERE partner_id='$A_ID';")"
 test "$DB_WORKSPACE" = "Klavierhaus Daily Workspace|workshop_workflow"
 DB_MODULE="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' -c "SELECT display_name,icon_key,card_color FROM cms.partner_module_presentations WHERE partner_id='$A_ID' AND module_key='finance';")"
 test "$DB_MODULE" = "Business Finance|finance|#2E7D32"
+DB_CUSTOM_ICON="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' -c "SELECT display_name,custom_icon_media_id,card_color FROM cms.partner_module_presentations WHERE partner_id='$A_ID' AND module_key='workshop_workflow';")"
+test "$DB_CUSTOM_ICON" = "Workshop Operations|$MEDIA_ID|#2E5B87"
 echo ok
 
 printf 'presentation override does not mutate canonical Catalog identity or entitlement... '
