@@ -296,6 +296,11 @@
       "scope": "Tenant-isolated design catalog plus workspace identity, brand colors, default module and module-card presentation overrides"
     },
     {
+      "id": "partner_portal.notifications",
+      "name": "Partner Portal / Notifications",
+      "scope": "Central tenant/user/permission/module-filtered notification feed, unread state, mark read and mark all read"
+    },
+    {
       "id": "packages.admin",
       "name": "Packages Administration",
       "scope": "Central package pricing, module limits and fixed package membership"
