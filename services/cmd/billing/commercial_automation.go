@@ -592,6 +592,7 @@ func start23111BillingCommercialModelMigration() common.Migration {
 	return common.Migration{
 		Version: 9,
 		Name: "start-23-11-1-individual-commercial-terms",
+		AllowDestructiveSchema: true,
 		Statements: []string{
 			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS minimum_monthly_commitment NUMERIC(12,2) NOT NULL DEFAULT 1500`,
 			`ALTER TABLE billing.partner_terms ADD COLUMN IF NOT EXISTS quote_reference TEXT NOT NULL DEFAULT ''`,
