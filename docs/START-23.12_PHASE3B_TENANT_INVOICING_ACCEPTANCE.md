@@ -54,24 +54,37 @@ The tenant-finance outbox publisher signs events with the dedicated finance auto
 
 ## Workflow and Calendar/Scheduler intake — prepared, producer runtimes deferred
 
-The internal endpoint /internal/v1/tenant-finance/automation/invoice-intents accepts only HMAC-signed service identities.
+Automated invoice intake uses the durable Phase 3 Automation bus; there is no direct Workshop/Scheduler-to-Finance command endpoint.
 
-Source-to-service binding is strict:
+Tenant Finance registers itself as consumer service identity finance for two canonical event contracts:
 
-- WORKFLOW may be produced only by service identity workshop.
-- SCHEDULE may be produced only by service identity scheduler.
+- workflow.billing_approved.v1
+- scheduler.job_closed_invoice_ready.v1
+
+The future Workshop service publishes the workflow event under its own HMAC identity and the future Scheduler publishes the schedule event under its own identity. Automation verifies the producer signature, persists the immutable event, and creates a leased/retriable delivery for Finance.
+
+Finance receives only its dedicated HIMATE_AUTOMATION_FINANCE_SECRET. It does not receive the Workshop or Scheduler HMAC secrets.
+
+When Finance claims a delivery it derives authoritative routing identity from the immutable event envelope:
+
+- WORKFLOW requires producer_service=workshop, module_key=workshop_workflow, subject_type=workflow.
+- SCHEDULE requires producer_service=scheduler, module_key=scheduler, subject_type=scheduled_job.
+- partner_id comes from the event envelope.
+- source_id comes from event subject_id.
+
+The event payload contains only invoice business data (customer, lines, currency, optional payment-terms override and notes). Unknown fields are rejected, so the producer payload cannot override tenant/source identity.
 
 Automated sources are idempotent under (partner_id, source_type, source_id). A retry returns the same invoice; a second different invoice for the same source is rejected.
 
-This creates the production-grade target integration point for:
+This creates the production-grade target integration paths:
 
-Workshop QC/admin approval -> WORKFLOW invoice intent -> Tenant Finance
+Workshop QC/admin approval -> signed workflow.billing_approved.v1 -> durable Automation delivery -> WORKFLOW invoice -> Tenant Finance
 
 and
 
-Calendar/Scheduler simple job closed -> SCHEDULE invoice intent -> Tenant Finance.
+Calendar/Scheduler simple job closed -> signed scheduler.job_closed_invoice_ready.v1 -> durable Automation delivery -> SCHEDULE invoice -> Tenant Finance.
 
-The actual Workshop and Calendar/Scheduler business runtimes remain outside this Phase 3B change and must connect to this contract when those modules are built.
+The actual Workshop and Calendar/Scheduler business runtimes remain outside this Phase 3B change and must publish these contracts when those modules are built.
 
 ## Legal document boundary
 
@@ -111,11 +124,13 @@ The runtime smoke proves:
 - issuer data refreshed from authoritative Partner master data at finalization,
 - tenant cross-read rejection,
 - invoice policy snapshot and configurable terms,
-- SCHEDULE signed intake,
-- WORKFLOW signed intake,
-- source/service impersonation rejection,
+- signed SCHEDULE producer event -> durable Automation delivery -> Finance invoice,
+- signed WORKFLOW producer event -> durable Automation delivery -> Finance invoice,
+- producer/event/module/subject impersonation rejection,
+- producer payload cannot override envelope tenant/source identity,
 - automated-source idempotency,
-- durable publication of finance events to the Automation backbone.
+- Finance receives only its dedicated automation secret,
+- durable publication of resulting finance events back to the Automation backbone.
 
 ## Closure marker
 
