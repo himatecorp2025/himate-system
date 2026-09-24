@@ -184,6 +184,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_7.py
       - name: Run START-23.12 Phase 1 Production Acceptance audit
         run: python3 ../scripts/audit_start_23_12_phase1.py
+      - name: Run START-23.12 Phase 2 Production Acceptance audit
+        run: python3 ../scripts/audit_start_23_12_phase2.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -452,6 +454,12 @@ jobs:
         run: sh scripts/smoke_start_23_11_7.sh http://127.0.0.1:8080
       - name: Run START-23.12 Phase 1 Production Acceptance smoke
         run: sh scripts/smoke_start_23_12_phase1.sh http://127.0.0.1:8080
+      - name: Run START-23.12 Phase 2 Onboarding & Deep-Link smoke
+        run: sh scripts/smoke_start_23_12_phase2.sh http://127.0.0.1:8080
+      - name: Run START-23.12 Phase 2 Restart Recovery smoke
+        run: sh scripts/smoke_start_23_12_phase2_recovery.sh http://127.0.0.1:8080
+      - name: Run START-23.12 Phase 2 Deployment Intent smoke
+        run: sh scripts/smoke_start_23_12_phase2_runtime.sh http://127.0.0.1:18081
       - name: Stop test topology
         if: always()
         run: docker compose down -v
