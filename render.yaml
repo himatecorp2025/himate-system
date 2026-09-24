@@ -87,6 +87,11 @@ services:
           type: pserv
           name: himate-notifications
           property: hostport
+      - key: AUTOMATION_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-automation
+          property: hostport
 
   - type: pserv
     name: himate-payments
@@ -496,6 +501,27 @@ services:
           type: pserv
           name: himate-storage
           property: hostport
+
+  - type: pserv
+    name: himate-automation
+    runtime: docker
+    dockerfilePath: ./services/docker/automation.Dockerfile
+    dockerContext: .
+    autoDeploy: false
+    envVars:
+      - key: HIMATE_APP_VERSION
+        value: 0.8.32-start-23.11.7
+      - key: DATABASE_URL
+        fromDatabase:
+          name: himate-db
+          property: connectionString
+      - key: HIMATE_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: himate-catalog
+          envVarKey: HIMATE_INTERNAL_TOKEN
+      - key: HIMATE_AUTOMATION_SERVICE_KEYS_JSON
+        sync: false
 
   - type: pserv
     name: himate-notifications
