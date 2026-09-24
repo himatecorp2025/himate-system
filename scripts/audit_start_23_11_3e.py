@@ -28,8 +28,9 @@ checks = [
         and "onPressed: addPartner" in partner_page_tail,
     ),
     (
-        "New Partner modal is not blocked by any awaited remote dependency",
-        "await widget.api." not in pre_dialog
+        "New Partner modal is not blocked by unrelated remote dependencies; pending durable onboarding is reconciled first",
+        pre_dialog.count("await widget.api.") == 1
+        and "/api/v1/partner-onboarding/$pendingRequestId/resume" in pre_dialog
         and "await _loadCategories" not in pre_dialog
         and "final createdResult = await showDialog<Map<String, dynamic>>(" in add_partner
         and "key: const Key('new-partner-dialog')" in add_partner,
