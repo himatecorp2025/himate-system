@@ -3,8 +3,10 @@ set -eu
 BASE_URL="${1:-http://127.0.0.1:8080}"
 TMP_ROOT="${TMPDIR:-/tmp}"
 OWNER_COOKIE="$TMP_ROOT/himate-2312-p2-owner.txt"
-rm -f "$OWNER_COOKIE"
-trap 'rm -f "$OWNER_COOKIE"' EXIT
+FIRST_FILE="$TMP_ROOT/himate-2312-p2-first.json"
+SECOND_FILE="$TMP_ROOT/himate-2312-p2-second.json"
+rm -f "$OWNER_COOKIE" "$FIRST_FILE" "$SECOND_FILE"
+trap 'rm -f "$OWNER_COOKIE" "$FIRST_FILE" "$SECOND_FILE"' EXIT
 
 COMPOSE_JSON="$(docker compose config --format json)"
 OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
@@ -46,15 +48,21 @@ print(json.dumps({
 }))
 PY
 )"
-FIRST="$(curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$PAYLOAD" "$BASE_URL/api/v1/partner-onboarding")"
-SECOND="$(curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$PAYLOAD" "$BASE_URL/api/v1/partner-onboarding")"
+curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$PAYLOAD" "$BASE_URL/api/v1/partner-onboarding" >"$FIRST_FILE" &
+P1=$!
+curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$PAYLOAD" "$BASE_URL/api/v1/partner-onboarding" >"$SECOND_FILE" &
+P2=$!
+wait "$P1"
+wait "$P2"
+FIRST="$(cat "$FIRST_FILE")"
+SECOND="$(cat "$SECOND_FILE")"
 python3 - "$FIRST" "$SECOND" <<'PY'
 import json,sys
 a,b=map(json.loads,sys.argv[1:3])
 assert a["status"]=="COMPLETE" and b["status"]=="COMPLETE",(a,b)
 assert a["partner"]["id"]==b["partner"]["id"],(a,b)
 assert a["owner_done"] and a["billing_done"],a
-print("durable onboarding replay... ok")
+print("concurrent durable onboarding replay... ok")
 PY
 
 curl -fsS "$BASE_URL/partner/app/billing" | grep -q 'flutter_bootstrap.js'
