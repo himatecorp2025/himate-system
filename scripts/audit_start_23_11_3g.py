@@ -5,6 +5,7 @@ root = Path(__file__).resolve().parents[1]
 
 frontend = (root / "frontend/lib/main.dart").read_text(encoding="utf-8")
 partners = (root / "services/cmd/partners/main.go").read_text(encoding="utf-8")
+durability = (root / "services/cmd/gateway/phase2_durability.go").read_text(encoding="utf-8")
 openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 
@@ -13,7 +14,7 @@ end = frontend.index("  List<Map<String, dynamic>> get filtered => partners;", s
 add_partner = frontend[start:end]
 
 dialog_start = add_partner.index("final createdResult = await showDialog<Map<String, dynamic>>(")
-partner_post = add_partner.index("widget.api.post('/api/v1/partners'")
+partner_post = add_partner.index("widget.api.post('/api/v1/partner-onboarding'")
 success_pop = add_partner.index("Navigator.pop<Map<String, dynamic>>(dialogContext, created")
 
 checks = [
@@ -35,10 +36,11 @@ checks = [
         and "This window will stay open." in add_partner,
     ),
     (
-        "partial setup retries the same partner rather than creating a duplicate",
-        "String? stagedPartnerId;" in add_partner
-        and "Retry setup" in add_partner
-        and "widget.api.patch(" in add_partner,
+        "partial setup resumes the same durable onboarding rather than creating a duplicate",
+        "himate_pending_partner_onboarding" in add_partner
+        and "/api/v1/partner-onboarding/$pendingRequestId/resume" in add_partner
+        and "runPartnerOnboardingSaga" in durability
+        and 'payload["onboarding_request_id"]=s.RequestID' in durability,
     ),
     (
         "backend JSON decode errors are not mislabeled as display-name errors",
