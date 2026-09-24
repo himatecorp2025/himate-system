@@ -2958,7 +2958,6 @@ class _PartnersPageState extends State<PartnersPage> {
     bool dialogOpen = true;
     bool submitting = false;
     String? formError;
-    Map<String, dynamic>? stagedPartner;
     String? stagedPartnerId;
     bool portalOwnerCreated = false;
     bool logoUploaded = false;
@@ -3028,18 +3027,6 @@ class _PartnersPageState extends State<PartnersPage> {
         'service_anchor_date': onboardingDate,
         'reason': 'New Partner master-data onboarding',
       };
-    }
-
-    bool billingTermsMatch(Map<String, dynamic> current, Map<String, dynamic> desired) {
-      bool sameAmount(String key) => (asDouble(current[key]) - asDouble(desired[key])).abs() < 0.000001;
-      return '${current['currency'] ?? ''}' == '${desired['currency'] ?? ''}' &&
-          sameAmount('activation_fee') &&
-          sameAmount('base_monthly_fee') &&
-          sameAmount('minimum_monthly_commitment') &&
-          '${current['quote_reference'] ?? ''}' == '${desired['quote_reference'] ?? ''}' &&
-          sameAmount('annual_increase_percent') &&
-          '${current['price_effective_from'] ?? ''}' == '${desired['price_effective_from'] ?? ''}' &&
-          '${current['service_anchor_date'] ?? ''}' == '${desired['service_anchor_date'] ?? ''}';
     }
 
     final createdResult = await showDialog<Map<String, dynamic>>(
@@ -3455,7 +3442,6 @@ class _PartnersPageState extends State<PartnersPage> {
                 throw Exception('Onboarding completed without an authoritative partner readback.');
               }
               var created = Map<String, dynamic>.from(rawPartner);
-              stagedPartner = created;
               stagedPartnerId = '${created['id']}';
               portalOwnerCreated = onboarding['owner_done'] == true;
               billingTermsSaved = onboarding['billing_done'] == true;
@@ -3484,7 +3470,6 @@ class _PartnersPageState extends State<PartnersPage> {
                 final updated = logo['partner'];
                 if (updated is Map) {
                   created = Map<String, dynamic>.from(updated);
-                  stagedPartner = created;
                 }
                 logoUploaded = true;
               }
