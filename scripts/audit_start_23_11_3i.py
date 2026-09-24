@@ -133,12 +133,12 @@ checks = [
     ),
     (
         "Compose pins one current release across every application microservice",
-        compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-" + release + "}") == 19,
+        compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-" + release + "}") == 20,
     ),
     (
         "Render pins one current release across every deployable application service",
-        render.count("value: " + release) == 20
-        and render.count("autoDeploy: false") == 20,
+        render.count("value: " + release) == 21
+        and render.count("autoDeploy: false") == 21,
     ),
     (
         "New Partner frontend carries the complete master-data contract",
