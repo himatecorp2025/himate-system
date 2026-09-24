@@ -3008,11 +3008,6 @@ class _PartnersPageState extends State<PartnersPage> {
       if (includeOnboardingRequest) 'onboarding_request_id': onboardingRequestId,
     };
 
-    double asDouble(dynamic value) {
-      if (value is num) return value.toDouble();
-      return double.tryParse('$value') ?? double.nan;
-    }
-
     Map<String, dynamic> billingTermsPayload() {
       return {
         'currency': currency,
