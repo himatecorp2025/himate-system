@@ -2,7 +2,7 @@
 set -eu
 
 BASE_URL="${1:-http://127.0.0.1:8080}"
-EXPECTED_VERSION="${HIMATE_APP_VERSION:-0.8.29-start-23.11.4}"
+EXPECTED_VERSION="${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}"
 TMP_ROOT="${TMPDIR:-/tmp}"
 OWNER_COOKIE="$TMP_ROOT/himate-start23113h-owner.txt"
 BODY="$TMP_ROOT/himate-start23113h-body.json"

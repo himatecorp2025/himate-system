@@ -408,7 +408,6 @@ The architecture remains microservice/container based. It is **not** being colla
 - X, Cancel and route-back dismissal are blocked once partner creation is in flight or a partial partner already exists
 - Retry reconciles persisted Partner Portal Owner, partner logo and commercial terms before writing those steps again
 - exact duplicate-display-name and onboarding-replay behavior is covered by Compose acceptance
-- START-23.11.4 remains frozen until a real production test partner is created successfully
 - release contract version is `0.8.25-start-23.11.3h`
 - acceptance: `docs/START-23.11.3H_ACCEPTANCE.md`, `scripts/audit_start_23_11_3h.py`, `scripts/smoke_start_23_11_3h.sh`
 
@@ -421,7 +420,6 @@ The architecture remains microservice/container based. It is **not** being colla
 - the Compose acceptance now proves the complete partner master-data payload survives POST -> PostgreSQL -> GET without losing legal name, brand/DBA, registration, Tax/VAT, address, website, phone or operational contacts
 - Partner Portal Owner persistence remains part of the same end-to-end acceptance
 - Render auto-deploy remains disabled; production release completion requires all application services to be deployed from the same release
-- START-23.11.4 remains frozen until the production test partner is created successfully
 - release contract version is `0.8.26-start-23.11.3i`
 - acceptance: `docs/START-23.11.3I_ACCEPTANCE.md`, `scripts/audit_start_23_11_3i.py`, `scripts/smoke_start_23_11_3i.sh`
 
@@ -460,6 +458,18 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.29-start-23.11.4`
 - acceptance: `docs/START-23.11.4_ACCEPTANCE.md`, `scripts/audit_start_23_11_4.py`, `scripts/smoke_start_23_11_4.sh`
 
+
+### START-23.11.5 — User ↔ Module Permissions
+- partner entitlement remains the upper module-access boundary; user permissions can only narrow it
+- existing and new Partner Portal users default to `ALL_OWNED` for backward compatibility
+- owners/admins with `users.write` may switch an own-tenant user to `SELECTED` and choose from current ACTIVE + executable partner modules
+- assignments outside the partner entitlement are rejected
+- effective access is always `partner entitlement ∩ user assignment`; stale grants cannot restore a lost entitlement
+- full Marketplace discovery remains visible through `user_access_state` and `user_executable`
+- role/RBAC permissions remain independent from module assignment
+- cross-tenant user IDs are never manageable
+- release contract version is `0.8.30-start-23.11.5`
+- acceptance: `docs/START-23.11.5_ACCEPTANCE.md`, `scripts/audit_start_23_11_5.py`, `scripts/smoke_start_23_11_5.sh`
 
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.

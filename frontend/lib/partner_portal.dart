@@ -468,7 +468,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             final moduleIndex = modules.indexWhere((module) =>
               (module['key'] ?? '').toString() == defaultKey &&
               (module['access_state'] ?? '').toString() == 'ACTIVE' &&
-              module['executable'] == true
+              module['executable'] == true &&
+              module['user_executable'] == true
             );
             if (moduleIndex >= 0) {
               final defaultModule = modules.removeAt(moduleIndex);
@@ -957,7 +958,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Add Partner Portal user',
-          subtitle: 'Roles apply only inside your organization and cannot grant HIMATE platform-administrator access.',
+          subtitle: 'Roles apply only inside your organization and cannot grant HIMATE platform-administrator access. New users start with access to all modules currently owned by the partner; you can restrict that separately.',
           icon: Icons.person_add_alt_1_rounded,
           width: 650,
           primaryLabel: 'Create user',
@@ -1013,7 +1014,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
           title: 'Edit portal user',
-          subtitle: 'Role and account status changes invalidate the user session immediately.',
+          subtitle: 'Role and account status changes invalidate the user session immediately. Module access is managed separately and can never exceed the partner subscription.',
           icon: Icons.manage_accounts_outlined,
           width: 650,
           primaryLabel: 'Save user',
@@ -1064,8 +1065,119 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     name.dispose(); email.dispose();
   }
 
+  Future<void> manageUserModuleAccess(Map<String, dynamic> target) async {
+    if (!can('users.write')) return;
+    final userId = '${target['id'] ?? ''}'.trim();
+    if (userId.isEmpty) return;
+    try {
+      final state = await widget.api.get('/partner/api/v1/users/$userId/modules', force: true);
+      String mode = '${state['access_mode'] ?? 'ALL_OWNED'}'.toUpperCase();
+      final selected = <String>{
+        if (state['selected_module_keys'] is List)
+          ...(state['selected_module_keys'] as List).map((e) => e.toString()),
+      };
+      final rawOwned = state['owned_modules'];
+      final owned = rawOwned is List
+          ? rawOwned.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+          : <Map<String, dynamic>>[];
+
+      final ok = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setLocal) => BrandDialog(
+            title: 'User module access',
+            subtitle: 'Partner subscription first, user assignment second. A user can never receive a module that the organization does not currently own.',
+            icon: Icons.admin_panel_settings_outlined,
+            width: 760,
+            primaryLabel: 'Save module access',
+            onPrimary: () => Navigator.pop(dialogContext, true),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _DefinitionRow(label: 'User', value: '${target['name'] ?? target['email'] ?? userId}', emphasis: true),
+                _DefinitionRow(label: 'Partner-owned modules', value: '${owned.length} ACTIVE + executable'),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  value: mode,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Module access mode'),
+                    helperText: uiLiteral('ALL_OWNED follows the partner entitlement automatically. SELECTED is an explicit subset.'),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL_OWNED', child: LText('All partner-owned modules')),
+                    DropdownMenuItem(value: 'SELECTED', child: LText('Selected modules only')),
+                  ],
+                  onChanged: (value) => setLocal(() => mode = value ?? 'ALL_OWNED'),
+                ),
+                const SizedBox(height: 14),
+                if (mode == 'ALL_OWNED')
+                  const _MessageCard(
+                    icon: Icons.verified_user_outlined,
+                    title: 'Automatic entitlement intersection',
+                    message: 'This user receives every module that is ACTIVE + executable for the partner. If the partner loses a module, user access disappears automatically.',
+                  )
+                else ...[
+                  const LText(
+                    'Choose from modules the partner currently owns. Locked, unavailable or coming-soon modules cannot be assigned.',
+                    style: TextStyle(color: brandTextSoft, fontSize: 10, height: 1.4),
+                  ),
+                  const SizedBox(height: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 390),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          for (final module in owned)
+                            CheckboxListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              value: selected.contains('${module['key']}'),
+                              title: LText('${module['label'] ?? module['key']}'),
+                              subtitle: LText(
+                                '${module['group_label'] ?? module['group_key'] ?? ''}',
+                                style: const TextStyle(color: brandTextSoft, fontSize: 9),
+                              ),
+                              onChanged: (value) => setLocal(() {
+                                final key = '${module['key']}';
+                                if (value == true) {
+                                  selected.add(key);
+                                } else {
+                                  selected.remove(key);
+                                }
+                              }),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  LText(
+                    '${selected.length} selected',
+                    style: const TextStyle(color: brandSuccess, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+
+      if (ok == true) {
+        await widget.api.put('/partner/api/v1/users/$userId/modules', {
+          'access_mode': mode,
+          'module_keys': mode == 'SELECTED' ? (selected.toList()..sort()) : <String>[],
+        });
+        await load();
+        if (mounted) toast('User module access updated.');
+      }
+    } catch (e) {
+      if (mounted) toast(e.toString(), failure: true);
+    }
+  }
+
   Widget overview() {
-    final activeModules = modules.where((m) => '${m['access_state']}' == 'ACTIVE').length;
+    final activeModules = modules.where((m) => m['user_executable'] == true).length;
     final available = modules.length;
     return Content(
       eyebrow: 'PARTNER PORTAL',
@@ -1112,6 +1224,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   Widget moduleCard(Map<String, dynamic> module) {
     final access = '${module['access_state'] ?? 'LOCKED'}'.toUpperCase();
     final active = access == 'ACTIVE';
+    final userExecutable = module['user_executable'] == true;
+    final userAccessState = '${module['user_access_state'] ?? (active ? 'GRANTED' : 'ORGANIZATION_LOCKED')}';
     final locked = access == 'LOCKED';
     final comingSoon = access == 'COMING_SOON';
     final unavailable = access == 'UNAVAILABLE';
@@ -1128,7 +1242,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     final presentationColor = modulePresentationCardColor(module);
     final isDefaultModule = workspaceDefaultModuleKey == (module['key'] ?? '').toString();
     final statusLabel = active
-        ? 'INCLUDED'
+        ? (userExecutable ? 'INCLUDED' : 'NOT ASSIGNED')
         : locked
             ? 'LOCKED'
             : comingSoon
@@ -1151,6 +1265,21 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     }
 
     Widget accessMessage() {
+      if (active && !userExecutable) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: brandWarning.withOpacity(.07),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: brandWarning.withOpacity(.18)),
+          ),
+          child: const LText(
+            'Your organization owns this module, but it is not assigned to your user account. Ask an organization owner or admin for access.',
+            style: TextStyle(color: brandWarning, fontSize: 9.5, fontWeight: FontWeight.w600, height: 1.4),
+          ),
+        );
+      }
       if (active) {
         return Container(
           width: double.infinity,
@@ -1262,6 +1391,10 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             _DefinitionRow(label: 'Live availability', value: 'READY + PUBLISHED')
           else
             _DefinitionRow(label: 'Live availability', value: 'Discovery only'),
+          _DefinitionRow(
+            label: 'Your access',
+            value: userExecutable ? 'Assigned' : _humanize(userAccessState),
+          ),
           const SizedBox(height: 8),
           accessMessage(),
           if (!hasManagedPlan && blockers.isNotEmpty) ...[
@@ -1739,7 +1872,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     return Content(
       eyebrow: 'ACCESS',
       title: 'Partner Users',
-      subtitle: 'Manage access for your own organization only. Portal roles cannot grant HIMATE control-plane authority.',
+      subtitle: 'Manage organization roles and per-user module access. Effective module access is always limited by the partner subscription.',
       actions: [
         if (can('users.write')) FilledButton.icon(onPressed: createUser, icon: const Icon(Icons.person_add_alt_1_rounded), label: const LText('Add user')),
       ],
@@ -1754,11 +1887,33 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                     child: _InfoCard(
                       title: '${user['name']}',
                       icon: Icons.person_outline_rounded,
-                      action: can('users.write') ? IconButton(onPressed: () => editUser(user), icon: const Icon(Icons.edit_outlined)) : null,
+                      action: can('users.write')
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: uiLiteral('Manage module access'),
+                                  onPressed: () => manageUserModuleAccess(user),
+                                  icon: const Icon(Icons.extension_outlined),
+                                ),
+                                IconButton(
+                                  tooltip: uiLiteral('Edit user'),
+                                  onPressed: () => editUser(user),
+                                  icon: const Icon(Icons.edit_outlined),
+                                ),
+                              ],
+                            )
+                          : null,
                       children: [
                         _DefinitionRow(label: 'Email', value: '${user['email']}'),
                         _DefinitionRow(label: 'Role', value: _humanize('${user['role'] ?? 'viewer'}')),
                         _DefinitionRow(label: 'Status', value: user['active'] == true ? 'Active' : 'Inactive'),
+                        _DefinitionRow(
+                          label: 'Module access',
+                          value: '${user['module_access_mode']}' == 'SELECTED'
+                              ? '${user['selected_module_count'] ?? 0} selected'
+                              : 'All partner-owned modules',
+                        ),
                       ],
                     ),
                   ),

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.29-start-23.11.4
+  version: 0.8.30-start-23.11.5
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.4 HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.5 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -506,6 +506,46 @@ paths:
         "200": {description: Tenant Portal user updated}
         "403": {description: Cross-role authority denied}
         "409": {description: Last-owner continuity guard}
+  /partner/api/v1/users/{userId}/modules:
+    parameters:
+      - {name: userId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Partner Portal]
+      summary: Read one own-tenant Portal user's module-access policy
+      description: >
+        Effective access is the intersection of the partner's ACTIVE + executable entitlement
+        and the user's ALL_OWNED or SELECTED assignment. Cross-tenant users are not addressable.
+      responses:
+        "200": {description: User module policy, partner-owned modules and effective module keys}
+        "403": {description: users.read permission required or owner boundary denied}
+        "404": {description: User is not in the authenticated partner tenant}
+    put:
+      tags: [Partner Portal]
+      summary: Update one own-tenant Portal user's module-access policy
+      description: >
+        ALL_OWNED follows all current partner-owned modules. SELECTED stores an explicit subset.
+        Requested module keys that are not ACTIVE + executable for the partner are rejected and
+        stored grants never override partner entitlement.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [access_mode, module_keys]
+              properties:
+                access_mode:
+                  type: string
+                  enum: [ALL_OWNED, SELECTED]
+                module_keys:
+                  type: array
+                  items: {type: string}
+      responses:
+        "200": {description: User module access updated}
+        "400": {description: Invalid access mode or payload}
+        "403": {description: users.write permission required or owner boundary denied}
+        "404": {description: User is not in the authenticated partner tenant}
+        "409": {description: Requested module is not owned by the partner}
   /partner/api/v1/design:
     get:
       tags: [Partner Portal]

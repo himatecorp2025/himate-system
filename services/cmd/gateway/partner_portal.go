@@ -299,6 +299,7 @@ func partnerAuditAction(r *http.Request)string{
 	case strings.Contains(path,"/activate")&&r.Method==http.MethodPost:return "PARTNER_MODULE_ACTIVATED"
 	case strings.Contains(path,"/subscription")&&r.Method==http.MethodPatch:return "PARTNER_SUBSCRIPTION_UPDATED"
 	case path=="/partner/api/v1/users"&&r.Method==http.MethodPost:return "PARTNER_USER_CREATED"
+	case strings.HasPrefix(path,"/partner/api/v1/users/")&&strings.HasSuffix(path,"/modules")&&r.Method==http.MethodPut:return "PARTNER_USER_MODULE_ACCESS_UPDATED"
 	case strings.HasPrefix(path,"/partner/api/v1/users/")&&r.Method==http.MethodPatch:return "PARTNER_USER_UPDATED"
 	case path=="/partner/api/v1/design/media"&&r.Method==http.MethodPost:return "PARTNER_DESIGN_MEDIA_UPLOADED"
 	case path=="/partner/api/v1/design/workspace"&&r.Method==http.MethodPut:return "PARTNER_WORKSPACE_PERSONALIZATION_UPDATED"
@@ -373,6 +374,12 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	case path=="/users":
 		permission:="users.read";if r.Method==http.MethodPost{permission="users.write"}
 		if a.requirePartnerPermission(w,u,permission){a.partnerUsers(w,r,u)}
+	case strings.HasPrefix(path,"/users/")&&strings.HasSuffix(path,"/modules")&&(r.Method==http.MethodGet||r.Method==http.MethodPut):
+		permission:="users.read";if r.Method==http.MethodPut{permission="users.write"}
+		if a.requirePartnerPermission(w,u,permission){
+			raw:=strings.Trim(strings.TrimSuffix(strings.TrimPrefix(path,"/users/"),"/modules"),"/")
+			if raw==""||strings.Contains(raw,"/"){common.APIError(w,404,"NOT_FOUND","Partner user not found")}else{a.partnerUserModuleAccess(w,r,u,raw)}
+		}
 	case strings.HasPrefix(path,"/users/")&&r.Method==http.MethodPatch:
 		if a.requirePartnerPermission(w,u,"users.write"){a.partnerUserUpdate(w,r,u)}
 	case path=="/design"&&r.Method==http.MethodGet:
@@ -404,7 +411,10 @@ func (a *app) partnerDashboard(w http.ResponseWriter,r *http.Request,u partnerUs
 	go func(){defer wg.Done();impactErr=a.internalGET(ctx,a.hosts["impact"],"/api/v1/impact/summary?partner_id="+url.QueryEscape(u.PartnerID),&impact)}()
 	wg.Wait()
 	if companyErr!=nil{common.APIError(w,502,"PARTNER_UNAVAILABLE","Partner company record is temporarily unavailable");return}
-	if modulesErr==nil{a.enrichPartnerMarketplace(ctx,u.PartnerID,modules)}
+	if modulesErr==nil{
+		a.enrichPartnerMarketplace(ctx,u.PartnerID,modules)
+		if err:=a.applyPartnerUserModuleAccess(ctx,u,modules);err!=nil{modulesErr=err}
+	}
 	degraded:=[]string{}
 	if modulesErr!=nil{degraded=append(degraded,"modules")}
 	if billingErr!=nil{degraded=append(degraded,"billing")}
@@ -526,10 +536,16 @@ func (a *app) partnerDesignMedia(w http.ResponseWriter,r *http.Request,u partner
 }
 
 func anyItems(value any) []map[string]any {
-	raw,ok:=value.([]any);if !ok{return []map[string]any{}}
-	out:=make([]map[string]any,0,len(raw))
-	for _,item:=range raw{if mapped,ok:=item.(map[string]any);ok{out=append(out,mapped)}}
-	return out
+	switch raw:=value.(type){
+	case []map[string]any:
+		return raw
+	case []any:
+		out:=make([]map[string]any,0,len(raw))
+		for _,item:=range raw{if mapped,ok:=item.(map[string]any);ok{out=append(out,mapped)}}
+		return out
+	default:
+		return []map[string]any{}
+	}
 }
 
 func (a *app) partnerPlans(w http.ResponseWriter,r *http.Request,u partnerUser){
@@ -721,6 +737,9 @@ func (a *app) partnerModulesView(w http.ResponseWriter,r *http.Request,u partner
 	if err:=a.internalGET(r.Context(),a.hosts["catalog"],"/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules?locale="+url.QueryEscape(u.PreferredLocale),&out);err!=nil{
 		common.APIError(w,502,"CATALOG_UNAVAILABLE","Module catalog is temporarily unavailable");return}
 	a.enrichPartnerMarketplace(r.Context(),u.PartnerID,out)
+	if err:=a.applyPartnerUserModuleAccess(r.Context(),u,out);err!=nil{
+		common.APIError(w,500,"MODULE_ACCESS","User module access could not be evaluated");return
+	}
 	common.JSON(w,200,out)
 }
 
@@ -821,7 +840,15 @@ func (a *app) listPartnerUsers(partnerID string)([]map[string]any,error){
 	if err!=nil{return nil,err};defer rows.Close()
 	items:=[]map[string]any{}
 	for rows.Next(){var u partnerUser;if rows.Scan(&u.ID,&u.PartnerID,&u.Name,&u.Email,&u.PasswordHash,&u.Role,&u.Active,&u.PreferredLocale,&u.Timezone,&u.SessionVersion,&u.CreatedAt,&u.UpdatedAt)==nil{
-		items=append(items,partnerUserMap(u))
+		item:=partnerUserMap(u)
+		var mode string
+		_ = a.db.QueryRow(`SELECT module_access_mode FROM identity.partner_users WHERE id=$1 AND partner_id=$2`,u.ID,partnerID).Scan(&mode)
+		mode=normalizePartnerModuleAccessMode(mode)
+		var selectedCount int
+		_ = a.db.QueryRow(`SELECT COUNT(*) FROM identity.partner_user_modules WHERE partner_id=$1 AND user_id=$2`,partnerID,u.ID).Scan(&selectedCount)
+		item["module_access_mode"]=mode
+		item["selected_module_count"]=selectedCount
+		items=append(items,item)
 	}}
 	return items,rows.Err()
 }

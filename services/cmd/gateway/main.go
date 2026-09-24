@@ -345,6 +345,7 @@ func (a *app) migrate(ctx context.Context) error {
 		}},
 		platformSecretsMigration(),
 		retiredTestPartnerIdentityMigration(),
+		partnerUserModulePermissionsMigration(),
 	}); err != nil {
 		return err
 	}

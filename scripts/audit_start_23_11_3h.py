@@ -67,8 +67,8 @@ checks = [
         and "Existing partner returned for an idempotent onboarding replay" in openapi
         and "Display-name-derived slug or primary domain is already in use" not in openapi,
     ),
-    ("release version", "version: 0.8.29-start-23.11.4" in openapi),
-    ("render release version", "value: 0.8.29-start-23.11.4" in render),
+    ("release version", "version: 0.8.30-start-23.11.5" in openapi),
+    ("render release version", "value: 0.8.30-start-23.11.5" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]
