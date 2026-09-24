@@ -27,8 +27,8 @@ require("migrationChecksum" in common and "checksum drift detected" in common,
         "migration source drift detection is missing")
 require("validateMigrationSafety" in common and "expand-only" in common,
         "expand-only migration safety gate is missing")
-require("DROP TABLE " in common and "DROP COLUMN " in common and "TRUNCATE " in common,
-        "destructive schema patterns are not guarded")
+require("DROP TABLE " in common and "DROP COLUMN " in common and "TRUNCATE " in common and "DELETE FROM " in common,
+        "destructive schema/data patterns are not guarded")
 
 # Durable audit.
 require("CREATE TABLE IF NOT EXISTS identity.audit_outbox" in durability, "audit outbox table is missing")
@@ -46,6 +46,8 @@ require("CREATE TABLE IF NOT EXISTS identity.partner_onboarding_sagas" in durabi
         "Partner onboarding saga table is missing")
 require("runPartnerOnboardingSaga" in durability and "onboarding_request_id" in durability,
         "Partner onboarding saga execution/idempotency is missing")
+require("onboardingTermsMatch" in durability and "billing terms readback" in durability,
+        "Partner onboarding Billing retry reconciliation is missing")
 require("portal_owner_password_hash" in durability and "PasswordHash" in durability,
         "Partner onboarding does not persist only a password hash")
 require("Only the HIMATE system owner can run partner onboarding" in durability,
