@@ -517,6 +517,8 @@ services:
           envVarKey: HIMATE_INTERNAL_TOKEN
       - key: HIMATE_AUTOMATION_SERVICE_KEYS_JSON
         sync: false
+      - key: HIMATE_AUTOMATION_FINANCE_SECRET
+        sync: false
 
   - type: pserv
     name: himate-tenant-finance
@@ -556,11 +558,11 @@ services:
         value: USD
       - key: HIMATE_TENANT_FINANCE_DEFAULT_INVOICE_PREFIX
         value: INV
-      - key: HIMATE_AUTOMATION_SERVICE_KEYS_JSON
+      - key: HIMATE_AUTOMATION_FINANCE_SECRET
         fromService:
           type: pserv
           name: himate-automation
-          envVarKey: HIMATE_AUTOMATION_SERVICE_KEYS_JSON
+          envVarKey: HIMATE_AUTOMATION_FINANCE_SECRET
 
   - type: pserv
     name: himate-notifications
