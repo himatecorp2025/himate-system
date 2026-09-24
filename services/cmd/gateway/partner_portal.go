@@ -49,9 +49,9 @@ type partnerClaims struct {
 
 var partnerRolePermissions = map[string][]string{
 	"owner":   {"*"},
-	"admin":   {"dashboard.read","company.read","company.write","modules.read","modules.write","billing.read","impact.read","users.read","users.write","design.read","design.write"},
-	"billing": {"dashboard.read","company.read","modules.read","modules.write","billing.read","impact.read","design.read"},
-	"viewer":  {"dashboard.read","company.read","modules.read","billing.read","impact.read","design.read"},
+	"admin":   {"dashboard.read","company.read","company.write","modules.read","modules.write","billing.read","impact.read","users.read","users.write","design.read","design.write","notifications.read"},
+	"billing": {"dashboard.read","company.read","modules.read","modules.write","billing.read","impact.read","design.read","notifications.read"},
+	"viewer":  {"dashboard.read","company.read","modules.read","billing.read","impact.read","design.read","notifications.read"},
 }
 
 func partnerPortalMigration() common.Migration {
@@ -230,6 +230,7 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	cookie:=&http.Cookie{Name:partnerSessionCookie,Value:token,Path:"/partner",HttpOnly:true,Secure:a.secureCookie,SameSite:http.SameSiteStrictMode}
 	if in.Remember{cookie.MaxAge=int(ttl.Seconds());cookie.Expires=time.Now().UTC().Add(ttl)}
 	http.SetCookie(w,cookie)
+	go a.emitPartnerLoginNotification(u)
 	common.JSON(w,200,partnerUserMap(u))
 }
 
@@ -300,6 +301,8 @@ func partnerAuditAction(r *http.Request)string{
 	case strings.Contains(path,"/subscription")&&r.Method==http.MethodPatch:return "PARTNER_SUBSCRIPTION_UPDATED"
 	case path=="/partner/api/v1/users"&&r.Method==http.MethodPost:return "PARTNER_USER_CREATED"
 	case strings.HasPrefix(path,"/partner/api/v1/users/")&&strings.HasSuffix(path,"/modules")&&r.Method==http.MethodPut:return "PARTNER_USER_MODULE_ACCESS_UPDATED"
+	case path=="/partner/api/v1/notifications/read-all"&&r.Method==http.MethodPost:return "PARTNER_NOTIFICATIONS_READ_ALL"
+	case strings.HasPrefix(path,"/partner/api/v1/notifications/")&&strings.HasSuffix(path,"/read")&&r.Method==http.MethodPost:return "PARTNER_NOTIFICATION_READ"
 	case strings.HasPrefix(path,"/partner/api/v1/users/")&&r.Method==http.MethodPatch:return "PARTNER_USER_UPDATED"
 	case path=="/partner/api/v1/design/media"&&r.Method==http.MethodPost:return "PARTNER_DESIGN_MEDIA_UPLOADED"
 	case path=="/partner/api/v1/design/workspace"&&r.Method==http.MethodPut:return "PARTNER_WORKSPACE_PERSONALIZATION_UPDATED"
@@ -382,6 +385,8 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 		}
 	case strings.HasPrefix(path,"/users/")&&r.Method==http.MethodPatch:
 		if a.requirePartnerPermission(w,u,"users.write"){a.partnerUserUpdate(w,r,u)}
+	case (path=="/notifications"&&r.Method==http.MethodGet)||(strings.HasPrefix(path,"/notifications/")&&r.Method==http.MethodPost):
+		if a.requirePartnerPermission(w,u,"notifications.read"){a.partnerNotifications(w,r,u)}
 	case path=="/design"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"design.read"){a.partnerDesign(w,r,u)}
 	case path=="/design/media"&&(r.Method==http.MethodGet||r.Method==http.MethodPost):
