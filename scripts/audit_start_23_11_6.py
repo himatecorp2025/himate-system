@@ -79,7 +79,7 @@ checks=[
 ids={str(x.get("id")) for x in matrix.get("contracts",[])}
 checks.append(("functional matrix contains Partner notification read", "PORTAL-NOTIFY-READ-23-11-6" in ids))
 checks.append(("functional matrix contains Partner notification read-all", "PORTAL-NOTIFY-READALL-23-11-6" in ids))
-checks.append(("functional matrix closes through 23.11.6", matrix.get("completed_through")=="23.11.6"))
+checks.append(("functional matrix includes START-23.11.6 or a later closure", matrix.get("completed_through") in {"23.11.6","23.11.7","23.12"}))
 
 failures=[label for label,ok in checks if not ok]
 if failures:
