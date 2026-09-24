@@ -87,7 +87,9 @@ require("Client Piano Intake" in acceptance and "Workshop Workflow" in acceptanc
 
 # CI gating.
 require("audit_start_23_12_phase2.py" in ci, "full CI does not run Phase 2 source audit")
-require("smoke_start_23_12_phase2.sh" in ci, "full CI does not run Phase 2 runtime smoke")
+require("smoke_start_23_12_phase2.sh" in ci, "full CI does not run Phase 2 onboarding smoke")
+require("smoke_start_23_12_phase2_recovery.sh" in ci, "full CI does not run Phase 2 restart recovery smoke")
+require("smoke_start_23_12_phase2_runtime.sh" in ci, "full CI does not run Phase 2 deployment intent smoke")
 
 if errors:
     raise SystemExit("START-23.12 Phase 2 source audit failed:\n- " + "\n- ".join(errors))
