@@ -170,7 +170,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS partners_categories_name_en_unique ON partners.categories(lower(name_en)) WHERE name_en<>''`,
 			`CREATE INDEX IF NOT EXISTS partners_categories_name_hu_idx ON partners.categories(lower(name_hu)) WHERE name_hu<>''`,
 		}},
-		{Version: 6, Name: "retire-fixed-manual-qa-partner", Statements: []string{
+		{Version: 6, Name: "retire-fixed-manual-qa-partner", AllowDestructiveSchema: true, Statements: []string{
 			`DELETE FROM partners.partners
 			  WHERE id='ptr_himate_test_001'
 			     OR slug='himate-test-partner'
