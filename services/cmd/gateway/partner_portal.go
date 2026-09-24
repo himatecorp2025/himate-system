@@ -659,8 +659,12 @@ func stringSetFromAny(value any) map[string]bool {
 
 func (a *app) enrichPartnerMarketplace(ctx context.Context,partnerID string,out map[string]any) {
 	var plans,current map[string]any
-	plansErr:=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/plans",&plans)
-	currentErr:=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(partnerID)+"/plan",&current)
+	var plansErr,currentErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func(){defer wg.Done();plansErr=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/plans",&plans)}()
+	go func(){defer wg.Done();currentErr=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(partnerID)+"/plan",&current)}()
+	wg.Wait()
 	if plansErr!=nil||currentErr!=nil{
 		out["plan_context_available"]=false
 		return
@@ -840,21 +844,24 @@ func (a *app) partnerImpactSummary(w http.ResponseWriter,r *http.Request,u partn
 }
 
 func (a *app) listPartnerUsers(partnerID string)([]map[string]any,error){
-	rows,err:=a.db.Query(`SELECT id,partner_id,name,email,password_hash,role_key,active,preferred_locale,timezone,session_version,created_at,updated_at
-		FROM identity.partner_users WHERE partner_id=$1 ORDER BY CASE role_key WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'billing' THEN 2 ELSE 3 END,lower(name)`,partnerID)
+	rows,err:=a.db.Query(`SELECT pu.id,pu.partner_id,pu.name,pu.email,pu.password_hash,pu.role_key,pu.active,pu.preferred_locale,pu.timezone,pu.session_version,pu.created_at,pu.updated_at,
+		pu.module_access_mode,
+		COALESCE((SELECT COUNT(*) FROM identity.partner_user_modules pum WHERE pum.partner_id=pu.partner_id AND pum.user_id=pu.id),0)
+		FROM identity.partner_users pu
+		WHERE pu.partner_id=$1
+		ORDER BY CASE pu.role_key WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'billing' THEN 2 ELSE 3 END,lower(pu.name)`,partnerID)
 	if err!=nil{return nil,err};defer rows.Close()
 	items:=[]map[string]any{}
-	for rows.Next(){var u partnerUser;if rows.Scan(&u.ID,&u.PartnerID,&u.Name,&u.Email,&u.PasswordHash,&u.Role,&u.Active,&u.PreferredLocale,&u.Timezone,&u.SessionVersion,&u.CreatedAt,&u.UpdatedAt)==nil{
-		item:=partnerUserMap(u)
+	for rows.Next(){
+		var u partnerUser
 		var mode string
-		_ = a.db.QueryRow(`SELECT module_access_mode FROM identity.partner_users WHERE id=$1 AND partner_id=$2`,u.ID,partnerID).Scan(&mode)
-		mode=normalizePartnerModuleAccessMode(mode)
 		var selectedCount int
-		_ = a.db.QueryRow(`SELECT COUNT(*) FROM identity.partner_user_modules WHERE partner_id=$1 AND user_id=$2`,partnerID,u.ID).Scan(&selectedCount)
-		item["module_access_mode"]=mode
+		if err:=rows.Scan(&u.ID,&u.PartnerID,&u.Name,&u.Email,&u.PasswordHash,&u.Role,&u.Active,&u.PreferredLocale,&u.Timezone,&u.SessionVersion,&u.CreatedAt,&u.UpdatedAt,&mode,&selectedCount);err!=nil{return nil,err}
+		item:=partnerUserMap(u)
+		item["module_access_mode"]=normalizePartnerModuleAccessMode(mode)
 		item["selected_module_count"]=selectedCount
 		items=append(items,item)
-	}}
+	}
 	return items,rows.Err()
 }
 
