@@ -21,6 +21,7 @@ func TestMigrationSafetyRejectsDestructiveSchemaChanges(t *testing.T) {
 		"DROP TABLE important_business_data",
 		"ALTER TABLE invoices DROP COLUMN total",
 		"TRUNCATE invoices",
+		"DELETE FROM invoices WHERE status='OLD'",
 		"ALTER TABLE invoices RENAME COLUMN total TO amount",
 		"ALTER TABLE invoices ALTER COLUMN total TYPE BIGINT",
 	}
