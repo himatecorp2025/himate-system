@@ -2430,7 +2430,25 @@
       "target_phase": "23.11.6",
       "e2e_proof": "scripts/smoke_start_23_11_6.sh: read-all -> unread_count=0 while hidden event read_state remains absent",
       "notes": "Read-all mutates only notifications currently visible to the authenticated Partner Portal user."
+    },
+    {
+      "id": "PORTAL-CLOSURE-PERFORMANCE-23-11-7",
+      "surface": "partner_portal.closure",
+      "ui": "Partner Portal: complete frontend/API/backend/database/responsive closure",
+      "kind": "read_write_performance_closure",
+      "frontend_file": "frontend/lib/partner_portal.dart + frontend/lib/partner_design.dart + frontend/lib/notifications_panel.dart",
+      "source_token": "extrasFuture + responsive shell + Partner API calls",
+      "method": "GET/POST/PUT/PATCH/DELETE",
+      "api_pattern": "/partner/api/v1/*",
+      "backend_service": "gateway + partners + catalog + billing + impact + cms + notifications",
+      "persistence": "identity + cms + catalog + billing + notifications PostgreSQL schemas",
+      "audit": "START-23.11.7 static audit + inherited gateway mutation audit",
+      "localization_state": "INHERITED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.7",
+      "e2e_proof": "scripts/smoke_start_23_11_4.sh + smoke_start_23_11_5.sh + smoke_start_23_11_6.sh + smoke_start_23_11_7.sh",
+      "notes": "Closure removes avoidable serialization/N+1 reads, bulk-writes notification read state, preserves tenant/RBAC/entitlement gates and verifies the complete Partner Portal API contract."
     }
   ],
-  "completed_through": "23.11.6"
+  "completed_through": "23.11.7"
 }
