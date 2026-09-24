@@ -236,6 +236,35 @@ func (a *app) queryEvents(r *http.Request, userID string) ([]notificationEvent, 
 	return out, rows.Err()
 }
 
+func (a *app) queryEventByIDInScope(r *http.Request, userID string, id int64) (*notificationEvent, error) {
+	scope := normalizeScope(r.Header.Get("X-Himate-Notification-Scope"))
+	partnerID := strings.TrimSpace(r.Header.Get("X-Himate-Partner-ID"))
+	query := `SELECT e.id,e.event_type,e.severity,e.title,e.message,e.resource,e.partner_id,e.deep_link,e.audience_permission,
+		e.delivery_scope,e.target_user_id,e.module_key,e.category,e.metadata,e.created_at,
+		CASE WHEN rs.event_id IS NULL THEN FALSE ELSE TRUE END
+		FROM notifications.events e
+		LEFT JOIN notifications.read_state rs ON rs.event_id=e.id AND rs.user_id=$1
+		WHERE e.id=$2 AND e.delivery_scope=$3`
+	args := []any{userID, id, scope}
+	if scope == "PARTNER" {
+		query += ` AND e.partner_id=$4`
+		args = append(args, partnerID)
+	}
+	var event notificationEvent
+	var metadataRaw []byte
+	err := a.db.QueryRow(query, args...).Scan(
+		&event.ID, &event.EventType, &event.Severity, &event.Title, &event.Message, &event.Resource,
+		&event.PartnerID, &event.DeepLink, &event.AudiencePermission, &event.DeliveryScope,
+		&event.TargetUserID, &event.ModuleKey, &event.Category, &metadataRaw, &event.CreatedAt, &event.Read,
+	)
+	if err != nil {
+		return nil, err
+	}
+	event.Metadata = map[string]any{}
+	_ = json.Unmarshal(metadataRaw, &event.Metadata)
+	return &event, nil
+}
+
 func eventMap(event notificationEvent) map[string]any {
 	return map[string]any{
 		"id":                  event.ID,
@@ -385,8 +414,15 @@ func (a *app) notificationAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if selected == nil {
-		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Notification not found")
-		return
+		selected, err = a.queryEventByIDInScope(r, userID, id)
+		if err == sql.ErrNoRows {
+			common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Notification not found")
+			return
+		}
+		if err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not load notification state")
+			return
+		}
 	}
 	if !eventVisible(*selected, scope, partnerID, userID, permissions, modules) {
 		common.APIError(w, http.StatusForbidden, "FORBIDDEN", "Notification is outside your delivery scope")
