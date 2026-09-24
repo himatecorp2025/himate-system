@@ -16,6 +16,7 @@ import (
 const (
 	partnerModuleAccessAllOwned = "ALL_OWNED"
 	partnerModuleAccessSelected = "SELECTED"
+	partnerInvoiceModuleKey     = "invoice_documents"
 )
 
 func partnerUserModulePermissionsMigration() common.Migration {
@@ -207,7 +208,79 @@ func (a *app) partnerModuleRuntime(w http.ResponseWriter, r *http.Request, u par
 		})
 		return
 	}
+	if key == partnerInvoiceModuleKey {
+		a.partnerInvoiceModuleRuntime(w, r, u, parts)
+		return
+	}
 	common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "No runtime operation is registered for this module path")
+}
+
+func (a *app) partnerInvoiceModuleRuntime(w http.ResponseWriter, r *http.Request, u partnerUser, parts []string) {
+	if len(parts) < 2 {
+		common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "Invoice runtime route not found")
+		return
+	}
+	readOnly := r.Method == http.MethodGet || r.Method == http.MethodHead
+	permission := "billing.read"
+	if !readOnly {
+		permission = "billing.write"
+	}
+	if !a.requirePartnerPermission(w, u, permission) {
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodPost && r.Method != http.MethodPut {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Unsupported tenant invoice operation")
+		return
+	}
+	suffixParts := parts[1:]
+	if suffixParts[0] != "invoices" && suffixParts[0] != "policy" {
+		common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "Invoice runtime route not found")
+		return
+	}
+	if suffixParts[0] == "policy" && len(suffixParts) != 1 {
+		common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "Finance policy route not found")
+		return
+	}
+	if suffixParts[0] == "invoices" && len(suffixParts) > 3 {
+		common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "Invoice route not found")
+		return
+	}
+	if suffixParts[0] == "invoices" && len(suffixParts) == 3 && suffixParts[2] != "finalize" {
+		common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "Invoice action not found")
+		return
+	}
+
+	upstream := "/internal/v1/tenant-finance/" + strings.Join(suffixParts, "/")
+	if r.Method == http.MethodGet && strings.TrimSpace(r.URL.RawQuery) != "" {
+		upstream += "?" + r.URL.RawQuery
+	}
+	var body any
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		payload := map[string]any{}
+		if r.ContentLength != 0 {
+			if common.Decode(r, &payload) != nil {
+				common.APIError(w, http.StatusBadRequest, "JSON", "Invalid tenant invoice request")
+				return
+			}
+		}
+		body = payload
+	}
+	var out map[string]any
+	err := a.internalJSON(r.Context(), r.Method, a.hosts["tenant-finance"], upstream, body, map[string]string{
+		"X-Himate-Partner-ID": u.PartnerID,
+		"X-Himate-User-ID": u.ID,
+		"X-Correlation-ID": strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
+	}, &out)
+	if err != nil {
+		writeInternalError(w, err, "Tenant invoice operation could not be completed")
+		return
+	}
+	out["gateway_tenant_context"] = "AUTHENTICATED_PARTNER_SESSION"
+	status := http.StatusOK
+	if r.Method == http.MethodPost && len(suffixParts) == 1 && suffixParts[0] == "invoices" && out["duplicate"] != true {
+		status = http.StatusCreated
+	}
+	common.JSON(w, status, out)
 }
 
 func partnerUserModulePolicyMap(policy partnerUserModulePolicy) map[string]any {

@@ -104,6 +104,7 @@ jobs:
           test -s ../docs/START-23.11.6_ACCEPTANCE.md
           test -s ../docs/START-23.11.7_ACCEPTANCE.md
           test -s ../docs/START-23.12_PHASE3_ACCEPTANCE.md
+          test -s ../docs/START-23.12_PHASE3B_TENANT_INVOICING_ACCEPTANCE.md
           test -s ../docs/adr/0006-durable-event-driven-module-automation.md
           grep -q '^  /api/v1/billing/partners/{partnerId}/terms-history:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/scheduler/run:' ../docs/openapi.yaml
@@ -299,10 +300,10 @@ jobs:
         run: |
           python3 scripts/audit_render_bindings.py
           grep -q 'healthCheckPath: /api/v1/live' render.yaml
-          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT PAYMENTS_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT EVIDENCE_HOSTPORT REPORTS_HOSTPORT CMS_HOSTPORT STORAGE_HOSTPORT BACKUPS_HOSTPORT PARTNER_RUNTIME_HOSTPORT NOTIFICATIONS_HOSTPORT; do
+          for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT TENANT_FINANCE_HOSTPORT PAYMENTS_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT EVIDENCE_HOSTPORT REPORTS_HOSTPORT CMS_HOSTPORT STORAGE_HOSTPORT BACKUPS_HOSTPORT PARTNER_RUNTIME_HOSTPORT NOTIFICATIONS_HOSTPORT; do
             grep -q "key: $key" render.yaml || { echo "Missing Render binding: $key"; exit 1; }
           done
-          for service in himate-partners himate-catalog himate-billing himate-payments himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-cms himate-storage himate-backups himate-runtime himate-notifications himate-automation; do
+          for service in himate-partners himate-catalog himate-billing himate-tenant-finance himate-payments himate-contact himate-provisioning himate-environments himate-connector himate-health himate-impact himate-evidence himate-reports himate-cms himate-storage himate-backups himate-runtime himate-notifications himate-automation; do
             grep -q "name: $service" render.yaml || { echo "Missing Render service: $service"; exit 1; }
           done
           grep -q 'key: HIMATE_RUNTIME_PROVIDER' render.yaml
@@ -327,6 +328,8 @@ jobs:
           grep -q 'name: himate-automation' render.yaml
           grep -q 'key: HIMATE_AUTOMATION_SERVICE_KEYS_JSON' render.yaml
           grep -q 'automation.Dockerfile' docker-compose.yml
+          grep -q 'tenantfinance.Dockerfile' docker-compose.yml
+          python3 scripts/audit_start_23_12_phase3b.py
           grep -q 'name: himate-payments' render.yaml
           grep -q 'key: PAYMENT_PROVIDER' render.yaml
           grep -q 'value: stripe' render.yaml
@@ -469,6 +472,8 @@ jobs:
         run: sh scripts/smoke_start_23_12_phase2_runtime.sh http://127.0.0.1:18081
       - name: Run START-23.12 Phase 3 Automation Backbone smoke
         run: sh scripts/smoke_start_23_12_phase3.sh http://127.0.0.1:18082
+      - name: Run START-23.12 Phase 3B Tenant Invoicing smoke
+        run: sh scripts/smoke_start_23_12_phase3b.sh http://127.0.0.1:18083
       - name: Stop test topology
         if: always()
         run: docker compose down -v

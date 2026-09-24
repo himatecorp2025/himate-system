@@ -318,9 +318,36 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_AUTOMATION_SERVICE_KEYS_JSON: '{"ci-producer":"ci-producer-automation-secret-123456789","ci-consumer":"ci-consumer-automation-secret-123456789","workshop":"workshop-automation-secret-local-123456789","finance":"finance-automation-secret-local-123456789","scheduler":"scheduler-automation-secret-local-123456789","client-piano":"client-piano-automation-secret-local-123456789","notifications":"notifications-automation-secret-local-123456789"}'
+      HIMATE_AUTOMATION_FINANCE_SECRET: finance-automation-secret-local-123456789
     depends_on:
       postgres:
         condition: service_healthy
+
+  tenantfinance:
+    build:
+      context: .
+      dockerfile: services/docker/tenantfinance.Dockerfile
+    ports:
+      - "127.0.0.1:18083:10000"
+    environment:
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.32-start-23.11.7}
+      DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
+      HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
+      PARTNERS_HOSTPORT: partners:10000
+      AUTOMATION_HOSTPORT: automation:10000
+      HIMATE_TENANT_FINANCE_DEFAULT_TERMS_DAYS: "8"
+      HIMATE_TENANT_FINANCE_DEFAULT_ACCOUNTING_BASIS: CASH
+      HIMATE_TENANT_FINANCE_DEFAULT_PAYMENT_METHODS: ""
+      HIMATE_TENANT_FINANCE_DEFAULT_CURRENCY: USD
+      HIMATE_TENANT_FINANCE_DEFAULT_INVOICE_PREFIX: INV
+      HIMATE_AUTOMATION_FINANCE_SECRET: finance-automation-secret-local-123456789
+    depends_on:
+      postgres:
+        condition: service_healthy
+      partners:
+        condition: service_started
+      automation:
+        condition: service_started
 
   notifications:
     build:
@@ -359,6 +386,7 @@ services:
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
       NOTIFICATIONS_HOSTPORT: notifications:10000
       AUTOMATION_HOSTPORT: automation:10000
+      TENANT_FINANCE_HOSTPORT: tenantfinance:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -395,6 +423,8 @@ services:
       notifications:
         condition: service_started
       automation:
+        condition: service_started
+      tenantfinance:
         condition: service_started
 
   gateway:
@@ -438,6 +468,7 @@ services:
       BACKUPS_HOSTPORT: backups:10000
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
       NOTIFICATIONS_HOSTPORT: notifications:10000
+      TENANT_FINANCE_HOSTPORT: tenantfinance:10000
     depends_on:
       postgres:
         condition: service_healthy
@@ -474,6 +505,8 @@ services:
       runtime:
         condition: service_started
       notifications:
+        condition: service_started
+      tenantfinance:
         condition: service_started
 
 volumes:

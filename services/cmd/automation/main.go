@@ -45,12 +45,19 @@ func main(){
 func loadServiceKeys()map[string]string{
 	raw:=strings.TrimSpace(os.Getenv("HIMATE_AUTOMATION_SERVICE_KEYS_JSON"))
 	out:=map[string]string{}
-	if raw==""{return out}
-	var source map[string]string
-	if json.Unmarshal([]byte(raw),&source)!=nil{return out}
-	for k,v:=range source{
-		k=strings.TrimSpace(k);v=strings.TrimSpace(v)
-		if k!=""&&len(v)>=24{out[k]=v}
+	if raw!=""{
+		var source map[string]string
+		if json.Unmarshal([]byte(raw),&source)==nil{
+			for k,v:=range source{
+				k=strings.TrimSpace(k);v=strings.TrimSpace(v)
+				if k!=""&&len(v)>=24{out[k]=v}
+			}
+		}
+	}
+	// Dedicated consumer/producer credentials may be exposed separately so a
+	// service can receive only its own HMAC secret instead of the full verifier keyring.
+	if financeSecret:=strings.TrimSpace(os.Getenv("HIMATE_AUTOMATION_FINANCE_SECRET"));len(financeSecret)>=24{
+		out["finance"]=financeSecret
 	}
 	return out
 }
@@ -132,6 +139,14 @@ func (a *app)verifySignedEmpty(w http.ResponseWriter,r *http.Request)(string,boo
 
 func hashEnvelope(v any)string{raw,_:=json.Marshal(v);sum:=sha256.Sum256(raw);return hex.EncodeToString(sum[:])}
 
+func dbTimestamp(t time.Time)time.Time{return t.UTC().Truncate(time.Microsecond)}
+
+func stableReplayTimes(occurred,available time.Time,occurredProvided,availableProvided bool,existingOccurred,existingAvailable time.Time)(time.Time,time.Time){
+	if !occurredProvided{occurred=existingOccurred}
+	if !availableProvided{available=existingAvailable}
+	return dbTimestamp(occurred),dbTimestamp(available)
+}
+
 func (a *app)subscriptions(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use POST");return}
 	service,body,ok:=a.readSignedBody(w,r);if !ok{return}
@@ -167,8 +182,10 @@ func (a *app)events(w http.ResponseWriter,r *http.Request){
 	if in.EventKey==""||len(in.EventKey)>200||!eventTypePattern.MatchString(in.EventType){common.APIError(w,400,"VALIDATION","event_key and valid event_type are required");return}
 	if in.EventVersion==0{in.EventVersion=1}
 	if in.EventVersion<1{common.APIError(w,400,"VALIDATION","event_version must be positive");return}
-	if in.OccurredAt.IsZero(){in.OccurredAt=time.Now().UTC()}else{in.OccurredAt=in.OccurredAt.UTC()}
-	if in.AvailableAt.IsZero(){in.AvailableAt=in.OccurredAt}else{in.AvailableAt=in.AvailableAt.UTC()}
+	occurredProvided:=!in.OccurredAt.IsZero()
+	availableProvided:=!in.AvailableAt.IsZero()
+	if !occurredProvided{in.OccurredAt=dbTimestamp(time.Now())}else{in.OccurredAt=dbTimestamp(in.OccurredAt)}
+	if !availableProvided{in.AvailableAt=in.OccurredAt}else{in.AvailableAt=dbTimestamp(in.AvailableAt)}
 	if in.Payload==nil{in.Payload=map[string]any{}}
 	correlation:=strings.TrimSpace(in.CorrelationID);if correlation==""{correlation=strings.TrimSpace(r.Header.Get(automation.HeaderCorrelationID))}
 	causation:=strings.TrimSpace(in.CausationID);if causation==""{causation=strings.TrimSpace(r.Header.Get(automation.HeaderCausationID))}
@@ -184,7 +201,15 @@ func (a *app)events(w http.ResponseWriter,r *http.Request){
 	duplicate:=false
 	if err==sql.ErrNoRows{
 		duplicate=true
-		if err=tx.QueryRowContext(r.Context(),`SELECT id,envelope_hash FROM automation.events WHERE producer_service=$1 AND event_key=$2`,service,in.EventKey).Scan(&id,&existingHash);err!=nil{common.APIError(w,500,"DB","Could not read idempotent event");return}
+		var existingOccurred,existingAvailable time.Time
+		if err=tx.QueryRowContext(r.Context(),`SELECT id,envelope_hash,occurred_at,available_at FROM automation.events WHERE producer_service=$1 AND event_key=$2`,service,in.EventKey).Scan(&id,&existingHash,&existingOccurred,&existingAvailable);err!=nil{common.APIError(w,500,"DB","Could not read idempotent event");return}
+		// occurred_at / available_at may be server defaults when producers omit them.
+		// Reuse the persisted defaults for replay comparison so an identical retry
+		// cannot conflict merely because it arrived at a later wall-clock time.
+		in.OccurredAt,in.AvailableAt=stableReplayTimes(in.OccurredAt,in.AvailableAt,occurredProvided,availableProvided,existingOccurred,existingAvailable)
+		normalized["occurred_at"]=in.OccurredAt
+		normalized["available_at"]=in.AvailableAt
+		hash=hashEnvelope(normalized)
 		if existingHash!=hash{common.APIError(w,409,"EVENT_KEY_CONFLICT","event_key was already used for a different envelope");return}
 	}else if err!=nil{common.APIError(w,500,"DB","Could not persist event");return}
 	if !duplicate{

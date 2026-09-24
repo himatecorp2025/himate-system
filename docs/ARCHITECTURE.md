@@ -1,4 +1,4 @@
-# HIMATE control-plane architecture — START-01–23.11.3
+# HIMATE control-plane architecture — START-01–23.12
 
 ```text
 Browser / Admin / Partner Portal / Search crawler
@@ -11,7 +11,8 @@ HIMATE Gateway / Identity
   |
   +-- private Partner Service
   +-- private Catalog Service
-  +-- private Billing Service
+  +-- private Billing Service (HIMATE platform/partner commercial billing)
+  +-- private Tenant Finance Service (partner/customer operational invoicing)
   +-- private Payments Service
   +-- private Contact Service
   +-- private Provisioning Engine
@@ -30,12 +31,16 @@ HIMATE Gateway / Identity
   |       +-- Local adapter (CI/dev)
   |       +-- Render adapter (production)
   +-- private Notifications Service
+  +-- private Automation Service
   |
   +-- HIMATE PostgreSQL control-plane database
   |    +-- identity (admin + isolated partner identities)
   |    +-- partners
   |    +-- catalog
   |    +-- billing
+  |    +-- tenant_finance
+  |    +-- automation
+  |    +-- automation_outbox
   |    +-- payments
   |    +-- contact
   |    +-- provisioning
@@ -628,5 +633,31 @@ Reusable tenant Finance policy resolves payment terms using:
 4. platform-configured fallback.
 
 No eight-day term is hard-coded. Accounting basis is an explicit `CASH` or `ACCRUAL` policy and enabled payment methods are tenant-configurable. Future Finance implementations must snapshot the effective policy on the issued invoice rather than reading mutable defaults later.
+
+### Tenant/customer invoice intake (START-23.12 Phase 3B)
+
+The `invoice_documents` module now has a separate Tenant Finance backend. Manual invoices enter as `MANUAL` drafts under the authenticated Partner context. Finalization refreshes current issuer identity and logo from the authoritative Partner service, then freezes issuer, customer, line totals and effective Finance policy into a tenant-scoped `READY_FOR_ISSUE` snapshot.
+
+Automated invoice sources are deliberately event-driven:
+
+```text
+Workshop admin/QC approval
+   -> workshop identity
+   -> workflow.billing_approved.v1
+   -> Automation immutable event/delivery
+   -> finance consumer identity
+   -> WORKFLOW invoice
+
+Scheduler simple job closed
+   -> scheduler identity
+   -> scheduler.job_closed_invoice_ready.v1
+   -> Automation immutable event/delivery
+   -> finance consumer identity
+   -> SCHEDULE invoice
+```
+
+Finance receives only its dedicated `HIMATE_AUTOMATION_FINANCE_SECRET`; it does not receive the Workshop/Scheduler verifier secrets. Producer identity is verified at the Automation boundary, while Finance additionally binds accepted event type to producer, module and subject type. Tenant and source identity come from the immutable event envelope, not from invoice payload fields.
+
+`READY_FOR_ISSUE` is not equivalent to a legally issued invoice. It freezes the numbering prefix/policy but does not consume an official invoice number. Jurisdiction-aware document rendering/delivery remains a later Finance capability; the later `ISSUED` transaction must allocate the legal invoice number atomically with issuance.
 
 ADR-0006 records the durability and separation decision.
