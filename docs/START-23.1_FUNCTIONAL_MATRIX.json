@@ -524,8 +524,8 @@
       "audit": "durable gateway audit outbox + billing events",
       "localization_state": "PARTIAL",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
-      "target_phase": "23.12",
-      "e2e_proof": "scripts/smoke_start_23_12_phase2.sh: durable onboarding -> billing terms readback/reconciliation",
+      "target_phase": "23.2",
+      "e2e_proof": "scripts/smoke_start_23_2.sh: original mutation -> persistence -> readback; START-23.12 Phase 2 now routes the same business step through scripts/smoke_start_23_12_phase2.sh durable saga",
       "notes": "START-23.12 Phase 2 moved this step behind the durable Partner onboarding saga. The browser no longer calls Billing terms directly; gateway orchestration persists saga state and reconciles Billing before retrying."
     },
     {
@@ -2252,8 +2252,8 @@
       "audit": "durable gateway audit outbox",
       "localization_state": "PARTIAL",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
-      "target_phase": "23.12",
-      "e2e_proof": "scripts/smoke_start_23_12_phase2.sh: durable onboarding replay -> one Partner Portal Owner",
+      "target_phase": "23.11.3",
+      "e2e_proof": "scripts/smoke_start_23_11_3e.sh: original Owner create/login/readback; START-23.12 Phase 2 now routes the same business step through the durable onboarding saga",
       "notes": "START-23.12 Phase 2 moved initial Owner creation behind the durable onboarding saga. Owner creation is reconciled by email/partner/role before insert and the credential is persisted only as a password hash."
     },
     {
