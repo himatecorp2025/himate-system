@@ -38,6 +38,7 @@ func start23113kCommercialModeMigration() common.Migration {
 	return common.Migration{
 		Version: 16,
 		Name:    "start-23-11-3k-commercial-mode-charity",
+		AllowDestructiveSchema: true,
 		Statements: []string{
 			`CREATE TABLE IF NOT EXISTS billing.partner_commercial_modes(
 				partner_id TEXT PRIMARY KEY,
