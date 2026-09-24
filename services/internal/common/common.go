@@ -65,9 +65,55 @@ func ExecStatements(ctx context.Context, db *sql.DB, statements ...string) error
 }
 
 type Migration struct {
-	Version    int
-	Name       string
-	Statements []string
+	Version                int
+	Name                   string
+	Statements             []string
+	AllowDestructiveSchema bool
+}
+
+func migrationChecksum(m Migration) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("%d\n%s\n", m.Version, strings.TrimSpace(m.Name)))
+	for _, stmt := range m.Statements {
+		b.WriteString(strings.TrimSpace(stmt))
+		b.WriteByte('\n')
+	}
+	if m.AllowDestructiveSchema {
+		b.WriteString("allow-destructive-schema\n")
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func destructiveSchemaStatement(stmt string) bool {
+	normalized := strings.ToUpper(strings.Join(strings.Fields(stmt), " "))
+	dangerous := []string{
+		"DROP TABLE ",
+		"DROP SCHEMA ",
+		"DROP COLUMN ",
+		"TRUNCATE ",
+		" RENAME COLUMN ",
+		" RENAME TO ",
+		" ALTER COLUMN ",
+	}
+	for _, token := range dangerous {
+		if strings.Contains(normalized, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateMigrationSafety(m Migration) error {
+	if m.AllowDestructiveSchema {
+		return nil
+	}
+	for _, stmt := range m.Statements {
+		if destructiveSchemaStatement(stmt) {
+			return fmt.Errorf("migration %d %q contains destructive schema SQL; HIMATE production migrations must be expand-only", m.Version, m.Name)
+		}
+	}
+	return nil
 }
 
 // ApplyMigrations runs ordered, service-scoped PostgreSQL migrations under an
@@ -95,11 +141,16 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 			service TEXT NOT NULL,
 			version INT NOT NULL,
 			name TEXT NOT NULL,
+			checksum TEXT NOT NULL DEFAULT '',
 			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			PRIMARY KEY(service, version)
 		)`); err != nil {
 		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, registryLock)
 		return fmt.Errorf("migration registry: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `ALTER TABLE public.himate_schema_migrations ADD COLUMN IF NOT EXISTS checksum TEXT NOT NULL DEFAULT ''`); err != nil {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, registryLock)
+		return fmt.Errorf("migration registry checksum: %w", err)
 	}
 	if _, err := conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, registryLock); err != nil {
 		return fmt.Errorf("migration registry unlock: %w", err)
@@ -122,8 +173,33 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 			return fmt.Errorf("migrations for %s must be strictly increasing", service)
 		}
 		lastDeclared = migration.Version
+		checksum := migrationChecksum(migration)
 		if migration.Version <= current {
+			var storedName, storedChecksum string
+			err := conn.QueryRowContext(ctx,
+				`SELECT name,checksum FROM public.himate_schema_migrations WHERE service=$1 AND version=$2`,
+				service, migration.Version,
+			).Scan(&storedName, &storedChecksum)
+			if err != nil {
+				return fmt.Errorf("migration %s/%d registry verification: %w", service, migration.Version, err)
+			}
+			if storedName != migration.Name {
+				return fmt.Errorf("migration %s/%d name drift: database=%q source=%q", service, migration.Version, storedName, migration.Name)
+			}
+			if storedChecksum == "" {
+				if _, err := conn.ExecContext(ctx,
+					`UPDATE public.himate_schema_migrations SET checksum=$3 WHERE service=$1 AND version=$2 AND checksum=''`,
+					service, migration.Version, checksum,
+				); err != nil {
+					return fmt.Errorf("migration %s/%d checksum backfill: %w", service, migration.Version, err)
+				}
+			} else if !hmac.Equal([]byte(storedChecksum), []byte(checksum)) {
+				return fmt.Errorf("migration %s/%d checksum drift detected", service, migration.Version)
+			}
 			continue
+		}
+		if err := validateMigrationSafety(migration); err != nil {
+			return fmt.Errorf("migration %s/%d safety: %w", service, migration.Version, err)
 		}
 
 		tx, err := conn.BeginTx(ctx, &sql.TxOptions{})
@@ -139,7 +215,7 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, service string, migrations
 				return fmt.Errorf("migration %s/%d %s: %w", service, migration.Version, migration.Name, err)
 			}
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO public.himate_schema_migrations(service,version,name) VALUES($1,$2,$3)`, service, migration.Version, migration.Name); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO public.himate_schema_migrations(service,version,name,checksum) VALUES($1,$2,$3,$4)`, service, migration.Version, migration.Name, checksum); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("migration %s/%d registry: %w", service, migration.Version, err)
 		}
