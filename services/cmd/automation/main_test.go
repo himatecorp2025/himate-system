@@ -63,3 +63,13 @@ func TestStableReplayTimesCanMixExplicitAndServerDefaultTimes(t *testing.T) {
 		t.Fatalf("explicit available_at must be preserved: %s", available)
 	}
 }
+
+
+func TestDBTimestampMatchesPostgresMicrosecondPrecision(t *testing.T) {
+	input := time.Date(2026, 9, 24, 18, 58, 14, 123456789, time.FixedZone("EDT", -4*60*60))
+	got := dbTimestamp(input)
+	want := time.Date(2026, 9, 24, 22, 58, 14, 123456000, time.UTC)
+	if !got.Equal(want) || got.Location() != time.UTC {
+		t.Fatalf("database timestamp normalization mismatch: got=%s want=%s", got, want)
+	}
+}
