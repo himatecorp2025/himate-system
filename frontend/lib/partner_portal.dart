@@ -376,6 +376,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   bool _defaultWorkspaceApplied = false;
   bool loading = true;
   String? error;
+  Map<String, String> secondaryLoadErrors = <String, String>{};
   Map<String, dynamic> company = <String, dynamic>{};
   Map<String, dynamic> billing = <String, dynamic>{};
   Map<String, dynamic> plan = <String, dynamic>{};
@@ -417,27 +418,39 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     load();
   }
 
-  Future<Map<String, dynamic>?> safeGet(String path) async {
+  Future<Map<String, dynamic>?> safeGet(
+    String label,
+    String path,
+    Map<String, String> failures,
+  ) async {
     try {
       return await widget.api.get(path, force: true);
-    } catch (_) {
+    } catch (e) {
+      failures[label] = e.toString();
       return null;
     }
   }
 
   Future<void> load() async {
-    if (mounted) setState(() { loading = true; error = null; });
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = null;
+        secondaryLoadErrors = <String, String>{};
+      });
+    }
 
+    final secondaryFailures = <String, String>{};
     final extrasFuture = Future.wait<Map<String, dynamic>?>([
-      can('billing.read') ? safeGet('/partner/api/v1/billing/subscriptions') : Future.value(null),
-      can('billing.read') ? safeGet('/partner/api/v1/billing/invoices') : Future.value(null),
-      can('users.read') ? safeGet('/partner/api/v1/users') : Future.value(null),
-      can('design.read') ? safeGet('/partner/api/v1/design') : Future.value(null),
-      can('design.read') ? safeGet('/partner/api/v1/design/media') : Future.value(null),
-      can('billing.read') ? safeGet('/partner/api/v1/plans') : Future.value(null),
-      can('billing.read') ? safeGet('/partner/api/v1/plan') : Future.value(null),
-      can('billing.read') ? safeGet('/partner/api/v1/charity') : Future.value(null),
-      can('modules.read') ? safeGet('/partner/api/v1/charity/modules') : Future.value(null),
+      can('billing.read') ? safeGet('Billing subscriptions', '/partner/api/v1/billing/subscriptions', secondaryFailures) : Future.value(null),
+      can('billing.read') ? safeGet('Billing invoices', '/partner/api/v1/billing/invoices', secondaryFailures) : Future.value(null),
+      can('users.read') ? safeGet('Portal users', '/partner/api/v1/users', secondaryFailures) : Future.value(null),
+      can('design.read') ? safeGet('Design settings', '/partner/api/v1/design', secondaryFailures) : Future.value(null),
+      can('design.read') ? safeGet('Design media', '/partner/api/v1/design/media', secondaryFailures) : Future.value(null),
+      can('billing.read') ? safeGet('Subscription plans', '/partner/api/v1/plans', secondaryFailures) : Future.value(null),
+      can('billing.read') ? safeGet('Current plan', '/partner/api/v1/plan', secondaryFailures) : Future.value(null),
+      can('billing.read') ? safeGet('Charity status', '/partner/api/v1/charity', secondaryFailures) : Future.value(null),
+      can('modules.read') ? safeGet('Charity modules', '/partner/api/v1/charity/modules', secondaryFailures) : Future.value(null),
     ]);
 
     try {
@@ -446,6 +459,10 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       final moduleRaw = dashboard['modules'];
       final billingRaw = dashboard['billing'];
       final impactRaw = dashboard['impact'];
+      final degradedRaw = dashboard['degraded_sections'];
+      final degradedSections = degradedRaw is List
+          ? degradedRaw.map((item) => item.toString()).where((item) => item.isNotEmpty).toList()
+          : <String>[];
 
       if (!mounted) return;
       setState(() {
@@ -461,15 +478,22 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       final extras = await extrasFuture;
       if (!mounted) return;
       setState(() {
-        subscriptions = extras[0] == null ? <Map<String, dynamic>>[] : items(extras[0]!);
-        invoices = extras[1] == null ? <Map<String, dynamic>>[] : items(extras[1]!);
-        users = extras[2] == null ? <Map<String, dynamic>>[] : items(extras[2]!);
-        designState = extras[3] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[3]!);
-        final rawProfiles = designState['profiles'];
-        designProfiles = rawProfiles is List
-            ? rawProfiles.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
-            : <Map<String, dynamic>>[];
-        designMedia = extras[4] == null ? <Map<String, dynamic>>[] : items(extras[4]!);
+        if (extras[0] != null) subscriptions = items(extras[0]!);
+        if (extras[1] != null) invoices = items(extras[1]!);
+        if (extras[2] != null) users = items(extras[2]!);
+        if (extras[3] != null) {
+          designState = Map<String, dynamic>.from(extras[3]!);
+          final rawProfiles = designState['profiles'];
+          designProfiles = rawProfiles is List
+              ? rawProfiles.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+              : <Map<String, dynamic>>[];
+        }
+        if (extras[4] != null) designMedia = items(extras[4]!);
+        secondaryLoadErrors = <String, String>{
+          ...secondaryFailures,
+          for (final section in degradedSections)
+            'Dashboard ${_humanize(section)}': 'The backend reported this section as temporarily degraded.',
+        };
         final workspaceRaw = designState['workspace'];
         if (workspaceRaw is Map) {
           final defaultKey = (workspaceRaw['default_module_key'] ?? '').toString().trim();
@@ -491,10 +515,10 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             }
           }
         }
-        plans = extras[5] == null ? <Map<String, dynamic>>[] : items(extras[5]!);
-        plan = extras[6] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[6]!);
-        charity = extras[7] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[7]!);
-        charityModules = extras[8] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[8]!);
+        if (extras[5] != null) plans = items(extras[5]!);
+        if (extras[6] != null) plan = Map<String, dynamic>.from(extras[6]!);
+        if (extras[7] != null) charity = Map<String, dynamic>.from(extras[7]!);
+        if (extras[8] != null) charityModules = Map<String, dynamic>.from(extras[8]!);
         final loadedFrequency = '${plan['billing_frequency'] ?? ''}'.toUpperCase();
         if (loadedFrequency == 'MONTHLY' || loadedFrequency == 'ANNUAL') {
           planBillingFrequency = loadedFrequency;
@@ -505,13 +529,37 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     }
   }
 
-  void toast(String message, {bool failure = false}) {
+  void toast(String message, {bool failure = false, bool warning = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: LText(message),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: failure ? brandDanger : brandSuccess,
+        backgroundColor: failure
+            ? brandDanger
+            : warning
+                ? brandWarning
+                : brandSuccess,
       ),
+    );
+  }
+
+  Widget portalPageWithLoadStatus(Widget page) {
+    if (secondaryLoadErrors.isEmpty) return page;
+    final labels = secondaryLoadErrors.keys.join(' · ');
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+          child: _MessageCard(
+            icon: Icons.warning_amber_rounded,
+            title: 'Some live data is temporarily unavailable',
+            message:
+                'HIMATE kept the last successfully loaded values instead of showing missing data as empty. Affected sections: $labels. Refresh after the service recovers.',
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(child: page),
+      ],
     );
   }
 
@@ -745,14 +793,25 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     if (confirmed != true) return;
 
     try {
-      await widget.api.patch('/partner/api/v1/plan', {
+      final response = await widget.api.patch('/partner/api/v1/plan', {
         'plan_key': targetKey,
         'billing_frequency': planBillingFrequency,
         'module_keys': moduleKeys,
         'reason': 'Partner Portal plan selection',
       });
       await load();
-      if (mounted) toast('${target['display_name']} plan updated.');
+      if (!mounted) return;
+      if (response['entitlement_sync_pending'] == true) {
+        final warning = (response['warning'] ?? '').toString().trim();
+        toast(
+          warning.isEmpty
+              ? 'The plan was saved, but module access is still synchronizing. HIMATE will retry automatically.'
+              : warning,
+          warning: true,
+        );
+      } else {
+        toast('${target['display_name']} plan updated.');
+      }
     } catch (e) {
       if (mounted) toast(e.toString(), failure: true);
     }
@@ -2082,7 +2141,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                   Expanded(
                     child: ColoredBox(
                       color: background,
-                      child: page,
+                      child: portalPageWithLoadStatus(page),
                     ),
                   ),
                 ]),
@@ -2159,7 +2218,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
               ]),
             ),
           ),
-          body: ColoredBox(color: background, child: page),
+          body: ColoredBox(color: background, child: portalPageWithLoadStatus(page)),
         );
       },
     );
