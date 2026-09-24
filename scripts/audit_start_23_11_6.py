@@ -19,7 +19,7 @@ fast=(root/".github/workflows/ci-fast.yml").read_text()
 full=(root/".github/workflows/ci.yml").read_text()
 acceptance=(root/"docs/START-23.11.6_ACCEPTANCE.md").read_text()
 matrix=json.loads((root/"docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
-release="0.8.31-start-23.11.6"
+release="0.8.32-start-23.11.7"
 
 checks=[
  ("central notification migration persists delivery scope, target user, module and category",
