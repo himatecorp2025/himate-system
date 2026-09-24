@@ -38,23 +38,23 @@ func TestAutomatedSourceIsBoundToServiceIdentity(t *testing.T) {
 	}
 }
 
-func TestNormalizeIssuerRequiresTenantBrandAndUSBillingIdentity(t *testing.T) {
+func TestNormalizeIssuerRequiresLegalBillingIdentityButLogoIsOptional(t *testing.T) {
 	_, err := normalizeIssuer("ptr_1", map[string]any{
 		"legal_name": "Example LLC", "country": "United States", "city": "New York",
-		"state_region": "NY", "postal_code": "10001", "address_line1": "1 Example Ave",
+		"address_line1": "1 Example Ave",
 	})
 	if err == nil {
-		t.Fatal("invoice-ready issuer must require logo_url")
+		t.Fatal("US invoice-ready issuer must require state_region and postal_code")
 	}
 	issuer, err := normalizeIssuer("ptr_1", map[string]any{
 		"legal_name": "Example LLC", "display_name": "Example", "country": "United States", "city": "New York",
 		"state_region": "NY", "postal_code": "10001", "address_line1": "1 Example Ave",
-		"logo_url": "https://cdn.example/logo.png", "tax_id": "12-3456789",
+		"tax_id": "12-3456789",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if issuer.PartnerID != "ptr_1" || issuer.LegalName != "Example LLC" {
+	if issuer.PartnerID != "ptr_1" || issuer.LegalName != "Example LLC" || issuer.LogoURL != "" {
 		t.Fatalf("unexpected issuer snapshot: %+v", issuer)
 	}
 }
