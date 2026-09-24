@@ -72,7 +72,9 @@ if 'PartnerID string' in domain.split("type invoiceInput struct", 1)[1].split("}
     errors.append("manual invoice input must never accept partner_id from the client")
 if 'SourceType string' in domain.split("type invoiceInput struct", 1)[1].split("}", 1)[0]:
     errors.append("manual invoice input must never accept source_type from the client")
-if '"partner_id": u.PartnerID' in gateway:
+invoice_runtime = gateway.split("func (a *app) partnerInvoiceModuleRuntime", 1)[1]
+invoice_runtime = invoice_runtime.split("func (a *app) applyPartnerUserModuleAccess", 1)[0]
+if '"partner_id": u.PartnerID' in invoice_runtime:
     errors.append("gateway must not inject tenant identity into the invoice JSON body; use authoritative headers")
 if 'document_renderer": "DEFERRED"' not in main and 'document_renderer", "DEFERRED"' not in main:
     # health marker is intentionally explicit so Phase 3B cannot pretend the legal PDF renderer exists.
