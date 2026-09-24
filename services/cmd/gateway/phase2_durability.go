@@ -300,6 +300,35 @@ func (a *app) runPartnerOnboardingSaga(ctx context.Context,requestID string,acto
 	return latest,partner,nil
 }
 
+func (a *app) recoverPartnerOnboardingSagas(log interface{ Info(string,...any); Warn(string,...any) }) {
+	time.Sleep(3*time.Second)
+	rows,err:=a.db.Query(`SELECT request_id,actor_id FROM identity.partner_onboarding_sagas
+		WHERE status IN ('PENDING','RUNNING') ORDER BY updated_at`)
+	if err!=nil{log.Warn("partner onboarding recovery scan failed","error",err);return}
+	type item struct{requestID,actorID string}
+	items:=[]item{}
+	for rows.Next(){var x item;if rows.Scan(&x.requestID,&x.actorID)==nil{items=append(items,x)}}
+	rows.Close()
+	for _,x:=range items{
+		x:=x
+		go func(){
+			actor,err:=a.findUser("id",x.actorID)
+			if err!=nil||!actor.Active||!actor.SystemOwner{
+				log.Warn("partner onboarding recovery actor unavailable","request_id",x.requestID,"actor_id",x.actorID)
+				return
+			}
+			for attempt:=1;attempt<=3;attempt++{
+				ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second)
+				_,_,runErr:=a.runPartnerOnboardingSaga(ctx,x.requestID,actor)
+				cancel()
+				if runErr==nil{log.Info("partner onboarding saga recovered","request_id",x.requestID,"attempt",attempt);return}
+				log.Warn("partner onboarding recovery attempt failed","request_id",x.requestID,"attempt",attempt,"error",runErr)
+				if attempt<3{time.Sleep(time.Duration(attempt*2)*time.Second)}
+			}
+		}()
+	}
+}
+
 func (a *app) partnerOnboarding(w http.ResponseWriter,r *http.Request,actor user){
 	if !actor.SystemOwner{common.APIError(w,http.StatusForbidden,"OWNER_REQUIRED","Only the HIMATE system owner can run partner onboarding");return}
 	raw:=strings.Trim(strings.TrimPrefix(r.URL.Path,"/api/v1/partner-onboarding"),"/")
