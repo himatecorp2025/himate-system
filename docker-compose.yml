@@ -115,6 +115,8 @@ services:
     build:
       context: .
       dockerfile: services/docker/runtime.Dockerfile
+    ports:
+      - "127.0.0.1:18081:10000"
     environment:
       HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.32-start-23.11.7}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
