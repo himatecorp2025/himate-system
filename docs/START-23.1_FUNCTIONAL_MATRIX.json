@@ -304,6 +304,11 @@
       "id": "packages.admin",
       "name": "Packages Administration",
       "scope": "Central package pricing, module limits and fixed package membership"
+    },
+    {
+      "id": "partner_portal.closure",
+      "name": "Partner Portal / Closure & Performance",
+      "scope": "End-to-end frontend/API/backend/database/responsive closure and latency optimization"
     }
   ],
   "contracts": [
@@ -2430,7 +2435,25 @@
       "target_phase": "23.11.6",
       "e2e_proof": "scripts/smoke_start_23_11_6.sh: read-all -> unread_count=0 while hidden event read_state remains absent",
       "notes": "Read-all mutates only notifications currently visible to the authenticated Partner Portal user."
+    },
+    {
+      "id": "PORTAL-CLOSURE-PERFORMANCE-23-11-7",
+      "surface": "partner_portal.closure",
+      "ui": "Partner Portal: complete frontend/API/backend/database/responsive closure",
+      "kind": "read_write_performance_closure",
+      "frontend_file": "frontend/lib/partner_portal.dart",
+      "source_token": "final extrasFuture = Future.wait<Map<String, dynamic>?>",
+      "method": "GET/POST/PUT/PATCH/DELETE",
+      "api_pattern": "/partner/api/v1/*",
+      "backend_service": "gateway + partners + catalog + billing + impact + cms + notifications",
+      "persistence": "identity + cms + catalog + billing + notifications PostgreSQL schemas",
+      "audit": "START-23.11.7 static audit + inherited gateway mutation audit",
+      "localization_state": "INHERITED",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.7",
+      "e2e_proof": "scripts/smoke_start_23_11_4.sh + smoke_start_23_11_5.sh + smoke_start_23_11_6.sh + smoke_start_23_11_7.sh",
+      "notes": "Closure spans Partner Portal shell, design and notifications. The canonical source anchor is partner_portal.dart; START-23.11.7 acceptance/audit additionally inspect partner_design.dart and notifications_panel.dart."
     }
   ],
-  "completed_through": "23.11.6"
+  "completed_through": "23.11.7"
 }

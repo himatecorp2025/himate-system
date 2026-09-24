@@ -15,7 +15,7 @@ fast=(root/".github/workflows/ci-fast.yml").read_text()
 full=(root/".github/workflows/ci.yml").read_text()
 acceptance=(root/"docs/START-23.11.5_ACCEPTANCE.md").read_text()
 matrix=json.loads((root/"docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
-release="0.8.31-start-23.11.6"
+release="0.8.32-start-23.11.7"
 
 checks=[
  ("identity migration is registered after historical migrations",
@@ -51,7 +51,7 @@ checks=[
   "module['user_executable'] == true" in portal),
  ("OpenAPI publishes user-module permission contract",
   "/partner/api/v1/users/{userId}/modules:" in openapi and "version: "+release in openapi and
-  "START-01 through START-23.11.6" in openapi),
+  "START-01 through START-23.11.7" in openapi),
  ("release aligned in Render and Compose",
   render.count("value: "+release)==19 and
   compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==18),

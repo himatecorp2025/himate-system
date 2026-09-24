@@ -19,7 +19,7 @@ fast=(root/".github/workflows/ci-fast.yml").read_text()
 full=(root/".github/workflows/ci.yml").read_text()
 acceptance=(root/"docs/START-23.11.6_ACCEPTANCE.md").read_text()
 matrix=json.loads((root/"docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
-release="0.8.31-start-23.11.6"
+release="0.8.32-start-23.11.7"
 
 checks=[
  ("central notification migration persists delivery scope, target user, module and category",
@@ -66,7 +66,7 @@ checks=[
   '/partner/api/v1/notifications:' in openapi and
   '/partner/api/v1/notifications/read-all:' in openapi and
   '/partner/api/v1/notifications/{notificationId}/read:' in openapi and
-  'version: '+release in openapi and 'START-01 through START-23.11.6' in openapi),
+  'version: '+release in openapi and 'START-01 through START-23.11.7' in openapi),
  ("release aligned in Render and Compose",
   render.count("value: "+release)==19 and
   compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==18),
@@ -79,7 +79,7 @@ checks=[
 ids={str(x.get("id")) for x in matrix.get("contracts",[])}
 checks.append(("functional matrix contains Partner notification read", "PORTAL-NOTIFY-READ-23-11-6" in ids))
 checks.append(("functional matrix contains Partner notification read-all", "PORTAL-NOTIFY-READALL-23-11-6" in ids))
-checks.append(("functional matrix closes through 23.11.6", matrix.get("completed_through")=="23.11.6"))
+checks.append(("functional matrix includes START-23.11.6 or a later closure", matrix.get("completed_through") in {"23.11.6","23.11.7","23.12"}))
 
 failures=[label for label,ok in checks if not ok]
 if failures:

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 
 	"himate.local/services/internal/common"
 )
@@ -111,14 +112,30 @@ func (a *app) partnerOwnedModuleMap(ctx context.Context, partnerID, locale strin
 }
 
 func (a *app) loadPartnerUserModulePolicy(ctx context.Context, partnerID, userID, locale string) (partnerUserModulePolicy, error) {
-	mode, selected, err := a.partnerUserModuleSelection(ctx, partnerID, userID)
-	if err != nil {
-		return partnerUserModulePolicy{}, err
+	var mode string
+	var selected map[string]bool
+	var owned map[string]map[string]any
+	var ownedKeys []string
+	var selectionErr, ownedErr error
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		mode, selected, selectionErr = a.partnerUserModuleSelection(ctx, partnerID, userID)
+	}()
+	go func() {
+		defer wg.Done()
+		owned, ownedKeys, ownedErr = a.partnerOwnedModuleMap(ctx, partnerID, locale)
+	}()
+	wg.Wait()
+	if selectionErr != nil {
+		return partnerUserModulePolicy{}, selectionErr
 	}
-	owned, ownedKeys, err := a.partnerOwnedModuleMap(ctx, partnerID, locale)
-	if err != nil {
-		return partnerUserModulePolicy{}, err
+	if ownedErr != nil {
+		return partnerUserModulePolicy{}, ownedErr
 	}
+
 	effective := []string{}
 	stale := []string{}
 	if mode == partnerModuleAccessAllOwned {
