@@ -15,7 +15,7 @@ render=(root/"render.yaml").read_text()
 compose=(root/"docker-compose.yml").read_text()
 matrix=json.loads((root/"docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
 acceptance=(root/"docs/START-23.11.4_ACCEPTANCE.md").read_text()
-release="0.8.30-start-23.11.5"
+release="0.8.31-start-23.11.6"
 
 checks=[
  ("workspace persistence exists",

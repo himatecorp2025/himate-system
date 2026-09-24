@@ -14,7 +14,7 @@ openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
 
-release = "0.8.30-start-23.11.5"
+release = "0.8.31-start-23.11.6"
 
 checks = [
     (
@@ -104,7 +104,7 @@ checks = [
     (
         "OpenAPI publishes START-23.11.3k contract",
         "version: " + release in openapi
-        and "START-01 through START-23.11.5" in openapi
+        and "START-01 through START-23.11.6" in openapi
         and "commercial-mode" in openapi
         and "Charity" in openapi,
     ),
