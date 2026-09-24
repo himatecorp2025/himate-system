@@ -144,8 +144,8 @@ checks=[
   "MediaQuery.sizeOf(context).width < 620" in notifications_ui),
  ("23.11.7 release is aligned in OpenAPI, Render and Compose",
   "version: "+release in openapi and
-  render.count("value: "+release)==19 and
-  compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==18),
+  render.count("value: "+release)==20 and
+  compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==19),
  ("fast CI carries inherited closure gates and the 23.11.7 audit",
   all(("audit_start_23_11_"+x+".py") in fast for x in ["4","5","6","7"])),
  ("full CI carries inherited closure gates and the 23.11.7 audit/smoke",
