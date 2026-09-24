@@ -235,7 +235,8 @@ func (a *app) createManualDraft(ctx context.Context, partnerID, actorID string, 
 		return invoiceRecord{}, false, err
 	}
 	in.Notes = strings.TrimSpace(in.Notes)
-	hash := draftEnvelopeHash(sourceManual, "", currency, customer, items, in.PaymentTermsDays, in.Notes)
+	requestCurrency := strings.ToUpper(strings.TrimSpace(in.Currency))
+	hash := draftEnvelopeHash(sourceManual, "", requestCurrency, customer, items, in.PaymentTermsDays, in.Notes)
 	customerRaw, _ := json.Marshal(customer)
 	id := newID("tin")
 	tx, err := a.db.BeginTx(ctx, nil)
@@ -315,6 +316,19 @@ func resolvedTerms(policy financePolicyState, override *int) (int, error) {
 }
 
 func (a *app) finalizeManual(ctx context.Context, partnerID, actorID, invoiceID, correlationID string) (invoiceRecord, bool, error) {
+	pre, err := a.loadInvoice(ctx, partnerID, invoiceID)
+	if err != nil {
+		return invoiceRecord{}, false, err
+	}
+	if pre.SourceType != sourceManual {
+		return invoiceRecord{}, false, errInvoiceState
+	}
+	if pre.Status == statusReadyForIssue {
+		return pre, true, nil
+	}
+	if pre.Status != statusDraft {
+		return invoiceRecord{}, false, errInvoiceState
+	}
 	issuer, err := a.fetchIssuer(ctx, partnerID)
 	if err != nil {
 		return invoiceRecord{}, false, err
@@ -421,22 +435,11 @@ func (a *app) createAutomatedReady(ctx context.Context, serviceID, actorID strin
 	in.PartnerID = strings.TrimSpace(in.PartnerID)
 	in.SourceType = strings.ToUpper(strings.TrimSpace(in.SourceType))
 	in.SourceID = strings.TrimSpace(in.SourceID)
+	in.Notes = strings.TrimSpace(in.Notes)
 	if in.PartnerID == "" || in.SourceID == "" || len(in.SourceID) > 240 {
 		return invoiceRecord{}, false, errors.New("partner_id and source_id are required")
 	}
 	if err := validateSourceForService(serviceID, in.SourceType); err != nil {
-		return invoiceRecord{}, false, err
-	}
-	issuer, err := a.fetchIssuer(ctx, in.PartnerID)
-	if err != nil {
-		return invoiceRecord{}, false, err
-	}
-	policy, err := a.loadPolicy(ctx, in.PartnerID)
-	if err != nil {
-		return invoiceRecord{}, false, err
-	}
-	currency, err := normalizeCurrency(in.Currency, policy.DefaultCurrency)
-	if err != nil {
 		return invoiceRecord{}, false, err
 	}
 	customer, err := normalizeCustomer(in.Customer, true)
@@ -452,18 +455,45 @@ func (a *app) createAutomatedReady(ctx context.Context, serviceID, actorID strin
 	if err != nil {
 		return invoiceRecord{}, false, err
 	}
+	requestCurrency := strings.ToUpper(strings.TrimSpace(in.Currency))
+	hash := draftEnvelopeHash(in.SourceType, in.SourceID, requestCurrency, customer, items, in.PaymentTermsDays, in.Notes)
+	var existingID, existingHash string
+	err = a.db.QueryRowContext(ctx, `SELECT id,draft_hash FROM tenant_finance.invoices
+		WHERE partner_id=$1 AND source_type=$2 AND source_id=$3`,
+		in.PartnerID, in.SourceType, in.SourceID).Scan(&existingID, &existingHash)
+	if err == nil {
+		if existingHash != hash {
+			return invoiceRecord{}, false, errSourceConflict
+		}
+		rec, loadErr := a.loadInvoice(ctx, in.PartnerID, existingID)
+		return rec, true, loadErr
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return invoiceRecord{}, false, err
+	}
+	issuer, err := a.fetchIssuer(ctx, in.PartnerID)
+	if err != nil {
+		return invoiceRecord{}, false, err
+	}
+	policy, err := a.loadPolicy(ctx, in.PartnerID)
+	if err != nil {
+		return invoiceRecord{}, false, err
+	}
+	currency, err := normalizeCurrency(in.Currency, policy.DefaultCurrency)
+	if err != nil {
+		return invoiceRecord{}, false, err
+	}
 	days, err := resolvedTerms(policy, in.PaymentTermsDays)
 	if err != nil {
 		return invoiceRecord{}, false, err
 	}
 	requestKey := "AUTO:" + in.SourceType + ":" + in.SourceID
-	hash := draftEnvelopeHash(in.SourceType, in.SourceID, currency, customer, items, in.PaymentTermsDays, in.Notes)
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
 		return invoiceRecord{}, false, err
 	}
 	defer tx.Rollback()
-	var existingID, existingHash string
+	existingID, existingHash = "", ""
 	err = tx.QueryRowContext(ctx, `SELECT id,draft_hash FROM tenant_finance.invoices
 		WHERE partner_id=$1 AND source_type=$2 AND source_id=$3 FOR UPDATE`,
 		in.PartnerID, in.SourceType, in.SourceID).Scan(&existingID, &existingHash)
