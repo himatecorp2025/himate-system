@@ -53,6 +53,8 @@ Each step is idempotent:
 
 The frontend stores only the opaque request ID while work is incomplete. After F5/browser restart, the next onboarding action calls `/resume` for the same saga instead of generating a second Partner.
 
+Gateway startup also scans `PENDING` / `RUNNING` onboarding sagas and retries them with bounded backoff using the original System Owner actor. Recovery therefore does not depend on a browser remaining open.
+
 Optional logo file bytes remain browser-selected and are not stored in the saga. Losing an unuploaded optional file does not affect Partner identity, ownership or commercial integrity.
 
 ## P2-002 — Provisioning creation and restart recovery
