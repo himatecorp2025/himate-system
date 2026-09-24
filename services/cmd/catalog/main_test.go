@@ -139,3 +139,21 @@ func TestSTART23113MarketplaceMigrationContract(t *testing.T) {
 		}
 	}
 }
+
+
+func TestAutomationManifestContract(t *testing.T) {
+	valid:=map[string]any{"automation":map[string]any{
+		"contract_version":"1",
+		"produces_events":[]any{"workflow.qc.passed.v1"},
+		"consumes_events":[]any{"client_piano.saved.v1"},
+		"commands":[]any{"workflow.start.v1"},
+		"scheduled_actions":[]any{"invoice.reminder.v1"},
+		"required_permissions":[]any{"workflow.write"},
+		"required_modules":[]any{"pianos"},
+	}}
+	if err:=validateAutomationManifest(valid);err!=nil{t.Fatalf("valid automation manifest rejected: %v",err)}
+	invalid:=map[string]any{"automation":map[string]any{"contract_version":"2","produces_events":[]any{"workflow.qc.passed.v1"}}}
+	if err:=validateAutomationManifest(invalid);err==nil{t.Fatal("unsupported automation contract version must be rejected")}
+	duplicate:=map[string]any{"automation":map[string]any{"contract_version":"1","produces_events":[]any{"workflow.qc.passed.v1","workflow.qc.passed.v1"}}}
+	if err:=validateAutomationManifest(duplicate);err==nil{t.Fatal("duplicate event contracts must be rejected")}
+}
