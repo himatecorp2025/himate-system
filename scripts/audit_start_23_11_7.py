@@ -109,6 +109,10 @@ checks=[
   "selectionErr" in user_modules and "ownedErr" in user_modules),
  ("notification query filters target-user events in SQL",
   "AND (e.target_user_id='' OR e.target_user_id=$1)" in notifications),
+ ("notification read authorization preserves 403 for hidden same-tenant targets and 404 for out-of-scope IDs",
+  "func (a *app) queryEventByIDInScope" in notifications and
+  "err == sql.ErrNoRows" in notifications and
+  'Notification is outside your delivery scope' in notifications),
  ("notification read-all uses one bulk UPSERT instead of one Exec per event",
   'VALUES ' in notifications and 'strings.Join(values, ",")' in notifications and
   'ON CONFLICT(event_id,user_id) DO UPDATE SET read_at=NOW()' in notifications),
