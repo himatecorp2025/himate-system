@@ -193,6 +193,13 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	if err := a.recoverAuditOutbox(recoveryCtx); err != nil {
+		recoveryCancel()
+		log.Error("audit outbox recovery", "error", err)
+		os.Exit(1)
+	}
+	recoveryCancel()
 	go a.auditWriter()
 	for name, host := range a.hosts {
 		if strings.TrimSpace(host) == "" {
@@ -346,6 +353,7 @@ func (a *app) migrate(ctx context.Context) error {
 		platformSecretsMigration(),
 		retiredTestPartnerIdentityMigration(),
 		partnerUserModulePermissionsMigration(),
+		phase2DurabilityMigration(),
 	}); err != nil {
 		return err
 	}
@@ -914,7 +922,8 @@ func permissionResource(r *http.Request) string {
 	case path == "/api/v1/modules", path == "/api/v1/module-groups", path == "/api/v1/module-commercial-matrix",
 		strings.HasPrefix(path, "/api/v1/modules/"), strings.HasPrefix(path, "/api/v1/module-groups/"):
 		return "catalog"
-	case path == "/api/v1/partner-categories", path == "/api/v1/partners", strings.HasPrefix(path, "/api/v1/partners/"):
+	case path == "/api/v1/partner-categories", path == "/api/v1/partners", strings.HasPrefix(path, "/api/v1/partners/"),
+		path == "/api/v1/partner-onboarding", strings.HasPrefix(path, "/api/v1/partner-onboarding/"):
 		return "partners"
 	case strings.HasPrefix(path, "/api/v1/billing/"), strings.HasPrefix(path, "/api/v1/payments/"):
 		return "billing"
@@ -1188,37 +1197,46 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		requestState := captureAuditRequest(r)
 		oldState := a.auditOldState(r)
+		resource, partnerID := auditResource(r)
+		if partnerID == "" { partnerID = auditPartnerIDFromState(requestState) }
+		baseEvent := auditEvent{
+			ActorID: u.ID, ActorName: u.Name, ActorRoles: append([]string(nil), u.Roles...),
+			RequestID: strings.TrimSpace(r.Header.Get("X-Request-ID")),
+			CorrelationID: strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
+			Action: auditAction(r), Method: r.Method, Path: r.URL.Path, Resource: resource, PartnerID: partnerID,
+			OldState: oldState, CreatedAt: time.Now().UTC(),
+		}
+		intentID, intentErr := a.createAuditIntent(r.Context(), baseEvent, requestState)
+		if intentErr != nil {
+			common.APIError(w, http.StatusServiceUnavailable, "AUDIT_DURABILITY", "Mutation blocked because the durable audit intent could not be recorded")
+			return
+		}
 		recorder := &auditResponseWriter{ResponseWriter: w}
 		w = recorder
 		defer func() {
 			status := recorder.status
 			if status == 0 { status = http.StatusOK }
-			resource, partnerID := auditResource(r)
 			outcome := "SUCCESS"
 			if status >= 400 { outcome = "FAILED" }
 			newState := decodeAuditState(recorder.body.Bytes())
 			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
 				newState = requestState
 			}
-			// Some control-plane mutations identify the partner in the JSON state
-			// rather than the URL (for example provisioning jobs and environment
-			// creation). Preserve tenant-scoped auditability by enriching only when
-			// the route classifier did not already provide an authoritative partner.
-			if partnerID == "" {
-				partnerID = auditPartnerIDFromState(newState)
-				if partnerID == "" { partnerID = auditPartnerIDFromState(requestState) }
+			finalPartnerID := partnerID
+			if finalPartnerID == "" {
+				finalPartnerID = auditPartnerIDFromState(newState)
+				if finalPartnerID == "" { finalPartnerID = auditPartnerIDFromState(requestState) }
 			}
-			event := auditEvent{
-				ActorID: u.ID, ActorName: u.Name, ActorRoles: append([]string(nil), u.Roles...),
-				RequestID: strings.TrimSpace(r.Header.Get("X-Request-ID")),
-				CorrelationID: strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
-				Action: auditAction(r),
-				Method: r.Method, Path: r.URL.Path, Resource: resource, PartnerID: partnerID,
-				Status: status, Outcome: outcome, OldState: oldState, NewState: newState,
-				DurationMS: time.Since(started).Milliseconds(), CreatedAt: time.Now().UTC(),
-			}
-			a.enqueueAudit(event)
-			if resource != "notifications" { go a.emitNotification(event) }
+			event := baseEvent
+			event.PartnerID = finalPartnerID
+			event.Status = status
+			event.Outcome = outcome
+			event.NewState = newState
+			event.DurationMS = time.Since(started).Milliseconds()
+			finalizeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			finalizeErr := a.finalizeAuditIntent(finalizeCtx, intentID, event)
+			cancel()
+			if finalizeErr == nil && resource != "notifications" { go a.emitNotification(event) }
 		}()
 	}
 	required := requiredPermission(r)
@@ -1253,6 +1271,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/v1/notifications" || strings.HasPrefix(r.URL.Path, "/api/v1/notifications/"):
 		r.Header.Set("X-Himate-Permissions", strings.Join(a.permissionsForRoles(u.Roles), ","))
 		a.serveProxy(w, r, "notifications")
+	case r.URL.Path == "/api/v1/partner-onboarding" || strings.HasPrefix(r.URL.Path, "/api/v1/partner-onboarding/"):
+		if !a.requireServiceReleases(w, r, "partners", "billing") { return }
+		a.partnerOnboarding(w, r, u)
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
 		a.partnerPortfolioMetrics(w, r)
 	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
@@ -1320,6 +1341,8 @@ func auditResource(r *http.Request) (string, string) {
 	case "partners":
 		resource = "partners"
 		if len(parts) > 1 && parts[1] != "portfolio" { partnerID = parts[1] }
+	case "partner-onboarding":
+		resource = "partners"
 	case "billing":
 		resource = "billing"
 		if len(parts) > 2 && parts[1] == "partners" { partnerID = parts[2] }
