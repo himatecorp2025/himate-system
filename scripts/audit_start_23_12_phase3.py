@@ -14,6 +14,7 @@ identity=(ROOT/"services/internal/automation/contract.go").read_text()
 outbox=(ROOT/"services/internal/automation/outbox.go").read_text()
 finance=(ROOT/"services/internal/financepolicy/policy.go").read_text()
 catalog=(ROOT/"services/cmd/catalog/main.go").read_text()
+catalog_manifest=(ROOT/"services/cmd/catalog/automation_manifest.go").read_text()
 plans=(ROOT/"services/cmd/billing/plans.go").read_text()
 billing=(ROOT/"services/cmd/billing/main.go").read_text()
 commercial=(ROOT/"services/cmd/billing/commercial_automation.go").read_text()
@@ -38,9 +39,9 @@ for token in [
 for token in ["automation_outbox.events","EnqueueTx","ClaimOutbox","MarkOutboxPublished","FailOutbox"]:
     require(token in outbox,f"transactional producer outbox SDK missing {token}")
 require("requires the caller business transaction" in outbox,"outbox must require caller transaction")
-require("validateAutomationManifest" in catalog and '"automation"' in catalog,"catalog automation manifest validation is missing")
+require("validateAutomationManifest" in catalog and '"automation"' in catalog_manifest,"catalog automation manifest validation is missing")
 for token in ["produces_events","consumes_events","commands","scheduled_actions","required_permissions","required_modules"]:
-    require(token in catalog,f"module automation contract missing {token}")
+    require(token in catalog_manifest,f"module automation contract missing {token}")
 
 # Phase 3A - platform billing financial integrity
 require("tx,err:=a.db.BeginTx(ctx,nil)" in plans,"plan invoice creation is not transactional")
