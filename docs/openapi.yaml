@@ -380,6 +380,21 @@ paths:
         remain hidden.
       responses:
         "200": {description: Tenant Module Marketplace with discovery, execution and plan-access state}
+  /partner/api/v1/runtime/modules/{moduleKey}/access:
+    parameters:
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Partner Portal]
+      summary: Verify effective runtime access for one module
+      description: >
+        Server-side zero-trust gate for partner module execution. Access is granted only
+        when the authenticated organization owns an ACTIVE + executable entitlement and
+        the authenticated Partner Portal user is assigned that module. The effective rule
+        is partner entitlement intersected with user assignment.
+      responses:
+        "200": {description: Runtime module access granted}
+        "403": {description: Organization does not own the module or the authenticated user is not assigned to it}
+        "404": {description: Module key not found}
   /partner/api/v1/modules/{moduleKey}/activate:
     parameters:
       - {name: moduleKey, in: path, required: true, schema: {type: string}}
