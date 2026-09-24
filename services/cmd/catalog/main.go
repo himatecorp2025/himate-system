@@ -75,7 +75,189 @@ var entitlementStates = map[string]bool{"INACTIVE": true, "ACTIVE": true, "CANCE
 var availabilityValues = map[string]bool{"ACTIVE": true, "UNAVAILABLE": true, "DEPRECATED": true}
 var moduleTypes = map[string]bool{"CORE": true, "FEATURE": true, "INTEGRATION": true, "REPORTING": true, "WEBSITE": true, "FINANCE": true, "INFRASTRUCTURE": true}
 var relationshipTypes = map[string]bool{"REQUIRES": true, "OPTIONAL_DEPENDENCY": true, "INTEGRATES_WITH": true, "EXTENDS": true, "CONFLICTS_WITH": true, "REPLACES": true}
-var moduleKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.]{2,127}$`)
+var moduleKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.]{2,127}package main
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"himate.local/services/internal/common"
+	"net/http"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+)
+
+type app struct{ db *sql.DB }
+type seedModule struct{ Key, Label, Group string }
+type seedGroup struct {
+	Key, Label string
+	Order      int
+}
+
+var seedGroups = []seedGroup{
+	{"finance_invoicing", "Finance & Invoicing", 1},
+	{"technical", "Technical Operations", 2},
+	{"marketing", "Marketing", 3},
+	{"website_events", "Website & Events", 4},
+}
+
+var seedModules = []seedModule{
+	{"finance", "Balance Sheet", "finance_invoicing"},
+	{"income_statement", "Income Statement", "finance_invoicing"},
+	{"invoice_documents", "Invoices Documents", "finance_invoicing"},
+	{"audit_log", "Audit Log", "technical"},
+	{"backups", "Backups", "technical"},
+	{"pianos", "Client Piano", "technical"},
+	{"contacts", "Clients", "technical"},
+	{"closed_jobs", "Closed Jobs", "technical"},
+	{"knowledge_base", "Company Documents Archive", "technical"},
+	{"company_data", "Corporate Data", "technical"},
+	{"inventory", "Inventory", "technical"},
+	{"partners", "Partners", "technical"},
+	{"planned_jobs", "Planned Jobs", "technical"},
+	{"scheduler", "Scheduler", "technical"},
+	{"website_services", "Services", "technical"},
+	{"settings", "Settings", "technical"},
+	{"system_integrations", "System Activation & Integrations", "technical"},
+	{"users", "Users", "technical"},
+	{"workshop_workflow", "Workshop Workflow", "technical"},
+	{"marketing_overview", "Campaign Overview", "marketing"},
+	{"customer_inbox", "Customer Inbox", "marketing"},
+	{"website_reviews", "Reviews", "marketing"},
+	{"campaigns_utm", "Campaigns & UTM", "marketing"},
+	{"leads", "Leads", "marketing"},
+	{"tracking_cookies", "Tracking & Cookies", "marketing"},
+	{"seo_keywords", "SEO & Keywords", "marketing"},
+	{"heatmap", "Consent Heatmap", "marketing"},
+	{"website_artists", "Artists", "website_events"},
+	{"website_contacts", "Contacts", "website_events"},
+	{"digital_attendance", "Digital Attendance", "website_events"},
+	{"events", "Events", "website_events"},
+	{"event_guest_list", "Guest Data", "website_events"},
+	{"event_invitations", "Invitations", "website_events"},
+	{"media_library", "Media Library", "website_events"},
+	{"pages_content", "Pages & Content", "website_events"},
+	{"publish_preview", "Publish & Preview", "website_events"},
+	{"showroom_pianos", "Showroom Pianos", "website_events"},
+	{"event_tickets", "Ticket Reservation", "website_events"},
+}
+
+var moduleStates = map[string]bool{"ACTIVE": true, "NOT_LICENSED": true, "MAINTENANCE": true}
+var publicationStates = map[string]bool{"UNPUBLISHED": true, "PUBLISHED": true}
+var implementationStates = map[string]bool{"LEGACY_REFERENCE": true, "IN_DEVELOPMENT": true, "READY": true}
+var entitlementStates = map[string]bool{"INACTIVE": true, "ACTIVE": true, "CANCEL_PENDING": true}
+var availabilityValues = map[string]bool{"ACTIVE": true, "UNAVAILABLE": true, "DEPRECATED": true}
+var moduleTypes = map[string]bool{"CORE": true, "FEATURE": true, "INTEGRATION": true, "REPORTING": true, "WEBSITE": true, "FINANCE": true, "INFRASTRUCTURE": true}
+var relationshipTypes = map[string]bool{"REQUIRES": true, "OPTIONAL_DEPENDENCY": true, "INTEGRATES_WITH": true, "EXTENDS": true, "CONFLICTS_WITH": true, "REPLACES": true}
+)
+var automationContractTokenPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.:-]{2,159}package main
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"himate.local/services/internal/common"
+	"net/http"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+)
+
+type app struct{ db *sql.DB }
+type seedModule struct{ Key, Label, Group string }
+type seedGroup struct {
+	Key, Label string
+	Order      int
+}
+
+var seedGroups = []seedGroup{
+	{"finance_invoicing", "Finance & Invoicing", 1},
+	{"technical", "Technical Operations", 2},
+	{"marketing", "Marketing", 3},
+	{"website_events", "Website & Events", 4},
+}
+
+var seedModules = []seedModule{
+	{"finance", "Balance Sheet", "finance_invoicing"},
+	{"income_statement", "Income Statement", "finance_invoicing"},
+	{"invoice_documents", "Invoices Documents", "finance_invoicing"},
+	{"audit_log", "Audit Log", "technical"},
+	{"backups", "Backups", "technical"},
+	{"pianos", "Client Piano", "technical"},
+	{"contacts", "Clients", "technical"},
+	{"closed_jobs", "Closed Jobs", "technical"},
+	{"knowledge_base", "Company Documents Archive", "technical"},
+	{"company_data", "Corporate Data", "technical"},
+	{"inventory", "Inventory", "technical"},
+	{"partners", "Partners", "technical"},
+	{"planned_jobs", "Planned Jobs", "technical"},
+	{"scheduler", "Scheduler", "technical"},
+	{"website_services", "Services", "technical"},
+	{"settings", "Settings", "technical"},
+	{"system_integrations", "System Activation & Integrations", "technical"},
+	{"users", "Users", "technical"},
+	{"workshop_workflow", "Workshop Workflow", "technical"},
+	{"marketing_overview", "Campaign Overview", "marketing"},
+	{"customer_inbox", "Customer Inbox", "marketing"},
+	{"website_reviews", "Reviews", "marketing"},
+	{"campaigns_utm", "Campaigns & UTM", "marketing"},
+	{"leads", "Leads", "marketing"},
+	{"tracking_cookies", "Tracking & Cookies", "marketing"},
+	{"seo_keywords", "SEO & Keywords", "marketing"},
+	{"heatmap", "Consent Heatmap", "marketing"},
+	{"website_artists", "Artists", "website_events"},
+	{"website_contacts", "Contacts", "website_events"},
+	{"digital_attendance", "Digital Attendance", "website_events"},
+	{"events", "Events", "website_events"},
+	{"event_guest_list", "Guest Data", "website_events"},
+	{"event_invitations", "Invitations", "website_events"},
+	{"media_library", "Media Library", "website_events"},
+	{"pages_content", "Pages & Content", "website_events"},
+	{"publish_preview", "Publish & Preview", "website_events"},
+	{"showroom_pianos", "Showroom Pianos", "website_events"},
+	{"event_tickets", "Ticket Reservation", "website_events"},
+}
+
+var moduleStates = map[string]bool{"ACTIVE": true, "NOT_LICENSED": true, "MAINTENANCE": true}
+var publicationStates = map[string]bool{"UNPUBLISHED": true, "PUBLISHED": true}
+var implementationStates = map[string]bool{"LEGACY_REFERENCE": true, "IN_DEVELOPMENT": true, "READY": true}
+var entitlementStates = map[string]bool{"INACTIVE": true, "ACTIVE": true, "CANCEL_PENDING": true}
+var availabilityValues = map[string]bool{"ACTIVE": true, "UNAVAILABLE": true, "DEPRECATED": true}
+var moduleTypes = map[string]bool{"CORE": true, "FEATURE": true, "INTEGRATION": true, "REPORTING": true, "WEBSITE": true, "FINANCE": true, "INFRASTRUCTURE": true}
+var relationshipTypes = map[string]bool{"REQUIRES": true, "OPTIONAL_DEPENDENCY": true, "INTEGRATES_WITH": true, "EXTENDS": true, "CONFLICTS_WITH": true, "REPLACES": true}
+)
+
+func validateAutomationManifest(manifest map[string]any) error {
+	if manifest==nil{return nil}
+	raw,exists:=manifest["automation"];if !exists{return nil}
+	a,ok:=raw.(map[string]any);if !ok{return fmt.Errorf("manifest.automation must be an object")}
+	version:=strings.TrimSpace(fmt.Sprint(a["contract_version"]))
+	if version!="1"{return fmt.Errorf("manifest.automation.contract_version must be 1")}
+	checkList:=func(key string,validate func(string)bool)error{
+		rawList,exists:=a[key];if !exists{return nil}
+		items,ok:=rawList.([]any);if !ok{return fmt.Errorf("manifest.automation.%s must be an array",key)}
+		seen:=map[string]bool{}
+		for _,item:=range items{
+			value:=strings.TrimSpace(fmt.Sprint(item))
+			if value==""||!validate(value)||seen[value]{return fmt.Errorf("manifest.automation.%s contains an invalid or duplicate value",key)}
+			seen[value]=true
+		}
+		return nil
+	}
+	token:=func(v string)bool{return automationContractTokenPattern.MatchString(v)}
+	if err:=checkList("produces_events",token);err!=nil{return err}
+	if err:=checkList("consumes_events",token);err!=nil{return err}
+	if err:=checkList("commands",token);err!=nil{return err}
+	if err:=checkList("scheduled_actions",token);err!=nil{return err}
+	if err:=checkList("required_permissions",token);err!=nil{return err}
+	if err:=checkList("required_modules",func(v string)bool{return moduleKeyPattern.MatchString(v)});err!=nil{return err}
+	return nil
+}
 
 func main() {
 	log := common.Logger()
@@ -395,6 +577,7 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
 		if !availabilityValues[in.Availability] || !publicationStates[in.PublicationStatus] || !implementationStates[in.ImplementationState] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
 		if in.PublicationStatus=="PUBLISHED" && in.ImplementationState!="READY" { common.APIError(w,409,"MODULE_NOT_READY","Only READY modules can be published");return }
+		if err:=validateAutomationManifest(in.Manifest);err!=nil{common.APIError(w,400,"AUTOMATION_MANIFEST",err.Error());return}
 		manifest,_:=json.Marshal(in.Manifest); if len(manifest)==0{manifest=[]byte("{}")}
 		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
 			module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
@@ -475,7 +658,10 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 	if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
 	if labelEN==""||labelHU==""||price<0||activationFee<0||!availabilityValues[availability]||!publicationStates[publicationStatus]||!implementationStates[implementationState]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid bilingual module update");return}
 	if publicationStatus=="PUBLISHED" && implementationState!="READY"{common.APIError(w,409,"MODULE_NOT_READY","Only READY modules can be published");return}
-	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
+	if in.Manifest!=nil{
+		if err:=validateAutomationManifest(in.Manifest);err!=nil{common.APIError(w,400,"AUTOMATION_MANIFEST",err.Error());return}
+		manifestRaw,_=json.Marshal(in.Manifest)
+	}
 	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,label_en=$2,label_hu=$3,description=$4,description_en=$4,description_hu=$5,group_key=$6,
 		default_monthly_price=$7,default_activation_fee=$8,availability=$9,latest_version=$10,module_type=$11,owner_team=$12,source_repository=$13,source_path=$14,
 		source_ref=$15,source_commit=$16,artifact_type=$17,artifact_reference=$18,min_platform_version=$19,manifest=$20::jsonb,publication_status=$21,implementation_state=$22,legacy_reference=$23,last_updated_at=NOW()
