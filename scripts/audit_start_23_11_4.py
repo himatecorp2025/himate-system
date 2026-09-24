@@ -63,7 +63,11 @@ for cid in [
  "PORTAL-MODULE-PRESENTATION-RESET-23-11-4",
 ]:
     checks.append(("functional matrix contains "+cid,cid in contract_ids))
-checks.append(("functional matrix closes through 23.11.4",matrix.get("completed_through")=="23.11.4"))
+completed_through=str(matrix.get("completed_through",""))
+checks.append((
+    "functional matrix includes START-23.11.4 closure",
+    completed_through in {"23.11.4","23.11.5","23.11.6","23.11.7","23.12"},
+))
 
 failures=[label for label,ok in checks if not ok]
 if failures:
