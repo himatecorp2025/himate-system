@@ -52,8 +52,8 @@ i=0
 until curl -fsS "$BASE_URL/api/v1/live" >/dev/null 2>&1; do
   i=$((i+1)); test "$i" -lt 60; sleep 1
 done
-OUTBOX_LEFT="$(docker compose exec -T postgres psql -U himate -d himate -At -v req="$AUDIT_REQUEST" -c "SELECT COUNT(*) FROM identity.audit_outbox WHERE request_id=:'req';")"
-AUDIT_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -v req="$AUDIT_REQUEST" -c "SELECT COUNT(*) FROM identity.audit_events WHERE request_id=:'req' AND outcome='INTERRUPTED';")"
+OUTBOX_LEFT="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT COUNT(*) FROM identity.audit_outbox WHERE request_id='$AUDIT_REQUEST';")"
+AUDIT_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT COUNT(*) FROM identity.audit_events WHERE request_id='$AUDIT_REQUEST' AND outcome='INTERRUPTED';")"
 test "$OUTBOX_LEFT" = "0"
 test "$AUDIT_COUNT" = "1"
 echo ok
@@ -61,11 +61,11 @@ echo ok
 printf 'onboarding recovery worker completes the persisted saga... '
 i=0
 while :; do
-  SAGA_STATUS="$(docker compose exec -T postgres psql -U himate -d himate -At -v req="$SAGA_REQUEST" -c "SELECT status FROM identity.partner_onboarding_sagas WHERE request_id=:'req';")"
+  SAGA_STATUS="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT status FROM identity.partner_onboarding_sagas WHERE request_id='$SAGA_REQUEST';")"
   [ "$SAGA_STATUS" = "COMPLETE" ] && break
   i=$((i+1)); test "$i" -lt 45; sleep 1
 done
-SAGA_PARTNER_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -v req="$SAGA_REQUEST" -c "SELECT COUNT(*) FROM partners.partners WHERE onboarding_request_id=:'req';")"
+SAGA_PARTNER_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT COUNT(*) FROM partners.partners WHERE onboarding_request_id='$SAGA_REQUEST';")"
 test "$SAGA_PARTNER_COUNT" = "1"
 echo ok
 
@@ -87,12 +87,12 @@ FROM (VALUES
 ) AS steps(step_key);
 COMMIT;
 SQL
-STEP_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -v job="$JOB_ID" -c "SELECT COUNT(*) FROM provisioning.steps WHERE job_id=:'job';")"
+STEP_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT COUNT(*) FROM provisioning.steps WHERE job_id='$JOB_ID';")"
 test "$STEP_COUNT" = "15"
 docker compose restart provisioning >/dev/null
 i=0
 while :; do
-  STATUS="$(docker compose exec -T postgres psql -U himate -d himate -At -v job="$JOB_ID" -c "SELECT status FROM provisioning.jobs WHERE id=:'job';")"
+  STATUS="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT status FROM provisioning.jobs WHERE id='$JOB_ID';")"
   [ "$STATUS" = "CONFIGURATION_REQUIRED" ] && break
   i=$((i+1)); test "$i" -lt 45; sleep 1
 done
