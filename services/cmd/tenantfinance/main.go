@@ -25,7 +25,6 @@ type app struct {
 	partnersHost   string
 	automationHost string
 	internalToken  string
-	serviceKeys    map[string]string
 	automationKey  string
 	client         *http.Client
 	platformPolicy financePolicyState
@@ -45,8 +44,7 @@ func main() {
 		log.Error("tenant finance configuration", "error", err)
 		os.Exit(1)
 	}
-	keys := loadAutomationKeys()
-	automationKey := strings.TrimSpace(keys[financeProducer])
+	automationKey := strings.TrimSpace(os.Getenv("HIMATE_AUTOMATION_FINANCE_SECRET"))
 	if len(automationKey) < 24 {
 		log.Error("tenant finance automation identity is missing", "service_id", financeProducer)
 		os.Exit(1)
@@ -56,7 +54,6 @@ func main() {
 		partnersHost:   strings.TrimSpace(os.Getenv("PARTNERS_HOSTPORT")),
 		automationHost: strings.TrimSpace(os.Getenv("AUTOMATION_HOSTPORT")),
 		internalToken:  strings.TrimSpace(os.Getenv("HIMATE_INTERNAL_TOKEN")),
-		serviceKeys:    keys,
 		automationKey:  automationKey,
 		client: &http.Client{
 			Timeout: 6 * time.Second,
@@ -76,11 +73,17 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	if err := a.ensureAutomationSubscriptions(ctx); err != nil {
+		cancel()
+		log.Error("automation subscription", "error", err)
+		os.Exit(1)
+	}
 	cancel()
 
-	publisherCtx, stopPublisher := context.WithCancel(context.Background())
-	defer stopPublisher()
-	go a.runOutboxPublisher(publisherCtx, log)
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	defer stopWorkers()
+	go a.runOutboxPublisher(workerCtx, log)
+	go a.runAutomationConsumer(workerCtx, log)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +96,6 @@ func main() {
 	mux.HandleFunc("/internal/v1/tenant-finance/policy", a.policyHandler)
 	mux.HandleFunc("/internal/v1/tenant-finance/invoices", a.invoicesHandler)
 	mux.HandleFunc("/internal/v1/tenant-finance/invoices/", a.invoiceByIDHandler)
-	mux.HandleFunc("/internal/v1/tenant-finance/automation/invoice-intents", a.automationIntentHandler)
 	common.Run(log, "tenant-finance", common.Env("PORT", "10000"), common.InternalAuth(a.internalToken, mux))
 }
 
@@ -129,26 +131,6 @@ func loadPlatformFinancePolicy() (financePolicyState, error) {
 		return financePolicyState{}, fmt.Errorf("default invoice prefix: %w", err)
 	}
 	return financePolicyState{Policy: policy, DefaultCurrency: currency, InvoicePrefix: prefix, Source: "PLATFORM_DEFAULT"}, nil
-}
-
-func loadAutomationKeys() map[string]string {
-	raw := strings.TrimSpace(os.Getenv("HIMATE_AUTOMATION_SERVICE_KEYS_JSON"))
-	out := map[string]string{}
-	if raw == "" {
-		return out
-	}
-	var values map[string]string
-	if json.Unmarshal([]byte(raw), &values) != nil {
-		return out
-	}
-	for key, value := range values {
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		if key != "" && len(value) >= 24 {
-			out[key] = value
-		}
-	}
-	return out
 }
 
 func partnerHeaders(r *http.Request) (string, string, bool) {
@@ -295,68 +277,6 @@ func (a *app) invoiceByIDHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or POST /finalize")
-}
-
-func strictDecodeBytes(raw []byte, dst any) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(dst); err != nil {
-		return err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return errors.New("request body must contain exactly one JSON value")
-	}
-	return nil
-}
-
-func (a *app) automationIntentHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		common.APIError(w, http.StatusBadRequest, "BODY", "Could not read invoice intent")
-		return
-	}
-	serviceID, err := automation.VerifyRequest(r, body, func(id string) (string, bool) {
-		value, ok := a.serviceKeys[id]
-		return value, ok
-	}, time.Now().UTC(), 5*time.Minute)
-	if err != nil {
-		common.APIError(w, http.StatusForbidden, "SERVICE_IDENTITY", err.Error())
-		return
-	}
-	var in automatedInvoiceIntent
-	if strictDecodeBytes(body, &in) != nil {
-		common.APIError(w, http.StatusBadRequest, "JSON", "Invalid automated invoice intent")
-		return
-	}
-	if err := validateSourceForService(serviceID, in.SourceType); err != nil {
-		common.APIError(w, http.StatusForbidden, "SOURCE_SERVICE_MISMATCH", err.Error())
-		return
-	}
-	if in.CorrelationID == "" {
-		in.CorrelationID = strings.TrimSpace(r.Header.Get(automation.HeaderCorrelationID))
-	}
-	if in.CausationID == "" {
-		in.CausationID = strings.TrimSpace(r.Header.Get(automation.HeaderCausationID))
-	}
-	rec, duplicate, err := a.createAutomatedReady(r.Context(), serviceID, "service:"+serviceID, in)
-	if err != nil {
-		writeTenantFinanceError(w, err)
-		return
-	}
-	status := http.StatusCreated
-	if duplicate {
-		status = http.StatusOK
-	}
-	payload := invoicePayload(rec)
-	payload["duplicate"] = duplicate
-	payload["producer_service"] = serviceID
-	common.JSON(w, status, payload)
 }
 
 func (a *app) fetchIssuer(ctx context.Context, partnerID string) (issuerSnapshot, error) {
