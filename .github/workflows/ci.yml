@@ -30,7 +30,7 @@ jobs:
         run: |
           test -s ../docs/openapi.yaml
           grep -q '^openapi: 3.1.0' ../docs/openapi.yaml
-          grep -q 'version: 0.8.30-start-23.11.5' ../docs/openapi.yaml
+          grep -q 'version: 0.8.31-start-23.11.6' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/restore-points/{restorePointId}/restore-test:' ../docs/openapi.yaml
           grep -q '^  /connector/v1/data/batches:' ../docs/openapi.yaml
@@ -46,6 +46,8 @@ jobs:
           grep -q '^  /partner/api/v1/modules/{moduleKey}/subscription:' ../docs/openapi.yaml
           grep -q '^  /partner/api/v1/users:' ../docs/openapi.yaml
           grep -q '^  /partner/api/v1/users/{userId}/modules:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/notifications:' ../docs/openapi.yaml
+          grep -q '^  /partner/api/v1/notifications/{notificationId}/read:' ../docs/openapi.yaml
           grep -q '^  /api/v1/partners/{partnerId}/portal-users:' ../docs/openapi.yaml
           grep -q '^  /api/v1/billing/partners/{partnerId}/agreement:' ../docs/openapi.yaml
           grep -q '^  /api/v1/billing/partners/{partnerId}/commercial-status:' ../docs/openapi.yaml
@@ -99,6 +101,7 @@ jobs:
           test -s ../docs/START-23.11.3K_ACCEPTANCE.md
           test -s ../docs/START-23.11.4_ACCEPTANCE.md
           test -s ../docs/START-23.11.5_ACCEPTANCE.md
+          test -s ../docs/START-23.11.6_ACCEPTANCE.md
           grep -q '^  /api/v1/billing/partners/{partnerId}/terms-history:' ../docs/openapi.yaml
           grep -q '^  /api/v1/backups/scheduler/run:' ../docs/openapi.yaml
           grep -q '^  /api/v1/dashboard/summary:' ../docs/openapi.yaml
@@ -174,6 +177,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_11_4.py
       - name: Run START-23.11.5 User ↔ Module Permissions audit
         run: python3 ../scripts/audit_start_23_11_5.py
+      - name: Run START-23.11.6 Central Notifications audit
+        run: python3 ../scripts/audit_start_23_11_6.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -436,6 +441,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_4.sh http://127.0.0.1:8080
       - name: Run START-23.11.5 User ↔ Module Permissions smoke
         run: sh scripts/smoke_start_23_11_5.sh http://127.0.0.1:8080
+      - name: Run START-23.11.6 Central Notifications smoke
+        run: sh scripts/smoke_start_23_11_6.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

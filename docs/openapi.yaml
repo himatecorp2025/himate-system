@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.30-start-23.11.5
+  version: 0.8.31-start-23.11.6
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.5 HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.6 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -546,6 +546,38 @@ paths:
         "403": {description: users.write permission required or owner boundary denied}
         "404": {description: User is not in the authenticated partner tenant}
         "409": {description: Requested module is not owned by the partner}
+  /partner/api/v1/notifications:
+    get:
+      tags: [Partner Portal]
+      summary: Read the authenticated Partner Portal user's central notification feed
+      description: >
+        Returns only PARTNER-scoped events for the authenticated tenant that also satisfy
+        target-user, role-permission and effective user-module access filters.
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: unread_only, in: query, schema: {type: boolean}}
+      responses:
+        "200": {description: Permission- and module-filtered own-tenant notification feed}
+        "403": {description: notifications.read permission or partner scope required}
+  /partner/api/v1/notifications/read-all:
+    post:
+      tags: [Partner Portal]
+      summary: Mark every currently visible Partner Portal notification as read
+      description: Hidden, cross-tenant, wrong-user, wrong-permission and unassigned-module events are never mutated.
+      responses:
+        "200": {description: Visible notifications marked read}
+        "403": {description: notifications.read permission required}
+  /partner/api/v1/notifications/{notificationId}/read:
+    parameters:
+      - {name: notificationId, in: path, required: true, schema: {type: integer}}
+    post:
+      tags: [Partner Portal]
+      summary: Mark one visible Partner Portal notification as read
+      description: The same tenant, target-user, permission and module-access filters used by the feed are re-evaluated.
+      responses:
+        "200": {description: Notification marked read}
+        "403": {description: Notification exists in the tenant but is outside the user's delivery scope}
+        "404": {description: Notification does not exist in the authenticated tenant}
   /partner/api/v1/design:
     get:
       tags: [Partner Portal]
