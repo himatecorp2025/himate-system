@@ -210,7 +210,7 @@ func (a *app)claim(w http.ResponseWriter,r *http.Request){
 		SELECT id FROM automation.deliveries
 		WHERE consumer_service=$1 AND available_at<=NOW()
 		  AND (status='PENDING' OR (status='PROCESSING' AND lease_until<NOW()))
-		ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT $2
+		ORDER BY available_at,id LIMIT $2 FOR UPDATE SKIP LOCKED
 	)
 	UPDATE automation.deliveries d SET status='PROCESSING',attempts=d.attempts+1,lease_until=NOW()+INTERVAL '60 seconds',updated_at=NOW()
 	FROM picked p,automation.events e WHERE d.id=p.id AND e.id=d.event_id
