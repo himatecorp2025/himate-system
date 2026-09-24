@@ -318,6 +318,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_AUTOMATION_SERVICE_KEYS_JSON: '{"ci-producer":"ci-producer-automation-secret-123456789","ci-consumer":"ci-consumer-automation-secret-123456789","workshop":"workshop-automation-secret-local-123456789","finance":"finance-automation-secret-local-123456789","scheduler":"scheduler-automation-secret-local-123456789","client-piano":"client-piano-automation-secret-local-123456789","notifications":"notifications-automation-secret-local-123456789"}'
+      HIMATE_AUTOMATION_FINANCE_SECRET: finance-automation-secret-local-123456789
     depends_on:
       postgres:
         condition: service_healthy
@@ -340,7 +341,7 @@ services:
       HIMATE_TENANT_FINANCE_DEFAULT_PAYMENT_METHODS: ""
       HIMATE_TENANT_FINANCE_DEFAULT_CURRENCY: USD
       HIMATE_TENANT_FINANCE_DEFAULT_INVOICE_PREFIX: INV
-      HIMATE_AUTOMATION_SERVICE_KEYS_JSON: '{"ci-producer":"ci-producer-automation-secret-123456789","ci-consumer":"ci-consumer-automation-secret-123456789","workshop":"workshop-automation-secret-local-123456789","finance":"finance-automation-secret-local-123456789","scheduler":"scheduler-automation-secret-local-123456789","client-piano":"client-piano-automation-secret-local-123456789","notifications":"notifications-automation-secret-local-123456789"}'
+      HIMATE_AUTOMATION_FINANCE_SECRET: finance-automation-secret-local-123456789
     depends_on:
       postgres:
         condition: service_healthy
