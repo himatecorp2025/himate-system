@@ -9,8 +9,9 @@ OWNER_A_COOKIE="$TMP_ROOT/himate-start23115-owner-a.txt"
 OWNER_B_COOKIE="$TMP_ROOT/himate-start23115-owner-b.txt"
 VIEWER_COOKIE="$TMP_ROOT/himate-start23115-viewer.txt"
 BODY="$TMP_ROOT/himate-start23115-body.json"
-rm -f "$ADMIN_COOKIE" "$OWNER_A_COOKIE" "$OWNER_B_COOKIE" "$VIEWER_COOKIE" "$BODY"
-trap 'rm -f "$ADMIN_COOKIE" "$OWNER_A_COOKIE" "$OWNER_B_COOKIE" "$VIEWER_COOKIE" "$BODY"' EXIT
+OWNER_C_COOKIE="$TMP_ROOT/himate-start23115-owner-c.txt"
+rm -f "$ADMIN_COOKIE" "$OWNER_A_COOKIE" "$OWNER_B_COOKIE" "$VIEWER_COOKIE" "$OWNER_C_COOKIE" "$BODY"
+trap 'rm -f "$ADMIN_COOKIE" "$OWNER_A_COOKIE" "$OWNER_B_COOKIE" "$VIEWER_COOKIE" "$OWNER_C_COOKIE" "$BODY"' EXIT
 
 COMPOSE_JSON="$(docker compose config --format json)"
 OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
@@ -192,23 +193,47 @@ DB_GRANT="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' 
 test "$DB_GRANT" = "$A_ID|finance"
 echo ok
 
-printf 'loss of partner entitlement overrides a persisted user grant... '
-curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"test_partner":false,"reason":"START-23.11.5 entitlement-loss proof"}' "$BASE_URL/api/v1/partners/$A_ID" >/dev/null
-VIEWER_AFTER_LOSS="$(curl -fsS -b "$VIEWER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-python3 - "$VIEWER_AFTER_LOSS" <<'PY'
+printf 'organization module access withdrawal overrides a persisted user grant... '
+READY_MODULES="$(curl -fsS -b "$ADMIN_COOKIE" "$BASE_URL/api/v1/modules")"
+PROOF_KEY="$(printf '%s' "$READY_MODULES" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[x for x in d["items"] if str(x.get("key","")).startswith("ci.commercial.") and x.get("publication_status")=="PUBLISHED" and x.get("implementation_state")=="READY" and x.get("availability")=="ACTIVE"]; assert xs,xs; print(xs[0]["key"])')"
+C_EMAIL="modules-proof-${STAMP}@himate.test"
+C_PASSWORD="PermC5!${STAMP}Access"
+C="$(create_partner "$C_EMAIL" C)"
+C_ID="$(printf '%s' "$C" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"status":"ACTIVE","visible":true,"reason":"START-23.11.5 effective-access proof"}' "$BASE_URL/api/v1/partners/$C_ID/modules/$PROOF_KEY" >/dev/null
+OWNER_C="$(create_owner "$C_ID" "$C_EMAIL" "$C_PASSWORD" "Permissions Owner C")"
+OWNER_C_ID="$(printf '%s' "$OWNER_C" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+partner_login "$OWNER_C_COOKIE" "$C_EMAIL" "$C_PASSWORD"
+C_BEFORE="$(curl -fsS -b "$OWNER_C_COOKIE" "$BASE_URL/partner/api/v1/modules")"
+python3 - "$C_BEFORE" "$PROOF_KEY" <<'PY'
 import json,sys
-d=json.loads(sys.argv[1]); finance=next(x for x in d["items"] if x["key"]=="finance")
-assert finance["access_state"]!="ACTIVE",finance
-assert finance["user_access_state"]=="ORGANIZATION_LOCKED",finance
-assert finance["user_executable"] is False,finance
+d=json.loads(sys.argv[1]); key=sys.argv[2]
+m=next(x for x in d["items"] if x["key"]==key)
+assert m["access_state"]=="ACTIVE" and m["user_executable"] is True,m
 PY
-POLICY_AFTER_LOSS="$(curl -fsS -b "$OWNER_A_COOKIE" "$BASE_URL/partner/api/v1/users/$VIEWER_ID/modules")"
-python3 - "$POLICY_AFTER_LOSS" <<'PY'
+SELECTED_C="$(python3 - "$PROOF_KEY" <<'PY'
 import json,sys
-d=json.loads(sys.argv[1])
-assert "finance" in d["selected_module_keys"],d
-assert "finance" in d["stale_module_keys"],d
-assert "finance" not in d["effective_module_keys"],d
+print(json.dumps({"access_mode":"SELECTED","module_keys":[sys.argv[1]]}))
+PY
+)"
+curl -fsS -b "$OWNER_C_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$SELECTED_C" "$BASE_URL/partner/api/v1/users/$OWNER_C_ID/modules" >/dev/null
+curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"status":"MAINTENANCE","reason":"START-23.11.5 organization access withdrawal"}' "$BASE_URL/api/v1/partners/$C_ID/modules/$PROOF_KEY" >/dev/null
+C_AFTER="$(curl -fsS -b "$OWNER_C_COOKIE" "$BASE_URL/partner/api/v1/modules")"
+python3 - "$C_AFTER" "$PROOF_KEY" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1]); key=sys.argv[2]
+m=next(x for x in d["items"] if x["key"]==key)
+assert m["access_state"]!="ACTIVE",m
+assert m["user_access_state"]=="ORGANIZATION_LOCKED",m
+assert m["user_executable"] is False,m
+PY
+POLICY_AFTER_LOSS="$(curl -fsS -b "$OWNER_C_COOKIE" "$BASE_URL/partner/api/v1/users/$OWNER_C_ID/modules")"
+python3 - "$POLICY_AFTER_LOSS" "$PROOF_KEY" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1]); key=sys.argv[2]
+assert key in d["selected_module_keys"],d
+assert key in d["stale_module_keys"],d
+assert key not in d["effective_module_keys"],d
 PY
 echo ok
 
