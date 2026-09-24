@@ -50,6 +50,7 @@ func main(){
 			"backups":os.Getenv("BACKUPS_HOSTPORT"),
 			"partner-runtime":os.Getenv("PARTNER_RUNTIME_HOSTPORT"),
 			"notifications":os.Getenv("NOTIFICATIONS_HOSTPORT"),
+			"automation":os.Getenv("AUTOMATION_HOSTPORT"),
 		},
 	}
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
