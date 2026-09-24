@@ -412,9 +412,35 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
 
   List<_PortalNavSpec> get visibleNav => nav.where((item) => can(item.permission)).toList();
 
+  String portalNavSlug(String label) {
+    var slug = label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+    while (slug.startsWith('-')) {
+      slug = slug.substring(1);
+    }
+    while (slug.endsWith('-')) {
+      slug = slug.substring(0, slug.length - 1);
+    }
+    return slug;
+  }
+
+  void selectPortalPage(int index, List<_PortalNavSpec> items) {
+    if (index < 0 || index >= items.length) return;
+    setState(() => selected = index);
+    final slug = portalNavSlug(items[index].label);
+    html.window.history.replaceState(null, 'HIMATE', '/partner/app/' + slug);
+  }
+
   @override
   void initState() {
     super.initState();
+    final path = Uri.base.path;
+    final raw = path.startsWith('/partner/app/')
+        ? path.substring('/partner/app/'.length)
+        : '';
+    if (raw.isNotEmpty) {
+      final index = visibleNav.indexWhere((item) => portalNavSlug(item.label) == raw);
+      if (index >= 0) selected = index;
+    }
     load();
   }
 
@@ -2046,7 +2072,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                 leading: Icon(items[i].icon, size: 19),
                 title: LText(items[i].label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                onTap: () => setState(() => selected = i),
+                onTap: () => selectPortalPage(i, items),
               ),
             ),
           const Spacer(),
@@ -2209,7 +2235,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                       leading: Icon(items[i].icon),
                       title: LText(items[i].label),
                       onTap: () {
-                        setState(() => selected = i);
+                        selectPortalPage(i, items);
                         Navigator.pop(context);
                       },
                     ),

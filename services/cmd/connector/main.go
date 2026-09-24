@@ -216,7 +216,7 @@ func (a *app) migrate(ctx context.Context) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS connector_reconciliation_partner_idx ON connector.reconciliations(partner_id,environment,checked_at DESC)`,
 		}},
-		{Version:5,Name:"start-22-encrypted-retained-data",Statements:[]string{
+		{Version:5,Name:"start-22-encrypted-retained-data",AllowDestructiveSchema:true,Statements:[]string{
 			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS data_ciphertext BYTEA`,
 			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS data_nonce BYTEA`,
 			`ALTER TABLE connector.data_records ADD COLUMN IF NOT EXISTS wrapped_data_key BYTEA`,

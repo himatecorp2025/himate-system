@@ -6,6 +6,7 @@ root = Path(__file__).resolve().parents[1]
 frontend = (root / "frontend/lib/main.dart").read_text(encoding="utf-8")
 partners = (root / "services/cmd/partners/main.go").read_text(encoding="utf-8")
 partner_tests = (root / "services/cmd/partners/main_test.go").read_text(encoding="utf-8")
+durability = (root / "services/cmd/gateway/phase2_durability.go").read_text(encoding="utf-8")
 openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 
@@ -40,9 +41,10 @@ checks = [
         and "onDismiss: () => Navigator.pop<Map<String, dynamic>>(dialogContext)" in add_partner,
     ),
     (
-        "Partner Portal owner retry reconciles server state before POST",
-        "existingUsers = await widget.api.get('/api/v1/partners/$partnerId/portal-users', force: true)" in add_partner
-        and "portalOwnerCreated = items(existingUsers).any" in add_partner,
+        "Partner Portal owner retry reconciles server state before insert",
+        "func (a *app) ensureOnboardingOwner" in durability
+        and "SELECT id,partner_id,role_key,active FROM identity.partner_users" in durability
+        and "existingPartner==s.PartnerID" in durability,
     ),
     (
         "logo retry recognizes an already committed partner logo",
@@ -51,9 +53,10 @@ checks = [
     ),
     (
         "commercial defaults retry reconciles persisted terms before PUT",
-        "billingTermsMatch" in add_partner
-        and "widget.api.get('/api/v1/billing/partners/$partnerId/terms', force: true)" in add_partner
-        and "widget.api.put('/api/v1/billing/partners/$partnerId/terms', desiredTerms)" in add_partner,
+        "onboardingTermsMatch" in durability
+        and "billing terms readback" in durability
+        and "http.MethodGet" in durability
+        and "http.MethodPut" in durability,
     ),
     (
         "primary-domain uniqueness remains explicit and independent of display name",

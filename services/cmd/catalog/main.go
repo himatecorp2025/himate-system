@@ -211,7 +211,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`UPDATE catalog.modules SET description_en=description WHERE description_en=''`,
 			`UPDATE catalog.modules SET description_hu=description WHERE description_hu=''`,
 		}},
-		{Version: 7, Name: "start-23-11-1-module-registry-commercial-model", Statements: []string{
+		{Version: 7, Name: "start-23-11-1-module-registry-commercial-model", AllowDestructiveSchema: true, Statements: []string{
 			`ALTER TABLE catalog.module_groups ADD COLUMN IF NOT EXISTS is_primary_navigation BOOLEAN NOT NULL DEFAULT FALSE`,
 			`UPDATE catalog.module_groups SET is_primary_navigation=FALSE`,
 			`UPDATE catalog.module_groups SET is_primary_navigation=TRUE WHERE group_key IN ('finance_invoicing','technical','marketing','website_events')`,

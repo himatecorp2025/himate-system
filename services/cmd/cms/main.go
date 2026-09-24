@@ -221,7 +221,7 @@ func (a *app)migrate(ctx context.Context)error{
 			`CREATE INDEX IF NOT EXISTS cms_versions_preview_slug_idx ON cms.versions(lower(slug)) WHERE state='PREVIEW'`,
 			`CREATE INDEX IF NOT EXISTS cms_versions_published_slug_idx ON cms.versions(lower(slug)) WHERE state='PUBLISHED'`,
 		}},
-		{Version:3,Name:"cms-page-locales",Statements:[]string{
+		{Version:3,Name:"cms-page-locales",AllowDestructiveSchema:true,Statements:[]string{
 			`ALTER TABLE cms.pages ADD COLUMN IF NOT EXISTS locale TEXT NOT NULL DEFAULT 'en_US'`,
 			`ALTER TABLE cms.pages DROP CONSTRAINT IF EXISTS pages_page_key_key`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS cms_pages_key_locale_unique ON cms.pages(page_key,locale)`,

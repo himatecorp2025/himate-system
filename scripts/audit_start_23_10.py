@@ -113,12 +113,20 @@ for token in (
 require('case path == "/api/v1/backups", strings.HasPrefix(path, "/api/v1/backups/"):' in gateway,
         "Gateway does not permission-scope backup operations")
 require('return "backups"' in gateway, "Gateway backup RBAC resource is missing")
-for token in (
-    "func auditPartnerIDFromState",
-    "partnerID = auditPartnerIDFromState(newState)",
-    "partnerID = auditPartnerIDFromState(requestState)",
-):
-    require(token in gateway, f"tenant-scoped operational audit enrichment missing {token!r}")
+require("func auditPartnerIDFromState" in gateway,
+        "tenant-scoped operational audit enrichment helper is missing")
+require(
+    "partnerID = auditPartnerIDFromState(newState)" in gateway
+    or "finalPartnerID = auditPartnerIDFromState(newState)" in gateway,
+    "tenant-scoped operational audit enrichment is missing response-state partner recovery",
+)
+require(
+    "partnerID = auditPartnerIDFromState(requestState)" in gateway
+    or "finalPartnerID = auditPartnerIDFromState(requestState)" in gateway,
+    "tenant-scoped operational audit enrichment is missing request-state partner recovery",
+)
+require("createAuditIntent" in gateway and "finalizeAuditIntent" in gateway,
+        "START-23.12 durable audit outbox integration is missing from gateway mutation auditing")
 
 for token in (
     "No website rewrite",

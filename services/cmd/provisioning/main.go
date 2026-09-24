@@ -79,6 +79,7 @@ func main(){
 	if len(a.token)<24 || len(a.dbMasterSecret)<32 { log.Error("required provisioning secrets are missing");os.Exit(1) }
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
 	if err:=a.migrate(ctx);err!=nil{log.Error("migration","error",err);os.Exit(1)}
+	go a.recoverInterruptedJobs(log)
 
 	mux:=http.NewServeMux()
 	mux.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){
@@ -165,8 +166,13 @@ func (a *app)jobs(w http.ResponseWriter,r *http.Request){
 		if in.Environment!="STAGING"{common.APIError(w,400,"VALIDATION","Initial provisioning environment must be STAGING");return}
 		raw,_:=json.Marshal(uniqueStrings(in.ModulePreset))
 		id:=jobID(in.PartnerID)
-		_,err:=a.db.Exec(`INSERT INTO provisioning.jobs(id,partner_id,system_name,admin_email,platform_version,desired_release,initial_environment,module_preset,status)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,'READY')
+		initialStatus:="QUEUED"
+		if in.PrepareOnly{initialStatus="READY"}
+		tx,err:=a.db.BeginTx(r.Context(),&sql.TxOptions{})
+		if err!=nil{common.APIError(w,500,"DB","Could not begin provisioning transaction");return}
+		defer tx.Rollback()
+		_,err=tx.Exec(`INSERT INTO provisioning.jobs(id,partner_id,system_name,admin_email,platform_version,desired_release,initial_environment,module_preset,status)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
 			ON CONFLICT(partner_id) DO UPDATE SET
 				system_name=CASE WHEN provisioning.jobs.status IN ('COMPLETED','CONFIGURATION_REQUIRED') THEN provisioning.jobs.system_name ELSE EXCLUDED.system_name END,
 				admin_email=CASE WHEN EXCLUDED.admin_email<>'' THEN EXCLUDED.admin_email ELSE provisioning.jobs.admin_email END,
@@ -174,12 +180,16 @@ func (a *app)jobs(w http.ResponseWriter,r *http.Request){
 				desired_release=CASE WHEN EXCLUDED.desired_release<>'' THEN EXCLUDED.desired_release ELSE provisioning.jobs.desired_release END,
 				initial_environment=CASE WHEN provisioning.jobs.status IN ('COMPLETED','CONFIGURATION_REQUIRED') THEN provisioning.jobs.initial_environment ELSE EXCLUDED.initial_environment END,
 				module_preset=CASE WHEN EXCLUDED.module_preset<>'[]'::jsonb THEN EXCLUDED.module_preset ELSE provisioning.jobs.module_preset END,
+				status=CASE WHEN provisioning.jobs.status IN ('COMPLETED','CONFIGURATION_REQUIRED') THEN provisioning.jobs.status ELSE EXCLUDED.status END,
 				updated_at=NOW()`,
-			id,in.PartnerID,strings.TrimSpace(in.SystemName),strings.ToLower(strings.TrimSpace(in.AdminEmail)),strings.TrimSpace(in.PlatformVersion),strings.TrimSpace(in.DesiredRelease),in.Environment,string(raw))
+			id,in.PartnerID,strings.TrimSpace(in.SystemName),strings.ToLower(strings.TrimSpace(in.AdminEmail)),strings.TrimSpace(in.PlatformVersion),strings.TrimSpace(in.DesiredRelease),in.Environment,string(raw),initialStatus)
 		if err!=nil{common.APIError(w,500,"DB","Could not create provisioning job");return}
 		for _,step:=range stepOrder{
-			_,_ = a.db.Exec(`INSERT INTO provisioning.steps(job_id,step_key) VALUES($1,$2) ON CONFLICT(job_id,step_key) DO NOTHING`,id,step)
+			if _,err=tx.Exec(`INSERT INTO provisioning.steps(job_id,step_key) VALUES($1,$2) ON CONFLICT(job_id,step_key) DO NOTHING`,id,step);err!=nil{
+				common.APIError(w,500,"DB","Could not create provisioning steps");return
+			}
 		}
+		if err=tx.Commit();err!=nil{common.APIError(w,500,"DB","Could not commit provisioning job");return}
 		if in.PrepareOnly{
 			j,_:=a.getJob(id)
 			common.JSON(w,202,mapJob(j))
@@ -214,9 +224,31 @@ func (a *app)jobByID(w http.ResponseWriter,r *http.Request){
 	common.APIError(w,405,"METHOD","Use GET or POST /run")
 }
 
+func (a *app)ensureJobSteps(ctx context.Context,id string)error{
+	tx,err:=a.db.BeginTx(ctx,&sql.TxOptions{});if err!=nil{return err}
+	defer tx.Rollback()
+	for _,step:=range stepOrder{
+		if _,err=tx.ExecContext(ctx,`INSERT INTO provisioning.steps(job_id,step_key) VALUES($1,$2) ON CONFLICT(job_id,step_key) DO NOTHING`,id,step);err!=nil{return err}
+	}
+	return tx.Commit()
+}
+
 func (a *app)runJob(ctx context.Context,id,actor string)error{
+	lockConn,err:=a.db.Conn(ctx);if err!=nil{return err}
+	defer lockConn.Close()
+	lockKey:="himate-provisioning:"+id
+	var locked bool
+	if err=lockConn.QueryRowContext(ctx,`SELECT pg_try_advisory_lock(hashtext($1))`,lockKey).Scan(&locked);err!=nil{return err}
+	if !locked{return fmt.Errorf("%w: %s",errProvisioningJobBusy,id)}
+	defer func(){
+		unlockCtx,cancel:=context.WithTimeout(context.Background(),5*time.Second)
+		defer cancel()
+		_,_=lockConn.ExecContext(unlockCtx,`SELECT pg_advisory_unlock(hashtext($1))`,lockKey)
+	}()
+
 	j,err:=a.getJob(id);if err!=nil{return err}
 	if j.Status=="COMPLETED" || j.Status=="CONFIGURATION_REQUIRED"{return nil}
+	if err:=a.ensureJobSteps(ctx,id);err!=nil{return fmt.Errorf("ensure provisioning steps: %w",err)}
 	_,_ = a.db.ExecContext(ctx,`UPDATE provisioning.jobs SET status='RUNNING',last_error='',started_at=COALESCE(started_at,NOW()),updated_at=NOW() WHERE id=$1`,id)
 	for _,step:=range stepOrder{
 		if a.stepSucceeded(id,step){continue}
@@ -236,7 +268,36 @@ func (a *app)runJob(ctx context.Context,id,actor string)error{
 	return nil
 }
 
-var errLicenseBlocked=errors.New("initial license gate is not satisfied")
+func (a *app) recoverInterruptedJobs(log interface{ Info(string,...any); Warn(string,...any) }) {
+	time.Sleep(3*time.Second)
+	rows,err:=a.db.Query(`SELECT id FROM provisioning.jobs WHERE status IN ('QUEUED','RUNNING') ORDER BY updated_at`)
+	if err!=nil{log.Warn("provisioning recovery scan failed","error",err);return}
+	ids:=[]string{}
+	for rows.Next(){var id string;if rows.Scan(&id)==nil{ids=append(ids,id)}}
+	rows.Close()
+	for _,id:=range ids{
+		id:=id
+		go func(){
+			for attempt:=1;attempt<=3;attempt++{
+				ctx,cancel:=context.WithTimeout(context.Background(),2*time.Minute)
+				err:=a.runJob(ctx,id,"system:restart-recovery")
+				cancel()
+				if err==nil{log.Info("provisioning job recovered","job_id",id,"attempt",attempt);return}
+				if errors.Is(err,errProvisioningJobBusy){log.Info("provisioning job already owned by another worker","job_id",id);return}
+				log.Warn("provisioning recovery attempt failed","job_id",id,"attempt",attempt,"error",err)
+				if attempt<3{
+					_,_=a.db.Exec(`UPDATE provisioning.jobs SET status='QUEUED',updated_at=NOW() WHERE id=$1 AND status NOT IN ('COMPLETED','CONFIGURATION_REQUIRED')`,id)
+					time.Sleep(time.Duration(attempt*2)*time.Second)
+				}
+			}
+		}()
+	}
+}
+
+var (
+	errLicenseBlocked=errors.New("initial license gate is not satisfied")
+	errProvisioningJobBusy=errors.New("provisioning job is already running")
+)
 
 func (a *app)executeStep(ctx context.Context,j job,step,actor string)error{
 	switch step{

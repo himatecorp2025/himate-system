@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -253,6 +254,26 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS runtime_provider_deploy_idx ON runtime.deployments(provider,provider_deploy_id) WHERE provider_deploy_id<>''`,
 			`CREATE INDEX IF NOT EXISTS runtime_status_idx ON runtime.deployments(status,updated_at DESC)`,
 		}},
+		{Version: 3, Name: "start-23-12-deployment-intents", Statements: []string{
+			`CREATE TABLE IF NOT EXISTS runtime.deployment_intents(
+				request_key TEXT PRIMARY KEY,
+				partner_id TEXT NOT NULL,
+				environment TEXT NOT NULL,
+				hostname TEXT NOT NULL,
+				release TEXT NOT NULL,
+				config JSONB NOT NULL DEFAULT '{}'::jsonb,
+				provider TEXT NOT NULL,
+				provider_service_id TEXT NOT NULL DEFAULT '',
+				provider_deploy_id TEXT NOT NULL DEFAULT '',
+				provider_status TEXT NOT NULL DEFAULT '',
+				status TEXT NOT NULL DEFAULT 'PREPARED',
+				last_error TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)`,
+			`CREATE INDEX IF NOT EXISTS runtime_deployment_intents_partner_idx ON runtime.deployment_intents(partner_id,environment,updated_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS runtime_deployment_intents_status_idx ON runtime.deployment_intents(status,updated_at DESC)`,
+		}},
 	})
 }
 
@@ -313,6 +334,40 @@ func normalizedProviderStatus(raw string) string {
 	default:
 		return "DEPLOYING"
 	}
+}
+
+func deploymentRequestKey(partnerID,environment,hostname,release,providerName,serviceID string,config map[string]any) string {
+	raw,_:=json.Marshal(config)
+	sum:=sha256.Sum256([]byte(strings.Join([]string{
+		strings.TrimSpace(partnerID),strings.ToUpper(strings.TrimSpace(environment)),strings.ToLower(strings.TrimSpace(hostname)),
+		strings.TrimSpace(release),strings.ToLower(strings.TrimSpace(providerName)),strings.TrimSpace(serviceID),string(raw),
+	},"\x00")))
+	return "dpl_"+fmt.Sprintf("%x",sum[:16])
+}
+
+func (a *app) deploymentFromIntent(ctx context.Context,requestKey string)(map[string]any,error){
+	var partnerID,environment,hostname,release,providerName,serviceID,deployID,providerStatus,status,lastError string
+	var configRaw []byte
+	err:=a.db.QueryRowContext(ctx,`SELECT partner_id,environment,hostname,release,config,provider,provider_service_id,provider_deploy_id,provider_status,status,last_error
+		FROM runtime.deployment_intents WHERE request_key=$1`,requestKey).
+		Scan(&partnerID,&environment,&hostname,&release,&configRaw,&providerName,&serviceID,&deployID,&providerStatus,&status,&lastError)
+	if err!=nil{return nil,err}
+	config:=map[string]any{};_ = json.Unmarshal(configRaw,&config)
+	if deployID==""{
+		return map[string]any{"request_key":requestKey,"partner_id":partnerID,"environment":environment,"status":"RECONCILIATION_REQUIRED","last_error":lastError},nil
+	}
+	provider,err:=a.provider(providerName);if err!=nil{return nil,err}
+	current,err:=provider.Status(ctx,serviceID,deployID);if err!=nil{return nil,err}
+	providerStatus=current.Status
+	status=normalizedProviderStatus(providerStatus)
+	deploy:=providerDeploy{ID:deployID,Status:providerStatus}
+	if err:=a.persistDeployment(partnerID,environment,hostname,release,config,providerName,serviceID,deploy,status,"");err!=nil{return nil,err}
+	_,_=a.db.ExecContext(ctx,`UPDATE runtime.deployment_intents SET provider_status=$2,status=$3,last_error='',updated_at=NOW() WHERE request_key=$1`,requestKey,providerStatus,status)
+	return map[string]any{
+		"request_key":requestKey,"partner_id":partnerID,"environment":environment,"hostname":hostname,"release":release,
+		"status":status,"provider":providerName,"provider_service_id":serviceID,"provider_deploy_id":deployID,"provider_status":providerStatus,
+		"reconciled":true,
+	},nil
 }
 
 func (a *app) provider(name string) (deploymentProvider, error) {
@@ -437,21 +492,41 @@ func (a *app) deploy(w http.ResponseWriter, r *http.Request) {
 		CommitID:   commitID,
 		ClearCache: configBool(in.Config, "clear_build_cache"),
 	}
+	requestKey:=deploymentRequestKey(in.PartnerID,in.Environment,in.Hostname,in.Release,provider.Name(),serviceID,in.Config)
+	configRaw,_:=json.Marshal(in.Config)
+	var inserted string
+	intentErr:=a.db.QueryRowContext(r.Context(),`INSERT INTO runtime.deployment_intents(
+		request_key,partner_id,environment,hostname,release,config,provider,provider_service_id,status
+	) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,'PREPARED')
+	ON CONFLICT(request_key) DO NOTHING RETURNING request_key`,
+		requestKey,in.PartnerID,in.Environment,in.Hostname,in.Release,string(configRaw),provider.Name(),serviceID).Scan(&inserted)
+	if intentErr==sql.ErrNoRows{
+		existing,err:=a.deploymentFromIntent(r.Context(),requestKey)
+		if err!=nil{common.APIError(w,http.StatusConflict,"DEPLOYMENT_RECONCILIATION_REQUIRED","A matching deployment intent already exists and could not be reconciled: "+err.Error());return}
+		if existing["status"]=="RECONCILIATION_REQUIRED"{
+			common.JSON(w,http.StatusConflict,existing);return
+		}
+		code:=http.StatusOK;if existing["status"]=="DEPLOYING"{code=http.StatusAccepted}
+		common.JSON(w,code,existing);return
+	}
+	if intentErr!=nil{common.APIError(w,http.StatusInternalServerError,"DEPLOYMENT_INTENT","Could not persist deployment intent");return}
+
 	deploy, err := provider.Trigger(r.Context(), request)
 	if err != nil {
-		_ = a.persistDeployment(
-			in.PartnerID, in.Environment, in.Hostname, in.Release, in.Config,
-			provider.Name(), serviceID, providerDeploy{}, "FAILED", err.Error(),
-		)
-		common.APIError(w, http.StatusBadGateway, "PROVIDER_DEPLOY", err.Error())
+		_,_=a.db.ExecContext(context.Background(),`UPDATE runtime.deployment_intents SET status='UNKNOWN',last_error=$2,updated_at=NOW() WHERE request_key=$1`,requestKey,err.Error())
+		common.APIError(w, http.StatusBadGateway, "PROVIDER_DEPLOY_UNKNOWN", "Provider deployment result is unknown; retry is blocked until this durable intent is reconciled")
 		return
 	}
 	status := normalizedProviderStatus(deploy.Status)
+	if _,err=a.db.ExecContext(r.Context(),`UPDATE runtime.deployment_intents SET provider_deploy_id=$2,provider_status=$3,status=$4,last_error='',updated_at=NOW() WHERE request_key=$1`,
+		requestKey,deploy.ID,deploy.Status,status);err!=nil{
+		common.APIError(w,http.StatusInternalServerError,"DEPLOYMENT_INTENT","Provider deployment started but its durable provider id could not be finalized");return
+	}
 	if err := a.persistDeployment(
 		in.PartnerID, in.Environment, in.Hostname, in.Release, in.Config,
 		provider.Name(), serviceID, deploy, status, "",
 	); err != nil {
-		common.APIError(w, http.StatusConflict, "CONFLICT", "Runtime deployment or hostname conflicts with an existing assignment")
+		common.APIError(w, http.StatusConflict, "CONFLICT", "Runtime deployment started and is recoverable from its durable intent, but the environment record could not be finalized")
 		return
 	}
 
@@ -460,6 +535,7 @@ func (a *app) deploy(w http.ResponseWriter, r *http.Request) {
 		code = http.StatusAccepted
 	}
 	common.JSON(w, code, map[string]any{
+		"request_key":         requestKey,
 		"partner_id":          in.PartnerID,
 		"environment":         in.Environment,
 		"hostname":            in.Hostname,
