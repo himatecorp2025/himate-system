@@ -40,7 +40,7 @@ Finalization changes it to READY_FOR_ISSUE and atomically freezes:
 - allowed payment methods,
 - customer billing snapshot,
 - calculated invoice lines and totals,
-- tenant-specific sequential invoice number.
+- tenant invoice-number prefix/policy snapshot for the later issuance transaction.
 
 The Partner company data are read at finalization time, not copied from the browser. Later Corporate Data changes therefore cannot rewrite an already finalized invoice snapshot.
 
@@ -90,7 +90,7 @@ The actual Workshop and Calendar/Scheduler business runtimes remain outside this
 
 READY_FOR_ISSUE is deliberately **not** equivalent to ISSUED.
 
-Phase 3B does not claim that a legally compliant invoice PDF/document has already been rendered. The ISSUED state is reserved for the future jurisdiction-aware document renderer/delivery workflow. That renderer must use the frozen issuer/customer/line/policy snapshot and must satisfy the applicable invoice-document requirements before transitioning the invoice to ISSUED.
+Phase 3B does not claim that a legally compliant invoice PDF/document has already been rendered. The ISSUED state is reserved for the future jurisdiction-aware document renderer/delivery workflow. READY_FOR_ISSUE deliberately does not consume an official invoice number; it snapshots the tenant numbering prefix/policy, and the later ISSUED transaction must allocate the legal invoice number atomically with document issuance. That renderer must use the frozen issuer/customer/line/policy snapshot and must satisfy the applicable invoice-document requirements before transitioning the invoice to ISSUED.
 
 This prevents a backend record from being presented as a legally issued invoice before the official document engine exists.
 
