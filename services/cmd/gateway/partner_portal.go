@@ -84,6 +84,7 @@ func retiredTestPartnerIdentityMigration() common.Migration {
 	return common.Migration{
 		Version: 12,
 		Name:    "retire-fixed-manual-qa-partner-identity",
+		AllowDestructiveSchema: true,
 		Statements: []string{
 			`DELETE FROM identity.partner_users
 			  WHERE id='pusr_himate_test_001'
