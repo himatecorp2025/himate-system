@@ -4,7 +4,7 @@ set -eu
 BASE_URL="http://127.0.0.1:8080"
 if [ "$#" -ge 1 ]; then BASE_URL="$1"; fi
 EXPECTED_VERSION="$(printenv HIMATE_APP_VERSION 2>/dev/null || true)"
-if [ -z "$EXPECTED_VERSION" ]; then EXPECTED_VERSION="0.8.31-start-23.11.6"; fi
+if [ -z "$EXPECTED_VERSION" ]; then EXPECTED_VERSION="0.8.32-start-23.11.7"; fi
 TMP_ROOT="$(printenv TMPDIR 2>/dev/null || true)"
 if [ -z "$TMP_ROOT" ]; then TMP_ROOT="/tmp"; fi
 ADMIN_COOKIE="$TMP_ROOT/himate-start23116-admin.txt"
