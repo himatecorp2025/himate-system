@@ -45,6 +45,8 @@ The saga stores:
 - per-step completion flags;
 - error/status timestamps.
 
+Saga execution is serialized by a PostgreSQL advisory lock keyed by request ID, so concurrent retries cannot run owner/billing substeps in parallel. Saga creation uses `ON CONFLICT(request_id) DO NOTHING`, making simultaneous identical submissions converge on the same persisted saga.
+
 Each step is idempotent:
 
 1. Partner service receives the same `onboarding_request_id`;
@@ -65,7 +67,7 @@ Non-`prepare_only` jobs are persisted as `QUEUED` before execution.
 
 `runJob` defensively ensures the canonical step set exists before work begins.
 
-At service startup a recovery worker scans `QUEUED` and `RUNNING` jobs, retries interrupted work with bounded backoff and retains existing SUCCESS step checkpoints.
+At service startup a recovery worker scans `QUEUED` and `RUNNING` jobs, retries interrupted work with bounded backoff and retains existing SUCCESS step checkpoints. A per-job PostgreSQL advisory lock prevents a recovery worker and a manual /run request from executing the same job concurrently.
 
 ## P2-003 — Durable external deployment intent
 
