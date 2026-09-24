@@ -33,6 +33,8 @@ jobs:
         run: python3 scripts/audit_start_23_11_3k.py
       - name: Validate current START-23.11.4 contract
         run: python3 scripts/audit_start_23_11_4.py
+      - name: Validate current START-23.11.5 contract
+        run: python3 scripts/audit_start_23_11_5.py
 
   go-fast:
     runs-on: ubuntu-latest
@@ -73,6 +75,7 @@ jobs:
           python3 ../scripts/audit_start_23_11_3j.py
           python3 ../scripts/audit_start_23_11_3k.py
           python3 ../scripts/audit_start_23_11_4.py
+          python3 ../scripts/audit_start_23_11_5.py
 
   compose-current:
     needs: preflight
@@ -110,6 +113,8 @@ jobs:
         run: sh scripts/smoke_start_23_11_3k.sh http://127.0.0.1:8080
       - name: Run current checkpoint — START-23.11.4
         run: sh scripts/smoke_start_23_11_4.sh http://127.0.0.1:8080
+      - name: Run current checkpoint — START-23.11.5
+        run: sh scripts/smoke_start_23_11_5.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v

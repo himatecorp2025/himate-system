@@ -2371,7 +2371,25 @@
       "target_phase": "23.11.4",
       "e2e_proof": "scripts/smoke_start_23_11_4.sh: presentation override -> DELETE reset -> absent PostgreSQL row -> canonical UI fallback contract",
       "notes": "Reset deletes only the tenant presentation override; canonical module metadata and entitlement remain unchanged."
+    },
+    {
+      "id": "PORTAL-USER-MODULE-ACCESS-23-11-5",
+      "surface": "partner_portal.users",
+      "ui": "Partner Portal Users → Manage module access",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_portal.dart",
+      "source_token": "'/partner/api/v1/users/$userId/modules'",
+      "method": "PUT",
+      "api_pattern": "/partner/api/v1/users/{userId}/modules",
+      "backend_service": "gateway/identity + catalog entitlement validation",
+      "persistence": "identity.partner_users.module_access_mode + identity.partner_user_modules",
+      "audit": "PARTNER_USER_MODULE_ACCESS_UPDATED + central gateway audit",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.5",
+      "e2e_proof": "scripts/smoke_start_23_11_5.sh: own-tenant owner -> SELECTED assignment -> viewer effective access -> RBAC/not-owned/cross-tenant rejection -> entitlement-loss fail-closed proof",
+      "notes": "User grants can only narrow partner entitlement and never create organization entitlement."
     }
   ],
-  "completed_through": "23.11.4"
+  "completed_through": "23.11.5"
 }
