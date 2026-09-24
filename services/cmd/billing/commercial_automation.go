@@ -178,6 +178,11 @@ type billingEventExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
+type billingItemStore interface {
+	billingEventExecer
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 func emitBillingEventWith(ctx context.Context, execer billingEventExecer, eventKey, partnerID, moduleKey, eventType string, effectiveAt time.Time, payload map[string]any) error {
 	raw, _ := json.Marshal(payload)
 	_, err := execer.ExecContext(ctx, `INSERT INTO billing.billing_events(event_key,partner_id,module_key,event_type,effective_at,payload)
@@ -558,33 +563,41 @@ func (a *app) invoiceItemsFor(invoiceID string) []map[string]any {
 	return items
 }
 
-func (a *app) attachInvoiceItems(ctx context.Context, invoiceID, partnerID, currency string, serviceStart, serviceEnd time.Time, base float64) (float64, error) {
+func attachInvoiceItemsWith(ctx context.Context, store billingItemStore, invoiceID, partnerID, currency string, serviceStart, serviceEnd time.Time, base float64) (float64, error) {
 	baseKey := fmt.Sprintf("BASE:%s:%s", partnerID, dateOnly(serviceStart).Format("2006-01-02"))
-	result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoice_items(
+	result, err := store.ExecContext(ctx, `INSERT INTO billing.invoice_items(
 			item_key,invoice_id,partner_id,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,status,invoiced_at
 		) VALUES($1,$2,$3,'BASE_SERVICE','Base 30-day service',$4,1,$5,$5,$6,$7,'INVOICED',NOW())
 		ON CONFLICT(item_key) DO NOTHING`,
 		baseKey, invoiceID, partnerID, currency, base, dateOnly(serviceStart), dateOnly(serviceEnd))
 	if err != nil { return 0, err }
 	if rows, _ := result.RowsAffected(); rows > 0 {
-		_ = a.emitBillingEvent(ctx, "INVOICE_ITEM_CREATED:"+baseKey, partnerID, "", "INVOICE_ITEM_CREATED", time.Now().UTC(), map[string]any{
+		if err=emitBillingEventWith(ctx,store,"INVOICE_ITEM_CREATED:"+baseKey,partnerID,"","INVOICE_ITEM_CREATED",time.Now().UTC(),map[string]any{
 			"item_key":baseKey,"item_type":"BASE_SERVICE","amount":base,"currency":currency,
 			"period_start":dateOnly(serviceStart).Format("2006-01-02"),"period_end_exclusive":dateOnly(serviceEnd).Format("2006-01-02"),
-		})
+		});err!=nil{return 0,err}
 	}
 
-	if _, err = a.db.ExecContext(ctx, `UPDATE billing.invoice_items
+	if _, err = store.ExecContext(ctx, `UPDATE billing.invoice_items
 		SET invoice_id=$2,status='INVOICED',invoiced_at=NOW()
 		WHERE partner_id=$1 AND item_type='MODULE' AND invoice_id IS NULL AND period_start<$3`,
 		partnerID, invoiceID, dateOnly(serviceEnd)); err != nil {
 		return 0, err
 	}
 	var moduleTotal float64
-	if err = a.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM billing.invoice_items
+	if err = store.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM billing.invoice_items
 		WHERE invoice_id=$1 AND item_type='MODULE'`, invoiceID).Scan(&moduleTotal); err != nil {
 		return 0, err
 	}
 	return moduleTotal, nil
+}
+
+func (a *app) attachInvoiceItems(ctx context.Context, invoiceID, partnerID, currency string, serviceStart, serviceEnd time.Time, base float64) (float64, error) {
+	return attachInvoiceItemsWith(ctx,a.db,invoiceID,partnerID,currency,serviceStart,serviceEnd,base)
+}
+
+func attachInvoiceItemsTx(ctx context.Context, tx *sql.Tx, invoiceID, partnerID, currency string, serviceStart, serviceEnd time.Time, base float64) (float64, error) {
+	return attachInvoiceItemsWith(ctx,tx,invoiceID,partnerID,currency,serviceStart,serviceEnd,base)
 }
 
 
