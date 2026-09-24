@@ -89,7 +89,7 @@ func ClaimOutbox(ctx context.Context,db *sql.DB,producer string,limit int,lease 
 	rows,err:=tx.QueryContext(ctx,`WITH picked AS (
 		SELECT id FROM automation_outbox.events WHERE producer_service=$1 AND available_at<=NOW()
 		AND (status='PENDING' OR (status='PROCESSING' AND lease_until<NOW()))
-		ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT $2
+		ORDER BY available_at,id LIMIT $2 FOR UPDATE SKIP LOCKED
 	)
 	UPDATE automation_outbox.events e SET status='PROCESSING',attempts=e.attempts+1,lease_until=NOW()+($3*INTERVAL '1 millisecond'),updated_at=NOW()
 	FROM picked p WHERE e.id=p.id
