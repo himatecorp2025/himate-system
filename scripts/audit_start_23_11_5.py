@@ -51,7 +51,7 @@ checks=[
   "module['user_executable'] == true" in portal),
  ("OpenAPI publishes user-module permission contract",
   "/partner/api/v1/users/{userId}/modules:" in openapi and "version: "+release in openapi and
-  "START-01 through START-23.11.6" in openapi),
+  "START-01 through START-23.11.7" in openapi),
  ("release aligned in Render and Compose",
   render.count("value: "+release)==19 and
   compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==18),
