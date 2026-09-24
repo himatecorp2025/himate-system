@@ -1173,6 +1173,16 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && !u.SystemOwner {
+		state := captureAuditRequest(r)
+		if payload, ok := state.(map[string]any); ok {
+			if requested, present := payload["test_partner"]; present && requested == true {
+				common.APIError(w, http.StatusForbidden, "OWNER_REQUIRED", "Only the HIMATE system owner can activate Golden Test Partner mode")
+				return
+			}
+		}
+	}
+
 	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 	if mutating {
 		started := time.Now()
