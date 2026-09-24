@@ -15,7 +15,7 @@ fast=(root/".github/workflows/ci-fast.yml").read_text()
 full=(root/".github/workflows/ci.yml").read_text()
 acceptance=(root/"docs/START-23.11.5_ACCEPTANCE.md").read_text()
 matrix=json.loads((root/"docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
-release="0.8.30-start-23.11.5"
+release="0.8.31-start-23.11.6"
 
 checks=[
  ("identity migration is registered after historical migrations",
@@ -51,7 +51,7 @@ checks=[
   "module['user_executable'] == true" in portal),
  ("OpenAPI publishes user-module permission contract",
   "/partner/api/v1/users/{userId}/modules:" in openapi and "version: "+release in openapi and
-  "START-01 through START-23.11.5" in openapi),
+  "START-01 through START-23.11.6" in openapi),
  ("release aligned in Render and Compose",
   render.count("value: "+release)==19 and
   compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-"+release+"}")==18),
@@ -64,7 +64,11 @@ checks=[
 ids={str(x.get("id")) for x in matrix.get("contracts",[])}
 checks.append(("functional matrix contains PORTAL-USER-MODULE-ACCESS-23-11-5",
                "PORTAL-USER-MODULE-ACCESS-23-11-5" in ids))
-checks.append(("functional matrix closes through 23.11.5",matrix.get("completed_through")=="23.11.5"))
+completed_through=str(matrix.get("completed_through",""))
+checks.append((
+    "functional matrix includes START-23.11.5 closure",
+    completed_through in {"23.11.5","23.11.6","23.11.7","23.12"},
+))
 
 failures=[label for label,ok in checks if not ok]
 if failures:

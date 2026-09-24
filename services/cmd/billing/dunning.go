@@ -92,8 +92,10 @@ func (a *app) notifyDunning(ctx context.Context, eventType, severity, title, mes
 		"message": message,
 		"resource": "billing",
 		"partner_id": partnerID,
-		"deep_link": "/partner/billing",
+		"deep_link": "/partner/app",
 		"audience_permission": "billing.read",
+		"delivery_scope": "PARTNER",
+		"category": "BILLING",
 		"metadata": metadata,
 	}
 	raw, _ := json.Marshal(payload)

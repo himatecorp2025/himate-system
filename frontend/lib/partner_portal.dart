@@ -2061,6 +2061,13 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                         ),
                       ),
                       const SizedBox(width: 12),
+                      if (can('notifications.read'))
+                        NotificationCenterButton(
+                          api: widget.api,
+                          endpointPrefix: '/partner/api/v1/notifications',
+                          panelSubtitle: 'Organization events that match your role and module access.',
+                          iconColor: primary,
+                        ),
                       IconButton(onPressed: load, tooltip: 'Refresh', icon: Icon(Icons.refresh_rounded, color: primary)),
                     ]),
                   ),
@@ -2083,6 +2090,13 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             foregroundColor: primary,
             title: LText(workspaceDisplayName),
             actions: [
+              if (can('notifications.read'))
+                NotificationCenterButton(
+                  api: widget.api,
+                  endpointPrefix: '/partner/api/v1/notifications',
+                  panelSubtitle: 'Organization events that match your role and module access.',
+                  iconColor: primary,
+                ),
               IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
               IconButton(onPressed: widget.onLogout, icon: const Icon(Icons.logout_rounded)),
             ],

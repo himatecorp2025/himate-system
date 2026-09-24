@@ -1,8 +1,17 @@
 part of 'main.dart';
 
 class NotificationCenterButton extends StatefulWidget {
-  const NotificationCenterButton({required this.api, super.key});
+  const NotificationCenterButton({
+    required this.api,
+    this.endpointPrefix = '/api/v1/notifications',
+    this.panelSubtitle = 'Control-plane events that match your permissions.',
+    this.iconColor = brandNavy,
+    super.key,
+  });
   final Api api;
+  final String endpointPrefix;
+  final String panelSubtitle;
+  final Color iconColor;
 
   @override
   State<NotificationCenterButton> createState() => _NotificationCenterButtonState();
@@ -27,7 +36,7 @@ class _NotificationCenterButtonState extends State<NotificationCenterButton> {
 
   Future<void> refreshCount() async {
     try {
-      final data = await widget.api.get('/api/v1/notifications?limit=100', force: true);
+      final data = await widget.api.get('${widget.endpointPrefix}?limit=100', force: true);
       if (mounted) setState(() => unread = (data['unread_count'] as num?)?.toInt() ?? 0);
     } catch (_) {
       // Notification availability must never block core navigation.
@@ -51,7 +60,11 @@ class _NotificationCenterButtonState extends State<NotificationCenterButton> {
               width: MediaQuery.sizeOf(context).width < 620
                   ? MediaQuery.sizeOf(context).width
                   : 430,
-              child: NotificationCenterPanel(api: widget.api),
+              child: NotificationCenterPanel(
+                api: widget.api,
+                endpointPrefix: widget.endpointPrefix,
+                subtitle: widget.panelSubtitle,
+              ),
             ),
           ),
         ),
@@ -81,7 +94,7 @@ class _NotificationCenterButtonState extends State<NotificationCenterButton> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              const Center(child: Icon(Icons.notifications_none_rounded, color: brandNavy, size: 22)),
+              Center(child: Icon(Icons.notifications_none_rounded, color: widget.iconColor, size: 22)),
               if (unread > 0)
                 Positioned(
                   top: 5,
@@ -111,8 +124,15 @@ class _NotificationCenterButtonState extends State<NotificationCenterButton> {
 }
 
 class NotificationCenterPanel extends StatefulWidget {
-  const NotificationCenterPanel({required this.api, super.key});
+  const NotificationCenterPanel({
+    required this.api,
+    this.endpointPrefix = '/api/v1/notifications',
+    this.subtitle = 'Control-plane events that match your permissions.',
+    super.key,
+  });
   final Api api;
+  final String endpointPrefix;
+  final String subtitle;
 
   @override
   State<NotificationCenterPanel> createState() => _NotificationCenterPanelState();
@@ -137,7 +157,7 @@ class _NotificationCenterPanelState extends State<NotificationCenterPanel> {
     if (mounted) setState(() { loading = true; error = null; });
     try {
       final suffix = unreadOnly ? '&unread_only=true' : '';
-      final data = await widget.api.get('/api/v1/notifications?limit=60' + suffix, force: true);
+      final data = await widget.api.get('${widget.endpointPrefix}?limit=60' + suffix, force: true);
       if (!mounted) return;
       setState(() {
         notifications = items(data);
@@ -152,14 +172,14 @@ class _NotificationCenterPanelState extends State<NotificationCenterPanel> {
   Future<void> markRead(Map<String, dynamic> item) async {
     if (item['read'] == true) return;
     try {
-      await widget.api.post('/api/v1/notifications/' + s(item['id']) + '/read');
+      await widget.api.post('${widget.endpointPrefix}/' + s(item['id']) + '/read');
       await load();
     } catch (_) {}
   }
 
   Future<void> markAllRead() async {
     try {
-      await widget.api.post('/api/v1/notifications/read-all');
+      await widget.api.post('${widget.endpointPrefix}/read-all');
       await load();
     } catch (_) {}
   }
@@ -197,6 +217,7 @@ class _NotificationCenterPanelState extends State<NotificationCenterPanel> {
     final tone = severityColor(severity);
     final read = item['read'] == true;
     final partner = s(item['partner_id']);
+    final category = s(item['category']).isEmpty ? 'SYSTEM' : s(item['category']).toUpperCase();
     return InkWell(
       onTap: () => markRead(item),
       borderRadius: BorderRadius.circular(12),
@@ -227,7 +248,8 @@ class _NotificationCenterPanelState extends State<NotificationCenterPanel> {
               const SizedBox(height: 7),
               Wrap(spacing: 7, runSpacing: 4, children: [
                 LText(timestamp(item['created_at']), style: const TextStyle(color: brandTextSoft, fontSize: 8.8)),
-                if (partner.isNotEmpty) _MiniCounter(label: partner),
+                if (partner.isNotEmpty && widget.endpointPrefix == '/api/v1/notifications') _MiniCounter(label: partner),
+                _MiniCounter(label: category),
                 _MiniCounter(label: severity),
               ]),
             ]),
@@ -244,11 +266,11 @@ class _NotificationCenterPanelState extends State<NotificationCenterPanel> {
         padding: const EdgeInsets.fromLTRB(20, 17, 12, 15),
         decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: brandMist))),
         child: Row(children: [
-          const Expanded(
+          Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              LText('Notifications', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 18)),
-              SizedBox(height: 3),
-              LText('Control-plane events that match your permissions.', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+              const LText('Notifications', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 18)),
+              const SizedBox(height: 3),
+              LText(widget.subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
             ]),
           ),
           IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
@@ -286,7 +308,7 @@ class _NotificationCenterPanelState extends State<NotificationCenterPanel> {
                 : notifications.isEmpty
                     ? const Padding(
                         padding: EdgeInsets.all(16),
-                        child: _MessageCard(icon: Icons.notifications_none_rounded, title: 'Nothing to review', message: 'New control-plane events will appear here.'),
+                        child: _MessageCard(icon: Icons.notifications_none_rounded, title: 'Nothing to review', message: 'New events that match your access will appear here.'),
                       )
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),

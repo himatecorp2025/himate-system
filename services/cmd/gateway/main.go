@@ -1410,6 +1410,7 @@ func (a *app) emitNotification(event auditEvent) {
 	body,_:=json.Marshal(map[string]any{
 		"event_type":event.Action,"severity":severity,"title":title,"message":message,"resource":event.Resource,
 		"partner_id":event.PartnerID,"deep_link":deepLink,"audience_permission":audience,
+		"delivery_scope":"PLATFORM","category":"SYSTEM",
 		"metadata":map[string]any{"actor_id":event.ActorID,"actor_name":event.ActorName,"request_id":event.RequestID,"correlation_id":event.CorrelationID},
 	})
 	ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);defer cancel()

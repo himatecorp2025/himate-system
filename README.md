@@ -471,6 +471,18 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.30-start-23.11.5`
 - acceptance: `docs/START-23.11.5_ACCEPTANCE.md`, `scripts/audit_start_23_11_5.py`, `scripts/smoke_start_23_11_5.sh`
 
+### START-23.11.6 — Notifications
+- one central notification engine serves platform and Partner Portal surfaces; modules do not own independent inbox implementations
+- delivery scope is explicit: PLATFORM or PARTNER
+- Partner Portal delivery is fail-closed by tenant, optional target user, role permission and effective user-module access
+- canonical categories cover Workflow, Comment, Deadline, Calendar, Billing, Security and System events
+- Billing dunning/retry/suspension/recovery events publish through the same engine
+- successful Partner Portal sign-in emits a user-targeted Security notification without blocking login if notifications are unavailable
+- shared Notification Center UI provides unread count, unread-only filtering, per-item read and read-all behavior
+- Partner Portal read-state mutations cannot touch hidden or cross-tenant events
+- release contract version is `0.8.31-start-23.11.6`
+- acceptance: `docs/START-23.11.6_ACCEPTANCE.md`, `scripts/audit_start_23_11_6.py`, `scripts/smoke_start_23_11_6.sh`
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 
@@ -504,6 +516,7 @@ The service boundaries and containers allow independent scaling, but high-load p
 - `docs/START-23.11.3K_ACCEPTANCE.md`
 - `docs/START-23.11.1_ACCEPTANCE.md`
 - `docs/START-23.11.2_ACCEPTANCE.md`
+- `docs/START-23.11.6_ACCEPTANCE.md`
 - `docs/START-23.11.3_ACCEPTANCE.md`
 - `docs/START-23.1-23.6_CROSS_PHASE_AUDIT.md`
 - `docs/START-23.1_FUNCTIONAL_MATRIX.json`

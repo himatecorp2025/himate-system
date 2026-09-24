@@ -296,6 +296,11 @@
       "scope": "Tenant-isolated design catalog plus workspace identity, brand colors, default module and module-card presentation overrides"
     },
     {
+      "id": "partner_portal.notifications",
+      "name": "Partner Portal / Notifications",
+      "scope": "Central tenant/user/permission/module-filtered notification feed, unread state, mark read and mark all read"
+    },
+    {
       "id": "packages.admin",
       "name": "Packages Administration",
       "scope": "Central package pricing, module limits and fixed package membership"
@@ -1532,7 +1537,7 @@
       "ui": "Mark notification read",
       "kind": "mutation",
       "frontend_file": "frontend/lib/notifications_panel.dart",
-      "source_token": "'/api/v1/notifications/' + s(item['id']) + '/read'",
+      "source_token": "'${widget.endpointPrefix}/' + s(item['id']) + '/read'",
       "method": "POST",
       "api_pattern": "/api/v1/notifications/{notificationId}/read",
       "backend_service": "notifications",
@@ -1542,7 +1547,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
       "e2e_proof": "scripts/smoke_start_23_6.sh: mark notification read -> unread state/count readback",
-      "notes": ""
+      "notes": "Shared Notification Center component supports platform and Partner Portal endpoint prefixes."
     },
     {
       "id": "NOTIFY-READALL",
@@ -1550,7 +1555,7 @@
       "ui": "Mark all notifications read",
       "kind": "mutation",
       "frontend_file": "frontend/lib/notifications_panel.dart",
-      "source_token": "'/api/v1/notifications/read-all'",
+      "source_token": "'${widget.endpointPrefix}/read-all'",
       "method": "POST",
       "api_pattern": "/api/v1/notifications/read-all",
       "backend_service": "notifications",
@@ -1560,7 +1565,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.6",
       "e2e_proof": "scripts/smoke_start_23_6.sh: read-all -> unread_count=0",
-      "notes": ""
+      "notes": "Shared Notification Center component supports platform and Partner Portal endpoint prefixes."
     },
     {
       "id": "PORTAL-LOGIN",
@@ -2389,7 +2394,43 @@
       "target_phase": "23.11.5",
       "e2e_proof": "scripts/smoke_start_23_11_5.sh: own-tenant owner -> SELECTED assignment -> viewer effective access -> RBAC/not-owned/cross-tenant rejection -> entitlement-loss fail-closed proof",
       "notes": "User grants can only narrow partner entitlement and never create organization entitlement."
+    },
+    {
+      "id": "PORTAL-NOTIFY-READ-23-11-6",
+      "surface": "partner_portal.notifications",
+      "ui": "Partner Portal notification center → mark notification read",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/notifications_panel.dart",
+      "source_token": "'${widget.endpointPrefix}/' + s(item['id']) + '/read'",
+      "method": "POST",
+      "api_pattern": "/partner/api/v1/notifications/{notificationId}/read",
+      "backend_service": "gateway + notifications",
+      "persistence": "notifications.read_state",
+      "audit": "PARTNER_NOTIFICATION_READ + central gateway audit",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.6",
+      "e2e_proof": "scripts/smoke_start_23_11_6.sh: filtered event -> read -> read_state persistence",
+      "notes": "Read mutation re-evaluates tenant, target-user, permission and module-access delivery scope."
+    },
+    {
+      "id": "PORTAL-NOTIFY-READALL-23-11-6",
+      "surface": "partner_portal.notifications",
+      "ui": "Partner Portal notification center → Mark all read",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/notifications_panel.dart",
+      "source_token": "'${widget.endpointPrefix}/read-all'",
+      "method": "POST",
+      "api_pattern": "/partner/api/v1/notifications/read-all",
+      "backend_service": "gateway + notifications",
+      "persistence": "notifications.read_state",
+      "audit": "PARTNER_NOTIFICATIONS_READ_ALL + central gateway audit",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.6",
+      "e2e_proof": "scripts/smoke_start_23_11_6.sh: read-all -> unread_count=0 while hidden event read_state remains absent",
+      "notes": "Read-all mutates only notifications currently visible to the authenticated Partner Portal user."
     }
   ],
-  "completed_through": "23.11.5"
+  "completed_through": "23.11.6"
 }

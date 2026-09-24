@@ -18,7 +18,7 @@ services:
       context: .
       dockerfile: services/docker/catalog.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
     depends_on:
@@ -30,7 +30,7 @@ services:
       context: .
       dockerfile: services/docker/partners.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       BILLING_HOSTPORT: billing:10000
@@ -43,7 +43,7 @@ services:
       context: .
       dockerfile: services/docker/billing.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       CATALOG_HOSTPORT: catalog:10000
@@ -68,7 +68,7 @@ services:
       context: .
       dockerfile: services/docker/payments.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       BILLING_HOSTPORT: billing:10000
@@ -83,7 +83,7 @@ services:
       context: .
       dockerfile: services/docker/contact.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_CONTACT_NOTIFY_TO: ${HIMATE_CONTACT_NOTIFY_TO:-}
@@ -101,7 +101,7 @@ services:
       context: .
       dockerfile: services/docker/storage.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_STORAGE_ROOT: /data/partners
@@ -116,7 +116,7 @@ services:
       context: .
       dockerfile: services/docker/runtime.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_RUNTIME_PROVIDER: local
@@ -129,7 +129,7 @@ services:
       context: .
       dockerfile: services/docker/backups.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       PARTNER_DATABASE_ADMIN_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
@@ -160,7 +160,7 @@ services:
       context: .
       dockerfile: services/docker/evidence.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       STORAGE_HOSTPORT: storage:10000
@@ -175,7 +175,7 @@ services:
       context: .
       dockerfile: services/docker/impact.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       EVIDENCE_HOSTPORT: evidence:10000
@@ -190,7 +190,7 @@ services:
       context: .
       dockerfile: services/docker/reports.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       IMPACT_HOSTPORT: impact:10000
@@ -214,7 +214,7 @@ services:
       context: .
       dockerfile: services/docker/cms.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       STORAGE_HOSTPORT: storage:10000
@@ -229,7 +229,7 @@ services:
       context: .
       dockerfile: services/docker/environments.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
@@ -249,7 +249,7 @@ services:
       context: .
       dockerfile: services/docker/connector.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_CONNECTOR_DATA_MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
@@ -278,7 +278,7 @@ services:
       context: .
       dockerfile: services/docker/provisioning.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       PARTNER_DATABASE_ADMIN_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       PARTNER_DATABASE_MASTER_SECRET: local-partner-database-master-secret-12345678901234567890
@@ -310,7 +310,7 @@ services:
       context: .
       dockerfile: services/docker/notifications.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
     depends_on:
@@ -322,7 +322,7 @@ services:
       context: .
       dockerfile: services/docker/health.Dockerfile
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       PARTNERS_HOSTPORT: partners:10000
@@ -384,7 +384,7 @@ services:
     ports:
       - "8080:10000"
     environment:
-      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.30-start-23.11.5}
+      HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-0.8.31-start-23.11.6}
       HIMATE_ENV: development
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
