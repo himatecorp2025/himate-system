@@ -124,6 +124,7 @@ type invoiceRecord struct {
 	DraftHash            string
 	Status               string
 	InvoiceNumber        string
+	InvoicePrefix        string
 	Currency             string
 	PaymentTermsOverride *int
 	PaymentTermsDays     *int
@@ -338,7 +339,7 @@ func normalizeInvoicePrefix(v string) (string, error) {
 func invoicePayload(rec invoiceRecord) map[string]any {
 	out := map[string]any{
 		"id": rec.ID, "partner_id": rec.PartnerID, "source_type": rec.SourceType, "source_id": rec.SourceID,
-		"request_key": rec.RequestKey, "status": rec.Status, "invoice_number": rec.InvoiceNumber, "currency": rec.Currency,
+		"request_key": rec.RequestKey, "status": rec.Status, "invoice_number": rec.InvoiceNumber, "invoice_prefix_snapshot": rec.InvoicePrefix, "currency": rec.Currency,
 		"accounting_basis": rec.AccountingBasis, "payment_methods": rec.PaymentMethods,
 		"issuer": rec.Issuer, "customer": rec.Customer,
 		"subtotal_minor": rec.SubtotalMinor, "tax_minor": rec.TaxMinor, "total_minor": rec.TotalMinor,
