@@ -1752,28 +1752,32 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 			continue
 		}
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
-		result, err := a.db.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
+		tx, err := a.db.BeginTx(ctx,nil)
+		if err != nil { return err }
+		result, err := tx.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
 			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT DO NOTHING`,
 			invoiceID, id, at, start, at, t.Currency, base)
-		if err != nil { return err }
+		if err != nil { tx.Rollback(); return err }
 		inserted, _ := result.RowsAffected()
-		// A rerun must keep the originally invoiced base price immutable.
-		if err := a.db.QueryRowContext(ctx, `SELECT id,base_fee FROM billing.invoices
-			WHERE partner_id=$1 AND service_period_start=$2 AND service_period_end=$3`,
-			id, start, at).Scan(&invoiceID, &base); err != nil { return err }
-		moduleTotal, err := a.attachInvoiceItems(ctx, invoiceID, id, t.Currency, start, at, base)
-		if err != nil { return err }
+		// A rerun must keep the originally invoiced base price immutable and repair
+		// any interrupted invoice/item assembly before collection is queued.
+		if err := tx.QueryRowContext(ctx, `SELECT id,base_fee FROM billing.invoices
+			WHERE partner_id=$1 AND service_period_start=$2 AND service_period_end=$3 FOR UPDATE`,
+			id, start, at).Scan(&invoiceID, &base); err != nil { tx.Rollback(); return err }
+		moduleTotal, err := attachInvoiceItemsTx(ctx, tx, invoiceID, id, t.Currency, start, at, base)
+		if err != nil { tx.Rollback(); return err }
 		total := math.Round((base+moduleTotal)*100)/100
-		if _, err := a.db.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3 WHERE id=$1`,
-			invoiceID, moduleTotal, total); err != nil { return err }
+		if _, err := tx.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3 WHERE id=$1`,
+			invoiceID, moduleTotal, total); err != nil { tx.Rollback(); return err }
 		if inserted > 0 {
-			if err := a.emitBillingEvent(ctx, "INVOICE_GENERATED:"+invoiceID, id, "", "INVOICE_GENERATED", at, map[string]any{
+			if err := emitBillingEventTx(ctx, tx, "INVOICE_GENERATED:"+invoiceID, id, "", "INVOICE_GENERATED", at, map[string]any{
 				"invoice_id": invoiceID, "currency": t.Currency, "base_fee": base,
 				"module_fee": moduleTotal, "total": total,
 				"service_period_start": start.Format("2006-01-02"),
 				"service_period_end_exclusive": at.Format("2006-01-02"),
-			}); err != nil { return err }
+			}); err != nil { tx.Rollback(); return err }
 		}
+		if err:=tx.Commit();err!=nil{return err}
 		a.queueInvoiceCollection(ctx, invoiceID, id, t.Currency, total)
 	}
 	return nil

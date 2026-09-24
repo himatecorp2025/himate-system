@@ -110,8 +110,8 @@ checks = [
     ),
     (
         "all deployable application services share the 3k release",
-        render.count("value: " + release) == 19
-        and compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-" + release + "}") == 18,
+        render.count("value: " + release) == 20
+        and compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-" + release + "}") == 19,
     ),
 ]
 

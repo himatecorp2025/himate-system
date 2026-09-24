@@ -395,6 +395,7 @@ func (a *app) modules(w http.ResponseWriter, r *http.Request) {
 		in.ModuleType=strings.ToUpper(strings.TrimSpace(in.ModuleType)); if in.ModuleType==""{in.ModuleType="FEATURE"}
 		if !availabilityValues[in.Availability] || !publicationStates[in.PublicationStatus] || !implementationStates[in.ImplementationState] || !moduleTypes[in.ModuleType] || in.DefaultMonthlyPrice<0 || in.DefaultActivationFee<0 { common.APIError(w,400,"VALIDATION","Invalid module metadata");return }
 		if in.PublicationStatus=="PUBLISHED" && in.ImplementationState!="READY" { common.APIError(w,409,"MODULE_NOT_READY","Only READY modules can be published");return }
+		if err:=validateAutomationManifest(in.Manifest);err!=nil{common.APIError(w,400,"AUTOMATION_MANIFEST",err.Error());return}
 		manifest,_:=json.Marshal(in.Manifest); if len(manifest)==0{manifest=[]byte("{}")}
 		_,err:=a.db.Exec(`INSERT INTO catalog.modules(
 			module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,default_monthly_price,default_activation_fee,currency,version,latest_version,system,availability,module_type,owner_team,
@@ -475,7 +476,10 @@ func (a *app) moduleByKey(w http.ResponseWriter, r *http.Request) {
 	if in.DefaultMonthlyPrice!=nil{price=*in.DefaultMonthlyPrice}; if in.DefaultActivationFee!=nil{activationFee=*in.DefaultActivationFee}
 	if labelEN==""||labelHU==""||price<0||activationFee<0||!availabilityValues[availability]||!publicationStates[publicationStatus]||!implementationStates[implementationState]||!moduleTypes[moduleType]{common.APIError(w,400,"VALIDATION","Invalid bilingual module update");return}
 	if publicationStatus=="PUBLISHED" && implementationState!="READY"{common.APIError(w,409,"MODULE_NOT_READY","Only READY modules can be published");return}
-	if in.Manifest!=nil{manifestRaw,_=json.Marshal(in.Manifest)}
+	if in.Manifest!=nil{
+		if err:=validateAutomationManifest(in.Manifest);err!=nil{common.APIError(w,400,"AUTOMATION_MANIFEST",err.Error());return}
+		manifestRaw,_=json.Marshal(in.Manifest)
+	}
 	if _,err:=a.db.Exec(`UPDATE catalog.modules SET label=$2,label_en=$2,label_hu=$3,description=$4,description_en=$4,description_hu=$5,group_key=$6,
 		default_monthly_price=$7,default_activation_fee=$8,availability=$9,latest_version=$10,module_type=$11,owner_team=$12,source_repository=$13,source_path=$14,
 		source_ref=$15,source_commit=$16,artifact_type=$17,artifact_reference=$18,min_platform_version=$19,manifest=$20::jsonb,publication_status=$21,implementation_state=$22,legacy_reference=$23,last_updated_at=NOW()

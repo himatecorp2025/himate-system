@@ -271,6 +271,11 @@
       "scope": "Public contact form"
     },
     {
+      "id": "automation.backbone",
+      "name": "Automation / Durable Module Backbone",
+      "scope": "Service-identified domain events, transactional producer outbox, durable subscriptions/deliveries, retries, dead letters and future available_at scheduling"
+    },
+    {
       "id": "automation.billing",
       "name": "Automation / Billing",
       "scope": "Subscription-plan recurring billing, monthly/annual collection, immediate upgrades, scheduled downgrades and plan-entitlement synchronization"

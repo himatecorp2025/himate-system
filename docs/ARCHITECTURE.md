@@ -583,3 +583,50 @@ The Partner Portal presents Included, Locked and Coming Soon cards in one Module
 
 Arbitrary unpublished modules are still hidden unless explicitly marketplace-visible. This preserves the START-23.11.1 publication fail-closed contract while allowing the canonical 38-module portfolio to be visible for product discovery.
 
+
+
+## Durable module automation backbone (START-23.12 Phase 3)
+
+HIMATE now separates cross-module automation from both the public Gateway and the platform subscription Billing service.
+
+```text
+Business module transaction
+   |
+   +--> authoritative domain tables
+   +--> local automation_outbox.events
+          |
+          | idempotent signed relay
+          v
+     Automation Service
+          |
+          +--> immutable automation.events
+          +--> consumer subscriptions
+          +--> leased deliveries / retries / dead letters
+          +--> future available_at scheduling
+                    |
+                    v
+             consuming module
+```
+
+The producer transaction and its outbox record commit together. This prevents a successful business mutation from losing the automation intent after a crash. Consumers claim work with database leases and `FOR UPDATE SKIP LOCKED`; acknowledgement is explicit, failed work is retried and bounded failures become dead letters.
+
+Automation requests use a service-specific HMAC identity in addition to the existing private internal credential. The signature binds service ID, timestamp, HTTP method, path and request-body hash. Service identities therefore become independently revocable automation principals rather than treating possession of the shared internal network credential as sufficient authority.
+
+Catalog remains the module integration contract authority. A module manifest may declare contract-versioned produced/consumed events, commands, scheduled actions and required permissions/modules. These declarations do not grant execution access: partner entitlement and per-user assignment remain authoritative at the Gateway/runtime boundary.
+
+The Automation service owns delivery state only. It never becomes the authority for Client Piano, Workshop, Scheduler, Finance or any other business data.
+
+### Finance policy boundary
+
+HIMATE platform Billing remains the SaaS subscription/commercial domain for HIMATE partners. Partner-customer invoicing belongs to future tenant Finance modules.
+
+Reusable tenant Finance policy resolves payment terms using:
+
+1. invoice override;
+2. service/workflow default;
+3. partner default;
+4. platform-configured fallback.
+
+No eight-day term is hard-coded. Accounting basis is an explicit `CASH` or `ACCRUAL` policy and enabled payment methods are tenant-configurable. Future Finance implementations must snapshot the effective policy on the issued invoice rather than reading mutable defaults later.
+
+ADR-0006 records the durability and separation decision.
