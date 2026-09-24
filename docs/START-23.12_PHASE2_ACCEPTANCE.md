@@ -101,7 +101,7 @@ Gateway startup recovers leftover intents as append-only `*_INTERRUPTED` audit e
 
 For historical rows whose checksum predates START-23.12, the checksum is backfilled once from the currently declared source. After that, source drift causes startup failure.
 
-New production migrations are also validated as **expand-only** by default. Destructive schema patterns such as:
+New production migrations are also validated as **expand-only** by default. Historical migrations that predate START-23.12 and already contain intentional constraint/index/default/data-cleanup operations are explicitly grandfathered one migration at a time with `AllowDestructiveSchema`; this is not a global bypass and is covered by the source audit.\n\nDestructive schema patterns such as:
 
 - DROP TABLE / DROP SCHEMA / DROP COLUMN / DROP INDEX / DROP CONSTRAINT;
 - TRUNCATE or DELETE FROM;
