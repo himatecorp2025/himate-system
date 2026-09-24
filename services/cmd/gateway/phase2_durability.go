@@ -377,13 +377,17 @@ func (a *app) partnerOnboarding(w http.ResponseWriter,r *http.Request,actor user
 
 	hash,err:=hashPassword(in.PortalOwner.Password);if err!=nil{common.APIError(w,500,"PASSWORD","Could not secure Partner Portal password");return}
 	partnerRaw,_:=json.Marshal(in.Partner);billingRaw,_:=json.Marshal(in.BillingTerms)
-	_,err=a.db.ExecContext(r.Context(),`INSERT INTO identity.partner_onboarding_sagas(
+	result,err:=a.db.ExecContext(r.Context(),`INSERT INTO identity.partner_onboarding_sagas(
 		request_id,actor_id,status,partner_payload,portal_owner_name,portal_owner_email,portal_owner_password_hash,billing_terms
-	) VALUES($1,$2,'PENDING',$3::jsonb,$4,$5,$6,$7::jsonb)`,
+	) VALUES($1,$2,'PENDING',$3::jsonb,$4,$5,$6,$7::jsonb)
+	ON CONFLICT(request_id) DO NOTHING`,
 		in.RequestID,actor.ID,string(partnerRaw),in.PortalOwner.Name,in.PortalOwner.Email,hash,string(billingRaw))
 	if err!=nil{common.APIError(w,409,"CONFLICT","Onboarding request could not be created");return}
+	inserted,_:=result.RowsAffected()
 
 	s,partner,runErr:=a.runPartnerOnboardingSaga(r.Context(),in.RequestID,actor)
 	if runErr!=nil{common.JSON(w,http.StatusConflict,map[string]any{"onboarding":onboardingSagaMap(s,partner),"error":map[string]any{"code":"ONBOARDING_INCOMPLETE","message":runErr.Error()}});return}
-	common.JSON(w,http.StatusCreated,onboardingSagaMap(s,partner))
+	code:=http.StatusOK
+	if inserted>0{code=http.StatusCreated}
+	common.JSON(w,code,onboardingSagaMap(s,partner))
 }
