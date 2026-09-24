@@ -51,6 +51,7 @@ func (a *app) migrate(ctx context.Context) error {
 				draft_hash TEXT NOT NULL,
 				status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT','READY_FOR_ISSUE','ISSUED','PAID','VOID')),
 				invoice_number TEXT NOT NULL DEFAULT '',
+				invoice_prefix TEXT NOT NULL DEFAULT '',
 				currency TEXT NOT NULL CHECK(currency ~ '^[A-Z]{3}$'),
 				payment_terms_override_days INT CHECK(payment_terms_override_days BETWEEN 0 AND 365),
 				payment_terms_days INT CHECK(payment_terms_days BETWEEN 0 AND 365),
@@ -383,24 +384,20 @@ func (a *app) finalizeManual(ctx context.Context, partnerID, actorID, invoiceID,
 		return invoiceRecord{}, false, err
 	}
 	now := time.Now().UTC()
-	number, err := a.nextInvoiceNumberTx(ctx, tx, partnerID, policy.InvoicePrefix, now)
-	if err != nil {
-		return invoiceRecord{}, false, err
-	}
 	issuerRaw, _ := json.Marshal(issuer)
 	methodsRaw, _ := json.Marshal(policy.Policy.PaymentMethods)
 	customerFinalRaw, _ := json.Marshal(customer)
 	_, err = tx.ExecContext(ctx, `UPDATE tenant_finance.invoices SET
-			status='READY_FOR_ISSUE',invoice_number=$3,payment_terms_days=$4,accounting_basis=$5,payment_methods=$6::jsonb,
+			status='READY_FOR_ISSUE',invoice_prefix=$3,payment_terms_days=$4,accounting_basis=$5,payment_methods=$6::jsonb,
 			issuer_snapshot=$7::jsonb,customer_snapshot=$8::jsonb,finalized_by=$9,ready_at=$10,updated_at=$10
 		WHERE id=$1 AND partner_id=$2`,
-		invoiceID, partnerID, number, days, policy.Policy.AccountingBasis, string(methodsRaw), string(issuerRaw), string(customerFinalRaw), actorID, now)
+		invoiceID, partnerID, policy.InvoicePrefix, days, policy.Policy.AccountingBasis, string(methodsRaw), string(issuerRaw), string(customerFinalRaw), actorID, now)
 	if err != nil {
 		return invoiceRecord{}, false, err
 	}
 	rec := invoiceRecord{ID: invoiceID, PartnerID: partnerID}
 	if err = appendInvoiceEventTx(ctx, tx, rec, "READY_FOR_ISSUE", actorID, map[string]any{
-		"invoice_number": number, "payment_terms_days": days, "accounting_basis": policy.Policy.AccountingBasis,
+		"invoice_prefix_snapshot": policy.InvoicePrefix, "payment_terms_days": days, "accounting_basis": policy.Policy.AccountingBasis,
 		"issuer_profile_source": "PARTNERS_SERVICE_CURRENT_SNAPSHOT",
 	}); err != nil {
 		return invoiceRecord{}, false, err
@@ -416,7 +413,7 @@ func (a *app) finalizeManual(ctx context.Context, partnerID, actorID, invoiceID,
 		SubjectType: "tenant_invoice",
 		SubjectID: invoiceID,
 		Payload: map[string]any{
-			"invoice_id": invoiceID, "invoice_number": number, "source_type": sourceManual,
+			"invoice_id": invoiceID, "invoice_prefix_snapshot": policy.InvoicePrefix, "source_type": sourceManual,
 			"status": statusReadyForIssue, "document_renderer": "DEFERRED",
 		},
 		OccurredAt: now,
@@ -509,20 +506,16 @@ func (a *app) createAutomatedReady(ctx context.Context, serviceID, actorID strin
 		return invoiceRecord{}, false, err
 	}
 	now := time.Now().UTC()
-	number, err := a.nextInvoiceNumberTx(ctx, tx, in.PartnerID, policy.InvoicePrefix, now)
-	if err != nil {
-		return invoiceRecord{}, false, err
-	}
 	id := newID("tin")
 	issuerRaw, _ := json.Marshal(issuer)
 	customerRaw, _ := json.Marshal(customer)
 	methodsRaw, _ := json.Marshal(policy.Policy.PaymentMethods)
 	_, err = tx.ExecContext(ctx, `INSERT INTO tenant_finance.invoices(
-			id,partner_id,source_type,source_id,request_key,draft_hash,status,invoice_number,currency,
+			id,partner_id,source_type,source_id,request_key,draft_hash,status,invoice_prefix,currency,
 			payment_terms_override_days,payment_terms_days,accounting_basis,payment_methods,issuer_snapshot,customer_snapshot,
 			subtotal_minor,tax_minor,total_minor,notes,created_by,finalized_by,ready_at
 		) VALUES($1,$2,$3,$4,$5,$6,'READY_FOR_ISSUE',$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19,$19,$20)`,
-		id, in.PartnerID, in.SourceType, in.SourceID, requestKey, hash, number, currency,
+		id, in.PartnerID, in.SourceType, in.SourceID, requestKey, hash, policy.InvoicePrefix, currency,
 		nullableInt(in.PaymentTermsDays), days, policy.Policy.AccountingBasis, string(methodsRaw), string(issuerRaw), string(customerRaw),
 		subtotal, taxTotal, total, strings.TrimSpace(in.Notes), actorID, now)
 	if err != nil {
@@ -534,7 +527,7 @@ func (a *app) createAutomatedReady(ctx context.Context, serviceID, actorID strin
 	rec := invoiceRecord{ID: id, PartnerID: in.PartnerID}
 	if err = appendInvoiceEventTx(ctx, tx, rec, "AUTOMATED_READY_FOR_ISSUE", actorID, map[string]any{
 		"producer_service": serviceID, "source_type": in.SourceType, "source_id": in.SourceID,
-		"invoice_number": number, "total_minor": total,
+		"invoice_prefix_snapshot": policy.InvoicePrefix, "total_minor": total,
 	}); err != nil {
 		return invoiceRecord{}, false, err
 	}
@@ -550,7 +543,7 @@ func (a *app) createAutomatedReady(ctx context.Context, serviceID, actorID strin
 		SubjectType: "tenant_invoice",
 		SubjectID: id,
 		Payload: map[string]any{
-			"invoice_id": id, "invoice_number": number, "source_type": in.SourceType,
+			"invoice_id": id, "invoice_prefix_snapshot": policy.InvoicePrefix, "source_type": in.SourceType,
 			"source_id": in.SourceID, "status": statusReadyForIssue, "document_renderer": "DEFERRED",
 		},
 		OccurredAt: now,
@@ -565,7 +558,7 @@ func (a *app) createAutomatedReady(ctx context.Context, serviceID, actorID strin
 	return rec, false, err
 }
 
-const invoiceColumns = `i.id,i.partner_id,i.source_type,i.source_id,i.request_key,i.draft_hash,i.status,i.invoice_number,i.currency,
+const invoiceColumns = `i.id,i.partner_id,i.source_type,i.source_id,i.request_key,i.draft_hash,i.status,i.invoice_number,i.invoice_prefix,i.currency,
 	i.payment_terms_override_days,i.payment_terms_days,i.accounting_basis,i.payment_methods,i.issuer_snapshot,i.customer_snapshot,
 	i.subtotal_minor,i.tax_minor,i.total_minor,i.notes,i.created_by,i.finalized_by,i.created_at,i.updated_at,i.ready_at,i.issued_at,i.paid_at`
 
@@ -575,7 +568,7 @@ func scanInvoice(scanner interface{ Scan(...any) error }) (invoiceRecord, error)
 	var methodsRaw, issuerRaw, customerRaw []byte
 	var ready, issued, paid sql.NullTime
 	err := scanner.Scan(
-		&rec.ID, &rec.PartnerID, &rec.SourceType, &rec.SourceID, &rec.RequestKey, &rec.DraftHash, &rec.Status, &rec.InvoiceNumber, &rec.Currency,
+		&rec.ID, &rec.PartnerID, &rec.SourceType, &rec.SourceID, &rec.RequestKey, &rec.DraftHash, &rec.Status, &rec.InvoiceNumber, &rec.InvoicePrefix, &rec.Currency,
 		&termsOverride, &terms, &rec.AccountingBasis, &methodsRaw, &issuerRaw, &customerRaw,
 		&rec.SubtotalMinor, &rec.TaxMinor, &rec.TotalMinor, &rec.Notes, &rec.CreatedBy, &rec.FinalizedBy, &rec.CreatedAt, &rec.UpdatedAt,
 		&ready, &issued, &paid,
