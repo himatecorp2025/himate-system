@@ -50,6 +50,8 @@ require("onboardingTermsMatch" in durability and "billing terms readback" in dur
         "Partner onboarding Billing retry reconciliation is missing")
 require("portal_owner_password_hash" in durability and "PasswordHash" in durability,
         "Partner onboarding does not persist only a password hash")
+require("recoverPartnerOnboardingSagas" in durability and "status IN ('PENDING','RUNNING')" in durability,
+        "Partner onboarding restart recovery worker is missing")
 require("Only the HIMATE system owner can run partner onboarding" in durability,
         "Partner onboarding lost the System Owner boundary")
 require("/api/v1/partner-onboarding" in frontend and "himate_pending_partner_onboarding" in frontend,
