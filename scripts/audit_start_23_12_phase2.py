@@ -14,6 +14,8 @@ portal_frontend = (ROOT / "frontend/lib/partner_portal.dart").read_text()
 openapi = (ROOT / "docs/openapi.yaml").read_text()
 acceptance = (ROOT / "docs/START-23.12_PHASE2_ACCEPTANCE.md").read_text()
 ci = (ROOT / ".github/workflows/ci.yml").read_text()
+recovery_smoke = (ROOT / "scripts/smoke_start_23_12_phase2_recovery.sh").read_text()
+runtime_smoke = (ROOT / "scripts/smoke_start_23_12_phase2_runtime.sh").read_text()
 
 errors = []
 
@@ -114,6 +116,12 @@ require("audit_start_23_12_phase2.py" in ci, "full CI does not run Phase 2 sourc
 require("smoke_start_23_12_phase2.sh" in ci, "full CI does not run Phase 2 onboarding smoke")
 require("smoke_start_23_12_phase2_recovery.sh" in ci, "full CI does not run Phase 2 restart recovery smoke")
 require("smoke_start_23_12_phase2_runtime.sh" in ci, "full CI does not run Phase 2 deployment intent smoke")
+require("docker compose restart gateway" in recovery_smoke and "docker compose restart provisioning" in recovery_smoke,
+        "Phase 2 restart fault-injection smoke does not restart both critical services")
+require("request_id=:'req'" not in recovery_smoke and "job_id=:'job'" not in recovery_smoke and "id=:'job'" not in recovery_smoke,
+        "Phase 2 recovery smoke contains unsupported psql -c variable interpolation")
+require("provider_deploy_id" in runtime_smoke and "request_key" in runtime_smoke,
+        "Phase 2 runtime smoke does not prove deployment-intent replay identity")
 
 if errors:
     raise SystemExit("START-23.12 Phase 2 source audit failed:\n- " + "\n- ".join(errors))
