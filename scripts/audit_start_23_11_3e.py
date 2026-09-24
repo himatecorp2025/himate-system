@@ -74,8 +74,8 @@ checks = [
     ("CMS stores explicit partner logo publication mapping", "cms.partner_brand_assets" in cms_main and "slot TEXT NOT NULL CHECK(slot IN ('logo'))" in cms_main),
     ("CMS partner media supports logo purpose and public URL", 'purpose == "logo"' in cms_themes and 'out["public_url"] = "/public/v1/cms/media/" + id' in cms_themes),
     ("OpenAPI documents partner logo upload", "/api/v1/partners/{partnerId}/logo:" in openapi),
-    ("release version", "version: 0.8.28-start-23.11.3k" in openapi),
-    ("render release version", "value: 0.8.28-start-23.11.3k" in render),
+    ("release version", "version: 0.8.29-start-23.11.4" in openapi),
+    ("render release version", "value: 0.8.29-start-23.11.4" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]

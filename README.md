@@ -446,7 +446,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - package pricing is effective-dated and audit-versioned; active renewals resolve the central price at the billing boundary
 - standard package annual uplift is 5% every January 1 and compounds from the latest effective price
 - activation/license fees remain partner-specific and may be zero
-- release contract version is `0.8.29-start-23.11.4`
+- release contract version is `0.8.28-start-23.11.3k`
 - acceptance: `docs/START-23.11.3K_ACCEPTANCE.md`, `scripts/audit_start_23_11_3k.py`, `scripts/smoke_start_23_11_3k.sh`
 
 ### START-23.11.4 — Partner Workspace & Personalization
