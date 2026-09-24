@@ -916,37 +916,42 @@ func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,
 	key:=fmt.Sprintf("PLAN:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
 	if amount <= 0 {
 		eventKey:=fmt.Sprintf("ZERO_DOLLAR_BILLING_CYCLE:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
-		_ = a.emitBillingEvent(ctx,eventKey,partnerID,"","ZERO_DOLLAR_BILLING_CYCLE",time.Now().UTC(),map[string]any{
+		if err:=a.emitBillingEvent(ctx,eventKey,partnerID,"","ZERO_DOLLAR_BILLING_CYCLE",time.Now().UTC(),map[string]any{
 			"billing_model":"PLAN","plan_key":planKey,"billing_frequency":frequency,"charge_type":chargeType,
 			"list_price":listPrice,"total":0,
 			"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":end.Format("2006-01-02"),
-		})
+		});err!=nil{return "",err}
 		return "",nil
 	}
 	id:="inv_plan_"+strings.ReplaceAll(partnerID,"_","")+"_"+strings.ToLower(chargeType)+"_"+strings.ToLower(planKey)+"_"+start.Format("20060102")
 	discount:=listPrice-amount;if discount<0{discount=0}
-	result,err:=a.db.ExecContext(ctx,`INSERT INTO billing.invoices(
+	tx,err:=a.db.BeginTx(ctx,nil);if err!=nil{return "",err}
+	defer tx.Rollback()
+	if _,err=tx.ExecContext(ctx,`INSERT INTO billing.invoices(
 		id,invoice_key,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,
 		minimum_commitment_adjustment,billing_model,plan_key,billing_frequency,charge_type,list_price,discount_amount
 	) VALUES($1,$2,$3,CURRENT_DATE,$4,$5,'USD',$6,0,$6,0,'PLAN',$7,$8,$9,$10,$11)
-	ON CONFLICT(invoice_key) DO NOTHING`,id,key,partnerID,start,end,amount,planKey,frequency,chargeType,listPrice,discount)
-	if err!=nil{return "",err}
-	rows,_:=result.RowsAffected()
-	if rows==0{
-		if err=a.db.QueryRowContext(ctx,`SELECT id FROM billing.invoices WHERE invoice_key=$1`,key).Scan(&id);err!=nil{return "",err}
-		return id,nil
-	}
+	ON CONFLICT(invoice_key) DO NOTHING`,id,key,partnerID,start,end,amount,planKey,frequency,chargeType,listPrice,discount);err!=nil{return "",err}
+	if err=tx.QueryRowContext(ctx,`SELECT id FROM billing.invoices WHERE invoice_key=$1 FOR UPDATE`,key).Scan(&id);err!=nil{return "",err}
 	itemKey:="PLAN_ITEM:"+key
-	_,err=a.db.ExecContext(ctx,`INSERT INTO billing.invoice_items(
+	if _,err=tx.ExecContext(ctx,`INSERT INTO billing.invoice_items(
 		item_key,invoice_id,partner_id,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,status,invoiced_at,billing_model
-	) VALUES($1,$2,$3,'PLAN',$4,'USD',1,$5,$5,$6,$7,'INVOICED',NOW(),'PLAN') ON CONFLICT(item_key) DO NOTHING`,
-		itemKey,id,partnerID,fmt.Sprintf("%s %s subscription",planKey,frequency),amount,start,end)
-	if err!=nil{return "",err}
-	_ = a.emitBillingEvent(ctx,"INVOICE_GENERATED:"+id,partnerID,"","INVOICE_GENERATED",time.Now().UTC(),map[string]any{
+	) VALUES($1,$2,$3,'PLAN',$4,'USD',1,$5,$5,$6,$7,'INVOICED',NOW(),'PLAN')
+	ON CONFLICT(item_key) DO NOTHING`,
+		itemKey,id,partnerID,fmt.Sprintf("%s %s subscription",planKey,frequency),amount,start,end);err!=nil{return "",err}
+	var storedInvoice,storedPartner string
+	var storedAmount float64
+	if err=tx.QueryRowContext(ctx,`SELECT invoice_id,partner_id,amount FROM billing.invoice_items WHERE item_key=$1`,itemKey).
+		Scan(&storedInvoice,&storedPartner,&storedAmount);err!=nil{return "",err}
+	if storedInvoice!=id||storedPartner!=partnerID||math.Abs(storedAmount-amount)>0.005{
+		return "",fmt.Errorf("plan invoice item idempotency conflict for %s",itemKey)
+	}
+	if err=emitBillingEventTx(ctx,tx,"INVOICE_GENERATED:"+id,partnerID,"","INVOICE_GENERATED",time.Now().UTC(),map[string]any{
 		"invoice_id":id,"billing_model":"PLAN","plan_key":planKey,"billing_frequency":frequency,"charge_type":chargeType,
 		"list_price":listPrice,"discount_amount":discount,"total":amount,
 		"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":end.Format("2006-01-02"),
-	})
+	});err!=nil{return "",err}
+	if err=tx.Commit();err!=nil{return "",err}
 	return id,nil
 }
 
