@@ -104,7 +104,7 @@ checks = [
     (
         "OpenAPI publishes START-23.11.3k contract",
         "version: " + release in openapi
-        and "START-01 through START-23.11.3k" in openapi
+        and "START-01 through START-23.11.4" in openapi
         and "commercial-mode" in openapi
         and "Charity" in openapi,
     ),

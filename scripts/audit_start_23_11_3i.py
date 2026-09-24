@@ -167,7 +167,7 @@ checks = [
     (
         "release contract",
         "version: " + release in openapi
-        and "START-01 through START-23.11.3k" in openapi,
+        and "START-01 through START-23.11.4" in openapi,
     ),
 ]
 
