@@ -132,9 +132,11 @@ Source gate:
 
 `python3 scripts/audit_start_23_12_phase2.py`
 
-Runtime gate:
+Runtime gates:
 
-`sh scripts/smoke_start_23_12_phase2.sh http://127.0.0.1:8080`
+- `sh scripts/smoke_start_23_12_phase2.sh http://127.0.0.1:8080`
+- `sh scripts/smoke_start_23_12_phase2_recovery.sh http://127.0.0.1:8080`
+- `sh scripts/smoke_start_23_12_phase2_runtime.sh http://127.0.0.1:18081`
 
 Inherited Go, Flutter and Compose tests remain mandatory.
 
