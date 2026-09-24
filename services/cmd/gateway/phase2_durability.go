@@ -215,6 +215,22 @@ func (a *app) ensureOnboardingOwner(ctx context.Context,s partnerOnboardingSaga)
 	return err
 }
 
+func onboardingTermsMatch(current, desired map[string]any) bool {
+	keys:=[]string{
+		"currency","activation_fee","activation_fee_waived","activation_fee_reason",
+		"base_monthly_fee","minimum_monthly_commitment","quote_reference",
+		"annual_increase_percent","price_effective_from","service_anchor_date",
+	}
+	for _,key:=range keys{
+		want,ok:=desired[key]
+		if !ok{continue}
+		got,exists:=current[key]
+		if !exists{return false}
+		if fmt.Sprint(got)!=fmt.Sprint(want){return false}
+	}
+	return true
+}
+
 func (a *app) runPartnerOnboardingSaga(ctx context.Context,requestID string,actor user)(partnerOnboardingSaga,map[string]any,error){
 	s,err:=a.loadPartnerOnboardingSaga(ctx,requestID)
 	if err!=nil{return s,nil,err}
@@ -255,9 +271,16 @@ func (a *app) runPartnerOnboardingSaga(ctx context.Context,requestID string,acto
 	}
 
 	if !s.BillingDone {
-		if err:=a.internalJSON(ctx,http.MethodPut,a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(s.PartnerID)+"/terms",
-			s.BillingTerms,map[string]string{"X-Himate-User-ID":actor.ID},nil);err!=nil{
-			return fail(fmt.Errorf("billing terms: %w",err))
+		var currentTerms map[string]any
+		termsPath:="/api/v1/billing/partners/"+url.PathEscape(s.PartnerID)+"/terms"
+		if err:=a.internalJSON(ctx,http.MethodGet,a.hosts["billing"],termsPath,nil,map[string]string{"X-Himate-User-ID":actor.ID},&currentTerms);err!=nil{
+			return fail(fmt.Errorf("billing terms readback: %w",err))
+		}
+		if !onboardingTermsMatch(currentTerms,s.BillingTerms){
+			if err:=a.internalJSON(ctx,http.MethodPut,a.hosts["billing"],termsPath,
+				s.BillingTerms,map[string]string{"X-Himate-User-ID":actor.ID},nil);err!=nil{
+				return fail(fmt.Errorf("billing terms: %w",err))
+			}
 		}
 		if _,err:=a.db.ExecContext(ctx,`UPDATE identity.partner_onboarding_sagas SET billing_done=TRUE,status='COMPLETE',last_error='',completed_at=NOW(),updated_at=NOW() WHERE request_id=$1`,s.RequestID);err!=nil{
 			return fail(err)
