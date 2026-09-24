@@ -210,19 +210,9 @@ assert w["workspace_name"]=="Klavierhaus Daily Workspace" and w["logo_media_id"]
 x=next(i for i in d["module_presentations"] if i["module_key"]=="finance")
 assert x["display_name"]=="Business Finance" and x["card_color"]=="#2E7D32",x
 PY
-DB_WORKSPACE="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' -v partner_id="$A_ID" <<'SQL'
-SELECT workspace_name,default_module_key
-FROM cms.partner_workspace_settings
-WHERE partner_id=:'partner_id';
-SQL
-)"
+DB_WORKSPACE="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' -c "SELECT workspace_name,default_module_key FROM cms.partner_workspace_settings WHERE partner_id='$A_ID';")"
 test "$DB_WORKSPACE" = "Klavierhaus Daily Workspace|workshop_workflow"
-DB_MODULE="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' -v partner_id="$A_ID" <<'SQL'
-SELECT display_name,icon_key,card_color
-FROM cms.partner_module_presentations
-WHERE partner_id=:'partner_id' AND module_key='finance';
-SQL
-)"
+DB_MODULE="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' -c "SELECT display_name,icon_key,card_color FROM cms.partner_module_presentations WHERE partner_id='$A_ID' AND module_key='finance';")"
 test "$DB_MODULE" = "Business Finance|finance|#2E7D32"
 echo ok
 
@@ -265,12 +255,7 @@ printf 'Reset to HIMATE default removes only the presentation override... '
 curl -fsS -b "$PARTNER_A_COOKIE" -X DELETE "$BASE_URL/partner/api/v1/design/modules/finance" >/dev/null
 AFTER_RESET="$(curl -fsS -b "$PARTNER_A_COOKIE" "$BASE_URL/partner/api/v1/design")"
 printf '%s' "$AFTER_RESET" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert all(x.get("module_key")!="finance" for x in d["module_presentations"])'
-RESET_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -v partner_id="$A_ID" <<'SQL'
-SELECT COUNT(*)
-FROM cms.partner_module_presentations
-WHERE partner_id=:'partner_id' AND module_key='finance';
-SQL
-)"
+RESET_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT COUNT(*) FROM cms.partner_module_presentations WHERE partner_id='$A_ID' AND module_key='finance';")"
 test "$RESET_COUNT" = "0"
 echo ok
 
