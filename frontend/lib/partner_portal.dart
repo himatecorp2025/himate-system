@@ -373,6 +373,7 @@ class PartnerPortalShell extends StatefulWidget {
 
 class _PartnerPortalShellState extends State<PartnerPortalShell> {
   int selected = 0;
+  bool _defaultWorkspaceApplied = false;
   bool loading = true;
   String? error;
   Map<String, dynamic> company = <String, dynamic>{};
@@ -460,6 +461,26 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             ? rawProfiles.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
             : <Map<String, dynamic>>[];
         designMedia = extras[4] == null ? <Map<String, dynamic>>[] : items(extras[4]!);
+        final workspaceRaw = designState['workspace'];
+        if (workspaceRaw is Map) {
+          final defaultKey = (workspaceRaw['default_module_key'] ?? '').toString().trim();
+          if (defaultKey.isNotEmpty) {
+            final moduleIndex = modules.indexWhere((module) =>
+              (module['key'] ?? '').toString() == defaultKey &&
+              (module['access_state'] ?? '').toString() == 'ACTIVE' &&
+              module['executable'] == true
+            );
+            if (moduleIndex >= 0) {
+              final defaultModule = modules.removeAt(moduleIndex);
+              modules.insert(0, defaultModule);
+              if (!_defaultWorkspaceApplied) {
+                final modulesPageIndex = visibleNav.indexWhere((item) => item.label == 'Modules');
+                if (modulesPageIndex >= 0) selected = modulesPageIndex;
+                _defaultWorkspaceApplied = true;
+              }
+            }
+          }
+        }
         plans = extras[5] == null ? <Map<String, dynamic>>[] : items(extras[5]!);
         plan = extras[6] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[6]!);
         charity = extras[7] == null ? <String, dynamic>{} : Map<String, dynamic>.from(extras[7]!);
@@ -1102,7 +1123,10 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     final currentPlan = charityApproved
         ? 'Charity access'
         : '${plan['display_name'] ?? plan['plan_key'] ?? ''}'.trim();
-    final summary = '${module['marketplace_summary'] ?? module['description'] ?? ''}'.trim();
+    final displayLabel = moduleDisplayName(module);
+    final summary = moduleDisplayDescription(module);
+    final presentationColor = modulePresentationCardColor(module);
+    final isDefaultModule = workspaceDefaultModuleKey == (module['key'] ?? '').toString();
     final statusLabel = active
         ? 'INCLUDED'
         : locked
@@ -1189,16 +1213,39 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     }
 
     return Card(
+      color: presentationColor?.withOpacity(.10),
       child: Padding(
         padding: const EdgeInsets.all(17),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
+            modulePresentationIcon(module),
+            const SizedBox(width: 9),
             Expanded(
-              child: LText(
-                '${module['label']}',
-                style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LText(
+                    displayLabel,
+                    style: TextStyle(color: workspacePrimaryColor, fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
+                  if (displayLabel != (module['label'] ?? '').toString())
+                    LText(
+                      'HIMATE: ${module['label']}',
+                      style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
+                    ),
+                ],
               ),
             ),
+            if (can('design.write'))
+              IconButton(
+                tooltip: uiLiteral('Customize module presentation'),
+                onPressed: () => editModulePresentation(module),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+              ),
+            if (isDefaultModule) ...[
+              const _StatusPill(label: 'DEFAULT'),
+              const SizedBox(width: 6),
+            ],
             _StatusPill(label: statusLabel),
           ]),
           const SizedBox(height: 7),
@@ -1733,29 +1780,47 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   }
 
   Widget navPanel(List<_PortalNavSpec> items) {
+    final sidebar = workspaceSidebarColor;
+    final foreground = workspaceReadableForeground(sidebar);
     return Container(
       width: 238,
-      color: brandNavyDeep,
+      color: sidebar,
       padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: HimateLogo(onDark: true, width: 174)),
-          const SizedBox(height: 28),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: LText('PARTNER PORTAL', style: TextStyle(color: brandGold, fontSize: 9, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: workspaceLogo(height: 42),
           ),
           const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: LText(
+              workspaceDisplayName,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: foreground, fontSize: 12.5, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: LText(
+              'POWERED BY HIMATE',
+              style: TextStyle(color: workspaceAccentColor, fontSize: 8, letterSpacing: 1.2, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(height: 22),
           for (var i = 0; i < items.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: 5),
               child: ListTile(
                 selected: selected == i,
-                selectedColor: brandWhite,
-                textColor: const Color(0xFFC7D1DD),
-                iconColor: const Color(0xFFC7D1DD),
-                selectedTileColor: brandWhite.withOpacity(.08),
+                selectedColor: foreground,
+                textColor: foreground.withOpacity(.78),
+                iconColor: foreground.withOpacity(.78),
+                selectedTileColor: foreground.withOpacity(.10),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                 leading: Icon(items[i].icon, size: 19),
                 title: LText(items[i].label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
@@ -1763,18 +1828,26 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
               ),
             ),
           const Spacer(),
-          const Divider(color: Color(0xFF263950)),
+          Divider(color: foreground.withOpacity(.18)),
           ListTile(
-            textColor: const Color(0xFFC7D1DD),
-            iconColor: brandGold,
+            textColor: foreground.withOpacity(.82),
+            iconColor: workspaceAccentColor,
             leading: const Icon(Icons.person_outline_rounded, size: 19),
-            title: LText('${widget.user['name'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700)),
-            subtitle: LText(_humanize('${widget.user['role'] ?? 'viewer'}'), style: const TextStyle(color: Color(0xFF8FA1B5), fontSize: 8.5)),
+            title: LText(
+              '${widget.user['name'] ?? ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+            ),
+            subtitle: LText(
+              _humanize('${widget.user['role'] ?? 'viewer'}'),
+              style: TextStyle(color: foreground.withOpacity(.58), fontSize: 8.5),
+            ),
           ),
           TextButton.icon(
             onPressed: widget.onLogout,
-            icon: const Icon(Icons.logout_rounded, size: 18, color: brandGold),
-            label: const LText('Sign out', style: TextStyle(color: brandWhite)),
+            icon: Icon(Icons.logout_rounded, size: 18, color: workspaceAccentColor),
+            label: LText('Sign out', style: TextStyle(color: foreground)),
           ),
         ],
       ),
@@ -1786,13 +1859,17 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     final items = visibleNav;
     if (selected >= items.length) selected = 0;
     final page = items.isEmpty ? const SizedBox.shrink() : pageFor(items[selected]);
+    final background = workspaceBackgroundColor;
+    final primary = workspacePrimaryColor;
+    final sidebar = workspaceSidebarColor;
+    final sidebarForeground = workspaceReadableForeground(sidebar);
 
     if (loading && company.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (error != null && company.isEmpty) {
       return Scaffold(
-        backgroundColor: brandIvory,
+        backgroundColor: background,
         body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
@@ -1807,7 +1884,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         final wide = constraints.maxWidth >= 900;
         if (wide) {
           return Scaffold(
-            backgroundColor: brandIvory,
+            backgroundColor: background,
             body: Row(children: [
               navPanel(items),
               Expanded(
@@ -1815,21 +1892,29 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                   Container(
                     height: 64,
                     padding: const EdgeInsets.symmetric(horizontal: 24),
-                    decoration: const BoxDecoration(color: brandWhite, border: Border(bottom: BorderSide(color: brandMist))),
+                    decoration: BoxDecoration(
+                      color: brandWhite,
+                      border: Border(bottom: BorderSide(color: primary.withOpacity(.12))),
+                    ),
                     child: Row(children: [
                       Expanded(
                         child: LText(
-                          '${company['display_name'] ?? 'Partner'}',
+                          workspaceDisplayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13),
+                          style: TextStyle(color: primary, fontWeight: FontWeight.w800, fontSize: 13),
                         ),
                       ),
                       const SizedBox(width: 12),
-                      IconButton(onPressed: load, tooltip: 'Refresh', icon: const Icon(Icons.refresh_rounded)),
+                      IconButton(onPressed: load, tooltip: 'Refresh', icon: Icon(Icons.refresh_rounded, color: primary)),
                     ]),
                   ),
-                  Expanded(child: page),
+                  Expanded(
+                    child: ColoredBox(
+                      color: background,
+                      child: page,
+                    ),
+                  ),
                 ]),
               ),
             ]),
@@ -1837,27 +1922,54 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         }
 
         return Scaffold(
-          backgroundColor: brandIvory,
+          backgroundColor: background,
           appBar: AppBar(
-            title: LText('${company['display_name'] ?? 'Partner Portal'}'),
+            backgroundColor: brandWhite,
+            foregroundColor: primary,
+            title: LText(workspaceDisplayName),
             actions: [
               IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
               IconButton(onPressed: widget.onLogout, icon: const Icon(Icons.logout_rounded)),
             ],
           ),
           drawer: Drawer(
-            backgroundColor: brandNavyDeep,
+            backgroundColor: sidebar,
             child: SafeArea(
               child: Column(children: [
-                const Padding(padding: EdgeInsets.all(22), child: HimateLogo(onDark: true, width: 176)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
+                  child: Align(alignment: Alignment.centerLeft, child: workspaceLogo(height: 42)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 22),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: LText(
+                      workspaceDisplayName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: sidebarForeground, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 4, 22, 14),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: LText(
+                      'POWERED BY HIMATE',
+                      style: TextStyle(color: workspaceAccentColor, fontSize: 8, letterSpacing: 1.2, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
                 Expanded(
                   child: ListView.builder(
                     itemCount: items.length,
                     itemBuilder: (context, i) => ListTile(
                       selected: selected == i,
-                      selectedTileColor: brandWhite.withOpacity(.08),
-                      textColor: const Color(0xFFC7D1DD),
-                      iconColor: brandGold,
+                      selectedTileColor: sidebarForeground.withOpacity(.10),
+                      textColor: sidebarForeground.withOpacity(.82),
+                      iconColor: workspaceAccentColor,
                       leading: Icon(items[i].icon),
                       title: LText(items[i].label),
                       onTap: () {
@@ -1870,7 +1982,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
               ]),
             ),
           ),
-          body: page,
+          body: ColoredBox(color: background, child: page),
         );
       },
     );

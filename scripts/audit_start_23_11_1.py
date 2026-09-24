@@ -108,7 +108,16 @@ for token in [
 ]:
     require(token in localization, f"START-23.11.1 HU localization missing: {token}")
 
-require(matrix.get("completed_through") in {"23.11.1", "23.11.2", "23.11.3"}, "functional matrix completed_through must be 23.11.1 or a validated later 23.11 subphase")
+completed = str(matrix.get("completed_through", ""))
+completed_parts = completed.split(".")
+valid_later_2311 = (
+    len(completed_parts) >= 3
+    and completed_parts[0] == "23"
+    and completed_parts[1] == "11"
+    and all(part.isdigit() for part in completed_parts[2:])
+    and int(completed_parts[2]) >= 1
+)
+require(valid_later_2311, "functional matrix completed_through must be 23.11.1 or a validated later 23.11 subphase")
 surface_ids = {item["id"] for item in matrix.get("surfaces", [])}
 bad_surface_refs = [(item.get("id"), item.get("surface")) for item in matrix.get("contracts", []) if item.get("surface") not in surface_ids]
 require(not bad_surface_refs, f"functional matrix has invalid surface references: {bad_surface_refs}")

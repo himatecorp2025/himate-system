@@ -301,6 +301,9 @@ func partnerAuditAction(r *http.Request)string{
 	case path=="/partner/api/v1/users"&&r.Method==http.MethodPost:return "PARTNER_USER_CREATED"
 	case strings.HasPrefix(path,"/partner/api/v1/users/")&&r.Method==http.MethodPatch:return "PARTNER_USER_UPDATED"
 	case path=="/partner/api/v1/design/media"&&r.Method==http.MethodPost:return "PARTNER_DESIGN_MEDIA_UPLOADED"
+	case path=="/partner/api/v1/design/workspace"&&r.Method==http.MethodPut:return "PARTNER_WORKSPACE_PERSONALIZATION_UPDATED"
+	case strings.HasPrefix(path,"/partner/api/v1/design/modules/")&&r.Method==http.MethodPut:return "PARTNER_MODULE_PRESENTATION_UPDATED"
+	case strings.HasPrefix(path,"/partner/api/v1/design/modules/")&&r.Method==http.MethodDelete:return "PARTNER_MODULE_PRESENTATION_RESET"
 	case path=="/partner/api/v1/design/profiles"&&r.Method==http.MethodPost:return "PARTNER_THEME_PROFILE_CREATED"
 	case strings.HasPrefix(path,"/partner/api/v1/design/profiles/")&&r.Method==http.MethodPut:return "PARTNER_THEME_PROFILE_UPDATED"
 	default:return "PARTNER_PORTAL_"+strings.ToUpper(r.Method)
@@ -377,6 +380,10 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	case path=="/design/media"&&(r.Method==http.MethodGet||r.Method==http.MethodPost):
 		permission:="design.read";if r.Method==http.MethodPost{permission="design.write"}
 		if a.requirePartnerPermission(w,u,permission){a.partnerDesignMedia(w,r,u)}
+	case path=="/design/workspace"&&r.Method==http.MethodPut:
+		if a.requirePartnerPermission(w,u,"design.write"){a.partnerDesign(w,r,u)}
+	case strings.HasPrefix(path,"/design/modules/")&&(r.Method==http.MethodPut||r.Method==http.MethodDelete):
+		if a.requirePartnerPermission(w,u,"design.write"){a.partnerDesign(w,r,u)}
 	case path=="/design/profiles"&&r.Method==http.MethodPost:
 		if a.requirePartnerPermission(w,u,"design.write"){a.partnerDesign(w,r,u)}
 	case strings.HasPrefix(path,"/design/profiles/")&&(r.Method==http.MethodPut||r.Method==http.MethodPost):
@@ -443,6 +450,20 @@ func (a *app) partnerCompany(w http.ResponseWriter,r *http.Request,u partnerUser
 	common.JSON(w,200,out)
 }
 
+func (a *app) partnerPresentationModule(ctx context.Context,u partnerUser,key string,requireActive bool) (map[string]any,error){
+	var catalog map[string]any
+	path:="/internal/v1/partner-portal/"+url.PathEscape(u.PartnerID)+"/modules?locale="+url.QueryEscape(u.PreferredLocale)
+	if err:=a.internalGET(ctx,a.hosts["catalog"],path,&catalog);err!=nil{return nil,err}
+	for _,item:=range anyItems(catalog["items"]){
+		if strings.TrimSpace(fmt.Sprint(item["key"]))!=key{continue}
+		if requireActive && (strings.ToUpper(strings.TrimSpace(fmt.Sprint(item["access_state"])))!="ACTIVE" || item["executable"]!=true){
+			return nil,fmt.Errorf("DEFAULT_MODULE_NOT_ACTIVE")
+		}
+		return item,nil
+	}
+	return nil,fmt.Errorf("MODULE_NOT_FOUND")
+}
+
 func (a *app) partnerDesign(w http.ResponseWriter,r *http.Request,u partnerUser){
 	suffix:=strings.TrimPrefix(r.URL.Path,"/partner/api/v1/design")
 	upstream:="/internal/v1/cms/partner-design/"+url.PathEscape(u.PartnerID)+suffix
@@ -451,9 +472,29 @@ func (a *app) partnerDesign(w http.ResponseWriter,r *http.Request,u partnerUser)
 		if err:=a.internalGET(r.Context(),a.hosts["cms"],upstream,&out);err!=nil{writeInternalError(w,err,"Partner design data is temporarily unavailable");return}
 		common.JSON(w,200,out);return
 	}
-	if r.Method!=http.MethodPost&&r.Method!=http.MethodPut{common.APIError(w,405,"METHOD","Use GET, POST or PUT");return}
+	if r.Method!=http.MethodPost&&r.Method!=http.MethodPut&&r.Method!=http.MethodDelete{common.APIError(w,405,"METHOD","Use GET, POST, PUT or DELETE");return}
 	var payload map[string]any
-	if common.Decode(r,&payload)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	if r.Method!=http.MethodDelete{
+		if common.Decode(r,&payload)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
+	}
+	if suffix=="/workspace"&&r.Method==http.MethodPut{
+		key:=strings.TrimSpace(fmt.Sprint(payload["default_module_key"]))
+		if key!=""{
+			if _,err:=a.partnerPresentationModule(r.Context(),u,key,true);err!=nil{
+				if err.Error()=="DEFAULT_MODULE_NOT_ACTIVE"{common.APIError(w,409,"DEFAULT_MODULE_NOT_ACTIVE","Default module must be an ACTIVE and executable module owned by this partner");return}
+				if err.Error()=="MODULE_NOT_FOUND"{common.APIError(w,404,"MODULE_NOT_FOUND","Default module is not in this partner marketplace");return}
+				common.APIError(w,502,"CATALOG_UNAVAILABLE","Could not validate the default module");return
+			}
+		}
+	}
+	if strings.HasPrefix(suffix,"/modules/")&&(r.Method==http.MethodPut||r.Method==http.MethodDelete){
+		key:=strings.Trim(strings.TrimPrefix(suffix,"/modules/"),"/")
+		if key==""||strings.Contains(key,"/"){common.APIError(w,404,"MODULE_NOT_FOUND","Module presentation not found");return}
+		if _,err:=a.partnerPresentationModule(r.Context(),u,key,false);err!=nil{
+			if err.Error()=="MODULE_NOT_FOUND"{common.APIError(w,404,"MODULE_NOT_FOUND","Module is not in this partner marketplace");return}
+			common.APIError(w,502,"CATALOG_UNAVAILABLE","Could not validate the module presentation");return
+		}
+	}
 	var out map[string]any
 	err:=a.internalJSON(r.Context(),r.Method,a.hosts["cms"],upstream,payload,map[string]string{
 		"X-Himate-User-ID":u.ID,

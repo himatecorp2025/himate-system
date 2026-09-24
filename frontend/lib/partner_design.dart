@@ -7,6 +7,630 @@ extension PartnerDesignUI on _PartnerPortalShellState {
     return parsed == null || text.length != 6 ? fallback : Color(0xFF000000 | parsed);
   }
 
+
+  Map<String, dynamic> get workspaceSettings {
+    final raw = designState['workspace'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> get modulePresentations {
+    final raw = designState['module_presentations'];
+    return raw is List
+        ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  String get workspaceDisplayName {
+    final custom = (workspaceSettings['workspace_name'] ?? '').toString().trim();
+    if (custom.isNotEmpty) return custom;
+    final companyName = (company['display_name'] ?? '').toString().trim();
+    return companyName.isEmpty ? 'Partner Workspace' : companyName;
+  }
+
+  String get workspaceLogoUrl => (workspaceSettings['logo_url'] ?? '').toString().trim();
+  String get workspaceDefaultModuleKey => (workspaceSettings['default_module_key'] ?? '').toString().trim();
+
+  Color get workspacePrimaryColor =>
+      partnerThemeColor(workspaceSettings['primary_color'], brandNavy);
+  Color get workspaceSidebarColor =>
+      partnerThemeColor(workspaceSettings['sidebar_color'], brandNavyDeep);
+  Color get workspaceBackgroundColor =>
+      partnerThemeColor(workspaceSettings['background_color'], brandIvory);
+  Color get workspaceAccentColor =>
+      partnerThemeColor(workspaceSettings['accent_color'], brandGold);
+  Color get workspaceTextColor =>
+      partnerThemeColor(workspaceSettings['text_color'], brandCharcoal);
+
+  Color workspaceReadableForeground(Color background) =>
+      background.computeLuminance() > .42 ? brandNavyDeep : brandWhite;
+
+  Map<String, dynamic>? modulePresentationFor(String moduleKey) {
+    for (final item in modulePresentations) {
+      if ((item['module_key'] ?? '').toString() == moduleKey) return item;
+    }
+    return null;
+  }
+
+  String moduleDisplayName(Map<String, dynamic> module) {
+    final presentation = modulePresentationFor((module['key'] ?? '').toString());
+    final custom = (presentation?['display_name'] ?? '').toString().trim();
+    return custom.isNotEmpty ? custom : (module['label'] ?? module['key'] ?? '').toString();
+  }
+
+  String moduleDisplayDescription(Map<String, dynamic> module) {
+    final presentation = modulePresentationFor((module['key'] ?? '').toString());
+    final custom = (presentation?['description'] ?? '').toString().trim();
+    if (custom.isNotEmpty) return custom;
+    return (module['marketplace_summary'] ?? module['description'] ?? '').toString().trim();
+  }
+
+  Color? modulePresentationCardColor(Map<String, dynamic> module) {
+    final presentation = modulePresentationFor((module['key'] ?? '').toString());
+    final raw = (presentation?['card_color'] ?? '').toString().trim();
+    return raw.isEmpty ? null : partnerThemeColor(raw, brandWhite);
+  }
+
+  IconData workspaceIconData(String key) {
+    switch (key) {
+      case 'finance':
+        return Icons.account_balance_wallet_outlined;
+      case 'workflow':
+        return Icons.account_tree_outlined;
+      case 'inventory':
+        return Icons.inventory_2_outlined;
+      case 'calendar':
+        return Icons.calendar_month_outlined;
+      case 'crm':
+        return Icons.people_alt_outlined;
+      case 'marketing':
+        return Icons.campaign_outlined;
+      case 'events':
+        return Icons.event_outlined;
+      case 'analytics':
+        return Icons.insights_outlined;
+      case 'documents':
+        return Icons.folder_copy_outlined;
+      case 'settings':
+        return Icons.settings_outlined;
+      case 'integrations':
+        return Icons.hub_outlined;
+      case 'users':
+        return Icons.group_outlined;
+      case 'support':
+        return Icons.support_agent_outlined;
+      default:
+        return Icons.extension_outlined;
+    }
+  }
+
+  Widget workspaceLogo({double height = 42}) {
+    if (workspaceLogoUrl.isEmpty) {
+      return HimateLogo(
+        onDark: workspaceSidebarColor.computeLuminance() < .45,
+        width: 174,
+      );
+    }
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: 190, maxHeight: height),
+      child: Image.network(
+        Uri.base.resolve(workspaceLogoUrl).toString(),
+        height: height,
+        fit: BoxFit.contain,
+        alignment: Alignment.centerLeft,
+        errorBuilder: (_, __, ___) => HimateLogo(
+          onDark: workspaceSidebarColor.computeLuminance() < .45,
+          width: 174,
+        ),
+      ),
+    );
+  }
+
+  Widget modulePresentationIcon(
+    Map<String, dynamic> module, {
+    double size = 23,
+  }) {
+    final presentation = modulePresentationFor((module['key'] ?? '').toString());
+    final customUrl = (presentation?['custom_icon_url'] ?? '').toString().trim();
+    if (customUrl.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: Image.network(
+          Uri.base.resolve(customUrl).toString(),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              Icon(Icons.extension_outlined, size: size),
+        ),
+      );
+    }
+    return Icon(
+      workspaceIconData((presentation?['icon_key'] ?? '').toString()),
+      size: size,
+      color: workspacePrimaryColor,
+    );
+  }
+
+  bool _workspaceHexValid(String value) =>
+      RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(value.trim());
+
+  double _workspaceContrastRatio(String first, String second) {
+    Color parse(String value) => partnerThemeColor(value, brandWhite);
+    final a = parse(first).computeLuminance();
+    final b = parse(second).computeLuminance();
+    final high = a > b ? a : b;
+    final low = a > b ? b : a;
+    return (high + .05) / (low + .05);
+  }
+
+  Future<void> editWorkspacePersonalization() async {
+    if (!can('design.write')) return;
+    final workspace = workspaceSettings;
+    final name = TextEditingController(
+      text: (workspace['workspace_name'] ?? company['display_name'] ?? '')
+          .toString(),
+    );
+    final primary = TextEditingController(
+      text: (workspace['primary_color'] ?? '#0B1F3B').toString(),
+    );
+    final sidebar = TextEditingController(
+      text: (workspace['sidebar_color'] ?? '#06172C').toString(),
+    );
+    final background = TextEditingController(
+      text: (workspace['background_color'] ?? '#F8F9FB').toString(),
+    );
+    final accent = TextEditingController(
+      text: (workspace['accent_color'] ?? '#D4AF6B').toString(),
+    );
+    final textColor = TextEditingController(
+      text: (workspace['text_color'] ?? '#1F2937').toString(),
+    );
+    var logoMediaID = (workspace['logo_media_id'] ?? '').toString();
+    var defaultModuleKey = (workspace['default_module_key'] ?? '').toString();
+    String? validationError;
+
+    final activeModules = modules
+        .where(
+          (module) =>
+              (module['access_state'] ?? '').toString() == 'ACTIVE' &&
+              module['executable'] == true,
+        )
+        .toList();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) {
+          final knownLogo = logoMediaID.isEmpty ||
+              designMedia.any(
+                (item) => (item['id'] ?? '').toString() == logoMediaID,
+              );
+          final knownDefault = defaultModuleKey.isEmpty ||
+              activeModules.any(
+                (item) => (item['key'] ?? '').toString() == defaultModuleKey,
+              );
+          return BrandDialog(
+            title: 'Workspace identity',
+            subtitle:
+                'Customize presentation only. HIMATE module keys, APIs, routes, billing, permissions, entitlements and workflows remain unchanged.',
+            icon: Icons.dashboard_customize_outlined,
+            width: 900,
+            primaryLabel: 'Save workspace',
+            onPrimary: () {
+              final colors = [
+                primary.text,
+                sidebar.text,
+                background.text,
+                accent.text,
+                textColor.text,
+              ];
+              String? problem;
+              if (name.text.trim().length > 100) {
+                problem = 'Workspace name must be at most 100 characters.';
+              } else if (!colors.every(_workspaceHexValid)) {
+                problem = 'Every brand color must use the #RRGGBB format.';
+              } else if (_workspaceContrastRatio(
+                    background.text,
+                    textColor.text,
+                  ) <
+                  4.5) {
+                problem =
+                    'Background and text colors need at least 4.5:1 contrast.';
+              }
+              if (problem != null) {
+                setLocal(() => validationError = problem);
+                return;
+              }
+              Navigator.pop(dialogContext, true);
+            },
+            child: Column(
+              children: [
+                if (validationError != null) ...[
+                  _MessageCard(
+                    icon: Icons.contrast_outlined,
+                    title: 'Workspace colors need attention',
+                    message: validationError!,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: name,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Workspace company name'),
+                    helperText: uiLiteral(
+                      'Changes the tenant workspace label, not the HIMATE system name.',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: knownLogo ? logoMediaID : '',
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Workspace logo'),
+                  ),
+                  items: <DropdownMenuItem<String>>[
+                    const DropdownMenuItem(
+                      value: '',
+                      child: LText('HIMATE / company default'),
+                    ),
+                    for (final item in designMedia)
+                      DropdownMenuItem(
+                        value: (item['id'] ?? '').toString(),
+                        child: LText(
+                          (item['original_filename'] ?? item['id'] ?? '')
+                              .toString(),
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setLocal(() => logoMediaID = value ?? ''),
+                ),
+                const SizedBox(height: 12),
+                ResponsiveFieldPair(
+                  first: TextField(
+                    controller: primary,
+                    decoration: InputDecoration(
+                      labelText: uiLiteral('Primary color'),
+                    ),
+                  ),
+                  second: TextField(
+                    controller: accent,
+                    decoration: InputDecoration(
+                      labelText: uiLiteral('Accent color'),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ResponsiveFieldPair(
+                  first: TextField(
+                    controller: sidebar,
+                    decoration: InputDecoration(
+                      labelText: uiLiteral('Sidebar color'),
+                    ),
+                  ),
+                  second: TextField(
+                    controller: background,
+                    decoration: InputDecoration(
+                      labelText: uiLiteral('Background color'),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: textColor,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Text color'),
+                    helperText: uiLiteral(
+                      'HIMATE enforces readable text/background contrast.',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: knownDefault ? defaultModuleKey : '',
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Default module'),
+                    helperText: uiLiteral(
+                      'Only an ACTIVE module owned by your organization can be selected.',
+                    ),
+                  ),
+                  items: <DropdownMenuItem<String>>[
+                    const DropdownMenuItem(
+                      value: '',
+                      child: LText('Overview'),
+                    ),
+                    for (final module in activeModules)
+                      DropdownMenuItem(
+                        value: (module['key'] ?? '').toString(),
+                        child: LText(moduleDisplayName(module)),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setLocal(() => defaultModuleKey = value ?? ''),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    if (ok == true) {
+      try {
+        await widget.api.put('/partner/api/v1/design/workspace', {
+          'workspace_name': name.text.trim(),
+          'logo_media_id': logoMediaID,
+          'primary_color': primary.text.trim().toUpperCase(),
+          'sidebar_color': sidebar.text.trim().toUpperCase(),
+          'background_color': background.text.trim().toUpperCase(),
+          'accent_color': accent.text.trim().toUpperCase(),
+          'text_color': textColor.text.trim().toUpperCase(),
+          'default_module_key': defaultModuleKey,
+        });
+        await load();
+        if (mounted) toast('Workspace personalization saved.');
+      } catch (e) {
+        if (mounted) toast(e.toString(), failure: true);
+      }
+    }
+
+    for (final controller in [
+      name,
+      primary,
+      sidebar,
+      background,
+      accent,
+      textColor,
+    ]) {
+      controller.dispose();
+    }
+  }
+
+  Future<void> editModulePresentation(Map<String, dynamic> module) async {
+    if (!can('design.write')) return;
+    final moduleKey = (module['key'] ?? '').toString();
+    final existing = modulePresentationFor(moduleKey);
+    final displayName = TextEditingController(
+      text: (existing?['display_name'] ?? '').toString(),
+    );
+    final description = TextEditingController(
+      text: (existing?['description'] ?? '').toString(),
+    );
+    final cardColor = TextEditingController(
+      text: (existing?['card_color'] ?? '').toString(),
+    );
+    var iconKey = (existing?['icon_key'] ?? '').toString();
+    var customIconMediaID =
+        (existing?['custom_icon_media_id'] ?? '').toString();
+    String? validationError;
+
+    final rawLibrary = designState['icon_library'];
+    final iconLibrary = rawLibrary is List
+        ? rawLibrary
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) {
+          final knownIcon = iconKey.isEmpty ||
+              iconLibrary.any(
+                (item) => (item['key'] ?? '').toString() == iconKey,
+              );
+          final knownMedia = customIconMediaID.isEmpty ||
+              designMedia.any(
+                (item) =>
+                    (item['id'] ?? '').toString() == customIconMediaID,
+              );
+          return BrandDialog(
+            title: 'Module presentation',
+            subtitle:
+                'Rename and restyle the card for your team. The canonical HIMATE module identity and behavior cannot be changed.',
+            icon: Icons.edit_outlined,
+            width: 820,
+            primaryLabel: 'Save presentation',
+            onPrimary: () {
+              String? problem;
+              if (displayName.text.trim().length > 100) {
+                problem = 'Display name must be at most 100 characters.';
+              } else if (description.text.trim().length > 800) {
+                problem = 'Description must be at most 800 characters.';
+              } else if (cardColor.text.trim().isNotEmpty &&
+                  !_workspaceHexValid(cardColor.text)) {
+                problem = 'Card color must use the #RRGGBB format.';
+              } else if (iconKey.isNotEmpty &&
+                  customIconMediaID.isNotEmpty) {
+                problem =
+                    'Choose an HIMATE icon or a custom icon, not both.';
+              }
+              if (problem != null) {
+                setLocal(() => validationError = problem);
+                return;
+              }
+              Navigator.pop(dialogContext, true);
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (validationError != null) ...[
+                  _MessageCard(
+                    icon: Icons.error_outline_rounded,
+                    title: 'Presentation needs attention',
+                    message: validationError!,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _DefinitionRow(
+                  label: 'Official HIMATE name',
+                  value: (module['label'] ?? moduleKey).toString(),
+                  emphasis: true,
+                ),
+                _DefinitionRow(
+                  label: 'Canonical module key',
+                  value: moduleKey,
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: displayName,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Your display name'),
+                    helperText: uiLiteral(
+                      'Leave blank to use the official HIMATE name.',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: description,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('What this module does'),
+                    helperText: uiLiteral(
+                      'Use a short 3–4 sentence description for your team.',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ResponsiveFieldPair(
+                  first: DropdownButtonFormField<String>(
+                    value: knownIcon ? iconKey : '',
+                    decoration: InputDecoration(
+                      labelText: uiLiteral('HIMATE icon library'),
+                    ),
+                    items: <DropdownMenuItem<String>>[
+                      const DropdownMenuItem(
+                        value: '',
+                        child: LText('HIMATE default'),
+                      ),
+                      for (final item in iconLibrary)
+                        DropdownMenuItem(
+                          value: (item['key'] ?? '').toString(),
+                          child: LText(
+                            (item['label'] ?? item['key'] ?? '').toString(),
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => setLocal(() {
+                      iconKey = value ?? '';
+                      if (iconKey.isNotEmpty) customIconMediaID = '';
+                    }),
+                  ),
+                  second: DropdownButtonFormField<String>(
+                    value: knownMedia ? customIconMediaID : '',
+                    decoration: InputDecoration(
+                      labelText: uiLiteral('Custom icon asset'),
+                    ),
+                    items: <DropdownMenuItem<String>>[
+                      const DropdownMenuItem(
+                        value: '',
+                        child: LText('No custom icon'),
+                      ),
+                      for (final item in designMedia)
+                        DropdownMenuItem(
+                          value: (item['id'] ?? '').toString(),
+                          child: LText(
+                            (item['original_filename'] ?? item['id'] ?? '')
+                                .toString(),
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => setLocal(() {
+                      customIconMediaID = value ?? '';
+                      if (customIconMediaID.isNotEmpty) iconKey = '';
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: cardColor,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Card color'),
+                    helperText: uiLiteral(
+                      'Optional #RRGGBB color; leave blank for HIMATE default.',
+                    ),
+                  ),
+                ),
+                if (existing != null) ...[
+                  const SizedBox(height: 18),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: dialogContext,
+                        builder: (confirmContext) => AlertDialog(
+                          title: const LText('Reset to HIMATE default?'),
+                          content: const LText(
+                            'Your custom module name, description, icon and card color will be removed. The module itself is unchanged.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(confirmContext, false),
+                              child: const LText('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.pop(confirmContext, true),
+                              child: const LText('Reset'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm != true) return;
+                      try {
+                        await widget.api.delete(
+                          '/partner/api/v1/design/modules/$moduleKey',
+                        );
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, false);
+                        }
+                        await load();
+                        if (mounted) {
+                          toast(
+                            'Module presentation reset to HIMATE default.',
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) toast(e.toString(), failure: true);
+                      }
+                    },
+                    icon: const Icon(Icons.restart_alt_rounded),
+                    label: const LText('Reset to HIMATE default'),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    if (saved == true) {
+      try {
+        await widget.api.put('/partner/api/v1/design/modules/$moduleKey', {
+          'display_name': displayName.text.trim(),
+          'description': description.text.trim(),
+          'icon_key': iconKey,
+          'custom_icon_media_id': customIconMediaID,
+          'card_color': cardColor.text.trim().toUpperCase(),
+        });
+        await load();
+        if (mounted) toast('Module presentation updated.');
+      } catch (e) {
+        if (mounted) toast(e.toString(), failure: true);
+      }
+    }
+
+    displayName.dispose();
+    description.dispose();
+    cardColor.dispose();
+  }
+
   Future<void> uploadDesignMedia() async {
     if (!can('design.write')) return;
     final file = await pickBrowserFile('image/png,image/jpeg,image/webp');
@@ -389,12 +1013,62 @@ extension PartnerDesignUI on _PartnerPortalShellState {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _RuleStrip(items: [
-            _RuleItem(Icons.layers_outlined, 'Theme only', 'Content stays unchanged'),
-            _RuleItem(Icons.settings_suggest_outlined, 'Mechanics', 'System logic stays unchanged'),
+            _RuleItem(Icons.layers_outlined, 'Presentation only', 'Content stays unchanged'),
+            _RuleItem(Icons.settings_suggest_outlined, 'Canonical modules', 'System logic stays unchanged'),
             _RuleItem(Icons.lock_person_outlined, 'Tenant isolated', 'Your assets only'),
-            _RuleItem(Icons.palette_outlined, 'Brand slots', 'Logo · favicon · app · login · email'),
+            _RuleItem(Icons.contrast_outlined, 'Readable branding', 'Contrast protected'),
           ]),
           const SizedBox(height: 22),
+          _SectionHeader(
+            title: 'Workspace identity',
+            subtitle: 'Your company label, workspace logo, brand colors and default module.',
+            trailing: can('design.write')
+                ? OutlinedButton.icon(
+                    onPressed: editWorkspacePersonalization,
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const LText('Edit workspace'),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 12),
+          _InfoCard(
+            title: workspaceDisplayName,
+            icon: Icons.dashboard_customize_outlined,
+            children: [
+              _DefinitionRow(
+                label: 'Default module',
+                value: workspaceDefaultModuleKey.isEmpty
+                    ? 'Overview'
+                    : workspaceDefaultModuleKey,
+              ),
+              _DefinitionRow(
+                label: 'Primary color',
+                value: (workspaceSettings['primary_color'] ?? '#0B1F3B').toString(),
+              ),
+              _DefinitionRow(
+                label: 'Sidebar color',
+                value: (workspaceSettings['sidebar_color'] ?? '#06172C').toString(),
+              ),
+              _DefinitionRow(
+                label: 'Background color',
+                value: (workspaceSettings['background_color'] ?? '#F8F9FB').toString(),
+              ),
+              _DefinitionRow(
+                label: 'Accent color',
+                value: (workspaceSettings['accent_color'] ?? '#D4AF6B').toString(),
+              ),
+              _DefinitionRow(
+                label: 'Customized modules',
+                value: modulePresentations.length.toString(),
+                emphasis: modulePresentations.isNotEmpty,
+              ),
+              const _DefinitionRow(
+                label: 'System contract',
+                value: 'Presentation only · canonical HIMATE mechanics unchanged',
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
           _SectionHeader(
             title: 'Available design profiles',
             subtitle: 'Catalog designs and your organization’s own profiles. Commercial package rules can later restrict which catalog profiles are selectable without changing this data model.',

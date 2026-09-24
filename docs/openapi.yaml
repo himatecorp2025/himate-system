@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: HIMATE Control Plane API
-  version: 0.8.28-start-23.11.3k
+  version: 0.8.29-start-23.11.4
   description: >
-    Authenticated REST contract for the START-01 through START-23.11.3k HIMATE
+    Authenticated REST contract for the START-01 through START-23.11.4 HIMATE
     control-plane surface. Dynamic business labels/descriptions are persisted in
     English and Hungarian; locale resolution uses locale query, X-Himate-Locale,
     Accept-Language, then en_US. Partner business databases remain isolated behind
@@ -558,6 +558,79 @@ paths:
         "200": {description: Active design changed with content_binding/mechanics_binding unchanged}
         "403": {description: design.write permission required}
         "404": {description: Profile is neither visible catalog design nor own-tenant design}
+  /partner/api/v1/design/workspace:
+    put:
+      tags: [Partner Portal]
+      summary: Update own-tenant workspace identity and presentation
+      description: >
+        Presentation-only customization for workspace name, own-tenant logo,
+        primary/sidebar/background/accent/text colors and default module preference.
+        Canonical HIMATE module keys, routes, APIs, permission keys, billing,
+        workflows and entitlements remain unchanged. The default module must already
+        be ACTIVE and executable for the authenticated partner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_name, logo_media_id, primary_color, sidebar_color, background_color, accent_color, text_color, default_module_key]
+              properties:
+                workspace_name: {type: string, maxLength: 100}
+                logo_media_id: {type: string, description: Own-tenant CMS media ID or empty string}
+                primary_color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$'}
+                sidebar_color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$'}
+                background_color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$'}
+                accent_color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$'}
+                text_color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$'}
+                default_module_key:
+                  type: string
+                  description: Empty or an own-tenant ACTIVE executable canonical module key
+      responses:
+        "200": {description: Workspace presentation saved}
+        "400": {description: Invalid color or insufficient text/background contrast}
+        "403": {description: design.write permission required or logo media is outside the tenant}
+        "404": {description: Default module does not exist in the partner Marketplace}
+        "409": {description: Default module exists but is not ACTIVE and executable}
+  /partner/api/v1/design/modules/{moduleKey}:
+    parameters:
+      - {name: moduleKey, in: path, required: true, schema: {type: string}}
+    put:
+      tags: [Partner Portal]
+      summary: Customize own-tenant presentation of a canonical HIMATE module
+      description: >
+        Stores only partner display name, presentation description, HIMATE icon-library
+        key or own-tenant custom icon media, and card color. Canonical module identity,
+        routes, APIs, permissions, billing, workflows and entitlements remain unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name: {type: string, maxLength: 100}
+                description: {type: string, maxLength: 800}
+                icon_key:
+                  type: string
+                  description: HIMATE icon-library key; mutually exclusive with custom_icon_media_id
+                custom_icon_media_id:
+                  type: string
+                  description: Own-tenant CMS media ID; mutually exclusive with icon_key
+                card_color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$'}
+      responses:
+        "200": {description: Module presentation saved}
+        "400": {description: Invalid presentation payload}
+        "403": {description: design.write permission required or custom icon is outside the tenant}
+        "404": {description: Module is not part of the partner Marketplace}
+    delete:
+      tags: [Partner Portal]
+      summary: Reset own-tenant module presentation to canonical HIMATE defaults
+      description: Removes only the partner presentation override; canonical module identity and entitlement are unchanged.
+      responses:
+        "200": {description: Presentation override removed}
+        "403": {description: design.write permission required}
+        "404": {description: Module is not part of the partner Marketplace}
   /api/v1/dashboard/summary:
     get:
       tags: [Dashboard]

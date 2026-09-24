@@ -220,12 +220,24 @@ func (a *app) partnerDesignPayload(partnerID string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	workspace, err := a.getPartnerWorkspaceSettings(context.Background(), partnerID)
+	if err != nil {
+		return nil, err
+	}
+	modulePresentations, err := a.listPartnerModulePresentations(context.Background(), partnerID)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"partner_id": partnerID,
 		"active_profile_id": active.ID,
 		"active_profile": designProfileMap(active),
 		"effective_theme": decodeVisualTheme(active.ThemeRaw),
 		"profiles": profiles,
+		"workspace": workspaceSettingsMap(workspace),
+		"module_presentations": modulePresentations,
+		"icon_library": workspaceIconLibrary,
+		"presentation_contract": "CANONICAL_KEYS_AND_SYSTEM_BEHAVIOR_UNCHANGED",
 		"content_binding": "UNCHANGED",
 		"mechanics_binding": "UNCHANGED",
 	}, nil
@@ -244,6 +256,15 @@ func (a *app) partnerDesignInternal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	partnerID := parts[0]
+
+	if len(parts) == 2 && parts[1] == "workspace" {
+		a.partnerWorkspaceInternal(w, r, partnerID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "modules" {
+		a.partnerModulePresentationInternal(w, r, partnerID, parts[2])
+		return
+	}
 
 	if len(parts) == 1 {
 		if r.Method != http.MethodGet {

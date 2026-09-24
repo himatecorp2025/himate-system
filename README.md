@@ -449,6 +449,18 @@ The architecture remains microservice/container based. It is **not** being colla
 - release contract version is `0.8.28-start-23.11.3k`
 - acceptance: `docs/START-23.11.3K_ACCEPTANCE.md`, `scripts/audit_start_23_11_3k.py`, `scripts/smoke_start_23_11_3k.sh`
 
+### START-23.11.4 — Partner Workspace & Personalization
+- partner-specific workspace name and logo are presentation-only and never rename the HIMATE platform identity
+- tenant brand colors cover primary, sidebar, background, accent and text; text/background contrast is protected and sidebar foreground adapts to the selected background
+- partner administrators can customize a module card display name, description, HIMATE icon-library icon or partner-owned custom icon, and card color
+- **Reset to HIMATE default** deletes only the presentation override
+- canonical module key, route, API, permission key, billing, workflow and entitlement are immutable through this surface
+- default module may reference only an ACTIVE + executable module already owned by the tenant; it changes the Partner Portal landing preference without changing technical routing
+- workspace/module presentation rows are PostgreSQL-persisted, tenant isolated, audited and survive service/container restarts
+- release contract version is `0.8.29-start-23.11.4`
+- acceptance: `docs/START-23.11.4_ACCEPTANCE.md`, `scripts/audit_start_23_11_4.py`, `scripts/smoke_start_23_11_4.sh`
+
+
 ### Horizontal-scaling note
 The service boundaries and containers allow independent scaling, but high-load production still requires shared/distributed implementations for concerns that are currently process-local, especially login throttling and any durability-sensitive asynchronous buffering. Those are explicit scaling gates rather than reasons to return to a monolith.
 

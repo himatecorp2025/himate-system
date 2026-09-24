@@ -293,7 +293,7 @@
     {
       "id": "partner_portal.design",
       "name": "Partner Portal / Design",
-      "scope": "Tenant-isolated design catalog, custom themes, brand asset slots and active profile switching"
+      "scope": "Tenant-isolated design catalog plus workspace identity, brand colors, default module and module-card presentation overrides"
     },
     {
       "id": "packages.admin",
@@ -2317,7 +2317,61 @@
       "target_phase": "23.11.3",
       "e2e_proof": "scripts/smoke_start_23_11_3k.sh: approved Charity module selection -> persisted selection -> Catalog entitlement convergence",
       "notes": "Only APPROVED Charity partners may manage Charity module selection. Charity selection has no paid-package module-count cap."
+    },
+    {
+      "id": "PORTAL-WORKSPACE-PERSONALIZATION-23-11-4",
+      "surface": "partner_portal.design",
+      "ui": "Partner Portal Design → Workspace identity",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_design.dart",
+      "source_token": "widget.api.put('/partner/api/v1/design/workspace'",
+      "method": "PUT",
+      "api_pattern": "/partner/api/v1/design/workspace",
+      "backend_service": "gateway + catalog validation + cms",
+      "persistence": "cms.partner_workspace_settings + tenant-owned cms.media_assets",
+      "audit": "PARTNER_WORKSPACE_PERSONALIZATION_UPDATED + central gateway audit",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.4",
+      "e2e_proof": "scripts/smoke_start_23_11_4.sh: partner login -> workspace PUT -> PostgreSQL -> design readback -> tenant isolation + contrast/default-module rejection",
+      "notes": "Presentation-only. default_module_key must be ACTIVE+executable for the authenticated tenant; canonical module routing and entitlements remain unchanged."
+    },
+    {
+      "id": "PORTAL-MODULE-PRESENTATION-23-11-4",
+      "surface": "partner_portal.design",
+      "ui": "Partner Portal Module Marketplace → card pencil editor",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_design.dart",
+      "source_token": "widget.api.put('/partner/api/v1/design/modules/$moduleKey'",
+      "method": "PUT",
+      "api_pattern": "/partner/api/v1/design/modules/{moduleKey}",
+      "backend_service": "gateway + catalog validation + cms",
+      "persistence": "cms.partner_module_presentations + optional tenant-owned cms.media_assets",
+      "audit": "PARTNER_MODULE_PRESENTATION_UPDATED + central gateway audit",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.4",
+      "e2e_proof": "scripts/smoke_start_23_11_4.sh: canonical module -> presentation PUT -> PostgreSQL/readback while canonical Catalog label/key/entitlement remain unchanged",
+      "notes": "Display name, description, icon and card color are presentation-only. Route, API, permission key, billing, workflow, module key and entitlement cannot be mutated."
+    },
+    {
+      "id": "PORTAL-MODULE-PRESENTATION-RESET-23-11-4",
+      "surface": "partner_portal.design",
+      "ui": "Partner Portal Module Marketplace → Reset to HIMATE default",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/partner_design.dart",
+      "source_token": "'/partner/api/v1/design/modules/$moduleKey'",
+      "method": "DELETE",
+      "api_pattern": "/partner/api/v1/design/modules/{moduleKey}",
+      "backend_service": "gateway + catalog validation + cms",
+      "persistence": "cms.partner_module_presentations row removal",
+      "audit": "PARTNER_MODULE_PRESENTATION_RESET + central gateway audit",
+      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.11.4",
+      "e2e_proof": "scripts/smoke_start_23_11_4.sh: presentation override -> DELETE reset -> absent PostgreSQL row -> canonical UI fallback contract",
+      "notes": "Reset deletes only the tenant presentation override; canonical module metadata and entitlement remain unchanged."
     }
   ],
-  "completed_through": "23.11.3"
+  "completed_through": "23.11.4"
 }
