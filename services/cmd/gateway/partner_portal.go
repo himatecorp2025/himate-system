@@ -323,16 +323,25 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
 	mutating:=r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions
 	if mutating{
-		started:=time.Now();requestState:=captureAuditRequest(r);rec:=&auditResponseWriter{ResponseWriter:w};w=rec
+		started:=time.Now()
+		requestState:=captureAuditRequest(r)
+		baseEvent:=auditEvent{
+			ActorID:u.ID,ActorName:u.Name,ActorRoles:[]string{"partner_"+u.Role},
+			RequestID:strings.TrimSpace(r.Header.Get("X-Request-ID")),CorrelationID:strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
+			Action:partnerAuditAction(r),Method:r.Method,Path:r.URL.Path,Resource:"partner_portal",PartnerID:u.PartnerID,
+			OldState:map[string]any{},CreatedAt:time.Now().UTC(),
+		}
+		intentID,intentErr:=a.createAuditIntent(r.Context(),baseEvent,requestState)
+		if intentErr!=nil{common.APIError(w,http.StatusServiceUnavailable,"AUDIT_DURABILITY","Mutation blocked because the durable audit intent could not be recorded");return}
+		rec:=&auditResponseWriter{ResponseWriter:w};w=rec
 		defer func(){
 			status:=rec.status;if status==0{status=200};outcome:="SUCCESS";if status>=400{outcome="FAILED"}
 			newState:=decodeAuditState(rec.body.Bytes());if state,ok:=newState.(map[string]any);ok&&len(state)==0{newState=requestState}
-			a.enqueueAudit(auditEvent{
-				ActorID:u.ID,ActorName:u.Name,ActorRoles:[]string{"partner_"+u.Role},
-				RequestID:strings.TrimSpace(r.Header.Get("X-Request-ID")),CorrelationID:strings.TrimSpace(r.Header.Get("X-Correlation-ID")),
-				Action:partnerAuditAction(r),Method:r.Method,Path:r.URL.Path,Resource:"partner_portal",PartnerID:u.PartnerID,
-				Status:status,Outcome:outcome,OldState:map[string]any{},NewState:newState,DurationMS:time.Since(started).Milliseconds(),CreatedAt:time.Now().UTC(),
-			})
+			event:=baseEvent
+			event.Status=status;event.Outcome=outcome;event.NewState=newState;event.DurationMS=time.Since(started).Milliseconds()
+			finalizeCtx,finalizeCancel:=context.WithTimeout(context.Background(),3*time.Second)
+			_ = a.finalizeAuditIntent(finalizeCtx,intentID,event)
+			finalizeCancel()
 		}()
 	}
 	r.Header.Set("X-Himate-User-ID",u.ID)
