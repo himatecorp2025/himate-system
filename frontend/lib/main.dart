@@ -2868,6 +2868,51 @@ class _PartnersPageState extends State<PartnersPage> {
     // The creation dialog must be available even when Catalog or supplementary
     // services are degraded. Partner master data is the primary record; modules,
     // licensing and provisioning are configured from the workspace afterwards.
+    const pendingOnboardingKey = 'himate_pending_partner_onboarding';
+    final pendingRequestId = (html.window.localStorage[pendingOnboardingKey] ?? '').trim();
+    if (pendingRequestId.isNotEmpty) {
+      try {
+        final resumed = await widget.api.post('/api/v1/partner-onboarding/$pendingRequestId/resume', const <String, dynamic>{});
+        final resumedPartner = resumed['partner'];
+        if ('${resumed['status'] ?? ''}' == 'COMPLETE' && resumedPartner is Map) {
+          final partner = Map<String, dynamic>.from(resumedPartner);
+          html.window.localStorage.remove(pendingOnboardingKey);
+          if (!mounted) return;
+          unawaited(load(reset: true));
+          success('Interrupted partner onboarding was resumed and completed.');
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              settings: RouteSettings(name: "/app/partners/${partner['id']}"),
+              builder: (_) => PartnerWorkspace(api: widget.api, partner: partner),
+            ),
+          );
+          return;
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: LText('A previous partner onboarding is still incomplete. Retry after the dependent service recovers.'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: brandWarning,
+            ),
+          );
+        }
+        return;
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: LText('Previous partner onboarding could not be resumed yet: $e'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: brandWarning,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     var categoryOptions = _mergePartnerCategories(categories);
     if (categoryRegistryWarning != null && !categoriesLoading) {
       unawaited(_loadCategories(force: true));
@@ -3394,42 +3439,31 @@ class _PartnersPageState extends State<PartnersPage> {
             });
 
             try {
-              var created = stagedPartner;
-              if (stagedPartnerId == null) {
-                created = await widget.api.post('/api/v1/partners', partnerPayload());
-                stagedPartner = created;
-                stagedPartnerId = '${created['id']}';
-              } else {
-                created = await widget.api.patch(
-                  '/api/v1/partners/${stagedPartnerId!}',
-                  {
-                    ...partnerPayload(includeOnboardingRequest: false),
-                    'reason': 'New Partner modal retry/update before onboarding completion',
-                  },
-                );
-                stagedPartner = created;
-              }
-
-              final partnerId = stagedPartnerId!;
-
-              if (!portalOwnerCreated) {
-                final existingUsers = await widget.api.get('/api/v1/partners/$partnerId/portal-users', force: true);
-                final ownerEmail = contactEmail.text.trim().toLowerCase();
-                portalOwnerCreated = items(existingUsers).any((item) =>
-                    '${item['email'] ?? ''}'.trim().toLowerCase() == ownerEmail &&
-                    '${item['role'] ?? ''}'.toLowerCase() == 'owner' &&
-                    item['active'] != false);
-              }
-
-              if (!portalOwnerCreated) {
-                await widget.api.post('/api/v1/partners/$partnerId/portal-users', {
+              html.window.localStorage[pendingOnboardingKey] = onboardingRequestId;
+              final onboarding = await widget.api.post('/api/v1/partner-onboarding', {
+                'request_id': onboardingRequestId,
+                'partner': partnerPayload(),
+                'portal_owner': {
                   'name': contactName.text.trim(),
                   'email': contactEmail.text.trim(),
                   'password': portalPassword.text,
-                  'role': 'owner',
-                });
-                portalOwnerCreated = true;
+                },
+                'billing_terms': billingTermsPayload(),
+              });
+              final rawPartner = onboarding['partner'];
+              if (rawPartner is! Map) {
+                throw Exception('Onboarding completed without an authoritative partner readback.');
               }
+              var created = Map<String, dynamic>.from(rawPartner);
+              stagedPartner = created;
+              stagedPartnerId = '${created['id']}';
+              portalOwnerCreated = onboarding['owner_done'] == true;
+              billingTermsSaved = onboarding['billing_done'] == true;
+              if ('${onboarding['status'] ?? ''}' != 'COMPLETE' || !portalOwnerCreated || !billingTermsSaved) {
+                throw Exception('${onboarding['last_error'] ?? 'Partner onboarding is incomplete.'}');
+              }
+
+              final partnerId = stagedPartnerId!;
 
               if (!logoUploaded && partnerLogoFile != null && '${created['logo_url'] ?? ''}'.trim().isNotEmpty) {
                 logoUploaded = true;
@@ -3455,20 +3489,7 @@ class _PartnersPageState extends State<PartnersPage> {
                 logoUploaded = true;
               }
 
-              if (!billingTermsSaved) {
-                final desiredTerms = billingTermsPayload();
-                try {
-                  final currentTerms = await widget.api.get('/api/v1/billing/partners/$partnerId/terms', force: true);
-                  billingTermsSaved = billingTermsMatch(currentTerms, desiredTerms);
-                } catch (_) {
-                  billingTermsSaved = false;
-                }
-                if (!billingTermsSaved) {
-                  await widget.api.put('/api/v1/billing/partners/$partnerId/terms', desiredTerms);
-                  billingTermsSaved = true;
-                }
-              }
-
+              html.window.localStorage.remove(pendingOnboardingKey);
               if (dialogContext.mounted) {
                 setLocal(() {
                   submitting = false;
