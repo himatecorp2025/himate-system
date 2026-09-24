@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
 	"os"
@@ -204,7 +205,8 @@ func (a *app) queryEvents(r *http.Request, userID string) ([]notificationEvent, 
 		CASE WHEN rs.event_id IS NULL THEN FALSE ELSE TRUE END
 		FROM notifications.events e
 		LEFT JOIN notifications.read_state rs ON rs.event_id=e.id AND rs.user_id=$1
-		WHERE e.delivery_scope=$2`
+		WHERE e.delivery_scope=$2
+		  AND (e.target_user_id='' OR e.target_user_id=$1)`
 	args := []any{userID, scope}
 	if scope == "PARTNER" {
 		query += ` AND e.partner_id=$3`
@@ -338,9 +340,17 @@ func (a *app) notificationAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer tx.Rollback()
-		for _, id := range ids {
-			if _, err = tx.Exec(`INSERT INTO notifications.read_state(event_id,user_id) VALUES($1,$2)
-				ON CONFLICT(event_id,user_id) DO UPDATE SET read_at=NOW()`, id, userID); err != nil {
+		if len(ids) > 0 {
+			values := make([]string, 0, len(ids))
+			args := make([]any, 0, len(ids)+1)
+			args = append(args, userID)
+			for i, id := range ids {
+				values = append(values, fmt.Sprintf("($%d,$1)", i+2))
+				args = append(args, id)
+			}
+			query := `INSERT INTO notifications.read_state(event_id,user_id) VALUES ` + strings.Join(values, ",") +
+				` ON CONFLICT(event_id,user_id) DO UPDATE SET read_at=NOW()`
+			if _, err = tx.Exec(query, args...); err != nil {
 				common.APIError(w, http.StatusInternalServerError, "DB", "Could not update notifications")
 				return
 			}
