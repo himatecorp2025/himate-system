@@ -13,6 +13,8 @@ HOST_TARGETS = {
     "PARTNERS_HOSTPORT": "himate-partners",
     "CATALOG_HOSTPORT": "himate-catalog",
     "BILLING_HOSTPORT": "himate-billing",
+    "TENANT_FINANCE_HOSTPORT": "himate-tenant-finance",
+    "AUTOMATION_HOSTPORT": "himate-automation",
     "CONTACT_HOSTPORT": "himate-contact",
     "PROVISIONING_HOSTPORT": "himate-provisioning",
     "ENVIRONMENTS_HOSTPORT": "himate-environments",
