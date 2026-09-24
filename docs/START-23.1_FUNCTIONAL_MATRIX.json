@@ -2360,7 +2360,7 @@
       "ui": "Partner Portal Module Marketplace → Reset to HIMATE default",
       "kind": "mutation",
       "frontend_file": "frontend/lib/partner_design.dart",
-      "source_token": "widget.api.delete('/partner/api/v1/design/modules/$moduleKey')",
+      "source_token": "'/partner/api/v1/design/modules/$moduleKey'",
       "method": "DELETE",
       "api_pattern": "/partner/api/v1/design/modules/{moduleKey}",
       "backend_service": "gateway + catalog validation + cms",
