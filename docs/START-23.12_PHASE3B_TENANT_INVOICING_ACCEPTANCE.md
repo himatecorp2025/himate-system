@@ -24,6 +24,8 @@ Tenant identity is never accepted from the manual invoice JSON body. The Gateway
 
 Manual invoice creation is idempotent per (partner_id, request_key). Replaying the same request returns the original invoice. Reusing the key with different invoice content is rejected.
 
+A MANUAL + DRAFT invoice may be replaced through the own-tenant draft update route before final review. The update recalculates all line/tax totals server-side inside one SQL transaction and replaces the draft items under the same tenant key. Once the invoice leaves DRAFT, silent draft edits are rejected.
+
 Money is stored in integer minor units. Fractional quantities use quantity_milli, and tax uses basis points. The service calculates and persists immutable line totals instead of trusting a browser-calculated invoice total.
 
 ## Final financial review boundary
@@ -120,6 +122,8 @@ The runtime smoke proves:
 - manual draft creation,
 - same-request idempotent replay,
 - conflicting replay rejection,
+- manual DRAFT edit and server-side recalculation,
+- post-finalization edit rejection,
 - client-supplied partner_id rejection,
 - issuer data refreshed from authoritative Partner master data at finalization,
 - tenant cross-read rejection,
