@@ -298,6 +298,36 @@ func (a *app)migrate(ctx context.Context)error{
 			)`,
 			`CREATE INDEX IF NOT EXISTS cms_partner_brand_media_idx ON cms.partner_brand_assets(media_id)`,
 		}},
+		{Version:9,Name:"start-23-11-4-workspace-personalization",Statements:[]string{
+			`CREATE TABLE IF NOT EXISTS cms.partner_workspace_settings(
+				partner_id TEXT PRIMARY KEY,
+				workspace_name TEXT NOT NULL DEFAULT '',
+				logo_media_id TEXT REFERENCES cms.media_assets(id) ON DELETE SET NULL,
+				primary_color TEXT NOT NULL DEFAULT '#0B1F3B',
+				sidebar_color TEXT NOT NULL DEFAULT '#06172C',
+				background_color TEXT NOT NULL DEFAULT '#F8F9FB',
+				accent_color TEXT NOT NULL DEFAULT '#D4AF6B',
+				text_color TEXT NOT NULL DEFAULT '#1F2937',
+				default_module_key TEXT NOT NULL DEFAULT '',
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)`,
+			`CREATE TABLE IF NOT EXISTS cms.partner_module_presentations(
+				partner_id TEXT NOT NULL,
+				module_key TEXT NOT NULL,
+				display_name TEXT NOT NULL DEFAULT '',
+				description TEXT NOT NULL DEFAULT '',
+				icon_key TEXT NOT NULL DEFAULT '',
+				custom_icon_media_id TEXT REFERENCES cms.media_assets(id) ON DELETE SET NULL,
+				card_color TEXT NOT NULL DEFAULT '',
+				updated_by TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				PRIMARY KEY(partner_id,module_key)
+			)`,
+			`CREATE INDEX IF NOT EXISTS cms_partner_module_presentations_partner_idx ON cms.partner_module_presentations(partner_id,updated_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS cms_partner_workspace_logo_idx ON cms.partner_workspace_settings(logo_media_id) WHERE logo_media_id IS NOT NULL`,
+			`CREATE INDEX IF NOT EXISTS cms_partner_module_icon_idx ON cms.partner_module_presentations(custom_icon_media_id) WHERE custom_icon_media_id IS NOT NULL`,
+		}},
 	})
 }
 
@@ -871,6 +901,8 @@ func (a *app)publicMedia(w http.ResponseWriter,r *http.Request){
 			WHERE s.scope_type='PARTNER' AND asset.value=$1
 		)
 		OR EXISTS(SELECT 1 FROM cms.partner_brand_assets WHERE media_id=$1 AND slot='logo')
+		OR EXISTS(SELECT 1 FROM cms.partner_workspace_settings WHERE logo_media_id=$1)
+		OR EXISTS(SELECT 1 FROM cms.partner_module_presentations WHERE custom_icon_media_id=$1)
 		OR EXISTS(SELECT 1 FROM cms.seo_settings WHERE id=1 AND published->>'default_og_image_asset_id'=$1)`,id).Scan(&exists)
 	if !exists{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
 	m,err:=a.getMedia(id);if err!=nil{common.APIError(w,404,"NOT_FOUND","Published media not found");return}
