@@ -45,12 +45,19 @@ func main(){
 func loadServiceKeys()map[string]string{
 	raw:=strings.TrimSpace(os.Getenv("HIMATE_AUTOMATION_SERVICE_KEYS_JSON"))
 	out:=map[string]string{}
-	if raw==""{return out}
-	var source map[string]string
-	if json.Unmarshal([]byte(raw),&source)!=nil{return out}
-	for k,v:=range source{
-		k=strings.TrimSpace(k);v=strings.TrimSpace(v)
-		if k!=""&&len(v)>=24{out[k]=v}
+	if raw!=""{
+		var source map[string]string
+		if json.Unmarshal([]byte(raw),&source)==nil{
+			for k,v:=range source{
+				k=strings.TrimSpace(k);v=strings.TrimSpace(v)
+				if k!=""&&len(v)>=24{out[k]=v}
+			}
+		}
+	}
+	// Dedicated consumer/producer credentials may be exposed separately so a
+	// service can receive only its own HMAC secret instead of the full verifier keyring.
+	if financeSecret:=strings.TrimSpace(os.Getenv("HIMATE_AUTOMATION_FINANCE_SECRET"));len(financeSecret)>=24{
+		out["finance"]=financeSecret
 	}
 	return out
 }
