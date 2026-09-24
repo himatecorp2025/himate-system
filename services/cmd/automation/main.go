@@ -139,6 +139,12 @@ func (a *app)verifySignedEmpty(w http.ResponseWriter,r *http.Request)(string,boo
 
 func hashEnvelope(v any)string{raw,_:=json.Marshal(v);sum:=sha256.Sum256(raw);return hex.EncodeToString(sum[:])}
 
+func stableReplayTimes(occurred,available time.Time,occurredProvided,availableProvided bool,existingOccurred,existingAvailable time.Time)(time.Time,time.Time){
+	if !occurredProvided{occurred=existingOccurred.UTC()}
+	if !availableProvided{available=existingAvailable.UTC()}
+	return occurred,available
+}
+
 func (a *app)subscriptions(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use POST");return}
 	service,body,ok:=a.readSignedBody(w,r);if !ok{return}
@@ -198,8 +204,7 @@ func (a *app)events(w http.ResponseWriter,r *http.Request){
 		// occurred_at / available_at may be server defaults when producers omit them.
 		// Reuse the persisted defaults for replay comparison so an identical retry
 		// cannot conflict merely because it arrived at a later wall-clock time.
-		if !occurredProvided{in.OccurredAt=existingOccurred.UTC()}
-		if !availableProvided{in.AvailableAt=existingAvailable.UTC()}
+		in.OccurredAt,in.AvailableAt=stableReplayTimes(in.OccurredAt,in.AvailableAt,occurredProvided,availableProvided,existingOccurred,existingAvailable)
 		normalized["occurred_at"]=in.OccurredAt
 		normalized["available_at"]=in.AvailableAt
 		hash=hashEnvelope(normalized)
