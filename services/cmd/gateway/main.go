@@ -198,6 +198,7 @@ func main() {
 		os.Exit(1)
 	}
 	recoveryCancel()
+	go a.recoverPartnerOnboardingSagas(log)
 	for name, host := range a.hosts {
 		if strings.TrimSpace(host) == "" {
 			log.Warn("private service host is not configured", "service", name)
