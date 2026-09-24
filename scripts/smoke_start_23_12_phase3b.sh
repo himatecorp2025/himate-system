@@ -225,15 +225,16 @@ _, ready = http(base, "POST", f"/internal/v1/tenant-finance/invoices/{manual_id}
 assert ready["status"] == "READY_FOR_ISSUE", ready
 assert ready["source_type"] == "MANUAL", ready
 assert ready["payment_terms_days"] == 15 and ready["accounting_basis"] == "ACCRUAL", ready
-assert ready["invoice_number"].startswith("P3A-"), ready
+assert ready["invoice_number"] == "", ready
+assert ready["invoice_prefix_snapshot"] == "P3A", ready
 assert ready["issuer"]["partner_id"] == partner_a, ready
 assert ready["issuer"]["legal_name"] == "Phase3B A LLC Final", ready
 assert ready["issuer"]["logo_url"] == "https://example.test/a-logo.png", ready
 assert ready["document_state"]["renderer"] == "DEFERRED", ready
-number = ready["invoice_number"]
+prefix_snapshot = ready["invoice_prefix_snapshot"]
 
 _, replay = http(base, "POST", f"/internal/v1/tenant-finance/invoices/{manual_id}/finalize", {}, partner_a, "pusr_phase3b_admin")
-assert replay["duplicate"] is True and replay["invoice_number"] == number, replay
+assert replay["duplicate"] is True and replay["invoice_number"] == "" and replay["invoice_prefix_snapshot"] == prefix_snapshot, replay
 
 _, cross = http(base, "GET", f"/internal/v1/tenant-finance/invoices/{manual_id}", partner=partner_b, user="pusr_phase3b_billing", want=(404,))
 assert cross["error"]["code"] == "INVOICE_NOT_FOUND", cross
