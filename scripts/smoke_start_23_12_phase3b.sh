@@ -140,6 +140,24 @@ malicious["partner_id"] = partner_b
 _, rejected, _ = http(base, "POST", "/internal/v1/tenant-finance/invoices", malicious, partner_a, "pusr_phase3b_admin", want=(400,))
 assert rejected["error"]["code"] == "JSON", rejected
 
+draft_update = {
+    "currency": "USD",
+    "customer": manual["customer"],
+    "items": [{
+        "description": "Piano tuning - reviewed",
+        "quantity_milli": 1000,
+        "unit_price_minor": 25500,
+        "discount_minor": 0,
+        "tax_rate_bps": 887,
+    }],
+    "payment_terms_days": 16,
+    "notes": "Reviewed simple job outside Workshop Workflow",
+}
+_, updated, _ = http(base, "PUT", f"/internal/v1/tenant-finance/invoices/{invoice_id}", draft_update, partner_a, "pusr_phase3b_admin")
+assert updated["status"] == "DRAFT" and updated["total_minor"] == 27762, updated
+assert updated["payment_terms_override_days"] == 16, updated
+assert updated["items"][0]["description"] == "Piano tuning - reviewed", updated
+
 print(invoice_id)
 PY
 
@@ -224,7 +242,7 @@ manual_id = manual["id"]
 _, ready = http(base, "POST", f"/internal/v1/tenant-finance/invoices/{manual_id}/finalize", {}, partner_a, "pusr_phase3b_admin")
 assert ready["status"] == "READY_FOR_ISSUE", ready
 assert ready["source_type"] == "MANUAL", ready
-assert ready["payment_terms_days"] == 15 and ready["accounting_basis"] == "ACCRUAL", ready
+assert ready["payment_terms_days"] == 16 and ready["accounting_basis"] == "ACCRUAL", ready
 assert ready["invoice_number"] == "", ready
 assert ready["invoice_prefix_snapshot"] == "P3A", ready
 assert ready["issuer"]["partner_id"] == partner_a, ready
@@ -232,6 +250,20 @@ assert ready["issuer"]["legal_name"] == "Phase3B A LLC Final", ready
 assert ready["issuer"]["logo_url"] == "https://example.test/a-logo.png", ready
 assert ready["document_state"]["renderer"] == "DEFERRED", ready
 prefix_snapshot = ready["invoice_prefix_snapshot"]
+
+frozen_update = {
+    "currency": "USD",
+    "customer": ready["customer"],
+    "items": [{
+        "description": "Forbidden post-finalization edit",
+        "quantity_milli": 1000,
+        "unit_price_minor": 1,
+        "discount_minor": 0,
+        "tax_rate_bps": 0,
+    }],
+}
+_, frozen = http(base, "PUT", f"/internal/v1/tenant-finance/invoices/{manual_id}", frozen_update, partner_a, "pusr_phase3b_admin", want=(409,))
+assert frozen["error"]["code"] == "INVOICE_STATE", frozen
 
 _, replay = http(base, "POST", f"/internal/v1/tenant-finance/invoices/{manual_id}/finalize", {}, partner_a, "pusr_phase3b_admin")
 assert replay["duplicate"] is True and replay["invoice_number"] == "" and replay["invoice_prefix_snapshot"] == prefix_snapshot, replay
