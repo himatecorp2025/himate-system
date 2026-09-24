@@ -518,6 +518,29 @@ paths:
       responses:
         "200": {description: Own-tenant customer invoice}
         "404": {description: Invoice is absent from the authenticated tenant}
+    put:
+      tags: [Partner Portal]
+      summary: Replace editable fields of a manual invoice draft
+      description: Allowed only while the authenticated tenant invoice is MANUAL + DRAFT. Tenant/source identity and the original create idempotency key are immutable; finalized snapshots cannot be silently edited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer, items]
+              properties:
+                currency: {type: string, pattern: "^[A-Z]{3}$"}
+                payment_terms_days: {type: integer, minimum: 0, maximum: 365}
+                notes: {type: string}
+                customer: {type: object}
+                items: {type: array, minItems: 1, maxItems: 200}
+      responses:
+        "200": {description: Manual draft replaced}
+        "400": {description: Invalid draft or attempt to mutate server-controlled identity}
+        "403": {description: Module entitlement, user assignment or billing.write denied}
+        "404": {description: Invoice is absent from the authenticated tenant}
+        "409": {description: Invoice is no longer an editable MANUAL DRAFT}
   /partner/api/v1/runtime/modules/invoice_documents/invoices/{invoiceId}/finalize:
     parameters:
       - {name: invoiceId, in: path, required: true, schema: {type: string}}
