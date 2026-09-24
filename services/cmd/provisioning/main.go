@@ -234,6 +234,18 @@ func (a *app)ensureJobSteps(ctx context.Context,id string)error{
 }
 
 func (a *app)runJob(ctx context.Context,id,actor string)error{
+	lockConn,err:=a.db.Conn(ctx);if err!=nil{return err}
+	defer lockConn.Close()
+	lockKey:="himate-provisioning:"+id
+	var locked bool
+	if err=lockConn.QueryRowContext(ctx,`SELECT pg_try_advisory_lock(hashtext($1))`,lockKey).Scan(&locked);err!=nil{return err}
+	if !locked{return fmt.Errorf("%w: %s",errProvisioningJobBusy,id)}
+	defer func(){
+		unlockCtx,cancel:=context.WithTimeout(context.Background(),5*time.Second)
+		defer cancel()
+		_,_=lockConn.ExecContext(unlockCtx,`SELECT pg_advisory_unlock(hashtext($1))`,lockKey)
+	}()
+
 	j,err:=a.getJob(id);if err!=nil{return err}
 	if j.Status=="COMPLETED" || j.Status=="CONFIGURATION_REQUIRED"{return nil}
 	if err:=a.ensureJobSteps(ctx,id);err!=nil{return fmt.Errorf("ensure provisioning steps: %w",err)}
@@ -271,6 +283,7 @@ func (a *app) recoverInterruptedJobs(log interface{ Info(string,...any); Warn(st
 				err:=a.runJob(ctx,id,"system:restart-recovery")
 				cancel()
 				if err==nil{log.Info("provisioning job recovered","job_id",id,"attempt",attempt);return}
+				if errors.Is(err,errProvisioningJobBusy){log.Info("provisioning job already owned by another worker","job_id",id);return}
 				log.Warn("provisioning recovery attempt failed","job_id",id,"attempt",attempt,"error",err)
 				if attempt<3{
 					_,_=a.db.Exec(`UPDATE provisioning.jobs SET status='QUEUED',updated_at=NOW() WHERE id=$1 AND status NOT IN ('COMPLETED','CONFIGURATION_REQUIRED')`,id)
@@ -281,7 +294,10 @@ func (a *app) recoverInterruptedJobs(log interface{ Info(string,...any); Warn(st
 	}
 }
 
-var errLicenseBlocked=errors.New("initial license gate is not satisfied")
+var (
+	errLicenseBlocked=errors.New("initial license gate is not satisfied")
+	errProvisioningJobBusy=errors.New("provisioning job is already running")
+)
 
 func (a *app)executeStep(ctx context.Context,j job,step,actor string)error{
 	switch step{
