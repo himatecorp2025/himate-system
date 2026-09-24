@@ -139,10 +139,12 @@ func (a *app)verifySignedEmpty(w http.ResponseWriter,r *http.Request)(string,boo
 
 func hashEnvelope(v any)string{raw,_:=json.Marshal(v);sum:=sha256.Sum256(raw);return hex.EncodeToString(sum[:])}
 
+func dbTimestamp(t time.Time)time.Time{return t.UTC().Truncate(time.Microsecond)}
+
 func stableReplayTimes(occurred,available time.Time,occurredProvided,availableProvided bool,existingOccurred,existingAvailable time.Time)(time.Time,time.Time){
-	if !occurredProvided{occurred=existingOccurred.UTC()}
-	if !availableProvided{available=existingAvailable.UTC()}
-	return occurred,available
+	if !occurredProvided{occurred=existingOccurred}
+	if !availableProvided{available=existingAvailable}
+	return dbTimestamp(occurred),dbTimestamp(available)
 }
 
 func (a *app)subscriptions(w http.ResponseWriter,r *http.Request){
@@ -182,8 +184,8 @@ func (a *app)events(w http.ResponseWriter,r *http.Request){
 	if in.EventVersion<1{common.APIError(w,400,"VALIDATION","event_version must be positive");return}
 	occurredProvided:=!in.OccurredAt.IsZero()
 	availableProvided:=!in.AvailableAt.IsZero()
-	if !occurredProvided{in.OccurredAt=time.Now().UTC()}else{in.OccurredAt=in.OccurredAt.UTC()}
-	if !availableProvided{in.AvailableAt=in.OccurredAt}else{in.AvailableAt=in.AvailableAt.UTC()}
+	if !occurredProvided{in.OccurredAt=dbTimestamp(time.Now())}else{in.OccurredAt=dbTimestamp(in.OccurredAt)}
+	if !availableProvided{in.AvailableAt=in.OccurredAt}else{in.AvailableAt=dbTimestamp(in.AvailableAt)}
 	if in.Payload==nil{in.Payload=map[string]any{}}
 	correlation:=strings.TrimSpace(in.CorrelationID);if correlation==""{correlation=strings.TrimSpace(r.Header.Get(automation.HeaderCorrelationID))}
 	causation:=strings.TrimSpace(in.CausationID);if causation==""{causation=strings.TrimSpace(r.Header.Get(automation.HeaderCausationID))}
