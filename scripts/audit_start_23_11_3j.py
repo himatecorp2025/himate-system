@@ -79,8 +79,8 @@ checks = [
     ),
     (
         "all application services share the START-23.11.3j release",
-        render.count("value: " + release) == 20
-        and compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-" + release + "}") == 19,
+        render.count("value: " + release) == 21
+        and compose.count("HIMATE_APP_VERSION: ${HIMATE_APP_VERSION:-" + release + "}") == 20,
     ),
 ]
 
