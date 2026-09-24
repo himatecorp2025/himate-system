@@ -70,7 +70,8 @@ func (a *app) migrate(ctx context.Context) error {
 				ready_at TIMESTAMPTZ,
 				issued_at TIMESTAMPTZ,
 				paid_at TIMESTAMPTZ,
-				UNIQUE(partner_id,request_key)
+				UNIQUE(partner_id,request_key),
+				UNIQUE(id,partner_id)
 			)`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS tenant_finance_source_once_idx
 				ON tenant_finance.invoices(partner_id,source_type,source_id)
@@ -81,7 +82,7 @@ func (a *app) migrate(ctx context.Context) error {
 				ON tenant_finance.invoices(partner_id,status,created_at DESC,id DESC)`,
 			`CREATE TABLE IF NOT EXISTS tenant_finance.invoice_items(
 				id BIGSERIAL PRIMARY KEY,
-				invoice_id TEXT NOT NULL REFERENCES tenant_finance.invoices(id) ON DELETE RESTRICT,
+				invoice_id TEXT NOT NULL,
 				partner_id TEXT NOT NULL,
 				line_no INT NOT NULL CHECK(line_no > 0),
 				description TEXT NOT NULL,
@@ -92,18 +93,20 @@ func (a *app) migrate(ctx context.Context) error {
 				net_minor BIGINT NOT NULL CHECK(net_minor >= 0),
 				tax_minor BIGINT NOT NULL CHECK(tax_minor >= 0),
 				total_minor BIGINT NOT NULL CHECK(total_minor >= 0),
-				UNIQUE(invoice_id,line_no)
+				UNIQUE(invoice_id,line_no),
+				FOREIGN KEY(invoice_id,partner_id) REFERENCES tenant_finance.invoices(id,partner_id) ON DELETE RESTRICT
 			)`,
 			`CREATE INDEX IF NOT EXISTS tenant_finance_items_partner_invoice_idx
 				ON tenant_finance.invoice_items(partner_id,invoice_id,line_no)`,
 			`CREATE TABLE IF NOT EXISTS tenant_finance.invoice_events(
 				id BIGSERIAL PRIMARY KEY,
-				invoice_id TEXT NOT NULL REFERENCES tenant_finance.invoices(id) ON DELETE RESTRICT,
+				invoice_id TEXT NOT NULL,
 				partner_id TEXT NOT NULL,
 				event_type TEXT NOT NULL,
 				actor_id TEXT NOT NULL DEFAULT '',
 				payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				FOREIGN KEY(invoice_id,partner_id) REFERENCES tenant_finance.invoices(id,partner_id) ON DELETE RESTRICT
 			)`,
 			`CREATE INDEX IF NOT EXISTS tenant_finance_events_partner_invoice_idx
 				ON tenant_finance.invoice_events(partner_id,invoice_id,created_at,id)`,
@@ -283,6 +286,79 @@ func (a *app) createManualDraft(ctx context.Context, partnerID, actorID string, 
 	}
 	rec, err = a.loadInvoice(ctx, partnerID, id)
 	return rec, false, err
+}
+
+func (a *app) updateManualDraft(ctx context.Context, partnerID, actorID, invoiceID string, in invoiceDraftUpdateInput) (invoiceRecord, error) {
+	partnerID = strings.TrimSpace(partnerID)
+	actorID = strings.TrimSpace(actorID)
+	invoiceID = strings.TrimSpace(invoiceID)
+	if partnerID == "" || actorID == "" || invoiceID == "" {
+		return invoiceRecord{}, errors.New("partner, actor and invoice id are required")
+	}
+	policy, err := a.loadPolicy(ctx, partnerID)
+	if err != nil {
+		return invoiceRecord{}, err
+	}
+	currency, err := normalizeCurrency(in.Currency, policy.DefaultCurrency)
+	if err != nil {
+		return invoiceRecord{}, err
+	}
+	customer, err := normalizeCustomer(in.Customer, false)
+	if err != nil {
+		return invoiceRecord{}, err
+	}
+	if in.PaymentTermsDays != nil {
+		if err := financepolicy.ValidateDays(*in.PaymentTermsDays); err != nil {
+			return invoiceRecord{}, err
+		}
+	}
+	items, subtotal, taxTotal, total, err := calculateItems(in.Items)
+	if err != nil {
+		return invoiceRecord{}, err
+	}
+	customerRaw, _ := json.Marshal(customer)
+	in.Notes = strings.TrimSpace(in.Notes)
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return invoiceRecord{}, err
+	}
+	defer tx.Rollback()
+	var sourceType, status string
+	err = tx.QueryRowContext(ctx, `SELECT source_type,status FROM tenant_finance.invoices
+		WHERE id=$1 AND partner_id=$2 FOR UPDATE`, invoiceID, partnerID).Scan(&sourceType, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return invoiceRecord{}, errInvoiceNotFound
+	}
+	if err != nil {
+		return invoiceRecord{}, err
+	}
+	if sourceType != sourceManual || status != statusDraft {
+		return invoiceRecord{}, errInvoiceState
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE tenant_finance.invoices SET
+		currency=$3,payment_terms_override_days=$4,customer_snapshot=$5::jsonb,
+		subtotal_minor=$6,tax_minor=$7,total_minor=$8,notes=$9,updated_at=NOW()
+		WHERE id=$1 AND partner_id=$2`,
+		invoiceID, partnerID, currency, nullableInt(in.PaymentTermsDays), string(customerRaw),
+		subtotal, taxTotal, total, in.Notes); err != nil {
+		return invoiceRecord{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM tenant_finance.invoice_items WHERE invoice_id=$1 AND partner_id=$2`, invoiceID, partnerID); err != nil {
+		return invoiceRecord{}, err
+	}
+	if err = insertItemsTx(ctx, tx, invoiceID, partnerID, items); err != nil {
+		return invoiceRecord{}, err
+	}
+	rec := invoiceRecord{ID: invoiceID, PartnerID: partnerID}
+	if err = appendInvoiceEventTx(ctx, tx, rec, "MANUAL_DRAFT_UPDATED", actorID, map[string]any{
+		"currency": currency, "subtotal_minor": subtotal, "tax_minor": taxTotal, "total_minor": total,
+	}); err != nil {
+		return invoiceRecord{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return invoiceRecord{}, err
+	}
+	return a.loadInvoice(ctx, partnerID, invoiceID)
 }
 
 func nullableInt(v *int) any {
