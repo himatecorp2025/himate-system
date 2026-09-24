@@ -35,7 +35,7 @@ A manual invoice starts as DRAFT.
 Finalization changes it to READY_FOR_ISSUE and atomically freezes:
 
 - the current Partner issuer/company identity from the authoritative Partners service,
-- Partner logo URL,
+- current Partner logo URL when configured,
 - current Partner Finance policy,
 - invoice-level payment-terms override, when present,
 - accounting basis,
