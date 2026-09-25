@@ -22,7 +22,7 @@ type app struct {
 }
 
 type partner struct {
-	ID, Slug, DisplayName, LegalName, BrandName, CategoryID, CategoryName string
+	ID, Slug, DisplayName, LegalName, BrandName, CategoryID, CategoryName, CategoryNameEN, CategoryNameHU string
 	Lifecycle, PrimaryDomain, StagingDomain, LogoURL, PlatformVersion       string
 	SystemHealth, ContactName, ContactEmail, FinanceContactName             string
 	FinanceContactEmail, TechnicalContactName, TechnicalContactEmail        string
@@ -859,7 +859,8 @@ func (a *app) purgeOperationalPartner(w http.ResponseWriter, r *http.Request, id
 }
 
 const selectPartner = `SELECT
-	p.id,p.slug,p.display_name,p.legal_name,p.brand_name,COALESCE(p.category_id,''),COALESCE(c.name,''),p.lifecycle,
+	p.id,p.slug,p.display_name,p.legal_name,p.brand_name,COALESCE(p.category_id,''),
+	COALESCE(c.name,''),COALESCE(NULLIF(c.name_en,''),c.name,''),COALESCE(NULLIF(c.name_hu,''),c.name,''),p.lifecycle,
 	p.existing_partner,p.reference_partner,p.test_partner,p.primary_domain,p.staging_domain,p.logo_url,p.platform_version,p.system_health,
 	p.contact_name,p.contact_email,p.finance_contact_name,p.finance_contact_email,p.technical_contact_name,p.technical_contact_email,
 	p.marketing_contact_name,p.marketing_contact_email,p.registration_number,p.tax_id,p.country,p.state_region,p.city,p.postal_code,
@@ -871,7 +872,7 @@ type scanner interface{ Scan(...any) error }
 func scanPartner(s scanner) (partner, error) {
 	var p partner
 	err := s.Scan(
-		&p.ID, &p.Slug, &p.DisplayName, &p.LegalName, &p.BrandName, &p.CategoryID, &p.CategoryName, &p.Lifecycle,
+		&p.ID, &p.Slug, &p.DisplayName, &p.LegalName, &p.BrandName, &p.CategoryID, &p.CategoryName, &p.CategoryNameEN, &p.CategoryNameHU, &p.Lifecycle,
 		&p.ExistingPartner, &p.ReferencePartner, &p.TestPartner, &p.PrimaryDomain, &p.StagingDomain, &p.LogoURL, &p.PlatformVersion, &p.SystemHealth,
 		&p.ContactName, &p.ContactEmail, &p.FinanceContactName, &p.FinanceContactEmail, &p.TechnicalContactName, &p.TechnicalContactEmail,
 		&p.MarketingContactName, &p.MarketingContactEmail, &p.RegistrationNumber, &p.TaxID, &p.Country, &p.StateRegion, &p.City, &p.PostalCode,
@@ -894,7 +895,7 @@ func nullableTime(v sql.NullTime) any {
 func partnerMap(p partner) map[string]any {
 	return map[string]any{
 		"id": p.ID, "slug": p.Slug, "display_name": p.DisplayName, "legal_name": p.LegalName, "brand_name": p.BrandName,
-		"category_id": p.CategoryID, "category_name": p.CategoryName, "lifecycle": p.Lifecycle,
+		"category_id": p.CategoryID, "category_name": p.CategoryName, "category_name_en": p.CategoryNameEN, "category_name_hu": p.CategoryNameHU, "lifecycle": p.Lifecycle,
 		"existing_partner": p.ExistingPartner, "reference_partner": p.ReferencePartner, "test_partner": p.TestPartner,
 		"primary_domain": p.PrimaryDomain, "staging_domain": p.StagingDomain, "logo_url": p.LogoURL,
 		"platform_version": p.PlatformVersion, "system_health": p.SystemHealth,
