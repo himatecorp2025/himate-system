@@ -44,8 +44,8 @@ checks = [
         all(name in partners for name in required_names)
         and 'fmt.Sprintf("cat_%03d", i+1)' in partners,
     ),
-    ("release version", "version: 0.8.32-start-23.11.7" in openapi),
-    ("render release version", "value: 0.8.32-start-23.11.7" in render),
+    ("release version", "version: 0.8.33-start-23.12" in openapi),
+    ("render release version", "value: 0.8.33-start-23.12" in render),
 ]
 
 failures = [label for label, ok in checks if not ok]
