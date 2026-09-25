@@ -374,6 +374,7 @@ jobs:
           python3 scripts/audit_start_24_4.py
           python3 scripts/audit_start_24_5.py
           python3 scripts/audit_start_24_6.py
+          python3 scripts/audit_start_24_closure.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
