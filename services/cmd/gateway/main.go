@@ -2997,10 +2997,10 @@ func publicOrigin(r *http.Request) string {
 	if r.TLS != nil || strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
 		scheme = "https"
 	}
+	// Host is the authority selected by the public edge for this request.
+	// Do not trust X-Forwarded-Host here: unlike Host, application code cannot
+	// distinguish a client-supplied forwarded value from one added by a proxy.
 	host := strings.TrimSpace(r.Host)
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwarded != "" {
-		host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
-	}
 	if host == "" {
 		host = "localhost"
 	}
