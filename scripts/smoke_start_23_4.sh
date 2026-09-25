@@ -107,10 +107,15 @@ ready="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partne
 printf '%s' "$ready" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["provisioning_allowed"] is True,d'
 echo ok
 
-printf 'daily billing cycle creates recurring invoice and automatic charge attempt... '
+printf 'daily billing cycle creates a DRAFT invoice; Central approval and send unlock provider collection... '
 docker compose exec -T billing /app/service --run-invoice-cycle "$TODAY"
 invoices="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$partner_id/invoices")"
-invoice_id="$(printf '%s' "$invoices" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if abs(float(i["total"])-125)<0.01); assert x["status"]!="PAID",x; print(x["id"])')"
+invoice_id="$(printf '%s' "$invoices" | python3 -c 'import json,sys; d=json.load(sys.stdin); x=next(i for i in d["items"] if abs(float(i["total"])-125)<0.01); assert x["status"]!="PAID" and x["workflow_status"]=="DRAFT",x; print(x["id"])')"
+attempts="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/payments/partners/$partner_id/attempts")"
+printf '%s' "$attempts" | python3 -c 'import json,sys; d=json.load(sys.stdin); invoice=sys.argv[1]; assert not any(i["purpose"]=="INVOICE" and i["invoice_id"]==invoice for i in d["items"]),d' "$invoice_id"
+curl -fsS -b "$OWNER_COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"START-23.4 Central-6 approval"}' "$BASE_URL/api/v1/billing/invoices/$invoice_id/approve" >/dev/null
+sent="$(curl -fsS -b "$OWNER_COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"START-23.4 Central-6 send"}' "$BASE_URL/api/v1/billing/invoices/$invoice_id/send")"
+printf '%s' "$sent" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["workflow_status"]=="SENT",d'
 attempts="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/payments/partners/$partner_id/attempts")"
 invoice_attempt="$(printf '%s' "$attempts" | python3 -c 'import json,sys; d=json.load(sys.stdin); invoice=sys.argv[1]; x=next(i for i in d["items"] if i["purpose"]=="INVOICE" and i["invoice_id"]==invoice); assert x["status"]=="PROCESSING",x; print(json.dumps(x,separators=(",",":")))' "$invoice_id")"
 echo ok
