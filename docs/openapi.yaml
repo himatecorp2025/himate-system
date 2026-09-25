@@ -627,20 +627,20 @@ paths:
   /partner/api/v1/plans:
     get:
       tags: [Partner Portal]
-      summary: Customer-selectable Starter, Business and Flex plans
-      description: Returns monthly price, annual list price, discounted annual price, module capacity and selection mode. CUSTOM is not exposed to Partner Portal users.
+      summary: Customer-selectable Starter, Business and Premium packages
+      description: Returns NET monthly and annual pricing, configured VAT quote fields, module entitlement mode and readiness. Premium uses the stable FLEX API key with UNLIMITED entitlement. CUSTOM is not exposed to Partner Portal users.
       responses:
         "200": {description: Customer-selectable subscription plans}
   /partner/api/v1/plan:
     get:
       tags: [Partner Portal]
-      summary: Own current subscription plan
+      summary: Own current subscription package
       responses:
         "200": {description: Current plan, frequency, renewal boundary and scheduled change}
     patch:
       tags: [Partner Portal]
-      summary: Select, upgrade or schedule downgrade of own subscription plan
-      description: Same-frequency upgrades are immediate and charge the complete plan-price difference without proration. Monthly downgrades take effect next calendar-month day 1; annual downgrades take effect at annual renewal.
+      summary: Select, upgrade or schedule downgrade of own subscription package
+      description: Same-frequency upgrades are immediate and charge the complete NET package-price difference without proration; configured VAT is added to invoice/payment collection. Monthly downgrades take effect next calendar-month day 1; annual downgrades take effect at annual renewal.
       responses:
         "200": {description: Plan changed or scheduled}
         "409": {description: Activation license required, plan not ready or commercial transition blocked}
@@ -649,14 +649,14 @@ paths:
       tags: [Partner Portal]
       summary: Own current plan module set
       responses:
-        "200": {description: Current fixed or Flex module set}
+        "200": {description: Current fixed package modules or Premium Unlimited eligible module set}
     put:
       tags: [Partner Portal]
-      summary: Schedule next Flex module selection
-      description: Flex supports up to 15 PUBLISHED and READY modules. Normal selection changes take effect at the next calendar-month boundary.
+      summary: Update a selectable package module set when supported
+      description: Premium is UNLIMITED and rejects finite module-list replacement. The route is retained for backward-compatible selectable package types; standard Starter and Business are fixed by HIMATE.
       responses:
-        "200": {description: Flex module set scheduled}
-        "409": {description: Current plan is fixed or module is not ready}
+        "200": {description: Selectable package module set scheduled}
+        "409": {description: Current package is fixed or Unlimited, or a requested module is not ready}
   /partner/api/v1/charity:
     get:
       tags: [Partner Portal]
@@ -1250,13 +1250,15 @@ paths:
       tags: [Billing]
       summary: Subscription plan catalog
       description: >
-        Central package catalog. Initial standard monthly prices are Starter USD 500,
-        Business USD 1,500 and Flex USD 2,500; HIMATE may change package prices with an
-        effective date. Standard package prices apply to active customers from the
-        applicable billing boundary. Every January 1 the then-effective package price
-        automatically increases by 5 percent. Historical invoices are immutable.
+        Central-5 package catalog. Standard monthly NET prices are Starter USD 990,
+        Business USD 1,490 and Premium USD 2,490 plus configured VAT. Premium retains the
+        stable FLEX API key and uses UNLIMITED entitlement. HIMATE may change NET package
+        prices with an effective date. Standard package prices apply to active customers
+        from the applicable billing boundary. Every January 1 the then-effective NET
+        package price automatically increases by 5 percent. Historical invoices, including
+        stored NET/tax/gross amounts, are immutable.
       responses:
-        "200": {description: Plans with module limits, selection modes, annual savings and readiness}
+        "200": {description: Packages with NET/tax/gross quote fields, module entitlement modes, annual savings, active-partner count and readiness}
   /api/v1/billing/plans/{planKey}:
     parameters:
       - in: path
@@ -1267,15 +1269,17 @@ paths:
       tags: [Billing]
       summary: Subscription plan detail
       responses:
-        "200": {description: Plan detail and current fixed module set}
+        "200": {description: Package detail and current fixed module set or Premium Unlimited policy}
     patch:
       tags: [Billing]
-      summary: Update plan commercial fields or fixed module package
+      summary: Update package commercial fields or fixed module membership
       description: >
-        Starter is fixed at 3 modules and Business at 10 modules, both selected by HIMATE.
-        Flex is fixed at a maximum capacity of 15 partner-selected modules. Price changes
-        accept effective_at and reason, are stored in effective-dated price history, and
-        apply to all active customers from the applicable billing boundary.
+        Starter is fixed at 10 modules and Business at 20 modules, both selected by HIMATE.
+        Premium uses the stable FLEX API key and UNLIMITED entitlement: every current and
+        future PUBLISHED + READY + ACTIVE eligible module is included automatically.
+        Package prices are NET; VAT is calculated from the HIMATE billing profile.
+        Price changes accept effective_at and reason, are stored in effective-dated price
+        history, and apply to all active customers from the applicable billing boundary.
       responses:
         "200": {description: Plan updated}
         "400": {description: Invalid plan values or module count}
@@ -1313,13 +1317,14 @@ paths:
       tags: [Billing]
       summary: Partner plan module set
       responses:
-        "200": {description: Current fixed or Flex selection}
+        "200": {description: Current fixed package modules or Premium Unlimited eligible module set}
     put:
       tags: [Billing]
-      summary: Schedule Flex module set
+      summary: Update a selectable package module set when supported
+      description: Premium is managed automatically through UNLIMITED entitlement and returns 409 for finite module-list replacement.
       responses:
-        "200": {description: Module set scheduled for next month boundary}
-        "409": {description: Fixed plan cannot be individually reconfigured}
+        "200": {description: Selectable module set scheduled for next month boundary}
+        "409": {description: Fixed or Unlimited package cannot be individually reconfigured}
   /api/v1/billing/partners/{partnerId}/terms:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -1335,8 +1340,8 @@ paths:
         Persists partner-specific activation fee, legacy/CUSTOM service fee, optional
         minimum monthly commitment, quote reference and a monotonic terms version.
         There is no platform-enforced positive minimum: zero-dollar and discounted
-        commercial terms are valid HIMATE administrator decisions. Starter/Business/Flex
-        recurring charges are controlled by central package prices, while activation fees
+        commercial terms are valid HIMATE administrator decisions. Starter/Business/Premium
+        recurring charges are controlled by central NET package prices plus configured VAT, while activation fees
         remain partner-specific.
       responses:
         "200": {description: Updated individual commercial terms and commercial mode}
