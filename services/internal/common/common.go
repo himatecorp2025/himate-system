@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"himate.local/services/internal/serviceauth"
 	"io"
 	"log/slog"
 	"net/http"
@@ -365,6 +366,12 @@ func InternalAuth(token string, next http.Handler) http.Handler {
 			APIError(w, http.StatusForbidden, "FORBIDDEN", "Invalid service credential")
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/internal/v1/") && strings.EqualFold(strings.TrimSpace(os.Getenv("HIMATE_REQUIRE_SERVICE_SIGNATURE")), "true") {
+			if _, err := serviceauth.Verify(r, token, time.Now().UTC(), 5*time.Minute); err != nil {
+				APIError(w, http.StatusForbidden, "SERVICE_IDENTITY", "Invalid internal service identity")
+				return
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -398,6 +405,12 @@ func BindInternalRequest(req *http.Request, token string) {
 func DoInternal(client *http.Client, req *http.Request) (*http.Response, error) {
 	if client == nil || req == nil {
 		return nil, errors.New("internal HTTP client and request are required")
+	}
+	if caller := strings.TrimSpace(os.Getenv("HIMATE_SERVICE_CALLER_ID")); caller != "" {
+		token := strings.TrimSpace(req.Header.Get("X-Himate-Internal-Token"))
+		if err := serviceauth.Sign(req, token, caller, time.Now().UTC()); err != nil {
+			return nil, err
+		}
 	}
 	expected := strings.TrimSpace(req.Header.Get("X-Himate-Expected-Version"))
 	if expected == "" {
@@ -453,6 +466,9 @@ func ReleaseGuard(service string, next http.Handler) http.Handler {
 }
 
 func Run(log *slog.Logger, service, port string, handler http.Handler) {
+	if strings.TrimSpace(os.Getenv("HIMATE_SERVICE_CALLER_ID")) == "" && serviceauth.KnownCaller(service) {
+		_ = os.Setenv("HIMATE_SERVICE_CALLER_ID", service)
+	}
 	if AppVersion() == "" {
 		log.Error("HIMATE_APP_VERSION is required", "service", service)
 		return

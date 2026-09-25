@@ -191,6 +191,8 @@ jobs:
         run: python3 ../scripts/audit_start_23_12_phase2.py
       - name: Run START-23.12 Phase 3 Architecture Acceptance audit
         run: python3 ../scripts/audit_start_23_12_phase3.py
+      - name: Run START-23.12 Phase 4 Security Acceptance audit
+        run: python3 ../scripts/audit_start_23_12_phase4.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -474,6 +476,11 @@ jobs:
         run: sh scripts/smoke_start_23_12_phase3.sh http://127.0.0.1:18082
       - name: Run START-23.12 Phase 3B Tenant Invoicing smoke
         run: sh scripts/smoke_start_23_12_phase3b.sh http://127.0.0.1:18083
+      - name: Run START-23.12 Phase 4 Security smoke
+        run: sh scripts/smoke_start_23_12_phase4.sh http://127.0.0.1:8080
+      - name: Dump Phase 4 runtime diagnostics on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=180 gateway partners catalog billing payments evidence storage notifications
       - name: Stop test topology
         if: always()
         run: docker compose down -v

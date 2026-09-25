@@ -11,6 +11,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: catalog
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -27,6 +31,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: partners
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -51,6 +59,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: billing
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -95,6 +107,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: payments
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -127,6 +143,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: contact
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -162,6 +182,10 @@ services:
       mountPath: /data
       sizeGB: 10
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: storage
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -187,6 +211,10 @@ services:
       mountPath: /offsite
       sizeGB: 10
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: backups
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -236,6 +264,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: runtime
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -263,6 +295,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: evidence
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -287,6 +323,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: impact
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -311,6 +351,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: reports
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -350,6 +394,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: cms
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -374,6 +422,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: environments
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -403,6 +455,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: connector
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -451,6 +507,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: provisioning
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -504,6 +564,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: automation
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -527,6 +591,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: tenantfinance
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -571,6 +639,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: notifications
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -590,6 +662,10 @@ services:
     dockerContext: .
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: health
+      - key: HIMATE_REQUIRE_SERVICE_SIGNATURE
+        value: "true"
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL
@@ -701,6 +777,8 @@ services:
     renderSubdomainPolicy: enabled
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: gateway
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: HIMATE_ENV
@@ -709,6 +787,8 @@ services:
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS
         value: "8"
+      - key: HIMATE_MFA_REQUIRED
+        value: "true"
       - key: HIMATE_PASSWORD_RESET_TTL_MINUTES
         value: "30"
       - key: HIMATE_PASSWORD_RESET_BASE_URL
@@ -840,6 +920,8 @@ services:
     dockerCommand: /app/service --run-invoice-cycle
     autoDeploy: false
     envVars:
+      - key: HIMATE_SERVICE_CALLER_ID
+        value: billing
       - key: HIMATE_APP_VERSION
         value: 0.8.32-start-23.11.7
       - key: DATABASE_URL

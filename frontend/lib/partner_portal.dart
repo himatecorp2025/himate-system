@@ -59,11 +59,22 @@ class _PartnerPortalAppState extends State<PartnerPortalApp> {
   }
 
   Future<void> login(String email, String password, bool remember) async {
-    user = await api.post('/partner/api/v1/auth/login', {
+    var response = await api.post('/partner/api/v1/auth/login', {
       'email': email,
       'password': password,
       'remember': remember,
     });
+    if (response['mfa_required'] == true) {
+      final context = navigatorKey.currentContext;
+      if (context == null) throw Exception('MFA dialog is unavailable.');
+      final code = await promptMfaCode(context, response);
+      if (code == null) throw Exception('Multi-factor authentication was cancelled.');
+      response = await api.post('/partner/api/v1/auth/mfa/verify', {
+        'challenge_id': response['challenge_id'],
+        'code': code,
+      });
+    }
+    user = response;
     if (!mounted) return;
     setState(() {});
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/partner/app', (_) => false);
