@@ -84,3 +84,12 @@ func TestSTART241PartnerMFAVerifyHonorsAuthenticationThrottle(t *testing.T) {
 	}
 }
 
+
+
+func TestCentral1PartnerMFAIsOptionalUntilModule40Activation(t *testing.T) {
+	for _, role := range []string{"owner", "admin", "billing", "viewer"} {
+		if partnerMFARequired(role) {
+			t.Fatalf("partner role %q must not require MFA before optional module 40 is activated", role)
+		}
+	}
+}
