@@ -872,7 +872,7 @@ func (a *app) partnerInvoicePDF(w http.ResponseWriter,r *http.Request,u partnerU
 	if !found{common.APIError(w,404,"NOT_FOUND","Invoice not found");return}
 	req,err:=http.NewRequestWithContext(r.Context(),http.MethodGet,"http://"+a.hosts["billing"]+"/api/v1/billing/invoices/"+url.PathEscape(raw)+"/pdf",nil)
 	if err!=nil{common.APIError(w,500,"REQUEST","Could not create invoice PDF request");return}
-	common.BindInternalRequest(req,a.token)
+	common.BindInternalRequest(req,a.internalToken)
 	resp,err:=common.DoInternal(a.client,req);if err!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Invoice PDF is temporarily unavailable");return}
 	defer resp.Body.Close()
 	if resp.StatusCode!=http.StatusOK{common.APIError(w,resp.StatusCode,"INVOICE_PDF","Invoice PDF is not available");return}
