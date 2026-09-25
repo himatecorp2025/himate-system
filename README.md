@@ -491,7 +491,7 @@ The architecture remains microservice/container based. It is **not** being colla
 - notification target-user filtering moves into SQL and read-all persistence uses one bulk UPSERT
 - tenant/RBAC/module-entitlement fail-closed behavior remains unchanged by the performance optimizations
 - full Partner Portal OpenAPI route coverage, responsive structure and inherited START-23.11.4–23.11.6 regression gates are mandatory
-- release contract version is `0.8.32-start-23.11.7`
+- release contract version is `0.8.33-start-23.12`
 - acceptance: `docs/START-23.11.7_ACCEPTANCE.md`, `scripts/audit_start_23_11_7.py`, `scripts/smoke_start_23_11_7.sh`
 
 ### Horizontal-scaling note
