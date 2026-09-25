@@ -63,11 +63,11 @@ done
 echo ok
 
 STARTER_KEYS="$(python3 - "$PREFIX" <<'PY'
-import json,sys;p=sys.argv[1];print(json.dumps([f'{p}.{i}' for i in range(1,21)]))
+import json,sys;p=sys.argv[1];print(json.dumps([f'{p}.{i}' for i in range(1,11)]))
 PY
 )"
 BUSINESS_KEYS="$(python3 - "$PREFIX" <<'PY'
-import json,sys;p=sys.argv[1];print(json.dumps([f'{p}.{i}' for i in range(1,11)]))
+import json,sys;p=sys.argv[1];print(json.dumps([f'{p}.{i}' for i in range(1,21)]))
 PY
 )"
 printf 'configure fixed Starter and Business packages... '
