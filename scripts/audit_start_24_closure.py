@@ -13,6 +13,8 @@ def require(ok: bool, message: str) -> None:
         print("FAIL:", message)
         sys.exit(1)
 
+require((ROOT / "docs/START-24_ACCEPTANCE.md").is_file(), "missing START-24 acceptance evidence")
+
 phase_scripts = [f"scripts/audit_start_24_{i}.py" for i in range(1, 7)]
 for script in phase_scripts:
     require((ROOT / script).is_file(), f"missing START-24 phase audit: {script}")
