@@ -631,15 +631,72 @@ func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 	if err!=nil{common.APIError(w,500,"DB","Could not load module usage");return}
 	defer rows.Close()
 	items:=[]map[string]any{}
+	byPartner:=map[string]map[string]any{}
 	counts:=map[string]int{}
+	activePartners:=0
 	for rows.Next(){
 		item,scanErr:=scanPartnerModule(rows, common.RequestLocale(r))
 		if scanErr!=nil{common.APIError(w,500,"DB","Could not decode module usage");return}
-		counts[fmt.Sprint(item["status"])]++
+		status:=fmt.Sprint(item["status"])
+		counts[status]++
+		if status=="ACTIVE"{activePartners++}
+		partnerID:=fmt.Sprint(item["partner_id"])
+		item["usage_events_7d"]=0
+		item["usage_events_30d"]=0
+		item["usage_events_total"]=0
+		item["last_used_at"]=nil
+		byPartner[partnerID]=item
 		items=append(items,item)
 	}
 	if err:=rows.Err();err!=nil{common.APIError(w,500,"DB","Could not load complete module usage");return}
-	common.JSON(w,200,map[string]any{"items":items,"count":len(items),"status_counts":counts})
+
+	eventRows,err:=a.db.Query(`SELECT partner_id,
+		COUNT(*) FILTER (WHERE occurred_at>=NOW()-INTERVAL '7 days') AS events_7d,
+		COUNT(*) FILTER (WHERE occurred_at>=NOW()-INTERVAL '30 days') AS events_30d,
+		COUNT(*) AS events_total,
+		MAX(occurred_at) AS last_used_at
+		FROM catalog.module_usage_events
+		WHERE module_key=$1
+		GROUP BY partner_id
+		ORDER BY events_total DESC,partner_id`,key)
+	if err!=nil{common.APIError(w,500,"DB","Could not load module usage telemetry");return}
+	defer eventRows.Close()
+	total7,total30,totalAll,partnersWithUsage:=0,0,0,0
+	var lastUsed sql.NullTime
+	for eventRows.Next(){
+		var partnerID string
+		var events7,events30,eventsTotal int
+		var partnerLast sql.NullTime
+		if scanErr:=eventRows.Scan(&partnerID,&events7,&events30,&eventsTotal,&partnerLast);scanErr!=nil{
+			common.APIError(w,500,"DB","Could not decode module usage telemetry");return
+		}
+		total7+=events7;total30+=events30;totalAll+=eventsTotal
+		if eventsTotal>0{partnersWithUsage++}
+		if partnerLast.Valid&&(!lastUsed.Valid||partnerLast.Time.After(lastUsed.Time)){lastUsed=partnerLast}
+		if item:=byPartner[partnerID];item!=nil{
+			item["usage_events_7d"]=events7
+			item["usage_events_30d"]=events30
+			item["usage_events_total"]=eventsTotal
+			if partnerLast.Valid{item["last_used_at"]=partnerLast.Time.UTC()}
+		}
+	}
+	if err:=eventRows.Err();err!=nil{common.APIError(w,500,"DB","Could not load complete module usage telemetry");return}
+	var lastUsedValue any
+	if lastUsed.Valid{lastUsedValue=lastUsed.Time.UTC()}
+	common.JSON(w,200,map[string]any{
+		"items":items,
+		"count":len(items),
+		"status_counts":counts,
+		"usage_summary":map[string]any{
+			"active_partners":activePartners,
+			"partners_with_usage":partnersWithUsage,
+			"events_7d":total7,
+			"events_30d":total30,
+			"events_total":totalAll,
+			"last_used_at":lastUsedValue,
+			"source":"CATALOG_RUNTIME_USAGE_EVENTS",
+		},
+	})
 }
 
 func (a *app) ensurePartnerModules(partnerID string) error {
