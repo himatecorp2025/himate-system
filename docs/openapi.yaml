@@ -692,9 +692,19 @@ paths:
   /partner/api/v1/billing/invoices:
     get:
       tags: [Partner Portal]
-      summary: Own invoice history
+      summary: Own distributed invoice history
+      description: DRAFT and APPROVED invoices are HIMATE-internal and never exposed to the partner.
       responses:
-        "200": {description: Tenant invoices}
+        "200": {description: Own SENT, PAID or CANCELLED invoices}
+  /partner/api/v1/billing/invoices/{invoiceId}/pdf:
+    parameters:
+      - {name: invoiceId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Partner Portal]
+      summary: Open own distributed invoice PDF
+      responses:
+        "200": {description: application/pdf invoice rendering}
+        "404": {description: Invoice is not owned by this partner or is not distributable}
   /partner/api/v1/impact/summary:
     get:
       tags: [Partner Portal]
@@ -1246,6 +1256,88 @@ paths:
       description: VAT rate is administrator-controlled (0-100). Package prices remain NET; invoice and payment collection add the configured tax rate.
       responses:
         "200": {description: Updated billing profile}
+  /api/v1/billing/finance/overview:
+    get:
+      tags: [Billing]
+      summary: Central-6 finance dashboard
+      description: Returns currency-safe invoice KPIs, a 12-month paid-revenue series and the pending commercial-onboarding queue.
+      responses:
+        "200": {description: Finance KPIs, monthly paid revenue by currency and onboarding queue}
+  /api/v1/billing/invoices:
+    get:
+      tags: [Billing]
+      summary: Global invoice approval queue
+      parameters:
+        - {name: status, in: query, required: false, schema: {type: string, enum: [DRAFT, APPROVED, SENT, PAID, CANCELLED]}}
+        - {name: partner_id, in: query, required: false, schema: {type: string}}
+      responses:
+        "200": {description: Invoices including immutable net/tax/gross values and Central-6 workflow metadata}
+    post:
+      tags: [Billing]
+      summary: Create a manual invoice draft
+      description: >
+        Creates a DRAFT invoice only. Zero-dollar Charity, Sponsored and Complimentary
+        partners use documented support/waiver evidence instead of an invoice. Collection
+        is impossible until a Billing approver approves and sends the invoice.
+      responses:
+        "201": {description: Manual invoice draft created}
+        "409": {description: Zero-dollar classification must use a support waiver}
+  /api/v1/billing/invoices/{invoiceId}:
+    parameters:
+      - {name: invoiceId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Billing]
+      summary: Invoice detail
+      responses:
+        "200": {description: Invoice detail with DRAFT/APPROVED/SENT/PAID/CANCELLED workflow state}
+  /api/v1/billing/invoices/{invoiceId}/approve:
+    parameters:
+      - {name: invoiceId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Billing]
+      summary: Approve a draft invoice
+      responses:
+        "200": {description: Invoice moved from DRAFT to APPROVED}
+        "409": {description: Invalid invoice state transition}
+  /api/v1/billing/invoices/{invoiceId}/send:
+    parameters:
+      - {name: invoiceId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Billing]
+      summary: Distribute an approved invoice and enable payment collection
+      description: >
+        Moves APPROVED to SENT, queues Portal and email delivery records, emits the
+        Partner Portal billing notification and only then permits provider collection.
+      responses:
+        "200": {description: Invoice moved to SENT and delivery/collection initiated}
+        "409": {description: Invoice has not been approved}
+  /api/v1/billing/invoices/{invoiceId}/mark-paid:
+    parameters:
+      - {name: invoiceId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Billing]
+      summary: Record an administrator-confirmed invoice payment
+      responses:
+        "200": {description: Invoice moved to PAID and finance/onboarding ledgers updated}
+  /api/v1/billing/invoices/{invoiceId}/cancel:
+    parameters:
+      - {name: invoiceId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Billing]
+      summary: Cancel an unpaid invoice
+      responses:
+        "200": {description: Invoice moved to CANCELLED}
+        "409": {description: Paid or already-cancelled invoice cannot be cancelled}
+  /api/v1/billing/invoices/{invoiceId}/pdf:
+    parameters:
+      - {name: invoiceId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Billing]
+      summary: Render the distributable HIMATE invoice PDF
+      description: DRAFT invoices do not have a distributable PDF.
+      responses:
+        "200": {description: application/pdf invoice rendering}
+        "409": {description: Invoice is still DRAFT}
   /api/v1/billing/plans:
     get:
       tags: [Billing]
@@ -1285,6 +1377,24 @@ paths:
         "200": {description: Plan updated}
         "400": {description: Invalid plan values or module count}
         "409": {description: Module not PUBLISHED/READY or incompatible selection mode}
+  /api/v1/billing/partners/{partnerId}/onboarding:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Billing]
+      summary: Central-6 commercial onboarding gate
+      responses:
+        "200": {description: Onboarding state, classification and Partner Portal gate}
+    patch:
+      tags: [Billing]
+      summary: Advance HIMATE-administered onboarding
+      description: >
+        Enforces REGISTERED → PENDING_REVIEW → CLASSIFIED → invoice/payment or
+        documented zero-dollar support → ADMIN_APPROVAL → ACTIVE. Portal access remains
+        blocked until ACTIVE. Classification is PAID, CHARITY, SPONSORED or COMPLIMENTARY.
+      responses:
+        "200": {description: Onboarding state advanced}
+        "409": {description: Invalid transition or missing invoice/payment/support prerequisite}
   /api/v1/billing/partners/{partnerId}/plan:
     parameters:
       - in: path
@@ -1305,7 +1415,7 @@ paths:
     patch:
       tags: [Billing]
       summary: Change partner subscription package
-      description: Same-frequency price upgrades are immediate and collect the full price difference. Downgrades are scheduled with no refund. CUSTOM is available for HIMATE-administered negotiated partners. Recurring charges are collected automatically from the saved provider payment method. Failed recurring collection retries on due date, due+2 and due+5 days; the third failure suspends service and starts a 30-day cure window before retention-safe operational account purge.
+      description: Same-frequency price upgrades are immediate and create the full price-difference invoice with no proration. Downgrades are scheduled with no refund. CUSTOM is available for HIMATE-administered negotiated partners. Central-6 recurring invoices are generated as DRAFT; provider collection is blocked until a Billing approver moves the invoice through APPROVED to SENT. After SENT, failed recurring collection retries on due date, due+2 and due+5 days; the third failure suspends service and starts a 30-day cure window before retention-safe operational account purge.
       responses:
         "200": {description: Plan changed or scheduled}
   /api/v1/billing/partners/{partnerId}/plan/modules:
@@ -1553,9 +1663,10 @@ paths:
       tags: [Billing]
       summary: Itemized invoice records
       description: >
-        Each invoice includes immutable BASE_SERVICE and MODULE line items.
-        Module line-item amounts come from period-start price snapshots and are
-        never recalculated from the current Catalog price.
+        Each invoice includes immutable line items plus Central-6 workflow metadata.
+        Module line-item amounts come from period-start price snapshots and are never
+        recalculated from the current Catalog price. With partner_visible=true only
+        SENT, PAID and CANCELLED invoices are returned.
       responses:
         "200": {description: Invoices with immutable itemized line items}
   /api/v1/billing/subscription-matrix:
