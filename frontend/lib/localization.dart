@@ -217,6 +217,14 @@ class HimateI18n {
 
   static const Map<String, String> _literalHu = <String, String>{
     'Packages': 'Csomagok',
+    'Monthly net price': 'Havi nettó ár',
+    'Annual charged net': 'Éves terhelt nettó ár',
+    'Automatic Unlimited entitlement': 'Automatikus korlátlan jogosultság',
+    'Unlimited modules · automatic': 'Korlátlan modulok · automatikus',
+    'Starter includes 10 fixed modules, Business includes 20 fixed modules, and Premium automatically includes every current and future eligible module.': 'A Starter 10 fix modult, a Business 20 fix modult tartalmaz, a Premium pedig automatikusan tartalmaz minden jelenlegi és jövőbeli jogosult modult.',
+    'Premium is Unlimited: every current and future eligible module is included automatically. Price changes apply to all active customers from the effective date.': 'A Premium korlátlan: minden jelenlegi és jövőbeli jogosult modul automatikusan része. Az árváltozások a hatálybalépés napjától minden aktív ügyfélre érvényesek.',
+    'Central subscription packages, prices and module entitlements.': 'Központi előfizetési csomagok, árak és moduljogosultságok.',
+    'One authoritative package definition for every partner. Activation fees remain partner-specific.': 'Minden partnerre egyetlen hiteles csomagdefiníció vonatkozik. Az aktiválási díjak továbbra is partnerspecifikusak.',
     'Billing & Packages': 'Számlázás és csomagok',
     'Current package': 'Jelenlegi csomag',
     'Choose package': 'Csomag kiválasztása',
