@@ -224,3 +224,15 @@ func TestCentral4PlannedModulesAreCatalogEntriesNotCardinalityRules(t *testing.T
 		t.Fatal("catalog must stay non-empty")
 	}
 }
+
+
+func TestCentral4GoldenTestPartnerDoesNotOverrideInDevelopmentModules(t *testing.T) {
+	if testPartnerExecutionOverride("IN_DEVELOPMENT") {
+		t.Fatal("in-development modules must remain non-executable for Golden Test partners")
+	}
+	for _, state := range []string{"LEGACY_REFERENCE", "READY"} {
+		if !testPartnerExecutionOverride(state) {
+			t.Fatalf("Golden Test execution override unexpectedly blocked for %s", state)
+		}
+	}
+}
