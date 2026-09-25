@@ -621,3 +621,14 @@ func TestSTART236PasswordResetProductionDeliveryConfiguration(t *testing.T) {
 		t.Fatal("missing sender must make password reset delivery unavailable")
 	}
 }
+
+func TestSTART243PublicOriginIgnoresUntrustedForwardedHost(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://himate.example/modules", nil)
+	req.Host = "himate.example"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "evil.example")
+	if got := publicOrigin(req); got != "https://himate.example" {
+		t.Fatalf("public origin=%q want=%q", got, "https://himate.example")
+	}
+}
+
