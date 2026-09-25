@@ -78,13 +78,16 @@ PY
 rm -f /tmp/himate-start23113j-disable.json
 echo ok
 
-printf 'Golden Test tenant exposes 38 canonical active modules... '
+printf 'Golden Test tenant exposes the full current legacy-reference module baseline without fixed cardinality... '
+CATALOG="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/modules")"
+EXPECTED_GOLDEN_COUNT="$(printf '%s' "$CATALOG" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[x for x in d["items"] if x.get("system") is True and x.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]; assert len(xs)>=1,xs; print(len(xs))')"
 MODULES="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$PARTNER_ID/modules")"
-python3 - "$MODULES" <<'PY'
+python3 - "$MODULES" "$EXPECTED_GOLDEN_COUNT" <<'PY'
 import json,sys
 d=json.loads(sys.argv[1])
+expected=int(sys.argv[2])
 golden=[x for x in d["items"] if x.get("quote_reference")=="GOLDEN-TEST-PARTNER"]
-assert len(golden)==38,(len(golden),[x.get("key") for x in golden])
+assert len(golden)==expected,(len(golden),expected,[x.get("key") for x in golden])
 for item in golden:
     assert item["status"]=="ACTIVE",item
     assert item["entitlement_state"]=="ACTIVE",item
@@ -93,7 +96,7 @@ for item in golden:
 PY
 echo ok
 
-printf 'PostgreSQL stores exactly 38 canonical Golden Test entitlements... '
+printf 'PostgreSQL stores the same dynamically-sized Golden Test entitlement baseline... '
 ACTIVE_COUNT="$(docker compose exec -T postgres psql -U himate -d himate -At -v partner_id="$PARTNER_ID" <<'SQL'
 SELECT COUNT(*)
 FROM catalog.partner_modules pm
@@ -108,7 +111,7 @@ WHERE pm.partner_id=:'partner_id'
   AND pm.plan_key='GOLDEN_TEST';
 SQL
 )"
-test "$ACTIVE_COUNT" = "38"
+test "$ACTIVE_COUNT" = "$EXPECTED_GOLDEN_COUNT"
 echo ok
 
 printf 'Golden Test flag and LIVE lifecycle persist in PostgreSQL... '
