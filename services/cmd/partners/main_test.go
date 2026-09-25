@@ -81,3 +81,21 @@ func TestProvisioningRequiresLicenseGate(t *testing.T) {
 		t.Fatal("post-provisioning transition must not re-run initial license gate")
 	}
 }
+
+
+func TestPartnerMapIncludesBilingualCategoryNames(t *testing.T) {
+	p := partner{
+		ID:             "ptr_test",
+		CategoryID:     "cat_002",
+		CategoryName:   "Fine Art",
+		CategoryNameEN: "Fine Art",
+		CategoryNameHU: "Képzőművészet",
+	}
+	out := partnerMap(p)
+	if out["category_name_en"] != "Fine Art" {
+		t.Fatalf("category_name_en=%v", out["category_name_en"])
+	}
+	if out["category_name_hu"] != "Képzőművészet" {
+		t.Fatalf("category_name_hu=%v", out["category_name_hu"])
+	}
+}
