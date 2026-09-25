@@ -16,8 +16,8 @@ type billingTaxPolicy struct {
 
 func central5BillingMigration() common.Migration {
 	return common.Migration{
-		Version: 17,
-		Name:    "central-5-packages-pricing-vat-unlimited",
+		Version:                17,
+		Name:                   "central-5-packages-pricing-vat-unlimited",
 		AllowDestructiveSchema: true,
 		Statements: []string{
 			`ALTER TABLE billing.subscription_plans DROP CONSTRAINT IF EXISTS subscription_plans_selection_mode_check`,
@@ -92,54 +92,7 @@ func central5BillingMigration() common.Migration {
 					RAISE EXCEPTION 'PLAN invoice commercial fields are immutable';
 				END IF;
 				RETURN NEW;
-			END; $fnpackage main
-
-import (
-	"context"
-
-	"himate.local/services/internal/common"
-)
-
-const selectionModeUnlimited = "UNLIMITED"
-
-type billingTaxPolicy struct {
-	RatePercent  float64
-	Label        string
-	Jurisdiction string
-}
-
-func central5BillingMigration() common.Migration {
-	return common.Migration{
-		Version: 17,
-		Name:    "central-5-packages-pricing-vat-unlimited",
-		AllowDestructiveSchema: true,
-		Statements: []string{
-			`ALTER TABLE billing.subscription_plans DROP CONSTRAINT IF EXISTS subscription_plans_selection_mode_check`,
-			`ALTER TABLE billing.subscription_plans ADD CONSTRAINT subscription_plans_selection_mode_check
-				CHECK(selection_mode IN ('FIXED','SELECTABLE','CUSTOM','UNLIMITED'))`,
-			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS vat_rate_percent NUMERIC(6,2) NOT NULL DEFAULT 0`,
-			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS vat_jurisdiction TEXT NOT NULL DEFAULT 'GB'`,
-			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS tax_label TEXT NOT NULL DEFAULT 'VAT'`,
-			`ALTER TABLE billing.company_profile DROP CONSTRAINT IF EXISTS billing_company_profile_vat_rate_check`,
-			`ALTER TABLE billing.company_profile ADD CONSTRAINT billing_company_profile_vat_rate_check
-				CHECK(vat_rate_percent>=0 AND vat_rate_percent<=100)`,
-			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS net_total NUMERIC(12,2) NOT NULL DEFAULT 0`,
-			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS tax_rate_percent NUMERIC(6,2) NOT NULL DEFAULT 0`,
-			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(12,2) NOT NULL DEFAULT 0`,
-			`UPDATE billing.invoices SET net_total=total WHERE net_total=0 AND total<>0`,
-			`UPDATE billing.subscription_plans SET
-				display_name='Starter',monthly_price=990,annual_list_price=11880,annual_price=11880,
-				module_limit=10,selection_mode='FIXED',customer_selectable=TRUE,sort_order=10,updated_at=NOW()
-				WHERE plan_key='STARTER'`,
-			`UPDATE billing.subscription_plans SET
-				display_name='Business',monthly_price=1490,annual_list_price=17880,annual_price=16390,
-				module_limit=20,selection_mode='FIXED',customer_selectable=TRUE,sort_order=20,updated_at=NOW()
-				WHERE plan_key='BUSINESS'`,
-			`UPDATE billing.subscription_plans SET
-				display_name='Premium',monthly_price=2490,annual_list_price=29880,annual_price=22410,
-				module_limit=0,selection_mode='UNLIMITED',customer_selectable=TRUE,sort_order=30,updated_at=NOW()
-				WHERE plan_key='FLEX'`,
-,
+			END; $fn$`,
 		},
 	}
 }
