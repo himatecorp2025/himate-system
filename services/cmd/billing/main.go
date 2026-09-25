@@ -112,6 +112,9 @@ func main() {
 		})
 	})
 	mux.HandleFunc("/api/v1/billing/profile", a.profile)
+	mux.HandleFunc("/api/v1/billing/finance/overview", a.financeOverview)
+	mux.HandleFunc("/api/v1/billing/invoices", a.invoiceCollection)
+	mux.HandleFunc("/api/v1/billing/invoices/", a.invoiceByID)
 	mux.HandleFunc("/api/v1/billing/plans", a.plans)
 	mux.HandleFunc("/api/v1/billing/plans/", a.planByKey)
 	mux.HandleFunc("/api/v1/billing/subscription-matrix", a.subscriptionMatrix)
@@ -226,6 +229,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23112DunningMigration(),
 		start23113kCommercialModeMigration(),
 		central5BillingMigration(),
+		central6BillingMigration(),
 	}); err != nil {
 		return err
 	}
@@ -441,11 +445,19 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/partners/"), "/"), "/")
-	if len(parts) != 2 || parts[1] != "provisioning-gate" {
+	if len(parts) != 2 {
 		common.APIError(w, 404, "NOT_FOUND", "Route not found")
 		return
 	}
 	id := parts[0]
+	if parts[1] == "portal-gate" {
+		a.portalGate(w, r, id)
+		return
+	}
+	if parts[1] != "provisioning-gate" {
+		common.APIError(w, 404, "NOT_FOUND", "Route not found")
+		return
+	}
 	x, err := a.ensureLicense(id)
 	if err != nil {
 		common.APIError(w, 500, "DB", "Could not load initial license")
@@ -501,6 +513,10 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, section := parts[0], parts[1]
+	if len(parts) == 2 && section == "onboarding" {
+		a.partnerOnboarding(w, r, id)
+		return
+	}
 	if len(parts) == 3 {
 		if section == "plan" && parts[2] == "modules" {
 			a.partnerPlanModules(w, r, id)
@@ -1691,7 +1707,7 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 			if dunningSuspendedAt.Valid { suspended = dunningSuspendedAt.Time }
 			if purgeDueAt.Valid { purgeDue = purgeDueAt.Time }
 			if operationalPurgedAt.Valid { purged = operationalPurgedAt.Time }
-			items = append(items, map[string]any{
+			item := map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
 				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": providerStatus,
 				"plan_key":planKey,"billing_frequency":billingFrequency,"charge_type":chargeType,"billing_model":billingModel,
@@ -1702,7 +1718,17 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 				"payment_attempt_id": attemptID, "provider": provider, "provider_payment_id": providerPaymentID, "paid_at": paid,
 				"payment_failure_code": failureCode, "payment_failure_message": failureMessage, "created_at": created,
 				"items": a.invoiceItemsFor(invoiceID),
-			})
+			}
+			if meta, metaErr := a.invoiceWorkflowMeta(r.Context(), invoiceID); metaErr == nil {
+				for key, value := range meta { item[key] = value }
+			}
+			if strings.EqualFold(r.URL.Query().Get("partner_visible"), "true") {
+				workflow := fmt.Sprint(item["workflow_status"])
+				if workflow != invoiceSent && workflow != invoicePaid && workflow != invoiceCancelled {
+					continue
+				}
+			}
+			items = append(items, item)
 		}
 	}
 	common.JSON(w, 200, map[string]any{"items": items})
@@ -1776,8 +1802,8 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
 		tx, err := a.db.BeginTx(ctx,nil)
 		if err != nil { return err }
-		result, err := tx.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
-			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT DO NOTHING`,
+		result, err := tx.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,workflow_status,source)
+			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7,'DRAFT','AUTOMATED') ON CONFLICT DO NOTHING`,
 			invoiceID, id, at, start, at, t.Currency, base)
 		if err != nil { tx.Rollback(); return err }
 		inserted, _ := result.RowsAffected()
@@ -1789,9 +1815,10 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		moduleTotal, err := attachInvoiceItemsTx(ctx, tx, invoiceID, id, t.Currency, start, at, base)
 		if err != nil { tx.Rollback(); return err }
 		total := math.Round((base+moduleTotal)*100)/100
-		if _, err := tx.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3 WHERE id=$1`,
+		if _, err := tx.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3,net_total=$3 WHERE id=$1`,
 			invoiceID, moduleTotal, total); err != nil { tx.Rollback(); return err }
 		if inserted > 0 {
+			if err := a.recordFinanceTransactionTx(ctx,tx,id,invoiceID,"INVOICE","DRAFT",t.Currency,total,0,total,"AUTOMATED","billing-cycle","Legacy recurring invoice draft generated"); err != nil { tx.Rollback(); return err }
 			if err := emitBillingEventTx(ctx, tx, "INVOICE_GENERATED:"+invoiceID, id, "", "INVOICE_GENERATED", at, map[string]any{
 				"invoice_id": invoiceID, "currency": t.Currency, "base_fee": base,
 				"module_fee": moduleTotal, "total": total,
@@ -1800,6 +1827,7 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 			}); err != nil { tx.Rollback(); return err }
 		}
 		if err:=tx.Commit();err!=nil{return err}
+		a.advanceOnboardingFromInvoice(ctx,id,onboardingInvoicePending,"billing-cycle","Legacy recurring invoice draft generated")
 		a.queueInvoiceCollection(ctx, invoiceID, id, t.Currency, total)
 	}
 	return nil

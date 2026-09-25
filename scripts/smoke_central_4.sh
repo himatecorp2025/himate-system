@@ -104,6 +104,25 @@ PARTNER="$(curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "
 PARTNER_ID="$(printf '%s' "$PARTNER" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"test_partner":true,"reason":"Central-4 usage acceptance"}' "$BASE_URL/api/v1/partners/$PARTNER_ID" >/dev/null
 
+curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"state":"PENDING_REVIEW","reason":"Central-4 Golden Test onboarding review"}'   "$BASE_URL/api/v1/billing/partners/$PARTNER_ID/onboarding" >/dev/null
+CENTRAL4_CLASSIFY="$(python3 - "$STAMP" <<'PY'
+import json,sys
+stamp=sys.argv[1]
+print(json.dumps({
+ "state":"CLASSIFIED",
+ "classification":"SPONSORED",
+ "nominal_value":1,
+ "currency":"USD",
+ "evidence_reference":"CENTRAL-4-GOLDEN-"+stamp,
+ "reason":"Central-4 Golden Test runtime telemetry support waiver"
+}))
+PY
+)"
+curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d "$CENTRAL4_CLASSIFY"   "$BASE_URL/api/v1/billing/partners/$PARTNER_ID/onboarding" >/dev/null
+curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"state":"ADMIN_APPROVAL","reason":"Central-4 Golden Test support evidence verified"}'   "$BASE_URL/api/v1/billing/partners/$PARTNER_ID/onboarding" >/dev/null
+CENTRAL4_ACTIVE="$(curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"state":"ACTIVE","reason":"Central-4 Golden Test final HIMATE approval"}'   "$BASE_URL/api/v1/billing/partners/$PARTNER_ID/onboarding")"
+printf '%s' "$CENTRAL4_ACTIVE" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["state"]=="ACTIVE" and d["portal_enabled"] is True,d'
+
 PORTAL_PAYLOAD="$(python3 - "$PORTAL_EMAIL" "$PORTAL_PASSWORD" <<'PY'
 import json,sys
 print(json.dumps({"name":"Central 4 Portal Owner","email":sys.argv[1],"password":sys.argv[2],"role":"owner"}))

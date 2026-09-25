@@ -181,6 +181,9 @@ func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error 
 	if err:=a.internalGET(ctx,a.hosts["partners"],"/api/v1/partners/"+url.PathEscape(partnerID),&partner);err!=nil{return err}
 	lifecycle:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(partner["lifecycle"])))
 	if lifecycle=="SUSPENDED"||lifecycle=="ARCHIVED"{return errPartnerPortalAccessDisabled}
+	var gate map[string]any
+	if err:=a.internalGET(ctx,a.hosts["billing"],"/internal/v1/partners/"+url.PathEscape(partnerID)+"/portal-gate",&gate);err!=nil{return err}
+	if gate["allowed"]!=true{return errPartnerPortalAccessDisabled}
 	return nil
 }
 
@@ -391,6 +394,8 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 		if a.requirePartnerPermission(w,u,"billing.read"){a.partnerBillingSubscriptions(w,r,u)}
 	case path=="/billing/invoices"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"billing.read"){a.partnerBillingInvoices(w,r,u)}
+	case strings.HasPrefix(path,"/billing/invoices/")&&strings.HasSuffix(path,"/pdf")&&r.Method==http.MethodGet:
+		if a.requirePartnerPermission(w,u,"billing.read"){a.partnerInvoicePDF(w,r,u)}
 	case path=="/impact/summary"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"impact.read"){a.partnerImpactSummary(w,r,u)}
 	case path=="/users":
@@ -850,9 +855,32 @@ func (a *app) partnerBillingSubscriptions(w http.ResponseWriter,r *http.Request,
 
 func (a *app) partnerBillingInvoices(w http.ResponseWriter,r *http.Request,u partnerUser){
 	var out map[string]any
-	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/invoices",&out);err!=nil{
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/invoices?partner_visible=true",&out);err!=nil{
 		common.APIError(w,502,"BILLING_UNAVAILABLE","Invoices are temporarily unavailable");return}
 	common.JSON(w,200,out)
+}
+
+func (a *app) partnerInvoicePDF(w http.ResponseWriter,r *http.Request,u partnerUser){
+	raw:=strings.Trim(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path,"/partner/api/v1/billing/invoices/"),"/pdf"),"/")
+	if raw==""||strings.Contains(raw,"/"){common.APIError(w,404,"NOT_FOUND","Invoice not found");return}
+	var invoices map[string]any
+	if err:=a.internalGET(r.Context(),a.hosts["billing"],"/api/v1/billing/partners/"+url.PathEscape(u.PartnerID)+"/invoices?partner_visible=true",&invoices);err!=nil{
+		common.APIError(w,502,"BILLING_UNAVAILABLE","Invoices are temporarily unavailable");return
+	}
+	found:=false
+	for _,item:=range anyItems(invoices["items"]){if fmt.Sprint(item["id"])==raw{found=true;break}}
+	if !found{common.APIError(w,404,"NOT_FOUND","Invoice not found");return}
+	req,err:=http.NewRequestWithContext(r.Context(),http.MethodGet,"http://"+a.hosts["billing"]+"/api/v1/billing/invoices/"+url.PathEscape(raw)+"/pdf",nil)
+	if err!=nil{common.APIError(w,500,"REQUEST","Could not create invoice PDF request");return}
+	common.BindInternalRequest(req,a.internalToken)
+	resp,err:=common.DoInternal(a.client,req);if err!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Invoice PDF is temporarily unavailable");return}
+	defer resp.Body.Close()
+	if resp.StatusCode!=http.StatusOK{common.APIError(w,resp.StatusCode,"INVOICE_PDF","Invoice PDF is not available");return}
+	w.Header().Set("Content-Type","application/pdf")
+	if cd:=resp.Header.Get("Content-Disposition");cd!=""{w.Header().Set("Content-Disposition",cd)}
+	w.Header().Set("Cache-Control","private, no-store")
+	w.WriteHeader(http.StatusOK)
+	_,_=io.Copy(w,resp.Body)
 }
 
 func (a *app) partnerImpactSummary(w http.ResponseWriter,r *http.Request,u partnerUser){

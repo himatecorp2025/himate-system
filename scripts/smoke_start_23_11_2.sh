@@ -143,6 +143,11 @@ echo ok
 printf 'recurring payment dunning retries on day 1, 3 and 6 then suspends service... '
 monthly_invoice_id="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT id FROM billing.invoices WHERE partner_id='$partner_id' AND billing_model='PLAN' AND charge_type='PLAN_MONTHLY' AND service_period_start='$NEXT_MONTH'::date LIMIT 1;")"
 test -n "$monthly_invoice_id"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT workflow_status FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "DRAFT"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT collection_attempts FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "0"
+curl -fsS -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"START-23.11.2 recurring invoice approval"}' "$BASE_URL/api/v1/billing/invoices/$monthly_invoice_id/approve" >/dev/null
+curl -fsS -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"START-23.11.2 recurring invoice distribution"}' "$BASE_URL/api/v1/billing/invoices/$monthly_invoice_id/send" >/dev/null
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT workflow_status FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "SENT"
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT collection_attempts FROM billing.invoices WHERE id='$monthly_invoice_id';")" = "1"
 docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET provider_status='FAILED' WHERE id='$monthly_invoice_id';" >/dev/null
 docker compose exec -T billing /app/service --run-invoice-cycle "$DUNNING_DAY3"
@@ -165,7 +170,7 @@ PY
 echo ok
 
 printf 'paid invoice inside cure window restores plan, lifecycle and entitlements... '
-docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET status='PAID',provider_status='SUCCEEDED' WHERE id='$monthly_invoice_id';" >/dev/null
+docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET status='PAID',workflow_status='PAID',provider_status='SUCCEEDED' WHERE id='$monthly_invoice_id';" >/dev/null
 docker compose exec -T billing /app/service --run-invoice-cycle "$RECOVERY_DAY"
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT status FROM billing.partner_plan_subscriptions WHERE partner_id='$partner_id';")" = "ACTIVE"
 test "$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/partners/$partner_id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["lifecycle"])')" = "PROSPECT"
@@ -177,6 +182,10 @@ printf 'expired 30-day cure window archives account and purges operational acces
 docker compose exec -T billing /app/service --run-invoice-cycle "$MONTH_AFTER_NEXT"
 second_invoice_id="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT id FROM billing.invoices WHERE partner_id='$partner_id' AND billing_model='PLAN' AND charge_type='PLAN_MONTHLY' AND service_period_start='$MONTH_AFTER_NEXT'::date LIMIT 1;")"
 test -n "$second_invoice_id"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT workflow_status FROM billing.invoices WHERE id='$second_invoice_id';")" = "DRAFT"
+curl -fsS -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"START-23.11.2 second recurring invoice approval"}' "$BASE_URL/api/v1/billing/invoices/$second_invoice_id/approve" >/dev/null
+curl -fsS -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"START-23.11.2 second recurring invoice distribution"}' "$BASE_URL/api/v1/billing/invoices/$second_invoice_id/send" >/dev/null
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT workflow_status FROM billing.invoices WHERE id='$second_invoice_id';")" = "SENT"
 docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.invoices SET provider_status='FAILED',collection_attempts=3 WHERE id='$second_invoice_id';" >/dev/null
 docker compose exec -T billing /app/service --run-invoice-cycle "$SECOND_DAY6"
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT status FROM billing.partner_plan_subscriptions WHERE partner_id='$partner_id';")" = "SUSPENDED"

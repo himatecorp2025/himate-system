@@ -1827,7 +1827,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
           ),
         ]),
         const SizedBox(height: 24),
-        _SectionHeader(title: 'Invoices', subtitle: 'Commercial invoice history for your organization.', trailing: _MiniCounter(label: '${invoices.length} invoices')),
+        _SectionHeader(title: 'Invoices', subtitle: 'Only approved and distributed invoices appear here. Open the HIMATE PDF copy at any time.', trailing: _MiniCounter(label: '${invoices.length} invoices')),
         const SizedBox(height: 10),
         if (invoices.isEmpty)
           const _MessageCard(icon: Icons.receipt_long_outlined, title: 'No invoices yet', message: 'Invoices will appear here when billing records are generated.')
@@ -1837,17 +1837,45 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
               padding: const EdgeInsets.all(16),
               child: Column(children: [
                 for (var i = 0; i < invoices.length; i++) ...[
-                  Row(children: [
-                    const Icon(Icons.receipt_long_outlined, size: 18, color: brandGold),
-                    const SizedBox(width: 10),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      LText('${invoices[i]['id'] ?? 'Invoice'}', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700)),
-                      LText('${invoices[i]['service_period_start'] ?? ''} — ${invoices[i]['service_period_end_exclusive'] ?? ''}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-                    ])),
-                    LText('${invoices[i]['currency'] ?? 'USD'} ${number(invoices[i]['total']).toStringAsFixed(2)}', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800)),
-                    const SizedBox(width: 10),
-                    _StatusPill(label: '${invoices[i]['status'] ?? 'DRAFT'}'),
-                  ]),
+                  Builder(builder: (context) {
+                    final invoice = invoices[i];
+                    final workflow = '${invoice['workflow_status'] ?? invoice['status'] ?? 'SENT'}';
+                    final id = '${invoice['id'] ?? ''}';
+                    return LayoutBuilder(builder: (context, constraints) {
+                      final details = Row(children: [
+                        const Icon(Icons.receipt_long_outlined, size: 18, color: brandGold),
+                        const SizedBox(width: 10),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          LText(id.isEmpty ? 'Invoice' : id, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700)),
+                          LText('${invoice['service_period_start'] ?? ''} — ${invoice['service_period_end_exclusive'] ?? ''}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                          LText('Net ${invoice['currency'] ?? 'USD'} ${number(invoice['net_total']).toStringAsFixed(2)} · Tax ${number(invoice['tax_amount']).toStringAsFixed(2)}', style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+                        ])),
+                      ]);
+                      final actions = Row(mainAxisSize: MainAxisSize.min, children: [
+                        LText('${invoice['currency'] ?? 'USD'} ${number(invoice['gross_total'] ?? invoice['total']).toStringAsFixed(2)}', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800)),
+                        const SizedBox(width: 10),
+                        _StatusPill(label: workflow),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: uiLiteral('Open PDF'),
+                          onPressed: id.isEmpty ? null : () => html.window.open('/partner/api/v1/billing/invoices/$id/pdf', '_blank'),
+                          icon: const Icon(Icons.picture_as_pdf_outlined, color: brandGold, size: 19),
+                        ),
+                      ]);
+                      if (constraints.maxWidth < 680) {
+                        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          details,
+                          const SizedBox(height: 10),
+                          actions,
+                        ]);
+                      }
+                      return Row(children: [
+                        Expanded(child: details),
+                        const SizedBox(width: 12),
+                        actions,
+                      ]);
+                    });
+                  }),
                   if (i < invoices.length - 1) const Divider(height: 24),
                 ],
               ]),

@@ -63,6 +63,28 @@ PY
   curl -fsS -b "$ADMIN_COOKIE" -H 'Content-Type: application/json' -d "$payload" "$BASE_URL/api/v1/partners"
 }
 
+activate_golden_test_portal() {
+  partner_id="$1"; suffix="$2"
+  curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json'     -d '{"state":"PENDING_REVIEW","reason":"START-23.11.4 Golden Test onboarding review"}'     "$BASE_URL/api/v1/billing/partners/$partner_id/onboarding" >/dev/null
+  classify_payload="$(python3 - "$STAMP" "$suffix" <<'PY'
+import json,sys
+stamp,suffix=sys.argv[1:]
+print(json.dumps({
+ "state":"CLASSIFIED",
+ "classification":"SPONSORED",
+ "nominal_value":1,
+ "currency":"USD",
+ "evidence_reference":"START-23.11.4-GOLDEN-"+suffix+"-"+stamp,
+ "reason":"START-23.11.4 Golden Test tenant support waiver"
+}))
+PY
+)"
+  curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json'     -d "$classify_payload"     "$BASE_URL/api/v1/billing/partners/$partner_id/onboarding" >/dev/null
+  curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json'     -d '{"state":"ADMIN_APPROVAL","reason":"START-23.11.4 Golden Test support evidence verified"}'     "$BASE_URL/api/v1/billing/partners/$partner_id/onboarding" >/dev/null
+  active="$(curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json'     -d '{"state":"ACTIVE","reason":"START-23.11.4 Golden Test final HIMATE approval"}'     "$BASE_URL/api/v1/billing/partners/$partner_id/onboarding")"
+  printf '%s' "$active" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["state"]=="ACTIVE" and d["portal_enabled"] is True,d'
+}
+
 printf 'create and activate two isolated Golden Test tenants... '
 A="$(create_partner "$EMAIL_A" A)"
 B="$(create_partner "$EMAIL_B" B)"
@@ -71,6 +93,8 @@ B_ID="$(printf '%s' "$B" | python3 -c 'import json,sys; print(json.load(sys.stdi
 test "$A_ID" != "$B_ID"
 curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"test_partner":true,"reason":"START-23.11.4 workspace acceptance"}' "$BASE_URL/api/v1/partners/$A_ID" >/dev/null
 curl -fsS -b "$ADMIN_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"test_partner":true,"reason":"START-23.11.4 tenant isolation"}' "$BASE_URL/api/v1/partners/$B_ID" >/dev/null
+activate_golden_test_portal "$A_ID" "A"
+activate_golden_test_portal "$B_ID" "B"
 echo ok
 
 printf 'create and authenticate Partner Portal owners... '
