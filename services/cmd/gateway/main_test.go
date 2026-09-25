@@ -653,3 +653,34 @@ func TestSTART243PublicOriginIgnoresUntrustedForwardedHost(t *testing.T) {
 	}
 }
 
+
+
+func TestCentral1DesignNavigationUsesContactAndPartnerPortal(t *testing.T) {
+	design := publicSiteDesign{Navigation: []publicNavigationItem{
+		{LabelEN:"Platform", LabelHU:"Platform", URL:"/platform", Visible:true, SortOrder:1},
+		{LabelEN:"Contact", LabelHU:"Kapcsolat", URL:"/contact", Visible:true, SortOrder:2},
+	}}
+	header := designNavigationHTML(design, "en_US", "/contact", false)
+	if strings.Contains(header, `href="/login"`) {
+		t.Fatalf("public header exposed Central login: %s", header)
+	}
+	if strings.Count(header, `href="/contact"`) != 1 {
+		t.Fatalf("public header must contain exactly one Contact action: %s", header)
+	}
+	if !strings.Contains(header, `class="nav-login-text active" aria-current="page" href="/contact">Contact</a>`) {
+		t.Fatalf("Contact action missing or inactive: %s", header)
+	}
+	if !strings.Contains(header, `href="/partner/login">Partner Portal</a>`) {
+		t.Fatalf("Partner Portal action missing: %s", header)
+	}
+
+	hu := designNavigationHTML(design, "hu_HU", "/platform", false)
+	if !strings.Contains(hu, `href="/contact">Kapcsolat</a>`) || !strings.Contains(hu, `href="/partner/login">Partnerportál</a>`) {
+		t.Fatalf("Hungarian public actions missing: %s", hu)
+	}
+
+	footer := designNavigationHTML(design, "en_US", "/contact", true)
+	if strings.Count(footer, `href="/contact"`) != 1 || strings.Contains(footer, "/partner/login") {
+		t.Fatalf("footer navigation contract changed unexpectedly: %s", footer)
+	}
+}
