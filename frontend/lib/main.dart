@@ -2761,11 +2761,17 @@ class _PartnersPageState extends State<PartnersPage> {
   String categoryFilter = 'ALL';
   String lifecycleFilter = 'ALL';
   String healthFilter = 'ALL';
+  bool referenceOnly = false;
   static const int pageSize = 24;
   int offset = 0;
   int total = 0;
   int referenceCount = 0;
   Map<String, int> lifecycleCounts = <String, int>{};
+  int portfolioTotal = 0;
+  int portfolioReferenceCount = 0;
+  Map<String, int> portfolioLifecycleCounts = <String, int>{};
+  bool portfolioStatsReady = false;
+  final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
 
   static const lifecycleOptions = [
@@ -2844,6 +2850,7 @@ class _PartnersPageState extends State<PartnersPage> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -2856,6 +2863,7 @@ class _PartnersPageState extends State<PartnersPage> {
     if (categoryFilter != 'ALL') params['category'] = categoryFilter;
     if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
     if (healthFilter != 'ALL') params['health'] = healthFilter;
+    if (referenceOnly) params['reference'] = 'true';
     return params;
   }
 
@@ -2872,6 +2880,16 @@ class _PartnersPageState extends State<PartnersPage> {
       ..['stats_only'] = 'true';
     return Uri(path: '/api/v1/partners', queryParameters: params);
   }
+
+  Uri _portfolioStatsUri() => Uri(
+        path: '/api/v1/partners',
+        queryParameters: const <String, String>{
+          'limit': '1',
+          'offset': '0',
+          'stats_only': 'true',
+          'core_only': 'true',
+        },
+      );
 
   Future<void> _loadCategories({bool force = false}) async {
     if (mounted) setState(() => categoriesLoading = true);
