@@ -5977,10 +5977,14 @@ class FinancePage extends StatefulWidget {
 }
 
 class _FinancePageState extends State<FinancePage> {
-  List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
   Map<String, dynamic>? profile;
+  Map<String, dynamic> overview = <String, dynamic>{};
+  List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
+  String invoiceFilter = 'ALL';
   bool loading = false;
   String? error;
+
   @override
   void initState() {
     super.initState();
@@ -5988,25 +5992,33 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   Future<void> load() async {
-    if (mounted) setState(() => error = null);
+    if (mounted) setState(() {
+      loading = true;
+      error = null;
+    });
     final failures = <String>[];
 
     Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
       try {
-        final data = await widget.api.get(path);
-        if (mounted) setState(() => apply(data));
+        final data = await widget.api.get(path, force: true);
+        apply(data);
       } catch (e) {
         failures.add(e.toString());
       }
     }
 
     await Future.wait<void>([
-      fetch('/api/v1/modules', (data) => modules = items(data)),
       fetch('/api/v1/billing/profile', (data) => profile = data),
+      fetch('/api/v1/billing/finance/overview', (data) => overview = data),
+      fetch('/api/v1/billing/invoices', (data) => invoices = items(data)),
+      fetch('/api/v1/partners?limit=200&offset=0&include_archived=false', (data) => partners = items(data)),
     ]);
 
-    if (mounted && failures.length == 2) {
-      setState(() => error = failures.first);
+    if (mounted) {
+      setState(() {
+        loading = false;
+        if (failures.length == 4) error = failures.first;
+      });
     }
   }
 
