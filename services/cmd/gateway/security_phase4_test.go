@@ -49,3 +49,38 @@ func TestPhase4TOTPVerificationWindow(t *testing.T) {
 		t.Fatal("unexpected invalid TOTP acceptance")
 	}
 }
+
+func TestSTART241AdminMFAVerifyHonorsAuthenticationThrottle(t *testing.T) {
+	a := &app{loginAttempts: map[string]loginState{}}
+	req := httptest.NewRequest(http.MethodPost, "https://himate.example/api/v1/auth/mfa/verify", nil)
+	req.Host = "himate.example"
+	req.RemoteAddr = "203.0.113.41:43123"
+	key := clientKey(req)
+	now := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		a.recordLoginFailure(key, now.Add(time.Duration(i)*time.Millisecond))
+	}
+	rec := httptest.NewRecorder()
+	a.adminMFAVerify(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("admin MFA throttle status=%d want=%d body=%s", rec.Code, http.StatusTooManyRequests, rec.Body.String())
+	}
+}
+
+func TestSTART241PartnerMFAVerifyHonorsAuthenticationThrottle(t *testing.T) {
+	a := &app{loginAttempts: map[string]loginState{}}
+	req := httptest.NewRequest(http.MethodPost, "https://himate.example/partner/api/v1/auth/mfa/verify", nil)
+	req.Host = "himate.example"
+	req.RemoteAddr = "203.0.113.42:43124"
+	key := "partner:" + clientKey(req)
+	now := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		a.recordLoginFailure(key, now.Add(time.Duration(i)*time.Millisecond))
+	}
+	rec := httptest.NewRecorder()
+	a.partnerMFAVerify(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("partner MFA throttle status=%d want=%d body=%s", rec.Code, http.StatusTooManyRequests, rec.Body.String())
+	}
+}
+
