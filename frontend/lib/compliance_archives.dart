@@ -252,7 +252,7 @@ class _ComplianceArchivesPageState extends State<ComplianceArchivesPage> {
               const Spacer(),
               IconButton(
                 tooltip: 'Previous page',
-                onPressed: offset > 0 && !loading ? () { offset = (offset - pageSize).clamp(0, 1 << 30); load(); } : null,
+                onPressed: offset > 0 && !loading ? () { offset = offset > pageSize ? offset - pageSize : 0; load(); } : null,
                 icon: const Icon(Icons.chevron_left_rounded),
               ),
               IconButton(
