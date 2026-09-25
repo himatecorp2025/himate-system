@@ -43,6 +43,8 @@ jobs:
         run: python3 scripts/audit_start_23_12_phase3b.py
       - name: Validate START-23.12 Phase 4 security contract
         run: python3 scripts/audit_start_23_12_phase4.py
+      - name: Validate START-23.12 Phase 5 final acceptance contract
+        run: python3 scripts/audit_start_23_12_phase5.py
 
   go-fast:
     runs-on: ubuntu-latest
@@ -133,6 +135,8 @@ jobs:
         run: sh scripts/smoke_start_23_12_phase3b.sh http://127.0.0.1:18083 http://127.0.0.1:18082
       - name: Run START-23.12 Phase 4 security checkpoint
         run: sh scripts/smoke_start_23_12_phase4.sh http://127.0.0.1:8080
+      - name: Run START-23.12 Phase 5 compliance/PWA/100-tenant checkpoint
+        run: sh scripts/smoke_start_23_12_phase5.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
