@@ -38,7 +38,7 @@ checks = [
     ),
     (
         "zero-dollar and non-paid billing never create invoices",
-        "if amount <= 0" in plans
+        ("if amount <= 0" in plans or "if netAmount <= 0" in plans)
         and "ZERO_DOLLAR_BILLING_CYCLE" in plans
         and "mode.BillingMode!=billingModePaid || nominalTotal<=0" in billing
         and "ZERO_DOLLAR_BILLING_CYCLE" in billing,
