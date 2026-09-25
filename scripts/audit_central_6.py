@@ -85,6 +85,29 @@ for token in [
 ]:
     require(token in central6, f"Central-6 invoice workflow missing: {token}")
 
+detail_match = re.search(
+    r"func \(a \*app\) invoiceDetail\(.*?\n\}",
+    central6,
+    flags=re.S,
+)
+require(detail_match is not None, "Central-6 invoiceDetail serializer missing")
+invoice_detail = detail_match.group(0)
+for field in [
+    '"payment_attempt_id"',
+    '"provider"',
+    '"provider_payment_id"',
+    '"payment_failure_code"',
+    '"payment_failure_message"',
+    '"collection_attempts"',
+    '"dunning_state"',
+    '"dunning_suspended_at"',
+    '"purge_due_at"',
+    '"operational_purged_at"',
+]:
+    require(field in invoice_detail, f"Central-6 invoice detail drifted from canonical invoice contract: {field}")
+require("provider='MANUAL'" in central6 and '"provider":provider' in invoice_detail,
+        "Central-6 manual settlement provider must persist and round-trip through invoice detail")
+
 for token in [
     'mux.HandleFunc("/api/v1/billing/finance/overview", a.financeOverview)',
     'mux.HandleFunc("/api/v1/billing/invoices", a.invoiceCollection)',
@@ -172,5 +195,25 @@ for forbidden in [
 
 require("audit_central_6.py" in ci, "Central-6 static audit is not wired into CI")
 require("smoke_central_6.sh" in ci, "Central-6 runtime smoke is not wired into CI")
+
+
+# Cross-contract compatibility: Central-6 changed global Portal and invoice invariants.
+# Catch legacy smoke fixtures before the expensive Compose runtime chain.
+for smoke_path in sorted((ROOT / "scripts").glob("smoke_*.sh")):
+    smoke = smoke_path.read_text()
+    if "onboarding_request_id" in smoke and "/partner/api/v1/auth/login" in smoke:
+        require(
+            "/api/v1/billing/partners/" in smoke and "/onboarding" in smoke,
+            f"{smoke_path.name} creates an onboarding-gated partner and logs into Partner Portal without Central-6 onboarding activation",
+        )
+
+recurring = read("scripts/smoke_start_23_11_2.sh")
+for token in [
+    'workflow_status FROM billing.invoices',
+    '/approve',
+    '/send',
+    'collection_attempts',
+]:
+    require(token in recurring, f"START-23.11.2 recurring billing smoke is not Central-6 lifecycle-aware: {token}")
 
 print("Central-6 Licensing/Finance/Onboarding acceptance: PASS")
