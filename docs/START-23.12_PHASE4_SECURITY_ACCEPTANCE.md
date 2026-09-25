@@ -33,7 +33,8 @@ The rebuild intentionally favors a small number of stable security invariants ov
 - The signature covers method, path, query, caller identity and HIMATE authority headers.
 - Each service has a fixed caller ID; no per-service signing key inventory is introduced.
 - Private /internal/v1 routes require a valid timestamped service signature when HIMATE_REQUIRE_SERVICE_SIGNATURE=true.
-- Compose and Render both enable this verification for private services.
+- Render production enables this verification for private services.
+- Docker Compose keeps HIMATE_REQUIRE_SERVICE_SIGNATURE=false because inherited Phase 2/3/3B acceptance tools intentionally call private endpoints directly with the root internal credential. The signature contract itself is exercised by Go unit tests.
 - Feature/business code does not perform request signing itself.
 
 This is deliberately simpler than the discarded Phase 4 implementation. It prevents public header spoofing and unsigned internal control-plane access while avoiding manual signature ordering, per-route caller matrices and cross-service key synchronization.

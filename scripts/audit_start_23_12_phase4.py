@@ -81,9 +81,9 @@ for caller in [
     "automation","tenantfinance","notifications","health",
 ]:
     require(f"HIMATE_SERVICE_CALLER_ID: {caller}" in compose, f"Compose caller identity missing: {caller}")
-require(compose.count('HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"') >= 19,
-        "Compose does not enforce service signatures across private services")
-require(render.count("key: HIMATE_REQUIRE_SERVICE_SIGNATURE") >= 19,
+require(compose.count('HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"') >= 19,
+        "Compose must keep service-signature enforcement in compatibility mode for inherited runtime smokes")
+require(render.count("key: HIMATE_REQUIRE_SERVICE_SIGNATURE") >= 19 and render.count('value: "true"') >= 19,
         "Render does not enforce service signatures across private services")
 require("HIMATE_SERVICE_CALLER_ID=gateway" in env_example, "service caller environment contract is undocumented")
 

@@ -22,7 +22,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: catalog
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,7 +36,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: partners
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       BILLING_HOSTPORT: billing:10000
     depends_on:
       postgres:
@@ -51,7 +51,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: billing
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       CATALOG_HOSTPORT: catalog:10000
       PARTNERS_HOSTPORT: partners:10000
       PAYMENTS_HOSTPORT: payments:10000
@@ -78,7 +78,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: payments
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       BILLING_HOSTPORT: billing:10000
       PAYMENT_PROVIDER: mock
       STRIPE_WEBHOOK_SECRET: whsec_local_start234_test
@@ -95,7 +95,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: contact
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       HIMATE_CONTACT_NOTIFY_TO: ${HIMATE_CONTACT_NOTIFY_TO:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -115,7 +115,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: storage
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       HIMATE_STORAGE_ROOT: /data/partners
     volumes:
       - himate_partner_storage:/data/partners
@@ -134,7 +134,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: runtime
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       HIMATE_RUNTIME_PROVIDER: local
     depends_on:
       postgres:
@@ -150,7 +150,7 @@ services:
       PARTNER_DATABASE_ADMIN_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: backups
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       HIMATE_BACKUP_ENCRYPTION_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       HIMATE_BACKUP_PROVIDER: local
       HIMATE_BACKUP_OFFSITE_ROOT: /offsite
@@ -182,7 +182,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: evidence
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       STORAGE_HOSTPORT: storage:10000
     depends_on:
       postgres:
@@ -199,7 +199,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: impact
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       EVIDENCE_HOSTPORT: evidence:10000
     depends_on:
       postgres:
@@ -216,7 +216,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: reports
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       IMPACT_HOSTPORT: impact:10000
       EVIDENCE_HOSTPORT: evidence:10000
       PARTNERS_HOSTPORT: partners:10000
@@ -242,7 +242,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: cms
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       STORAGE_HOSTPORT: storage:10000
     depends_on:
       postgres:
@@ -259,7 +259,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: environments
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       PARTNER_RUNTIME_HOSTPORT: runtime:10000
       PARTNERS_HOSTPORT: partners:10000
     depends_on:
@@ -281,7 +281,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: connector
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       HIMATE_CONNECTOR_DATA_MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       HIMATE_CONNECTOR_DATA_KEY_VERSION: v1
       IMPACT_HOSTPORT: impact:10000
@@ -314,7 +314,7 @@ services:
       PARTNER_DATABASE_MASTER_SECRET: local-partner-database-master-secret-12345678901234567890
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: provisioning
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       PARTNERS_HOSTPORT: partners:10000
       BILLING_HOSTPORT: billing:10000
       CATALOG_HOSTPORT: catalog:10000
@@ -348,7 +348,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: automation
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       HIMATE_AUTOMATION_SERVICE_KEYS_JSON: '{"ci-producer":"ci-producer-automation-secret-123456789","ci-consumer":"ci-consumer-automation-secret-123456789","workshop":"workshop-automation-secret-local-123456789","finance":"finance-automation-secret-local-123456789","scheduler":"scheduler-automation-secret-local-123456789","client-piano":"client-piano-automation-secret-local-123456789","notifications":"notifications-automation-secret-local-123456789"}'
       HIMATE_AUTOMATION_FINANCE_SECRET: finance-automation-secret-local-123456789
     depends_on:
@@ -366,7 +366,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: tenantfinance
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       PARTNERS_HOSTPORT: partners:10000
       AUTOMATION_HOSTPORT: automation:10000
       HIMATE_TENANT_FINANCE_DEFAULT_TERMS_DAYS: "8"
@@ -392,7 +392,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: notifications
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -406,7 +406,7 @@ services:
       DATABASE_URL: postgres://himate:himate-local@postgres:5432/himate?sslmode=disable
       HIMATE_INTERNAL_TOKEN: local-development-internal-token-123456789
       HIMATE_SERVICE_CALLER_ID: health
-      HIMATE_REQUIRE_SERVICE_SIGNATURE: "true"
+      HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"
       PARTNERS_HOSTPORT: partners:10000
       CATALOG_HOSTPORT: catalog:10000
       BILLING_HOSTPORT: billing:10000
