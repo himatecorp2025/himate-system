@@ -6066,7 +6066,7 @@ class _FinancePageState extends State<FinancePage> {
 
   String moneyAcrossCurrencies(String key) {
     final nonZero = currencyRows.where((row) => number(row[key]) != 0).toList();
-    if (nonZero.isEmpty) return '$0.00';
+    if (nonZero.isEmpty) return '\$0.00';
     if (nonZero.length == 1) {
       final row = nonZero.first;
       return '${row['currency'] ?? 'USD'} ${number(row[key]).toStringAsFixed(2)}';
