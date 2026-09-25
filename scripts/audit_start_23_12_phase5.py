@@ -95,8 +95,8 @@ require("caches.delete" in worker, "service worker does not retire obsolete cach
 require("navigator.serviceWorker.register('/service-worker.js'" in pwa, "authenticated shell PWA registration is missing")
 require("navigator.serviceWorker.register('/service-worker.js'" in site, "public PWA registration is missing")
 require('<link rel="manifest" href="/manifest.json">' in index, "Flutter shell manifest link missing")
-require('Unexpected competing Flutter service worker registration' in ci,
-        "release CI does not prevent a second active Flutter service worker from overriding the Phase 5 cache policy")
+require('Unexpected active Flutter service worker configuration' in ci and 'active_call = bootstrap[pos:]' in ci,
+        "release CI does not semantically verify that Flutter service-worker activation is disabled")
 require("{{flutter_js}}" in flutter_bootstrap and "{{flutter_build_config}}" in flutter_bootstrap,
         "custom Flutter bootstrap does not use the supported build placeholders")
 require("_flutter.loader.load(" in flutter_bootstrap and "flutter_service_worker.js" not in flutter_bootstrap,
