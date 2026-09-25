@@ -40,11 +40,18 @@ func (a *app) applyPlanEntitlements(w http.ResponseWriter,r *http.Request,partne
 	var in struct{
 		PlanKey string `json:"plan_key"`
 		ModuleKeys []string `json:"module_keys"`
+		EntitlementMode string `json:"entitlement_mode"`
 		Reason string `json:"reason"`
 	}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
 	planKey:=strings.ToUpper(strings.TrimSpace(in.PlanKey))
 	if planKey==""{common.APIError(w,400,"VALIDATION","plan_key is required");return}
+	entitlementMode:=strings.ToUpper(strings.TrimSpace(in.EntitlementMode))
+	if entitlementMode==""{entitlementMode="FIXED"}
+	if entitlementMode!="FIXED" && entitlementMode!=catalogEntitlementModeUnlimited{
+		common.APIError(w,400,"VALIDATION","entitlement_mode must be FIXED or UNLIMITED");return
+	}
+	if planKey=="CHARITY" || planKey=="NO_PLAN"{entitlementMode="FIXED"}
 	keys,err:=uniquePlanKeys(in.ModuleKeys);if err!=nil{common.APIError(w,400,"VALIDATION",err.Error());return}
 	var testPartner bool
 	if err:=a.db.QueryRowContext(r.Context(),`SELECT test_partner FROM partners.partners WHERE id=$1`,partnerID).Scan(&testPartner);err!=nil && err!=sql.ErrNoRows{
@@ -60,8 +67,18 @@ func (a *app) applyPlanEntitlements(w http.ResponseWriter,r *http.Request,partne
 		defer rows.Close()
 		golden:=[]string{}
 		for rows.Next(){var key string;if err:=rows.Scan(&key);err!=nil{common.APIError(w,500,"DB","Could not decode Golden Test entitlement");return};golden=append(golden,key)}
-		common.JSON(w,200,map[string]any{"partner_id":partnerID,"plan_key":"GOLDEN_TEST","module_keys":golden,"count":len(golden),"entitlement_source":"TEST"})
+		common.JSON(w,200,map[string]any{"partner_id":partnerID,"plan_key":"GOLDEN_TEST","module_keys":golden,"count":len(golden),"entitlement_source":"TEST","entitlement_mode":"TEST"})
 		return
+	}
+	if entitlementMode==catalogEntitlementModeUnlimited{
+		rows,queryErr:=a.db.QueryContext(r.Context(),`SELECT module_key FROM catalog.modules
+			WHERE publication_status='PUBLISHED' AND implementation_state='READY' AND availability='ACTIVE'
+			ORDER BY module_key`)
+		if queryErr!=nil{common.APIError(w,500,"DB","Could not resolve Unlimited plan modules");return}
+		keys=[]string{}
+		for rows.Next(){var key string;if scanErr:=rows.Scan(&key);scanErr!=nil{rows.Close();common.APIError(w,500,"DB","Could not decode Unlimited plan modules");return};keys=append(keys,key)}
+		if rowsErr:=rows.Err();rowsErr!=nil{rows.Close();common.APIError(w,500,"DB","Could not load complete Unlimited plan modules");return}
+		rows.Close()
 	}
 	target:=map[string]bool{};for _,key:=range keys{target[key]=true}
 	entitlementSource:="PLAN"
@@ -69,6 +86,18 @@ func (a *app) applyPlanEntitlements(w http.ResponseWriter,r *http.Request,partne
 	if planKey=="CHARITY"{entitlementSource="CHARITY";quoteReference="CHARITY"}
 
 	tx,err:=a.db.BeginTx(r.Context(),&sql.TxOptions{});if err!=nil{common.APIError(w,500,"DB","Could not start entitlement sync");return};defer tx.Rollback()
+	if planKey=="NO_PLAN"{
+		if _,err=tx.ExecContext(r.Context(),`DELETE FROM catalog.partner_plan_entitlement_policies WHERE partner_id=$1`,partnerID);err!=nil{
+			common.APIError(w,500,"DB","Could not clear plan entitlement policy");return
+		}
+	}else{
+		if _,err=tx.ExecContext(r.Context(),`INSERT INTO catalog.partner_plan_entitlement_policies(partner_id,plan_key,entitlement_mode)
+			VALUES($1,$2,$3)
+			ON CONFLICT(partner_id) DO UPDATE SET plan_key=EXCLUDED.plan_key,entitlement_mode=EXCLUDED.entitlement_mode,updated_at=NOW()`,
+			partnerID,planKey,entitlementMode);err!=nil{
+			common.APIError(w,500,"DB","Could not save plan entitlement policy");return
+		}
+	}
 	for _,key:=range keys{
 		var publication,implementation string
 		if err=tx.QueryRowContext(r.Context(),`SELECT publication_status,implementation_state FROM catalog.modules WHERE module_key=$1`,key).Scan(&publication,&implementation);err!=nil{
@@ -109,5 +138,5 @@ func (a *app) applyPlanEntitlements(w http.ResponseWriter,r *http.Request,partne
 		}
 	}
 	if err=tx.Commit();err!=nil{common.APIError(w,500,"DB","Could not commit plan entitlements");return}
-	common.JSON(w,200,map[string]any{"partner_id":partnerID,"plan_key":planKey,"module_keys":keys,"count":len(keys),"entitlement_source":entitlementSource})
+	common.JSON(w,200,map[string]any{"partner_id":partnerID,"plan_key":planKey,"module_keys":keys,"count":len(keys),"entitlement_source":entitlementSource,"entitlement_mode":entitlementMode})
 }
