@@ -5951,7 +5951,7 @@ class _PackagesPageState extends State<PackagesPage> {
                           _DefinitionRow(
                             label: 'Configured modules',
                             value: plan['selection_mode'] == 'UNLIMITED'
-                                ? '${modules.where((m) => moduleReady(m) && '${m['availability']}' == 'ACTIVE').length} available today + all future eligible modules'
+                                ? '${modules.where((m) => moduleReady(m) && m['availability'] == 'ACTIVE').length} available today + all future eligible modules'
                                 : '${(plan['fixed_module_keys'] as List?)?.length ?? 0} / ${plan['module_limit']}',
                           ),
                           _DefinitionRow(label: 'Status', value: plan['active'] == true ? 'ACTIVE' : 'INACTIVE'),
