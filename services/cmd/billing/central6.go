@@ -378,6 +378,41 @@ func (a *app) partnerOnboarding(w http.ResponseWriter, r *http.Request, partnerI
 		}
 		defer tx.Rollback()
 
+		if nextState == onboardingClassified {
+			mode, modeErr := a.ensureCommercialMode(r.Context(), partnerID)
+			if modeErr != nil {
+				common.APIError(w, 500, "DB", "Could not load commercial billing mode")
+				return
+			}
+			nextMode := billingModePaid
+			nextCharityStatus := charityNotRequested
+			switch nextClassification {
+			case classificationCharity:
+				nextMode = billingModeCharity
+				nextCharityStatus = charityApproved
+			case classificationSponsored, classificationComplimentary:
+				nextMode = billingModeComplimentary
+				nextCharityStatus = charityNotRequested
+			}
+			if _, err = tx.ExecContext(r.Context(), `UPDATE billing.partner_commercial_modes SET
+				billing_mode=$2,charity_status=$3,charity_reviewed_at=CASE WHEN $3='APPROVED' THEN COALESCE(charity_reviewed_at,NOW()) ELSE charity_reviewed_at END,
+				charity_reviewed_by=CASE WHEN $3='APPROVED' THEN CASE WHEN charity_reviewed_by='' THEN $4 ELSE charity_reviewed_by END ELSE charity_reviewed_by END,
+				reason=$5,updated_at=NOW() WHERE partner_id=$1`,
+				partnerID,nextMode,nextCharityStatus,actor,reason); err != nil {
+				common.APIError(w, 500, "DB", "Could not synchronize commercial billing mode")
+				return
+			}
+			if mode.BillingMode != nextMode || mode.CharityStatus != nextCharityStatus {
+				if _, err = tx.ExecContext(r.Context(), `INSERT INTO billing.partner_commercial_mode_history(
+					partner_id,old_billing_mode,new_billing_mode,old_charity_status,new_charity_status,actor,reason)
+					VALUES($1,$2,$3,$4,$5,$6,$7)`,
+					partnerID,mode.BillingMode,nextMode,mode.CharityStatus,nextCharityStatus,actor,reason); err != nil {
+					common.APIError(w, 500, "DB", "Could not record commercial mode audit history")
+					return
+				}
+			}
+		}
+
 		if nextState == onboardingClassified && zeroDollarClassification(nextClassification) {
 			currency := strings.ToUpper(strings.TrimSpace(in.Currency))
 			if currency == "" {
