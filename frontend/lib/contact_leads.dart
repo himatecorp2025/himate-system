@@ -110,6 +110,8 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
               const SizedBox(height: 14),
               _DefinitionRow(label: 'Name', value: (lead['name'] ?? '—').toString()),
               _DefinitionRow(label: 'Organization', value: (lead['organization'] ?? '—').toString().isEmpty ? '—' : (lead['organization'] ?? '').toString()),
+              _DefinitionRow(label: 'Organization type', value: _humanize((lead['organization_type'] ?? '—').toString())),
+              _DefinitionRow(label: 'Inquiry topic', value: _humanize((lead['inquiry_topic'] ?? '—').toString())),
               _DefinitionRow(label: 'Email', value: (lead['email'] ?? '—').toString()),
               _DefinitionRow(label: 'Notification', value: _humanize((lead['notification_status'] ?? 'stored').toString())),
               const SizedBox(height: 12),
@@ -167,6 +169,8 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
         ? (lead['created_at'] ?? '').toString()
         : HimateI18n.dateTime(himateLocaleCode(Localizations.localeOf(context)), created);
     final organization = (lead['organization'] ?? '').toString().trim();
+    final organizationType = _humanize((lead['organization_type'] ?? '').toString());
+    final inquiryTopic = _humanize((lead['inquiry_topic'] ?? '').toString());
     final assigned = (lead['assigned_to'] ?? '').toString().trim();
     return SizedBox(
       width: width,
@@ -196,7 +200,17 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
                   ),
                   _StatusPill(label: _humanize(state)),
                 ]),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 6,
+                  children: [
+                    if (inquiryTopic.isNotEmpty) _StatusPill(label: inquiryTopic),
+                    if (organizationType.isNotEmpty)
+                      LText(organizationType, style: const TextStyle(color: brandSteel, fontSize: 9.5, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 LText((lead['message'] ?? '').toString(), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandCharcoal, fontSize: 11, height: 1.45)),
                 const SizedBox(height: 12),
                 const Divider(height: 1),
@@ -237,7 +251,7 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
             onChanged: onSearch,
             decoration: InputDecoration(
               labelText: uiLiteral('Search leads'),
-              hintText: uiLiteral('Name, organization, email or message'),
+              hintText: uiLiteral('Name, organization, type, topic, email or message'),
               prefixIcon: Icon(Icons.search_rounded),
             ),
           ),
