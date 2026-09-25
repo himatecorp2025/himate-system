@@ -9428,18 +9428,18 @@ class _BillingRulesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const _InfoCard(
-    title: 'Commercial Rules',
+    title: 'Central-6 Finance Rules',
     icon: Icons.rule_folder_outlined,
     children: [
-      _DefinitionRow(label: 'Service period', value: '30 days from activation'),
-      _DefinitionRow(label: 'Renewal', value: 'Every 30 days'),
-      _DefinitionRow(label: 'Invoice trigger', value: 'Partner cycle boundary'),
-      _DefinitionRow(label: 'Annual base-fee uplift', value: 'January 1'),
-      _DefinitionRow(label: 'Default uplift', value: '10% · admin-overridable'),
+      _DefinitionRow(label: 'Partner activation', value: 'Final HIMATE approval required'),
+      _DefinitionRow(label: 'Invoice lifecycle', value: 'Draft → Approved → Sent → Paid / Cancelled'),
+      _DefinitionRow(label: 'Payment collection', value: 'Blocked until Sent'),
+      _DefinitionRow(label: 'Partner visibility', value: 'Sent / Paid / Cancelled only'),
+      _DefinitionRow(label: 'Zero-dollar support', value: 'Documented waiver · no invoice'),
       _DefinitionRow(label: 'Package price basis', value: 'Net + configured VAT'),
       _DefinitionRow(label: 'VAT authority', value: 'Admin billing profile'),
-      _DefinitionRow(label: 'Extra modules', value: 'Consolidated into main invoice'),
-      _DefinitionRow(label: 'External payment provider', value: 'Not configured'),
+      _DefinitionRow(label: 'PDF delivery', value: 'Generated from approved ledger'),
+      _DefinitionRow(label: 'Email delivery', value: 'Queued in delivery outbox'),
     ],
   );
 }
