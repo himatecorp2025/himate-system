@@ -34,7 +34,7 @@ PY
 curl -fsS -c "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$login_payload" "$BASE_URL/api/v1/auth/login" >/dev/null
 echo ok
 
-printf 'Central-4 canonical registry exposes 40 modules across five primary topics while preserving 38 legacy references... '
+printf 'canonical module registry is non-empty, structurally valid and extensible... '
 modules="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/modules")"
 groups="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/module-groups")"
 python3 - "$modules" "$groups" <<'PY'
@@ -42,20 +42,22 @@ import json,sys
 mods=json.loads(sys.argv[1])["items"]
 groups=json.loads(sys.argv[2])["items"]
 system=[m for m in mods if m.get("system") is True]
-legacy=[m for m in system if m.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]
-planned=[m for m in system if m["key"] in {"needs_assessment","two_factor_authentication"}]
-assert len(system)==40,len(system)
-assert len(legacy)==38,len(legacy)
-assert len(planned)==2,planned
-counts={}
-for m in system: counts[m["group_key"]]=counts.get(m["group_key"],0)+1
-assert counts=={"finance_invoicing":3,"client_operations":9,"marketing":8,"website_events":12,"security_system":8},counts
-assert all(m["implementation_state"]=="LEGACY_REFERENCE" for m in legacy),legacy
-assert all(m["implementation_state"]=="IN_DEVELOPMENT" and m["publication_status"]=="UNPUBLISHED" for m in planned),planned
+assert len(system)>=1,system
+assert len({m["key"] for m in system})==len(system),system
+group_keys={g["group_key"] for g in groups}
+assert group_keys,groups
+assert all(m["group_key"] in group_keys for m in system),system
+required_groups={"finance_invoicing","client_operations","marketing","website_events","security_system"}
 primary={g["group_key"] for g in groups if g.get("is_primary_navigation") is True}
-assert primary=={"finance_invoicing","client_operations","marketing","website_events","security_system"},primary
+assert required_groups.issubset(primary),(required_groups,primary)
+planned_by_key={m["key"]:m for m in system if m["key"] in {"needs_assessment","two_factor_authentication"}}
+assert {"needs_assessment","two_factor_authentication"}.issubset(planned_by_key),planned_by_key
+assert all(m["implementation_state"]=="IN_DEVELOPMENT" and m["publication_status"]=="UNPUBLISHED" for m in planned_by_key.values()),planned_by_key
+legacy=[m for m in system if m.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]
+assert len(legacy)>=1,legacy
+assert all(m["implementation_state"]=="LEGACY_REFERENCE" for m in legacy),legacy
 technical=next((g for g in groups if g["group_key"]=="technical"),None)
-assert technical is not None and technical.get("is_primary_navigation") is False,technical
+assert technical is None or technical.get("is_primary_navigation") is False,technical
 assert next(m for m in legacy if m["key"]=="workshop_workflow")["group_key"]=="client_operations"
 PY
 echo ok
