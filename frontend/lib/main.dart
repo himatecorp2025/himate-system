@@ -5727,7 +5727,9 @@ class _PackagesPageState extends State<PackagesPage> {
   Future<void> editPackage(Map<String, dynamic> plan) async {
     final key = '${plan['plan_key']}';
     final limit = (plan['module_limit'] as num?)?.toInt() ?? 0;
-    final fixed = '${plan['selection_mode']}' == 'FIXED';
+    final mode = '${plan['selection_mode']}';
+    final fixed = mode == 'FIXED';
+    final unlimited = mode == 'UNLIMITED';
     final price = TextEditingController(text: number(plan['monthly_price']).toStringAsFixed(2));
     final effective = TextEditingController();
     final reason = TextEditingController();
@@ -5743,7 +5745,9 @@ class _PackagesPageState extends State<PackagesPage> {
           title: '${plan['display_name']} package',
           subtitle: fixed
               ? 'HIMATE defines exactly $limit included modules. Price changes apply to all active customers from the effective date.'
-              : 'Partners select up to $limit modules. Price changes apply to all active customers from the effective date.',
+              : unlimited
+                  ? 'Premium is Unlimited: every current and future eligible module is included automatically. Price changes apply to all active customers from the effective date.'
+                  : 'Partner-selectable package. Price changes apply to all active customers from the effective date.',
           icon: Icons.inventory_2_outlined,
           width: 820,
           child: Column(
@@ -5770,8 +5774,8 @@ class _PackagesPageState extends State<PackagesPage> {
                 _RuleItem(Icons.receipt_long_outlined, 'Existing invoices', 'Never rewritten'),
               ]),
               const SizedBox(height: 12),
-              _DefinitionRow(label: 'Module limit', value: '$limit'),
-              _DefinitionRow(label: 'Selection mode', value: fixed ? 'HIMATE fixed package' : 'Partner selectable'),
+              _DefinitionRow(label: 'Module limit', value: unlimited ? 'Unlimited' : '$limit'),
+              _DefinitionRow(label: 'Selection mode', value: fixed ? 'HIMATE fixed package' : unlimited ? 'Automatic Unlimited entitlement' : 'Partner selectable'),
               _DefinitionRow(label: 'Annual uplift', value: '${plan['annual_increase_percent'] ?? 5}% · January 1'),
               if (fixed) ...[
                 const SizedBox(height: 16),
@@ -5901,8 +5905,10 @@ class _PackagesPageState extends State<PackagesPage> {
               for (final plan in plans)
                 Kpi(
                   label: '${plan['display_name']}',
-                  value: money(plan['monthly_price']),
-                  note: '${plan['module_limit']} modules · ${plan['selection_mode'] == 'FIXED' ? 'HIMATE fixed' : 'Partner selected'}',
+                  value: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} net + ${plan['tax_label'] ?? 'VAT'}',
+                  note: plan['selection_mode'] == 'UNLIMITED'
+                      ? 'Unlimited modules · automatic'
+                      : '${plan['module_limit']} modules · HIMATE fixed',
                   icon: Icons.inventory_2_outlined,
                   accent: brandNavy,
                 ),
@@ -5911,7 +5917,7 @@ class _PackagesPageState extends State<PackagesPage> {
           const SizedBox(height: 20),
           _SectionHeader(
             title: 'Package definitions',
-            subtitle: 'Starter and Business have fixed HIMATE module sets. Flex lets the partner select up to 15 modules.',
+            subtitle: 'Starter includes 10 fixed modules, Business includes 20 fixed modules, and Premium automatically includes every current and future eligible module.',
           ),
           const SizedBox(height: 12),
           LayoutBuilder(
@@ -5935,13 +5941,19 @@ class _PackagesPageState extends State<PackagesPage> {
                           icon: const Icon(Icons.edit_outlined, size: 18),
                         ),
                         children: [
-                          _DefinitionRow(label: 'Monthly price', value: money(plan['monthly_price']), emphasis: true),
+                          _DefinitionRow(label: 'Monthly net price', value: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} + ${plan['tax_label'] ?? 'VAT'}', emphasis: true),
+                          _DefinitionRow(label: 'Current VAT rate', value: '${number(plan['vat_rate_percent']).toStringAsFixed(2)}%'),
                           _DefinitionRow(label: 'Annual list', value: money(plan['annual_list_price'])),
-                          _DefinitionRow(label: 'Annual charged', value: money(plan['annual_price'])),
+                          _DefinitionRow(label: 'Annual charged net', value: '${money(plan['annual_net_price'] ?? plan['annual_price'])} + ${plan['tax_label'] ?? 'VAT'}'),
                           _DefinitionRow(label: 'Automatic increase', value: '${plan['annual_increase_percent'] ?? 5}% · January 1'),
-                          _DefinitionRow(label: 'Module limit', value: '${plan['module_limit']}'),
-                          _DefinitionRow(label: 'Selection', value: plan['selection_mode'] == 'FIXED' ? 'HIMATE fixed' : 'Partner selectable'),
-                          _DefinitionRow(label: 'Configured modules', value: plan['selection_mode'] == 'FIXED' ? '${(plan['fixed_module_keys'] as List?)?.length ?? 0} / ${plan['module_limit']}' : 'Up to ${plan['module_limit']}'),
+                          _DefinitionRow(label: 'Module limit', value: plan['selection_mode'] == 'UNLIMITED' ? 'Unlimited' : '${plan['module_limit']}'),
+                          _DefinitionRow(label: 'Selection', value: plan['selection_mode'] == 'UNLIMITED' ? 'Automatic Unlimited entitlement' : 'HIMATE fixed'),
+                          _DefinitionRow(
+                            label: 'Configured modules',
+                            value: plan['selection_mode'] == 'UNLIMITED'
+                                ? '${modules.where((m) => moduleReady(m) && '${m['availability']}' == 'ACTIVE').length} available today + all future eligible modules'
+                                : '${(plan['fixed_module_keys'] as List?)?.length ?? 0} / ${plan['module_limit']}',
+                          ),
                           _DefinitionRow(label: 'Status', value: plan['active'] == true ? 'ACTIVE' : 'INACTIVE'),
                         ],
                       ),
