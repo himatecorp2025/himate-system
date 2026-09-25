@@ -67,8 +67,8 @@ auto_pos = tenant_automation.index("automation.SignRequest(req, body, financePro
 send_pos = tenant_automation.index("common.DoInternal(a.client, req)")
 require(bind_pos < auto_pos < send_pos, "tenant-finance does not apply internal token, automation HMAC and common transport in safe order")
 require("serviceauth.Sign(req, token, caller" in common, "Phase 4 transport signer is not centralized in DoInternal")
-require('"workshop": true' in serviceauth and '"scheduler": true' in serviceauth,
-        "Phase 3B canonical producer identities are rejected by the Phase 4 caller registry")
+require(all(marker in serviceauth for marker in ['"client-piano": true', '"workshop": true', '"scheduler": true']),
+        "Phase 3 canonical producer identities are rejected by the Phase 4 caller registry")
 
 # Phase 1 authorization remains authoritative for human module execution.
 require("a.requirePartnerModuleExecution" in partner_modules, "Partner module runtime no longer requires the Phase 1 execution guard")
