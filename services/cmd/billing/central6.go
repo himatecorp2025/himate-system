@@ -355,17 +355,6 @@ func (a *app) partnerOnboarding(w http.ResponseWriter, r *http.Request, partnerI
 				common.APIError(w, 400, "WAIVER_REASON_REQUIRED", "Zero-dollar charity/sponsored support requires a documented reason")
 				return
 			}
-			if nextClassification == classificationCharity {
-				mode, modeErr := a.ensureCommercialMode(r.Context(), partnerID)
-				if modeErr != nil {
-					common.APIError(w, 500, "DB", "Could not validate Charity status")
-					return
-				}
-				if mode.CharityStatus != charityApproved {
-					common.APIError(w, 409, "CHARITY_APPROVAL_REQUIRED", "Charity classification requires approved Charity eligibility")
-					return
-				}
-			}
 		}
 		if err := a.onboardingPrerequisite(r.Context(), partnerID, nextState, nextClassification); err != nil {
 			common.APIError(w, 409, "ONBOARDING_PREREQUISITE", err.Error())
