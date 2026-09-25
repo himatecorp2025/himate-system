@@ -39,12 +39,20 @@ jobs:
         run: python3 scripts/audit_start_23_11_6.py
       - name: Validate current START-23.11.7 closure contract
         run: python3 scripts/audit_start_23_11_7.py
+      - name: Validate START-23.12 Phase 1 production acceptance contract
+        run: python3 scripts/audit_start_23_12_phase1.py
+      - name: Validate START-23.12 Phase 2 production acceptance contract
+        run: python3 scripts/audit_start_23_12_phase2.py
+      - name: Validate START-23.12 Phase 3 architecture acceptance contract
+        run: python3 scripts/audit_start_23_12_phase3.py
       - name: Validate START-23.12 Phase 3B tenant invoicing contract
         run: python3 scripts/audit_start_23_12_phase3b.py
       - name: Validate START-23.12 Phase 4 security contract
         run: python3 scripts/audit_start_23_12_phase4.py
       - name: Validate START-23.12 Phase 5 final acceptance contract
         run: python3 scripts/audit_start_23_12_phase5.py
+      - name: Validate START-23.12 Phase 1-5 cross-phase closure contract
+        run: python3 scripts/audit_start_23_12_closure.py
 
   go-fast:
     runs-on: ubuntu-latest

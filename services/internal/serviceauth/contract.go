@@ -40,6 +40,9 @@ var allowedCallers = map[string]bool{
 	"tenantfinance": true,
 	"automation": true,
 	"storage": true,
+	"workshop": true,
+	"scheduler": true,
+	"client-piano": true,
 }
 
 func KnownCaller(caller string) bool {
