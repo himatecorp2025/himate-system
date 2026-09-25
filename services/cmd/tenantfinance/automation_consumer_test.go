@@ -85,10 +85,12 @@ func TestPartnerModuleEntitledRequiresActiveExecutableInvoiceModule(t *testing.T
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/internal/v1/partner-portal/ptr_1/modules" {
-					t.Fatalf("unexpected path %s", r.URL.Path)
+					http.Error(w, "unexpected path", http.StatusNotFound)
+					return
 				}
 				if r.Header.Get("X-Himate-Internal-Token") == "" {
-					t.Fatal("internal service token missing")
+					http.Error(w, "internal token missing", http.StatusForbidden)
+					return
 				}
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{
