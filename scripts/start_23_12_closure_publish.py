@@ -14,6 +14,7 @@ if len(sys.argv) != 7:
 base, partner, stamp, caller, event_type, subject_id = sys.argv[1:]
 token = os.environ["CLOSURE_INTERNAL_TOKEN"]
 secret = os.environ["CLOSURE_AUTOMATION_SECRET"]
+app_version = os.environ["CLOSURE_APP_VERSION"]
 path = "/internal/v1/automation/events"
 
 if event_type == "workflow.billing_approved.v1":
@@ -78,6 +79,7 @@ request = urllib.request.Request(base.rstrip("/") + path, data=raw, method="POST
 for key, value in {
     "Content-Type": "application/json",
     "X-Himate-Internal-Token": token,
+    "X-Himate-Expected-Version": app_version,
     "X-Himate-Caller-ID": caller,
     "X-Himate-Caller-Timestamp": timestamp,
     "X-Himate-Caller-Signature": service_signature,
