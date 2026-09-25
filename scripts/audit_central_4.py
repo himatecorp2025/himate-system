@@ -14,8 +14,9 @@ def require(ok: bool, message: str) -> None:
         sys.exit(1)
 
 catalog = read("services/cmd/catalog/main.go")
-central4 = read("services/cmd/catalog/central4.go")
 marketplace = read("services/cmd/catalog/marketplace.go")
+catalog_tests = read("services/cmd/catalog/main_test.go")
+central4 = read("services/cmd/catalog/central4.go")
 gateway = read("services/cmd/gateway/partner_user_modules.go")
 ui = read("frontend/lib/module_control_plane.dart")
 localization = read("frontend/lib/localization.dart")
@@ -23,21 +24,21 @@ localization = read("frontend/lib/localization.dart")
 seed_match = re.search(r"var seedModules = \[\]seedModule\{(.*?)\n\}", catalog, re.S)
 require(seed_match is not None, "seedModules block missing")
 seed_rows = re.findall(r'\{"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\}', seed_match.group(1))
-require(len(seed_rows) == 40, f"expected 40 canonical modules, got {len(seed_rows)}")
-keys = {row[0] for row in seed_rows}
-require({"needs_assessment", "two_factor_authentication"} <= keys, "Central-4 modules 39/40 missing")
+require(len(seed_rows) >= 1, "module catalog must contain at least one module")
+keys = [row[0] for row in seed_rows]
+require(len(set(keys)) == len(keys), "seed module keys must be unique")
+require({"needs_assessment", "two_factor_authentication"} <= set(keys),
+        "Central-4 planned modules are missing")
 
 group_match = re.search(r"var seedGroups = \[\]seedGroup\{(.*?)\n\}", catalog, re.S)
 require(group_match is not None, "seedGroups block missing")
 groups = re.findall(r'\{"([^"]+)",\s*"([^"]+)",\s*(\d+)\}', group_match.group(1))
-group_keys = [row[0] for row in groups]
-require(group_keys == [
-    "finance_invoicing",
-    "client_operations",
-    "marketing",
-    "website_events",
-    "security_system",
-], f"unexpected primary topic order: {group_keys}")
+require(len(groups) >= 1, "module topic registry must contain at least one group")
+group_keys = {row[0] for row in groups}
+required_groups = {"finance_invoicing", "client_operations", "marketing", "website_events", "security_system"}
+require(required_groups <= group_keys, f"required Central-4 topic missing: {sorted(required_groups-group_keys)}")
+require(all(row[2] in group_keys for row in seed_rows),
+        "every seed module must reference an existing topic")
 
 for token in [
     '"needs_assessment": "Igényfelmérő"',
@@ -49,16 +50,54 @@ for token in [
     require(token in catalog, f"catalog Central-4 contract missing: {token}")
 
 for token in [
-    'Version: 10',
-    'catalog.module_usage_events',
-    "is_primary_navigation=FALSE WHERE group_key='technical'",
+    "Version: 10",
+    "catalog.module_usage_events",
+    "module_usage_events_module_time_idx",
+    "module_usage_events_partner_module_time_idx",
 ]:
     require(token in central4, f"Central-4 migration missing: {token}")
 
 summary_match = re.search(r"var marketplaceSummaries = map\[string\]marketplaceSummary\{(.*?)\n\}", marketplace, re.S)
 require(summary_match is not None, "marketplaceSummaries block missing")
 summary_keys = set(re.findall(r'^\s*"([^"]+)":', summary_match.group(1), re.M))
-require(keys <= summary_keys, f"marketplace summaries missing: {sorted(keys-summary_keys)}")
+require(set(keys) <= summary_keys, f"marketplace summaries missing: {sorted(set(keys)-summary_keys)}")
+require("if len(seedModules) < 1" in marketplace,
+        "Marketplace must enforce non-empty catalog rather than an exact module count")
+
+for forbidden in [
+    "expected 40",
+    "len(seedModules) != 40",
+    "len(marketplaceSummaries) != 40",
+    "len(canonical)==40",
+    "len(system)==40",
+    "len(legacy)==38",
+]:
+    require(forbidden not in catalog_tests + marketplace,
+            f"fixed catalog cardinality leaked into source/tests: {forbidden}")
+
+for smoke_path in [
+    "scripts/smoke_start_23_11_1.sh",
+    "scripts/smoke_start_23_11_2.sh",
+    "scripts/smoke_start_23_11_3.sh",
+    "scripts/smoke_start_23_11_3j.sh",
+    "scripts/smoke_start_23_11_3k.sh",
+    "scripts/smoke_start_23_11_5.sh",
+    "scripts/smoke_start_23_12_phase1.sh",
+]:
+    smoke = read(smoke_path)
+    require('"group_key":"technical"' not in smoke,
+            f"{smoke_path} still creates modules in the retired technical primary group")
+    for forbidden in [
+        "len(canonical)==40",
+        "len(system)==40",
+        "len(legacy)==38",
+        "len(items)==40",
+        'test "$ACTIVE_COUNT" = "38"',
+        "38 canonical",
+        "40 canonical",
+    ]:
+        require(forbidden not in smoke,
+                f"{smoke_path} still hardcodes catalog cardinality via {forbidden}")
 
 for token in [
     '"/internal/v1/module-usage-events"',
@@ -81,7 +120,9 @@ for token in [
 for token in [
     "bool showCommercialMatrix = false;",
     "Widget topicGroupCard",
-    "List<Map<String, dynamic>> get primaryGroups",
+    "selectedGroupKey",
+    "void showTopicOverview()",
+    "void applyRegistryPreset(String preset)",
     "onTap: showTopicOverview",
     "applyRegistryPreset('ACTIVE')",
     "applyRegistryPreset('SOURCE_LINKED')",
@@ -95,9 +136,11 @@ for token in [
     require(token in ui, f"Central-4 Modules UI contract missing: {token}")
 
 technical_literals = {
-    "USD", "EUR", "GBP", "PUBLISHED", "UNPUBLISHED", "IN DEVELOPMENT",
-    "LEGACY REFERENCE", "READY", "himatecorp2025/himate-system",
-    "campaigns.leads | Leads generated",
+    "USD", "EUR", "GBP", "ACTIVE", "UNAVAILABLE", "DEPRECATED",
+    "PUBLISHED", "UNPUBLISHED", "IN DEVELOPMENT", "LEGACY REFERENCE",
+    "READY", "FEATURE", "AUTOMATION", "INTEGRATION", "REPORT",
+    "REQUIRES", "INTEGRATES", "EXTENDS", "CONFLICTS", "REPLACES",
+    "himatecorp2025/himate-system", "campaigns.leads | Leads generated",
 }
 patterns = [
     r"LText\(\s*'([^']+)'",
@@ -105,6 +148,7 @@ patterns = [
     r"\btitle:\s*'([^']+)'",
     r"\bsubtitle:\s*'([^']+)'",
     r"\bprimaryLabel:\s*'([^']+)'",
+    r"\blabel:\s*'([^']+)'",
     r"\bmessage:\s*'([^']+)'",
 ]
 fixed = set()
@@ -120,4 +164,4 @@ missing = sorted(
 )
 require(not missing, "Modules bilingual literal coverage missing: " + ", ".join(missing))
 
-print("Central-4 Modules/topic-registry acceptance: PASS")
+print("Central-4 Modules/topic-registry/cardinality acceptance: PASS")
