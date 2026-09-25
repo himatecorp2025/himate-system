@@ -136,6 +136,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> modulesForGroup(String groupKey) =>
       modules.where((module) => s(module['group_key']) == groupKey).toList();
 
+  List<Map<String, dynamic>> get primaryGroups =>
+      groups.where((group) => group['is_primary_navigation'] == true).toList();
+
   Map<String, dynamic>? groupByKey(String key) {
     for (final group in groups) {
       if (s(group['group_key']) == key) return group;
@@ -1131,7 +1134,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                   PopupMenuItem(value: 'details', child: LText(uiLiteral('Open details'))),
                   PopupMenuItem(value: 'edit', child: LText(uiLiteral('Edit module'))),
                   const PopupMenuDivider(),
-                  for (final group in groups)
+                  for (final group in primaryGroups)
                     if (s(group['group_key']) != s(module['group_key']))
                       PopupMenuItem(
                         value: 'move:' + s(group['group_key']),
@@ -1490,7 +1493,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     subtitle: registrySubtitle,
                     trailing: _MiniCounter(
                       label: topicOverview
-                          ? '${groups.length} ${uiLiteral('topics')} · ${modules.length} ${uiLiteral('modules')}'
+                          ? '${primaryGroups.length} ${uiLiteral('topics')} · ${modules.length} ${uiLiteral('modules')}'
                           : '${filtered.length} ${uiLiteral('modules')}',
                     ),
                   ),
@@ -1508,7 +1511,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final group in groups)
+                      for (final group in primaryGroups)
                         SizedBox(width: width, child: topicGroupCard(group)),
                     ],
                   );
@@ -1544,12 +1547,12 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                   }),
                 ),
                 const SizedBox(height: 12),
-                if (currentGroup != null && groups.length > 1) ...[
+                if (currentGroup != null && primaryGroups.length > 1) ...[
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
                     children: [
-                      for (final group in groups)
+                      for (final group in primaryGroups)
                         if (s(group['group_key']) != selectedGroupKey)
                           ActionChip(
                             avatar: Icon(groupIcon(s(group['group_key'])), size: 15),
