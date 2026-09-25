@@ -65,6 +65,7 @@ func central6BillingMigration() common.Migration {
 			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS cancellation_reason TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS delivery_channel TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS due_date DATE`,
+			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS payment_deadline_at TIMESTAMPTZ`,
 			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT ''`,
 			`UPDATE billing.invoices
 				SET workflow_status=CASE WHEN status='PAID' THEN 'PAID' ELSE 'SENT' END,
@@ -509,12 +510,12 @@ func (a *app) invoiceCollectionApproved(ctx context.Context, invoiceID string) b
 
 func (a *app) invoiceWorkflowMeta(ctx context.Context, invoiceID string) (map[string]any, error) {
 	var workflow, source, approvedBy, sentBy, cancelledBy, cancellationReason, deliveryChannel, notes string
-	var approvedAt, sentAt, cancelledAt, dueDate sql.NullTime
+	var approvedAt, sentAt, cancelledAt, dueDate, paymentDeadlineAt sql.NullTime
 	err := a.db.QueryRowContext(ctx, `SELECT workflow_status,source,approved_at,approved_by,sent_at,sent_by,
-		cancelled_at,cancelled_by,cancellation_reason,delivery_channel,due_date,notes
+		cancelled_at,cancelled_by,cancellation_reason,delivery_channel,due_date,payment_deadline_at,notes
 		FROM billing.invoices WHERE id=$1`, invoiceID).
 		Scan(&workflow,&source,&approvedAt,&approvedBy,&sentAt,&sentBy,
-			&cancelledAt,&cancelledBy,&cancellationReason,&deliveryChannel,&dueDate,&notes)
+			&cancelledAt,&cancelledBy,&cancellationReason,&deliveryChannel,&dueDate,&paymentDeadlineAt,&notes)
 	if err != nil {
 		return nil, err
 	}
@@ -525,6 +526,7 @@ func (a *app) invoiceWorkflowMeta(ctx context.Context, invoiceID string) (map[st
 		"cancelled_at":nullableCentral6Time(cancelledAt),"cancelled_by":cancelledBy,
 		"cancellation_reason":cancellationReason,"delivery_channel":deliveryChannel,
 		"due_date":func() any { if dueDate.Valid { return dueDate.Time.Format("2006-01-02") }; return nil }(),
+		"payment_deadline_at":nullableCentral6Time(paymentDeadlineAt),
 		"notes":notes,
 	}, nil
 }
@@ -694,14 +696,14 @@ func (a *app) invoiceByID(w http.ResponseWriter,r *http.Request) {
 		if workflow!=invoiceApproved{common.APIError(w,409,"INVOICE_STATE","Only APPROVED invoices can be sent");return}
 		next=invoiceSent
 		_,err=tx.ExecContext(r.Context(),`UPDATE billing.invoices SET workflow_status='SENT',sent_at=NOW(),sent_by=$2,
-			delivery_channel='PORTAL_EMAIL' WHERE id=$1`,id,actor)
+			delivery_channel='PORTAL_EMAIL',payment_deadline_at=COALESCE(payment_deadline_at,NOW()+INTERVAL '72 hours') WHERE id=$1`,id,actor)
 		if err==nil{
 			_,err=tx.ExecContext(r.Context(),`INSERT INTO billing.invoice_delivery_outbox(invoice_id,partner_id,channel,status,destination)
 				VALUES($1,$2,'PORTAL','QUEUED','Partner Portal'),($1,$2,'EMAIL','QUEUED','Finance contact')
 				ON CONFLICT(invoice_id,channel) DO NOTHING`,id,partnerID)
 		}
 	case "mark-paid":
-		if workflow!=invoiceSent && workflow!=invoiceApproved{common.APIError(w,409,"INVOICE_STATE","Only APPROVED or SENT invoices can be marked paid");return}
+		if workflow!=invoiceSent{common.APIError(w,409,"INVOICE_STATE","Only SENT invoices can be marked paid");return}
 		next=invoicePaid
 		ref:=strings.TrimSpace(in.PaymentReference);if ref==""{ref="manual:"+id}
 		_,err=tx.ExecContext(r.Context(),`UPDATE billing.invoices SET workflow_status='PAID',status='PAID',provider_status='SUCCEEDED',
@@ -746,10 +748,11 @@ func (a *app) sendInvoicePortalNotification(ctx context.Context,invoiceID,partne
 	if strings.TrimSpace(a.notificationsHost)==""{return}
 	body,_:=json.Marshal(map[string]any{
 		"event_type":"INVOICE_SENT","severity":"INFO","title":"New HIMATE invoice",
-		"message":fmt.Sprintf("Invoice %s is available. Amount: %s %.2f",invoiceID,currency,total),
+		"message":fmt.Sprintf("Invoice %s is available. Amount: %s %.2f. Please settle within 72 hours. Partner Portal remains inactive until payment is recorded and final HIMATE approval is complete.",invoiceID,currency,total),
 		"resource":"billing","partner_id":partnerID,"deep_link":"/partner/app/billing",
 		"delivery_scope":"PARTNER","category":"BILLING","metadata":map[string]any{
 			"invoice_id":invoiceID,"amount":total,"currency":currency,
+			"payment_window_hours":72,
 			"pdf_path":"/partner/api/v1/billing/invoices/"+invoiceID+"/pdf",
 		},
 	})
@@ -818,6 +821,9 @@ func (a *app) invoicePDF(w http.ResponseWriter,r *http.Request,invoiceID string)
 		fmt.Sprintf("Tax: %.2f%% = %.2f",inv["tax_rate_percent"].(float64),inv["tax_amount"].(float64)),
 		fmt.Sprintf("Total: %s %.2f",fmt.Sprint(inv["currency"]),inv["gross_total"].(float64)),
 		"Status: "+workflow,
+	}
+	if deadline,ok:=inv["payment_deadline_at"].(time.Time);ok{
+		lines=append(lines,"Payment deadline: "+deadline.UTC().Format(time.RFC3339))
 	}
 	pdf:=basicPDF(lines)
 	w.Header().Set("Content-Type","application/pdf")
