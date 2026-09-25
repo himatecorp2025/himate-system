@@ -608,66 +608,6 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   String get charityStatus => '${charity['charity_status'] ?? 'NOT_REQUESTED'}'.toUpperCase();
   String planMoney(dynamic value) => intl.NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(number(value));
 
-  Future<List<String>?> chooseFlexModules({List<String>? initial}) async {
-    final selected = <String>{...(initial ?? const <String>[])};
-    final candidates = modules.where((m) =>
-      m['publication_status'] == 'PUBLISHED' &&
-      m['implementation_state'] == 'READY'
-    ).toList();
-
-    return showDialog<List<String>>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: const LText('Choose Flex modules'),
-          content: SizedBox(
-            width: 600,
-            child: SingleChildScrollView(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const LText(
-                  'Choose up to 15 modules. Later Flex module changes take effect on the next calendar-month boundary.',
-                  style: TextStyle(color: brandTextSoft, fontSize: 10.5),
-                ),
-                const SizedBox(height: 12),
-                for (final module in candidates)
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    value: selected.contains('${module['key']}'),
-                    title: LText('${module['label']}'),
-                    subtitle: LText(
-                      '${module['group_label'] ?? ''}',
-                      style: const TextStyle(color: brandTextSoft, fontSize: 9),
-                    ),
-                    onChanged: (value) => setLocal(() {
-                      final key = '${module['key']}';
-                      if (value == true) {
-                        if (selected.length < 15) selected.add(key);
-                      } else {
-                        selected.remove(key);
-                      }
-                    }),
-                  ),
-                const SizedBox(height: 8),
-                LText(
-                  '${selected.length} / 15 selected',
-                  style: const TextStyle(color: brandSuccess, fontWeight: FontWeight.w700),
-                ),
-              ]),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const LText('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, selected.toList()..sort()),
-              child: const LText('Confirm modules'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> requestCharityReview() async {
     final reason = TextEditingController();
     final ok = await showDialog<bool>(
@@ -798,20 +738,14 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
 
   Future<void> selectSubscriptionPlan(Map<String, dynamic> target) async {
     final targetKey = '${target['plan_key']}';
-    List<String> moduleKeys = <String>[];
-
-    if (targetKey == 'FLEX') {
-      final current = plan['active_module_keys'] is List
-          ? (plan['active_module_keys'] as List).map((e) => e.toString()).toList()
-          : <String>[];
-      final chosen = await chooseFlexModules(initial: current);
-      if (chosen == null) return;
-      moduleKeys = chosen;
-    }
-
-    final amount = planBillingFrequency == 'ANNUAL'
-        ? number(target['annual_price'])
-        : number(target['monthly_price']);
+    final netAmount = planBillingFrequency == 'ANNUAL'
+        ? number(target['annual_net_price'] ?? target['annual_price'])
+        : number(target['monthly_net_price'] ?? target['monthly_price']);
+    final grossAmount = planBillingFrequency == 'ANNUAL'
+        ? number(target['annual_gross_price'] ?? netAmount)
+        : number(target['monthly_gross_price'] ?? netAmount);
+    final taxRate = number(target['vat_rate_percent']);
+    final taxLabel = '${target['tax_label'] ?? 'VAT'}';
     final periodLabel = planBillingFrequency == 'ANNUAL' ? 'year' : 'month';
 
     final confirmed = await showDialog<bool>(
@@ -819,7 +753,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       builder: (dialogContext) => AlertDialog(
         title: LText('Choose ${target['display_name']}?'),
         content: LText(
-          'Selected billing: ${planMoney(amount)} / $periodLabel. Upgrades take effect immediately and charge the full plan-price difference. Downgrades keep the current package until its billing boundary; no refund is issued.',
+          'Selected billing: ${planMoney(netAmount)} net / $periodLabel + $taxLabel (${taxRate.toStringAsFixed(2)}%). Current gross: ${planMoney(grossAmount)}. Upgrades take effect immediately and charge the full package-price difference. Downgrades keep the current package until its billing boundary; no refund is issued.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const LText('Cancel')),
@@ -833,8 +767,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
       final response = await widget.api.patch('/partner/api/v1/plan', {
         'plan_key': targetKey,
         'billing_frequency': planBillingFrequency,
-        'module_keys': moduleKeys,
-        'reason': 'Partner Portal plan selection',
+        'reason': 'Partner Portal package selection',
       });
       await load();
       if (!mounted) return;
@@ -847,27 +780,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
           warning: true,
         );
       } else {
-        toast('${target['display_name']} plan updated.');
+        toast('${target['display_name']} package updated.');
       }
-    } catch (e) {
-      if (mounted) toast(e.toString(), failure: true);
-    }
-  }
-
-  Future<void> manageFlexModules() async {
-    final current = plan['active_module_keys'] is List
-        ? (plan['active_module_keys'] as List).map((e) => e.toString()).toList()
-        : <String>[];
-    final chosen = await chooseFlexModules(initial: current);
-    if (chosen == null) return;
-
-    try {
-      final response = await widget.api.put('/partner/api/v1/plan/modules', {
-        'module_keys': chosen,
-        'reason': 'Partner Portal Flex selection',
-      });
-      await load();
-      if (mounted) toast('Flex module set scheduled for ${response['effective_at'] ?? 'next month'}.');
     } catch (e) {
       if (mounted) toast(e.toString(), failure: true);
     }
@@ -1704,10 +1618,10 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
   Widget billingPage() {
     return Content(
       eyebrow: 'COMMERCIAL',
-      title: 'Billing & Subscription',
+      title: 'Billing & Packages',
       subtitle: charityApproved
           ? 'Charity access is approved. Recurring service is complimentary and module access is managed through your approved Charity selection.'
-          : 'Choose monthly or annual billing, manage your subscription plan and review provider-backed invoice history.',
+          : 'Choose monthly or annual billing, manage your package and review provider-backed invoice history.',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _InfoCard(
           title: 'Charity status',
@@ -1748,8 +1662,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             if (constraints.maxWidth < 760) {
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const _SectionHeader(
-                  title: 'Subscription Plans',
-                  subtitle: 'Annual pricing shows the full list price and your discounted annual charge.',
+                  title: 'Packages',
+                  subtitle: 'Package prices are net. VAT is added from the current HIMATE billing policy. Premium includes all current and future eligible modules.',
                 ),
                 const SizedBox(height: 10),
                 SegmentedButton<String>(
@@ -1765,8 +1679,8 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
             return Row(children: [
               const Expanded(
                 child: _SectionHeader(
-                  title: 'Subscription Plans',
-                  subtitle: 'Annual pricing shows the full list price and your discounted annual charge.',
+                  title: 'Packages',
+                  subtitle: 'Package prices are net. VAT is added from the current HIMATE billing policy. Premium includes all current and future eligible modules.',
                 ),
               ),
               const SizedBox(width: 12),
@@ -1808,12 +1722,17 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                             if (currentPlanKey == '${item['plan_key']}') const _StatusPill(label: 'CURRENT'),
                           ]),
                           const SizedBox(height: 10),
-                          if (planBillingFrequency == 'MONTHLY')
+                          if (planBillingFrequency == 'MONTHLY') ...[
                             LText(
-                              '${planMoney(item['monthly_price'])} / month',
+                              '${planMoney(item['monthly_net_price'] ?? item['monthly_price'])} net / month + ${item['tax_label'] ?? 'VAT'}',
                               style: const TextStyle(color: brandGold, fontSize: 18, fontWeight: FontWeight.w800),
-                            )
-                          else ...[
+                            ),
+                            if (number(item['vat_rate_percent']) > 0)
+                              LText(
+                                'Current gross: ${planMoney(item['monthly_gross_price'])}',
+                                style: const TextStyle(color: brandTextSoft, fontSize: 10),
+                              ),
+                          ] else ...[
                             if (number(item['annual_list_price']) > number(item['annual_price']))
                               Text(
                                 planMoney(item['annual_list_price']),
@@ -1824,9 +1743,14 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                                 ),
                               ),
                             LText(
-                              '${planMoney(item['annual_price'])} / year',
+                              '${planMoney(item['annual_net_price'] ?? item['annual_price'])} net / year + ${item['tax_label'] ?? 'VAT'}',
                               style: const TextStyle(color: brandGold, fontSize: 18, fontWeight: FontWeight.w800),
                             ),
+                            if (number(item['vat_rate_percent']) > 0)
+                              LText(
+                                'Current gross: ${planMoney(item['annual_gross_price'])}',
+                                style: const TextStyle(color: brandTextSoft, fontSize: 10),
+                              ),
                             if (number(item['annual_savings']) > 0)
                               LText(
                                 'Save ${planMoney(item['annual_savings'])}',
@@ -1834,28 +1758,31 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                               ),
                           ],
                           const SizedBox(height: 12),
-                          _DefinitionRow(label: 'Modules', value: '${item['module_limit']}'),
                           _DefinitionRow(
-                            label: 'Choice',
-                            value: item['selection_mode'] == 'SELECTABLE'
-                                ? 'Choose your modules'
-                                : 'Fixed HIMATE package',
+                            label: 'Modules',
+                            value: item['selection_mode'] == 'UNLIMITED'
+                                ? 'Unlimited'
+                                : '${item['module_limit'] ?? 0}',
+                          ),
+                          _DefinitionRow(
+                            label: 'Entitlement',
+                            value: item['selection_mode'] == 'UNLIMITED'
+                                ? 'All current + future eligible modules'
+                                : 'Fixed by HIMATE',
                           ),
                           const SizedBox(height: 14),
                           SizedBox(
                             width: double.infinity,
                             child: currentPlanKey == '${item['plan_key']}'
-                                ? OutlinedButton(
-                                    onPressed: currentPlanKey == 'FLEX' && can('modules.write')
-                                        ? manageFlexModules
-                                        : null,
-                                    child: LText(currentPlanKey == 'FLEX' ? 'Manage Flex modules' : 'Current plan'),
+                                ? const OutlinedButton(
+                                    onPressed: null,
+                                    child: LText('Current package'),
                                   )
                                 : FilledButton(
                                     onPressed: can('modules.write') && item['ready'] == true
                                         ? () => selectSubscriptionPlan(item)
                                         : null,
-                                    child: const LText('Choose plan'),
+                                    child: const LText('Choose package'),
                                   ),
                           ),
                         ]),
@@ -1869,7 +1796,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
         ],
         ResponsiveKpiGrid(children: [
           Kpi(
-            label: 'Current plan',
+            label: 'Current package',
             value: hasManagedPlan ? '${plan['display_name'] ?? plan['plan_key']}' : 'Legacy',
             note: '${plan['billing_frequency'] ?? '—'}',
             icon: Icons.workspace_premium_outlined,
@@ -1878,14 +1805,14 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
           Kpi(
             label: 'Current charge',
             value: money(billing['current_total']),
-            note: hasManagedPlan ? 'Plan price' : 'Legacy commercial total',
+            note: hasManagedPlan ? 'Package price' : 'Legacy commercial total',
             icon: Icons.payments_outlined,
             accent: brandGold,
           ),
           Kpi(
             label: 'Module access',
             value: hasManagedPlan
-                ? '${plan['module_limit'] ?? 0}'
+                ? (plan['selection_mode'] == 'UNLIMITED' ? 'Unlimited' : '${plan['module_limit'] ?? 0}')
                 : '${modules.where((m) => m['status'] == 'ACTIVE').length}',
             note: hasManagedPlan ? '${plan['selection_mode'] ?? ''}' : 'Active modules',
             icon: Icons.extension_outlined,
