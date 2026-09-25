@@ -6,34 +6,53 @@ import (
 )
 
 func TestSeedModules(t *testing.T) {
-	if len(seedModules) != 38 {
-		t.Fatalf("expected 38 got %d", len(seedModules))
+	if len(seedModules) < 1 {
+		t.Fatal("module catalog must contain at least one seed module")
+	}
+	groupKeys := map[string]bool{}
+	for _, group := range seedGroups {
+		if strings.TrimSpace(group.Key) == "" {
+			t.Fatal("module group key must not be empty")
+		}
+		groupKeys[group.Key] = true
 	}
 	seen := map[string]bool{}
-	groups := map[string]int{}
 	for _, m := range seedModules {
 		if seen[m.Key] {
 			t.Fatalf("duplicate %s", m.Key)
 		}
 		seen[m.Key] = true
-		groups[m.Group]++
+		if !groupKeys[m.Group] {
+			t.Fatalf("module %s references unknown group %s", m.Key, m.Group)
+		}
+		if strings.TrimSpace(seedModuleHU[m.Key]) == "" {
+			t.Fatalf("missing Hungarian module label for %s", m.Key)
+		}
 	}
-	want := map[string]int{"finance_invoicing": 3, "technical": 16, "marketing": 8, "website_events": 11}
-	for k, n := range want {
-		if groups[k] != n {
-			t.Fatalf("%s expected %d got %d", k, n, groups[k])
+	for _, key := range []string{"needs_assessment", "two_factor_authentication"} {
+		if !seen[key] || !central4PlannedModules[key] {
+			t.Fatalf("planned Central-4 module missing: %s", key)
 		}
 	}
 }
 
-func TestFourPrimaryModuleGroups(t *testing.T) {
-	if len(seedGroups) != 4 {
-		t.Fatalf("expected four primary module groups got %d", len(seedGroups))
+func TestPrimaryModuleGroupBaseline(t *testing.T) {
+	if len(seedGroups) < 1 {
+		t.Fatal("module catalog must contain at least one primary group")
 	}
-	want := []string{"finance_invoicing", "technical", "marketing", "website_events"}
-	for i, key := range want {
-		if seedGroups[i].Key != key {
-			t.Fatalf("group %d expected %s got %s", i, key, seedGroups[i].Key)
+	seen := map[string]bool{}
+	for _, group := range seedGroups {
+		if seen[group.Key] {
+			t.Fatalf("duplicate module group %s", group.Key)
+		}
+		seen[group.Key] = true
+		if strings.TrimSpace(group.Label) == "" || strings.TrimSpace(seedGroupHU[group.Key]) == "" {
+			t.Fatalf("module group %s must have bilingual labels", group.Key)
+		}
+	}
+	for _, key := range []string{"finance_invoicing", "client_operations", "marketing", "website_events", "security_system"} {
+		if !seen[key] {
+			t.Fatalf("required Central-4 baseline group missing: %s", key)
 		}
 	}
 }
@@ -95,15 +114,15 @@ func TestSTART232CommercialDefaultsAreNonNegativeByContract(t *testing.T) {
 
 
 func TestSTART23113MarketplaceCanonicalCoverage(t *testing.T) {
-	if len(marketplaceSummaries) != 38 {
-		t.Fatalf("expected 38 marketplace summaries got %d", len(marketplaceSummaries))
+	if len(seedModules) < 1 {
+		t.Fatal("marketplace requires at least one canonical module")
 	}
 	for _, module := range seedModules {
 		summary, ok := marketplaceSummaries[module.Key]
 		if !ok {
 			t.Fatalf("missing marketplace summary for %s", module.Key)
 		}
-		if summary.EN == "" || summary.HU == "" {
+		if strings.TrimSpace(summary.EN) == "" || strings.TrimSpace(summary.HU) == "" {
 			t.Fatalf("marketplace summary must be bilingual for %s", module.Key)
 		}
 	}
@@ -156,4 +175,64 @@ func TestAutomationManifestContract(t *testing.T) {
 	if err:=validateAutomationManifest(invalid);err==nil{t.Fatal("unsupported automation contract version must be rejected")}
 	duplicate:=map[string]any{"automation":map[string]any{"contract_version":"1","produces_events":[]any{"workflow.qc.passed.v1","workflow.qc.passed.v1"}}}
 	if err:=validateAutomationManifest(duplicate);err==nil{t.Fatal("duplicate event contracts must be rejected")}
+}
+
+
+func TestCentral4CatalogMigrationContract(t *testing.T) {
+	m := central4CatalogMigration()
+	if m.Version != 10 {
+		t.Fatalf("expected catalog migration 10 got %d", m.Version)
+	}
+	joined := ""
+	for _, stmt := range m.Statements {
+		joined += stmt + "\n"
+	}
+	for _, token := range []string{
+		"catalog.module_usage_events",
+		"module_usage_events_module_time_idx",
+		"module_usage_events_partner_module_time_idx",
+		"client_operations",
+		"security_system",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("Central-4 migration missing %s", token)
+		}
+	}
+}
+
+func TestCentral4PlannedModulesAreCatalogEntriesNotCardinalityRules(t *testing.T) {
+	seen := map[string]seedModule{}
+	for _, module := range seedModules {
+		seen[module.Key] = module
+	}
+	for key, group := range map[string]string{
+		"needs_assessment": "client_operations",
+		"two_factor_authentication": "security_system",
+	} {
+		module, ok := seen[key]
+		if !ok {
+			t.Fatalf("planned module missing: %s", key)
+		}
+		if module.Group != group {
+			t.Fatalf("planned module %s group=%s want=%s", key, module.Group, group)
+		}
+		if !central4PlannedModules[key] {
+			t.Fatalf("planned module marker missing: %s", key)
+		}
+	}
+	if len(seedModules) < 1 {
+		t.Fatal("catalog must stay non-empty")
+	}
+}
+
+
+func TestCentral4GoldenTestPartnerDoesNotOverrideInDevelopmentModules(t *testing.T) {
+	if testPartnerExecutionOverride("IN_DEVELOPMENT") {
+		t.Fatal("in-development modules must remain non-executable for Golden Test partners")
+	}
+	for _, state := range []string{"LEGACY_REFERENCE", "READY"} {
+		if !testPartnerExecutionOverride(state) {
+			t.Fatalf("Golden Test execution override unexpectedly blocked for %s", state)
+		}
+	}
 }

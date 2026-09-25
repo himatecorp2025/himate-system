@@ -4,7 +4,7 @@
 
 START-23.11.3 turns the Partner Portal module surface into a discovery-first Module Marketplace without weakening module entitlement or publication controls.
 
-The canonical 38-module HIMATE/Klavierhaus portfolio remains the current marketplace baseline. Every canonical module is discoverable by name and bilingual high-level summary even before its live implementation is released.
+The canonical HIMATE/Klavierhaus portfolio is dynamically sized and must contain at least one module. Every canonical module is discoverable by name and bilingual high-level summary even before its live implementation is released. Adding future modules must not require changing a fixed catalog-size constant.
 
 Discovery visibility is not execution authority.
 
@@ -19,7 +19,7 @@ The Marketplace has four independent concepts:
 
 A module card may therefore be visible without being executable.
 
-## Canonical 38-module baseline
+## Dynamically sized canonical module baseline
 
 The canonical registry remains exactly:
 - Finance & Invoicing: 3;
@@ -150,10 +150,10 @@ Compose acceptance:
 - sh scripts/smoke_start_23_11_3.sh http://127.0.0.1:8080
 
 The acceptance suite must prove:
-1. the 38 canonical modules are discoverable with non-empty marketplace summaries before release;
+1. every canonical module in the current non-empty catalog is discoverable with a non-empty marketplace summary before release;
 2. discoverable unreleased modules are COMING_SOON and non-executable;
 3. after publishing the canonical portfolio and configuring Business, exactly 10 canonical modules are ACTIVE for the Business acceptance partner;
-4. the remaining 28 canonical modules are LOCKED, not hidden;
+4. every remaining released canonical module outside the active Business entitlement is LOCKED, not hidden; planned unreleased modules remain COMING_SOON;
 5. locked canonical modules expose Flex as an upgrade path when eligible;
 6. dashboard and direct Marketplace endpoints return the same enriched state;
 7. direct activation cannot bypass managed-plan entitlement;
@@ -162,7 +162,7 @@ The acceptance suite must prove:
 ## Out of scope
 
 START-23.11.3 does not:
-- change the 38 canonical stable module keys;
+- change existing canonical stable module keys;
 - implement the detailed internal functionality of legacy-reference modules;
 - customize module names/icons/colors per tenant — START-23.11.4 owns that;
 - assign user-level module permissions — START-23.11.5 owns that;

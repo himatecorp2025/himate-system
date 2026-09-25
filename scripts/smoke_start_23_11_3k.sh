@@ -56,7 +56,7 @@ while [ "$i" -le 16 ]; do
 import json,sys
 key=sys.argv[1];i=sys.argv[2]
 print(json.dumps({
- "key":key,"group_key":"technical","label_en":"Commercial Module "+i,"label_hu":"Kereskedelmi modul "+i,
+ "key":key,"group_key":"client_operations","label_en":"Commercial Module "+i,"label_hu":"Kereskedelmi modul "+i,
  "description_en":"START-23.11.3k acceptance","description_hu":"START-23.11.3k elfogadas",
  "currency":"USD","version":"1.0.0","latest_version":"1.0.0",
  "default_monthly_price":25,"default_activation_fee":0,

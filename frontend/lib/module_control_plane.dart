@@ -16,9 +16,12 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> subscriptionRows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptionPlans = <Map<String, dynamic>>[];
   bool showSubscriptionPlans = false;
+  bool showCommercialMatrix = false;
   bool loading = false;
   String? error;
   String query = '';
+  String? selectedGroupKey;
+  String registryPreset = 'TOPICS';
   String groupFilter = 'ALL';
   String typeFilter = 'ALL';
   String commercialQuery = '';
@@ -98,13 +101,91 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final q = query.trim().toLowerCase();
     return modules.where((module) {
       final text = [
-        s(module['label']), s(module['key']), s(module['group_label']),
-        s(module['source_repository']), s(module['source_path']), s(module['owner_team']),
+        s(module['label']), s(module['label_en']), s(module['label_hu']), s(module['key']),
+        s(module['group_label']), s(module['source_repository']), s(module['source_path']), s(module['owner_team']),
       ].join(' ').toLowerCase();
+      final selectedGroupMatches = selectedGroupKey == null || s(module['group_key']) == selectedGroupKey;
+      final presetMatches = switch (registryPreset) {
+        'ACTIVE' => s(module['availability']) == 'ACTIVE' &&
+            s(module['publication_status']) == 'PUBLISHED' &&
+            s(module['implementation_state']) == 'READY',
+        'SOURCE_LINKED' => s(module['source_repository']).trim().isNotEmpty,
+        'RELATIONSHIPS' => ((module['relationship_count'] as num?)?.toInt() ?? 0) > 0,
+        _ => true,
+      };
       return (q.isEmpty || text.contains(q)) &&
+          selectedGroupMatches &&
+          presetMatches &&
           (groupFilter == 'ALL' || s(module['group_key']) == groupFilter) &&
           (typeFilter == 'ALL' || s(module['module_type']) == typeFilter);
     }).toList();
+  }
+
+  String groupLabel(Map<String, dynamic> group) {
+    final key = HimateI18n.activeLocale == 'hu_HU' ? 'label_hu' : 'label_en';
+    final localized = s(group[key]).trim();
+    return localized.isEmpty ? s(group['label']) : localized;
+  }
+
+  String moduleLabelForLocale(Map<String, dynamic> module) {
+    final key = HimateI18n.activeLocale == 'hu_HU' ? 'label_hu' : 'label_en';
+    final localized = s(module[key]).trim();
+    return localized.isEmpty ? s(module['label']) : localized;
+  }
+
+  List<Map<String, dynamic>> modulesForGroup(String groupKey) =>
+      modules.where((module) => s(module['group_key']) == groupKey).toList();
+
+  List<Map<String, dynamic>> get primaryGroups =>
+      groups.where((group) => group['is_primary_navigation'] == true).toList();
+
+  Map<String, dynamic>? groupByKey(String key) {
+    for (final group in groups) {
+      if (s(group['group_key']) == key) return group;
+    }
+    return null;
+  }
+
+  void showTopicOverview() {
+    setState(() {
+      selectedGroupKey = null;
+      registryPreset = 'TOPICS';
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
+    });
+  }
+
+  void applyRegistryPreset(String preset) {
+    setState(() {
+      selectedGroupKey = null;
+      registryPreset = preset;
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
+    });
+  }
+
+  void openTopic(String groupKey) {
+    setState(() {
+      selectedGroupKey = groupKey;
+      registryPreset = 'ALL';
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
+    });
+  }
+
+  Future<void> moveModuleToGroup(Map<String, dynamic> module, String targetGroupKey) async {
+    final current = s(module['group_key']);
+    if (targetGroupKey.isEmpty || targetGroupKey == current) return;
+    try {
+      await widget.api.patch('/api/v1/modules/' + s(module['key']), {'group_key': targetGroupKey});
+      await load();
+      if (mounted) notify('Module moved to ' + groupLabel(groupByKey(targetGroupKey) ?? <String, dynamic>{'label': targetGroupKey}) + '.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
   }
 
   String partnerName(String partnerID) {
@@ -662,6 +743,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     var relationships = <Map<String, dynamic>>[];
     var metrics = <Map<String, dynamic>>[];
     var usage = <Map<String, dynamic>>[];
+    var usageSummary = <String, dynamic>{};
     var detailLoading = true;
     String? detailError;
     var requested = false;
@@ -677,6 +759,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         relationships = items(responses[0]);
         metrics = items(responses[1]);
         usage = items(responses[2]);
+        final rawSummary = responses[2]['usage_summary'];
+        usageSummary = rawSummary is Map ? Map<String, dynamic>.from(rawSummary) : <String, dynamic>{};
         setLocal(() => detailLoading = false);
       } catch (e) {
         setLocal(() { detailLoading = false; detailError = e.toString(); });
@@ -804,7 +888,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
 
           return BrandDialog(
             title: s(module['label']),
-            subtitle: 'Relationships, impact mapping and partner usage for ' + key + '.',
+            subtitle: uiLiteral('Relationships, impact mapping and partner usage for') + ' ' + key + '.',
             icon: Icons.hub_outlined,
             width: 920,
             primaryLabel: 'Close',
@@ -871,9 +955,16 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         const SizedBox(height: 20),
                         _SectionHeader(
                           title: 'Partner Usage',
-                          subtitle: 'Current entitlement state across partners.',
+                          subtitle: 'Current entitlement plus real runtime frequency from successful Partner Portal module operations.',
                           trailing: _MiniCounter(label: usage.where((u) => u['status'] == 'ACTIVE').length.toString() + ' active'),
                         ),
+                        const SizedBox(height: 10),
+                        _RuleStrip(items: [
+                          _RuleItem(Icons.today_outlined, 'Last 7 days', '${usageSummary['events_7d'] ?? 0}'),
+                          _RuleItem(Icons.calendar_month_outlined, 'Last 30 days', '${usageSummary['events_30d'] ?? 0}'),
+                          _RuleItem(Icons.query_stats_outlined, 'All runtime events', '${usageSummary['events_total'] ?? 0}'),
+                          _RuleItem(Icons.business_center_outlined, 'Partners using it', '${usageSummary['partners_with_usage'] ?? 0}'),
+                        ]),
                         const SizedBox(height: 10),
                         if (usage.isEmpty)
                           const _MessageCard(icon: Icons.business_outlined, title: 'No partner usage yet', message: 'The module has not been initialized for a partner.')
@@ -891,6 +982,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                                       _DefinitionRow(label: 'Partner ID', value: s(item['partner_id'])),
                                       _DefinitionRow(label: 'Status', value: _humanize(s(item['status']))),
                                       _DefinitionRow(label: 'Included in base', value: item['included_in_base'] == true ? 'Yes' : 'No'),
+                                      _DefinitionRow(label: 'Runtime uses · 7 days', value: '${item['usage_events_7d'] ?? 0}'),
+                                      _DefinitionRow(label: 'Runtime uses · 30 days', value: '${item['usage_events_30d'] ?? 0}'),
+                                      _DefinitionRow(label: 'Runtime uses · total', value: '${item['usage_events_total'] ?? 0}'),
+                                      _DefinitionRow(label: 'Last used', value: s(item['last_used_at']).isEmpty ? '—' : s(item['last_used_at'])),
                                       _DefinitionRow(label: 'Configured 30-day price', value: commercialMoney(item['partner_price'], s(item['currency']))),
                                       _DefinitionRow(label: 'Activation fee', value: commercialMoney(item['partner_activation_fee'], s(item['currency']))),
                                     ],
@@ -905,53 +1000,169 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     );
   }
 
-  Widget moduleCard(Map<String, dynamic> module) {
-    final sourceRepo = s(module['source_repository']).trim();
-    final sourcePath = s(module['source_path']).trim();
+  IconData groupIcon(String key) {
+    switch (key) {
+      case 'finance_invoicing':
+        return Icons.account_balance_wallet_outlined;
+      case 'client_operations':
+        return Icons.groups_2_outlined;
+      case 'marketing':
+        return Icons.campaign_outlined;
+      case 'website_events':
+        return Icons.language_outlined;
+      case 'security_system':
+        return Icons.security_outlined;
+      default:
+        return Icons.category_outlined;
+    }
+  }
+
+  Widget topicGroupCard(Map<String, dynamic> group) {
+    final key = s(group['group_key']);
+    final groupModules = modulesForGroup(key);
+    final liveReady = groupModules.where((m) =>
+        s(m['availability']) == 'ACTIVE' &&
+        s(m['publication_status']) == 'PUBLISHED' &&
+        s(m['implementation_state']) == 'READY').length;
+    final inDevelopment = groupModules.where((m) => s(m['implementation_state']) == 'IN_DEVELOPMENT').length;
+    final assignments = groupModules.fold<int>(
+      0,
+      (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0),
+    );
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 40, height: 40, decoration: BoxDecoration(color: brandNavy.withOpacity(.07), borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.extension_outlined, color: brandNavy)),
-            const SizedBox(width: 11),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              LText(s(module['label']), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
-              const SizedBox(height: 3),
-              LText(s(module['key']), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            ])),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              _StatusPill(label: s(module['publication_status']).isEmpty ? 'UNPUBLISHED' : s(module['publication_status'])),
-              const SizedBox(height: 4),
-              _StatusPill(label: s(module['implementation_state']).isEmpty ? 'IN_DEVELOPMENT' : s(module['implementation_state'])),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => openTopic(key),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: brandNavy.withOpacity(.07),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(groupIcon(key), color: brandNavy, size: 23),
+              ),
+              const Spacer(),
+              const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 19),
+            ]),
+            const SizedBox(height: 18),
+            LText(
+              groupLabel(group),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            LText(
+              '${groupModules.length} ${uiLiteral('modules')}',
+              style: const TextStyle(color: brandTextSoft, fontSize: 10.5, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 16),
+            Wrap(spacing: 7, runSpacing: 7, children: [
+              _StatusPill(label: '$liveReady ${uiLiteral('live ready')}'),
+              if (inDevelopment > 0) _StatusPill(label: '$inDevelopment ${uiLiteral('in development')}'),
+            ]),
+            const SizedBox(height: 12),
+            LText(
+              '$assignments ${uiLiteral('active partner assignments')}',
+              style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget moduleCard(Map<String, dynamic> module) {
+    final activePartners = (module['active_partner_count'] as num?)?.toInt() ?? 0;
+    final availability = s(module['availability']).isEmpty ? 'ACTIVE' : s(module['availability']);
+    final publication = s(module['publication_status']).isEmpty ? 'UNPUBLISHED' : s(module['publication_status']);
+    final implementation = s(module['implementation_state']).isEmpty ? 'IN_DEVELOPMENT' : s(module['implementation_state']);
+    final ready = availability == 'ACTIVE' && publication == 'PUBLISHED' && implementation == 'READY';
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => manageModule(module),
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: ready ? brandSuccess.withOpacity(.08) : brandNavy.withOpacity(.07),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(Icons.extension_outlined, color: ready ? brandSuccess : brandNavy),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  LText(
+                    moduleLabelForLocale(module),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13.5),
+                  ),
+                  const SizedBox(height: 3),
+                  LText(
+                    s(module['key']),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brandTextSoft, fontSize: 9),
+                  ),
+                ]),
+              ),
+              PopupMenuButton<String>(
+                tooltip: uiLiteral('Module actions'),
+                onSelected: (value) {
+                  if (value == 'details') {
+                    manageModule(module);
+                  } else if (value == 'edit') {
+                    editModule(module);
+                  } else if (value.startsWith('move:')) {
+                    moveModuleToGroup(module, value.substring(5));
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'details', child: LText(uiLiteral('Open details'))),
+                  PopupMenuItem(value: 'edit', child: LText(uiLiteral('Edit module'))),
+                  const PopupMenuDivider(),
+                  for (final group in primaryGroups)
+                    if (s(group['group_key']) != s(module['group_key']))
+                      PopupMenuItem(
+                        value: 'move:' + s(group['group_key']),
+                        child: LText('${uiLiteral('Move to')} ${groupLabel(group)}'),
+                      ),
+                ],
+              ),
+            ]),
+            const SizedBox(height: 14),
+            Wrap(spacing: 7, runSpacing: 7, children: [
+              _StatusPill(label: ready ? 'ACTIVE' : availability),
+              _StatusPill(label: publication),
+              if (implementation != 'READY') _StatusPill(label: implementation),
+            ]),
+            const SizedBox(height: 14),
+            Row(children: [
+              const Icon(Icons.business_outlined, size: 16, color: brandSteel),
+              const SizedBox(width: 6),
+              Expanded(
+                child: LText(
+                  '$activePartners ${uiLiteral('active partners')}',
+                  style: const TextStyle(color: brandTextSoft, fontSize: 10, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Icon(Icons.arrow_forward_rounded, size: 16, color: brandGold),
             ]),
           ]),
-          const SizedBox(height: 14),
-          _DefinitionRow(label: 'Group', value: s(module['group_label']).isEmpty ? s(module['group_key']) : s(module['group_label'])),
-          _DefinitionRow(label: 'Type', value: _humanize(s(module['module_type']).isEmpty ? 'FEATURE' : s(module['module_type']))),
-          _DefinitionRow(label: 'Reference module price', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['reference_monthly_price'] ?? module['default_monthly_price']).toStringAsFixed(2)),
-          _DefinitionRow(label: 'Reference activation fee', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['reference_activation_fee'] ?? module['default_activation_fee']).toStringAsFixed(2)),
-          const _DefinitionRow(label: 'Billing authority', value: 'Partner-specific contract / quote'),
-          _DefinitionRow(label: 'Latest version', value: s(module['latest_version']).isEmpty ? '—' : s(module['latest_version'])),
-          _DefinitionRow(label: 'Owner', value: s(module['owner_team']).isEmpty ? '—' : s(module['owner_team'])),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: brandIvory, borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const LText('SOURCE', style: TextStyle(color: brandSteel, fontWeight: FontWeight.w700, fontSize: 8.5, letterSpacing: .8)),
-              const SizedBox(height: 5),
-              LText(sourceRepo.isEmpty ? 'Source not linked' : sourceRepo + (sourcePath.isEmpty ? '' : ' · ' + sourcePath), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            ]),
-          ),
-          const SizedBox(height: 18),
-          Row(children: [
-            Expanded(child: OutlinedButton.icon(onPressed: () => editModule(module), icon: const Icon(Icons.edit_outlined, size: 17), label: const LText('Edit'))),
-            const SizedBox(width: 8),
-            Expanded(child: FilledButton.icon(onPressed: () => manageModule(module), icon: const Icon(Icons.account_tree_outlined, size: 17), label: const LText('Manage'))),
-          ]),
-        ]),
+        ),
       ),
     );
   }
@@ -1176,194 +1387,332 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   @override
   Widget build(BuildContext context) {
     if (showSubscriptionPlans) return subscriptionPlansPage();
-    final active = modules.where((m) => m['availability'] == 'ACTIVE').length;
+
+    final liveReady = modules.where((m) =>
+        s(m['availability']) == 'ACTIVE' &&
+        s(m['publication_status']) == 'PUBLISHED' &&
+        s(m['implementation_state']) == 'READY').length;
     final linked = modules.where((m) => s(m['source_repository']).trim().isNotEmpty).length;
     final relations = modules.fold<int>(0, (sum, m) => sum + ((m['relationship_count'] as num?)?.toInt() ?? 0));
     final partnerUsage = modules.fold<int>(0, (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0));
+    final currentGroup = selectedGroupKey == null ? null : groupByKey(selectedGroupKey!);
+    final topicOverview = selectedGroupKey == null && registryPreset == 'TOPICS';
+
+    String registryTitle = uiLiteral('Module Topics');
+    String registrySubtitle = uiLiteral('Open a topic to see its modules. Module cards can be moved to another topic from their action menu.');
+    if (currentGroup != null) {
+      registryTitle = groupLabel(currentGroup);
+      registrySubtitle = uiLiteral('Topic modules. Open a card for usage, dependencies and impact details.');
+    } else if (registryPreset == 'ACTIVE') {
+      registryTitle = uiLiteral('Active Modules');
+      registrySubtitle = uiLiteral('READY + PUBLISHED modules currently available for live assignment.');
+    } else if (registryPreset == 'SOURCE_LINKED') {
+      registryTitle = uiLiteral('Source Linked');
+      registrySubtitle = uiLiteral('Modules with an authoritative Git/source identity configured.');
+    } else if (registryPreset == 'RELATIONSHIPS') {
+      registryTitle = uiLiteral('Module Relationships');
+      registrySubtitle = uiLiteral('Modules participating in dependency, integration, extension, conflict or replacement relationships.');
+    }
 
     return Content(
-      eyebrow: 'MODULE CONTROL PLANE',
-      title: 'Modules',
-      subtitle: 'Authoritative registry plus partner-by-partner commercial pricing, activation fees, subscription periods, dependencies and usage.',
+      eyebrow: uiLiteral('MODULE CONTROL PLANE'),
+      title: uiLiteral('Modules'),
+      subtitle: uiLiteral('Topic-driven module registry, partner usage and commercial control in one authoritative workspace.'),
       actions: [
         OutlinedButton.icon(
           onPressed: () => setState(() => showSubscriptionPlans = true),
           icon: const Icon(Icons.workspace_premium_outlined),
-          label: const LText('Subscription Plans'),
+          label: LText(uiLiteral('Subscription Plans')),
         ),
-        OutlinedButton.icon(onPressed: loading ? null : addGroup, icon: const Icon(Icons.category_outlined), label: const LText('Add group')),
-        FilledButton.icon(onPressed: loading || groups.isEmpty ? null : addModule, icon: const Icon(Icons.add_box_outlined), label: const LText('Add module')),
+        OutlinedButton.icon(
+          onPressed: () => setState(() => showCommercialMatrix = !showCommercialMatrix),
+          icon: Icon(showCommercialMatrix ? Icons.expand_less_rounded : Icons.price_change_outlined),
+          label: LText(uiLiteral(showCommercialMatrix ? 'Hide Commercial Matrix' : 'Commercial Matrix')),
+        ),
+        OutlinedButton.icon(
+          onPressed: loading ? null : addGroup,
+          icon: const Icon(Icons.category_outlined),
+          label: LText(uiLiteral('Add group')),
+        ),
+        FilledButton.icon(
+          onPressed: loading || groups.isEmpty ? null : addModule,
+          icon: const Icon(Icons.add_box_outlined),
+          label: LText(uiLiteral('Add module')),
+        ),
       ],
       child: error != null && modules.isEmpty
-          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Module Control Plane unavailable', message: error!)
+          ? _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Module Control Plane unavailable'), message: error!)
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ResponsiveKpiGrid(children: [
-                Kpi(label: 'Module registry', value: modules.length.toString(), note: 'Canonical + custom modules', icon: Icons.hub_outlined, accent: brandNavy),
-                Kpi(label: 'Active modules', value: active.toString(), note: 'Available for assignment', icon: Icons.check_circle_outline_rounded, accent: brandSuccess),
-                Kpi(label: 'Source linked', value: linked.toString(), note: 'Git/source identity configured', icon: Icons.code_outlined, accent: brandSteel),
-                Kpi(label: 'Relationships', value: relations.toString(), note: partnerUsage.toString() + ' active partner assignments', icon: Icons.account_tree_outlined, accent: brandGold),
+                Kpi(
+                  label: uiLiteral('Module registry'),
+                  value: modules.length.toString(),
+                  note: uiLiteral('Canonical + custom modules'),
+                  icon: Icons.hub_outlined,
+                  accent: brandNavy,
+                  onTap: showTopicOverview,
+                ),
+                Kpi(
+                  label: uiLiteral('Active modules'),
+                  value: liveReady.toString(),
+                  note: uiLiteral('READY + PUBLISHED for live assignment'),
+                  icon: Icons.check_circle_outline_rounded,
+                  accent: brandSuccess,
+                  onTap: () => applyRegistryPreset('ACTIVE'),
+                ),
+                Kpi(
+                  label: uiLiteral('Source linked'),
+                  value: linked.toString(),
+                  note: uiLiteral('Git/source identity configured'),
+                  icon: Icons.code_outlined,
+                  accent: brandSteel,
+                  onTap: () => applyRegistryPreset('SOURCE_LINKED'),
+                ),
+                Kpi(
+                  label: uiLiteral('Relationships'),
+                  value: relations.toString(),
+                  note: '$partnerUsage ${uiLiteral('active partner assignments')}',
+                  icon: Icons.account_tree_outlined,
+                  accent: brandGold,
+                  onTap: () => applyRegistryPreset('RELATIONSHIPS'),
+                ),
               ]),
-              const SizedBox(height: 22),
-              _SectionHeader(
-                title: 'Partner × Module Commercial Matrix',
-                subtitle: 'Authoritative partner assignment, recurring price, activation fee and current subscription period in one control plane.',
-                trailing: _MiniCounter(label: filteredCommercialRows.length.toString() + ' assignments'),
-              ),
+              const SizedBox(height: 24),
+              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                if (!topicOverview) ...[
+                  IconButton(
+                    tooltip: uiLiteral('Back to module topics'),
+                    onPressed: showTopicOverview,
+                    icon: const Icon(Icons.arrow_back_rounded),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Expanded(
+                  child: _SectionHeader(
+                    title: registryTitle,
+                    subtitle: registrySubtitle,
+                    trailing: _MiniCounter(
+                      label: topicOverview
+                          ? '${primaryGroups.length} ${uiLiteral('topics')} · ${modules.length} ${uiLiteral('modules')}'
+                          : '${filtered.length} ${uiLiteral('modules')}',
+                    ),
+                  ),
+                ),
+              ]),
               const SizedBox(height: 12),
-              _FilterSurface(
-                child: LayoutBuilder(builder: (context, constraints) {
-                  final search = TextField(
-                    onChanged: (value) => setState(() { commercialQuery = value; commercialShown = 120; }),
-                    decoration: InputDecoration(hintText: uiLiteral('Search partner or module...'), prefixIcon: Icon(Icons.search_rounded)),
-                  );
-                  final partner = DropdownButtonFormField<String>(
-                    value: commercialPartnerFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('Partner')),
-                    items: [
-                      const DropdownMenuItem(value: 'ALL', child: LText('All partners')),
-                      for (final item in partners)
-                        DropdownMenuItem(value: s(item['id']), child: LText(partnerName(s(item['id'])))),
-                    ],
-                    onChanged: (value) => setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; }),
-                  );
-                  final module = DropdownButtonFormField<String>(
-                    value: commercialModuleFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('Module')),
-                    items: [
-                      const DropdownMenuItem(value: 'ALL', child: LText('All modules')),
-                      for (final item in modules)
-                        DropdownMenuItem(value: s(item['key']), child: LText(s(item['label']))),
-                    ],
-                    onChanged: (value) => setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; }),
-                  );
-                  final status = DropdownButtonFormField<String>(
-                    value: commercialStatusFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('State')),
-                    items: const [
-                      DropdownMenuItem(value: 'ALL', child: LText('All states')),
-                      DropdownMenuItem(value: 'ACTIVE', child: LText('Active')),
-                      DropdownMenuItem(value: 'NOT_LICENSED', child: LText('Not licensed')),
-                      DropdownMenuItem(value: 'MAINTENANCE', child: LText('Maintenance')),
-                    ],
-                    onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
-                  );
-                  final perspective = Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+              if (topicOverview)
+                LayoutBuilder(builder: (context, constraints) {
+                  final width = constraints.maxWidth < 640
+                      ? constraints.maxWidth
+                      : constraints.maxWidth < 1060
+                          ? (constraints.maxWidth - 12) / 2
+                          : (constraints.maxWidth - 24) / 3;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
                     children: [
-                      ChoiceChip(
-                        selected: commercialPerspective == 'PARTNER',
-                        label: const LText('View by partner'),
-                        onSelected: (_) => setState(() => commercialPerspective = 'PARTNER'),
-                      ),
-                      ChoiceChip(
-                        selected: commercialPerspective == 'MODULE',
-                        label: const LText('View by module'),
-                        onSelected: (_) => setState(() => commercialPerspective = 'MODULE'),
-                      ),
+                      for (final group in primaryGroups)
+                        SizedBox(width: width, child: topicGroupCard(group)),
                     ],
                   );
-                  if (constraints.maxWidth < 760) {
-                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      search,
-                      const SizedBox(height: 10),
-                      partner,
-                      const SizedBox(height: 10),
-                      module,
-                      const SizedBox(height: 10),
-                      status,
-                      const SizedBox(height: 10),
-                      perspective,
+                })
+              else ...[
+                _FilterSurface(
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final search = TextField(
+                      onChanged: (value) => setState(() => query = value),
+                      decoration: InputDecoration(
+                        hintText: uiLiteral('Search modules...'),
+                        prefixIcon: const Icon(Icons.search_rounded),
+                      ),
+                    );
+                    final type = DropdownButtonFormField<String>(
+                      value: typeFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('Type')),
+                      items: [
+                        DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All types'))),
+                        for (final value in moduleTypes)
+                          DropdownMenuItem(value: value, child: LText(uiLiteral(_humanize(value)))),
+                      ],
+                      onChanged: (value) => setState(() => typeFilter = value ?? 'ALL'),
+                    );
+                    if (constraints.maxWidth < 760) {
+                      return Column(children: [search, const SizedBox(height: 10), type]);
+                    }
+                    return Row(children: [
+                      Expanded(flex: 2, child: search),
+                      const SizedBox(width: 10),
+                      Expanded(child: type),
                     ]);
-                  }
-                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: partner)]),
-                    const SizedBox(height: 10),
-                    Row(children: [Expanded(child: module), const SizedBox(width: 10), Expanded(child: status)]),
-                    const SizedBox(height: 10),
-                    perspective,
-                  ]);
-                }),
-              ),
-              const SizedBox(height: 12),
-              Builder(builder: (context) {
-                final rows = filteredCommercialRows;
-                if (rows.isEmpty) {
-                  return const _MessageCard(
-                    icon: Icons.price_change_outlined,
-                    title: 'No partner-module assignments found',
-                    message: 'Adjust the filters or create partners/modules to populate the commercial matrix.',
-                  );
-                }
-                final visibleRows = rows.take(commercialShown).toList();
-                return Column(children: [
+                  }),
+                ),
+                const SizedBox(height: 12),
+                if (currentGroup != null && primaryGroups.length > 1) ...[
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      for (final group in primaryGroups)
+                        if (s(group['group_key']) != selectedGroupKey)
+                          ActionChip(
+                            avatar: Icon(groupIcon(s(group['group_key'])), size: 15),
+                            label: LText('${uiLiteral('Browse')} ${groupLabel(group)}'),
+                            onPressed: () => openTopic(s(group['group_key'])),
+                          ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (filtered.isEmpty)
+                  _MessageCard(
+                    icon: Icons.inventory_2_outlined,
+                    title: uiLiteral('No modules found'),
+                    message: uiLiteral('No modules match the current topic or filters.'),
+                  )
+                else
                   LayoutBuilder(builder: (context, constraints) {
-                    final width = constraints.maxWidth < 680
+                    final width = constraints.maxWidth < 650
                         ? constraints.maxWidth
-                        : constraints.maxWidth < 1120
+                        : constraints.maxWidth < 1050
                             ? (constraints.maxWidth - 12) / 2
                             : (constraints.maxWidth - 24) / 3;
                     return Wrap(
                       spacing: 12,
                       runSpacing: 12,
-                      children: [for (final row in visibleRows) SizedBox(width: width, child: commercialCard(row))],
+                      children: [
+                        for (final module in filtered)
+                          SizedBox(width: width, child: moduleCard(module)),
+                      ],
                     );
                   }),
-                  if (visibleRows.length < rows.length) ...[
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () => setState(() => commercialShown += 120),
-                      icon: const Icon(Icons.expand_more_rounded),
-                      label: LText('Show more · ' + (rows.length - visibleRows.length).toString() + ' remaining'),
-                    ),
-                  ],
-                ]);
-              }),
-              const SizedBox(height: 26),
+              ],
+              const SizedBox(height: 28),
               _SectionHeader(
-                title: 'Module Registry',
-                subtitle: 'Source code remains versioned in Git; HIMATE stores the authoritative identity, source pointer, release and commercial metadata.',
-                trailing: _MiniCounter(label: filtered.length.toString() + ' shown'),
+                title: uiLiteral('Partner × Module Commercial Matrix'),
+                subtitle: uiLiteral('Partner-specific assignment, recurring price, activation fee and subscription state remain available without dominating the registry view.'),
+                trailing: OutlinedButton.icon(
+                  onPressed: () => setState(() => showCommercialMatrix = !showCommercialMatrix),
+                  icon: Icon(showCommercialMatrix ? Icons.expand_less_rounded : Icons.expand_more_rounded),
+                  label: LText(uiLiteral(showCommercialMatrix ? 'Hide matrix' : 'Open matrix')),
+                ),
               ),
-              const SizedBox(height: 12),
-              _FilterSurface(
-                child: LayoutBuilder(builder: (context, constraints) {
-                  final search = TextField(
-                    onChanged: (value) => setState(() => query = value),
-                    decoration: InputDecoration(hintText: uiLiteral('Search modules, source or owner...'), prefixIcon: Icon(Icons.search_rounded)),
-                  );
-                  final group = DropdownButtonFormField<String>(
-                    value: groupFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('Group')),
-                    items: [
-                      const DropdownMenuItem(value: 'ALL', child: LText('All groups')),
-                      for (final item in groups) DropdownMenuItem(value: s(item['group_key']), child: LText(s(item['label']))),
+              if (showCommercialMatrix) ...[
+                const SizedBox(height: 12),
+                _FilterSurface(
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final search = TextField(
+                      onChanged: (value) => setState(() { commercialQuery = value; commercialShown = 120; }),
+                      decoration: InputDecoration(hintText: uiLiteral('Search partner or module...'), prefixIcon: const Icon(Icons.search_rounded)),
+                    );
+                    final partner = DropdownButtonFormField<String>(
+                      value: commercialPartnerFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('Partner')),
+                      items: [
+                        DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All partners'))),
+                        for (final item in partners)
+                          DropdownMenuItem(value: s(item['id']), child: LText(partnerName(s(item['id'])))),
+                      ],
+                      onChanged: (value) => setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; }),
+                    );
+                    final module = DropdownButtonFormField<String>(
+                      value: commercialModuleFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('Module')),
+                      items: [
+                        DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All modules'))),
+                        for (final item in modules)
+                          DropdownMenuItem(value: s(item['key']), child: LText(moduleLabelForLocale(item))),
+                      ],
+                      onChanged: (value) => setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; }),
+                    );
+                    final status = DropdownButtonFormField<String>(
+                      value: commercialStatusFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('State')),
+                      items: [
+                        DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All states'))),
+                        DropdownMenuItem(value: 'ACTIVE', child: LText(uiLiteral('Active'))),
+                        DropdownMenuItem(value: 'NOT_LICENSED', child: LText(uiLiteral('Not licensed'))),
+                        DropdownMenuItem(value: 'MAINTENANCE', child: LText(uiLiteral('Maintenance'))),
+                      ],
+                      onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
+                    );
+                    final perspective = Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ChoiceChip(
+                          selected: commercialPerspective == 'PARTNER',
+                          label: LText(uiLiteral('View by partner')),
+                          onSelected: (_) => setState(() => commercialPerspective = 'PARTNER'),
+                        ),
+                        ChoiceChip(
+                          selected: commercialPerspective == 'MODULE',
+                          label: LText(uiLiteral('View by module')),
+                          onSelected: (_) => setState(() => commercialPerspective = 'MODULE'),
+                        ),
+                      ],
+                    );
+                    if (constraints.maxWidth < 760) {
+                      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        search,
+                        const SizedBox(height: 10),
+                        partner,
+                        const SizedBox(height: 10),
+                        module,
+                        const SizedBox(height: 10),
+                        status,
+                        const SizedBox(height: 10),
+                        perspective,
+                      ]);
+                    }
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: partner)]),
+                      const SizedBox(height: 10),
+                      Row(children: [Expanded(child: module), const SizedBox(width: 10), Expanded(child: status)]),
+                      const SizedBox(height: 10),
+                      perspective,
+                    ]);
+                  }),
+                ),
+                const SizedBox(height: 12),
+                Builder(builder: (context) {
+                  final rows = filteredCommercialRows;
+                  if (rows.isEmpty) {
+                    return _MessageCard(
+                      icon: Icons.price_change_outlined,
+                      title: uiLiteral('No partner-module assignments found'),
+                      message: uiLiteral('Adjust the filters or create partners/modules to populate the commercial matrix.'),
+                    );
+                  }
+                  final visibleRows = rows.take(commercialShown).toList();
+                  return Column(children: [
+                    LayoutBuilder(builder: (context, constraints) {
+                      final width = constraints.maxWidth < 680
+                          ? constraints.maxWidth
+                          : constraints.maxWidth < 1120
+                              ? (constraints.maxWidth - 12) / 2
+                              : (constraints.maxWidth - 24) / 3;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final row in visibleRows)
+                            SizedBox(width: width, child: commercialCard(row)),
+                        ],
+                      );
+                    }),
+                    if (visibleRows.length < rows.length) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () => setState(() => commercialShown += 120),
+                        icon: const Icon(Icons.expand_more_rounded),
+                        label: LText(
+                          '${uiLiteral('Show more')} · ${rows.length - visibleRows.length} ${uiLiteral('remaining')}',
+                        ),
+                      ),
                     ],
-                    onChanged: (value) => setState(() => groupFilter = value ?? 'ALL'),
-                  );
-                  final type = DropdownButtonFormField<String>(
-                    value: typeFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('Type')),
-                    items: [
-                      const DropdownMenuItem(value: 'ALL', child: LText('All types')),
-                      for (final value in moduleTypes) DropdownMenuItem(value: value, child: LText(_humanize(value))),
-                    ],
-                    onChanged: (value) => setState(() => typeFilter = value ?? 'ALL'),
-                  );
-                  if (constraints.maxWidth < 760) return Column(children: [search, const SizedBox(height: 10), group, const SizedBox(height: 10), type]);
-                  return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: group), const SizedBox(width: 10), Expanded(child: type)]);
-                }),
-              ),
-              const SizedBox(height: 12),
-              if (filtered.isEmpty)
-                const _MessageCard(icon: Icons.inventory_2_outlined, title: 'No modules found', message: 'No modules match the current filters.')
-              else
-                LayoutBuilder(builder: (context, constraints) {
-                  final width = constraints.maxWidth < 650 ? constraints.maxWidth : constraints.maxWidth < 1050 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
-                  return Wrap(spacing: 12, runSpacing: 12, children: [
-                    for (final module in filtered) SizedBox(width: width, child: moduleCard(module)),
                   ]);
                 }),
+              ],
               if (loading) ...[
                 const SizedBox(height: 12),
                 const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),

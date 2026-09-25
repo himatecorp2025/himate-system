@@ -22,31 +22,33 @@ type seedGroup struct {
 
 var seedGroups = []seedGroup{
 	{"finance_invoicing", "Finance & Invoicing", 1},
-	{"technical", "Technical Operations", 2},
+	{"client_operations", "Client & Operations", 2},
 	{"marketing", "Marketing", 3},
 	{"website_events", "Website & Events", 4},
+	{"security_system", "Security & System", 5},
+}
+
+var seedGroupHU = map[string]string{
+	"finance_invoicing": "Pénzügy és számlázás",
+	"client_operations":  "Ügyfél- és működéskezelés",
+	"marketing":          "Marketing",
+	"website_events":     "Weboldal és események",
+	"security_system":    "Biztonság és rendszer",
 }
 
 var seedModules = []seedModule{
 	{"finance", "Balance Sheet", "finance_invoicing"},
 	{"income_statement", "Income Statement", "finance_invoicing"},
 	{"invoice_documents", "Invoices Documents", "finance_invoicing"},
-	{"audit_log", "Audit Log", "technical"},
-	{"backups", "Backups", "technical"},
-	{"pianos", "Client Piano", "technical"},
-	{"contacts", "Clients", "technical"},
-	{"closed_jobs", "Closed Jobs", "technical"},
-	{"knowledge_base", "Company Documents Archive", "technical"},
-	{"company_data", "Corporate Data", "technical"},
-	{"inventory", "Inventory", "technical"},
-	{"partners", "Partners", "technical"},
-	{"planned_jobs", "Planned Jobs", "technical"},
-	{"scheduler", "Scheduler", "technical"},
-	{"website_services", "Services", "technical"},
-	{"settings", "Settings", "technical"},
-	{"system_integrations", "System Activation & Integrations", "technical"},
-	{"users", "Users", "technical"},
-	{"workshop_workflow", "Workshop Workflow", "technical"},
+	{"pianos", "Client Piano", "client_operations"},
+	{"contacts", "Clients", "client_operations"},
+	{"closed_jobs", "Closed Jobs", "client_operations"},
+	{"inventory", "Inventory", "client_operations"},
+	{"partners", "Partners", "client_operations"},
+	{"planned_jobs", "Planned Jobs", "client_operations"},
+	{"scheduler", "Scheduler", "client_operations"},
+	{"workshop_workflow", "Workshop Workflow", "client_operations"},
+	{"needs_assessment", "Needs Assessment", "client_operations"},
 	{"marketing_overview", "Campaign Overview", "marketing"},
 	{"customer_inbox", "Customer Inbox", "marketing"},
 	{"website_reviews", "Reviews", "marketing"},
@@ -55,6 +57,7 @@ var seedModules = []seedModule{
 	{"tracking_cookies", "Tracking & Cookies", "marketing"},
 	{"seo_keywords", "SEO & Keywords", "marketing"},
 	{"heatmap", "Consent Heatmap", "marketing"},
+	{"website_services", "Services", "website_events"},
 	{"website_artists", "Artists", "website_events"},
 	{"website_contacts", "Contacts", "website_events"},
 	{"digital_attendance", "Digital Attendance", "website_events"},
@@ -66,6 +69,62 @@ var seedModules = []seedModule{
 	{"publish_preview", "Publish & Preview", "website_events"},
 	{"showroom_pianos", "Showroom Pianos", "website_events"},
 	{"event_tickets", "Ticket Reservation", "website_events"},
+	{"audit_log", "Audit Log", "security_system"},
+	{"backups", "Backups", "security_system"},
+	{"knowledge_base", "Company Documents Archive", "security_system"},
+	{"company_data", "Corporate Data", "security_system"},
+	{"settings", "Settings", "security_system"},
+	{"system_integrations", "System Activation & Integrations", "security_system"},
+	{"users", "Users", "security_system"},
+	{"two_factor_authentication", "Two-Factor Authentication", "security_system"},
+}
+
+var seedModuleHU = map[string]string{
+	"finance": "Mérleg",
+	"income_statement": "Eredménykimutatás",
+	"invoice_documents": "Számladokumentumok",
+	"pianos": "Ügyfélzongorák",
+	"contacts": "Ügyfelek",
+	"closed_jobs": "Lezárt munkák",
+	"inventory": "Leltár",
+	"partners": "Partnerek",
+	"planned_jobs": "Tervezett munkák",
+	"scheduler": "Ütemező",
+	"workshop_workflow": "Műhely workflow",
+	"needs_assessment": "Igényfelmérő",
+	"marketing_overview": "Kampányáttekintés",
+	"customer_inbox": "Ügyfél postaláda",
+	"website_reviews": "Értékelések",
+	"campaigns_utm": "Kampányok és UTM",
+	"leads": "Érdeklődők",
+	"tracking_cookies": "Követés és sütik",
+	"seo_keywords": "SEO és kulcsszavak",
+	"heatmap": "Hozzájárulási hőtérkép",
+	"website_services": "Szolgáltatások",
+	"website_artists": "Művészek",
+	"website_contacts": "Kapcsolatok",
+	"digital_attendance": "Digitális jelenlét",
+	"events": "Események",
+	"event_guest_list": "Vendégadatok",
+	"event_invitations": "Meghívók",
+	"media_library": "Médiatár",
+	"pages_content": "Oldalak és tartalom",
+	"publish_preview": "Publikálás és előnézet",
+	"showroom_pianos": "Bemutatótermi zongorák",
+	"event_tickets": "Jegyfoglalás",
+	"audit_log": "Auditnapló",
+	"backups": "Biztonsági mentések",
+	"knowledge_base": "Céges dokumentumarchívum",
+	"company_data": "Céges adatok",
+	"settings": "Beállítások",
+	"system_integrations": "Rendszeraktiválás és integrációk",
+	"users": "Felhasználók",
+	"two_factor_authentication": "Kétfaktoros azonosítás",
+}
+
+var central4PlannedModules = map[string]bool{
+	"needs_assessment": true,
+	"two_factor_authentication": true,
 }
 
 var moduleStates = map[string]bool{"ACTIVE": true, "NOT_LICENSED": true, "MAINTENANCE": true}
@@ -106,6 +165,7 @@ func main() {
 	mux.HandleFunc("/internal/v1/partners/", a.partnerModules)
 	mux.HandleFunc("/internal/v1/module-price-quotes", a.internalModulePriceQuotes)
 	mux.HandleFunc("/internal/v1/partner-portal/", a.partnerPortal)
+	mux.HandleFunc("/internal/v1/module-usage-events", a.moduleUsageEvents)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	common.Run(log, "catalog", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
 }
@@ -238,17 +298,32 @@ func (a *app) migrate(ctx context.Context) error {
 		}},
 		start23112CatalogPlanMigration(),
 		start23113MarketplaceMigration(),
+		central4CatalogMigration(),
 	}); err != nil {
 		return err
 	}
 
 	for _, g := range seedGroups {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order,is_primary_navigation) VALUES($1,$2,$2,$2,$3,TRUE) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,sort_order=EXCLUDED.sort_order,is_primary_navigation=TRUE`, g.Key, g.Label, g.Order); err != nil {
+		hu := strings.TrimSpace(seedGroupHU[g.Key])
+		if hu == "" { hu = g.Label }
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order,is_primary_navigation) VALUES($1,$2,$2,$3,$4,TRUE) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=EXCLUDED.label_hu,sort_order=EXCLUDED.sort_order,is_primary_navigation=TRUE`, g.Key, g.Label, hu, g.Order); err != nil {
 			return err
 		}
 	}
 	for _, m := range seedModules {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability,publication_status,implementation_state,legacy_reference) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified legacy reference module','Klavierhaus verified legacy reference module','Klavierhaus verified legacy reference module',TRUE,'ACTIVE','UNPUBLISHED','LEGACY_REFERENCE','KLAVIERHAUS_LEGACY') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,group_key=EXCLUDED.group_key,system=TRUE,implementation_state=CASE WHEN existing.implementation_state='IN_DEVELOPMENT' THEN 'LEGACY_REFERENCE' ELSE existing.implementation_state END,legacy_reference=CASE WHEN existing.legacy_reference='' THEN 'KLAVIERHAUS_LEGACY' ELSE existing.legacy_reference END`, m.Key, m.Label, m.Group); err != nil {
+		hu := strings.TrimSpace(seedModuleHU[m.Key])
+		if hu == "" { hu = m.Label }
+		descriptionEN := "Klavierhaus verified legacy reference module"
+		descriptionHU := "Klavierhaus ellenőrzött legacy referencia modul"
+		implementationState := "LEGACY_REFERENCE"
+		legacyReference := "KLAVIERHAUS_LEGACY"
+		if central4PlannedModules[m.Key] {
+			descriptionEN = "Planned HIMATE module. Functional implementation will be delivered in its dedicated module development cycle."
+			descriptionHU = "Tervezett HIMATE modul. A funkcionális megvalósítás a külön modulfejlesztési körben készül el."
+			implementationState = "IN_DEVELOPMENT"
+			legacyReference = ""
+		}
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability,publication_status,implementation_state,legacy_reference) VALUES($1,$2,$2,$3,$4,$5,$5,$6,TRUE,'ACTIVE','UNPUBLISHED',$7,$8) ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=EXCLUDED.label_hu,group_key=EXCLUDED.group_key,system=TRUE,implementation_state=CASE WHEN existing.implementation_state='IN_DEVELOPMENT' AND EXCLUDED.implementation_state='LEGACY_REFERENCE' THEN 'LEGACY_REFERENCE' ELSE existing.implementation_state END,legacy_reference=CASE WHEN existing.legacy_reference='' AND EXCLUDED.legacy_reference<>'' THEN EXCLUDED.legacy_reference ELSE existing.legacy_reference END`, m.Key, m.Label, hu, m.Group, descriptionEN, descriptionHU, implementationState, legacyReference); err != nil {
 			return err
 		}
 		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at,entitlement_state,commercial_configured,contract_currency,quote_reference,commercial_effective_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW(),'ACTIVE',TRUE,'USD','REFERENCE-PARTNER',NOW()) ON CONFLICT(partner_id,module_key) DO UPDATE SET entitlement_state=CASE WHEN catalog.partner_modules.status='ACTIVE' THEN 'ACTIVE' ELSE catalog.partner_modules.entitlement_state END`, m.Key); err != nil {
@@ -291,10 +366,10 @@ func (a *app) groups(w http.ResponseWriter, r *http.Request) {
 		if en==""{en=legacy}; if hu==""{hu=legacy}
 		if en==""||hu==""{common.APIError(w,400,"VALIDATION","English and Hungarian group labels are required");return}
 		if in.SortOrder<=0 { _ = a.db.QueryRow(`SELECT COALESCE(MAX(sort_order),0)+1 FROM catalog.module_groups`).Scan(&in.SortOrder) }
-		if _,err:=a.db.Exec(`INSERT INTO catalog.module_groups(group_key,label,label_en,label_hu,sort_order) VALUES($1,$2,$2,$3,$4)`,in.Key,en,hu,in.SortOrder);err!=nil{
+		if _,err:=a.db.Exec(`INSERT INTO catalog.module_groups(group_key,label,label_en,label_hu,sort_order,is_primary_navigation) VALUES($1,$2,$2,$3,$4,TRUE)`,in.Key,en,hu,in.SortOrder);err!=nil{
 			common.APIError(w,409,"CONFLICT","Module group could not be created");return
 		}
-		common.JSON(w,201,map[string]any{"group_key":in.Key,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":in.SortOrder})
+		common.JSON(w,201,map[string]any{"group_key":in.Key,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":in.SortOrder,"is_primary_navigation":true})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
@@ -553,15 +628,72 @@ func (a *app) moduleUsage(w http.ResponseWriter,r *http.Request,key string){
 	if err!=nil{common.APIError(w,500,"DB","Could not load module usage");return}
 	defer rows.Close()
 	items:=[]map[string]any{}
+	byPartner:=map[string]map[string]any{}
 	counts:=map[string]int{}
+	activePartners:=0
 	for rows.Next(){
 		item,scanErr:=scanPartnerModule(rows, common.RequestLocale(r))
 		if scanErr!=nil{common.APIError(w,500,"DB","Could not decode module usage");return}
-		counts[fmt.Sprint(item["status"])]++
+		status:=fmt.Sprint(item["status"])
+		counts[status]++
+		if status=="ACTIVE"{activePartners++}
+		partnerID:=fmt.Sprint(item["partner_id"])
+		item["usage_events_7d"]=0
+		item["usage_events_30d"]=0
+		item["usage_events_total"]=0
+		item["last_used_at"]=nil
+		byPartner[partnerID]=item
 		items=append(items,item)
 	}
 	if err:=rows.Err();err!=nil{common.APIError(w,500,"DB","Could not load complete module usage");return}
-	common.JSON(w,200,map[string]any{"items":items,"count":len(items),"status_counts":counts})
+
+	eventRows,err:=a.db.Query(`SELECT partner_id,
+		COUNT(*) FILTER (WHERE occurred_at>=NOW()-INTERVAL '7 days') AS events_7d,
+		COUNT(*) FILTER (WHERE occurred_at>=NOW()-INTERVAL '30 days') AS events_30d,
+		COUNT(*) AS events_total,
+		MAX(occurred_at) AS last_used_at
+		FROM catalog.module_usage_events
+		WHERE module_key=$1
+		GROUP BY partner_id
+		ORDER BY events_total DESC,partner_id`,key)
+	if err!=nil{common.APIError(w,500,"DB","Could not load module usage telemetry");return}
+	defer eventRows.Close()
+	total7,total30,totalAll,partnersWithUsage:=0,0,0,0
+	var lastUsed sql.NullTime
+	for eventRows.Next(){
+		var partnerID string
+		var events7,events30,eventsTotal int
+		var partnerLast sql.NullTime
+		if scanErr:=eventRows.Scan(&partnerID,&events7,&events30,&eventsTotal,&partnerLast);scanErr!=nil{
+			common.APIError(w,500,"DB","Could not decode module usage telemetry");return
+		}
+		total7+=events7;total30+=events30;totalAll+=eventsTotal
+		if eventsTotal>0{partnersWithUsage++}
+		if partnerLast.Valid&&(!lastUsed.Valid||partnerLast.Time.After(lastUsed.Time)){lastUsed=partnerLast}
+		if item:=byPartner[partnerID];item!=nil{
+			item["usage_events_7d"]=events7
+			item["usage_events_30d"]=events30
+			item["usage_events_total"]=eventsTotal
+			if partnerLast.Valid{item["last_used_at"]=partnerLast.Time.UTC()}
+		}
+	}
+	if err:=eventRows.Err();err!=nil{common.APIError(w,500,"DB","Could not load complete module usage telemetry");return}
+	var lastUsedValue any
+	if lastUsed.Valid{lastUsedValue=lastUsed.Time.UTC()}
+	common.JSON(w,200,map[string]any{
+		"items":items,
+		"count":len(items),
+		"status_counts":counts,
+		"usage_summary":map[string]any{
+			"active_partners":activePartners,
+			"partners_with_usage":partnersWithUsage,
+			"events_7d":total7,
+			"events_30d":total30,
+			"events_total":totalAll,
+			"last_used_at":lastUsedValue,
+			"source":"CATALOG_RUNTIME_USAGE_EVENTS",
+		},
+	})
 }
 
 func (a *app) ensurePartnerModules(partnerID string) error {
@@ -595,7 +727,10 @@ func (a *app) ensurePartnerModules(partnerID string) error {
 			activated_at=COALESCE(activated_at,NOW()),
 			updated_at=NOW()
 		WHERE partner_id=$1
-		  AND module_key IN (SELECT module_key FROM catalog.modules WHERE system=TRUE)`, partnerID)
+		  AND module_key IN (
+		  	SELECT module_key FROM catalog.modules
+		  	WHERE system=TRUE AND legacy_reference='KLAVIERHAUS_LEGACY'
+		  )`, partnerID)
 	return err
 }
 

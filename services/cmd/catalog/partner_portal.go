@@ -120,7 +120,7 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 		item.GroupLabel = common.Localized(groupEN,groupHU,locale)
 		item.Executable = marketplaceExecutable(item.PublicationStatus,item.ImplementationState,item.Availability)
 		item.AccessState = marketplaceAccessState(item.Status,item.EntitlementState,item.PublicationStatus,item.ImplementationState,item.Availability)
-		if testPartner {
+		if testPartner && testPartnerExecutionOverride(item.ImplementationState) {
 			item.Executable = true
 			item.AccessState = "ACTIVE"
 			item.CommercialConfigured = true
@@ -186,6 +186,10 @@ func (a *app) loadPartnerPortalModules(partnerID, locale string) ([]portalModule
 		modules[i].CanActivate = modules[i].Executable && modules[i].Status != "ACTIVE" && len(modules[i].Blockers) == 0
 	}
 	return modules, nil
+}
+
+func testPartnerExecutionOverride(implementationState string) bool {
+	return !strings.EqualFold(strings.TrimSpace(implementationState), "IN_DEVELOPMENT")
 }
 
 func (a *app) partnerPortalModules(w http.ResponseWriter, r *http.Request, partnerID string) {

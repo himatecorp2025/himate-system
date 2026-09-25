@@ -36,8 +36,9 @@ for token in [
     require(token in catalog_marketplace, "marketplace model missing " + token)
 
 summary_entries = re.findall(r'^\s*"[^"]+"\s*:\s*\{', catalog_marketplace, flags=re.MULTILINE)
-require(len(summary_entries) == 38, f"expected 38 canonical marketplace summaries, got {len(summary_entries)}")
-require("len(marketplaceSummaries) != len(seedModules)" in catalog_marketplace, "canonical marketplace summary count is not fail-closed")
+require(len(summary_entries) >= 1, "canonical marketplace must expose at least one bilingual summary")
+require('if len(seedModules) < 1' in catalog_marketplace, "canonical marketplace must fail closed on an empty catalog")
+require("missing marketplace summary for canonical module" in catalog_marketplace, "every current canonical module must require a marketplace summary")
 
 for token in [
     "m.marketplace_visible=TRUE OR m.publication_status='PUBLISHED'",
@@ -107,7 +108,8 @@ require(
 require("/partner/api/v1/modules:" in openapi, "Partner Marketplace API is not documented")
 require("Discovery visibility is not execution authority." in acceptance, "acceptance does not preserve discovery/execution boundary")
 require("exactly 10 canonical modules are ACTIVE" in acceptance, "Business 10-module acceptance is missing")
-require("remaining 28 canonical modules are LOCKED" in acceptance, "Business locked-module acceptance is missing")
+require("every remaining released canonical module outside the active Business entitlement is LOCKED" in acceptance,
+        "Business locked-module acceptance must be catalog-size independent")
 
 
 active_closure_files = [
