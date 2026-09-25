@@ -27,6 +27,9 @@ d=json.load(sys.stdin)
 assert d["count"] >= 1,d
 assert any(x.get("test_partner") is True for x in d["items"]),d
 assert all(x.get("lifecycle")!="ARCHIVED" for x in d["items"]),d
+for x in d["items"]:
+    assert x.get("category_name_en"),x
+    assert x.get("category_name_hu"),x
 '
 echo ok
 
