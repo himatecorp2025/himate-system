@@ -8,7 +8,7 @@ import hashlib,hmac,json,os,time,urllib.request,urllib.error
 
 BASE=os.environ["BASE"].rstrip("/")
 TOKEN="local-development-internal-token-123456789"
-VERSION="0.8.32-start-23.11.7"
+VERSION="0.8.33-start-23.12"
 KEYS={
     "ci-producer":"ci-producer-automation-secret-123456789",
     "ci-consumer":"ci-consumer-automation-secret-123456789",
