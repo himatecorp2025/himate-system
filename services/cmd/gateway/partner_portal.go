@@ -653,7 +653,7 @@ func (a *app) partnerPlanModules(w http.ResponseWriter,r *http.Request,u partner
 	if common.Decode(r,&payload)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
 	var out map[string]any
 	err:=a.internalJSON(r.Context(),http.MethodPut,a.hosts["billing"],upstream,payload,map[string]string{"X-Himate-User-ID":"partner:"+u.ID},&out)
-	if err!=nil{writeInternalError(w,err,"Flex module selection could not be updated");return}
+	if err!=nil{writeInternalError(w,err,"Package module configuration could not be updated");return}
 	common.JSON(w,200,out)
 }
 
@@ -730,7 +730,7 @@ func (a *app) enrichPartnerMarketplace(ctx context.Context,partnerID string,out 
 			inPlan:=false
 			if mode=="FIXED"{
 				inPlan=stringSetFromAny(p["fixed_module_keys"])[key]
-			}else if mode=="SELECTABLE"{
+			}else if mode=="SELECTABLE" || mode=="UNLIMITED"{
 				inPlan=executable
 			}
 			if !inPlan{continue}
@@ -787,7 +787,7 @@ func (a *app) partnerActivateModule(w http.ResponseWriter,r *http.Request,u part
 	managed,planErr:=a.partnerHasManagedPlan(r.Context(),u.PartnerID)
 	if planErr!=nil{common.APIError(w,502,"BILLING_UNAVAILABLE","Billing must be available before module entitlement changes");return}
 	if managed{
-		common.APIError(w,409,"PLAN_MANAGED_MODULES","Modules are controlled by your subscription plan; use Flex plan selection where available");return
+		common.APIError(w,409,"PLAN_MANAGED_MODULES","Modules are controlled by your subscription package entitlement");return
 	}
 	key:=partnerModuleKey(r.URL.Path,"/activate");if key==""||strings.Contains(key,"/"){common.APIError(w,404,"NOT_FOUND","Module not found");return}
 	var module map[string]any
