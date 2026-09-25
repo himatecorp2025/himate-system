@@ -15,7 +15,7 @@
   })();
 
   const publicHu = {
-    'Platform':'Platform','Modules':'Modulok','Programs':'Programok','Impact':'Hatás','Partners':'Partnerek','Contact':'Kapcsolat','Login':'Bejelentkezés',
+    'Platform':'Platform','Modules':'Modulok','Programs':'Programok','Impact':'Hatás','Partners':'Partnerek','Contact':'Kapcsolat','Login':'Bejelentkezés','Partner Portal':'Partnerportál',
     'Culture fuels tomorrow':'A kultúra táplálja a holnapot','Culture Fuels Tomorrow.':'A kultúra táplálja a holnapot.',
     'Culture connects people':'A kultúra összeköti az embereket','CULTURE CONNECTS PEOPLE':'A KULTÚRA ÖSSZEKÖTI AZ EMBEREKET',
     'Culture builds brighter tomorrows':'A kultúra fényesebb holnapot épít','Culture measures what matters':'A kultúra azt méri, ami számít',
@@ -73,7 +73,9 @@
     'Partnerships':'Partnerségek','Explore possibilities':'Fedezd fel a lehetőségeket','Global collaboration':'Globális együttműködés','Extend your reach':'Növeld az elérésedet',
     'Partner with HIMATE':'Lépj partnerségre a HIMATE-tel','Tell us about your organization and what you want technology to make possible. Commercial terms and platform configuration are tailored partner by partner.':'Mesélj a szervezetedről és arról, mit szeretnél a technológiával lehetővé tenni. A kereskedelmi feltételeket és a platform konfigurációját partnerenként alakítjuk.',
     'Arts':'Művészet','Culture':'Kultúra','Institutions':'Intézmények','Send inquiry →':'Megkeresés küldése →',
-    'Your name':'Neved','Organization':'Szervezet','Email address':'E-mail-cím','Tell us what you are building':'Írd meg, mit építesz','Website':'Weboldal',
+    'Your name':'Neved','Organization':'Szervezet','Email address':'E-mail-cím','Organization type':'Szervezet típusa','Inquiry topic':'Megkeresés témája','Tell us what you are building':'Írd meg, mit építesz','Website':'Weboldal',
+    'Select organization type':'Válassz szervezettípust','Classical Music':'Klasszikus zene','Fine Art':'Képzőművészet','Gallery':'Galéria','Theatre':'Színház','Cultural Organization':'Kulturális szervezet','Piano Technology / Services':'Zongoratechnika / szolgáltatás','Museum':'Múzeum','Foundation':'Alapítvány','Creative Network':'Kreatív hálózat','Other':'Egyéb',
+    'Select inquiry topic':'Válassz témát','Partnership':'Partnerség','Platform demo':'Platformbemutató','Pricing & licensing':'Árazás és licencelés','Charity / sponsorship':'Jótékonyság / támogatás','Technical question':'Technikai kérdés',
     'Sending…':'Küldés…','Sending your inquiry…':'Megkeresés küldése…','Thank you. Your inquiry has been received.':'Köszönjük. Megkaptuk a megkeresésedet.',
     'We could not send your inquiry. Please try again.':'A megkeresést nem sikerült elküldeni. Kérjük, próbáld újra.',
     '© 2026 HIMATE System. All rights reserved.':'© 2026 HIMATE System. Minden jog fenntartva.',
@@ -161,8 +163,9 @@
         primary.querySelectorAll('a:not(.nav-login-text):not(.login-pill)').forEach((node) => node.remove());
         const anchor = primary.querySelector('.locale-switch') || primary.querySelector('.nav-divider') || primary.firstChild;
         for (const item of navigation) {
-          const link = document.createElement('a');
           const href = typeof item.url === 'string' && item.url.trim() ? item.url.trim() : '/';
+          if (new URL(href, window.location.origin).pathname === '/contact') continue;
+          const link = document.createElement('a');
           link.href = href;
           link.textContent = publicLocale === 'hu_HU'
             ? (item.label_hu || item.label_en || href)

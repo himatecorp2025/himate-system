@@ -150,7 +150,7 @@ curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$cms_payloa
 contact_payload="$(python3 - "$STAMP" <<'PY'
 import json,sys
 s=sys.argv[1]
-print(json.dumps({"name":"START239 Search "+s,"organization":"START239 Search "+s,"email":"contact-"+s+"@example.com","message":"START239 global search acceptance message "+s}))
+print(json.dumps({"name":"START239 Search "+s,"organization":"START239 Search "+s,"email":"contact-"+s+"@example.com","organization_type":"CULTURAL_ORGANIZATION","inquiry_topic":"PARTNERSHIP","message":"START239 global search acceptance message "+s}))
 PY
 )"
 curl -fsS -H 'Content-Type: application/json' -d "$contact_payload" "$BASE_URL/api/v1/public/contact" >/dev/null

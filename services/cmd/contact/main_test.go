@@ -45,3 +45,19 @@ func TestEnvIntValueBounds(t *testing.T) {
 	if got := envIntValue("999", 50, 1, 200); got != 200 { t.Fatalf("maximum: %d", got) }
 	if got := envIntValue("75", 50, 1, 200); got != 75 { t.Fatalf("value: %d", got) }
 }
+
+
+func TestCentral1ContactClassificationNormalization(t *testing.T) {
+	if got := normalizeContactClassification(" piano_technology ", organizationTypes); got != "PIANO_TECHNOLOGY" {
+		t.Fatalf("organization type normalization=%q", got)
+	}
+	if got := normalizeContactClassification("pricing_licensing", inquiryTopics); got != "PRICING_LICENSING" {
+		t.Fatalf("inquiry topic normalization=%q", got)
+	}
+	if got := normalizeContactClassification("unknown", organizationTypes); got != "" {
+		t.Fatalf("unknown organization type must be rejected, got %q", got)
+	}
+	if got := normalizeContactClassification("", inquiryTopics); got != "" {
+		t.Fatalf("empty inquiry topic must be rejected, got %q", got)
+	}
+}

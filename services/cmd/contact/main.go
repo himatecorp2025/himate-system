@@ -35,22 +35,46 @@ type rateLimiter struct {
 }
 
 type inquiry struct {
-	Name         string `json:"name"`
-	Organization string `json:"organization"`
-	Email        string `json:"email"`
-	Message      string `json:"message"`
-	Website      string `json:"website"`
+	Name             string `json:"name"`
+	Organization     string `json:"organization"`
+	Email            string `json:"email"`
+	OrganizationType string `json:"organization_type"`
+	InquiryTopic     string `json:"inquiry_topic"`
+	Message          string `json:"message"`
+	Website          string `json:"website"`
 }
 
 type inquiryRecord struct {
-	ID, Name, Organization, Email, Message                   string
-	LeadStatus, AssignedTo, AdminNote                         string
-	NotificationStatus, NotificationError                    string
-	CreatedAt, UpdatedAt                                      time.Time
+	ID, Name, Organization, Email, OrganizationType, InquiryTopic, Message string
+	LeadStatus, AssignedTo, AdminNote                                      string
+	NotificationStatus, NotificationError                                 string
+	CreatedAt, UpdatedAt                                                   time.Time
 }
 
 var leadStatuses = map[string]bool{
 	"NEW": true, "IN_PROGRESS": true, "CONTACTED": true, "CLOSED": true,
+}
+
+var organizationTypes = map[string]bool{
+	"CLASSICAL_MUSIC": true,
+	"FINE_ART": true,
+	"GALLERY": true,
+	"THEATRE": true,
+	"CULTURAL_ORGANIZATION": true,
+	"PIANO_TECHNOLOGY": true,
+	"MUSEUM": true,
+	"FOUNDATION": true,
+	"CREATIVE_NETWORK": true,
+	"OTHER": true,
+}
+
+var inquiryTopics = map[string]bool{
+	"PARTNERSHIP": true,
+	"PLATFORM_DEMO": true,
+	"PRICING_LICENSING": true,
+	"CHARITY_SPONSORSHIP": true,
+	"TECHNICAL": true,
+	"OTHER": true,
 }
 
 func main() {
@@ -116,6 +140,12 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE contact.inquiries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
 			`CREATE INDEX IF NOT EXISTS idx_contact_inquiries_status_created ON contact.inquiries(lead_status,created_at DESC)`,
 		}},
+		{Version: 3, Name: "central-1-contact-classification", Statements: []string{
+			`ALTER TABLE contact.inquiries ADD COLUMN IF NOT EXISTS organization_type TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE contact.inquiries ADD COLUMN IF NOT EXISTS inquiry_topic TEXT NOT NULL DEFAULT ''`,
+			`CREATE INDEX IF NOT EXISTS idx_contact_inquiries_organization_type ON contact.inquiries(organization_type) WHERE organization_type<>''`,
+			`CREATE INDEX IF NOT EXISTS idx_contact_inquiries_topic ON contact.inquiries(inquiry_topic) WHERE inquiry_topic<>''`,
+		}},
 	})
 }
 
@@ -126,10 +156,16 @@ func normalizeLeadStatus(value string) string {
 	return ""
 }
 
+func normalizeContactClassification(value string, allowed map[string]bool) string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if allowed[value] { return value }
+	return ""
+}
+
 func scanInquiry(scanner interface{ Scan(...any) error }) (inquiryRecord, error) {
 	var item inquiryRecord
 	err := scanner.Scan(
-		&item.ID, &item.Name, &item.Organization, &item.Email, &item.Message,
+		&item.ID, &item.Name, &item.Organization, &item.Email, &item.OrganizationType, &item.InquiryTopic, &item.Message,
 		&item.LeadStatus, &item.AssignedTo, &item.AdminNote,
 		&item.NotificationStatus, &item.NotificationError,
 		&item.CreatedAt, &item.UpdatedAt,
@@ -143,6 +179,8 @@ func inquiryJSON(item inquiryRecord) map[string]any {
 		"name": item.Name,
 		"organization": item.Organization,
 		"email": item.Email,
+		"organization_type": item.OrganizationType,
+		"inquiry_topic": item.InquiryTopic,
 		"message": item.Message,
 		"lead_status": item.LeadStatus,
 		"assigned_to": item.AssignedTo,
@@ -154,7 +192,7 @@ func inquiryJSON(item inquiryRecord) map[string]any {
 	}
 }
 
-const inquirySelect = `SELECT id,name,organization,email,message,lead_status,assigned_to,admin_note,
+const inquirySelect = `SELECT id,name,organization,email,organization_type,inquiry_topic,message,lead_status,assigned_to,admin_note,
 notification_status,notification_error,created_at,updated_at FROM contact.inquiries`
 
 func (a *app) handleAdminInquiries(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +215,7 @@ func (a *app) handleAdminInquiries(w http.ResponseWriter, r *http.Request) {
 	if q != "" {
 		args = append(args, "%"+q+"%")
 		pos := len(args)
-		where = append(where, fmt.Sprintf("(name ILIKE $%d OR organization ILIKE $%d OR email ILIKE $%d OR message ILIKE $%d)", pos, pos, pos, pos))
+		where = append(where, fmt.Sprintf("(name ILIKE $%d OR organization ILIKE $%d OR email ILIKE $%d OR organization_type ILIKE $%d OR inquiry_topic ILIKE $%d OR message ILIKE $%d)", pos, pos, pos, pos, pos, pos))
 	}
 	if status != "" && status != "ALL" {
 		args = append(args, status)
@@ -327,6 +365,8 @@ func (a *app) handleContact(w http.ResponseWriter, r *http.Request) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Organization = strings.TrimSpace(in.Organization)
 	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
+	in.OrganizationType = normalizeContactClassification(in.OrganizationType, organizationTypes)
+	in.InquiryTopic = normalizeContactClassification(in.InquiryTopic, inquiryTopics)
 	in.Message = strings.TrimSpace(in.Message)
 	in.Website = strings.TrimSpace(in.Website)
 
@@ -348,6 +388,14 @@ func (a *app) handleContact(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusBadRequest, "EMAIL", "Please enter a valid email address.")
 		return
 	}
+	if in.OrganizationType == "" {
+		common.APIError(w, http.StatusBadRequest, "ORGANIZATION_TYPE", "Please select your organization type.")
+		return
+	}
+	if in.InquiryTopic == "" {
+		common.APIError(w, http.StatusBadRequest, "INQUIRY_TOPIC", "Please select an inquiry topic.")
+		return
+	}
 	addr, err := mail.ParseAddress(in.Email)
 	if err != nil || !strings.EqualFold(addr.Address, in.Email) {
 		common.APIError(w, http.StatusBadRequest, "EMAIL", "Please enter a valid email address.")
@@ -365,9 +413,9 @@ func (a *app) handleContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = a.db.ExecContext(r.Context(),
-		`INSERT INTO contact.inquiries(id,name,organization,email,message,source_ip,user_agent)
-		 VALUES($1,$2,$3,$4,$5,$6,$7)`,
-		id, in.Name, in.Organization, in.Email, in.Message, ip, truncate(r.UserAgent(), 500),
+		`INSERT INTO contact.inquiries(id,name,organization,email,organization_type,inquiry_topic,message,source_ip,user_agent)
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		id, in.Name, in.Organization, in.Email, in.OrganizationType, in.InquiryTopic, in.Message, ip, truncate(r.UserAgent(), 500),
 	)
 	if err != nil {
 		common.APIError(w, http.StatusInternalServerError, "STORE", "Unable to save inquiry.")
@@ -408,8 +456,8 @@ func (a *app) sendNotification(in inquiry, id string) error {
 	}
 	subject := "New HIMATE website inquiry - " + in.Name
 	body := fmt.Sprintf(
-		"New HIMATE website inquiry\r\n\r\nInquiry ID: %s\r\nName: %s\r\nOrganization: %s\r\nEmail: %s\r\n\r\nMessage:\r\n%s\r\n",
-		id, in.Name, in.Organization, in.Email, in.Message,
+		"New HIMATE website inquiry\r\n\r\nInquiry ID: %s\r\nName: %s\r\nOrganization: %s\r\nEmail: %s\r\nOrganization type: %s\r\nInquiry topic: %s\r\n\r\nMessage:\r\n%s\r\n",
+		id, in.Name, in.Organization, in.Email, in.OrganizationType, in.InquiryTopic, in.Message,
 	)
 	msg := []byte(
 		"From: " + a.smtpFrom + "\r\n" +
