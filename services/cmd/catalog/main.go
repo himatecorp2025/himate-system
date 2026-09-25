@@ -22,31 +22,33 @@ type seedGroup struct {
 
 var seedGroups = []seedGroup{
 	{"finance_invoicing", "Finance & Invoicing", 1},
-	{"technical", "Technical Operations", 2},
+	{"client_operations", "Client & Operations", 2},
 	{"marketing", "Marketing", 3},
 	{"website_events", "Website & Events", 4},
+	{"security_system", "Security & System", 5},
+}
+
+var seedGroupHU = map[string]string{
+	"finance_invoicing": "Pénzügy és számlázás",
+	"client_operations":  "Ügyfél- és működéskezelés",
+	"marketing":          "Marketing",
+	"website_events":     "Weboldal és események",
+	"security_system":    "Biztonság és rendszer",
 }
 
 var seedModules = []seedModule{
 	{"finance", "Balance Sheet", "finance_invoicing"},
 	{"income_statement", "Income Statement", "finance_invoicing"},
 	{"invoice_documents", "Invoices Documents", "finance_invoicing"},
-	{"audit_log", "Audit Log", "technical"},
-	{"backups", "Backups", "technical"},
-	{"pianos", "Client Piano", "technical"},
-	{"contacts", "Clients", "technical"},
-	{"closed_jobs", "Closed Jobs", "technical"},
-	{"knowledge_base", "Company Documents Archive", "technical"},
-	{"company_data", "Corporate Data", "technical"},
-	{"inventory", "Inventory", "technical"},
-	{"partners", "Partners", "technical"},
-	{"planned_jobs", "Planned Jobs", "technical"},
-	{"scheduler", "Scheduler", "technical"},
-	{"website_services", "Services", "technical"},
-	{"settings", "Settings", "technical"},
-	{"system_integrations", "System Activation & Integrations", "technical"},
-	{"users", "Users", "technical"},
-	{"workshop_workflow", "Workshop Workflow", "technical"},
+	{"pianos", "Client Piano", "client_operations"},
+	{"contacts", "Clients", "client_operations"},
+	{"closed_jobs", "Closed Jobs", "client_operations"},
+	{"inventory", "Inventory", "client_operations"},
+	{"partners", "Partners", "client_operations"},
+	{"planned_jobs", "Planned Jobs", "client_operations"},
+	{"scheduler", "Scheduler", "client_operations"},
+	{"workshop_workflow", "Workshop Workflow", "client_operations"},
+	{"needs_assessment", "Needs Assessment", "client_operations"},
 	{"marketing_overview", "Campaign Overview", "marketing"},
 	{"customer_inbox", "Customer Inbox", "marketing"},
 	{"website_reviews", "Reviews", "marketing"},
@@ -55,6 +57,7 @@ var seedModules = []seedModule{
 	{"tracking_cookies", "Tracking & Cookies", "marketing"},
 	{"seo_keywords", "SEO & Keywords", "marketing"},
 	{"heatmap", "Consent Heatmap", "marketing"},
+	{"website_services", "Services", "website_events"},
 	{"website_artists", "Artists", "website_events"},
 	{"website_contacts", "Contacts", "website_events"},
 	{"digital_attendance", "Digital Attendance", "website_events"},
@@ -66,6 +69,62 @@ var seedModules = []seedModule{
 	{"publish_preview", "Publish & Preview", "website_events"},
 	{"showroom_pianos", "Showroom Pianos", "website_events"},
 	{"event_tickets", "Ticket Reservation", "website_events"},
+	{"audit_log", "Audit Log", "security_system"},
+	{"backups", "Backups", "security_system"},
+	{"knowledge_base", "Company Documents Archive", "security_system"},
+	{"company_data", "Corporate Data", "security_system"},
+	{"settings", "Settings", "security_system"},
+	{"system_integrations", "System Activation & Integrations", "security_system"},
+	{"users", "Users", "security_system"},
+	{"two_factor_authentication", "Two-Factor Authentication", "security_system"},
+}
+
+var seedModuleHU = map[string]string{
+	"finance": "Mérleg",
+	"income_statement": "Eredménykimutatás",
+	"invoice_documents": "Számladokumentumok",
+	"pianos": "Ügyfélzongorák",
+	"contacts": "Ügyfelek",
+	"closed_jobs": "Lezárt munkák",
+	"inventory": "Leltár",
+	"partners": "Partnerek",
+	"planned_jobs": "Tervezett munkák",
+	"scheduler": "Ütemező",
+	"workshop_workflow": "Műhely workflow",
+	"needs_assessment": "Igényfelmérő",
+	"marketing_overview": "Kampányáttekintés",
+	"customer_inbox": "Ügyfél postaláda",
+	"website_reviews": "Értékelések",
+	"campaigns_utm": "Kampányok és UTM",
+	"leads": "Érdeklődők",
+	"tracking_cookies": "Követés és sütik",
+	"seo_keywords": "SEO és kulcsszavak",
+	"heatmap": "Hozzájárulási hőtérkép",
+	"website_services": "Szolgáltatások",
+	"website_artists": "Művészek",
+	"website_contacts": "Kapcsolatok",
+	"digital_attendance": "Digitális jelenlét",
+	"events": "Események",
+	"event_guest_list": "Vendégadatok",
+	"event_invitations": "Meghívók",
+	"media_library": "Médiatár",
+	"pages_content": "Oldalak és tartalom",
+	"publish_preview": "Publikálás és előnézet",
+	"showroom_pianos": "Bemutatótermi zongorák",
+	"event_tickets": "Jegyfoglalás",
+	"audit_log": "Auditnapló",
+	"backups": "Biztonsági mentések",
+	"knowledge_base": "Céges dokumentumarchívum",
+	"company_data": "Céges adatok",
+	"settings": "Beállítások",
+	"system_integrations": "Rendszeraktiválás és integrációk",
+	"users": "Felhasználók",
+	"two_factor_authentication": "Kétfaktoros azonosítás",
+}
+
+var central4PlannedModules = map[string]bool{
+	"needs_assessment": true,
+	"two_factor_authentication": true,
 }
 
 var moduleStates = map[string]bool{"ACTIVE": true, "NOT_LICENSED": true, "MAINTENANCE": true}
@@ -106,6 +165,7 @@ func main() {
 	mux.HandleFunc("/internal/v1/partners/", a.partnerModules)
 	mux.HandleFunc("/internal/v1/module-price-quotes", a.internalModulePriceQuotes)
 	mux.HandleFunc("/internal/v1/partner-portal/", a.partnerPortal)
+	mux.HandleFunc("/internal/v1/module-usage-events", a.moduleUsageEvents)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	common.Run(log, "catalog", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
 }
@@ -238,22 +298,40 @@ func (a *app) migrate(ctx context.Context) error {
 		}},
 		start23112CatalogPlanMigration(),
 		start23113MarketplaceMigration(),
+		central4CatalogMigration(),
 	}); err != nil {
 		return err
 	}
 
 	for _, g := range seedGroups {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order,is_primary_navigation) VALUES($1,$2,$2,$2,$3,TRUE) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,sort_order=EXCLUDED.sort_order,is_primary_navigation=TRUE`, g.Key, g.Label, g.Order); err != nil {
+		hu := strings.TrimSpace(seedGroupHU[g.Key])
+		if hu == "" { hu = g.Label }
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.module_groups AS existing(group_key,label,label_en,label_hu,sort_order,is_primary_navigation) VALUES($1,$2,$2,$3,$4,TRUE) ON CONFLICT(group_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=EXCLUDED.label_hu,sort_order=EXCLUDED.sort_order,is_primary_navigation=TRUE`, g.Key, g.Label, hu, g.Order); err != nil {
 			return err
 		}
 	}
 	for _, m := range seedModules {
-		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability,publication_status,implementation_state,legacy_reference) VALUES($1,$2,$2,$2,$3,'Klavierhaus verified legacy reference module','Klavierhaus verified legacy reference module','Klavierhaus verified legacy reference module',TRUE,'ACTIVE','UNPUBLISHED','LEGACY_REFERENCE','KLAVIERHAUS_LEGACY') ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=CASE WHEN existing.label_hu='' THEN EXCLUDED.label_hu ELSE existing.label_hu END,group_key=EXCLUDED.group_key,system=TRUE,implementation_state=CASE WHEN existing.implementation_state='IN_DEVELOPMENT' THEN 'LEGACY_REFERENCE' ELSE existing.implementation_state END,legacy_reference=CASE WHEN existing.legacy_reference='' THEN 'KLAVIERHAUS_LEGACY' ELSE existing.legacy_reference END`, m.Key, m.Label, m.Group); err != nil {
+		hu := strings.TrimSpace(seedModuleHU[m.Key])
+		if hu == "" { hu = m.Label }
+		descriptionEN := "Klavierhaus verified legacy reference module"
+		descriptionHU := "Klavierhaus ellenőrzött legacy referencia modul"
+		implementationState := "LEGACY_REFERENCE"
+		legacyReference := "KLAVIERHAUS_LEGACY"
+		if central4PlannedModules[m.Key] {
+			descriptionEN = "Planned HIMATE module. Functional implementation will be delivered in its dedicated module development cycle."
+			descriptionHU = "Tervezett HIMATE modul. A funkcionális megvalósítás a külön modulfejlesztési körben készül el."
+			implementationState = "IN_DEVELOPMENT"
+			legacyReference = ""
+		}
+		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.modules AS existing(module_key,label,label_en,label_hu,group_key,description,description_en,description_hu,system,availability,publication_status,implementation_state,legacy_reference) VALUES($1,$2,$2,$3,$4,$5,$5,$6,TRUE,'ACTIVE','UNPUBLISHED',$7,$8) ON CONFLICT(module_key) DO UPDATE SET label=EXCLUDED.label,label_en=EXCLUDED.label_en,label_hu=EXCLUDED.label_hu,group_key=EXCLUDED.group_key,system=TRUE,implementation_state=CASE WHEN existing.implementation_state='IN_DEVELOPMENT' AND EXCLUDED.implementation_state='LEGACY_REFERENCE' THEN 'LEGACY_REFERENCE' ELSE existing.implementation_state END,legacy_reference=CASE WHEN existing.legacy_reference='' AND EXCLUDED.legacy_reference<>'' THEN EXCLUDED.legacy_reference ELSE existing.legacy_reference END`, m.Key, m.Label, hu, m.Group, descriptionEN, descriptionHU, implementationState, legacyReference); err != nil {
 			return err
 		}
 		if _, err := a.db.ExecContext(ctx, `INSERT INTO catalog.partner_modules(partner_id,module_key,status,visible,included_in_base,price_override,activated_at,entitlement_state,commercial_configured,contract_currency,quote_reference,commercial_effective_at) VALUES('ptr_000001',$1,'ACTIVE',TRUE,TRUE,0,NOW(),'ACTIVE',TRUE,'USD','REFERENCE-PARTNER',NOW()) ON CONFLICT(partner_id,module_key) DO UPDATE SET entitlement_state=CASE WHEN catalog.partner_modules.status='ACTIVE' THEN 'ACTIVE' ELSE catalog.partner_modules.entitlement_state END`, m.Key); err != nil {
 			return err
 		}
+	}
+	if _, err := a.db.ExecContext(ctx, `DELETE FROM catalog.module_groups g WHERE g.group_key='technical' AND NOT EXISTS (SELECT 1 FROM catalog.modules m WHERE m.group_key=g.group_key)`); err != nil {
+		return err
 	}
 	if err := a.seedMarketplaceCatalog(ctx); err != nil {
 		return err
