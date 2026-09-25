@@ -57,8 +57,8 @@ For plan-managed partners the Gateway enriches the card with Billing-owned plan 
 Example:
 - Business partner;
 - live module not included in Business;
-- Flex can select the module;
-- Marketplace displays it as locked and available with Flex.
+- Premium (stable API key `FLEX`) includes every released eligible module automatically;
+- Marketplace displays it as locked for Business and identifies Premium as the unlimited upgrade path.
 
 A LOCKED module does not become executable merely because it is visible.
 
@@ -79,7 +79,7 @@ A released module whose operational availability is not ACTIVE is shown as unava
 
 ## Subscription-plan authority
 
-Billing remains the authority for Starter, Business and Flex package membership.
+Billing remains the authority for Starter, Business and Premium package membership. The historical `FLEX` key remains the stable API identifier for Premium.
 
 Catalog does not infer plan membership.
 
@@ -90,7 +90,7 @@ Gateway combines:
 
 Starter and Business use their configured fixed_module_keys.
 
-Flex is selectable and may expose any PUBLISHED + READY + operationally ACTIVE module, subject to the existing Flex limit and entitlement rules.
+Premium is `UNLIMITED`: every PUBLISHED + READY + operationally ACTIVE module is included by rule, including future modules when they become eligible. There is no finite module limit or partner-selected package list.
 
 Only higher-plan options are emitted as upgrade_plan_keys.
 
@@ -152,9 +152,9 @@ Compose acceptance:
 The acceptance suite must prove:
 1. every canonical module in the current non-empty catalog is discoverable with a non-empty marketplace summary before release;
 2. discoverable unreleased modules are COMING_SOON and non-executable;
-3. after publishing the canonical portfolio and configuring Business, exactly 10 canonical modules are ACTIVE for the Business acceptance partner;
+3. after publishing the canonical portfolio and configuring Business, exactly 20 canonical modules are ACTIVE for the Business acceptance partner;
 4. every remaining released canonical module outside the active Business entitlement is LOCKED, not hidden; planned unreleased modules remain COMING_SOON;
-5. locked canonical modules expose Flex as an upgrade path when eligible;
+5. locked canonical modules expose Premium (`FLEX` stable key) as the unlimited upgrade path when eligible;
 6. dashboard and direct Marketplace endpoints return the same enriched state;
 7. direct activation cannot bypass managed-plan entitlement;
 8. all prior START-23.11.1 publication/activation fail-closed behavior remains valid.
