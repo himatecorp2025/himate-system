@@ -33,7 +33,16 @@ function responseMayBeCached(response) {
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(PUBLIC_CACHE)
-      .then((cache) => cache.addAll(PUBLIC_ASSETS))
+      .then((cache) => Promise.all(PUBLIC_ASSETS.map(async (asset) => {
+        try {
+          const response = await fetch(asset, {cache: 'reload'});
+          if (responseMayBeCached(response)) {
+            await cache.put(asset, response.clone());
+          }
+        } catch (_) {
+          // An individual public asset must not prevent worker installation.
+        }
+      })))
       .then(() => self.skipWaiting())
   );
 });
@@ -57,7 +66,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request).catch(async () => {
         if (url.pathname === '/') {
-          return (await caches.match('/landing.html')) || Response.error();
+          return new Response(
+            '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HIMATE Offline</title></head><body><main><h1>HIMATE</h1><p>The public site is temporarily offline. Reconnect to continue.</p></main></body></html>',
+            {status: 200, headers: {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store'}}
+          );
         }
         return Response.error();
       })
