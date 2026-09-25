@@ -1937,7 +1937,16 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 		trend:=make([]map[string]any,0,12)
 		labels:=[]string{"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}
 		for month:=1;month<=12;month++ { trend=append(trend,map[string]any{"month":month,"label":labels[month-1],"value":0}) }
-		impactResponse=map[string]any{"year":year,"metric_key":"klavierhaus.events.attendance.attendee_count","people_reached_ytd":0,"trend":trend,"source":"IMPACT_METRIC_VALUES","status":"degraded"}
+		yearStart:=time.Date(year,time.January,1,0,0,0,0,time.UTC)
+		yearEnd:=time.Date(year+1,time.January,1,0,0,0,0,time.UTC)
+		mondayOffset:=(int(yearStart.Weekday())+6)%7
+		firstWeek:=yearStart.AddDate(0,0,-mondayOffset)
+		weeklyTrend:=make([]map[string]any,0,54)
+		for cursor:=firstWeek;cursor.Before(yearEnd);cursor=cursor.AddDate(0,0,7) {
+			isoYear,isoWeek:=cursor.ISOWeek()
+			weeklyTrend=append(weeklyTrend,map[string]any{"iso_year":isoYear,"week":isoWeek,"week_start":cursor.Format("2006-01-02"),"label":fmt.Sprintf("W%02d",isoWeek),"value":0})
+		}
+		impactResponse=map[string]any{"year":year,"metric_key":"klavierhaus.events.attendance.attendee_count","people_reached_ytd":0,"trend":trend,"weekly_trend":weeklyTrend,"source":"IMPACT_METRIC_VALUES","status":"degraded"}
 	}
 	core:=map[string]any{
 		"year":year,
