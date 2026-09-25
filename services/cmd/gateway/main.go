@@ -34,6 +34,7 @@ import (
 
 const sessionCookie = "himate_session"
 const passwordIterations = 210000
+const loginAttemptMaxEntries = 4096
 
 type app struct {
 	db               *sql.DB
@@ -67,6 +68,37 @@ type loginState struct {
 	Failures     int
 	WindowStart  time.Time
 	BlockedUntil time.Time
+}
+
+func (a *app) pruneLoginAttemptsLocked(now time.Time) {
+	if len(a.loginAttempts) == 0 {
+		return
+	}
+	for key, state := range a.loginAttempts {
+		windowExpired := state.WindowStart.IsZero() || now.Sub(state.WindowStart) > 10*time.Minute
+		blockExpired := state.BlockedUntil.IsZero() || !now.Before(state.BlockedUntil)
+		if windowExpired && blockExpired {
+			delete(a.loginAttempts, key)
+		}
+	}
+	for len(a.loginAttempts) >= loginAttemptMaxEntries {
+		oldestKey := ""
+		var oldest time.Time
+		for key, state := range a.loginAttempts {
+			lastRelevant := state.WindowStart
+			if state.BlockedUntil.After(lastRelevant) {
+				lastRelevant = state.BlockedUntil
+			}
+			if oldestKey == "" || lastRelevant.Before(oldest) {
+				oldestKey = key
+				oldest = lastRelevant
+			}
+		}
+		if oldestKey == "" {
+			break
+		}
+		delete(a.loginAttempts, oldestKey)
+	}
 }
 
 type auditEvent struct {
@@ -427,6 +459,7 @@ func (a *app) loginAllowed(key string, now time.Time) bool {
 func (a *app) recordLoginFailure(key string, now time.Time) {
 	a.loginMu.Lock()
 	defer a.loginMu.Unlock()
+	a.pruneLoginAttemptsLocked(now)
 	state := a.loginAttempts[key]
 	if state.WindowStart.IsZero() || now.Sub(state.WindowStart) > 10*time.Minute {
 		state = loginState{WindowStart: now}
