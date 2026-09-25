@@ -740,6 +740,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     var relationships = <Map<String, dynamic>>[];
     var metrics = <Map<String, dynamic>>[];
     var usage = <Map<String, dynamic>>[];
+    var usageSummary = <String, dynamic>{};
     var detailLoading = true;
     String? detailError;
     var requested = false;
@@ -755,6 +756,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         relationships = items(responses[0]);
         metrics = items(responses[1]);
         usage = items(responses[2]);
+        final rawSummary = responses[2]['usage_summary'];
+        usageSummary = rawSummary is Map ? Map<String, dynamic>.from(rawSummary) : <String, dynamic>{};
         setLocal(() => detailLoading = false);
       } catch (e) {
         setLocal(() { detailLoading = false; detailError = e.toString(); });
@@ -949,9 +952,16 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         const SizedBox(height: 20),
                         _SectionHeader(
                           title: 'Partner Usage',
-                          subtitle: 'Current entitlement state across partners.',
+                          subtitle: 'Current entitlement plus real runtime frequency from successful Partner Portal module operations.',
                           trailing: _MiniCounter(label: usage.where((u) => u['status'] == 'ACTIVE').length.toString() + ' active'),
                         ),
+                        const SizedBox(height: 10),
+                        _RuleStrip(items: [
+                          _RuleItem(Icons.today_outlined, 'Last 7 days', '${usageSummary['events_7d'] ?? 0}'),
+                          _RuleItem(Icons.calendar_month_outlined, 'Last 30 days', '${usageSummary['events_30d'] ?? 0}'),
+                          _RuleItem(Icons.query_stats_outlined, 'All runtime events', '${usageSummary['events_total'] ?? 0}'),
+                          _RuleItem(Icons.business_center_outlined, 'Partners using it', '${usageSummary['partners_with_usage'] ?? 0}'),
+                        ]),
                         const SizedBox(height: 10),
                         if (usage.isEmpty)
                           const _MessageCard(icon: Icons.business_outlined, title: 'No partner usage yet', message: 'The module has not been initialized for a partner.')
@@ -969,6 +979,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                                       _DefinitionRow(label: 'Partner ID', value: s(item['partner_id'])),
                                       _DefinitionRow(label: 'Status', value: _humanize(s(item['status']))),
                                       _DefinitionRow(label: 'Included in base', value: item['included_in_base'] == true ? 'Yes' : 'No'),
+                                      _DefinitionRow(label: 'Runtime uses · 7 days', value: '${item['usage_events_7d'] ?? 0}'),
+                                      _DefinitionRow(label: 'Runtime uses · 30 days', value: '${item['usage_events_30d'] ?? 0}'),
+                                      _DefinitionRow(label: 'Runtime uses · total', value: '${item['usage_events_total'] ?? 0}'),
+                                      _DefinitionRow(label: 'Last used', value: s(item['last_used_at']).isEmpty ? '—' : s(item['last_used_at'])),
                                       _DefinitionRow(label: 'Configured 30-day price', value: commercialMoney(item['partner_price'], s(item['currency']))),
                                       _DefinitionRow(label: 'Activation fee', value: commercialMoney(item['partner_activation_fee'], s(item['currency']))),
                                     ],
