@@ -828,8 +828,26 @@ func (a *app) invoicePDF(w http.ResponseWriter,r *http.Request,invoiceID string)
 	_,_=w.Write(pdf)
 }
 
+func (a *app) syncOnboardingRegistry(ctx context.Context) error {
+	_, err := a.db.ExecContext(ctx, `INSERT INTO billing.partner_onboarding(
+		partner_id,state,classification,portal_enabled,reviewed_at,reviewed_by,approved_at,approved_by,reason)
+		SELECT p.id,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN 'REGISTERED' ELSE 'ACTIVE' END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN 'UNCLASSIFIED' ELSE 'PAID' END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN FALSE ELSE TRUE END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN NULL ELSE NOW() END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN '' ELSE 'central-6-admin-default' END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN NULL ELSE NOW() END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN '' ELSE 'central-6-admin-default' END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN 'Registration awaiting HIMATE review' ELSE 'HIMATE-admin-created partner' END
+		FROM partners.partners p
+		WHERE NOT EXISTS(SELECT 1 FROM billing.partner_onboarding o WHERE o.partner_id=p.id)`)
+	return err
+}
+
 func (a *app) financeOverview(w http.ResponseWriter,r *http.Request) {
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
+	if err:=a.syncOnboardingRegistry(r.Context());err!=nil{common.APIError(w,500,"DB","Could not synchronize partner onboarding registry");return}
 	type row struct{Currency string;Draft,Approved,Sent,Paid,Cancelled int;Outstanding,PaidYTD float64}
 	rows,err:=a.db.QueryContext(r.Context(),`SELECT currency,
 		COUNT(*) FILTER (WHERE workflow_status='DRAFT'),
