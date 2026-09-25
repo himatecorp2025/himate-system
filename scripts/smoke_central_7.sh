@@ -103,12 +103,13 @@ echo ok
 printf 'CENTRAL-7 paid onboarding remains ACTIVE, Portal-enabled and MFA-optional after finance closure... '
 paid_partners="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners?limit=100&offset=0&q=Central-6%20Paid%20Partner")"
 paid_meta="$(printf '%s' "$paid_partners" | python3 -c '
-import json,sys,re
+import json,sys
 d=json.load(sys.stdin); xs=[x for x in d["items"] if str(x.get("display_name","")).startswith("Central-6 Paid Partner ")]
 assert xs,d
 x=xs[-1]
-m=re.search(r"Central-6 Paid Partner (\\d+)$",x["display_name"]); assert m,x
-print(x["id"]+"|"+m.group(1))
+stamp=x["display_name"].rsplit(" ",1)[-1]
+assert stamp.isdigit(),x
+print(x["id"]+"|"+stamp)
 ')"
 PAID_ID="${paid_meta%%|*}"
 PAID_STAMP="${paid_meta#*|}"
