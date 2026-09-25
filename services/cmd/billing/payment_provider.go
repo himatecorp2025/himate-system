@@ -139,6 +139,12 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 					"amount":in.Amount,"currency":in.Currency,"provider":in.Provider,"provider_payment_id":in.ProviderPaymentID,
 					"attempt_id":in.AttemptID,"provider_event_id":in.ProviderEventID,
 				})
+				if err == nil {
+					_, err = tx.ExecContext(r.Context(), `INSERT INTO billing.finance_transactions(
+						partner_id,transaction_type,status,currency,net_amount,tax_amount,gross_amount,source,actor,reason)
+						VALUES($1,'ACTIVATION_LICENSE','PAID',$2,$3,0,$3,'PROVIDER','payments-service','Provider activation-license settlement')`,
+						in.PartnerID,in.Currency,in.Amount)
+				}
 			}
 		} else {
 			err = emitBillingEventTx(r.Context(), tx, "LICENSE_PAYMENT_FAILED:"+in.ProviderEventID, in.PartnerID, "", "LICENSE_PAYMENT_FAILED", time.Now().UTC(), map[string]any{
@@ -162,7 +168,7 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if in.Status == "SUCCEEDED" {
-			_, err = tx.Exec(`UPDATE billing.invoices SET status='PAID',provider_status='SUCCEEDED',payment_attempt_id=$2,provider=$3,
+			_, err = tx.Exec(`UPDATE billing.invoices SET status='PAID',workflow_status='PAID',provider_status='SUCCEEDED',payment_attempt_id=$2,provider=$3,
 				provider_payment_id=$4,paid_at=COALESCE(paid_at,NOW()),payment_failure_code='',payment_failure_message='' WHERE id=$1`,
 				in.InvoiceID, in.AttemptID, in.Provider, in.ProviderPaymentID)
 			if err == nil && oldStatus != "PAID" {
@@ -170,6 +176,14 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 					"invoice_id":in.InvoiceID,"amount":in.Amount,"currency":in.Currency,"provider":in.Provider,
 					"provider_payment_id":in.ProviderPaymentID,"attempt_id":in.AttemptID,"provider_event_id":in.ProviderEventID,
 				})
+				if err == nil {
+					_, err = tx.ExecContext(r.Context(), `INSERT INTO billing.finance_transactions(
+						partner_id,invoice_id,transaction_type,status,currency,net_amount,tax_amount,gross_amount,source,actor,reason)
+						SELECT partner_id,id,'PAYMENT','PAID',currency,COALESCE(net_total,total),COALESCE(tax_amount,0),total,
+							'PROVIDER','payments-service','Provider invoice settlement'
+						FROM billing.invoices WHERE id=$1
+						ON CONFLICT DO NOTHING`, in.InvoiceID)
+				}
 			}
 		} else {
 			_, err = tx.Exec(`UPDATE billing.invoices SET provider_status='FAILED',payment_attempt_id=$2,provider=$3,provider_payment_id=$4,
@@ -190,6 +204,10 @@ func (a *app) paymentSettlement(w http.ResponseWriter, r *http.Request) {
 		in.ProviderEventID,in.AttemptID,in.PartnerID,in.InvoiceID,in.Purpose,in.Amount,in.Currency,in.Status,in.Provider,in.ProviderPaymentID,in.FailureCode,in.FailureMessage)
 	if err != nil { common.APIError(w, 500, "DB", "Could not persist payment settlement"); return }
 	if err = tx.Commit(); err != nil { common.APIError(w, 500, "DB", "Could not commit payment settlement"); return }
+
+	if in.Purpose == "INVOICE" && in.Status == "SUCCEEDED" {
+		a.advanceOnboardingFromInvoice(r.Context(), in.PartnerID, onboardingAdminApproval, "payments-service", "Provider invoice payment settled")
+	}
 
 	if in.Purpose == "INVOICE" {
 		if dunningEligibleInvoice {
@@ -293,6 +311,9 @@ func (a *app) retryPendingInvoiceCollections(ctx context.Context, at time.Time) 
 }
 
 func (a *app) queueInvoiceCollection(ctx context.Context, invoiceID, partnerID, currency string, total float64) {
+	if !a.invoiceCollectionApproved(ctx, invoiceID) {
+		return
+	}
 	eligible,attempts,invoiceDate,_,metaErr:=a.invoiceDunningMeta(ctx,invoiceID)
 	attemptNumber:=0
 	key:="invoice:"+invoiceID
