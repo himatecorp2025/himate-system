@@ -87,10 +87,16 @@ echo ok
 
 printf 'HIMATE company profile remains authoritative and editable... '
 company="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
-company_payload="$(printf '%s' "$company" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["contact_name"]="START-22.1 Acceptance"; print(json.dumps(d))')"
+company_write="$(printf '%s' "$company" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+keys=["legal_name","registration_number","address","tax_id","contact_name","email","phone","bank_name","bank_address","account_number","iban","swift","vat_rate_percent","vat_jurisdiction","tax_label"]
+print(json.dumps({k:d.get(k) for k in keys}))
+')"
+company_payload="$(printf '%s' "$company_write" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["contact_name"]="START-22.1 Acceptance"; print(json.dumps(d))')"
 company_updated="$(curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_payload" "$BASE_URL/api/v1/billing/profile")"
-printf '%s' "$company_updated" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["contact_name"]=="START-22.1 Acceptance"'
-curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company" "$BASE_URL/api/v1/billing/profile" >/dev/null
+printf '%s' "$company_updated" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["contact_name"]=="START-22.1 Acceptance"; assert "vat_enabled" in d'
+curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_write" "$BASE_URL/api/v1/billing/profile" >/dev/null
 echo ok
 
 printf 'notification center receives audited control-plane events... '
