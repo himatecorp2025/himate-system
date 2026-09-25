@@ -245,6 +245,8 @@ print(json.dumps({
  "name":"START 23.6 Contact Lead",
  "organization":"HIMATE CI",
  "email":sys.argv[1],
+ "organization_type":"CULTURAL_ORGANIZATION",
+ "inquiry_topic":"PARTNERSHIP",
  "message":"START 23.6 verifies the persisted contact lead administration workflow.",
  "website":""
 }))
@@ -253,7 +255,7 @@ PY
 lead_created="$(curl -fsS -H 'Content-Type: application/json' -d "$lead_payload" "$BASE_URL/api/v1/public/contact")"
 lead_id="$(printf '%s' "$lead_created" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["received"] is True; print(d["id"])')"
 lead_updated="$(curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"lead_status":"CONTACTED","assigned_to":"START 23.6 Owner","admin_note":"Identity and business CRUD acceptance."}' "$BASE_URL/api/v1/contact/inquiries/$lead_id")"
-printf '%s' "$lead_updated" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lead_status"]=="CONTACTED"; assert d["assigned_to"]=="START 23.6 Owner"'
+printf '%s' "$lead_updated" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lead_status"]=="CONTACTED"; assert d["assigned_to"]=="START 23.6 Owner"; assert d["organization_type"]=="CULTURAL_ORGANIZATION"; assert d["inquiry_topic"]=="PARTNERSHIP"'
 echo ok
 
 printf 'notification single-read and read-all persistence... '
