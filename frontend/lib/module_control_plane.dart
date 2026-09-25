@@ -983,53 +983,169 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     );
   }
 
-  Widget moduleCard(Map<String, dynamic> module) {
-    final sourceRepo = s(module['source_repository']).trim();
-    final sourcePath = s(module['source_path']).trim();
+  IconData groupIcon(String key) {
+    switch (key) {
+      case 'finance_invoicing':
+        return Icons.account_balance_wallet_outlined;
+      case 'client_operations':
+        return Icons.groups_2_outlined;
+      case 'marketing':
+        return Icons.campaign_outlined;
+      case 'website_events':
+        return Icons.language_outlined;
+      case 'security_system':
+        return Icons.security_outlined;
+      default:
+        return Icons.category_outlined;
+    }
+  }
+
+  Widget topicGroupCard(Map<String, dynamic> group) {
+    final key = s(group['group_key']);
+    final groupModules = modulesForGroup(key);
+    final liveReady = groupModules.where((m) =>
+        s(m['availability']) == 'ACTIVE' &&
+        s(m['publication_status']) == 'PUBLISHED' &&
+        s(m['implementation_state']) == 'READY').length;
+    final inDevelopment = groupModules.where((m) => s(m['implementation_state']) == 'IN_DEVELOPMENT').length;
+    final assignments = groupModules.fold<int>(
+      0,
+      (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0),
+    );
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 40, height: 40, decoration: BoxDecoration(color: brandNavy.withOpacity(.07), borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.extension_outlined, color: brandNavy)),
-            const SizedBox(width: 11),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              LText(s(module['label']), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
-              const SizedBox(height: 3),
-              LText(s(module['key']), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            ])),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              _StatusPill(label: s(module['publication_status']).isEmpty ? 'UNPUBLISHED' : s(module['publication_status'])),
-              const SizedBox(height: 4),
-              _StatusPill(label: s(module['implementation_state']).isEmpty ? 'IN_DEVELOPMENT' : s(module['implementation_state'])),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => openTopic(key),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: brandNavy.withOpacity(.07),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(groupIcon(key), color: brandNavy, size: 23),
+              ),
+              const Spacer(),
+              const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 19),
+            ]),
+            const SizedBox(height: 18),
+            LText(
+              groupLabel(group),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            LText(
+              '${groupModules.length} ${uiLiteral('modules')}',
+              style: const TextStyle(color: brandTextSoft, fontSize: 10.5, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 16),
+            Wrap(spacing: 7, runSpacing: 7, children: [
+              _StatusPill(label: '$liveReady ${uiLiteral('live ready')}'),
+              if (inDevelopment > 0) _StatusPill(label: '$inDevelopment ${uiLiteral('in development')}'),
+            ]),
+            const SizedBox(height: 12),
+            LText(
+              '$assignments ${uiLiteral('active partner assignments')}',
+              style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget moduleCard(Map<String, dynamic> module) {
+    final activePartners = (module['active_partner_count'] as num?)?.toInt() ?? 0;
+    final availability = s(module['availability']).isEmpty ? 'ACTIVE' : s(module['availability']);
+    final publication = s(module['publication_status']).isEmpty ? 'UNPUBLISHED' : s(module['publication_status']);
+    final implementation = s(module['implementation_state']).isEmpty ? 'IN_DEVELOPMENT' : s(module['implementation_state']);
+    final ready = availability == 'ACTIVE' && publication == 'PUBLISHED' && implementation == 'READY';
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => manageModule(module),
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: ready ? brandSuccess.withOpacity(.08) : brandNavy.withOpacity(.07),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(Icons.extension_outlined, color: ready ? brandSuccess : brandNavy),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  LText(
+                    moduleLabelForLocale(module),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13.5),
+                  ),
+                  const SizedBox(height: 3),
+                  LText(
+                    s(module['key']),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brandTextSoft, fontSize: 9),
+                  ),
+                ]),
+              ),
+              PopupMenuButton<String>(
+                tooltip: uiLiteral('Module actions'),
+                onSelected: (value) {
+                  if (value == 'details') {
+                    manageModule(module);
+                  } else if (value == 'edit') {
+                    editModule(module);
+                  } else if (value.startsWith('move:')) {
+                    moveModuleToGroup(module, value.substring(5));
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'details', child: LText(uiLiteral('Open details'))),
+                  PopupMenuItem(value: 'edit', child: LText(uiLiteral('Edit module'))),
+                  const PopupMenuDivider(),
+                  for (final group in groups)
+                    if (s(group['group_key']) != s(module['group_key']))
+                      PopupMenuItem(
+                        value: 'move:' + s(group['group_key']),
+                        child: LText('${uiLiteral('Move to')} ${groupLabel(group)}'),
+                      ),
+                ],
+              ),
+            ]),
+            const SizedBox(height: 14),
+            Wrap(spacing: 7, runSpacing: 7, children: [
+              _StatusPill(label: ready ? 'ACTIVE' : availability),
+              _StatusPill(label: publication),
+              if (implementation != 'READY') _StatusPill(label: implementation),
+            ]),
+            const SizedBox(height: 14),
+            Row(children: [
+              const Icon(Icons.business_outlined, size: 16, color: brandSteel),
+              const SizedBox(width: 6),
+              Expanded(
+                child: LText(
+                  '$activePartners ${uiLiteral('active partners')}',
+                  style: const TextStyle(color: brandTextSoft, fontSize: 10, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Icon(Icons.arrow_forward_rounded, size: 16, color: brandGold),
             ]),
           ]),
-          const SizedBox(height: 14),
-          _DefinitionRow(label: 'Group', value: s(module['group_label']).isEmpty ? s(module['group_key']) : s(module['group_label'])),
-          _DefinitionRow(label: 'Type', value: _humanize(s(module['module_type']).isEmpty ? 'FEATURE' : s(module['module_type']))),
-          _DefinitionRow(label: 'Reference module price', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['reference_monthly_price'] ?? module['default_monthly_price']).toStringAsFixed(2)),
-          _DefinitionRow(label: 'Reference activation fee', value: (s(module['currency']).isEmpty ? 'USD' : s(module['currency'])) + ' ' + number(module['reference_activation_fee'] ?? module['default_activation_fee']).toStringAsFixed(2)),
-          const _DefinitionRow(label: 'Billing authority', value: 'Partner-specific contract / quote'),
-          _DefinitionRow(label: 'Latest version', value: s(module['latest_version']).isEmpty ? '—' : s(module['latest_version'])),
-          _DefinitionRow(label: 'Owner', value: s(module['owner_team']).isEmpty ? '—' : s(module['owner_team'])),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: brandIvory, borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const LText('SOURCE', style: TextStyle(color: brandSteel, fontWeight: FontWeight.w700, fontSize: 8.5, letterSpacing: .8)),
-              const SizedBox(height: 5),
-              LText(sourceRepo.isEmpty ? 'Source not linked' : sourceRepo + (sourcePath.isEmpty ? '' : ' · ' + sourcePath), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
-            ]),
-          ),
-          const SizedBox(height: 18),
-          Row(children: [
-            Expanded(child: OutlinedButton.icon(onPressed: () => editModule(module), icon: const Icon(Icons.edit_outlined, size: 17), label: const LText('Edit'))),
-            const SizedBox(width: 8),
-            Expanded(child: FilledButton.icon(onPressed: () => manageModule(module), icon: const Icon(Icons.account_tree_outlined, size: 17), label: const LText('Manage'))),
-          ]),
-        ]),
+        ),
       ),
     );
   }
