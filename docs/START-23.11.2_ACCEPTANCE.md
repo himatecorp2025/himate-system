@@ -10,21 +10,21 @@ The module registry, partner-specific module-price history and commercial metada
 
 | Plan | Monthly | Annual list price | Annual charged price | Annual saving | Modules | Selection |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Starter | USD 500 | USD 6,000 | USD 6,000 | USD 0 | 3 | fixed by HIMATE |
-| Business | USD 1,500 | USD 18,000 | USD 16,500 | USD 1,500 | 10 | fixed by HIMATE |
-| Flex | USD 2,500 | USD 30,000 | USD 22,500 | USD 7,500 | 15 | partner-selected |
+| Starter | USD 990 | USD 11,880 | USD 11,880 | USD 0 | 10 | fixed by HIMATE |
+| Business | USD 1,490 | USD 17,880 | USD 16,390 | USD 1,490 | 20 | fixed by HIMATE |
+| Premium (`FLEX` stable key) | USD 2,490 | USD 29,880 | USD 22,410 | USD 7,470 | Unlimited | all current + future eligible modules |
 
-The annual UI shows the full list price and the discounted annual price as monetary amounts. Business displays USD 18,000 → USD 16,500. Flex displays USD 30,000 → USD 22,500.
+The annual UI shows the full list price and the discounted annual price as monetary amounts. Business displays USD 17,880 → USD 16,390. Premium displays USD 29,880 → USD 22,410. Central-5 prices are net and VAT is added from the administrator-controlled tax policy.
 
 CUSTOM is a non-public plan type for individually negotiated partners such as the reference Klavierhaus account. Its recurring price and entitlements are administrator-controlled.
 
 ## Ownership
 
-Billing owns plan definitions and prices, monthly/annual frequency, partner plan state, upgrades/downgrades, Flex selections and recurring invoice/payment authority.
+Billing owns package definitions and net prices, VAT calculation, monthly/annual frequency, partner package state, upgrades/downgrades and recurring invoice/payment authority. The historical `FLEX` plan key remains stable but is displayed as Premium and uses UNLIMITED entitlement semantics.
 
 Catalog owns canonical modules, publication/readiness and actual partner entitlement state. Billing synchronizes plan-derived entitlements to Catalog.
 
-Starter and Business require exactly their configured module capacity before customer selection: Starter exactly 3 PUBLISHED + READY modules and Business exactly 10. Flex has no HIMATE-fixed module set and allows at most 15 partner-selected PUBLISHED + READY modules.
+Starter and Business require exactly their configured module capacity: Starter exactly 10 PUBLISHED + READY modules and Business exactly 20. Premium has no finite module set: every current and future PUBLISHED + READY + ACTIVE module is included automatically.
 
 ## Activation gate
 
@@ -40,13 +40,13 @@ There is no individual module recurring charge for a plan-managed partner.
 
 ## Annual billing
 
-Annual billing is prepaid. On annual-plan activation Billing creates the discounted annual charge immediately: Starter USD 6,000; Business USD 16,500; Flex USD 22,500. The next annual recurring charge is due one year later.
+Annual billing is prepaid. On annual-package activation Billing creates the discounted annual NET charge immediately: Starter USD 11,880; Business USD 16,390; Premium USD 22,410, plus the currently configured VAT. The next annual recurring charge is due one year later.
 
 Invoice metadata retains both list_price and discount_amount so the ledger can reproduce the displayed annual saving.
 
 ## Upgrade
 
-A plan upgrade within the same billing frequency is immediate and uses the complete price difference with no proration. Monthly examples: Starter → Business USD 1,000; Business → Flex USD 1,000; Starter → Flex USD 2,000.
+A package upgrade within the same billing frequency is immediate and uses the complete NET price difference with no proration. Monthly examples: Starter → Business USD 500; Business → Premium USD 1,000; Starter → Premium USD 1,500, plus configured VAT.
 
 The upgraded entitlement set is available immediately. Annual upgrades use annual charged prices and retain the original annual renewal date.
 
@@ -54,13 +54,13 @@ The upgraded entitlement set is available immediately. Annual upgrades use annua
 
 There is no refund. A monthly downgrade keeps the current plan through the current period and becomes effective on the next calendar-month day 1. An annual downgrade becomes effective at annual renewal.
 
-## Flex module changes
+## Premium dynamic module entitlement
 
-A normal Flex module-set change becomes effective on the next calendar-month boundary, independent of payment frequency. An immediate upgrade into Flex accepts the initial Flex selection and grants it immediately.
+Premium does not accept a finite partner-selected module list. The stable `FLEX` key maps to `UNLIMITED`: all currently eligible modules are entitled immediately, and every newly released eligible module is added automatically without a package configuration change or additional recurring module charge.
 
 ## Fixed-plan package changes
 
-HIMATE administrators configure Starter and Business from Modules → Subscription Plans. The first complete fixed package can take effect immediately. Later changes default to the next calendar-month boundary and retain effective-dated history.
+HIMATE administrators configure Starter and Business from Modules → Packages. The first complete fixed package can take effect immediately. Later changes default to the next calendar-month boundary and retain effective-dated history. Premium is rule-driven and has no finite module list to maintain.
 
 ## Payment collection and dunning
 
@@ -81,7 +81,7 @@ The commercial contract/Terms must clearly disclose automatic recurring card col
 
 ## Legacy/custom commercial data
 
-START-23.11.1 partner-specific module prices, activation fees, quote references, price history and immutable legacy module-period evidence remain stored. They are not recurring-invoice authority for Starter/Business/Flex pilot partners.
+START-23.11.1 partner-specific module prices, activation fees, quote references, price history and immutable legacy module-period evidence remain stored. They are not recurring-invoice authority for Starter/Business/Premium package partners.
 
 ## Automated evidence
 
@@ -89,12 +89,12 @@ Static audit: python3 scripts/audit_start_23_11_2.py
 
 Containerized acceptance: sh scripts/smoke_start_23_11_2.sh http://127.0.0.1:8080
 
-The suite must prove exact plan amounts, annual list/saving amounts, fixed module limits, Flex selection, activation gate, automatic monthly day-1 charging, immediate annual prepay, immediate upgrade difference, scheduled downgrade, scheduled Flex set changes, Catalog entitlement sync, PLAN-only recurring invoice items, idempotency, the day-1/day-3/day-6 retry schedule, third-failure suspension, cure-window recovery, day-36 operational purge with legal-ledger retention, and CUSTOM support.
+The suite must prove exact package amounts, annual list/saving amounts, Starter/Business fixed module limits, Premium UNLIMITED dynamic entitlement, activation gate, automatic monthly day-1 charging, immediate annual prepay, immediate upgrade difference, scheduled downgrade, automatic future-module inclusion, Catalog entitlement sync, PLAN/TAX invoice items, idempotency, the day-1/day-3/day-6 retry schedule, third-failure suspension, cure-window recovery, day-36 operational purge with legal-ledger retention, and CUSTOM support.
 
 ## Out of scope
 
 - post-pilot per-module add-on charging beyond the managed plan price;
-- additional plan tiers beyond Starter/Business/Flex/Custom;
+- additional plan tiers beyond Starter/Business/Premium (`FLEX` stable key)/Custom;
 - percentage-based promotional campaigns;
 - coupons, trials or seat-based billing;
 - final live-provider production proof reserved for START-23.12.
