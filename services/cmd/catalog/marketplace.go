@@ -54,6 +54,8 @@ var marketplaceSummaries = map[string]marketplaceSummary{
 	"publish_preview":     {"Website preview and publishing workspace.", "Weboldal-előnézeti és publikálási felület."},
 	"showroom_pianos":     {"Website and showroom catalog workspace for piano listings.", "Weboldali és bemutatótermi katalógusfelület zongoralistákhoz."},
 	"event_tickets":       {"Event ticket and reservation-management workspace.", "Eseményjegy- és foglaláskezelő felület."},
+	"needs_assessment":    {"Structured needs-assessment workspace for partner onboarding, discovery and service scoping.", "Strukturált igényfelmérő felület partner-onboardinghoz, felméréshez és szolgáltatási scope meghatározásához."},
+	"two_factor_authentication": {"Optional security module for configurable two-factor authentication in Partner Portal environments.", "Opcionális biztonsági modul konfigurálható kétfaktoros azonosításhoz Partnerportál-környezetekben."},
 }
 
 func start23113MarketplaceMigration() common.Migration {
