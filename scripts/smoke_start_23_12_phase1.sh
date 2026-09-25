@@ -75,7 +75,7 @@ PY
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$payment_payload" "$BASE_URL/api/v1/payments/partners/$partner_id/profile" >/dev/null
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"BUSINESS","billing_frequency":"MONTHLY","reason":"START-23.12 Phase 1 runtime authorization"}' "$BASE_URL/api/v1/billing/partners/$partner_id/plan" >/dev/null
 marketplace="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(xs)==38; assert sum(m["access_state"]=="ACTIVE" for m in xs)==10; assert sum(m["access_state"]=="LOCKED" for m in xs)==28'
+printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(xs)==40; assert sum(m["access_state"]=="ACTIVE" for m in xs)==10; assert sum(m["access_state"]=="LOCKED" for m in xs)==28; assert sum(m["access_state"]=="COMING_SOON" for m in xs)==2'
 active_key="$(printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(m["key"] for m in d["items"] if m.get("access_state")=="ACTIVE" and m.get("executable") is True))')"
 second_active_key="$(printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m["key"] for m in d["items"] if m.get("access_state")=="ACTIVE" and m.get("executable") is True]; print(xs[1])')"
 locked_key="$(printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(m["key"] for m in d["items"] if m.get("access_state")=="LOCKED"))')"
