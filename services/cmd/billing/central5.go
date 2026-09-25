@@ -57,6 +57,89 @@ func central5BillingMigration() common.Migration {
 					SELECT 1 FROM billing.subscription_plan_price_history h
 					WHERE h.plan_key=p.plan_key AND h.change_type='CENTRAL5_BASELINE'
 				  )`,
+			`CREATE OR REPLACE FUNCTION billing.guard_plan_invoice_mutation() RETURNS trigger LANGUAGE plpgsql AS $fn$
+			BEGIN
+				IF TG_OP='DELETE' THEN
+					IF OLD.billing_model='PLAN' THEN
+						RAISE EXCEPTION 'PLAN invoices are append-only';
+					END IF;
+					RETURN OLD;
+				END IF;
+				IF OLD.billing_model IS DISTINCT FROM NEW.billing_model THEN
+					RAISE EXCEPTION 'invoice billing_model is immutable';
+				END IF;
+				IF OLD.billing_model='PLAN' AND (
+					OLD.invoice_key IS DISTINCT FROM NEW.invoice_key
+					OR OLD.partner_id IS DISTINCT FROM NEW.partner_id
+					OR OLD.invoice_date IS DISTINCT FROM NEW.invoice_date
+					OR OLD.service_period_start IS DISTINCT FROM NEW.service_period_start
+					OR OLD.service_period_end IS DISTINCT FROM NEW.service_period_end
+					OR OLD.currency IS DISTINCT FROM NEW.currency
+					OR OLD.base_fee IS DISTINCT FROM NEW.base_fee
+					OR OLD.module_fee IS DISTINCT FROM NEW.module_fee
+					OR OLD.total IS DISTINCT FROM NEW.total
+					OR OLD.net_total IS DISTINCT FROM NEW.net_total
+					OR OLD.tax_rate_percent IS DISTINCT FROM NEW.tax_rate_percent
+					OR OLD.tax_amount IS DISTINCT FROM NEW.tax_amount
+					OR OLD.minimum_commitment_adjustment IS DISTINCT FROM NEW.minimum_commitment_adjustment
+					OR OLD.plan_key IS DISTINCT FROM NEW.plan_key
+					OR OLD.billing_frequency IS DISTINCT FROM NEW.billing_frequency
+					OR OLD.charge_type IS DISTINCT FROM NEW.charge_type
+					OR OLD.list_price IS DISTINCT FROM NEW.list_price
+					OR OLD.discount_amount IS DISTINCT FROM NEW.discount_amount
+					OR OLD.created_at IS DISTINCT FROM NEW.created_at
+				) THEN
+					RAISE EXCEPTION 'PLAN invoice commercial fields are immutable';
+				END IF;
+				RETURN NEW;
+			END; $fnpackage main
+
+import (
+	"context"
+
+	"himate.local/services/internal/common"
+)
+
+const selectionModeUnlimited = "UNLIMITED"
+
+type billingTaxPolicy struct {
+	RatePercent  float64
+	Label        string
+	Jurisdiction string
+}
+
+func central5BillingMigration() common.Migration {
+	return common.Migration{
+		Version: 17,
+		Name:    "central-5-packages-pricing-vat-unlimited",
+		AllowDestructiveSchema: true,
+		Statements: []string{
+			`ALTER TABLE billing.subscription_plans DROP CONSTRAINT IF EXISTS subscription_plans_selection_mode_check`,
+			`ALTER TABLE billing.subscription_plans ADD CONSTRAINT subscription_plans_selection_mode_check
+				CHECK(selection_mode IN ('FIXED','SELECTABLE','CUSTOM','UNLIMITED'))`,
+			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS vat_rate_percent NUMERIC(6,2) NOT NULL DEFAULT 0`,
+			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS vat_jurisdiction TEXT NOT NULL DEFAULT 'GB'`,
+			`ALTER TABLE billing.company_profile ADD COLUMN IF NOT EXISTS tax_label TEXT NOT NULL DEFAULT 'VAT'`,
+			`ALTER TABLE billing.company_profile DROP CONSTRAINT IF EXISTS billing_company_profile_vat_rate_check`,
+			`ALTER TABLE billing.company_profile ADD CONSTRAINT billing_company_profile_vat_rate_check
+				CHECK(vat_rate_percent>=0 AND vat_rate_percent<=100)`,
+			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS net_total NUMERIC(12,2) NOT NULL DEFAULT 0`,
+			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS tax_rate_percent NUMERIC(6,2) NOT NULL DEFAULT 0`,
+			`ALTER TABLE billing.invoices ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(12,2) NOT NULL DEFAULT 0`,
+			`UPDATE billing.invoices SET net_total=total WHERE net_total=0 AND total<>0`,
+			`UPDATE billing.subscription_plans SET
+				display_name='Starter',monthly_price=990,annual_list_price=11880,annual_price=11880,
+				module_limit=10,selection_mode='FIXED',customer_selectable=TRUE,sort_order=10,updated_at=NOW()
+				WHERE plan_key='STARTER'`,
+			`UPDATE billing.subscription_plans SET
+				display_name='Business',monthly_price=1490,annual_list_price=17880,annual_price=16390,
+				module_limit=20,selection_mode='FIXED',customer_selectable=TRUE,sort_order=20,updated_at=NOW()
+				WHERE plan_key='BUSINESS'`,
+			`UPDATE billing.subscription_plans SET
+				display_name='Premium',monthly_price=2490,annual_list_price=29880,annual_price=22410,
+				module_limit=0,selection_mode='UNLIMITED',customer_selectable=TRUE,sort_order=30,updated_at=NOW()
+				WHERE plan_key='FLEX'`,
+,
 		},
 	}
 }
