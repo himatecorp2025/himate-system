@@ -461,7 +461,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 405, "METHOD", "Use POST")
 		return
 	}
-	if !requestOriginAllowed(r) {
+	if !browserMutationOriginAllowed(r) {
 		common.APIError(w, 403, "CSRF", "Cross-site request rejected")
 		return
 	}
@@ -511,7 +511,7 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 405, "METHOD", "Use POST")
 		return
 	}
-	if !requestOriginAllowed(r) {
+	if !browserMutationOriginAllowed(r) {
 		common.APIError(w, 403, "CSRF", "Cross-site request rejected")
 		return
 	}
@@ -622,7 +622,7 @@ func (a *app) passwordResetRequest(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
 		return
 	}
-	if !requestOriginAllowed(r) {
+	if !browserMutationOriginAllowed(r) {
 		common.APIError(w, http.StatusForbidden, "CSRF", "Cross-site request rejected")
 		return
 	}
@@ -693,7 +693,7 @@ func (a *app) passwordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
 		return
 	}
-	if !requestOriginAllowed(r) {
+	if !browserMutationOriginAllowed(r) {
 		common.APIError(w, http.StatusForbidden, "CSRF", "Cross-site request rejected")
 		return
 	}
@@ -1171,12 +1171,13 @@ func (a *app) auditOldState(r *http.Request) any {
 }
 
 func (a *app) api(w http.ResponseWriter, r *http.Request) {
+	stripUntrustedAuthorityHeaders(r)
 	u, err := a.auth(r)
 	if err != nil {
 		common.APIError(w, 401, "UNAUTHORIZED", "Authentication required")
 		return
 	}
-	if !requestOriginAllowed(r) {
+	if !browserMutationOriginAllowed(r) {
 		common.APIError(w, 403, "CSRF", "Cross-site request rejected")
 		return
 	}

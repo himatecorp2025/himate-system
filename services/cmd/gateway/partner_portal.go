@@ -214,7 +214,7 @@ func writePartnerAccessError(w http.ResponseWriter, err error) {
 
 func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use POST");return}
-	if !requestOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
+	if !browserMutationOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
 	key:="partner:"+clientKey(r);now:=time.Now().UTC()
 	if !a.loginAllowed(key,now){w.Header().Set("Retry-After","900");common.APIError(w,429,"RATE_LIMITED","Too many sign-in attempts. Try again later.");return}
 	var in struct{Email string `json:"email"`;Password string `json:"password"`;Remember bool `json:"remember"`}
@@ -237,7 +237,7 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 
 func (a *app) partnerLogout(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use POST");return}
-	if !requestOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
+	if !browserMutationOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
 	http.SetCookie(w,&http.Cookie{Name:partnerSessionCookie,Value:"",Path:"/partner",HttpOnly:true,Secure:a.secureCookie,SameSite:http.SameSiteStrictMode,MaxAge:-1})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -263,7 +263,7 @@ func (a *app) internalJSON(ctx context.Context,method,host,path string,body any,
 	common.BindInternalRequest(req,a.internalToken)
 	if body!=nil{req.Header.Set("Content-Type","application/json")}
 	for k,v:=range headers{req.Header.Set(k,v)}
-	resp,err:=a.client.Do(req);if err!=nil{return err};defer resp.Body.Close()
+	resp,err:=common.DoInternal(a.client,req);if err!=nil{return err};defer resp.Body.Close()
 	raw,err:=io.ReadAll(io.LimitReader(resp.Body,1<<20));if err!=nil{return err}
 	if resp.StatusCode>=300{return internalHTTPError{Status:resp.StatusCode,Body:raw}}
 	gotVersion:=strings.TrimSpace(resp.Header.Get("X-Himate-App-Version"))
@@ -320,8 +320,9 @@ func partnerAuditAction(r *http.Request)string{
 }
 
 func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
+	stripUntrustedAuthorityHeaders(r)
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
-	if !requestOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
+	if !browserMutationOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
 	accessCtx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
 	accessErr:=a.partnerAccessAllowed(accessCtx,u.PartnerID)
 	cancel()
