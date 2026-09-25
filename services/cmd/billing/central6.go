@@ -612,24 +612,35 @@ func (a *app) manualInvoiceCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) invoiceDetail(ctx context.Context, invoiceID string) (map[string]any,error) {
-	var id,partnerID,currency,status,providerStatus,planKey,billingFrequency,chargeType,billingModel string
+	var id,partnerID,currency,status,providerStatus,attemptID,provider,providerPaymentID,failureCode,failureMessage string
+	var planKey,billingFrequency,chargeType,billingModel,dunningState string
 	var invoiceDate,start,end,created time.Time
-	var paidAt sql.NullTime
+	var paidAt,dunningSuspendedAt,purgeDueAt,operationalPurgedAt sql.NullTime
 	var base,module,total,listPrice,discount,net,taxRate,tax float64
+	var collectionAttempts int
 	err:=a.db.QueryRowContext(ctx,`SELECT id,partner_id,invoice_date,service_period_start,service_period_end,currency,
-		base_fee,module_fee,total,status,provider_status,paid_at,created_at,COALESCE(plan_key,''),COALESCE(billing_frequency,''),
+		base_fee,module_fee,total,status,provider_status,payment_attempt_id,provider,provider_payment_id,paid_at,
+		payment_failure_code,payment_failure_message,created_at,COALESCE(plan_key,''),COALESCE(billing_frequency,''),
 		COALESCE(charge_type,'LEGACY'),COALESCE(list_price,0),COALESCE(discount_amount,0),COALESCE(billing_model,'LEGACY_MODULE'),
-		COALESCE(net_total,total),COALESCE(tax_rate_percent,0),COALESCE(tax_amount,0)
+		COALESCE(net_total,total),COALESCE(tax_rate_percent,0),COALESCE(tax_amount,0),
+		COALESCE(collection_attempts,0),COALESCE(dunning_state,'NONE'),dunning_suspended_at,purge_due_at,operational_purged_at
 		FROM billing.invoices WHERE id=$1`,invoiceID).
-		Scan(&id,&partnerID,&invoiceDate,&start,&end,&currency,&base,&module,&total,&status,&providerStatus,&paidAt,&created,
-			&planKey,&billingFrequency,&chargeType,&listPrice,&discount,&billingModel,&net,&taxRate,&tax)
+		Scan(&id,&partnerID,&invoiceDate,&start,&end,&currency,&base,&module,&total,&status,&providerStatus,
+			&attemptID,&provider,&providerPaymentID,&paidAt,&failureCode,&failureMessage,&created,
+			&planKey,&billingFrequency,&chargeType,&listPrice,&discount,&billingModel,&net,&taxRate,&tax,
+			&collectionAttempts,&dunningState,&dunningSuspendedAt,&purgeDueAt,&operationalPurgedAt)
 	if err!=nil{return nil,err}
 	out:=map[string]any{
 		"id":id,"partner_id":partnerID,"invoice_date":invoiceDate,"service_period_start":start,"service_period_end_exclusive":end,
 		"currency":currency,"base_fee":base,"module_fee":module,"total":total,"status":status,"provider_status":providerStatus,
 		"plan_key":planKey,"billing_frequency":billingFrequency,"charge_type":chargeType,"billing_model":billingModel,
 		"list_price":listPrice,"discount_amount":discount,"net_total":net,"tax_rate_percent":taxRate,"tax_amount":tax,"gross_total":total,
-		"paid_at":nullableCentral6Time(paidAt),"created_at":created,"items":a.invoiceItemsFor(invoiceID),
+		"collection_attempts":collectionAttempts,"dunning_state":dunningState,
+		"dunning_suspended_at":nullableCentral6Time(dunningSuspendedAt),"purge_due_at":nullableCentral6Time(purgeDueAt),
+		"operational_purged_at":nullableCentral6Time(operationalPurgedAt),
+		"payment_attempt_id":attemptID,"provider":provider,"provider_payment_id":providerPaymentID,
+		"paid_at":nullableCentral6Time(paidAt),"payment_failure_code":failureCode,"payment_failure_message":failureMessage,
+		"created_at":created,"items":a.invoiceItemsFor(invoiceID),
 	}
 	meta,err:=a.invoiceWorkflowMeta(ctx,invoiceID);if err!=nil{return nil,err}
 	for k,v:=range meta{out[k]=v}
