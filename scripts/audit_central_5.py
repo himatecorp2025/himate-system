@@ -17,6 +17,7 @@ billing = read("services/cmd/billing/plans.go")
 central5_billing = read("services/cmd/billing/central5.go")
 billing_main = read("services/cmd/billing/main.go")
 catalog = read("services/cmd/catalog/plans.go")
+catalog_main = read("services/cmd/catalog/main.go")
 central5_catalog = read("services/cmd/catalog/central5.go")
 gateway = read("services/cmd/gateway/partner_portal.go")
 ui = read("frontend/lib/module_control_plane.dart")
@@ -76,6 +77,12 @@ for token in [
     "availability='ACTIVE'",
 ]:
     require(token in central5_catalog, f"Central-5 catalog policy missing: {token}")
+
+for token in [
+    "pm.entitlement_source,pm.plan_key",
+    '"entitlement_source":entitlementSource,"plan_key":planKey',
+]:
+    require(token in catalog_main, f"partner-module package provenance missing: {token}")
 
 for token in [
     'EntitlementMode string',
