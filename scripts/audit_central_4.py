@@ -131,7 +131,7 @@ for token in [
     "Back to module topics",
     "Runtime uses · 7 days",
     "Runtime uses · 30 days",
-    "Commercial Control",
+    "Partner × Module Commercial Matrix",
 ]:
     require(token in ui, f"Central-4 Modules UI contract missing: {token}")
 
