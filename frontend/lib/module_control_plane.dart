@@ -1252,15 +1252,111 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
   }
 
+  Future<void> editPlanPrice(Map<String, dynamic> plan) async {
+    final monthly = TextEditingController(text: number(plan['monthly_price']).toStringAsFixed(0));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: 'Edit ${s(plan['display_name'])} pricing',
+        subtitle: 'Package prices are net. VAT is added from the HIMATE billing profile at invoice and payment time.',
+        icon: Icons.price_change_outlined,
+        width: 520,
+        child: TextField(
+          controller: monthly,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: uiLiteral('Net monthly price (USD)')),
+        ),
+        primaryLabel: 'Save net price',
+        onPrimary: () => Navigator.pop(dialogContext, true),
+      ),
+    );
+    if (ok != true) {
+      monthly.dispose();
+      return;
+    }
+    final value = double.tryParse(monthly.text.trim().replaceAll(',', '.'));
+    monthly.dispose();
+    if (value == null || value < 0) {
+      notify('Enter a valid non-negative package price.', failure: true);
+      return;
+    }
+    try {
+      await widget.api.patch('/api/v1/billing/plans/${s(plan['plan_key'])}', {
+        'monthly_price': value,
+        'reason': 'Central-5 administrator package price update',
+      });
+      await load();
+      if (mounted) notify('${s(plan['display_name'])} net price updated.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  Future<void> showPackageDetails(Map<String, dynamic> plan) async {
+    final unlimited = plan['unlimited_modules'] == true || s(plan['selection_mode']) == 'UNLIMITED';
+    final keys = plan['fixed_module_keys'] is List
+        ? (plan['fixed_module_keys'] as List).map((e) => e.toString()).toList()
+        : <String>[];
+    final availableNow = modules.where((m) =>
+      s(m['availability']) == 'ACTIVE' &&
+      s(m['publication_status']) == 'PUBLISHED' &&
+      s(m['implementation_state']) == 'READY'
+    ).length;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: '${s(plan['display_name'])} package',
+        subtitle: unlimited
+            ? '$availableNow modules available today + every future eligible HIMATE module.'
+            : 'HIMATE-managed package with an authoritative fixed module set.',
+        icon: unlimited ? Icons.all_inclusive_rounded : Icons.inventory_2_outlined,
+        width: 720,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ResponsiveFieldPair(
+            first: _DefinitionRow(label: 'Net monthly price', value: '${planMoney(plan['monthly_net_price'] ?? plan['monthly_price'])} + ${s(plan['tax_label']).isEmpty ? 'VAT' : s(plan['tax_label'])}'),
+            second: _DefinitionRow(label: 'Current VAT rate', value: '${number(plan['vat_rate_percent']).toStringAsFixed(2)}%'),
+          ),
+          const SizedBox(height: 10),
+          ResponsiveFieldPair(
+            first: _DefinitionRow(label: 'Active partners', value: '${plan['active_partner_count'] ?? 0}'),
+            second: _DefinitionRow(label: 'Module entitlement', value: unlimited ? 'Unlimited' : '${plan['module_limit'] ?? 0} fixed modules'),
+          ),
+          if (unlimited) ...[
+            const SizedBox(height: 14),
+            _MessageCard(
+              icon: Icons.auto_awesome_outlined,
+              title: 'Unlimited by rule — not by a stored module count',
+              message: '$availableNow modules are eligible today. Newly released modules enter Premium entitlement automatically without changing the package configuration.',
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            LText('Included modules', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 12)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [for (final key in keys) Chip(label: LText(moduleLabel(key)))]),
+          ],
+        ]),
+        primaryLabel: 'Close',
+        onPrimary: () => Navigator.pop(dialogContext),
+      ),
+    );
+  }
+
   Widget subscriptionPlanCard(Map<String, dynamic> plan) {
     final annualList = number(plan['annual_list_price']);
     final annual = number(plan['annual_price']);
     final savings = number(plan['annual_savings']);
     final fixed = s(plan['selection_mode']) == 'FIXED';
+    final unlimited = plan['unlimited_modules'] == true || s(plan['selection_mode']) == 'UNLIMITED';
     final ready = plan['ready'] == true;
     final keys = plan['fixed_module_keys'] is List
         ? (plan['fixed_module_keys'] as List).map((e) => e.toString()).toList()
         : <String>[];
+    final availableNow = modules.where((m) =>
+      s(m['availability']) == 'ACTIVE' &&
+      s(m['publication_status']) == 'PUBLISHED' &&
+      s(m['implementation_state']) == 'READY'
+    ).length;
+    final taxLabel = s(plan['tax_label']).isEmpty ? 'VAT' : s(plan['tax_label']);
 
     return Card(
       child: Padding(
@@ -1273,12 +1369,17 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 style: const TextStyle(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w800),
               ),
             ),
-            _StatusPill(label: ready ? 'READY' : fixed ? 'SETUP REQUIRED' : 'READY'),
+            _StatusPill(label: unlimited ? 'UNLIMITED' : ready ? 'READY' : 'SETUP REQUIRED'),
           ]),
           const SizedBox(height: 8),
           LText(
-            '${planMoney(plan['monthly_price'])} / month',
+            '${planMoney(plan['monthly_net_price'] ?? plan['monthly_price'])} / month + $taxLabel',
             style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 15),
+          ),
+          const SizedBox(height: 3),
+          LText(
+            'Current $taxLabel: ${number(plan['vat_rate_percent']).toStringAsFixed(2)}% · net price',
+            style: const TextStyle(color: brandTextSoft, fontSize: 9.8),
           ),
           const SizedBox(height: 10),
           if (annual < annualList)
@@ -1291,7 +1392,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               ),
             ),
           LText(
-            '${planMoney(annual)} / year',
+            '${planMoney(annual)} / year net',
             style: const TextStyle(color: brandGold, fontWeight: FontWeight.w800, fontSize: 16),
           ),
           if (savings > 0)
@@ -1300,12 +1401,18 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               style: const TextStyle(color: brandSuccess, fontSize: 10, fontWeight: FontWeight.w700),
             ),
           const SizedBox(height: 14),
-          _DefinitionRow(label: 'Module capacity', value: '${plan['module_limit'] ?? 0}'),
           _DefinitionRow(
-            label: 'Selection model',
-            value: fixed ? 'Fixed by HIMATE' : 'Partner chooses modules',
+            label: 'Module capacity',
+            value: unlimited ? 'Unlimited' : '${plan['module_limit'] ?? 0}',
           ),
-          if (fixed)
+          _DefinitionRow(
+            label: 'Entitlement model',
+            value: unlimited ? 'All current + future eligible modules' : 'Fixed by HIMATE',
+          ),
+          _DefinitionRow(label: 'Active partners', value: '${plan['active_partner_count'] ?? 0}'),
+          if (unlimited)
+            _DefinitionRow(label: 'Available today', value: '$availableNow + all future modules')
+          else
             _DefinitionRow(
               label: 'Configured modules',
               value: '${keys.length} / ${plan['module_limit'] ?? 0}',
@@ -1318,22 +1425,33 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               children: [for (final key in keys) Chip(label: LText(moduleLabel(key)))],
             ),
           ],
+          if (unlimited) ...[
+            const SizedBox(height: 10),
+            _MessageCard(
+              icon: Icons.all_inclusive_rounded,
+              title: 'Premium grows automatically',
+              message: '$availableNow modules are available today. Every newly released eligible module is included automatically.',
+            ),
+          ],
           const SizedBox(height: 16),
-          if (fixed)
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            OutlinedButton.icon(
+              onPressed: () => showPackageDetails(plan),
+              icon: const Icon(Icons.open_in_new_rounded, size: 17),
+              label: const LText('Package details'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => editPlanPrice(plan),
+              icon: const Icon(Icons.price_change_outlined, size: 17),
+              label: const LText('Edit net price'),
+            ),
+            if (fixed)
+              FilledButton.icon(
                 onPressed: () => configureFixedPlan(plan),
                 icon: const Icon(Icons.tune_rounded),
                 label: LText(ready ? 'Change included modules' : 'Configure included modules'),
               ),
-            )
-          else
-            const _MessageCard(
-              icon: Icons.auto_awesome_outlined,
-              title: 'Customer-selected package',
-              message: 'Flex customers choose up to 15 published modules. HIMATE does not define a fixed Flex module set.',
-            ),
+          ]),
         ]),
       ),
     );
@@ -1342,9 +1460,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   Widget subscriptionPlansPage() {
     final visible = subscriptionPlans.where((p) => s(p['plan_key']) != 'CUSTOM').toList();
     return Content(
-      eyebrow: 'COMMERCIAL PACKAGING',
-      title: 'Subscription Plans',
-      subtitle: 'Starter and Business use fixed HIMATE-defined packages. Flex gives the customer up to 15 selectable modules.',
+      eyebrow: 'CENTRAL-5 · COMMERCIAL PACKAGING',
+      title: 'Packages',
+      subtitle: 'Starter includes 10 HIMATE-defined modules, Business includes 20, and Premium provides unlimited access to every current and future eligible module.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => setState(() => showSubscriptionPlans = false),
@@ -1358,10 +1476,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         ),
       ],
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const _MessageCard(
+        _MessageCard(
           icon: Icons.payments_outlined,
-          title: 'Pilot pricing authority',
-          message: 'Starter: USD 500/month · Business: USD 1,500/month · Flex: USD 2,500/month. Individual module prices remain stored for future add-ons/custom contracts but do not drive standard plan invoices.',
+          title: 'Central-5 pricing authority',
+          message: 'Starter: USD 990/month + VAT · Business: USD 1,490/month + VAT · Premium: USD 2,490/month + VAT. VAT is controlled from the HIMATE billing profile and is currently ${subscriptionPlans.isEmpty ? '0' : number(subscriptionPlans.first['vat_rate_percent']).toStringAsFixed(2)}%.',
         ),
         const SizedBox(height: 18),
         LayoutBuilder(builder: (context, constraints) {
@@ -1422,7 +1540,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         OutlinedButton.icon(
           onPressed: () => setState(() => showSubscriptionPlans = true),
           icon: const Icon(Icons.workspace_premium_outlined),
-          label: LText(uiLiteral('Subscription Plans')),
+          label: LText(uiLiteral('Packages')),
         ),
         OutlinedButton.icon(
           onPressed: () => setState(() => showCommercialMatrix = !showCommercialMatrix),
