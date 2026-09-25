@@ -2465,40 +2465,76 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
-class _ImpactPanel extends StatelessWidget {
-  const _ImpactPanel({required this.trend,required this.year,required this.authorized});
-  final List<Map<String,dynamic>> trend;
+class _ImpactPanel extends StatefulWidget {
+  const _ImpactPanel({
+    required this.monthlyTrend,
+    required this.weeklyTrend,
+    required this.year,
+    required this.authorized,
+  });
+  final List<Map<String,dynamic>> monthlyTrend;
+  final List<Map<String,dynamic>> weeklyTrend;
   final int year;
   final bool authorized;
 
   @override
-  Widget build(BuildContext context)=>SizedBox(
-    height:330,
-    child:Card(child:Padding(
-      padding:const EdgeInsets.fromLTRB(22,20,22,16),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[
-          Expanded(child:LText(uiLiteral('Program Impact'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
-          Container(
-            padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),
-            decoration:BoxDecoration(border:Border.all(color:brandMist),borderRadius:BorderRadius.circular(7)),
-            child:LText('$year',style:GoogleFonts.inter(color:brandNavy,fontSize:10.5,fontWeight:FontWeight.w600)),
-          )
-        ]),
-        const SizedBox(height:12),
-        Expanded(
-          child:authorized
-              ?_ImpactChart(trend:trend)
-              :Center(
-                  child:LText(
-                    uiLiteral('Impact permission required'),
-                    style:GoogleFonts.inter(color:brandTextSoft,fontSize:11.5),
+  State<_ImpactPanel> createState()=>_ImpactPanelState();
+}
+
+class _ImpactPanelState extends State<_ImpactPanel> {
+  bool weekly=false;
+
+  @override
+  Widget build(BuildContext context){
+    final trend=weekly?widget.weeklyTrend:widget.monthlyTrend;
+    return SizedBox(
+      height:330,
+      child:Card(child:Padding(
+        padding:const EdgeInsets.fromLTRB(22,20,22,16),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Row(children:[
+            Expanded(child:LText(uiLiteral('Program Impact'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+            if(widget.authorized)
+              Container(
+                height:34,
+                padding:const EdgeInsets.symmetric(horizontal:9),
+                decoration:BoxDecoration(border:Border.all(color:brandMist),borderRadius:BorderRadius.circular(7)),
+                child:DropdownButtonHideUnderline(
+                  child:DropdownButton<bool>(
+                    value:weekly,
+                    isDense:true,
+                    icon:const Icon(Icons.keyboard_arrow_down_rounded,size:17),
+                    style:GoogleFonts.inter(color:brandNavy,fontSize:10.5,fontWeight:FontWeight.w600),
+                    items:[
+                      DropdownMenuItem(value:false,child:LText(uiLiteral('Monthly'))),
+                      DropdownMenuItem(value:true,child:LText(uiLiteral('Weekly'))),
+                    ],
+                    onChanged:(value){if(value!=null)setState(()=>weekly=value);},
                   ),
                 ),
-        ),
-      ]),
-    )),
-  );
+              ),
+            const SizedBox(width:8),
+            Container(
+              padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),
+              decoration:BoxDecoration(border:Border.all(color:brandMist),borderRadius:BorderRadius.circular(7)),
+              child:LText('${widget.year}',style:GoogleFonts.inter(color:brandNavy,fontSize:10.5,fontWeight:FontWeight.w600)),
+            )
+          ]),
+          const SizedBox(height:12),
+          Expanded(
+            child:widget.authorized
+                ?_ImpactChart(trend:trend)
+                :Center(
+                    child:LText(
+                      uiLiteral('Impact permission required'),
+                      style:GoogleFonts.inter(color:brandTextSoft,fontSize:11.5),
+                    ),
+                  ),
+          ),
+        ]),
+      )),
+    );
+  }
 }
 
 class _ImpactChart extends StatelessWidget {
@@ -2507,14 +2543,18 @@ class _ImpactChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context)=>CustomPaint(
-    painter:_ImpactChartPainter(trend.map((row)=>number(row['value'])).toList()),
+    painter:_ImpactChartPainter(
+      trend.map((row)=>number(row['value'])).toList(),
+      trend.map((row)=>'${row['label']??''}').toList(),
+    ),
     child:const SizedBox.expand(),
   );
 }
 
 class _ImpactChartPainter extends CustomPainter {
-  _ImpactChartPainter(this.values);
+  _ImpactChartPainter(this.values,this.labels);
   final List<double> values;
+  final List<String> labels;
 
   @override
   void paint(Canvas canvas,Size size){
@@ -2522,9 +2562,19 @@ class _ImpactChartPainter extends CustomPainter {
     final chart=Rect.fromLTWH(left,top,size.width-left-5,size.height-top-bottom);
     final grid=Paint()..color=brandMist.withOpacity(.82)..strokeWidth=.8;
     for(var i=0;i<=4;i++){final y=chart.top+chart.height*i/4;canvas.drawLine(Offset(chart.left,y),Offset(chart.right,y),grid);}
-    for(var i=0;i<12;i++){final x=chart.left+chart.width*i/11;canvas.drawLine(Offset(x,chart.top),Offset(x,chart.bottom),grid);}
 
-    final vals=List<double>.generate(12,(index)=>index<values.length?values[index]:0);
+    final vals=values.isEmpty?<double>[0]:values;
+    final names=labels.length==vals.length?labels:List<String>.generate(vals.length,(i)=>'${i+1}');
+    final divisor=vals.length>1?vals.length-1:1;
+    final labelStep=names.length<=12?1:((names.length-1)/11).ceil();
+    for(var i=0;i<names.length;i+=labelStep){
+      final x=chart.left+chart.width*i/divisor;
+      canvas.drawLine(Offset(x,chart.top),Offset(x,chart.bottom),grid);
+    }
+    if((names.length-1)%labelStep!=0){
+      canvas.drawLine(Offset(chart.right,chart.top),Offset(chart.right,chart.bottom),grid);
+    }
+
     var maxValue=0.0;
     for(final value in vals){if(value>maxValue)maxValue=value;}
     if(maxValue<=0)maxValue=1;
@@ -2532,22 +2582,27 @@ class _ImpactChartPainter extends CustomPainter {
     final line=Path();
     final area=Path();
     for(var i=0;i<vals.length;i++){
-      final x=chart.left+chart.width*i/(vals.length-1);
+      final x=vals.length==1?chart.center.dx:chart.left+chart.width*i/divisor;
       final y=chart.bottom-chart.height*(vals[i]/maxValue);
       if(i==0){line.moveTo(x,y);area.moveTo(x,chart.bottom);area.lineTo(x,y);}else{line.lineTo(x,y);area.lineTo(x,y);}
     }
-    area.lineTo(chart.right,chart.bottom);area.close();
+    area.lineTo(vals.length==1?chart.center.dx:chart.right,chart.bottom);area.close();
     canvas.drawPath(area,Paint()..color=const Color(0xFF2E5B87).withOpacity(.11));
     canvas.drawPath(line,Paint()..color=brandNavy..strokeWidth=2.2..style=PaintingStyle.stroke..strokeCap=StrokeCap.round..strokeJoin=StrokeJoin.round);
     final dot=Paint()..color=brandNavy;
     for(var i=0;i<vals.length;i++){
-      canvas.drawCircle(Offset(chart.left+chart.width*i/(vals.length-1),chart.bottom-chart.height*(vals[i]/maxValue)),2.7,dot);
+      final x=vals.length==1?chart.center.dx:chart.left+chart.width*i/divisor;
+      canvas.drawCircle(Offset(x,chart.bottom-chart.height*(vals[i]/maxValue)),2.7,dot);
     }
-    const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    for(var i=0;i<12;i++){
-      final tp=TextPainter(text:TextSpan(text:months[i],style:GoogleFonts.inter(fontSize:8.5,color:brandTextSoft)),textDirection:TextDirection.ltr)..layout();
-      tp.paint(canvas,Offset(chart.left+chart.width*i/11-tp.width/2,chart.bottom+7));
+
+    void drawAxisLabel(int index){
+      final tp=TextPainter(text:TextSpan(text:names[index],style:GoogleFonts.inter(fontSize:8.5,color:brandTextSoft)),textDirection:TextDirection.ltr)..layout();
+      final x=names.length==1?chart.center.dx:chart.left+chart.width*index/divisor;
+      tp.paint(canvas,Offset(x-tp.width/2,chart.bottom+7));
     }
+    for(var i=0;i<names.length;i+=labelStep){drawAxisLabel(i);}
+    if((names.length-1)%labelStep!=0){drawAxisLabel(names.length-1);}
+
     for(var i=0;i<=4;i++){
       final value=maxValue*(4-i)/4;
       final label=intl.NumberFormat.compact().format(value);
@@ -2557,7 +2612,8 @@ class _ImpactChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ImpactChartPainter oldDelegate)=>oldDelegate.values.toString()!=values.toString();
+  bool shouldRepaint(covariant _ImpactChartPainter oldDelegate)=>
+      oldDelegate.values.toString()!=values.toString()||oldDelegate.labels.toString()!=labels.toString();
 }
 
 class _ActivityPanel extends StatelessWidget {
@@ -8786,10 +8842,19 @@ class ResponsiveKpiGrid extends StatelessWidget {
 }
 
 class Kpi extends StatefulWidget {
-  const Kpi({required this.label, required this.value, required this.note, this.icon = Icons.auto_graph_outlined, this.accent = brandNavy, super.key});
+  const Kpi({
+    required this.label,
+    required this.value,
+    required this.note,
+    this.icon = Icons.auto_graph_outlined,
+    this.accent = brandNavy,
+    this.onTap,
+    super.key,
+  });
   final String label, value, note;
   final IconData icon;
   final Color accent;
+  final VoidCallback? onTap;
   @override
   State<Kpi> createState() => _KpiState();
 }
@@ -8798,30 +8863,44 @@ class _KpiState extends State<Kpi> {
   bool hover = false;
   @override
   Widget build(BuildContext context) => MouseRegion(
+    cursor:widget.onTap==null?MouseCursor.defer:SystemMouseCursors.click,
     onEnter: (_) => setState(() => hover = true),
     onExit: (_) => setState(() => hover = false),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      width: double.infinity,
-      height: 132,
-      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
-      decoration: BoxDecoration(
-        color: brandWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: hover ? widget.accent.withOpacity(.24) : brandMist),
-        boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .085 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Icon(widget.icon, color: widget.accent, size: 22), const Spacer(), Container(width: 5, height: 5, decoration: BoxDecoration(color: widget.accent, shape: BoxShape.circle))]),
-          const Spacer(),
-          LText(widget.label, style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 2),
-          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: LText(widget.value, style: const TextStyle(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
-          LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.3)),
-        ]),
+    child:Semantics(
+      button:widget.onTap!=null,
+      label:widget.label,
+      child:GestureDetector(
+        behavior:HitTestBehavior.opaque,
+        onTap:widget.onTap,
+        child:AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          width: double.infinity,
+          height: 132,
+          transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+          decoration: BoxDecoration(
+            color: brandWhite,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: hover ? widget.accent.withOpacity(.24) : brandMist),
+            boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .085 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(widget.icon, color: widget.accent, size: 22),
+                const Spacer(),
+                if(widget.onTap!=null)Icon(Icons.arrow_forward_rounded,color:widget.accent,size:16)
+                else Container(width:5,height:5,decoration:BoxDecoration(color:widget.accent,shape:BoxShape.circle)),
+              ]),
+              const Spacer(),
+              LText(widget.label, style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: LText(widget.value, style: const TextStyle(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
+              LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.3)),
+            ]),
+          ),
+        ),
       ),
     ),
   );
