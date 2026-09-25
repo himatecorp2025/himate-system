@@ -268,13 +268,24 @@ func (a *app) completeMFAFlow(ctx context.Context, kind, challengeID, code strin
 func (a *app) adminMFAVerify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost { common.APIError(w, 405, "METHOD", "Use POST"); return }
 	if !browserMutationOriginAllowed(r) { common.APIError(w, 403, "CSRF", "Cross-site request rejected"); return }
+	key, now := clientKey(r), time.Now().UTC()
+	if !a.loginAllowed(key, now) {
+		w.Header().Set("Retry-After", "900")
+		common.APIError(w, 429, "RATE_LIMITED", "Too many sign-in attempts. Try again later.")
+		return
+	}
 	var in struct {
 		ChallengeID string `json:"challenge_id"`
 		Code string `json:"code"`
 	}
 	if common.Decode(r, &in) != nil { common.APIError(w, 400, "JSON", "Invalid request"); return }
 	userID, remember, err := a.completeMFAFlow(r.Context(), "ADMIN", in.ChallengeID, in.Code)
-	if err != nil { common.APIError(w, 401, "MFA_INVALID", "Invalid or expired authentication code"); return }
+	if err != nil {
+		a.recordLoginFailure(key, now)
+		common.APIError(w, 401, "MFA_INVALID", "Invalid or expired authentication code")
+		return
+	}
+	a.clearLoginFailures(key)
 	u, err := a.findUser("id", userID)
 	if err != nil || !u.Active { common.APIError(w, 401, "UNAUTHORIZED", "Authentication required"); return }
 	ttl := a.ttl; if remember { ttl = a.rememberTTL }
@@ -298,13 +309,24 @@ func partnerMFARequired(role string) bool {
 func (a *app) partnerMFAVerify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost { common.APIError(w, 405, "METHOD", "Use POST"); return }
 	if !browserMutationOriginAllowed(r) { common.APIError(w, 403, "CSRF", "Cross-site request rejected"); return }
+	key, now := "partner:"+clientKey(r), time.Now().UTC()
+	if !a.loginAllowed(key, now) {
+		w.Header().Set("Retry-After", "900")
+		common.APIError(w, 429, "RATE_LIMITED", "Too many sign-in attempts. Try again later.")
+		return
+	}
 	var in struct {
 		ChallengeID string `json:"challenge_id"`
 		Code string `json:"code"`
 	}
 	if common.Decode(r, &in) != nil { common.APIError(w, 400, "JSON", "Invalid request"); return }
 	userID, remember, err := a.completeMFAFlow(r.Context(), "PARTNER", in.ChallengeID, in.Code)
-	if err != nil { common.APIError(w, 401, "MFA_INVALID", "Invalid or expired authentication code"); return }
+	if err != nil {
+		a.recordLoginFailure(key, now)
+		common.APIError(w, 401, "MFA_INVALID", "Invalid or expired authentication code")
+		return
+	}
+	a.clearLoginFailures(key)
 	u, err := a.findPartnerUser("id", userID)
 	if err != nil || !u.Active { common.APIError(w, 401, "UNAUTHORIZED", "Partner authentication required"); return }
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second); accessErr:=a.partnerAccessAllowed(ctx,u.PartnerID); cancel()
