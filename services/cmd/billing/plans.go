@@ -654,6 +654,7 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 	if err!=nil{common.APIError(w,500,"DB","Could not reload plan");return}
 	ready,fixed,_:=a.planReady(r.Context(),current,now)
 	out:=planMap(current,fixed,ready)
+	if err:=a.decoratePackageMap(r.Context(),out,current);err!=nil{common.APIError(w,500,"DB","Could not load package pricing metadata");return}
 	if priceChanged&&effective.After(now){out["scheduled_price_effective_at"]=effective.Format("2006-01-02")}
 	common.JSON(w,200,out)
 }
@@ -681,20 +682,26 @@ func (a *app) partnerPlanMap(ctx context.Context,s partnerPlanSubscription) (map
 	p,err:=a.loadPlanAt(ctx,s.PlanKey,time.Now().UTC());if err!=nil{return nil,err}
 	monthly,list,annual,limit,mode:=a.effectivePlanPrices(s,p)
 	var modules []string
-	if mode=="FIXED"{modules,err=a.planModulesAt(ctx,p.Key,time.Now().UTC())}else if mode=="SELECTABLE"{modules,err=a.flexModulesAt(ctx,s.PartnerID,time.Now().UTC())}
+	if mode=="FIXED"{modules,err=a.planModulesAt(ctx,p.Key,time.Now().UTC())}else if mode=="SELECTABLE"{modules,err=a.flexModulesAt(ctx,s.PartnerID,time.Now().UTC())}else if mode==selectionModeUnlimited{modules,err=a.availablePublishedModuleKeys(ctx)}
 	if err!=nil{return nil,err}
 	var change any
 	if s.ChangeEffectiveAt.Valid{
 		change=map[string]any{"next_plan_key":s.NextPlanKey,"next_billing_frequency":s.NextBillingFrequency,"effective_at":dateOnly(s.ChangeEffectiveAt.Time).Format("2006-01-02")}
 	}
-	return map[string]any{
+	var moduleLimit any=limit
+	if mode==selectionModeUnlimited{moduleLimit=nil}
+	out:=map[string]any{
 		"partner_id":s.PartnerID,"plan_key":s.PlanKey,"display_name":p.Name,"billing_frequency":s.BillingFrequency,"status":s.Status,
 		"currency":p.Currency,"monthly_price":monthly,"annual_list_price":list,"annual_price":annual,"annual_savings":list-annual,
-		"module_limit":limit,"selection_mode":mode,"active_module_keys":modules,
+		"module_limit":moduleLimit,"selection_mode":mode,"entitlement_mode":mode,"unlimited_modules":mode==selectionModeUnlimited,
+		"active_module_keys":modules,"available_module_count":len(modules),
 		"current_period_start":dateOnly(s.CurrentPeriodStart).Format("2006-01-02"),
 		"current_period_end_exclusive":dateOnly(s.CurrentPeriodEnd).Format("2006-01-02"),
 		"next_billing_at":dateOnly(s.NextBillingAt).Format("2006-01-02"),"scheduled_change":change,
-	},nil
+	}
+	policy,err:=a.loadBillingTaxPolicy(ctx);if err!=nil{return nil,err}
+	addTaxQuote(out,monthly,annual,policy)
+	return out,nil
 }
 
 func sameModuleKeys(aKeys,bKeys []string) bool {
@@ -741,6 +748,9 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	if target.SelectionMode=="SELECTABLE"{
 		if len(keys)>target.ModuleLimit{common.APIError(w,400,"MODULE_LIMIT",fmt.Sprintf("%s allows at most %d modules",target.Key,target.ModuleLimit));return}
 		if err=a.validatePublishedModuleKeys(r.Context(),keys);err!=nil{common.APIError(w,409,"MODULE_NOT_READY",err.Error());return}
+	}
+	if target.SelectionMode==selectionModeUnlimited && len(keys)>0{
+		common.APIError(w,409,"UNLIMITED_PLAN_MANAGED","Premium module entitlement is automatic and cannot be replaced by a partner-selected list");return
 	}
 	if target.Key=="CUSTOM"{
 		if in.CustomMonthlyPrice==nil{common.APIError(w,400,"CUSTOM_PRICE_REQUIRED","Custom monthly price is required");return}
@@ -913,11 +923,13 @@ func (a *app) partnerPlanModules(w http.ResponseWriter,r *http.Request,partnerID
 	p,err:=a.loadPlan(r.Context(),s.PlanKey);if err!=nil{common.APIError(w,500,"DB","Could not load plan");return}
 	if r.Method==http.MethodGet{
 		var keys []string
-		if p.SelectionMode=="FIXED"{keys,err=a.planModulesAt(r.Context(),p.Key,time.Now().UTC())}else if p.SelectionMode=="SELECTABLE"{keys,err=a.flexModulesAt(r.Context(),partnerID,time.Now().UTC())}
+		if p.SelectionMode=="FIXED"{keys,err=a.planModulesAt(r.Context(),p.Key,time.Now().UTC())}else if p.SelectionMode=="SELECTABLE"{keys,err=a.flexModulesAt(r.Context(),partnerID,time.Now().UTC())}else if p.SelectionMode==selectionModeUnlimited{keys,err=a.availablePublishedModuleKeys(r.Context())}
 		if err!=nil{common.APIError(w,500,"DB","Could not load plan module set");return}
-		common.JSON(w,200,map[string]any{"partner_id":partnerID,"plan_key":p.Key,"selection_mode":p.SelectionMode,"module_limit":p.ModuleLimit,"module_keys":keys});return
+		var limit any=p.ModuleLimit;if p.SelectionMode==selectionModeUnlimited{limit=nil}
+		common.JSON(w,200,map[string]any{"partner_id":partnerID,"plan_key":p.Key,"selection_mode":p.SelectionMode,"entitlement_mode":p.SelectionMode,"module_limit":limit,"module_keys":keys,"count":len(keys),"unlimited_modules":p.SelectionMode==selectionModeUnlimited});return
 	}
 	if r.Method!=http.MethodPut{common.APIError(w,405,"METHOD","Use GET or PUT");return}
+	if p.SelectionMode==selectionModeUnlimited{common.APIError(w,409,"UNLIMITED_PLAN_MANAGED","Premium includes all current and future eligible modules automatically");return}
 	if p.SelectionMode!="SELECTABLE"{common.APIError(w,409,"FIXED_PLAN","Starter and Business module sets are fixed by HIMATE");return}
 	var in struct{ModuleKeys []string `json:"module_keys"`; Reason string `json:"reason"`}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
@@ -933,9 +945,9 @@ func (a *app) syncPlanEntitlements(ctx context.Context,partnerID,planKey string,
 	p,err:=a.loadPlan(ctx,planKey);if err!=nil{return err}
 	if p.SelectionMode=="CUSTOM"{return nil}
 	var keys []string
-	if p.SelectionMode=="FIXED"{keys,err=a.planModulesAt(ctx,p.Key,at)}else{keys,err=a.flexModulesAt(ctx,partnerID,at)}
+	if p.SelectionMode=="FIXED"{keys,err=a.planModulesAt(ctx,p.Key,at)}else if p.SelectionMode=="SELECTABLE"{keys,err=a.flexModulesAt(ctx,partnerID,at)}else if p.SelectionMode==selectionModeUnlimited{keys=[]string{}}
 	if err!=nil{return err}
-	payload:=map[string]any{"plan_key":p.Key,"module_keys":keys,"reason":"Subscription plan entitlement synchronization"}
+	payload:=map[string]any{"plan_key":p.Key,"module_keys":keys,"entitlement_mode":p.SelectionMode,"reason":"Subscription plan entitlement synchronization"}
 	raw,_:=json.Marshal(payload)
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPut,"http://"+a.catalogHost+"/internal/v1/partners/"+partnerID+"/plan-entitlements",bytes.NewReader(raw))
 	if err!=nil{return err}
