@@ -727,7 +727,10 @@ func (a *app) ensurePartnerModules(partnerID string) error {
 			activated_at=COALESCE(activated_at,NOW()),
 			updated_at=NOW()
 		WHERE partner_id=$1
-		  AND module_key IN (SELECT module_key FROM catalog.modules WHERE system=TRUE)`, partnerID)
+		  AND module_key IN (
+		  	SELECT module_key FROM catalog.modules
+		  	WHERE system=TRUE AND legacy_reference='KLAVIERHAUS_LEGACY'
+		  )`, partnerID)
 	return err
 }
 
