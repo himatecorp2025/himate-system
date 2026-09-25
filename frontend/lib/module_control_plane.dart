@@ -888,7 +888,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
 
           return BrandDialog(
             title: s(module['label']),
-            subtitle: 'Relationships, impact mapping and partner usage for ' + key + '.',
+            subtitle: uiLiteral('Relationships, impact mapping and partner usage for') + ' ' + key + '.',
             icon: Icons.hub_outlined,
             width: 920,
             primaryLabel: 'Close',
