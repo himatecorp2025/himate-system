@@ -76,6 +76,10 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	if err := a.backfillComplianceArchives(ctx); err != nil {
+		log.Error("compliance archive backfill", "error", err)
+		os.Exit(1)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +88,8 @@ func main() {
 	mux.HandleFunc("/api/v1/partner-categories", a.categories)
 	mux.HandleFunc("/api/v1/partners", a.partners)
 	mux.HandleFunc("/api/v1/partners/", a.partnerByID)
+	mux.HandleFunc("/internal/v1/archives", a.archives)
+	mux.HandleFunc("/internal/v1/archives/", a.archiveByPartner)
 	common.Run(log, "partners", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
 }
 
@@ -185,6 +191,7 @@ func (a *app) migrate(ctx context.Context) error {
 			`ALTER TABLE partners.partners ADD COLUMN IF NOT EXISTS test_partner BOOLEAN NOT NULL DEFAULT FALSE`,
 			`CREATE INDEX IF NOT EXISTS partners_test_partner_idx ON partners.partners(test_partner) WHERE test_partner=TRUE`,
 		}},
+		complianceArchiveMigration(),
 	}); err != nil {
 		return err
 	}
@@ -758,6 +765,12 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 				common.APIError(w, 500, "DB", "Could not record lifecycle transition")
 				return
 			}
+			if p.Lifecycle == "ARCHIVED" {
+				if _, err = a.archiveComplianceTx(r.Context(), tx, id, actor, reason); err != nil {
+					common.APIError(w, 500, "COMPLIANCE_ARCHIVE", "Could not create the immutable seven-year Compliance Archive")
+					return
+				}
+			}
 		}
 		if err = tx.Commit(); err != nil {
 			common.APIError(w, 500, "DB", "Could not commit partner update")
@@ -823,6 +836,11 @@ func (a *app) purgeOperationalPartner(w http.ResponseWriter, r *http.Request, id
 			return
 		}
 	}
+	archive, archiveErr := a.archiveComplianceTx(r.Context(), tx, id, actor, reason)
+	if archiveErr != nil {
+		common.APIError(w, 500, "COMPLIANCE_ARCHIVE", "Operational purge was blocked because the seven-year Compliance Archive could not be secured")
+		return
+	}
 	if err = tx.Commit(); err != nil {
 		common.APIError(w, 500, "DB", "Could not commit operational purge")
 		return
@@ -832,6 +850,7 @@ func (a *app) purgeOperationalPartner(w http.ResponseWriter, r *http.Request, id
 		"lifecycle": "ARCHIVED",
 		"operational_identity_records_deleted": deletedUsers,
 		"legal_financial_records_retained": true,
+		"compliance_archive": complianceArchiveMap(archive, false),
 	})
 }
 

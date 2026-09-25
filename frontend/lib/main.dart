@@ -31,6 +31,7 @@ part 'notifications_panel.dart';
 part 'partner_portal.dart';
 part 'partner_design.dart';
 part 'commercial_automation_ui.dart';
+part 'compliance_archives.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1660,7 +1661,7 @@ class _ShellState extends State<Shell> {
   int selected = 0;
   bool collapsed = false;
 
-  static const int navCount = 9;
+  static const int navCount = 10;
 
   List<NavSpec> navFor(BuildContext context) => <NavSpec>[
     NavSpec(tr(context,'nav.dashboard'), Icons.dashboard_outlined, tr(context,'nav.dashboardSub')),
@@ -1672,6 +1673,7 @@ class _ShellState extends State<Shell> {
     NavSpec(tr(context,'nav.website'), Icons.campaign_outlined, tr(context,'nav.websiteSub')),
     NavSpec(tr(context,'nav.system'), Icons.settings_suggest_outlined, tr(context,'nav.systemSub')),
     NavSpec(tr(context,'nav.admin'), Icons.admin_panel_settings_outlined, tr(context,'nav.adminSub')),
+    const NavSpec('Archives', Icons.inventory_2_outlined, 'Seven-year compliance evidence vault'),
   ];
 
   void accountAction(BuildContext context, String value) {
@@ -1727,6 +1729,7 @@ class _ShellState extends State<Shell> {
     if (can('cms.read') || can('contact.read')) indexes.add(6);
     if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
     if (can('administration.read') || can('audit.read')) indexes.add(8);
+    if (can('audit.read')) indexes.add(9);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
   }
@@ -1742,6 +1745,7 @@ class _ShellState extends State<Shell> {
       case 6: return WebsiteMarketingPage(api: widget.api);
       case 7: return SystemPage(api: widget.api);
       case 8: return AdministrationPage(api: widget.api, user: widget.user);
+      case 9: return ComplianceArchivesPage(api: widget.api);
       default: return const SizedBox.shrink();
     }
   }

@@ -249,6 +249,28 @@ func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *app) complianceRetentionLocked(ctx context.Context, partnerID string) (bool, error) {
+	partnerID = strings.TrimSpace(partnerID)
+	if partnerID == "" || strings.HasPrefix(partnerID, "_") {
+		return false, nil
+	}
+	var tableExists bool
+	if err := a.db.QueryRowContext(ctx, `SELECT to_regclass('compliance.partner_archives') IS NOT NULL`).Scan(&tableExists); err != nil {
+		return false, err
+	}
+	if !tableExists {
+		return false, nil
+	}
+	var locked bool
+	if err := a.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM compliance.partner_archives
+		WHERE partner_id=$1 AND retain_until>NOW()
+	)`, partnerID).Scan(&locked); err != nil {
+		return false, err
+	}
+	return locked, nil
+}
+
 func (a *app) objectRoute(w http.ResponseWriter, r *http.Request) {
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/storage/objects/"), "/")
 	parts := strings.SplitN(raw, "/", 2)
@@ -259,6 +281,18 @@ func (a *app) objectRoute(w http.ResponseWriter, r *http.Request) {
 	namespace, key := parts[0], parts[1]
 	target, err := a.objectPath(namespace, key)
 	if err != nil { common.APIError(w, 400, "VALIDATION", err.Error()); return }
+
+	if r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		locked, lockErr := a.complianceRetentionLocked(r.Context(), namespace)
+		if lockErr != nil {
+			common.APIError(w, 500, "COMPLIANCE_RETENTION", "Could not verify Compliance Archive retention")
+			return
+		}
+		if locked {
+			common.APIError(w, 423, "COMPLIANCE_RETENTION", "Archived partner storage is immutable during the seven-year retention period")
+			return
+		}
+	}
 
 	switch r.Method {
 	case http.MethodPut:
