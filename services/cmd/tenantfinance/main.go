@@ -23,6 +23,7 @@ import (
 type app struct {
 	db             *sql.DB
 	partnersHost   string
+	catalogHost    string
 	automationHost string
 	internalToken  string
 	automationKey  string
@@ -52,6 +53,7 @@ func main() {
 	a := &app{
 		db:             db,
 		partnersHost:   strings.TrimSpace(os.Getenv("PARTNERS_HOSTPORT")),
+		catalogHost:    strings.TrimSpace(os.Getenv("CATALOG_HOSTPORT")),
 		automationHost: strings.TrimSpace(os.Getenv("AUTOMATION_HOSTPORT")),
 		internalToken:  strings.TrimSpace(os.Getenv("HIMATE_INTERNAL_TOKEN")),
 		automationKey:  automationKey,
@@ -63,7 +65,7 @@ func main() {
 		},
 		platformPolicy: platformPolicy,
 	}
-	if a.partnersHost == "" || a.automationHost == "" || len(a.internalToken) < 24 {
+	if a.partnersHost == "" || a.catalogHost == "" || a.automationHost == "" || len(a.internalToken) < 24 {
 		log.Error("tenant finance service dependencies are not configured")
 		os.Exit(1)
 	}
