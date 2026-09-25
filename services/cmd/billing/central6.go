@@ -764,12 +764,11 @@ func (a *app) sendInvoicePortalNotification(ctx context.Context,invoiceID,partne
 }
 
 func pdfEscape(s string) string {
-	s=strings.ReplaceAll(s,"\","\\")
-	s=strings.ReplaceAll(s,"(","\(")
-	s=strings.ReplaceAll(s,")","\)")
+	s=strings.ReplaceAll(s,"\\","\\\\")
+	s=strings.ReplaceAll(s,"(","\\(")
+	s=strings.ReplaceAll(s,")","\\)")
 	return s
 }
-
 func basicPDF(lines []string) []byte {
 	var stream strings.Builder
 	stream.WriteString("BT /F1 12 Tf 50 790 Td ")
