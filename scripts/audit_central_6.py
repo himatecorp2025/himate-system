@@ -27,6 +27,7 @@ openapi = read("docs/openapi.yaml")
 ci = read(".github/workflows/ci.yml")
 
 require(re.search(r"Version:\s+18\b", central6) is not None, "Central-6 billing migration version 18 missing")
+require("DROP CONSTRAINT" not in central6.upper(), "Central-6 migration must remain expand-only; DROP CONSTRAINT is forbidden")
 
 for token in [
     "central-6-finance-onboarding-invoice-approval",
