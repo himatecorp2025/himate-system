@@ -73,7 +73,13 @@ print(json.dumps({
   "brand_name":"Closure "+s,
   "contact_name":"Closure Owner",
   "contact_email":"closure-"+s+"@example.test",
-  "country":"US"
+  "finance_contact_name":"Closure Finance",
+  "finance_contact_email":"closure-finance-"+s+"@example.test",
+  "country":"US",
+  "state_region":"NY",
+  "city":"New York",
+  "postal_code":"10001",
+  "address_line1":"1 Closure Way"
 }))
 PY
 )"
@@ -122,15 +128,20 @@ printf 'Scheduler passes both signature layers and finance succeeds after entitl
 CLOSURE_AUTOMATION_SECRET="$(automation_secret scheduler)" CLOSURE_INTERNAL_TOKEN="$CLOSURE_INTERNAL_TOKEN" CLOSURE_APP_VERSION="$CLOSURE_APP_VERSION" python3 scripts/start_23_12_closure_publish.py   "$AUTOMATION_URL" "$PARTNER_ID" "$STAMP" scheduler scheduler.job_closed_invoice_ready.v1 allowed >/dev/null
 
 i=0
+last_error=""
 while [ "$i" -lt 30 ]; do
   invoice_count="$(docker compose exec -T postgres psql -U himate -d himate -Atqc "SELECT COUNT(*) FROM tenant_finance.invoices WHERE partner_id='$PARTNER_ID' AND source_type='SCHEDULE' AND source_id='allowed-$STAMP' AND status='READY_FOR_ISSUE'")"
   if [ "$invoice_count" = "1" ]; then
     break
   fi
+  last_error="$(docker compose exec -T postgres psql -U himate -d himate -Atqc "SELECT COALESCE(MAX(d.last_error),'') FROM automation.deliveries d JOIN automation.events e ON e.id=d.event_id WHERE e.event_key='closure-scheduler-allowed-$STAMP'")"
   i=$((i+1))
   sleep 1
 done
-test "$i" -lt 30
+if [ "$i" -ge 30 ]; then
+  echo "scheduler closure delivery failed: $last_error" >&2
+  exit 1
+fi
 echo ok
 
 echo "HIMATE START-23.12 Phase 1-5 cross-phase production runtime closure: PASS"
