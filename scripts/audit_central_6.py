@@ -198,14 +198,15 @@ require("smoke_central_6.sh" in ci, "Central-6 runtime smoke is not wired into C
 
 
 # Cross-contract compatibility: Central-6 changed global Portal and invoice invariants.
-# Catch legacy smoke fixtures before the expensive Compose runtime chain.
+# Aggregate every legacy incompatibility so one cheap preflight reports the full set.
+cross_contract_errors = []
 for smoke_path in sorted((ROOT / "scripts").glob("smoke_*.sh")):
     smoke = smoke_path.read_text()
     if "onboarding_request_id" in smoke and "/partner/api/v1/auth/login" in smoke:
-        require(
-            "/api/v1/billing/partners/" in smoke and "/onboarding" in smoke,
-            f"{smoke_path.name} creates an onboarding-gated partner and logs into Partner Portal without Central-6 onboarding activation",
-        )
+        if "/api/v1/billing/partners/" not in smoke or "/onboarding" not in smoke:
+            cross_contract_errors.append(
+                f"{smoke_path.name}: onboarding-gated Partner Portal fixture has no Central-6 onboarding activation"
+            )
 
 recurring = read("scripts/smoke_start_23_11_2.sh")
 for token in [
@@ -214,6 +215,15 @@ for token in [
     '/send',
     'collection_attempts',
 ]:
-    require(token in recurring, f"START-23.11.2 recurring billing smoke is not Central-6 lifecycle-aware: {token}")
+    if token not in recurring:
+        cross_contract_errors.append(
+            f"smoke_start_23_11_2.sh: recurring billing is not Central-6 lifecycle-aware ({token})"
+        )
+
+if cross_contract_errors:
+    print("FAIL: Central-6 cross-contract compatibility")
+    for error in cross_contract_errors:
+        print(" -", error)
+    sys.exit(1)
 
 print("Central-6 Licensing/Finance/Onboarding acceptance: PASS")
