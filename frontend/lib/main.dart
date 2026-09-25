@@ -6713,7 +6713,7 @@ class _FinancePageState extends State<FinancePage> {
                                         TextButton.icon(
                                           onPressed: () => invoiceAction(invoice, 'cancel'),
                                           icon: const Icon(Icons.cancel_outlined, size: 16),
-                                          label: const LText('Cancel'),
+                                          label: const LText('Cancel invoice'),
                                         ),
                                     ],
                                   );
