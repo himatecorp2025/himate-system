@@ -790,6 +790,11 @@ class _HimateAppState extends State<HimateApp> {
             : user == null
                 ? loginPage()
                 : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout),
+        '/app/partners': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 1),
       },
       onGenerateRoute: (settings) {
         final name = settings.name ?? '';
@@ -844,14 +849,25 @@ class PartnerRouteLoader extends StatelessWidget {
         if (snapshot.hasError || snapshot.data == null) {
           return Scaffold(
             backgroundColor: brandIvory,
-            appBar: AppBar(leading: IconButton(onPressed: () => Navigator.maybePop(context), icon: const Icon(Icons.arrow_back_rounded))),
+            appBar: AppBar(
+              leading: IconButton(
+                tooltip: uiLiteral('Back to Partners'),
+                onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false),
+                icon: const Icon(Icons.arrow_back_rounded),
+              ),
+            ),
             body: Padding(
               padding: const EdgeInsets.all(24),
               child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Partner could not be opened', message: '${snapshot.error ?? 'Partner not found'}'),
             ),
           );
         }
-        return PartnerWorkspace(api: api, partner: snapshot.data!, initialSection: initialSection);
+        return PartnerWorkspace(
+          api: api,
+          partner: snapshot.data!,
+          initialSection: initialSection,
+          onBack: () => Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false),
+        );
       },
     );
   }
@@ -1647,19 +1663,33 @@ bool shouldStackContentActions(double width, int actionCount) =>
     width < 920 || (actionCount > 2 && width < 1180);
 
 class Shell extends StatefulWidget {
-  const Shell({required this.api, required this.user, required this.onUserChanged, required this.onLogout, super.key});
+  const Shell({
+    required this.api,
+    required this.user,
+    required this.onUserChanged,
+    required this.onLogout,
+    this.initialSelected = 0,
+    super.key,
+  });
   final Api api;
   final Map<String, dynamic> user;
   final ValueChanged<Map<String, dynamic>> onUserChanged;
   final Future<void> Function() onLogout;
+  final int initialSelected;
 
   @override
   State<Shell> createState() => _ShellState();
 }
 
 class _ShellState extends State<Shell> {
-  int selected = 0;
+  late int selected;
   bool collapsed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    selected = widget.initialSelected.clamp(0, navCount - 1);
+  }
 
   static const int navCount = 10;
 
@@ -2731,11 +2761,17 @@ class _PartnersPageState extends State<PartnersPage> {
   String categoryFilter = 'ALL';
   String lifecycleFilter = 'ALL';
   String healthFilter = 'ALL';
+  bool referenceOnly = false;
   static const int pageSize = 24;
   int offset = 0;
   int total = 0;
   int referenceCount = 0;
   Map<String, int> lifecycleCounts = <String, int>{};
+  int portfolioTotal = 0;
+  int portfolioReferenceCount = 0;
+  Map<String, int> portfolioLifecycleCounts = <String, int>{};
+  bool portfolioStatsReady = false;
+  final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
 
   static const lifecycleOptions = [
@@ -2814,6 +2850,7 @@ class _PartnersPageState extends State<PartnersPage> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -2826,6 +2863,7 @@ class _PartnersPageState extends State<PartnersPage> {
     if (categoryFilter != 'ALL') params['category'] = categoryFilter;
     if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
     if (healthFilter != 'ALL') params['health'] = healthFilter;
+    if (referenceOnly) params['reference'] = 'true';
     return params;
   }
 
@@ -2842,6 +2880,16 @@ class _PartnersPageState extends State<PartnersPage> {
       ..['stats_only'] = 'true';
     return Uri(path: '/api/v1/partners', queryParameters: params);
   }
+
+  Uri _portfolioStatsUri() => Uri(
+        path: '/api/v1/partners',
+        queryParameters: const <String, String>{
+          'limit': '1',
+          'offset': '0',
+          'stats_only': 'true',
+          'core_only': 'true',
+        },
+      );
 
   Future<void> _loadCategories({bool force = false}) async {
     if (mounted) setState(() => categoriesLoading = true);
@@ -2890,6 +2938,26 @@ class _PartnersPageState extends State<PartnersPage> {
     }
   }
 
+  Future<void> _loadPortfolioStats(int generation) async {
+    try {
+      final page = await widget.api.get(_portfolioStatsUri().toString());
+      if (!mounted || generation != _loadGeneration) return;
+      final counts = page['lifecycle_counts'];
+      setState(() {
+        portfolioTotal = (page['total'] as num?)?.toInt() ?? portfolioTotal;
+        portfolioReferenceCount = (page['reference_count'] as num?)?.toInt() ?? portfolioReferenceCount;
+        portfolioLifecycleCounts = counts is Map
+            ? <String, int>{
+                for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
+              }
+            : <String, int>{};
+        portfolioStatsReady = true;
+      });
+    } catch (_) {
+      // Global KPI counts are supplementary and must never block the partner list.
+    }
+  }
+
   Future<void> _loadPortfolioEnrichment(int generation, List<Map<String, dynamic>> baseRows) async {
     final ids = baseRows.map((p) => '${p['id'] ?? ''}').where((id) => id.isNotEmpty).toList();
     if (ids.isEmpty) return;
@@ -2927,6 +2995,7 @@ class _PartnersPageState extends State<PartnersPage> {
         loading = false;
       });
       unawaited(_loadPartnerStats(generation));
+      unawaited(_loadPortfolioStats(generation));
       unawaited(_loadPortfolioEnrichment(generation, List<Map<String, dynamic>>.from(coreRows)));
     } catch (e) {
       if (mounted && generation == _loadGeneration) {
@@ -2941,6 +3010,26 @@ class _PartnersPageState extends State<PartnersPage> {
     _searchDebounce = Timer(const Duration(milliseconds: 280), () {
       if (mounted) load(reset: true);
     });
+  }
+
+  void applyPortfolioPreset({String lifecycle = 'ALL', bool reference = false}) {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {
+      query = '';
+      categoryFilter = 'ALL';
+      lifecycleFilter = lifecycle;
+      healthFilter = 'ALL';
+      referenceOnly = reference;
+      offset = 0;
+    });
+    load(reset: true);
+  }
+
+  void clearReferenceFilter() {
+    if (!referenceOnly) return;
+    setState(() => referenceOnly = false);
+    load(reset: true);
   }
 
   void previousPage() {
@@ -3042,7 +3131,7 @@ class _PartnersPageState extends State<PartnersPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: LText('Previous partner onboarding could not be resumed yet: $e'),
+              content: LText('${uiLiteral('Previous partner onboarding could not be resumed yet')}: $e'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: brandWarning,
             ),
@@ -3229,7 +3318,7 @@ class _PartnersPageState extends State<PartnersPage> {
               if (formError != null) ...[
                 _MessageCard(
                   icon: Icons.error_outline_rounded,
-                  title: stagedPartnerId == null ? 'Partner registration needs attention' : 'Registration is not complete yet',
+                  title: stagedPartnerId == null ? uiLiteral('Partner registration needs attention') : uiLiteral('Registration is not complete yet'),
                   message: formError!,
                 ),
                 const SizedBox(height: 12),
@@ -3497,8 +3586,8 @@ class _PartnersPageState extends State<PartnersPage> {
             ],
           ),
           primaryLabel: submitting
-              ? (stagedPartnerId == null ? 'Creating partner…' : 'Completing setup…')
-              : (stagedPartnerId == null ? 'Create partner' : 'Retry setup'),
+              ? (stagedPartnerId == null ? uiLiteral('Creating partner…') : uiLiteral('Completing setup…'))
+              : (stagedPartnerId == null ? uiLiteral('Create partner') : uiLiteral('Retry setup')),
           onPrimary: () async {
             if (submitting) return;
 
@@ -3621,8 +3710,8 @@ class _PartnersPageState extends State<PartnersPage> {
               setLocal(() {
                 submitting = false;
                 formError = stagedPartnerId == null
-                    ? 'Partner could not be created: $e'
-                    : 'Partner ${stagedPartnerId!} exists, but onboarding is not complete: $e. Correct the data or service issue and press Retry setup. This window will stay open.';
+                    ? '${uiLiteral('Partner could not be created')}: $e'
+                    : '${uiLiteral('Partner')} ${stagedPartnerId!} ${uiLiteral('exists, but onboarding is not complete.')} $e. ${uiLiteral('Correct the data or service issue and press Retry setup. This window will stay open.')}';
               });
             }
           },
@@ -3684,10 +3773,13 @@ class _PartnersPageState extends State<PartnersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final live = lifecycleCounts['LIVE'] ?? 0;
-    final prospects = lifecycleCounts['PROSPECT'] ?? 0;
-    final reference = referenceCount;
-    final allRecords = lifecycleCounts.values.fold<int>(0, (sum, value) => sum + value);
+    final kpiCounts = portfolioStatsReady ? portfolioLifecycleCounts : lifecycleCounts;
+    final live = kpiCounts['LIVE'] ?? 0;
+    final prospects = kpiCounts['PROSPECT'] ?? 0;
+    final reference = portfolioStatsReady ? portfolioReferenceCount : referenceCount;
+    final allRecords = portfolioStatsReady
+        ? portfolioTotal
+        : lifecycleCounts.values.fold<int>(0, (sum, value) => sum + value);
 
     return Content(
       eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
@@ -3709,10 +3801,10 @@ class _PartnersPageState extends State<PartnersPage> {
                   children: [
                     ResponsiveKpiGrid(
                       children: [
-                        Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
-                        Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess),
-                        Kpi(label: 'Prospects', value: '$prospects', note: 'Pre-license pipeline', icon: Icons.handshake_outlined, accent: brandSteel),
-                        Kpi(label: 'Reference partners', value: '$reference', note: 'Reference implementation', icon: Icons.workspace_premium_outlined, accent: brandGold),
+                        Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy, onTap: () => applyPortfolioPreset()),
+                        Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => applyPortfolioPreset(lifecycle: 'LIVE')),
+                        Kpi(label: 'Prospects', value: '$prospects', note: 'Pre-license pipeline', icon: Icons.handshake_outlined, accent: brandSteel, onTap: () => applyPortfolioPreset(lifecycle: 'PROSPECT')),
+                        Kpi(label: 'Reference partners', value: '$reference', note: 'Reference implementation', icon: Icons.workspace_premium_outlined, accent: brandGold, onTap: () => applyPortfolioPreset(reference: true)),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -3721,6 +3813,7 @@ class _PartnersPageState extends State<PartnersPage> {
                         builder: (context, c) {
                           final compact = c.maxWidth < 860;
                           final search = TextField(
+                            controller: _searchController,
                             onChanged: updateSearch,
                             decoration: InputDecoration(
                               hintText: uiLiteral('Search partners...'),
@@ -3789,12 +3882,27 @@ class _PartnersPageState extends State<PartnersPage> {
                         },
                       ),
                     ),
+                    if (referenceOnly) ...[
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: InputChip(
+                          label: const LText('Reference partners only'),
+                          avatar: const Icon(Icons.workspace_premium_outlined, size: 16),
+                          onDeleted: clearReferenceFilter,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     Row(
                       children: [
                         LText('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(width: 10),
-                        _MiniCounter(label: statsReady ? '${partners.length} shown · $total matched' : '${partners.length} shown'),
+                        _MiniCounter(
+                          label: statsReady
+                              ? '${partners.length} ${uiLiteral('shown')} · $total ${uiLiteral('matched')}'
+                              : '${partners.length} ${uiLiteral('shown')}',
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -3843,7 +3951,11 @@ class _PartnersPageState extends State<PartnersPage> {
                                     icon: const Icon(Icons.chevron_left_rounded),
                                     label: const LText('Previous'),
                                   ),
-                                  _MiniCounter(label: statsReady ? 'Page ${offset ~/ pageSize + 1} of ${(total + pageSize - 1) ~/ pageSize}' : 'Page ${offset ~/ pageSize + 1}'),
+                                  _MiniCounter(
+                                    label: statsReady
+                                        ? '${uiLiteral('Page')} ${offset ~/ pageSize + 1} ${uiLiteral('of')} ${(total + pageSize - 1) ~/ pageSize}'
+                                        : '${uiLiteral('Page')} ${offset ~/ pageSize + 1}',
+                                  ),
                                   OutlinedButton.icon(
                                     onPressed: hasMore && !loading ? nextPage : null,
                                     icon: const Icon(Icons.chevron_right_rounded),
@@ -3863,10 +3975,17 @@ class _PartnersPageState extends State<PartnersPage> {
 }
 
 class PartnerWorkspace extends StatefulWidget {
-  const PartnerWorkspace({required this.api, required this.partner, this.initialSection, super.key});
+  const PartnerWorkspace({
+    required this.api,
+    required this.partner,
+    this.initialSection,
+    this.onBack,
+    super.key,
+  });
   final Api api;
   final Map<String, dynamic> partner;
   final String? initialSection;
+  final VoidCallback? onBack;
 
   @override
   State<PartnerWorkspace> createState() => _PartnerWorkspaceState();
@@ -4071,7 +4190,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: LText('Provisioning could not complete: $e'),
+          content: LText('${uiLiteral('Provisioning could not complete')}: $e'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: brandDanger,
         ),
@@ -4129,7 +4248,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('Portal user could not be created: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+            SnackBar(content: LText('${uiLiteral('Portal user could not be created')}: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
           );
         }
       }
@@ -4192,7 +4311,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('Portal user could not be updated: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+            SnackBar(content: LText('${uiLiteral('Portal user could not be updated')}: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
           );
         }
       }
@@ -4267,7 +4386,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: LText('Credential operation failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+        SnackBar(content: LText('${uiLiteral('Credential operation failed')}: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
       );
     }
   }
@@ -5152,7 +5271,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     return Scaffold(
       backgroundColor: brandIvory,
       appBar: AppBar(
-        leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
+        leading: IconButton(
+          tooltip: uiLiteral('Back to Partners'),
+          onPressed: widget.onBack ?? () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
         title: MediaQuery.sizeOf(context).width < 520
             ? const HimateLogo(compact: true, width: 34)
             : const HimateLogo(width: 170),
@@ -5178,12 +5301,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                   eyebrow: 'PARTNER WORKSPACE  |  ${partner['id']}',
                   title: '${partner['display_name']}',
                   subtitle: [
-                    '${partner['category_name']}',
+                    _localizedPartnerCategory(partner),
                     '${partner['country']}',
                     _humanize('${partner['lifecycle']}'),
                     if ('${partner['primary_domain'] ?? ''}'.isNotEmpty) '${partner['primary_domain']}',
-                    'Health: ${_humanize('${partner['system_health'] ?? 'UNKNOWN'}')}',
-                    'Version: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
+                    '${uiLiteral('Health')}: ${uiLiteral(_humanize('${partner['system_health'] ?? 'UNKNOWN'}'))}',
+                    '${uiLiteral('Version')}: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
                     if (partner['test_partner'] == true) 'TEST DATA · excluded from platform aggregates',
                   ].join(' · '),
                   actions: [
@@ -5210,7 +5333,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: ResponsiveKpiGrid(
                           children: [
                             Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
-                            Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
+                            Kpi(label: 'Active modules', value: '$active', note: '${modules.length} ${uiLiteral('module records')}', icon: Icons.grid_view_outlined, accent: brandNavy),
                             Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
                             Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
                           ],
@@ -7515,6 +7638,13 @@ String _humanize(String value) {
       .join(' ');
 }
 
+String _localizedPartnerCategory(Map<String, dynamic> partner) {
+  final key = HimateI18n.activeLocale == 'hu_HU' ? 'category_name_hu' : 'category_name_en';
+  final localized = '${partner[key] ?? ''}'.trim();
+  if (localized.isNotEmpty) return localized;
+  return '${partner['category_name'] ?? ''}'.trim();
+}
+
 class ResponsiveFieldPair extends StatelessWidget {
   const ResponsiveFieldPair({
     required this.first,
@@ -7916,7 +8046,7 @@ class _PartnerCardState extends State<PartnerCard> {
                   const SizedBox(height: 16),
                   LText('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  LText('${p['category_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
+                  LText(_localizedPartnerCategory(p), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
                   const SizedBox(height: 7),
                   LText(
                     '${p['primary_domain'] ?? ''}',
@@ -8269,7 +8399,7 @@ class _PartnerDetailsCard extends StatelessWidget {
     children: [
       _DefinitionRow(label: 'Legal name', value: value(partner['legal_name'])),
       _DefinitionRow(label: 'Brand / DBA', value: value(partner['brand_name'])),
-      _DefinitionRow(label: 'Category', value: value(partner['category_name'])),
+      _DefinitionRow(label: 'Category', value: _localizedPartnerCategory(partner)),
       _DefinitionRow(label: 'Registration', value: value(partner['registration_number'])),
       _DefinitionRow(label: 'Tax ID', value: value(partner['tax_id'])),
       _DefinitionRow(label: 'Primary contact', value: value(partner['contact_name'])),

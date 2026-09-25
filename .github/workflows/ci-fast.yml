@@ -71,6 +71,8 @@ jobs:
         run: python3 scripts/audit_central_1.py
       - name: Validate Central-2 Dashboard contract
         run: python3 scripts/audit_central_2.py
+      - name: Validate Central-3 Partners/navigation/bilingual contract
+        run: python3 scripts/audit_central_3.py
 
   go-fast:
     runs-on: ubuntu-latest
