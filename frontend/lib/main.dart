@@ -1736,7 +1736,14 @@ class _ShellState extends State<Shell> {
 
   Widget _pageForIndex(int index) {
     switch (index) {
-      case 0: return DashboardPage(api: widget.api);
+      case 0: return DashboardPage(
+        api: widget.api,
+        canNavigate: (index) => visibleNavIndexes().contains(index),
+        onNavigate: (index) {
+          if (!visibleNavIndexes().contains(index)) return;
+          setState(() => selected = index);
+        },
+      );
       case 1: return PartnersPage(api: widget.api);
       case 2: return ModuleControlPlanePage(api: widget.api);
       case 3: return PackagesPage(api: widget.api);
@@ -2363,8 +2370,15 @@ String _dashboardMoney(String currency, dynamic value) {
 }
 
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({required this.api, super.key});
+  const DashboardPage({
+    required this.api,
+    required this.canNavigate,
+    required this.onNavigate,
+    super.key,
+  });
   final Api api;
+  final bool Function(int index) canNavigate;
+  final ValueChanged<int> onNavigate;
 
   @override
   Widget build(BuildContext context) {
@@ -2422,23 +2436,24 @@ class DashboardPage extends StatelessWidget {
               final cols=c.maxWidth<620?2:4;
               final w=(c.maxWidth-gap*(cols-1))/cols;
               return Wrap(spacing:gap,runSpacing:gap,children:[
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Partners'),value:'${p['live']??0}',note:uiLiteral('${p['total']??0} partner records'),icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8))),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Programs'),value:'${m['catalog_total']??0}',note:uiLiteral('Available program modules'),icon:Icons.description_outlined,accent:brandNavy)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Revenue (YTD)'),value:revenueValue,note:revenueNote,icon:Icons.bar_chart_rounded,accent:brandGold)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('People Reached'),value:peopleValue,note:peopleNote,icon:Icons.groups_rounded,accent:brandNavy)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Partners'),value:'${p['live']??0}',note:uiLiteral('${p['total']??0} partner records'),icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8),onTap:canNavigate(1)?()=>onNavigate(1):null)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Programs'),value:'${m['catalog_total']??0}',note:uiLiteral('Available program modules'),icon:Icons.description_outlined,accent:brandNavy,onTap:canNavigate(2)?()=>onNavigate(2):null)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('Revenue (YTD)'),value:revenueValue,note:revenueNote,icon:Icons.bar_chart_rounded,accent:brandGold,onTap:canNavigate(4)?()=>onNavigate(4):null)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('People Reached'),value:peopleValue,note:peopleNote,icon:Icons.groups_rounded,accent:brandNavy,onTap:canNavigate(5)?()=>onNavigate(5):null)),
               ]);
             }),
             const SizedBox(height:18),
             LayoutBuilder(builder:(context,c){
-              final trend=items(<String,dynamic>{'items':impact['trend']});
+              final monthlyTrend=items(<String,dynamic>{'items':impact['trend']});
+              final weeklyTrend=items(<String,dynamic>{'items':impact['weekly_trend']});
               final activities=items(activity);
               if(c.maxWidth<900)return Column(children:[
-                _ImpactPanel(trend:trend,year:year,authorized:impactAuthorized),
+                _ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized),
                 const SizedBox(height:16),
                 _ActivityPanel(items:activities),
               ]);
               return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Expanded(flex:7,child:_ImpactPanel(trend:trend,year:year,authorized:impactAuthorized)),
+                Expanded(flex:7,child:_ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized)),
                 const SizedBox(width:16),
                 Expanded(flex:4,child:_ActivityPanel(items:activities)),
               ]);
