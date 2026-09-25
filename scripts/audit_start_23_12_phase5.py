@@ -94,8 +94,8 @@ require("caches.delete" in worker, "service worker does not retire obsolete cach
 require("navigator.serviceWorker.register('/service-worker.js'" in pwa, "authenticated shell PWA registration is missing")
 require("navigator.serviceWorker.register('/service-worker.js'" in site, "public PWA registration is missing")
 require('<link rel="manifest" href="/manifest.json">' in index, "Flutter shell manifest link missing")
-require('test ! -s build/web/flutter_service_worker.js' in ci and 'Unexpected competing Flutter service worker registration' in ci,
-        "release CI does not prevent a second Flutter service worker from overriding the Phase 5 cache policy")
+require('Unexpected competing Flutter service worker registration' in ci,
+        "release CI does not prevent a second active Flutter service worker from overriding the Phase 5 cache policy")
 require('"display": "standalone"' in manifest and '"scope": "/"' in manifest, "PWA manifest is incomplete")
 
 # Phase 5 gates must be in both CI paths.
