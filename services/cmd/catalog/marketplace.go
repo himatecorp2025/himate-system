@@ -75,8 +75,8 @@ func start23113MarketplaceMigration() common.Migration {
 }
 
 func (a *app) seedMarketplaceCatalog(ctx context.Context) error {
-	if len(marketplaceSummaries) != len(seedModules) {
-		return fmt.Errorf("marketplace summary count %d does not match canonical module count %d", len(marketplaceSummaries), len(seedModules))
+	if len(seedModules) < 1 {
+		return fmt.Errorf("canonical module catalog must contain at least one module")
 	}
 	for _, module := range seedModules {
 		summary, ok := marketplaceSummaries[module.Key]
