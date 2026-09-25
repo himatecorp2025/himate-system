@@ -496,8 +496,8 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 401, "INVALID_CREDENTIALS", "Invalid email or password")
 		return
 	}
-	a.clearLoginFailures(key)
 	if a.beginMFAFlow(w, r, "ADMIN", u.ID, in.Remember, true) { return }
+	a.clearLoginFailures(key)
 	sessionTTL := a.ttl
 	if in.Remember { sessionTTL = a.rememberTTL }
 	token, _ := a.issueSession(u, sessionTTL)
