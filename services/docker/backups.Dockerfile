@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS build
+FROM golang:1.27.1-bookworm AS build
 WORKDIR /src/services
 COPY services/go.mod ./
 COPY services/ ./
