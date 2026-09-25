@@ -204,6 +204,11 @@ jobs:
           test -s build/web/service-worker.js
           test -s build/web/pwa.js
           test -s build/web/manifest.json
+          test ! -s build/web/flutter_service_worker.js
+          if grep -q "flutter_service_worker.js" build/web/flutter_bootstrap.js; then
+            echo "Unexpected competing Flutter service worker registration" >&2
+            exit 1
+          fi
           test -s build/web/art/statue_hero_r5.png
           test -s build/web/art/program_piano_r5.png
           test -s build/web/art/gallery_hall_r5.png
