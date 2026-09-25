@@ -100,3 +100,19 @@ func (a *app) activePlanPartnerCount(ctx context.Context, planKey string) (int, 
 		WHERE plan_key=$1 AND status='ACTIVE'`, planKey).Scan(&count)
 	return count, err
 }
+
+func (a *app) decoratePackageMap(ctx context.Context, out map[string]any, p subscriptionPlan) error {
+	policy, err := a.loadBillingTaxPolicy(ctx)
+	if err != nil {
+		return err
+	}
+	addTaxQuote(out, p.MonthlyPrice, p.AnnualPrice, policy)
+	count, err := a.activePlanPartnerCount(ctx, p.Key)
+	if err != nil {
+		return err
+	}
+	out["active_partner_count"] = count
+	out["entitlement_mode"] = p.SelectionMode
+	out["unlimited_modules"] = p.SelectionMode == selectionModeUnlimited
+	return nil
+}
