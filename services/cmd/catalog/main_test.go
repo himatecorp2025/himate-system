@@ -6,8 +6,8 @@ import (
 )
 
 func TestSeedModules(t *testing.T) {
-	if len(seedModules) != 38 {
-		t.Fatalf("expected 38 got %d", len(seedModules))
+	if len(seedModules) != 40 {
+		t.Fatalf("expected 40 got %d", len(seedModules))
 	}
 	seen := map[string]bool{}
 	groups := map[string]int{}
@@ -18,22 +18,30 @@ func TestSeedModules(t *testing.T) {
 		seen[m.Key] = true
 		groups[m.Group]++
 	}
-	want := map[string]int{"finance_invoicing": 3, "technical": 16, "marketing": 8, "website_events": 11}
+	want := map[string]int{"finance_invoicing": 3, "client_operations": 9, "marketing": 8, "website_events": 12, "security_system": 8}
 	for k, n := range want {
 		if groups[k] != n {
 			t.Fatalf("%s expected %d got %d", k, n, groups[k])
 		}
 	}
+	for _, key := range []string{"needs_assessment", "two_factor_authentication"} {
+		if !seen[key] || !central4PlannedModules[key] {
+			t.Fatalf("planned Central-4 module missing: %s", key)
+		}
+	}
 }
 
-func TestFourPrimaryModuleGroups(t *testing.T) {
-	if len(seedGroups) != 4 {
-		t.Fatalf("expected four primary module groups got %d", len(seedGroups))
+func TestFivePrimaryModuleGroups(t *testing.T) {
+	if len(seedGroups) != 5 {
+		t.Fatalf("expected five primary module groups got %d", len(seedGroups))
 	}
-	want := []string{"finance_invoicing", "technical", "marketing", "website_events"}
+	want := []string{"finance_invoicing", "client_operations", "marketing", "website_events", "security_system"}
 	for i, key := range want {
 		if seedGroups[i].Key != key {
 			t.Fatalf("group %d expected %s got %s", i, key, seedGroups[i].Key)
+		}
+		if strings.TrimSpace(seedGroupHU[key]) == "" {
+			t.Fatalf("missing Hungarian group label for %s", key)
 		}
 	}
 }
@@ -95,8 +103,8 @@ func TestSTART232CommercialDefaultsAreNonNegativeByContract(t *testing.T) {
 
 
 func TestSTART23113MarketplaceCanonicalCoverage(t *testing.T) {
-	if len(marketplaceSummaries) != 38 {
-		t.Fatalf("expected 38 marketplace summaries got %d", len(marketplaceSummaries))
+	if len(marketplaceSummaries) != 40 {
+		t.Fatalf("expected 40 marketplace summaries got %d", len(marketplaceSummaries))
 	}
 	for _, module := range seedModules {
 		summary, ok := marketplaceSummaries[module.Key]
