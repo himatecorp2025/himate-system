@@ -63,7 +63,7 @@ done
 echo ok
 
 STARTER_KEYS="$(printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m["key"] for m in d["items"] if m.get("system") is True and m.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]; print(json.dumps(xs[:10]))')"
-BUSINESS_KEYS="$(printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m["key"] for m in d["items"] if m.get("system") is True and m.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]; print(json.dumps(xs[:10]))')"
+BUSINESS_KEYS="$(printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m["key"] for m in d["items"] if m.get("system") is True and m.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]; print(json.dumps(xs[:20]))')"
 
 printf 'configure Starter and Business from canonical Marketplace modules... '
 starter_payload="$(python3 - "$STARTER_KEYS" "$TODAY" <<'PY'
