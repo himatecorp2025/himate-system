@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -62,5 +66,48 @@ func TestAutomationPayloadCannotOverrideTenantOrSourceIdentity(t *testing.T) {
 	raw := json.RawMessage(`{"partner_id":"ptr_attacker","currency":"USD","customer":{"display_name":"Customer"},"items":[{"description":"Tuning","quantity_milli":1000,"unit_price_minor":10000}]}`)
 	if _, err := decodeAutomationInvoicePayload(raw); err == nil {
 		t.Fatal("producer payload must not be able to override envelope partner_id")
+	}
+}
+
+
+func TestPartnerModuleEntitledRequiresActiveExecutableInvoiceModule(t *testing.T) {
+	tests := []struct {
+		name        string
+		accessState string
+		executable  bool
+		want        bool
+	}{
+		{name: "active executable", accessState: "ACTIVE", executable: true, want: true},
+		{name: "locked", accessState: "LOCKED", executable: true, want: false},
+		{name: "not executable", accessState: "ACTIVE", executable: false, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/internal/v1/partner-portal/ptr_1/modules" {
+					t.Fatalf("unexpected path %s", r.URL.Path)
+				}
+				if r.Header.Get("X-Himate-Internal-Token") == "" {
+					t.Fatal("internal service token missing")
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{
+					{"key": invoiceModuleKey, "access_state": tc.accessState, "executable": tc.executable},
+				}})
+			}))
+			defer server.Close()
+			a := &app{
+				catalogHost:   strings.TrimPrefix(server.URL, "http://"),
+				internalToken: "0123456789abcdef0123456789abcdef",
+				client:        server.Client(),
+			}
+			got, err := a.partnerModuleEntitled(context.Background(), "ptr_1", invoiceModuleKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Fatalf("entitled=%v want %v", got, tc.want)
+			}
+		})
 	}
 }
