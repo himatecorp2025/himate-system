@@ -46,9 +46,9 @@ PY
 curl -fsS -c "$PARTNER_COOKIE" -H 'Content-Type: application/json' -d "$portal_login" "$BASE_URL/partner/api/v1/auth/login" >/dev/null
 echo ok
 
-printf 'canonical 38 modules are discoverable before live release without becoming executable... '
+printf 'Central-4 exposes 40 canonical Marketplace modules before live release without making planned modules executable... '
 before="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-printf '%s' "$before" | python3 -c 'import json,sys; d=json.load(sys.stdin); canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(canonical)==38,len(canonical); assert all(m.get("marketplace_summary","").strip() for m in canonical); assert all(m["access_state"]=="COMING_SOON" for m in canonical),canonical; assert all(m["executable"] is False for m in canonical),canonical; assert all(m["can_activate"] is False for m in canonical),canonical; assert d["marketplace_model"]=="DISCOVERY_SEPARATE_FROM_EXECUTION",d'
+printf '%s' "$before" | python3 -c 'import json,sys; d=json.load(sys.stdin); canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(canonical)==40,len(canonical); assert all(m.get("marketplace_summary","").strip() for m in canonical); assert all(m["access_state"]=="COMING_SOON" for m in canonical),canonical; assert all(m["executable"] is False for m in canonical),canonical; assert all(m["can_activate"] is False for m in canonical),canonical; planned=[m for m in canonical if m["key"] in {"needs_assessment","two_factor_authentication"}]; assert len(planned)==2,planned; assert all(m["implementation_state"]=="IN_DEVELOPMENT" and m["publication_status"]=="UNPUBLISHED" for m in planned),planned; assert d["marketplace_model"]=="DISCOVERY_SEPARATE_FROM_EXECUTION",d'
 echo ok
 
 printf 'publish the canonical Marketplace portfolio for plan-entitlement acceptance... '
@@ -93,14 +93,14 @@ business="$(curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/
 printf '%s' "$business" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="BUSINESS",d; assert len(d["active_module_keys"])==10,d'
 echo ok
 
-printf 'Business Marketplace exposes 10 included canonical modules and 28 locked Flex-upgrade modules... '
+printf 'Business Marketplace exposes 10 included modules, 28 locked Flex-upgrade modules and 2 planned modules... '
 marketplace="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(canonical)==38,len(canonical); active=[m for m in canonical if m["access_state"]=="ACTIVE"]; locked=[m for m in canonical if m["access_state"]=="LOCKED"]; assert len(active)==10,len(active); assert len(locked)==28,len(locked); assert all(m["executable"] is True for m in canonical),canonical; assert all(m.get("in_current_plan") is True for m in active),active; assert all("FLEX" in m.get("upgrade_plan_keys",[]) for m in locked),locked; assert all(m.get("recommended_upgrade_plan")=="FLEX" for m in locked),locked; assert all(m.get("marketplace_summary","").strip() for m in canonical); assert d.get("current_plan_key")=="BUSINESS",d'
+printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(canonical)==40,len(canonical); active=[m for m in canonical if m["access_state"]=="ACTIVE"]; locked=[m for m in canonical if m["access_state"]=="LOCKED"]; coming=[m for m in canonical if m["access_state"]=="COMING_SOON"]; assert len(active)==10,len(active); assert len(locked)==28,len(locked); assert len(coming)==2,coming; assert {m["key"] for m in coming}=={"needs_assessment","two_factor_authentication"},coming; assert all(m["executable"] is True for m in active+locked),active+locked; assert all(m["executable"] is False for m in coming),coming; assert all(m.get("in_current_plan") is True for m in active),active; assert all("FLEX" in m.get("upgrade_plan_keys",[]) for m in locked),locked; assert all(m.get("recommended_upgrade_plan")=="FLEX" for m in locked),locked; assert all(m.get("marketplace_summary","").strip() for m in canonical); assert d.get("current_plan_key")=="BUSINESS",d'
 echo ok
 
-printf 'dashboard uses the same enriched Marketplace read model... '
+printf 'dashboard uses the same enriched 40-module Marketplace read model... '
 dashboard="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/dashboard")"
-printf '%s' "$dashboard" | python3 -c 'import json,sys; d=json.load(sys.stdin); mods=d["modules"]["items"]; canonical=[m for m in mods if m.get("marketplace_visible") is True]; assert len(canonical)==38,len(canonical); assert sum(1 for m in canonical if m["access_state"]=="ACTIVE")==10; assert sum(1 for m in canonical if m["access_state"]=="LOCKED")==28'
+printf '%s' "$dashboard" | python3 -c 'import json,sys; d=json.load(sys.stdin); mods=d["modules"]["items"]; canonical=[m for m in mods if m.get("marketplace_visible") is True]; assert len(canonical)==40,len(canonical); assert sum(1 for m in canonical if m["access_state"]=="ACTIVE")==10; assert sum(1 for m in canonical if m["access_state"]=="LOCKED")==28; assert sum(1 for m in canonical if m["access_state"]=="COMING_SOON")==2'
 echo ok
 
 printf 'locked managed-plan module cannot bypass plan entitlement through direct activation... '
