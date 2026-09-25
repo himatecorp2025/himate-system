@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,8 +37,9 @@ for token in [
 ]:
     require(token in billing, f"billing package contract missing: {token}")
 
+require(re.search(r"Version:\\s+17\\b", central5_billing) is not None, "Central-5 billing migration version 17 missing")
+
 for token in [
-    'Version: 17',
     'central-5-packages-pricing-vat-unlimited',
     "display_name='Starter',monthly_price=990",
     "display_name='Business',monthly_price=1490",
@@ -61,8 +63,9 @@ for token in [
 ]:
     require(token in billing_main, f"billing runtime VAT contract missing: {token}")
 
+require(re.search(r"Version:\\s+11\\b", central5_catalog) is not None, "Central-5 catalog migration version 11 missing")
+
 for token in [
-    'Version: 11',
     'partner_plan_entitlement_policies',
     "entitlement_mode IN ('FIXED','UNLIMITED')",
     'ensureDynamicPlanEntitlements',
