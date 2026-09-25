@@ -94,6 +94,8 @@ func central6BillingMigration() common.Migration {
 				ON billing.finance_transactions(partner_id,occurred_at DESC,id DESC)`,
 			`CREATE INDEX IF NOT EXISTS billing_finance_transactions_invoice_idx
 				ON billing.finance_transactions(invoice_id,occurred_at DESC,id DESC) WHERE invoice_id<>''`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS billing_finance_transactions_invoice_state_unique
+				ON billing.finance_transactions(invoice_id,status,source) WHERE invoice_id<>''`,
 			`CREATE TABLE IF NOT EXISTS billing.invoice_delivery_outbox(
 				id BIGSERIAL PRIMARY KEY,
 				invoice_id TEXT NOT NULL,
@@ -460,6 +462,14 @@ func (a *app) recordFinanceTransactionTx(ctx context.Context, tx *sql.Tx, partne
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		partnerID,invoiceID,kind,status,currency,net,tax,gross,source,actor,reason)
 	return err
+}
+
+func (a *app) invoiceCollectionApproved(ctx context.Context, invoiceID string) bool {
+	var workflow string
+	if err := a.db.QueryRowContext(ctx, `SELECT workflow_status FROM billing.invoices WHERE id=$1`, invoiceID).Scan(&workflow); err != nil {
+		return false
+	}
+	return workflow == invoiceSent
 }
 
 func (a *app) invoiceWorkflowMeta(ctx context.Context, invoiceID string) (map[string]any, error) {
