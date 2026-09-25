@@ -282,6 +282,7 @@ func (a *app) runDunningCycle(ctx context.Context, at time.Time) error {
 	rows, err := a.db.QueryContext(ctx, `SELECT id,partner_id,invoice_date,collection_attempts,provider_status,dunning_state,status
 		FROM billing.invoices
 		WHERE billing_model='PLAN' AND charge_type IN ('PLAN_MONTHLY','PLAN_ANNUAL_RENEWAL')
+		  AND workflow_status IN ('SENT','PAID')
 		  AND dunning_state<>'PURGED' AND operational_purged_at IS NULL
 		ORDER BY invoice_date,id`)
 	if err != nil { return err }
