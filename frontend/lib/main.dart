@@ -790,6 +790,11 @@ class _HimateAppState extends State<HimateApp> {
             : user == null
                 ? loginPage()
                 : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout),
+        '/app/partners': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 1),
       },
       onGenerateRoute: (settings) {
         final name = settings.name ?? '';
@@ -844,14 +849,25 @@ class PartnerRouteLoader extends StatelessWidget {
         if (snapshot.hasError || snapshot.data == null) {
           return Scaffold(
             backgroundColor: brandIvory,
-            appBar: AppBar(leading: IconButton(onPressed: () => Navigator.maybePop(context), icon: const Icon(Icons.arrow_back_rounded))),
+            appBar: AppBar(
+              leading: IconButton(
+                tooltip: uiLiteral('Back to Partners'),
+                onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false),
+                icon: const Icon(Icons.arrow_back_rounded),
+              ),
+            ),
             body: Padding(
               padding: const EdgeInsets.all(24),
               child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Partner could not be opened', message: '${snapshot.error ?? 'Partner not found'}'),
             ),
           );
         }
-        return PartnerWorkspace(api: api, partner: snapshot.data!, initialSection: initialSection);
+        return PartnerWorkspace(
+          api: api,
+          partner: snapshot.data!,
+          initialSection: initialSection,
+          onBack: () => Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false),
+        );
       },
     );
   }
@@ -1647,19 +1663,33 @@ bool shouldStackContentActions(double width, int actionCount) =>
     width < 920 || (actionCount > 2 && width < 1180);
 
 class Shell extends StatefulWidget {
-  const Shell({required this.api, required this.user, required this.onUserChanged, required this.onLogout, super.key});
+  const Shell({
+    required this.api,
+    required this.user,
+    required this.onUserChanged,
+    required this.onLogout,
+    this.initialSelected = 0,
+    super.key,
+  });
   final Api api;
   final Map<String, dynamic> user;
   final ValueChanged<Map<String, dynamic>> onUserChanged;
   final Future<void> Function() onLogout;
+  final int initialSelected;
 
   @override
   State<Shell> createState() => _ShellState();
 }
 
 class _ShellState extends State<Shell> {
-  int selected = 0;
+  late int selected;
   bool collapsed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    selected = widget.initialSelected.clamp(0, navCount - 1);
+  }
 
   static const int navCount = 10;
 
