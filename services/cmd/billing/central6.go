@@ -846,14 +846,23 @@ func (a *app) financeOverview(w http.ResponseWriter,r *http.Request) {
 	for rows.Next(){var x row;if rows.Scan(&x.Currency,&x.Draft,&x.Approved,&x.Sent,&x.Paid,&x.Cancelled,&x.Outstanding,&x.PaidYTD)==nil{
 		currencies=append(currencies,map[string]any{"currency":x.Currency,"draft":x.Draft,"approved":x.Approved,"sent":x.Sent,"paid":x.Paid,"cancelled":x.Cancelled,"outstanding":x.Outstanding,"paid_ytd":x.PaidYTD})
 	}}
-	monthRows,err:=a.db.QueryContext(r.Context(),`SELECT to_char(month,'YYYY-MM'),COALESCE(SUM(i.total),0)
-		FROM generate_series(date_trunc('month',NOW())-INTERVAL '11 months',date_trunc('month',NOW()),INTERVAL '1 month') month
-		LEFT JOIN billing.invoices i ON i.workflow_status='PAID' AND date_trunc('month',COALESCE(i.paid_at,i.created_at))=month
-		GROUP BY month ORDER BY month`)
+	monthRows,err:=a.db.QueryContext(r.Context(),`
+		WITH months AS (
+			SELECT generate_series(date_trunc('month',NOW())-INTERVAL '11 months',date_trunc('month',NOW()),INTERVAL '1 month') AS month
+		), currencies AS (
+			SELECT DISTINCT currency FROM billing.invoices
+		)
+		SELECT to_char(m.month,'YYYY-MM'),c.currency,COALESCE(SUM(i.total),0)
+		FROM months m
+		CROSS JOIN currencies c
+		LEFT JOIN billing.invoices i ON i.workflow_status='PAID'
+			AND i.currency=c.currency
+			AND date_trunc('month',COALESCE(i.paid_at,i.created_at))=m.month
+		GROUP BY m.month,c.currency ORDER BY c.currency,m.month`)
 	if err!=nil{common.APIError(w,500,"DB","Could not calculate finance chart");return}
 	defer monthRows.Close()
 	monthly:=[]map[string]any{}
-	for monthRows.Next(){var month string;var amount float64;if monthRows.Scan(&month,&amount)==nil{monthly=append(monthly,map[string]any{"month":month,"paid":math.Round(amount*100)/100})}}
+	for monthRows.Next(){var month,currency string;var amount float64;if monthRows.Scan(&month,&currency,&amount)==nil{monthly=append(monthly,map[string]any{"month":month,"currency":currency,"paid":math.Round(amount*100)/100})}}
 	var pendingOnboarding,activeOnboarding,waived int
 	_ = a.db.QueryRowContext(r.Context(),`SELECT
 		COUNT(*) FILTER (WHERE state<>'ACTIVE'),COUNT(*) FILTER (WHERE state='ACTIVE'),
