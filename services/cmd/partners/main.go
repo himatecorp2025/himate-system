@@ -84,8 +84,8 @@ func main() {
 	mux.HandleFunc("/api/v1/partner-categories", a.categories)
 	mux.HandleFunc("/api/v1/partners", a.partners)
 	mux.HandleFunc("/api/v1/partners/", a.partnerByID)
-	mux.HandleFunc("/api/v1/archives", a.archives)
-	mux.HandleFunc("/api/v1/archives/", a.archiveByPartner)
+	mux.HandleFunc("/internal/v1/archives", a.archives)
+	mux.HandleFunc("/internal/v1/archives/", a.archiveByPartner)
 	common.Run(log, "partners", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
 }
 
