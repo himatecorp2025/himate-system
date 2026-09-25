@@ -207,18 +207,18 @@ func (a *app) archiveComplianceTx(ctx context.Context, tx *sql.Tx, partnerID, ac
 
 func scanComplianceArchive(s interface{ Scan(...any) error }) (complianceArchive, error) {
 	var rec complianceArchive
-	var payload []byte
+	var canonical string
 	err := s.Scan(
 		&rec.PartnerID, &rec.DisplayName, &rec.LegalName, &rec.ArchiveReason, &rec.CreatedBy,
-		&rec.ArchivedAt, &rec.RetainUntil, &payload, &rec.PayloadSHA256, &rec.CreatedAt,
+		&rec.ArchivedAt, &rec.RetainUntil, &canonical, &rec.PayloadSHA256, &rec.CreatedAt,
 	)
-	rec.Payload = json.RawMessage(payload)
+	rec.Payload = json.RawMessage([]byte(canonical))
 	return rec, err
 }
 
 const complianceArchiveSelect = `SELECT
 	partner_id,display_name,legal_name,archive_reason,created_by,archived_at,retain_until,
-	canonical_payload::bytea,payload_sha256,created_at
+	canonical_payload,payload_sha256,created_at
 	FROM compliance.partner_archives`
 
 func (a *app) loadComplianceArchiveTx(ctx context.Context, tx *sql.Tx, partnerID string) (complianceArchive, error) {
@@ -289,7 +289,7 @@ func (a *app) archives(w http.ResponseWriter, r *http.Request) {
 	limitArg := len(args) - 1
 	offsetArg := len(args)
 	query := `SELECT partner_id,display_name,legal_name,archive_reason,created_by,archived_at,retain_until,
-		canonical_payload::bytea,payload_sha256,created_at
+		canonical_payload,payload_sha256,created_at
 		FROM compliance.partner_archives WHERE ` + where +
 		" ORDER BY archived_at DESC,partner_id LIMIT $" + strconv.Itoa(limitArg) + " OFFSET $" + strconv.Itoa(offsetArg)
 	rows, err := a.db.QueryContext(r.Context(), query, args...)
