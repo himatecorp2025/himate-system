@@ -3457,18 +3457,24 @@ func designNavigationHTML(design publicSiteDesign, locale, currentPath string, f
 	items := append([]publicNavigationItem(nil), design.Navigation...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].SortOrder < items[j].SortOrder })
 	var b strings.Builder
+	normalizedLocale := normalizePublicLocale(locale)
 	for _, item := range items {
 		if !item.Visible || strings.TrimSpace(item.URL) == "" {
 			continue
 		}
+		itemPath := strings.TrimRight(strings.TrimSpace(item.URL), "/")
+		if !footer && itemPath == "/contact" {
+			// Contact is a dedicated header action next to Partner Portal.
+			continue
+		}
 		label := strings.TrimSpace(item.LabelEN)
-		if normalizePublicLocale(locale) == "hu_HU" {
+		if normalizedLocale == "hu_HU" {
 			label = strings.TrimSpace(item.LabelHU)
 		}
 		if label == "" {
 			continue
 		}
-		active := strings.TrimRight(strings.TrimSpace(item.URL), "/") == strings.TrimRight(currentPath, "/")
+		active := itemPath == strings.TrimRight(currentPath, "/")
 		if item.URL == "/" && currentPath == "/" {
 			active = true
 		}
@@ -3483,7 +3489,19 @@ func designNavigationHTML(design publicSiteDesign, locale, currentPath string, f
 		b.WriteString("</a>")
 	}
 	if !footer {
-		b.WriteString("<span class=\"nav-divider\" aria-hidden=\"true\"></span><a class=\"nav-login-text\" href=\"/login\">Login</a><a class=\"login-pill\" href=\"/login\">Login</a>")
+		contactLabel, partnerLabel := "Contact", "Partner Portal"
+		if normalizedLocale == "hu_HU" {
+			contactLabel, partnerLabel = "Kapcsolat", "Partnerportál"
+		}
+		b.WriteString("<span class=\"nav-divider\" aria-hidden=\"true\"></span><a class=\"nav-login-text")
+		if strings.TrimRight(currentPath, "/") == "/contact" {
+			b.WriteString(" active\" aria-current=\"page")
+		}
+		b.WriteString("\" href=\"/contact\">")
+		b.WriteString(html.EscapeString(contactLabel))
+		b.WriteString("</a><a class=\"login-pill\" href=\"/partner/login\">")
+		b.WriteString(html.EscapeString(partnerLabel))
+		b.WriteString("</a>")
 	}
 	return b.String()
 }
