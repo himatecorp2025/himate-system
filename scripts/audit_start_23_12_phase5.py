@@ -23,6 +23,7 @@ pwa = read("frontend/web/pwa.js")
 site = read("frontend/web/site.js")
 manifest = read("frontend/web/manifest.json")
 index = read("frontend/web/index.html")
+flutter_bootstrap = read("frontend/web/flutter_bootstrap.js")
 phase4 = read("scripts/audit_start_23_12_phase4.py")
 ci = read(".github/workflows/ci.yml")
 fast = read(".github/workflows/ci-fast.yml")
@@ -96,6 +97,10 @@ require("navigator.serviceWorker.register('/service-worker.js'" in site, "public
 require('<link rel="manifest" href="/manifest.json">' in index, "Flutter shell manifest link missing")
 require('Unexpected competing Flutter service worker registration' in ci,
         "release CI does not prevent a second active Flutter service worker from overriding the Phase 5 cache policy")
+require("{{flutter_js}}" in flutter_bootstrap and "{{flutter_build_config}}" in flutter_bootstrap,
+        "custom Flutter bootstrap does not use the supported build placeholders")
+require("_flutter.loader.load(" in flutter_bootstrap and "flutter_service_worker.js" not in flutter_bootstrap,
+        "custom Flutter bootstrap still delegates service-worker ownership to Flutter")
 require('"display": "standalone"' in manifest and '"scope": "/"' in manifest, "PWA manifest is incomplete")
 
 # Phase 5 gates must be in both CI paths.
