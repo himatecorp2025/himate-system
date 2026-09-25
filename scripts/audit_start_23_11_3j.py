@@ -36,11 +36,11 @@ checks = [
         and "partner['test_partner'] == true" in frontend,
     ),
     (
-        "Golden Test receives every canonical module as active entitlement",
+        "Golden Test receives the current executable legacy-reference baseline as active entitlement",
         "quote_reference='GOLDEN-TEST-PARTNER'" in catalog
         and "entitlement_source='TEST'" in catalog
         and "plan_key='GOLDEN_TEST'" in catalog
-        and "SELECT module_key FROM catalog.modules WHERE system=TRUE" in catalog,
+        and "WHERE system=TRUE AND legacy_reference='KLAVIERHAUS_LEGACY'" in catalog,
     ),
     (
         "Partner marketplace exposes canonical module set in test mode",
