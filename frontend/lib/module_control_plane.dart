@@ -16,9 +16,12 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> subscriptionRows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptionPlans = <Map<String, dynamic>>[];
   bool showSubscriptionPlans = false;
+  bool showCommercialMatrix = false;
   bool loading = false;
   String? error;
   String query = '';
+  String? selectedGroupKey;
+  String registryPreset = 'TOPICS';
   String groupFilter = 'ALL';
   String typeFilter = 'ALL';
   String commercialQuery = '';
@@ -98,13 +101,88 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final q = query.trim().toLowerCase();
     return modules.where((module) {
       final text = [
-        s(module['label']), s(module['key']), s(module['group_label']),
-        s(module['source_repository']), s(module['source_path']), s(module['owner_team']),
+        s(module['label']), s(module['label_en']), s(module['label_hu']), s(module['key']),
+        s(module['group_label']), s(module['source_repository']), s(module['source_path']), s(module['owner_team']),
       ].join(' ').toLowerCase();
+      final selectedGroupMatches = selectedGroupKey == null || s(module['group_key']) == selectedGroupKey;
+      final presetMatches = switch (registryPreset) {
+        'ACTIVE' => s(module['availability']) == 'ACTIVE' &&
+            s(module['publication_status']) == 'PUBLISHED' &&
+            s(module['implementation_state']) == 'READY',
+        'SOURCE_LINKED' => s(module['source_repository']).trim().isNotEmpty,
+        'RELATIONSHIPS' => ((module['relationship_count'] as num?)?.toInt() ?? 0) > 0,
+        _ => true,
+      };
       return (q.isEmpty || text.contains(q)) &&
+          selectedGroupMatches &&
+          presetMatches &&
           (groupFilter == 'ALL' || s(module['group_key']) == groupFilter) &&
           (typeFilter == 'ALL' || s(module['module_type']) == typeFilter);
     }).toList();
+  }
+
+  String groupLabel(Map<String, dynamic> group) {
+    final key = HimateI18n.activeLocale == 'hu_HU' ? 'label_hu' : 'label_en';
+    final localized = s(group[key]).trim();
+    return localized.isEmpty ? s(group['label']) : localized;
+  }
+
+  String moduleLabelForLocale(Map<String, dynamic> module) {
+    final key = HimateI18n.activeLocale == 'hu_HU' ? 'label_hu' : 'label_en';
+    final localized = s(module[key]).trim();
+    return localized.isEmpty ? s(module['label']) : localized;
+  }
+
+  List<Map<String, dynamic>> modulesForGroup(String groupKey) =>
+      modules.where((module) => s(module['group_key']) == groupKey).toList();
+
+  Map<String, dynamic>? groupByKey(String key) {
+    for (final group in groups) {
+      if (s(group['group_key']) == key) return group;
+    }
+    return null;
+  }
+
+  void showTopicOverview() {
+    setState(() {
+      selectedGroupKey = null;
+      registryPreset = 'TOPICS';
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
+    });
+  }
+
+  void applyRegistryPreset(String preset) {
+    setState(() {
+      selectedGroupKey = null;
+      registryPreset = preset;
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
+    });
+  }
+
+  void openTopic(String groupKey) {
+    setState(() {
+      selectedGroupKey = groupKey;
+      registryPreset = 'ALL';
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
+    });
+  }
+
+  Future<void> moveModuleToGroup(Map<String, dynamic> module, String targetGroupKey) async {
+    final current = s(module['group_key']);
+    if (targetGroupKey.isEmpty || targetGroupKey == current) return;
+    try {
+      await widget.api.patch('/api/v1/modules/' + s(module['key']), {'group_key': targetGroupKey});
+      await load();
+      if (mounted) notify('Module moved to ' + groupLabel(groupByKey(targetGroupKey) ?? <String, dynamic>{'label': targetGroupKey}) + '.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
   }
 
   String partnerName(String partnerID) {
