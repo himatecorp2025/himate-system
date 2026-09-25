@@ -330,9 +330,6 @@ func (a *app) migrate(ctx context.Context) error {
 			return err
 		}
 	}
-	if _, err := a.db.ExecContext(ctx, `DELETE FROM catalog.module_groups g WHERE g.group_key='technical' AND NOT EXISTS (SELECT 1 FROM catalog.modules m WHERE m.group_key=g.group_key)`); err != nil {
-		return err
-	}
 	if err := a.seedMarketplaceCatalog(ctx); err != nil {
 		return err
 	}
@@ -369,10 +366,10 @@ func (a *app) groups(w http.ResponseWriter, r *http.Request) {
 		if en==""{en=legacy}; if hu==""{hu=legacy}
 		if en==""||hu==""{common.APIError(w,400,"VALIDATION","English and Hungarian group labels are required");return}
 		if in.SortOrder<=0 { _ = a.db.QueryRow(`SELECT COALESCE(MAX(sort_order),0)+1 FROM catalog.module_groups`).Scan(&in.SortOrder) }
-		if _,err:=a.db.Exec(`INSERT INTO catalog.module_groups(group_key,label,label_en,label_hu,sort_order) VALUES($1,$2,$2,$3,$4)`,in.Key,en,hu,in.SortOrder);err!=nil{
+		if _,err:=a.db.Exec(`INSERT INTO catalog.module_groups(group_key,label,label_en,label_hu,sort_order,is_primary_navigation) VALUES($1,$2,$2,$3,$4,TRUE)`,in.Key,en,hu,in.SortOrder);err!=nil{
 			common.APIError(w,409,"CONFLICT","Module group could not be created");return
 		}
-		common.JSON(w,201,map[string]any{"group_key":in.Key,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":in.SortOrder})
+		common.JSON(w,201,map[string]any{"group_key":in.Key,"label":common.Localized(en,hu,locale),"label_en":en,"label_hu":hu,"sort_order":in.SortOrder,"is_primary_navigation":true})
 	default:
 		common.APIError(w,405,"METHOD","Use GET or POST")
 	}
