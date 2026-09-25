@@ -70,7 +70,7 @@ partner_b_id="$(printf '%s' "$partner_b" | python3 -c 'import json,sys; print(js
 module_payload="$(python3 - "$MODULE_KEY" <<'PY'
 import json,sys
 print(json.dumps({
- "key":sys.argv[1],"group_key":"technical","label_en":"START 23.11.1 Contract Module","label_hu":"START 23.11.1 Szerződéses Modul",
+ "key":sys.argv[1],"group_key":"client_operations","label_en":"START 23.11.1 Contract Module","label_hu":"START 23.11.1 Szerződéses Modul",
  "description_en":"Individual contract data-model acceptance","description_hu":"Egyedi szerződéses adatmodell elfogadás",
  "currency":"USD","version":"1.0.0","latest_version":"1.0.0",
  "default_monthly_price":999,"default_activation_fee":9999,
@@ -173,7 +173,7 @@ printf 'published module without partner-specific commercial configuration fails
 unconfigured_payload="$(python3 - "$UNCONFIGURED_KEY" <<'PY'
 import json,sys
 print(json.dumps({
- "key":sys.argv[1],"group_key":"technical","label_en":"START 23.11.1 Unconfigured","label_hu":"START 23.11.1 Nincs Arazva",
+ "key":sys.argv[1],"group_key":"client_operations","label_en":"START 23.11.1 Unconfigured","label_hu":"START 23.11.1 Nincs Arazva",
  "currency":"USD","version":"1.0.0","latest_version":"1.0.0",
  "default_monthly_price":777,"default_activation_fee":777,
  "availability":"ACTIVE","publication_status":"PUBLISHED","implementation_state":"READY",
