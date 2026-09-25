@@ -3131,7 +3131,7 @@ class _PartnersPageState extends State<PartnersPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: LText('Previous partner onboarding could not be resumed yet: $e'),
+              content: LText('${uiLiteral('Previous partner onboarding could not be resumed yet')}: $e'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: brandWarning,
             ),
@@ -3318,7 +3318,7 @@ class _PartnersPageState extends State<PartnersPage> {
               if (formError != null) ...[
                 _MessageCard(
                   icon: Icons.error_outline_rounded,
-                  title: stagedPartnerId == null ? 'Partner registration needs attention' : 'Registration is not complete yet',
+                  title: stagedPartnerId == null ? uiLiteral('Partner registration needs attention') : uiLiteral('Registration is not complete yet'),
                   message: formError!,
                 ),
                 const SizedBox(height: 12),
@@ -3586,8 +3586,8 @@ class _PartnersPageState extends State<PartnersPage> {
             ],
           ),
           primaryLabel: submitting
-              ? (stagedPartnerId == null ? 'Creating partner…' : 'Completing setup…')
-              : (stagedPartnerId == null ? 'Create partner' : 'Retry setup'),
+              ? (stagedPartnerId == null ? uiLiteral('Creating partner…') : uiLiteral('Completing setup…'))
+              : (stagedPartnerId == null ? uiLiteral('Create partner') : uiLiteral('Retry setup')),
           onPrimary: () async {
             if (submitting) return;
 
@@ -3710,8 +3710,8 @@ class _PartnersPageState extends State<PartnersPage> {
               setLocal(() {
                 submitting = false;
                 formError = stagedPartnerId == null
-                    ? 'Partner could not be created: $e'
-                    : 'Partner ${stagedPartnerId!} exists, but onboarding is not complete: $e. Correct the data or service issue and press Retry setup. This window will stay open.';
+                    ? '${uiLiteral('Partner could not be created')}: $e'
+                    : '${uiLiteral('Partner')} ${stagedPartnerId!} ${uiLiteral('exists, but onboarding is not complete.')} $e. ${uiLiteral('Correct the data or service issue and press Retry setup. This window will stay open.')}';
               });
             }
           },
@@ -4190,7 +4190,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: LText('Provisioning could not complete: $e'),
+          content: LText('${uiLiteral('Provisioning could not complete')}: $e'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: brandDanger,
         ),
@@ -4248,7 +4248,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('Portal user could not be created: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+            SnackBar(content: LText('${uiLiteral('Portal user could not be created')}: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
           );
         }
       }
@@ -4311,7 +4311,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('Portal user could not be updated: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+            SnackBar(content: LText('${uiLiteral('Portal user could not be updated')}: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
           );
         }
       }
@@ -4386,7 +4386,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: LText('Credential operation failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+        SnackBar(content: LText('${uiLiteral('Credential operation failed')}: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
       );
     }
   }
