@@ -51,7 +51,7 @@ while [ "$i" -le 15 ]; do
   payload="$(python3 - "$key" "$i" <<'PY'
 import json,sys
 key=sys.argv[1];i=sys.argv[2]
-print(json.dumps({"key":key,"group_key":"technical","label_en":"Plan Module "+i,"label_hu":"Plan Modul "+i,
+print(json.dumps({"key":key,"group_key":"client_operations","label_en":"Plan Module "+i,"label_hu":"Plan Modul "+i,
  "description_en":"START-23.11.2 plan acceptance","description_hu":"START-23.11.2 csomag elfogadas",
  "currency":"USD","version":"1.0.0","latest_version":"1.0.0","default_monthly_price":0,"default_activation_fee":0,
  "availability":"ACTIVE","publication_status":"PUBLISHED","implementation_state":"READY","module_type":"FEATURE","owner_team":"Platform","manifest":{"schema_version":1}}))
