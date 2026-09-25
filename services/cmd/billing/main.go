@@ -112,6 +112,9 @@ func main() {
 		})
 	})
 	mux.HandleFunc("/api/v1/billing/profile", a.profile)
+	mux.HandleFunc("/api/v1/billing/finance/overview", a.financeOverview)
+	mux.HandleFunc("/api/v1/billing/invoices", a.invoiceCollection)
+	mux.HandleFunc("/api/v1/billing/invoices/", a.invoiceByID)
 	mux.HandleFunc("/api/v1/billing/plans", a.plans)
 	mux.HandleFunc("/api/v1/billing/plans/", a.planByKey)
 	mux.HandleFunc("/api/v1/billing/subscription-matrix", a.subscriptionMatrix)
@@ -226,6 +229,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23112DunningMigration(),
 		start23113kCommercialModeMigration(),
 		central5BillingMigration(),
+		central6BillingMigration(),
 	}); err != nil {
 		return err
 	}
@@ -441,11 +445,19 @@ func (a *app) internalPartnerRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/partners/"), "/"), "/")
-	if len(parts) != 2 || parts[1] != "provisioning-gate" {
+	if len(parts) != 2 {
 		common.APIError(w, 404, "NOT_FOUND", "Route not found")
 		return
 	}
 	id := parts[0]
+	if parts[1] == "portal-gate" {
+		a.portalGate(w, r, id)
+		return
+	}
+	if parts[1] != "provisioning-gate" {
+		common.APIError(w, 404, "NOT_FOUND", "Route not found")
+		return
+	}
 	x, err := a.ensureLicense(id)
 	if err != nil {
 		common.APIError(w, 500, "DB", "Could not load initial license")
@@ -501,6 +513,10 @@ func (a *app) partnerRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, section := parts[0], parts[1]
+	if len(parts) == 2 && section == "onboarding" {
+		a.partnerOnboarding(w, r, id)
+		return
+	}
 	if len(parts) == 3 {
 		if section == "plan" && parts[2] == "modules" {
 			a.partnerPlanModules(w, r, id)
