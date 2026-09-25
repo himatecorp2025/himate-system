@@ -49,6 +49,8 @@ require('p.Lifecycle == "ARCHIVED"' in partner and "archiveComplianceTx" in part
         "lifecycle ARCHIVED transition does not atomically create a compliance snapshot")
 require("Operational purge was blocked because the seven-year Compliance Archive could not be secured" in partner,
         "operational purge does not fail closed when compliance preservation fails")
+require("backfillComplianceArchives" in archive and "a.backfillComplianceArchives(ctx)" in partner,
+        "previously archived partners are not backfilled into the seven-year Compliance Vault")
 for forbidden in [
     'Schema: "identity", Table: "users"',
     'Schema: "identity", Table: "partner_users"',
