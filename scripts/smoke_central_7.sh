@@ -6,8 +6,12 @@ TMP_ROOT="${TMPDIR:-/tmp}"
 OWNER_COOKIE="$TMP_ROOT/himate-central7-owner.txt"
 PARTNER_COOKIE="$TMP_ROOT/himate-central7-partner.txt"
 LANDING="$TMP_ROOT/himate-central7-landing.html"
-rm -f "$OWNER_COOKIE" "$PARTNER_COOKIE" "$LANDING"
-trap 'rm -f "$OWNER_COOKIE" "$PARTNER_COOKIE" "$LANDING"' EXIT
+MODULES_JSON="$TMP_ROOT/himate-central7-modules.json"
+GROUPS_JSON="$TMP_ROOT/himate-central7-groups.json"
+PLANS_JSON="$TMP_ROOT/himate-central7-plans.json"
+PREMIUM_MODULES_JSON="$TMP_ROOT/himate-central7-premium-modules.json"
+rm -f "$OWNER_COOKIE" "$PARTNER_COOKIE" "$LANDING" "$MODULES_JSON" "$GROUPS_JSON" "$PLANS_JSON" "$PREMIUM_MODULES_JSON"
+trap 'rm -f "$OWNER_COOKIE" "$PARTNER_COOKIE" "$LANDING" "$MODULES_JSON" "$GROUPS_JSON" "$PLANS_JSON" "$PREMIUM_MODULES_JSON"' EXIT
 
 COMPOSE_JSON="$(docker compose config --format json)"
 OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
@@ -59,14 +63,17 @@ assert all(x.get("category_name_en") and x.get("category_name_hu") for x in item
 echo ok
 
 printf 'CENTRAL-7 Module Registry categories, unique keys and package module references remain coherent... '
-modules="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/modules")"
-groups="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/module-groups")"
-plans="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/plans")"
-python3 - "$modules" "$groups" "$plans" <<'PY'
+curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/modules" -o "$MODULES_JSON"
+curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/module-groups" -o "$GROUPS_JSON"
+curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/plans" -o "$PLANS_JSON"
+python3 - "$MODULES_JSON" "$GROUPS_JSON" "$PLANS_JSON" <<'PY'
 import json,sys
-mods=json.loads(sys.argv[1])["items"]
-groups=json.loads(sys.argv[2])["items"]
-plans=json.loads(sys.argv[3])["items"]
+with open(sys.argv[1],encoding="utf-8") as fh:
+    mods=json.load(fh)["items"]
+with open(sys.argv[2],encoding="utf-8") as fh:
+    groups=json.load(fh)["items"]
+with open(sys.argv[3],encoding="utf-8") as fh:
+    plans=json.load(fh)["items"]
 assert mods and groups and plans
 keys=[x["key"] for x in mods]
 assert len(keys)==len(set(keys)),keys
@@ -89,11 +96,13 @@ echo ok
 printf 'CENTRAL-7 Premium acceptance partner still receives every eligible released module... '
 premium_partners="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners?limit=100&offset=0&q=Central-5%20Premium%20Partner")"
 PREMIUM_ID="$(printf '%s' "$premium_partners" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[x for x in d["items"] if x.get("display_name")=="Central-5 Premium Partner"]; assert xs,d; print(xs[-1]["id"])')"
-premium_modules="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$PREMIUM_ID/modules")"
-python3 - "$modules" "$premium_modules" <<'PY'
+curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/partners/$PREMIUM_ID/modules" -o "$PREMIUM_MODULES_JSON"
+python3 - "$MODULES_JSON" "$PREMIUM_MODULES_JSON" <<'PY'
 import json,sys
-mods=json.loads(sys.argv[1])["items"]
-state=json.loads(sys.argv[2])["items"]
+with open(sys.argv[1],encoding="utf-8") as fh:
+    mods=json.load(fh)["items"]
+with open(sys.argv[2],encoding="utf-8") as fh:
+    state=json.load(fh)["items"]
 eligible={x["key"] for x in mods if x.get("publication_status")=="PUBLISHED" and x.get("implementation_state")=="READY" and x.get("availability")=="ACTIVE"}
 active={x["key"] for x in state if x.get("status")=="ACTIVE" and x.get("plan_key")=="FLEX"}
 assert active==eligible,(len(active),len(eligible),sorted(eligible-active)[:10],sorted(active-eligible)[:10])
