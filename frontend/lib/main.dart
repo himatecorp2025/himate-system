@@ -5983,6 +5983,7 @@ class _FinancePageState extends State<FinancePage> {
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   String invoiceFilter = 'ALL';
+  final GlobalKey onboardingKey = GlobalKey();
   bool loading = false;
   String? error;
 
