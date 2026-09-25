@@ -176,3 +176,51 @@ func TestAutomationManifestContract(t *testing.T) {
 	duplicate:=map[string]any{"automation":map[string]any{"contract_version":"1","produces_events":[]any{"workflow.qc.passed.v1","workflow.qc.passed.v1"}}}
 	if err:=validateAutomationManifest(duplicate);err==nil{t.Fatal("duplicate event contracts must be rejected")}
 }
+
+
+func TestCentral4CatalogMigrationContract(t *testing.T) {
+	m := central4CatalogMigration()
+	if m.Version != 10 {
+		t.Fatalf("expected catalog migration 10 got %d", m.Version)
+	}
+	joined := ""
+	for _, stmt := range m.Statements {
+		joined += stmt + "\n"
+	}
+	for _, token := range []string{
+		"catalog.module_usage_events",
+		"module_usage_events_module_time_idx",
+		"module_usage_events_partner_module_time_idx",
+		"client_operations",
+		"security_system",
+	} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("Central-4 migration missing %s", token)
+		}
+	}
+}
+
+func TestCentral4PlannedModulesAreCatalogEntriesNotCardinalityRules(t *testing.T) {
+	seen := map[string]seedModule{}
+	for _, module := range seedModules {
+		seen[module.Key] = module
+	}
+	for key, group := range map[string]string{
+		"needs_assessment": "client_operations",
+		"two_factor_authentication": "security_system",
+	} {
+		module, ok := seen[key]
+		if !ok {
+			t.Fatalf("planned module missing: %s", key)
+		}
+		if module.Group != group {
+			t.Fatalf("planned module %s group=%s want=%s", key, module.Group, group)
+		}
+		if !central4PlannedModules[key] {
+			t.Fatalf("planned module marker missing: %s", key)
+		}
+	}
+	if len(seedModules) < 1 {
+		t.Fatal("catalog must stay non-empty")
+	}
+}
