@@ -1442,6 +1442,7 @@ class HimateI18n {
     'Metric keys attached here will power partner-facing module results.': 'Az itt hozzárendelt mutatókulcsok táplálják a partneroldali modul-eredményeket.',
     'Module Control Plane unavailable': 'A Modul Vezérlőközpont nem érhető el',
     'Module Relationships': 'Modulkapcsolatok',
+    'Relationships, impact mapping and partner usage for': 'Kapcsolatok, hatásmutatók és partnerhasználat ehhez:',
     'Module Topics': 'Modultémák',
     'Module actions': 'Modulműveletek',
     'Module capacity': 'Modulkapacitás',
