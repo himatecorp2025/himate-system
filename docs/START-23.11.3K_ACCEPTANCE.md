@@ -25,7 +25,7 @@ After approval:
 - Catalog entitlements remain authoritative and are tagged with Charity source;
 - approval, reviewer, reason and module selection are audit persisted.
 
-A Charity partner does not use a paid Starter / Business / Flex subscription package while Charity approval is active.
+A Charity partner does not use a paid Starter / Business / Premium subscription package while Charity approval is active.
 
 ## Complimentary
 
@@ -41,11 +41,12 @@ A true zero-dollar activation fee is represented as explicitly waived with a rea
 
 HIMATE centrally controls the standard package catalog:
 
-- Starter — USD 500 monthly baseline, exactly 3 HIMATE-defined modules.
-- Business — USD 1,500 monthly baseline, exactly 10 HIMATE-defined modules.
-- Flex — USD 2,500 monthly baseline, partner-selectable, maximum 15 modules.
+Central-5 supersedes the original package sizes and names:
+- Starter — USD 990 monthly NET baseline + configured VAT, exactly 10 HIMATE-defined modules.
+- Business — USD 1,490 monthly NET baseline + configured VAT, exactly 20 HIMATE-defined modules.
+- Premium — USD 2,490 monthly NET baseline + configured VAT, stable API key `FLEX`, UNLIMITED entitlement.
 
-The 3 / 10 / 15 limits are system invariants for the standard packages. Package prices are administrator-editable without changing those limits.
+The 10 / 20 / Unlimited model is authoritative. Starter and Business retain fixed HIMATE-defined membership. Premium has no finite module list: every current and future eligible module is included automatically. Package net prices remain administrator-editable without changing these entitlement rules.
 
 Activation/license fees remain partner-specific.
 
@@ -55,7 +56,7 @@ Every package-price change is appended to the central price-history ledger with 
 
 Active subscriptions resolve the central package price at their next billing boundary. Existing immutable invoice periods are not rewritten.
 
-On January 1 the system automatically appends a price row using the configured annual uplift, currently 5%. The uplift is calculated from the price effective immediately before January 1. Therefore, if Starter changes from USD 500 to USD 600 during the year, the following January 1 price is USD 630.
+On January 1 the system automatically appends a price row using the configured annual uplift, currently 5%. The uplift is calculated from the NET price effective immediately before January 1. The runtime acceptance changes Starter from USD 990 to USD 1,090 as an administrator-edit proof; the following January 1 NET price is therefore USD 1,144.50. VAT is then calculated from the billing-profile tax policy.
 
 ## UI
 
