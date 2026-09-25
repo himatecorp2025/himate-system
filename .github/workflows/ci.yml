@@ -191,10 +191,14 @@ jobs:
         run: python3 ../scripts/audit_start_23_12_phase2.py
       - name: Run START-23.12 Phase 3 Architecture Acceptance audit
         run: python3 ../scripts/audit_start_23_12_phase3.py
+      - name: Run START-23.12 Phase 3B Tenant Invoicing Acceptance audit
+        run: python3 ../scripts/audit_start_23_12_phase3b.py
       - name: Run START-23.12 Phase 4 Security Acceptance audit
         run: python3 ../scripts/audit_start_23_12_phase4.py
       - name: Run START-23.12 Phase 5 Final Acceptance audit
         run: python3 ../scripts/audit_start_23_12_phase5.py
+      - name: Run START-23.12 Phase 1-5 Cross-Phase Closure audit
+        run: python3 ../scripts/audit_start_23_12_closure.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
@@ -494,9 +498,11 @@ jobs:
         run: sh scripts/smoke_start_23_12_phase4.sh http://127.0.0.1:8080
       - name: Run START-23.12 Phase 5 Compliance/PWA/100-tenant smoke
         run: sh scripts/smoke_start_23_12_phase5.sh http://127.0.0.1:8080
-      - name: Dump Phase 4/5 runtime diagnostics on failure
+      - name: Run START-23.12 Phase 1-5 production-signature closure smoke
+        run: sh scripts/smoke_start_23_12_closure.sh http://127.0.0.1:8080 http://127.0.0.1:18082 http://127.0.0.1:18083
+      - name: Dump Phase 4/5/closure runtime diagnostics on failure
         if: failure()
-        run: docker compose logs --no-color --tail=180 gateway partners catalog billing payments evidence storage notifications
+        run: docker compose logs --no-color --tail=220 gateway partners catalog billing payments evidence storage notifications automation tenantfinance
       - name: Stop test topology
         if: always()
         run: docker compose down -v
