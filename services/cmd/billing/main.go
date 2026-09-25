@@ -1792,8 +1792,8 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		invoiceID := "inv_" + strings.ReplaceAll(id, "_", "") + "_" + at.Format("20060102")
 		tx, err := a.db.BeginTx(ctx,nil)
 		if err != nil { return err }
-		result, err := tx.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total)
-			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7) ON CONFLICT DO NOTHING`,
+		result, err := tx.ExecContext(ctx, `INSERT INTO billing.invoices(id,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,workflow_status,source)
+			VALUES($1,$2,$3,$4,$5,$6,$7,0,$7,'DRAFT','AUTOMATED') ON CONFLICT DO NOTHING`,
 			invoiceID, id, at, start, at, t.Currency, base)
 		if err != nil { tx.Rollback(); return err }
 		inserted, _ := result.RowsAffected()
@@ -1805,9 +1805,10 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 		moduleTotal, err := attachInvoiceItemsTx(ctx, tx, invoiceID, id, t.Currency, start, at, base)
 		if err != nil { tx.Rollback(); return err }
 		total := math.Round((base+moduleTotal)*100)/100
-		if _, err := tx.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3 WHERE id=$1`,
+		if _, err := tx.ExecContext(ctx, `UPDATE billing.invoices SET module_fee=$2,total=$3,net_total=$3 WHERE id=$1`,
 			invoiceID, moduleTotal, total); err != nil { tx.Rollback(); return err }
 		if inserted > 0 {
+			if err := a.recordFinanceTransactionTx(ctx,tx,id,invoiceID,"INVOICE","DRAFT",t.Currency,total,0,total,"AUTOMATED","billing-cycle","Legacy recurring invoice draft generated"); err != nil { tx.Rollback(); return err }
 			if err := emitBillingEventTx(ctx, tx, "INVOICE_GENERATED:"+invoiceID, id, "", "INVOICE_GENERATED", at, map[string]any{
 				"invoice_id": invoiceID, "currency": t.Currency, "base_fee": base,
 				"module_fee": moduleTotal, "total": total,
@@ -1816,6 +1817,7 @@ func (a *app) runInvoiceCycle(ctx context.Context, at time.Time) error {
 			}); err != nil { tx.Rollback(); return err }
 		}
 		if err:=tx.Commit();err!=nil{return err}
+		a.advanceOnboardingFromInvoice(ctx,id,onboardingInvoicePending,"billing-cycle","Legacy recurring invoice draft generated")
 		a.queueInvoiceCollection(ctx, invoiceID, id, t.Currency, total)
 	}
 	return nil
