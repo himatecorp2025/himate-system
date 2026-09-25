@@ -77,8 +77,26 @@ paths:
                 password: {type: string, format: password}
       responses:
         "200": {description: Authenticated administrator}
+        "202": {description: TOTP enrollment or verification challenge required}
         "401": {description: Invalid credentials}
         "429": {description: Sign-in rate limit exceeded}
+  /api/v1/auth/mfa/verify:
+    post:
+      tags: [Authentication]
+      summary: Complete administrator TOTP enrollment or verification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge_id, code]
+              properties:
+                challenge_id: {type: string}
+                code: {type: string, minLength: 6, maxLength: 6}
+      responses:
+        "200": {description: MFA verified and administrator session issued}
+        "401": {description: Invalid or expired MFA challenge or code}
   /api/v1/auth/logout:
     post:
       tags: [Authentication]
@@ -361,9 +379,18 @@ paths:
       description: Issues a separate HttpOnly session cookie scoped to /partner. Tenant scope comes from the authenticated partner identity.
       responses:
         "200": {description: Authenticated partner user}
+        "202": {description: TOTP enrollment or verification challenge required}
         "401": {description: Invalid credentials}
         "403": {description: Partner Portal access suspended or archived}
         "429": {description: Sign-in rate limited}
+  /partner/api/v1/auth/mfa/verify:
+    post:
+      tags: [Partner Portal]
+      security: []
+      summary: Complete Partner Portal TOTP enrollment or verification
+      responses:
+        "200": {description: MFA verified and Partner Portal session issued}
+        "401": {description: Invalid or expired MFA challenge or code}
   /partner/api/v1/auth/logout:
     post:
       tags: [Partner Portal]
