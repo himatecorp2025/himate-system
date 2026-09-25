@@ -104,14 +104,17 @@ echo ok
 printf 'invoice requires explicit approval, distribution, then payment... '
 approved="$(curl -fsS -b "$OWNER_COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"Central-6 finance approval"}' "$BASE_URL/api/v1/billing/invoices/$INVOICE_ID/approve")"
 printf '%s' "$approved" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["workflow_status"]=="APPROVED" and d["approved_by"],d'
+premature_paid="$(status "$OWNER_COOKIE" POST "/api/v1/billing/invoices/$INVOICE_ID/mark-paid" -H 'Content-Type: application/json' -d '{"reason":"Must be rejected before distribution","payment_reference":"C6-PREMATURE"}')"
+test "$premature_paid" = "409"
+grep -q 'INVOICE_STATE' "$BODY"
 sent="$(curl -fsS -b "$OWNER_COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"Central-6 distribution approval"}' "$BASE_URL/api/v1/billing/invoices/$INVOICE_ID/send")"
-printf '%s' "$sent" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["workflow_status"]=="SENT" and d["sent_by"] and d["delivery_channel"]=="PORTAL_EMAIL",d'
+printf '%s' "$sent" | python3 -c 'import datetime,json,sys; d=json.load(sys.stdin); assert d["workflow_status"]=="SENT" and d["sent_by"] and d["delivery_channel"]=="PORTAL_EMAIL",d; sent=datetime.datetime.fromisoformat(d["sent_at"].replace("Z","+00:00")); deadline=datetime.datetime.fromisoformat(d["payment_deadline_at"].replace("Z","+00:00")); assert abs((deadline-sent).total_seconds()-72*3600)<2,(sent,deadline)'
 onboarding="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$PAID_ID/onboarding")"
-printf '%s' "$onboarding" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["state"]=="PAYMENT_PENDING",d'
+printf '%s' "$onboarding" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["state"]=="PAYMENT_PENDING" and d["portal_enabled"] is False,d'
 paid="$(curl -fsS -b "$OWNER_COOKIE" -X POST -H 'Content-Type: application/json' -d '{"reason":"Central-6 manual finance settlement","payment_reference":"C6-MANUAL-PAID"}' "$BASE_URL/api/v1/billing/invoices/$INVOICE_ID/mark-paid")"
 printf '%s' "$paid" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["workflow_status"]=="PAID" and d["status"]=="PAID" and d["provider"]=="MANUAL",d'
 onboarding="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/partners/$PAID_ID/onboarding")"
-printf '%s' "$onboarding" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["state"]=="ADMIN_APPROVAL",d'
+printf '%s' "$onboarding" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["state"]=="ADMIN_APPROVAL" and d["portal_enabled"] is False,d'
 echo ok
 
 printf 'final HIMATE approval activates Portal access and distributed invoice PDF... '
