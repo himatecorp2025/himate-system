@@ -225,6 +225,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23112InvoiceDateConstraintRecoveryMigration(),
 		start23112DunningMigration(),
 		start23113kCommercialModeMigration(),
+		central5BillingMigration(),
 	}); err != nil {
 		return err
 	}
@@ -245,9 +246,12 @@ func (a *app) migrate(ctx context.Context) error {
 func (a *app) profile(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		var legal, registration, address, taxID, contactName, email, phone, bank, bankAddr, account, iban, swift string
-		err := a.db.QueryRow(`SELECT legal_name,registration_number,address,tax_id,contact_name,email,phone,bank_name,bank_address,account_number,iban,swift FROM billing.company_profile WHERE id=1`).
-			Scan(&legal, &registration, &address, &taxID, &contactName, &email, &phone, &bank, &bankAddr, &account, &iban, &swift)
+		var legal, registration, address, taxID, contactName, email, phone, bank, bankAddr, account, iban, swift, vatJurisdiction, taxLabel string
+		var vatRate float64
+		err := a.db.QueryRow(`SELECT legal_name,registration_number,address,tax_id,contact_name,email,phone,bank_name,bank_address,account_number,iban,swift,
+			vat_rate_percent,vat_jurisdiction,tax_label FROM billing.company_profile WHERE id=1`).
+			Scan(&legal, &registration, &address, &taxID, &contactName, &email, &phone, &bank, &bankAddr, &account, &iban, &swift,
+				&vatRate, &vatJurisdiction, &taxLabel)
 		if err != nil {
 			common.APIError(w, 500, "DB", "Could not load billing profile")
 			return
@@ -256,6 +260,8 @@ func (a *app) profile(w http.ResponseWriter, r *http.Request) {
 			"legal_name": legal, "registration_number": registration, "address": address, "tax_id": taxID,
 			"contact_name": contactName, "email": email, "phone": phone,
 			"bank_name": bank, "bank_address": bankAddr, "account_number": account, "iban": iban, "swift": swift,
+			"vat_rate_percent": vatRate, "vat_jurisdiction": vatJurisdiction, "tax_label": taxLabel,
+			"vat_enabled": vatRate > 0,
 		})
 	case http.MethodPut:
 		var in struct {
@@ -270,18 +276,31 @@ func (a *app) profile(w http.ResponseWriter, r *http.Request) {
 			BankAddress        string `json:"bank_address"`
 			AccountNumber      string `json:"account_number"`
 			IBAN               string `json:"iban"`
-			SWIFT              string `json:"swift"`
+			SWIFT              string  `json:"swift"`
+			VATRatePercent     float64 `json:"vat_rate_percent"`
+			VATJurisdiction    string  `json:"vat_jurisdiction"`
+			TaxLabel           string  `json:"tax_label"`
 		}
 		if common.Decode(r, &in) != nil {
 			common.APIError(w, 400, "JSON", "Invalid request")
 			return
 		}
+		if in.VATRatePercent < 0 || in.VATRatePercent > 100 {
+			common.APIError(w, 400, "VALIDATION", "vat_rate_percent must be between 0 and 100")
+			return
+		}
+		vatJurisdiction := strings.ToUpper(strings.TrimSpace(in.VATJurisdiction))
+		if vatJurisdiction == "" { vatJurisdiction = "GB" }
+		taxLabel := strings.TrimSpace(in.TaxLabel)
+		if taxLabel == "" { taxLabel = "VAT" }
 		_, err := a.db.Exec(`UPDATE billing.company_profile SET
 			legal_name=$1,registration_number=$2,address=$3,tax_id=$4,contact_name=$5,email=$6,phone=$7,
-			bank_name=$8,bank_address=$9,account_number=$10,iban=$11,swift=$12,updated_at=NOW() WHERE id=1`,
+			bank_name=$8,bank_address=$9,account_number=$10,iban=$11,swift=$12,
+			vat_rate_percent=$13,vat_jurisdiction=$14,tax_label=$15,updated_at=NOW() WHERE id=1`,
 			strings.TrimSpace(in.LegalName), strings.TrimSpace(in.RegistrationNumber), strings.TrimSpace(in.Address), strings.TrimSpace(in.TaxID),
 			strings.TrimSpace(in.ContactName), strings.ToLower(strings.TrimSpace(in.Email)), strings.TrimSpace(in.Phone),
-			strings.TrimSpace(in.BankName), strings.TrimSpace(in.BankAddress), strings.TrimSpace(in.AccountNumber), strings.TrimSpace(in.IBAN), strings.TrimSpace(in.SWIFT))
+			strings.TrimSpace(in.BankName), strings.TrimSpace(in.BankAddress), strings.TrimSpace(in.AccountNumber), strings.TrimSpace(in.IBAN), strings.TrimSpace(in.SWIFT),
+			in.VATRatePercent, vatJurisdiction, taxLabel)
 		if err != nil {
 			common.APIError(w, 500, "DB", "Could not update billing profile")
 			return
@@ -1649,6 +1668,7 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 	rows, err := a.db.Query(`SELECT id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,status,provider_status,
 		payment_attempt_id,provider,provider_payment_id,paid_at,payment_failure_code,payment_failure_message,created_at,
 		COALESCE(plan_key,''),COALESCE(billing_frequency,''),COALESCE(charge_type,'LEGACY'),COALESCE(list_price,0),COALESCE(discount_amount,0),COALESCE(billing_model,'LEGACY_MODULE'),
+		COALESCE(net_total,total),COALESCE(tax_rate_percent,0),COALESCE(tax_amount,0),
 		COALESCE(collection_attempts,0),COALESCE(dunning_state,'NONE'),dunning_suspended_at,purge_due_at,operational_purged_at
 		FROM billing.invoices WHERE partner_id=$1 ORDER BY invoice_date DESC,created_at DESC`, id)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load invoices"); return }
@@ -1659,11 +1679,12 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 		var planKey, billingFrequency, chargeType, billingModel, dunningState string
 		var invoiceDate, start, end, created time.Time
 		var paidAt, dunningSuspendedAt, purgeDueAt, operationalPurgedAt sql.NullTime
-		var base, module, total, listPrice, discountAmount float64
+		var base, module, total, listPrice, discountAmount, netTotal, taxRate, taxAmount float64
 		var collectionAttempts int
 		if rows.Scan(&invoiceID, &invoiceDate, &start, &end, &currency, &base, &module, &total, &status, &providerStatus,
 			&attemptID, &provider, &providerPaymentID, &paidAt, &failureCode, &failureMessage, &created,
 			&planKey,&billingFrequency,&chargeType,&listPrice,&discountAmount,&billingModel,
+			&netTotal,&taxRate,&taxAmount,
 			&collectionAttempts,&dunningState,&dunningSuspendedAt,&purgeDueAt,&operationalPurgedAt) == nil {
 			var paid, suspended, purgeDue, purged any
 			if paidAt.Valid { paid = paidAt.Time }
@@ -1675,6 +1696,7 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": providerStatus,
 				"plan_key":planKey,"billing_frequency":billingFrequency,"charge_type":chargeType,"billing_model":billingModel,
 				"list_price":listPrice,"discount_amount":discountAmount,
+				"net_total":netTotal,"tax_rate_percent":taxRate,"tax_amount":taxAmount,"gross_total":total,
 				"collection_attempts":collectionAttempts,"dunning_state":dunningState,
 				"dunning_suspended_at":suspended,"purge_due_at":purgeDue,"operational_purged_at":purged,
 				"payment_attempt_id": attemptID, "provider": provider, "provider_payment_id": providerPaymentID, "paid_at": paid,
