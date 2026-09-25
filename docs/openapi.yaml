@@ -1237,18 +1237,19 @@ paths:
   /api/v1/billing/profile:
     get:
       tags: [Billing]
-      summary: HIMATE issuer and banking profile
+      summary: HIMATE issuer, banking and VAT policy profile
       responses:
-        "200": {description: Billing profile}
+        "200": {description: Billing profile including vat_rate_percent, vat_jurisdiction, tax_label and vat_enabled}
     put:
       tags: [Billing]
-      summary: Update HIMATE issuer and banking profile
+      summary: Update HIMATE issuer, banking and VAT policy profile
+      description: VAT rate is administrator-controlled (0-100). Package prices remain NET; invoice and payment collection add the configured tax rate.
       responses:
         "200": {description: Updated billing profile}
   /api/v1/billing/plans:
     get:
       tags: [Billing]
-      summary: Subscription plan catalog
+      summary: Central package catalog
       description: >
         Central-5 package catalog. Standard monthly NET prices are Starter USD 990,
         Business USD 1,490 and Premium USD 2,490 plus configured VAT. Premium retains the
@@ -1267,7 +1268,7 @@ paths:
         schema: {type: string}
     get:
       tags: [Billing]
-      summary: Subscription plan detail
+      summary: Package detail
       responses:
         "200": {description: Package detail and current fixed module set or Premium Unlimited policy}
     patch:
@@ -1292,7 +1293,7 @@ paths:
         schema: {type: string}
     get:
       tags: [Billing]
-      summary: Partner subscription plan
+      summary: Partner subscription package
       responses:
         "200": {description: Plan state, billing frequency, prices, modules and scheduled change}
     put:
@@ -1303,7 +1304,7 @@ paths:
         "409": {description: Activation license must be paid or waived}
     patch:
       tags: [Billing]
-      summary: Change partner subscription plan
+      summary: Change partner subscription package
       description: Same-frequency price upgrades are immediate and collect the full price difference. Downgrades are scheduled with no refund. CUSTOM is available for HIMATE-administered negotiated partners. Recurring charges are collected automatically from the saved provider payment method. Failed recurring collection retries on due date, due+2 and due+5 days; the third failure suspends service and starts a 30-day cure window before retention-safe operational account purge.
       responses:
         "200": {description: Plan changed or scheduled}
@@ -1315,7 +1316,7 @@ paths:
         schema: {type: string}
     get:
       tags: [Billing]
-      summary: Partner plan module set
+      summary: Partner package module entitlement set
       responses:
         "200": {description: Current fixed package modules or Premium Unlimited eligible module set}
     put:
