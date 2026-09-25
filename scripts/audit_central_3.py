@@ -42,6 +42,13 @@ require("p.test_partner=FALSE" not in partners_get and "p.test_partner = FALSE" 
 require("if (p['test_partner'] == true)" in frontend and "_StatusPill(label: 'TEST')" in frontend,
         "Partner cards do not visibly identify Test Partners")
 
+require('"category_name_en": p.CategoryNameEN' in partners and '"category_name_hu": p.CategoryNameHU' in partners,
+        "Partners API does not expose bilingual category names")
+require("String _localizedPartnerCategory(Map<String, dynamic> partner)" in frontend,
+        "Partner UI does not select category label by active locale")
+require("_localizedPartnerCategory(partner)" in frontend and "_localizedPartnerCategory(p)" in frontend,
+        "Partner workspace/card do not use localized category names")
+
 for token in [
     "'/app/partners': (_) =>",
     "initialSelected: 1",
