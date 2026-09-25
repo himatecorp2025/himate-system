@@ -978,8 +978,8 @@ func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,
 	if _,err=tx.ExecContext(ctx,`INSERT INTO billing.invoices(
 		id,invoice_key,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,
 		minimum_commitment_adjustment,billing_model,plan_key,billing_frequency,charge_type,list_price,discount_amount,
-		net_total,tax_rate_percent,tax_amount
-	) VALUES($1,$2,$3,CURRENT_DATE,$4,$5,'USD',$6,0,$7,0,'PLAN',$8,$9,$10,$11,$12,$6,$13,$14)
+		net_total,tax_rate_percent,tax_amount,workflow_status,source
+	) VALUES($1,$2,$3,CURRENT_DATE,$4,$5,'USD',$6,0,$7,0,'PLAN',$8,$9,$10,$11,$12,$6,$13,$14,'DRAFT','AUTOMATED')
 	ON CONFLICT(invoice_key) DO NOTHING`,
 		id,key,partnerID,start,end,netAmount,grossAmount,planKey,frequency,chargeType,listPrice,discount,policy.RatePercent,taxAmount);err!=nil{return "",0,err}
 	if err=tx.QueryRowContext(ctx,`SELECT id FROM billing.invoices WHERE invoice_key=$1 FOR UPDATE`,key).Scan(&id);err!=nil{return "",0,err}
@@ -1004,6 +1004,7 @@ func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,
 	if storedInvoice!=id||storedPartner!=partnerID||math.Abs(storedAmount-netAmount)>0.005{
 		return "",0,fmt.Errorf("plan invoice item idempotency conflict for %s",itemKey)
 	}
+	if err=a.recordFinanceTransactionTx(ctx,tx,partnerID,id,"INVOICE","DRAFT","USD",netAmount,taxAmount,grossAmount,"AUTOMATED","billing-plan-engine","Recurring package invoice draft generated");err!=nil{return "",0,err}
 	if err=emitBillingEventTx(ctx,tx,"INVOICE_GENERATED:"+id,partnerID,"","INVOICE_GENERATED",time.Now().UTC(),map[string]any{
 		"invoice_id":id,"billing_model":"PLAN","plan_key":planKey,"billing_frequency":frequency,"charge_type":chargeType,
 		"list_price":listPrice,"discount_amount":discount,"net_total":netAmount,
@@ -1011,6 +1012,7 @@ func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,
 		"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":end.Format("2006-01-02"),
 	});err!=nil{return "",0,err}
 	if err=tx.Commit();err!=nil{return "",0,err}
+	a.advanceOnboardingFromInvoice(ctx,partnerID,onboardingInvoicePending,"billing-plan-engine","Recurring package invoice draft generated")
 	return id,grossAmount,nil
 }
 func (a *app) applyDuePlanChanges(ctx context.Context,at time.Time) error{
