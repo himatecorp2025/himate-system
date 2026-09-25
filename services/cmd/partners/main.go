@@ -329,6 +329,7 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 		category := strings.TrimSpace(r.URL.Query().Get("category"))
 		lifecycle := strings.TrimSpace(r.URL.Query().Get("lifecycle"))
 		health := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("health")))
+		referenceOnly, _ := strconv.ParseBool(r.URL.Query().Get("reference"))
 		includeArchived, _ := strconv.ParseBool(r.URL.Query().Get("include_archived"))
 		includeStats := true
 		if raw := strings.TrimSpace(r.URL.Query().Get("include_stats")); raw != "" {
@@ -365,6 +366,9 @@ func (a *app) partners(w http.ResponseWriter, r *http.Request) {
 				common.APIError(w, 400, "VALIDATION", "Invalid health filter")
 				return
 			}
+		}
+		if referenceOnly {
+			where = append(where, `p.reference_partner=TRUE`)
 		}
 
 		whereSQL := strings.Join(where, " AND ")
