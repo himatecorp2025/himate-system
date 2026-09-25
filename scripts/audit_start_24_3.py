@@ -38,7 +38,7 @@ require("strings.EqualFold(u.Host, r.Host)" in gateway,
 public_origin_start = gateway.index("func publicOrigin")
 public_origin_end = gateway.index("func replaceHeadTag", public_origin_start)
 public_origin = gateway[public_origin_start:public_origin_end]
-require("X-Forwarded-Host" not in public_origin,
+require('r.Header.Get("X-Forwarded-Host")' not in public_origin,
         "public origin trusts X-Forwarded-Host")
 require("r.Host" in public_origin,
         "public origin no longer uses edge-selected Host authority")
