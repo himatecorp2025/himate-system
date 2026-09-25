@@ -22,6 +22,8 @@ gateway = read("services/cmd/gateway/partner_portal.go")
 ui = read("frontend/lib/module_control_plane.dart")
 main_ui = read("frontend/lib/main.dart")
 localization = read("frontend/lib/localization.dart")
+partner_ui = read("frontend/lib/partner_portal.dart")
+openapi = read("docs/openapi.yaml")
 smoke_23112 = read("scripts/smoke_start_23_11_2.sh")
 smoke_23113 = read("scripts/smoke_start_23_11_3.sh")
 smoke_2312p1 = read("scripts/smoke_start_23_12_phase1.sh")
@@ -120,13 +122,28 @@ for token in [
 ]:
     require(token in localization, f"Hungarian localization missing: {token}")
 
+for token in [
+    "Starter USD 990",
+    "Business USD 1,490",
+    "Premium USD 2,490",
+    "stable FLEX API key",
+    "UNLIMITED entitlement",
+    "vat_rate_percent",
+    "NET/tax/gross",
+]:
+    require(token in openapi, f"OpenAPI Central-5 contract missing: {token}")
+
 for forbidden in [
     "Flex gives the customer up to 15 selectable modules",
+    "Choose up to 15 modules",
     "Starter: USD 500/month",
     "Business: USD 1,500/month",
     "Flex: USD 2,500/month",
+    "Starter is fixed at 3 modules",
+    "Flex supports up to 15",
 ]:
-    require(forbidden not in ui, f"retired package UI survived: {forbidden}")
+    combined = ui + "\n" + main_ui + "\n" + partner_ui + "\n" + openapi
+    require(forbidden not in combined, f"retired package contract survived: {forbidden}")
 
 require("==3,by[\"STARTER\"]" not in smoke_2312p1, "Phase 1 smoke still expects Starter=3")
 require("==10,by[\"BUSINESS\"]" not in smoke_2312p1, "Phase 1 smoke still expects Business=10")
