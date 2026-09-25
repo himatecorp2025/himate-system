@@ -36,6 +36,9 @@ for path in [
     "scripts/smoke_start_23_12_phase3b.sh",
     "scripts/smoke_start_23_12_phase4.sh",
     "scripts/smoke_start_23_12_phase5.sh",
+    "scripts/smoke_start_23_12_closure.sh",
+    "scripts/start_23_12_closure_publish.py",
+    "docs/START-23.12_CROSS_PHASE_CLOSURE.md",
 ]:
     require((ROOT / path).is_file(), f"missing inherited acceptance gate: {path}")
 
@@ -104,7 +107,7 @@ for sensitive in [
     require(sensitive in archive, f"Compliance Vault sensitive exclusion missing: {sensitive}")
 
 # Phase 5 PWA remains public-only after all backend hardening.
-for protected in ["/api/", "/partner", "/admin"]:
+for protected in ["/api/", "/partner", "/app"]:
     require(protected in worker, f"PWA worker does not explicitly protect authenticated surface {protected}")
 require("cache.put" in worker and "response.ok" in worker, "public PWA cache contract is missing")
 
