@@ -53,6 +53,14 @@ jobs:
         run: python3 scripts/audit_start_23_12_phase5.py
       - name: Validate START-23.12 Phase 1-5 cross-phase closure contract
         run: python3 scripts/audit_start_23_12_closure.py
+      - name: Validate START-24.1 authentication/session/MFA contract
+        run: python3 scripts/audit_start_24_1.py
+      - name: Validate START-24.2 RBAC and tenant-isolation contract
+        run: python3 scripts/audit_start_24_2.py
+      - name: Validate START-24.3 API/input/web security contract
+        run: python3 scripts/audit_start_24_3.py
+      - name: Validate START-24.4 abuse and resource-bound contract
+        run: python3 scripts/audit_start_24_4.py
 
   go-fast:
     runs-on: ubuntu-latest
