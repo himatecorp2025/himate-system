@@ -185,6 +185,8 @@ print(json.dumps({
   "name":"START 23.1 Mutation Lead",
   "organization":"HIMATE CI",
   "email":sys.argv[1],
+  "organization_type":"CULTURAL_ORGANIZATION",
+  "inquiry_topic":"PARTNERSHIP",
   "message":"START-23.1 validates a real public write, admin mutation, persistence readback and audit event.",
   "website":""
 }))
@@ -195,7 +197,7 @@ lead_id="$(printf '%s' "$lead" | json_field id)"
 test -n "$lead_id"
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"lead_status":"CONTACTED","assigned_to":"START-23.1 CI","admin_note":"Mutation canary verified."}'   "$BASE_URL/api/v1/contact/inquiries/$lead_id" >/dev/null
 lead_read="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/contact/inquiries/$lead_id")"
-printf '%s' "$lead_read" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lead_status"]=="CONTACTED"; assert d["assigned_to"]=="START-23.1 CI"'
+printf '%s' "$lead_read" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lead_status"]=="CONTACTED"; assert d["assigned_to"]=="START-23.1 CI"; assert d["organization_type"]=="CULTURAL_ORGANIZATION"; assert d["inquiry_topic"]=="PARTNERSHIP"'
 sleep 1
 audit="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/audit/events?action=CONTACT_LEAD_UPDATED&limit=100")"
 printf '%s' "$audit" | python3 -c 'import json,sys; d=json.load(sys.stdin); lead_id=sys.argv[1]; assert any(x.get("action")=="CONTACT_LEAD_UPDATED" and x.get("resource")=="contact" for x in d.get("items",[])),d' "$lead_id"
