@@ -258,4 +258,20 @@ test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT CO
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.billing_events WHERE partner_id='$charity_id' AND event_type='CHARITY_APPROVED';")" -ge "1"
 echo ok
 
+printf 'restore Central-5 Starter baseline after the administrator price-mutation proof... '
+restore_payload="$(python3 - "$TODAY" <<'PY'
+import json,sys
+print(json.dumps({
+ "monthly_price":990,"annual_list_price":11880,"annual_price":11880,
+ "effective_at":sys.argv[1],"reason":"Central-5 acceptance baseline restore after START-23.11.3k"
+}))
+PY
+)"
+RESTORED="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$restore_payload" "$BASE_URL/api/v1/billing/plans/STARTER")"
+python3 - "$RESTORED" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1]); assert d["monthly_price"]==990,d; assert d["annual_list_price"]==11880,d; assert d["annual_price"]==11880,d; assert d["module_limit"]==10,d
+PY
+echo ok
+
 echo 'HIMATE START-23.11.3k Commercial Status, Charity & Package Administration smoke passed'
