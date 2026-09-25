@@ -217,6 +217,16 @@ class HimateI18n {
 
   static const Map<String, String> _literalHu = <String, String>{
     'Packages': 'Csomagok',
+    'Billing & Packages': 'Számlázás és csomagok',
+    'Current package': 'Jelenlegi csomag',
+    'Choose package': 'Csomag kiválasztása',
+    'Package price': 'Csomagár',
+    'Entitlement': 'Jogosultság',
+    'All current + future eligible modules': 'Minden jelenlegi és jövőbeli jogosult modul',
+    'Fixed by HIMATE': 'HIMATE által meghatározott',
+    'Unlimited': 'Korlátlan',
+    'Package prices are net. VAT is added from the current HIMATE billing policy. Premium includes all current and future eligible modules.': 'A csomagárak nettó árak. Az áfa a HIMATE aktuális számlázási szabálya alapján adódik hozzá. A Premium minden jelenlegi és jövőbeli jogosult modult tartalmaz.',
+    'Choose monthly or annual billing, manage your package and review provider-backed invoice history.': 'Válassz havi vagy éves számlázást, kezeld a csomagodat, és tekintsd át a szolgáltató által kezelt számlatörténetet.',
     'Active partners': 'Aktív partnerek',
     'Available today': 'Ma elérhető',
     'Central-5 pricing authority': 'Central-5 árazási szabályrendszer',
