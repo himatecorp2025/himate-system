@@ -3898,7 +3898,11 @@ class _PartnersPageState extends State<PartnersPage> {
                       children: [
                         LText('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(width: 10),
-                        _MiniCounter(label: statsReady ? '${partners.length} shown · $total matched' : '${partners.length} shown'),
+                        _MiniCounter(
+                          label: statsReady
+                              ? '${partners.length} ${uiLiteral('shown')} · $total ${uiLiteral('matched')}'
+                              : '${partners.length} ${uiLiteral('shown')}',
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -3947,7 +3951,11 @@ class _PartnersPageState extends State<PartnersPage> {
                                     icon: const Icon(Icons.chevron_left_rounded),
                                     label: const LText('Previous'),
                                   ),
-                                  _MiniCounter(label: statsReady ? 'Page ${offset ~/ pageSize + 1} of ${(total + pageSize - 1) ~/ pageSize}' : 'Page ${offset ~/ pageSize + 1}'),
+                                  _MiniCounter(
+                                    label: statsReady
+                                        ? '${uiLiteral('Page')} ${offset ~/ pageSize + 1} ${uiLiteral('of')} ${(total + pageSize - 1) ~/ pageSize}'
+                                        : '${uiLiteral('Page')} ${offset ~/ pageSize + 1}',
+                                  ),
                                   OutlinedButton.icon(
                                     onPressed: hasMore && !loading ? nextPage : null,
                                     icon: const Icon(Icons.chevron_right_rounded),
@@ -5297,8 +5305,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     '${partner['country']}',
                     _humanize('${partner['lifecycle']}'),
                     if ('${partner['primary_domain'] ?? ''}'.isNotEmpty) '${partner['primary_domain']}',
-                    'Health: ${_humanize('${partner['system_health'] ?? 'UNKNOWN'}')}',
-                    'Version: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
+                    '${uiLiteral('Health')}: ${uiLiteral(_humanize('${partner['system_health'] ?? 'UNKNOWN'}'))}',
+                    '${uiLiteral('Version')}: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
                     if (partner['test_partner'] == true) 'TEST DATA · excluded from platform aggregates',
                   ].join(' · '),
                   actions: [
@@ -5325,7 +5333,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: ResponsiveKpiGrid(
                           children: [
                             Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
-                            Kpi(label: 'Active modules', value: '$active', note: '${modules.length} module records', icon: Icons.grid_view_outlined, accent: brandNavy),
+                            Kpi(label: 'Active modules', value: '$active', note: '${modules.length} ${uiLiteral('module records')}', icon: Icons.grid_view_outlined, accent: brandNavy),
                             Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
                             Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
                           ],
