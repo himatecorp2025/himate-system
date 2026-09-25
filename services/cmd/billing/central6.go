@@ -71,7 +71,6 @@ func central6BillingMigration() common.Migration {
 				SET workflow_status=CASE WHEN status='PAID' THEN 'PAID' ELSE 'SENT' END,
 					sent_at=CASE WHEN status='PAID' THEN COALESCE(paid_at,created_at) ELSE COALESCE(sent_at,created_at) END
 				WHERE workflow_status='DRAFT' AND created_at < NOW()`,
-			`ALTER TABLE billing.invoices DROP CONSTRAINT IF EXISTS billing_invoice_workflow_status_check`,
 			`ALTER TABLE billing.invoices ADD CONSTRAINT billing_invoice_workflow_status_check
 				CHECK(workflow_status IN ('DRAFT','APPROVED','SENT','PAID','CANCELLED'))`,
 			`CREATE INDEX IF NOT EXISTS billing_invoice_workflow_idx
