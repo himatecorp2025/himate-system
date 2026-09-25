@@ -3773,10 +3773,13 @@ class _PartnersPageState extends State<PartnersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final live = lifecycleCounts['LIVE'] ?? 0;
-    final prospects = lifecycleCounts['PROSPECT'] ?? 0;
-    final reference = referenceCount;
-    final allRecords = lifecycleCounts.values.fold<int>(0, (sum, value) => sum + value);
+    final kpiCounts = portfolioStatsReady ? portfolioLifecycleCounts : lifecycleCounts;
+    final live = kpiCounts['LIVE'] ?? 0;
+    final prospects = kpiCounts['PROSPECT'] ?? 0;
+    final reference = portfolioStatsReady ? portfolioReferenceCount : referenceCount;
+    final allRecords = portfolioStatsReady
+        ? portfolioTotal
+        : lifecycleCounts.values.fold<int>(0, (sum, value) => sum + value);
 
     return Content(
       eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
@@ -3798,10 +3801,10 @@ class _PartnersPageState extends State<PartnersPage> {
                   children: [
                     ResponsiveKpiGrid(
                       children: [
-                        Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy),
-                        Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess),
-                        Kpi(label: 'Prospects', value: '$prospects', note: 'Pre-license pipeline', icon: Icons.handshake_outlined, accent: brandSteel),
-                        Kpi(label: 'Reference partners', value: '$reference', note: 'Reference implementation', icon: Icons.workspace_premium_outlined, accent: brandGold),
+                        Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy, onTap: () => applyPortfolioPreset()),
+                        Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => applyPortfolioPreset(lifecycle: 'LIVE')),
+                        Kpi(label: 'Prospects', value: '$prospects', note: 'Pre-license pipeline', icon: Icons.handshake_outlined, accent: brandSteel, onTap: () => applyPortfolioPreset(lifecycle: 'PROSPECT')),
+                        Kpi(label: 'Reference partners', value: '$reference', note: 'Reference implementation', icon: Icons.workspace_premium_outlined, accent: brandGold, onTap: () => applyPortfolioPreset(reference: true)),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -3810,6 +3813,7 @@ class _PartnersPageState extends State<PartnersPage> {
                         builder: (context, c) {
                           final compact = c.maxWidth < 860;
                           final search = TextField(
+                            controller: _searchController,
                             onChanged: updateSearch,
                             decoration: InputDecoration(
                               hintText: uiLiteral('Search partners...'),
@@ -3878,6 +3882,17 @@ class _PartnersPageState extends State<PartnersPage> {
                         },
                       ),
                     ),
+                    if (referenceOnly) ...[
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: InputChip(
+                          label: const LText('Reference partners only'),
+                          avatar: const Icon(Icons.workspace_premium_outlined, size: 16),
+                          onDeleted: clearReferenceFilter,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     Row(
                       children: [
