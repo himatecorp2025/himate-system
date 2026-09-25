@@ -299,6 +299,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23112CatalogPlanMigration(),
 		start23113MarketplaceMigration(),
 		central4CatalogMigration(),
+		central5CatalogMigration(),
 	}); err != nil {
 		return err
 	}
@@ -711,7 +712,7 @@ func (a *app) ensurePartnerModules(partnerID string) error {
 		return err
 	}
 	if !testPartner {
-		return nil
+		return a.ensureDynamicPlanEntitlements(partnerID)
 	}
 	_, err = a.db.Exec(`UPDATE catalog.partner_modules
 		SET status='ACTIVE',
