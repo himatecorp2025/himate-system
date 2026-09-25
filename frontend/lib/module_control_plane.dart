@@ -1588,7 +1588,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               ],
               const SizedBox(height: 28),
               _SectionHeader(
-                title: uiLiteral('Commercial Control'),
+                title: uiLiteral('Partner × Module Commercial Matrix'),
                 subtitle: uiLiteral('Partner-specific assignment, recurring price, activation fee and subscription state remain available without dominating the registry view.'),
                 trailing: OutlinedButton.icon(
                   onPressed: () => setState(() => showCommercialMatrix = !showCommercialMatrix),
