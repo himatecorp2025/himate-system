@@ -76,6 +76,10 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	if err := a.backfillComplianceArchives(ctx); err != nil {
+		log.Error("compliance archive backfill", "error", err)
+		os.Exit(1)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
