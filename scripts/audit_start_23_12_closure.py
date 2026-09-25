@@ -54,6 +54,7 @@ compose = read("docker-compose.yml")
 render = read("render.yaml")
 ci = read(".github/workflows/ci.yml")
 fast = read(".github/workflows/ci-fast.yml")
+closure_smoke = read("scripts/smoke_start_23_12_closure.sh")
 
 # Phase 3 specific automation HMAC and Phase 4 generic service signature must be cumulative.
 for marker in [
@@ -155,5 +156,7 @@ for step in runtime_steps:
 require("audit_start_23_12_closure.py" in fast, "Fast CI does not protect the cross-phase closure contract")
 require("smoke_start_23_12_closure.sh" not in fast,
         "production-signature topology recreation belongs to full CI, not the fast compatibility lane")
+for issuer_field in ['"state_region":"NY"', '"city":"New York"', '"postal_code":"10001"', '"address_line1":"1 Closure Way"']:
+    require(issuer_field in closure_smoke, f"closure success-path issuer fixture is incomplete: {issuer_field}")
 
 print("HIMATE START-23.12 Phase 1-5 Cross-Phase Production Acceptance Closure audit: PASS")
