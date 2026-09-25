@@ -62,7 +62,7 @@ for key in $CANONICAL_KEYS; do
 done
 echo ok
 
-STARTER_KEYS="$(printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m["key"] for m in d["items"] if m.get("system") is True and m.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]; print(json.dumps(xs[:3]))')"
+STARTER_KEYS="$(printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m["key"] for m in d["items"] if m.get("system") is True and m.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]; print(json.dumps(xs[:10]))')"
 BUSINESS_KEYS="$(printf '%s' "$catalog" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m["key"] for m in d["items"] if m.get("system") is True and m.get("legacy_reference")=="KLAVIERHAUS_LEGACY"]; print(json.dumps(xs[:10]))')"
 
 printf 'configure Starter and Business from canonical Marketplace modules... '
@@ -90,17 +90,17 @@ PY
 )"
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$payment_payload" "$BASE_URL/api/v1/payments/partners/$partner_id/profile" >/dev/null
 business="$(curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"BUSINESS","billing_frequency":"MONTHLY","reason":"START-23.11.3 Marketplace Business acceptance"}' "$BASE_URL/api/v1/billing/partners/$partner_id/plan")"
-printf '%s' "$business" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="BUSINESS",d; assert len(d["active_module_keys"])==10,d'
+printf '%s' "$business" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["plan_key"]=="BUSINESS",d; assert len(d["active_module_keys"])==20,d'
 echo ok
 
 printf 'Business Marketplace keeps plan capacity fixed while catalog cardinality remains dynamic... '
 marketplace="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(canonical)>=1,canonical; active=[m for m in canonical if m["access_state"]=="ACTIVE"]; locked=[m for m in canonical if m["access_state"]=="LOCKED"]; coming=[m for m in canonical if m["access_state"]=="COMING_SOON"]; assert len(active)==10,len(active); assert len(active)+len(locked)+len(coming)==len(canonical),(len(active),len(locked),len(coming),len(canonical)); coming_keys={m["key"] for m in coming}; assert {"needs_assessment","two_factor_authentication"}.issubset(coming_keys),coming; assert all(m["executable"] is True for m in active+locked),active+locked; assert all(m["executable"] is False for m in coming),coming; assert all(m.get("in_current_plan") is True for m in active),active; assert all("FLEX" in m.get("upgrade_plan_keys",[]) for m in locked),locked; assert all(m.get("recommended_upgrade_plan")=="FLEX" for m in locked),locked; assert all(m.get("marketplace_summary","").strip() for m in canonical); assert d.get("current_plan_key")=="BUSINESS",d'
+printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); canonical=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(canonical)>=1,canonical; active=[m for m in canonical if m["access_state"]=="ACTIVE"]; locked=[m for m in canonical if m["access_state"]=="LOCKED"]; coming=[m for m in canonical if m["access_state"]=="COMING_SOON"]; assert len(active)==20,len(active); assert len(active)+len(locked)+len(coming)==len(canonical),(len(active),len(locked),len(coming),len(canonical)); coming_keys={m["key"] for m in coming}; assert {"needs_assessment","two_factor_authentication"}.issubset(coming_keys),coming; assert all(m["executable"] is True for m in active+locked),active+locked; assert all(m["executable"] is False for m in coming),coming; assert all(m.get("in_current_plan") is True for m in active),active; assert all("FLEX" in m.get("upgrade_plan_keys",[]) for m in locked),locked; assert all(m.get("recommended_upgrade_plan")=="FLEX" for m in locked),locked; assert all(m.get("marketplace_summary","").strip() for m in canonical); assert d.get("current_plan_key")=="BUSINESS",d'
 echo ok
 
 printf 'dashboard uses the same dynamically-sized enriched Marketplace read model... '
 dashboard="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/dashboard")"
-printf '%s' "$dashboard" | python3 -c 'import json,sys; d=json.load(sys.stdin); mods=d["modules"]["items"]; canonical=[m for m in mods if m.get("marketplace_visible") is True]; assert len(canonical)>=1,canonical; active=sum(1 for m in canonical if m["access_state"]=="ACTIVE"); locked=sum(1 for m in canonical if m["access_state"]=="LOCKED"); coming=sum(1 for m in canonical if m["access_state"]=="COMING_SOON"); assert active==10,active; assert active+locked+coming==len(canonical),(active,locked,coming,len(canonical)); assert {"needs_assessment","two_factor_authentication"}.issubset({m["key"] for m in canonical if m["access_state"]=="COMING_SOON"}),canonical'
+printf '%s' "$dashboard" | python3 -c 'import json,sys; d=json.load(sys.stdin); mods=d["modules"]["items"]; canonical=[m for m in mods if m.get("marketplace_visible") is True]; assert len(canonical)>=1,canonical; active=sum(1 for m in canonical if m["access_state"]=="ACTIVE"); locked=sum(1 for m in canonical if m["access_state"]=="LOCKED"); coming=sum(1 for m in canonical if m["access_state"]=="COMING_SOON"); assert active==20,active; assert active+locked+coming==len(canonical),(active,locked,coming,len(canonical)); assert {"needs_assessment","two_factor_authentication"}.issubset({m["key"] for m in canonical if m["access_state"]=="COMING_SOON"}),canonical'
 echo ok
 
 printf 'locked managed-plan module cannot bypass plan entitlement through direct activation... '
