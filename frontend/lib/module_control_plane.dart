@@ -1384,194 +1384,332 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   @override
   Widget build(BuildContext context) {
     if (showSubscriptionPlans) return subscriptionPlansPage();
-    final active = modules.where((m) => m['availability'] == 'ACTIVE').length;
+
+    final liveReady = modules.where((m) =>
+        s(m['availability']) == 'ACTIVE' &&
+        s(m['publication_status']) == 'PUBLISHED' &&
+        s(m['implementation_state']) == 'READY').length;
     final linked = modules.where((m) => s(m['source_repository']).trim().isNotEmpty).length;
     final relations = modules.fold<int>(0, (sum, m) => sum + ((m['relationship_count'] as num?)?.toInt() ?? 0));
     final partnerUsage = modules.fold<int>(0, (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0));
+    final currentGroup = selectedGroupKey == null ? null : groupByKey(selectedGroupKey!);
+    final topicOverview = selectedGroupKey == null && registryPreset == 'TOPICS';
+
+    String registryTitle = uiLiteral('Module Topics');
+    String registrySubtitle = uiLiteral('Open a topic to see its modules. Module cards can be moved to another topic from their action menu.');
+    if (currentGroup != null) {
+      registryTitle = groupLabel(currentGroup);
+      registrySubtitle = uiLiteral('Topic modules. Open a card for usage, dependencies and impact details.');
+    } else if (registryPreset == 'ACTIVE') {
+      registryTitle = uiLiteral('Active Modules');
+      registrySubtitle = uiLiteral('READY + PUBLISHED modules currently available for live assignment.');
+    } else if (registryPreset == 'SOURCE_LINKED') {
+      registryTitle = uiLiteral('Source Linked');
+      registrySubtitle = uiLiteral('Modules with an authoritative Git/source identity configured.');
+    } else if (registryPreset == 'RELATIONSHIPS') {
+      registryTitle = uiLiteral('Module Relationships');
+      registrySubtitle = uiLiteral('Modules participating in dependency, integration, extension, conflict or replacement relationships.');
+    }
 
     return Content(
-      eyebrow: 'MODULE CONTROL PLANE',
-      title: 'Modules',
-      subtitle: 'Authoritative registry plus partner-by-partner commercial pricing, activation fees, subscription periods, dependencies and usage.',
+      eyebrow: uiLiteral('MODULE CONTROL PLANE'),
+      title: uiLiteral('Modules'),
+      subtitle: uiLiteral('Topic-driven module registry, partner usage and commercial control in one authoritative workspace.'),
       actions: [
         OutlinedButton.icon(
           onPressed: () => setState(() => showSubscriptionPlans = true),
           icon: const Icon(Icons.workspace_premium_outlined),
-          label: const LText('Subscription Plans'),
+          label: LText(uiLiteral('Subscription Plans')),
         ),
-        OutlinedButton.icon(onPressed: loading ? null : addGroup, icon: const Icon(Icons.category_outlined), label: const LText('Add group')),
-        FilledButton.icon(onPressed: loading || groups.isEmpty ? null : addModule, icon: const Icon(Icons.add_box_outlined), label: const LText('Add module')),
+        OutlinedButton.icon(
+          onPressed: () => setState(() => showCommercialMatrix = !showCommercialMatrix),
+          icon: Icon(showCommercialMatrix ? Icons.expand_less_rounded : Icons.price_change_outlined),
+          label: LText(uiLiteral(showCommercialMatrix ? 'Hide Commercial Matrix' : 'Commercial Matrix')),
+        ),
+        OutlinedButton.icon(
+          onPressed: loading ? null : addGroup,
+          icon: const Icon(Icons.category_outlined),
+          label: LText(uiLiteral('Add group')),
+        ),
+        FilledButton.icon(
+          onPressed: loading || groups.isEmpty ? null : addModule,
+          icon: const Icon(Icons.add_box_outlined),
+          label: LText(uiLiteral('Add module')),
+        ),
       ],
       child: error != null && modules.isEmpty
-          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Module Control Plane unavailable', message: error!)
+          ? _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Module Control Plane unavailable'), message: error!)
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ResponsiveKpiGrid(children: [
-                Kpi(label: 'Module registry', value: modules.length.toString(), note: 'Canonical + custom modules', icon: Icons.hub_outlined, accent: brandNavy),
-                Kpi(label: 'Active modules', value: active.toString(), note: 'Available for assignment', icon: Icons.check_circle_outline_rounded, accent: brandSuccess),
-                Kpi(label: 'Source linked', value: linked.toString(), note: 'Git/source identity configured', icon: Icons.code_outlined, accent: brandSteel),
-                Kpi(label: 'Relationships', value: relations.toString(), note: partnerUsage.toString() + ' active partner assignments', icon: Icons.account_tree_outlined, accent: brandGold),
+                Kpi(
+                  label: uiLiteral('Module registry'),
+                  value: modules.length.toString(),
+                  note: uiLiteral('Canonical + custom modules'),
+                  icon: Icons.hub_outlined,
+                  accent: brandNavy,
+                  onTap: showTopicOverview,
+                ),
+                Kpi(
+                  label: uiLiteral('Active modules'),
+                  value: liveReady.toString(),
+                  note: uiLiteral('READY + PUBLISHED for live assignment'),
+                  icon: Icons.check_circle_outline_rounded,
+                  accent: brandSuccess,
+                  onTap: () => applyRegistryPreset('ACTIVE'),
+                ),
+                Kpi(
+                  label: uiLiteral('Source linked'),
+                  value: linked.toString(),
+                  note: uiLiteral('Git/source identity configured'),
+                  icon: Icons.code_outlined,
+                  accent: brandSteel,
+                  onTap: () => applyRegistryPreset('SOURCE_LINKED'),
+                ),
+                Kpi(
+                  label: uiLiteral('Relationships'),
+                  value: relations.toString(),
+                  note: '$partnerUsage ${uiLiteral('active partner assignments')}',
+                  icon: Icons.account_tree_outlined,
+                  accent: brandGold,
+                  onTap: () => applyRegistryPreset('RELATIONSHIPS'),
+                ),
               ]),
-              const SizedBox(height: 22),
-              _SectionHeader(
-                title: 'Partner × Module Commercial Matrix',
-                subtitle: 'Authoritative partner assignment, recurring price, activation fee and current subscription period in one control plane.',
-                trailing: _MiniCounter(label: filteredCommercialRows.length.toString() + ' assignments'),
-              ),
+              const SizedBox(height: 24),
+              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                if (!topicOverview) ...[
+                  IconButton(
+                    tooltip: uiLiteral('Back to module topics'),
+                    onPressed: showTopicOverview,
+                    icon: const Icon(Icons.arrow_back_rounded),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Expanded(
+                  child: _SectionHeader(
+                    title: registryTitle,
+                    subtitle: registrySubtitle,
+                    trailing: _MiniCounter(
+                      label: topicOverview
+                          ? '${groups.length} ${uiLiteral('topics')} · ${modules.length} ${uiLiteral('modules')}'
+                          : '${filtered.length} ${uiLiteral('modules')}',
+                    ),
+                  ),
+                ),
+              ]),
               const SizedBox(height: 12),
-              _FilterSurface(
-                child: LayoutBuilder(builder: (context, constraints) {
-                  final search = TextField(
-                    onChanged: (value) => setState(() { commercialQuery = value; commercialShown = 120; }),
-                    decoration: InputDecoration(hintText: uiLiteral('Search partner or module...'), prefixIcon: Icon(Icons.search_rounded)),
-                  );
-                  final partner = DropdownButtonFormField<String>(
-                    value: commercialPartnerFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('Partner')),
-                    items: [
-                      const DropdownMenuItem(value: 'ALL', child: LText('All partners')),
-                      for (final item in partners)
-                        DropdownMenuItem(value: s(item['id']), child: LText(partnerName(s(item['id'])))),
-                    ],
-                    onChanged: (value) => setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; }),
-                  );
-                  final module = DropdownButtonFormField<String>(
-                    value: commercialModuleFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('Module')),
-                    items: [
-                      const DropdownMenuItem(value: 'ALL', child: LText('All modules')),
-                      for (final item in modules)
-                        DropdownMenuItem(value: s(item['key']), child: LText(s(item['label']))),
-                    ],
-                    onChanged: (value) => setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; }),
-                  );
-                  final status = DropdownButtonFormField<String>(
-                    value: commercialStatusFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('State')),
-                    items: const [
-                      DropdownMenuItem(value: 'ALL', child: LText('All states')),
-                      DropdownMenuItem(value: 'ACTIVE', child: LText('Active')),
-                      DropdownMenuItem(value: 'NOT_LICENSED', child: LText('Not licensed')),
-                      DropdownMenuItem(value: 'MAINTENANCE', child: LText('Maintenance')),
-                    ],
-                    onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
-                  );
-                  final perspective = Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+              if (topicOverview)
+                LayoutBuilder(builder: (context, constraints) {
+                  final width = constraints.maxWidth < 640
+                      ? constraints.maxWidth
+                      : constraints.maxWidth < 1060
+                          ? (constraints.maxWidth - 12) / 2
+                          : (constraints.maxWidth - 24) / 3;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
                     children: [
-                      ChoiceChip(
-                        selected: commercialPerspective == 'PARTNER',
-                        label: const LText('View by partner'),
-                        onSelected: (_) => setState(() => commercialPerspective = 'PARTNER'),
-                      ),
-                      ChoiceChip(
-                        selected: commercialPerspective == 'MODULE',
-                        label: const LText('View by module'),
-                        onSelected: (_) => setState(() => commercialPerspective = 'MODULE'),
-                      ),
+                      for (final group in groups)
+                        SizedBox(width: width, child: topicGroupCard(group)),
                     ],
                   );
-                  if (constraints.maxWidth < 760) {
-                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      search,
-                      const SizedBox(height: 10),
-                      partner,
-                      const SizedBox(height: 10),
-                      module,
-                      const SizedBox(height: 10),
-                      status,
-                      const SizedBox(height: 10),
-                      perspective,
+                })
+              else ...[
+                _FilterSurface(
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final search = TextField(
+                      onChanged: (value) => setState(() => query = value),
+                      decoration: InputDecoration(
+                        hintText: uiLiteral('Search modules...'),
+                        prefixIcon: const Icon(Icons.search_rounded),
+                      ),
+                    );
+                    final type = DropdownButtonFormField<String>(
+                      value: typeFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('Type')),
+                      items: [
+                        DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All types'))),
+                        for (final value in moduleTypes)
+                          DropdownMenuItem(value: value, child: LText(uiLiteral(_humanize(value)))),
+                      ],
+                      onChanged: (value) => setState(() => typeFilter = value ?? 'ALL'),
+                    );
+                    if (constraints.maxWidth < 760) {
+                      return Column(children: [search, const SizedBox(height: 10), type]);
+                    }
+                    return Row(children: [
+                      Expanded(flex: 2, child: search),
+                      const SizedBox(width: 10),
+                      Expanded(child: type),
                     ]);
-                  }
-                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: partner)]),
-                    const SizedBox(height: 10),
-                    Row(children: [Expanded(child: module), const SizedBox(width: 10), Expanded(child: status)]),
-                    const SizedBox(height: 10),
-                    perspective,
-                  ]);
-                }),
-              ),
-              const SizedBox(height: 12),
-              Builder(builder: (context) {
-                final rows = filteredCommercialRows;
-                if (rows.isEmpty) {
-                  return const _MessageCard(
-                    icon: Icons.price_change_outlined,
-                    title: 'No partner-module assignments found',
-                    message: 'Adjust the filters or create partners/modules to populate the commercial matrix.',
-                  );
-                }
-                final visibleRows = rows.take(commercialShown).toList();
-                return Column(children: [
+                  }),
+                ),
+                const SizedBox(height: 12),
+                if (currentGroup != null && groups.length > 1) ...[
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      for (final group in groups)
+                        if (s(group['group_key']) != selectedGroupKey)
+                          ActionChip(
+                            avatar: Icon(groupIcon(s(group['group_key'])), size: 15),
+                            label: LText('${uiLiteral('Browse')} ${groupLabel(group)}'),
+                            onPressed: () => openTopic(s(group['group_key'])),
+                          ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (filtered.isEmpty)
+                  _MessageCard(
+                    icon: Icons.inventory_2_outlined,
+                    title: uiLiteral('No modules found'),
+                    message: uiLiteral('No modules match the current topic or filters.'),
+                  )
+                else
                   LayoutBuilder(builder: (context, constraints) {
-                    final width = constraints.maxWidth < 680
+                    final width = constraints.maxWidth < 650
                         ? constraints.maxWidth
-                        : constraints.maxWidth < 1120
+                        : constraints.maxWidth < 1050
                             ? (constraints.maxWidth - 12) / 2
                             : (constraints.maxWidth - 24) / 3;
                     return Wrap(
                       spacing: 12,
                       runSpacing: 12,
-                      children: [for (final row in visibleRows) SizedBox(width: width, child: commercialCard(row))],
+                      children: [
+                        for (final module in filtered)
+                          SizedBox(width: width, child: moduleCard(module)),
+                      ],
                     );
                   }),
-                  if (visibleRows.length < rows.length) ...[
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () => setState(() => commercialShown += 120),
-                      icon: const Icon(Icons.expand_more_rounded),
-                      label: LText('Show more · ' + (rows.length - visibleRows.length).toString() + ' remaining'),
-                    ),
-                  ],
-                ]);
-              }),
-              const SizedBox(height: 26),
+              ],
+              const SizedBox(height: 28),
               _SectionHeader(
-                title: 'Module Registry',
-                subtitle: 'Source code remains versioned in Git; HIMATE stores the authoritative identity, source pointer, release and commercial metadata.',
-                trailing: _MiniCounter(label: filtered.length.toString() + ' shown'),
+                title: uiLiteral('Commercial Control'),
+                subtitle: uiLiteral('Partner-specific assignment, recurring price, activation fee and subscription state remain available without dominating the registry view.'),
+                trailing: OutlinedButton.icon(
+                  onPressed: () => setState(() => showCommercialMatrix = !showCommercialMatrix),
+                  icon: Icon(showCommercialMatrix ? Icons.expand_less_rounded : Icons.expand_more_rounded),
+                  label: LText(uiLiteral(showCommercialMatrix ? 'Hide matrix' : 'Open matrix')),
+                ),
               ),
-              const SizedBox(height: 12),
-              _FilterSurface(
-                child: LayoutBuilder(builder: (context, constraints) {
-                  final search = TextField(
-                    onChanged: (value) => setState(() => query = value),
-                    decoration: InputDecoration(hintText: uiLiteral('Search modules, source or owner...'), prefixIcon: Icon(Icons.search_rounded)),
-                  );
-                  final group = DropdownButtonFormField<String>(
-                    value: groupFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('Group')),
-                    items: [
-                      const DropdownMenuItem(value: 'ALL', child: LText('All groups')),
-                      for (final item in groups) DropdownMenuItem(value: s(item['group_key']), child: LText(s(item['label']))),
+              if (showCommercialMatrix) ...[
+                const SizedBox(height: 12),
+                _FilterSurface(
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final search = TextField(
+                      onChanged: (value) => setState(() { commercialQuery = value; commercialShown = 120; }),
+                      decoration: InputDecoration(hintText: uiLiteral('Search partner or module...'), prefixIcon: const Icon(Icons.search_rounded)),
+                    );
+                    final partner = DropdownButtonFormField<String>(
+                      value: commercialPartnerFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('Partner')),
+                      items: [
+                        DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All partners'))),
+                        for (final item in partners)
+                          DropdownMenuItem(value: s(item['id']), child: LText(partnerName(s(item['id'])))),
+                      ],
+                      onChanged: (value) => setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; }),
+                    );
+                    final module = DropdownButtonFormField<String>(
+                      value: commercialModuleFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('Module')),
+                      items: [
+                        DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All modules'))),
+                        for (final item in modules)
+                          DropdownMenuItem(value: s(item['key']), child: LText(moduleLabelForLocale(item))),
+                      ],
+                      onChanged: (value) => setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; }),
+                    );
+                    final status = DropdownButtonFormField<String>(
+                      value: commercialStatusFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('State')),
+                      items: [
+                        DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All states'))),
+                        DropdownMenuItem(value: 'ACTIVE', child: LText(uiLiteral('Active'))),
+                        DropdownMenuItem(value: 'NOT_LICENSED', child: LText(uiLiteral('Not licensed'))),
+                        DropdownMenuItem(value: 'MAINTENANCE', child: LText(uiLiteral('Maintenance'))),
+                      ],
+                      onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
+                    );
+                    final perspective = Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ChoiceChip(
+                          selected: commercialPerspective == 'PARTNER',
+                          label: LText(uiLiteral('View by partner')),
+                          onSelected: (_) => setState(() => commercialPerspective = 'PARTNER'),
+                        ),
+                        ChoiceChip(
+                          selected: commercialPerspective == 'MODULE',
+                          label: LText(uiLiteral('View by module')),
+                          onSelected: (_) => setState(() => commercialPerspective = 'MODULE'),
+                        ),
+                      ],
+                    );
+                    if (constraints.maxWidth < 760) {
+                      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        search,
+                        const SizedBox(height: 10),
+                        partner,
+                        const SizedBox(height: 10),
+                        module,
+                        const SizedBox(height: 10),
+                        status,
+                        const SizedBox(height: 10),
+                        perspective,
+                      ]);
+                    }
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: partner)]),
+                      const SizedBox(height: 10),
+                      Row(children: [Expanded(child: module), const SizedBox(width: 10), Expanded(child: status)]),
+                      const SizedBox(height: 10),
+                      perspective,
+                    ]);
+                  }),
+                ),
+                const SizedBox(height: 12),
+                Builder(builder: (context) {
+                  final rows = filteredCommercialRows;
+                  if (rows.isEmpty) {
+                    return _MessageCard(
+                      icon: Icons.price_change_outlined,
+                      title: uiLiteral('No partner-module assignments found'),
+                      message: uiLiteral('Adjust the filters or create partners/modules to populate the commercial matrix.'),
+                    );
+                  }
+                  final visibleRows = rows.take(commercialShown).toList();
+                  return Column(children: [
+                    LayoutBuilder(builder: (context, constraints) {
+                      final width = constraints.maxWidth < 680
+                          ? constraints.maxWidth
+                          : constraints.maxWidth < 1120
+                              ? (constraints.maxWidth - 12) / 2
+                              : (constraints.maxWidth - 24) / 3;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final row in visibleRows)
+                            SizedBox(width: width, child: commercialCard(row)),
+                        ],
+                      );
+                    }),
+                    if (visibleRows.length < rows.length) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () => setState(() => commercialShown += 120),
+                        icon: const Icon(Icons.expand_more_rounded),
+                        label: LText(
+                          '${uiLiteral('Show more')} · ${rows.length - visibleRows.length} ${uiLiteral('remaining')}',
+                        ),
+                      ),
                     ],
-                    onChanged: (value) => setState(() => groupFilter = value ?? 'ALL'),
-                  );
-                  final type = DropdownButtonFormField<String>(
-                    value: typeFilter,
-                    decoration: InputDecoration(labelText: uiLiteral('Type')),
-                    items: [
-                      const DropdownMenuItem(value: 'ALL', child: LText('All types')),
-                      for (final value in moduleTypes) DropdownMenuItem(value: value, child: LText(_humanize(value))),
-                    ],
-                    onChanged: (value) => setState(() => typeFilter = value ?? 'ALL'),
-                  );
-                  if (constraints.maxWidth < 760) return Column(children: [search, const SizedBox(height: 10), group, const SizedBox(height: 10), type]);
-                  return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: group), const SizedBox(width: 10), Expanded(child: type)]);
-                }),
-              ),
-              const SizedBox(height: 12),
-              if (filtered.isEmpty)
-                const _MessageCard(icon: Icons.inventory_2_outlined, title: 'No modules found', message: 'No modules match the current filters.')
-              else
-                LayoutBuilder(builder: (context, constraints) {
-                  final width = constraints.maxWidth < 650 ? constraints.maxWidth : constraints.maxWidth < 1050 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
-                  return Wrap(spacing: 12, runSpacing: 12, children: [
-                    for (final module in filtered) SizedBox(width: width, child: moduleCard(module)),
                   ]);
                 }),
+              ],
               if (loading) ...[
                 const SizedBox(height: 12),
                 const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
