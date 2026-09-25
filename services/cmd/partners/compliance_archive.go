@@ -205,6 +205,52 @@ func (a *app) archiveComplianceTx(ctx context.Context, tx *sql.Tx, partnerID, ac
 	return a.loadComplianceArchiveTx(ctx, tx, partnerID)
 }
 
+func (a *app) backfillComplianceArchives(ctx context.Context) error {
+	rows, err := a.db.QueryContext(ctx, `SELECT p.id
+		FROM partners.partners p
+		LEFT JOIN compliance.partner_archives a ON a.partner_id=p.id
+		WHERE p.lifecycle='ARCHIVED' AND a.partner_id IS NULL
+		ORDER BY p.id`)
+	if err != nil {
+		return err
+	}
+	partnerIDs := []string{}
+	for rows.Next() {
+		var partnerID string
+		if err := rows.Scan(&partnerID); err != nil {
+			rows.Close()
+			return err
+		}
+		partnerIDs = append(partnerIDs, partnerID)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, partnerID := range partnerIDs {
+		tx, err := a.db.BeginTx(ctx, &sql.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("begin compliance backfill for %s: %w", partnerID, err)
+		}
+		if _, err = a.archiveComplianceTx(
+			ctx,
+			tx,
+			partnerID,
+			"system",
+			"START-23.12 Phase 5 backfill for previously archived partner",
+		); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("compliance backfill for %s: %w", partnerID, err)
+		}
+		if err = tx.Commit(); err != nil {
+			return fmt.Errorf("commit compliance backfill for %s: %w", partnerID, err)
+		}
+	}
+	return nil
+}
+
 func scanComplianceArchive(s interface{ Scan(...any) error }) (complianceArchive, error) {
 	var rec complianceArchive
 	var canonical string
