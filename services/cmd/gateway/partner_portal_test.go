@@ -104,3 +104,26 @@ func TestSTART23113CPartnerAccessErrorClassification(t *testing.T) {
 		})
 	}
 }
+
+func TestSTART241PartnerAuthenticationStateChangeRotatesSession(t *testing.T) {
+	base := partnerUser{Email:"owner@example.com",Role:"owner",Active:true}
+	if partnerAuthenticationStateChanged(base, base) {
+		t.Fatal("unchanged partner authentication state must not rotate session")
+	}
+	emailChanged := base
+	emailChanged.Email = "new-owner@example.com"
+	if !partnerAuthenticationStateChanged(base, emailChanged) {
+		t.Fatal("partner email change must rotate session")
+	}
+	roleChanged := base
+	roleChanged.Role = "admin"
+	if !partnerAuthenticationStateChanged(base, roleChanged) {
+		t.Fatal("partner role change must rotate session")
+	}
+	activeChanged := base
+	activeChanged.Active = false
+	if !partnerAuthenticationStateChanged(base, activeChanged) {
+		t.Fatal("partner activation change must rotate session")
+	}
+}
+
