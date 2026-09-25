@@ -83,6 +83,9 @@ for smoke_path in [
     "scripts/smoke_start_23_11_3k.sh",
     "scripts/smoke_start_23_11_5.sh",
     "scripts/smoke_start_23_12_phase1.sh",
+    "scripts/audit_start_23_11_1.py",
+    "scripts/audit_start_23_11_3.py",
+    "docs/START-23.11.3_ACCEPTANCE.md",
 ]:
     smoke = read(smoke_path)
     require('"group_key":"technical"' not in smoke,
