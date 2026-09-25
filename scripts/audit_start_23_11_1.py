@@ -95,7 +95,7 @@ require(
 for token in [
     "Publication status",
     "Implementation state",
-    "Commercial Control",
+    "Partner × Module Commercial Matrix",
     "Quote / offer reference",
     "Configured 30-day price",
     "partner_price",
