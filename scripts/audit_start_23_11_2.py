@@ -5,6 +5,8 @@ root = Path(__file__).resolve().parents[1]
 billing_main = (root / 'services/cmd/billing/main.go').read_text()
 billing_plans = (root / 'services/cmd/billing/plans.go').read_text()
 billing_dunning = (root / 'services/cmd/billing/dunning.go').read_text()
+central5_billing = (root / 'services/cmd/billing/central5.go').read_text()
+central5_catalog = (root / 'services/cmd/catalog/central5.go').read_text()
 partners_main = (root / 'services/cmd/partners/main.go').read_text()
 catalog_main = (root / 'services/cmd/catalog/main.go').read_text()
 catalog_plans = (root / 'services/cmd/catalog/plans.go').read_text()
@@ -20,9 +22,12 @@ def require(condition, message):
 
 for token in [
     "start23112PlanBillingMigration()",
-    "'STARTER','Starter','USD',500,6000,6000,0,3,'FIXED'",
-    "'BUSINESS','Business','USD',1500,18000,16500,1,10,'FIXED'",
-    "'FLEX','Flex','USD',2500,30000,22500,3,15,'SELECTABLE'",
+    "central5BillingMigration()",
+    "display_name='Starter',monthly_price=990",
+    "display_name='Business',monthly_price=1490",
+    "display_name='Premium',monthly_price=2490",
+    "selection_mode='UNLIMITED'",
+    "vat_rate_percent",
     "partner_plan_subscriptions",
     "partner_plan_module_selections",
     "plan_change_history",
@@ -31,7 +36,7 @@ for token in [
     "PLAN_ANNUAL_PREPAY",
     "PLAN_MONTHLY",
 ]:
-    require(token in billing_plans or token in billing_main, 'missing plan billing token: ' + token)
+    require(token in billing_plans or token in billing_main or token in central5_billing, 'missing plan billing token: ' + token)
 
 require('start23112CalendarMonthBillingMigration' not in billing_main, 'obsolete calendar-month module migration is still wired')
 require('runPlanBillingCycle(ctx, at)' in billing_main, 'plan billing cycle is not authoritative in invoice runner')
@@ -82,18 +87,21 @@ for token in [
     require(token in gateway, 'missing Partner Portal plan boundary: ' + token)
 
 for token in [
-    'Subscription Plans',
-    'Starter: USD 500/month',
-    'Business: USD 1,500/month',
-    'Flex: USD 2,500/month',
+    'Packages',
+    'Starter: USD 990/month + VAT',
+    'Business: USD 1,490/month + VAT',
+    'Premium: USD 2,490/month + VAT',
+    'UNLIMITED',
     'annual_list_price',
     'annual_price',
     'TextDecoration.lineThrough',
 ]:
     require(token in module_ui or token in portal_ui, 'missing plan UI token: ' + token)
 
-require('18,000' in acceptance and '16,500' in acceptance, 'Business annual full/discounted amounts are not documented')
-require('30,000' in acceptance and '22,500' in acceptance, 'Flex annual full/discounted amounts are not documented')
+require('17,880' in acceptance and '16,390' in acceptance, 'Business annual full/discounted amounts are not documented')
+require('29,880' in acceptance and '22,410' in acceptance, 'Premium annual full/discounted amounts are not documented')
+require('UNLIMITED' in acceptance, 'Premium unlimited entitlement is not documented')
+require('partner_plan_entitlement_policies' in central5_catalog, 'dynamic Premium entitlement policy storage is missing')
 require('module recurring charge' in acceptance.lower(), 'acceptance does not state that modules are not recurring invoice authority')
 require('attempt 1: due date / day 1' in acceptance.lower(), 'day-1/day-3/day-6 dunning schedule is not documented')
 require('30-day cure window' in acceptance.lower(), 'dunning cure window is not documented')
