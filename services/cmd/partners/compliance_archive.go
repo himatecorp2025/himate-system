@@ -221,6 +221,20 @@ const complianceArchiveSelect = `SELECT
 	canonical_payload,payload_sha256,created_at
 	FROM compliance.partner_archives`
 
+const complianceArchiveMetaSelect = `SELECT
+	partner_id,display_name,legal_name,archive_reason,created_by,archived_at,retain_until,
+	payload_sha256,created_at
+	FROM compliance.partner_archives`
+
+func scanComplianceArchiveMeta(s interface{ Scan(...any) error }) (complianceArchive, error) {
+	var rec complianceArchive
+	err := s.Scan(
+		&rec.PartnerID, &rec.DisplayName, &rec.LegalName, &rec.ArchiveReason, &rec.CreatedBy,
+		&rec.ArchivedAt, &rec.RetainUntil, &rec.PayloadSHA256, &rec.CreatedAt,
+	)
+	return rec, err
+}
+
 func (a *app) loadComplianceArchiveTx(ctx context.Context, tx *sql.Tx, partnerID string) (complianceArchive, error) {
 	return scanComplianceArchive(tx.QueryRowContext(ctx, complianceArchiveSelect+` WHERE partner_id=$1`, strings.TrimSpace(partnerID)))
 }
@@ -230,9 +244,12 @@ func (a *app) loadComplianceArchive(ctx context.Context, partnerID string) (comp
 }
 
 func complianceArchiveMap(rec complianceArchive, includePayload bool) map[string]any {
-	integrity := "MISMATCH"
-	if compliancePayloadHash(rec.Payload) == rec.PayloadSHA256 {
-		integrity = "VERIFIED"
+	integrity := "SEALED"
+	if includePayload {
+		integrity = "MISMATCH"
+		if compliancePayloadHash(rec.Payload) == rec.PayloadSHA256 {
+			integrity = "VERIFIED"
+		}
 	}
 	out := map[string]any{
 		"partner_id":       rec.PartnerID,
@@ -288,9 +305,7 @@ func (a *app) archives(w http.ResponseWriter, r *http.Request) {
 	args = append(args, limit, offset)
 	limitArg := len(args) - 1
 	offsetArg := len(args)
-	query := `SELECT partner_id,display_name,legal_name,archive_reason,created_by,archived_at,retain_until,
-		canonical_payload,payload_sha256,created_at
-		FROM compliance.partner_archives WHERE ` + where +
+	query := complianceArchiveMetaSelect + " WHERE " + where +
 		" ORDER BY archived_at DESC,partner_id LIMIT $" + strconv.Itoa(limitArg) + " OFFSET $" + strconv.Itoa(offsetArg)
 	rows, err := a.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
@@ -300,7 +315,7 @@ func (a *app) archives(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		rec, scanErr := scanComplianceArchive(rows)
+		rec, scanErr := scanComplianceArchiveMeta(rows)
 		if scanErr != nil {
 			common.APIError(w, 500, "DB", "Could not read Compliance Archives")
 			return
