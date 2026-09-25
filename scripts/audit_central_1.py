@@ -39,6 +39,16 @@ for token in [
 ]:
     require(token in contact, f"public contact form missing {token}")
 
+for smoke_path in [
+    "scripts/smoke_business_completion.sh",
+    "scripts/smoke_start_23_1_mutation_canary.sh",
+    "scripts/smoke_start_23_6.sh",
+    "scripts/smoke_start_23_9.sh",
+]:
+    smoke = read(smoke_path)
+    require('"organization_type"' in smoke, f"{smoke_path} still uses the legacy unclassified Contact contract")
+    require('"inquiry_topic"' in smoke, f"{smoke_path} still uses the legacy unclassified Contact contract")
+
 backend = read("services/cmd/contact/main.go")
 for token in [
     'Version: 3, Name: "central-1-contact-classification"',
