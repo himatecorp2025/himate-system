@@ -193,12 +193,17 @@ jobs:
         run: python3 ../scripts/audit_start_23_12_phase3.py
       - name: Run START-23.12 Phase 4 Security Acceptance audit
         run: python3 ../scripts/audit_start_23_12_phase4.py
+      - name: Run START-23.12 Phase 5 Final Acceptance audit
+        run: python3 ../scripts/audit_start_23_12_phase5.py
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
           test -s build/web/landing.html
           test -s build/web/himate-brand-r4.css
           test -s build/web/site.js
+          test -s build/web/service-worker.js
+          test -s build/web/pwa.js
+          test -s build/web/manifest.json
           test -s build/web/art/statue_hero_r5.png
           test -s build/web/art/program_piano_r5.png
           test -s build/web/art/gallery_hall_r5.png
@@ -478,7 +483,9 @@ jobs:
         run: sh scripts/smoke_start_23_12_phase3b.sh http://127.0.0.1:18083
       - name: Run START-23.12 Phase 4 Security smoke
         run: sh scripts/smoke_start_23_12_phase4.sh http://127.0.0.1:8080
-      - name: Dump Phase 4 runtime diagnostics on failure
+      - name: Run START-23.12 Phase 5 Compliance/PWA/100-tenant smoke
+        run: sh scripts/smoke_start_23_12_phase5.sh http://127.0.0.1:8080
+      - name: Dump Phase 4/5 runtime diagnostics on failure
         if: failure()
         run: docker compose logs --no-color --tail=180 gateway partners catalog billing payments evidence storage notifications
       - name: Stop test topology
