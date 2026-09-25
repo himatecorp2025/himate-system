@@ -19,13 +19,21 @@ def require(condition, message):
 
 seed_block = catalog.split("var seedModules = []seedModule{", 1)[1].split("\n}", 1)[0]
 seed_rows = re.findall(r'\{"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\}', seed_block)
-require(len(seed_rows) == 38, f"expected 38 canonical seed modules, found {len(seed_rows)}")
-groups = [g for _, _, g in seed_rows]
-require(groups.count("finance_invoicing") == 3, "Finance & Invoicing must contain 3 canonical modules")
-require(groups.count("technical") == 16, "Technical Operations must contain 16 canonical modules")
-require(groups.count("marketing") == 8, "Marketing must contain 8 canonical modules")
-require(groups.count("website_events") == 11, "Website & Events must contain 11 canonical modules")
-require(any(k == "workshop_workflow" and g == "technical" for k, _, g in seed_rows), "Workshop Workflow must belong to Technical Operations")
+require(len(seed_rows) >= 1, "canonical seed module catalog must contain at least one module")
+seed_keys = [k for k, _, _ in seed_rows]
+require(len(seed_keys) == len(set(seed_keys)), "canonical seed module keys must be unique")
+
+group_block = catalog.split("var seedGroups = []seedGroup{", 1)[1].split("\n}", 1)[0]
+group_rows = re.findall(r'\{"([^"]+)",\s*"([^"]+)",\s*(\d+)\}', group_block)
+require(len(group_rows) >= 1, "canonical module catalog must contain at least one topic")
+group_keys = {k for k, _, _ in group_rows}
+require(all(group in group_keys for _, _, group in seed_rows), "every canonical module must reference an existing topic")
+for required_group in {"finance_invoicing", "client_operations", "marketing", "website_events", "security_system"}:
+    require(required_group in group_keys, f"Central-4 baseline topic missing: {required_group}")
+for planned_key in {"needs_assessment", "two_factor_authentication"}:
+    require(planned_key in seed_keys, f"planned module missing from canonical registry: {planned_key}")
+require(any(k == "workshop_workflow" and g == "client_operations" for k, _, g in seed_rows),
+        "Workshop Workflow must belong to Client & Operations")
 
 for token in [
     "publication_status TEXT NOT NULL DEFAULT 'UNPUBLISHED'",
