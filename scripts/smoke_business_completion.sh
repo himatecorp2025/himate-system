@@ -24,12 +24,12 @@ echo ok
 printf 'public contact inquiry enters lead store... '
 lead_email="business-completion@example.com"
 contact="$(curl -fsS -H 'Content-Type: application/json' \
-  -d '{"name":"Business Completion Lead","organization":"HIMATE CI","email":"business-completion@example.com","message":"Please contact our organization about a HIMATE partnership and platform rollout.","website":""}' \
+  -d '{"name":"Business Completion Lead","organization":"HIMATE CI","email":"business-completion@example.com","organization_type":"CULTURAL_ORGANIZATION","inquiry_topic":"PARTNERSHIP","message":"Please contact our organization about a HIMATE partnership and platform rollout.","website":""}' \
   "$BASE_URL/api/v1/public/contact")"
 lead_id="$(printf '%s' "$contact" | json_field id)"
 test -n "$lead_id"
 leads="$(curl -fsS -b "$COOKIE_JAR" "$BASE_URL/api/v1/contact/inquiries?q=business-completion%40example.com&limit=25&offset=0")"
-printf '%s' "$leads" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["total"]>=1; x=next(i for i in d["items"] if i["email"]=="business-completion@example.com"); assert x["lead_status"]=="NEW"'
+printf '%s' "$leads" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["total"]>=1; x=next(i for i in d["items"] if i["email"]=="business-completion@example.com"); assert x["lead_status"]=="NEW"; assert x["organization_type"]=="CULTURAL_ORGANIZATION"; assert x["inquiry_topic"]=="PARTNERSHIP"'
 echo ok
 
 printf 'contact lead workflow persists... '
