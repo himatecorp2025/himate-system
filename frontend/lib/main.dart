@@ -6520,54 +6520,304 @@ class _FinancePageState extends State<FinancePage> {
 
   @override
   Widget build(BuildContext context) {
-    final custom = modules.where((m) => m['system'] != true).length;
-    final priced = modules.where((m) => number(m['default_monthly_price']) > 0).length;
+    final onboarding = overview['onboarding'] is Map
+        ? Map<String, dynamic>.from(overview['onboarding'] as Map)
+        : <String, dynamic>{};
+    final draftCount = workflowCount('draft');
+    final sentCount = workflowCount('sent');
+    final approvedCount = workflowCount('approved');
+    final paidCount = workflowCount('paid');
+    final pendingOnboarding = onboarding['pending'] is num
+        ? (onboarding['pending'] as num).toInt()
+        : int.tryParse('${onboarding['pending'] ?? 0}') ?? 0;
+    final visibleInvoices = filteredInvoices;
+
+    void scrollToOnboarding() {
+      final target = onboardingKey.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
+      }
+    }
 
     return Content(
-      eyebrow: 'COMMERCIAL CONTROL',
+      eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
       title: 'Licensing & Finance',
-      subtitle: 'Partner commercial terms, pricing oversight and HIMATE issuer data. Module registry management lives under Modules.',
+      subtitle: 'Partner onboarding, invoice approval, payment status and auditable finance controls. A partner reaches Portal access only after final HIMATE approval.',
       actions: [
-        FilledButton.icon(onPressed: editProfile, icon: const Icon(Icons.account_balance_outlined), label: const LText('Billing profile')),
+        OutlinedButton.icon(
+          onPressed: editProfile,
+          icon: const Icon(Icons.account_balance_outlined),
+          label: const LText('Billing profile'),
+        ),
+        FilledButton.icon(
+          onPressed: partners.isEmpty ? null : () => createManualInvoice(),
+          icon: const Icon(Icons.add_card_outlined),
+          label: const LText('New invoice'),
+        ),
       ],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
           : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (loading) const LinearProgressIndicator(minHeight: 2),
+                ResponsiveKpiGrid(
                   children: [
-                    ResponsiveKpiGrid(
-                      children: [
-                        Kpi(label: 'Module catalog', value: '${modules.length}', note: 'Canonical + custom modules', icon: Icons.grid_view_outlined, accent: brandNavy),
-                        Kpi(label: 'Custom modules', value: '$custom', note: 'Created by HIMATE admins', icon: Icons.extension_outlined, accent: brandSteel),
-                        Kpi(label: 'Priced defaults', value: '$priced', note: 'Modules with catalog pricing', icon: Icons.sell_outlined, accent: brandGold),
-                        const Kpi(label: 'Annual uplift', value: 'JAN 1', note: 'Default +10%, admin-overridable', icon: Icons.trending_up_rounded, accent: brandSuccess),
-                      ],
+                    Kpi(
+                      label: 'Draft invoices',
+                      value: '$draftCount',
+                      note: 'Awaiting Central approval',
+                      icon: Icons.edit_note_outlined,
+                      accent: brandSteel,
+                      onTap: () => setState(() => invoiceFilter = 'DRAFT'),
                     ),
-                    const SizedBox(height: 22),
-                    LayoutBuilder(
-                      builder: (context, c) {
-                        final issuer = _IssuerProfileCard(profile: profile ?? {}, onEdit: editProfile);
-                        const rules = _BillingRulesCard();
-                        if (c.maxWidth < 920) return Column(children: [issuer, const SizedBox(height: 14), rules]);
-                        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Expanded(child: issuer),
-                          const SizedBox(width: 14),
-                          const Expanded(child: rules),
-                        ]);
-                      },
+                    Kpi(
+                      label: 'Outstanding',
+                      value: moneyAcrossCurrencies('outstanding'),
+                      note: '${approvedCount + sentCount} approved / sent invoices',
+                      icon: Icons.outbox_outlined,
+                      accent: brandGold,
+                      onTap: () => setState(() => invoiceFilter = sentCount > 0 ? 'SENT' : 'APPROVED'),
                     ),
-                    const SizedBox(height: 26),
-                    const _MessageCard(
-                      icon: Icons.hub_outlined,
-                      title: 'Module registry moved to Modules',
-                      message: 'Create modules, link source code, manage versions, dependencies, global pricing and partner usage from the dedicated Modules control-plane area.',
+                    Kpi(
+                      label: 'Paid YTD',
+                      value: moneyAcrossCurrencies('paid_ytd'),
+                      note: '$paidCount paid invoices',
+                      icon: Icons.payments_outlined,
+                      accent: brandSuccess,
+                      onTap: () => setState(() => invoiceFilter = 'PAID'),
+                    ),
+                    Kpi(
+                      label: 'Pending onboarding',
+                      value: '$pendingOnboarding',
+                      note: 'Registration → review → approval',
+                      icon: Icons.fact_check_outlined,
+                      accent: brandNavy,
+                      onTap: scrollToOnboarding,
                     ),
                   ],
                 ),
+                const SizedBox(height: 20),
+                financeChart(),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: _SectionHeader(
+                        title: 'Invoice approval queue',
+                        subtitle: 'Draft → Approved → Sent → Paid / Cancelled. Collection is blocked until the invoice is Sent.',
+                      ),
+                    ),
+                    _MiniCounter(label: '${visibleInvoices.length} shown'),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    for (final status in const ['ALL', 'DRAFT', 'APPROVED', 'SENT', 'PAID', 'CANCELLED'])
+                      FilterChip(
+                        selected: invoiceFilter == status,
+                        label: LText(status == 'ALL' ? 'All' : _humanize(status)),
+                        onSelected: (_) => setState(() => invoiceFilter = status),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (visibleInvoices.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'No invoices in this state',
+                    message: 'Create a manual draft or wait for the recurring billing cycle to generate a new draft.',
+                  )
+                else
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < visibleInvoices.length; i++) ...[
+                            Builder(builder: (context) {
+                              final invoice = visibleInvoices[i];
+                              final workflow = '${invoice['workflow_status'] ?? invoice['status'] ?? 'DRAFT'}'.toUpperCase();
+                              final id = '${invoice['id'] ?? ''}';
+                              final partnerID = '${invoice['partner_id'] ?? ''}';
+                              final gross = number(invoice['gross_total'] ?? invoice['total']);
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: LayoutBuilder(builder: (context, constraints) {
+                                  final details = Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(children: [
+                                        const Icon(Icons.receipt_long_outlined, size: 18, color: brandGold),
+                                        const SizedBox(width: 9),
+                                        Expanded(
+                                          child: LText(
+                                            id,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 11.5),
+                                          ),
+                                        ),
+                                      ]),
+                                      const SizedBox(height: 5),
+                                      LText(
+                                        partnerName(partnerID),
+                                        style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      LText(
+                                        '${invoice['service_period_start'] ?? ''} — ${invoice['service_period_end_exclusive'] ?? ''}',
+                                        style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      LText(
+                                        '${invoice['currency'] ?? 'USD'} ${gross.toStringAsFixed(2)} gross · net ${number(invoice['net_total']).toStringAsFixed(2)} · tax ${number(invoice['tax_amount']).toStringAsFixed(2)}',
+                                        style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                                      ),
+                                    ],
+                                  );
+                                  final actions = Wrap(
+                                    spacing: 7,
+                                    runSpacing: 7,
+                                    alignment: WrapAlignment.end,
+                                    children: [
+                                      _StatusPill(label: workflow),
+                                      if (workflow == 'DRAFT')
+                                        FilledButton.tonalIcon(
+                                          onPressed: () => invoiceAction(invoice, 'approve'),
+                                          icon: const Icon(Icons.verified_outlined, size: 16),
+                                          label: const LText('Approve'),
+                                        ),
+                                      if (workflow == 'APPROVED')
+                                        FilledButton.icon(
+                                          onPressed: () => invoiceAction(invoice, 'send'),
+                                          icon: const Icon(Icons.send_outlined, size: 16),
+                                          label: const LText('Send'),
+                                        ),
+                                      if (workflow == 'SENT')
+                                        FilledButton.tonalIcon(
+                                          onPressed: () => invoiceAction(invoice, 'mark-paid'),
+                                          icon: const Icon(Icons.payments_outlined, size: 16),
+                                          label: const LText('Mark paid'),
+                                        ),
+                                      if (workflow != 'DRAFT')
+                                        OutlinedButton.icon(
+                                          onPressed: () => openBrowserDownload('/api/v1/billing/invoices/$id/pdf'),
+                                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                                          label: const LText('PDF'),
+                                        ),
+                                      if (workflow != 'PAID' && workflow != 'CANCELLED')
+                                        TextButton.icon(
+                                          onPressed: () => invoiceAction(invoice, 'cancel'),
+                                          icon: const Icon(Icons.cancel_outlined, size: 16),
+                                          label: const LText('Cancel'),
+                                        ),
+                                    ],
+                                  );
+                                  if (constraints.maxWidth < 820) {
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [details, const SizedBox(height: 12), actions],
+                                    );
+                                  }
+                                  return Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(child: details),
+                                      const SizedBox(width: 18),
+                                      Flexible(child: actions),
+                                    ],
+                                  );
+                                }),
+                              );
+                            }),
+                            if (i < visibleInvoices.length - 1) const Divider(height: 1),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 28),
+                Container(
+                  key: onboardingKey,
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: _SectionHeader(
+                          title: 'Partner onboarding',
+                          subtitle: 'Registered → Pending Review → Classified → invoice/payment or documented support → Admin Approval → Active.',
+                        ),
+                      ),
+                      _MiniCounter(label: '$pendingOnboarding pending'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (onboardingRows.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.check_circle_outline_rounded,
+                    title: 'No pending onboarding',
+                    message: 'All current partner registrations have completed the Central-6 commercial approval lifecycle.',
+                  )
+                else
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final row in onboardingRows)
+                        SizedBox(
+                          width: MediaQuery.sizeOf(context).width < 760 ? double.infinity : 360,
+                          child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Row(children: [
+                                  Expanded(
+                                    child: LText(
+                                      '${row['display_name'] ?? row['partner_id']}',
+                                      style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13),
+                                    ),
+                                  ),
+                                  _StatusPill(label: '${row['state'] ?? 'REGISTERED'}'),
+                                ]),
+                                const SizedBox(height: 10),
+                                _DefinitionRow(label: 'Classification', value: _humanize('${row['classification'] ?? 'UNCLASSIFIED'}')),
+                                _DefinitionRow(label: 'Portal access', value: row['portal_enabled'] == true ? 'Enabled' : 'Blocked until Active'),
+                                _DefinitionRow(label: 'Partner ID', value: '${row['partner_id'] ?? ''}'),
+                                const SizedBox(height: 12),
+                                onboardingAction(row),
+                              ]),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                const SizedBox(height: 28),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final issuer = _IssuerProfileCard(profile: profile ?? {}, onEdit: editProfile);
+                    const rules = _BillingRulesCard();
+                    if (constraints.maxWidth < 920) {
+                      return Column(children: [issuer, const SizedBox(height: 14), rules]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: issuer),
+                        const SizedBox(width: 14),
+                        const Expanded(child: rules),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
     );
   }
 }
-
 class ImpactPage extends StatefulWidget {
   const ImpactPage({required this.api, super.key});
   final Api api;
