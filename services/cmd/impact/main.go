@@ -667,6 +667,7 @@ func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	monthly := map[int]float64{}
+	weekly := map[string]float64{}
 	if err == nil {
 		rows, queryErr := a.db.Query(`SELECT EXTRACT(MONTH FROM v.period_end)::int AS month_no,
 			CASE $3
@@ -696,6 +697,35 @@ func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
 			}
 			if value.Valid { monthly[month]=value.Float64 }
 		}
+
+		weekRows, queryErr := a.db.Query(`SELECT date_trunc('week',v.period_end)::date AS week_start,
+			CASE $3
+				WHEN 'LATEST' THEN (ARRAY_AGG(v.numeric_value ORDER BY v.period_end DESC,v.id DESC))[1]
+				WHEN 'AVERAGE' THEN AVG(v.numeric_value)
+				ELSE SUM(v.numeric_value)
+			END AS value
+		FROM impact.metric_values v
+		LEFT JOIN partners.partners p ON p.id=v.partner_id
+		WHERE v.metric_key=$1 AND v.numeric_value IS NOT NULL
+		  AND COALESCE(p.test_partner,FALSE)=FALSE
+		  AND v.period_end >= make_date($2,1,1)
+		  AND v.period_end < make_date($2+1,1,1)
+		GROUP BY date_trunc('week',v.period_end)
+		ORDER BY week_start`, dashboardPeopleMetricKey, year, aggregation)
+		if queryErr != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate weekly Impact trend")
+			return
+		}
+		defer weekRows.Close()
+		for weekRows.Next() {
+			var weekStart time.Time
+			var value sql.NullFloat64
+			if scanErr := weekRows.Scan(&weekStart,&value); scanErr != nil {
+				common.APIError(w, http.StatusInternalServerError, "DB", "Could not read weekly Impact trend")
+				return
+			}
+			if value.Valid { weekly[weekStart.UTC().Format("2006-01-02")]=value.Float64 }
+		}
 	}
 
 	labels := []string{"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}
@@ -705,6 +735,22 @@ func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
 			"month":month,
 			"label":labels[month-1],
 			"value":monthly[month],
+		})
+	}
+
+	yearStart:=time.Date(year,time.January,1,0,0,0,0,time.UTC)
+	yearEnd:=time.Date(year+1,time.January,1,0,0,0,0,time.UTC)
+	mondayOffset:=(int(yearStart.Weekday())+6)%7
+	weekStart:=yearStart.AddDate(0,0,-mondayOffset)
+	weeklyTrend:=make([]map[string]any,0,54)
+	for cursor:=weekStart; cursor.Before(yearEnd); cursor=cursor.AddDate(0,0,7) {
+		isoYear,isoWeek:=cursor.ISOWeek()
+		weeklyTrend=append(weeklyTrend,map[string]any{
+			"iso_year":isoYear,
+			"week":isoWeek,
+			"week_start":cursor.Format("2006-01-02"),
+			"label":fmt.Sprintf("W%02d",isoWeek),
+			"value":weekly[cursor.Format("2006-01-02")],
 		})
 	}
 	value:=0.0
@@ -718,6 +764,7 @@ func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
 		"aggregation":aggregation,
 		"people_reached_ytd":value,
 		"trend":trend,
+		"weekly_trend":weeklyTrend,
 		"source":"IMPACT_METRIC_VALUES",
 	})
 }
