@@ -153,7 +153,7 @@ func main() {
 	a := &app{
 		db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
-		version: common.Env("HIMATE_APP_VERSION", "0.8.32-start-23.11.7"),
+		version: common.Env("HIMATE_APP_VERSION", "0.8.33-start-23.12"),
 		ttl: time.Duration(ttlHours) * time.Hour, rememberTTL: time.Duration(rememberTTLHours) * time.Hour,
 		passwordResetTTL: time.Duration(resetTTLMinutes) * time.Minute,
 		resetBaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("HIMATE_PASSWORD_RESET_BASE_URL")), "/"),
