@@ -3,7 +3,7 @@ set -eu
 
 BASE="${1:-http://127.0.0.1:18083}"
 AUTO_BASE="${2:-http://127.0.0.1:18082}"
-VERSION="${HIMATE_APP_VERSION:-0.8.32-start-23.11.7}"
+VERSION="${HIMATE_APP_VERSION:-0.8.33-start-23.12}"
 
 docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 <<'SQL'
 INSERT INTO partners.partners(
