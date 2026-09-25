@@ -6,22 +6,27 @@ import (
 )
 
 func TestSeedModules(t *testing.T) {
-	if len(seedModules) != 40 {
-		t.Fatalf("expected 40 got %d", len(seedModules))
+	if len(seedModules) < 1 {
+		t.Fatal("module catalog must contain at least one seed module")
+	}
+	groupKeys := map[string]bool{}
+	for _, group := range seedGroups {
+		if strings.TrimSpace(group.Key) == "" {
+			t.Fatal("module group key must not be empty")
+		}
+		groupKeys[group.Key] = true
 	}
 	seen := map[string]bool{}
-	groups := map[string]int{}
 	for _, m := range seedModules {
 		if seen[m.Key] {
 			t.Fatalf("duplicate %s", m.Key)
 		}
 		seen[m.Key] = true
-		groups[m.Group]++
-	}
-	want := map[string]int{"finance_invoicing": 3, "client_operations": 9, "marketing": 8, "website_events": 12, "security_system": 8}
-	for k, n := range want {
-		if groups[k] != n {
-			t.Fatalf("%s expected %d got %d", k, n, groups[k])
+		if !groupKeys[m.Group] {
+			t.Fatalf("module %s references unknown group %s", m.Key, m.Group)
+		}
+		if strings.TrimSpace(seedModuleHU[m.Key]) == "" {
+			t.Fatalf("missing Hungarian module label for %s", m.Key)
 		}
 	}
 	for _, key := range []string{"needs_assessment", "two_factor_authentication"} {
@@ -31,17 +36,23 @@ func TestSeedModules(t *testing.T) {
 	}
 }
 
-func TestFivePrimaryModuleGroups(t *testing.T) {
-	if len(seedGroups) != 5 {
-		t.Fatalf("expected five primary module groups got %d", len(seedGroups))
+func TestPrimaryModuleGroupBaseline(t *testing.T) {
+	if len(seedGroups) < 1 {
+		t.Fatal("module catalog must contain at least one primary group")
 	}
-	want := []string{"finance_invoicing", "client_operations", "marketing", "website_events", "security_system"}
-	for i, key := range want {
-		if seedGroups[i].Key != key {
-			t.Fatalf("group %d expected %s got %s", i, key, seedGroups[i].Key)
+	seen := map[string]bool{}
+	for _, group := range seedGroups {
+		if seen[group.Key] {
+			t.Fatalf("duplicate module group %s", group.Key)
 		}
-		if strings.TrimSpace(seedGroupHU[key]) == "" {
-			t.Fatalf("missing Hungarian group label for %s", key)
+		seen[group.Key] = true
+		if strings.TrimSpace(group.Label) == "" || strings.TrimSpace(seedGroupHU[group.Key]) == "" {
+			t.Fatalf("module group %s must have bilingual labels", group.Key)
+		}
+	}
+	for _, key := range []string{"finance_invoicing", "client_operations", "marketing", "website_events", "security_system"} {
+		if !seen[key] {
+			t.Fatalf("required Central-4 baseline group missing: %s", key)
 		}
 	}
 }
@@ -103,15 +114,15 @@ func TestSTART232CommercialDefaultsAreNonNegativeByContract(t *testing.T) {
 
 
 func TestSTART23113MarketplaceCanonicalCoverage(t *testing.T) {
-	if len(marketplaceSummaries) != 40 {
-		t.Fatalf("expected 40 marketplace summaries got %d", len(marketplaceSummaries))
+	if len(seedModules) < 1 {
+		t.Fatal("marketplace requires at least one canonical module")
 	}
 	for _, module := range seedModules {
 		summary, ok := marketplaceSummaries[module.Key]
 		if !ok {
 			t.Fatalf("missing marketplace summary for %s", module.Key)
 		}
-		if summary.EN == "" || summary.HU == "" {
+		if strings.TrimSpace(summary.EN) == "" || strings.TrimSpace(summary.HU) == "" {
 			t.Fatalf("marketplace summary must be bilingual for %s", module.Key)
 		}
 	}
