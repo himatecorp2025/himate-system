@@ -91,7 +91,8 @@ for token in [
     require(token in billing, f"Central-6 billing route/read-model integration missing: {token}")
 
 for token in [
-    "workflow_status,'DRAFT','AUTOMATED'",
+    "workflow_status,source",
+    "'DRAFT','AUTOMATED'",
     '"INVOICE","DRAFT"',
 ]:
     require(token in plans, f"recurring plan invoices must start as approval drafts: {token}")
