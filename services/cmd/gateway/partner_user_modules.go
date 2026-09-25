@@ -218,18 +218,16 @@ func (a *app) recordPartnerModuleUsage(u partnerUser, moduleKey, method, runtime
 	if partnerID == "" || userID == "" || moduleKey == "" || runtimePath == "" {
 		return
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
-		defer cancel()
-		var ignored map[string]any
-		_ = a.internalJSON(ctx, http.MethodPost, a.hosts["catalog"], "/internal/v1/module-usage-events", map[string]any{
-			"partner_id": partnerID,
-			"user_id": userID,
-			"module_key": moduleKey,
-			"http_method": method,
-			"runtime_path": runtimePath,
-		}, nil, &ignored)
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 350*time.Millisecond)
+	defer cancel()
+	var ignored map[string]any
+	_ = a.internalJSON(ctx, http.MethodPost, a.hosts["catalog"], "/internal/v1/module-usage-events", map[string]any{
+		"partner_id": partnerID,
+		"user_id": userID,
+		"module_key": moduleKey,
+		"http_method": method,
+		"runtime_path": runtimePath,
+	}, nil, &ignored)
 }
 
 func (a *app) partnerModuleRuntime(w http.ResponseWriter, r *http.Request, u partnerUser) {
