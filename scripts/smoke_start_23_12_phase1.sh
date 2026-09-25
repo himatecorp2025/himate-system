@@ -34,7 +34,7 @@ PY
 
 curl -fsS -c "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$(login_payload "$OWNER_EMAIL" "$OWNER_PASSWORD")" "$BASE_URL/api/v1/auth/login" >/dev/null
 
-printf 'verify Starter/Business/Flex production contract cardinalities... '
+printf 'verify Starter/Business/Premium production package contracts... '
 starter="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/plans/STARTER")"
 business="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/plans/BUSINESS")"
 flex="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/plans/FLEX")"
@@ -42,14 +42,14 @@ printf '%s\n%s\n%s\n' "$starter" "$business" "$flex" | python3 -c '
 import json,sys
 docs=[json.loads(x) for x in sys.stdin if x.strip()]
 by={d["plan_key"]:d for d in docs}
-assert by["STARTER"]["module_limit"]==3,by["STARTER"]
-assert len(by["STARTER"]["fixed_module_keys"])==3,by["STARTER"]
+assert by["STARTER"]["module_limit"]==10,by["STARTER"]
+assert len(by["STARTER"]["fixed_module_keys"])==10,by["STARTER"]
 assert by["STARTER"]["ready"] is True,by["STARTER"]
-assert by["BUSINESS"]["module_limit"]==10,by["BUSINESS"]
-assert len(by["BUSINESS"]["fixed_module_keys"])==10,by["BUSINESS"]
+assert by["BUSINESS"]["module_limit"]==20,by["BUSINESS"]
+assert len(by["BUSINESS"]["fixed_module_keys"])==20,by["BUSINESS"]
 assert by["BUSINESS"]["ready"] is True,by["BUSINESS"]
-assert by["FLEX"]["module_limit"]==15,by["FLEX"]
-assert by["FLEX"]["selection_mode"]=="SELECTABLE",by["FLEX"]'
+assert by["FLEX"]["module_limit"] is None,by["FLEX"]
+assert by["FLEX"]["selection_mode"]=="UNLIMITED" and by["FLEX"]["display_name"]=="Premium",by["FLEX"]'
 echo ok
 
 printf 'create normal Business partner and Portal owner... '
@@ -75,7 +75,7 @@ PY
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$payment_payload" "$BASE_URL/api/v1/payments/partners/$partner_id/profile" >/dev/null
 curl -fsS -b "$OWNER_COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"BUSINESS","billing_frequency":"MONTHLY","reason":"START-23.12 Phase 1 runtime authorization"}' "$BASE_URL/api/v1/billing/partners/$partner_id/plan" >/dev/null
 marketplace="$(curl -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
-printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(xs)>=1,xs; active=[m for m in xs if m["access_state"]=="ACTIVE"]; locked=[m for m in xs if m["access_state"]=="LOCKED"]; coming=[m for m in xs if m["access_state"]=="COMING_SOON"]; assert len(active)==10,active; assert len(active)+len(locked)+len(coming)==len(xs),(len(active),len(locked),len(coming),len(xs)); assert {"needs_assessment","two_factor_authentication"}.issubset({m["key"] for m in coming}),coming'
+printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m for m in d["items"] if m.get("marketplace_visible") is True]; assert len(xs)>=1,xs; active=[m for m in xs if m["access_state"]=="ACTIVE"]; locked=[m for m in xs if m["access_state"]=="LOCKED"]; coming=[m for m in xs if m["access_state"]=="COMING_SOON"]; assert len(active)==20,active; assert len(active)+len(locked)+len(coming)==len(xs),(len(active),len(locked),len(coming),len(xs)); assert {"needs_assessment","two_factor_authentication"}.issubset({m["key"] for m in coming}),coming'
 active_key="$(printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(m["key"] for m in d["items"] if m.get("access_state")=="ACTIVE" and m.get("executable") is True))')"
 second_active_key="$(printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[m["key"] for m in d["items"] if m.get("access_state")=="ACTIVE" and m.get("executable") is True]; print(xs[1])')"
 locked_key="$(printf '%s' "$marketplace" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(m["key"] for m in d["items"] if m.get("access_state")=="LOCKED"))')"
