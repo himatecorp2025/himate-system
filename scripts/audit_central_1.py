@@ -71,11 +71,11 @@ require('a.beginMFAFlow(w,r,"PARTNER",u.ID,in.Remember,partnerMFARequired(u.Role
         "Partner MFA integration point was removed instead of being kept for module 40")
 require("path == '/partner/login'" in frontend,
         "Partner Portal login route is not registered")
-require('href=\\\"/partner/login\\\">Partner Portal</a>' in gateway,
-        "Gateway SSR navigation does not render Partner Portal")
-require('href=\\\"/contact\\\">' in gateway and 'nav-login-text' in gateway,
-        "Gateway SSR navigation does not render Contact as the dedicated action")
 ssr_nav = gateway[gateway.index("func designNavigationHTML"):gateway.index("func renderSiteDesignHTML")]
+require('href=\\\"/partner/login\\\"' in ssr_nav and 'Partner Portal' in ssr_nav,
+        "Gateway SSR navigation does not render Partner Portal")
+require('href=\\\"/contact\\\"' in ssr_nav and 'nav-login-text' in ssr_nav,
+        "Gateway SSR navigation does not render Contact as the dedicated action")
 require('href=\\\"/login\\\"' not in ssr_nav,
         "Gateway SSR navigation still exposes Central login")
 
