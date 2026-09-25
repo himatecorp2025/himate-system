@@ -18,6 +18,7 @@ gateway = read("services/cmd/gateway/main.go")
 main_dart = read("frontend/lib/main.dart")
 archive_dart = read("frontend/lib/compliance_archives.dart")
 worker = read("frontend/web/service-worker.js")
+storage = read("services/cmd/storage/main.go")
 pwa = read("frontend/web/pwa.js")
 site = read("frontend/web/site.js")
 manifest = read("frontend/web/manifest.json")
@@ -72,6 +73,10 @@ require('mux.HandleFunc("/internal/v1/archives"' in partner,
         "Partners service exposes no signed internal archive endpoint")
 require('mux.HandleFunc("/api/v1/archives"' not in partner,
         "Compliance Vault is directly exposed on a service /api route")
+require("complianceRetentionLocked" in storage and "retain_until>NOW()" in storage,
+        "partner file bytes are not locked for the Compliance Archive retention window")
+require("r.Method == http.MethodPut || r.Method == http.MethodDelete" in storage and "COMPLIANCE_RETENTION" in storage,
+        "archived partner storage can still be overwritten or deleted during compliance retention")
 
 # Central UI exists and is permission-gated.
 require("static const int navCount = 10;" in main_dart, "Archives navigation slot is missing")
