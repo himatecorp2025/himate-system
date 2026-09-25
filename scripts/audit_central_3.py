@@ -54,7 +54,7 @@ for token in [
 
 technical_literals = {"USD","EUR","GBP","PRODUCTION","STAGING","YYYY-MM-DD","example.com"}
 start = frontend.index("class PartnersPage")
-end = frontend.index("class ModuleControlPlanePage") if "class ModuleControlPlanePage" in frontend[start:] else frontend.index("class FinancePage")
+end = frontend.index("class PackagesPage", start)
 scope = frontend[start:end]
 card_start = frontend.index("class PartnerCard")
 card_end = frontend.index("class _PartnerLogo", card_start)
