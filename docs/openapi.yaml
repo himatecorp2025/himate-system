@@ -695,7 +695,7 @@ paths:
       summary: Own distributed invoice history
       description: DRAFT and APPROVED invoices are HIMATE-internal and never exposed to the partner.
       responses:
-        "200": {description: Own SENT, PAID or CANCELLED invoices}
+        "200": {description: Own SENT, PAID or CANCELLED invoices, including payment_deadline_at when applicable}
   /partner/api/v1/billing/invoices/{invoiceId}/pdf:
     parameters:
       - {name: invoiceId, in: path, required: true, schema: {type: string}}
@@ -1289,7 +1289,7 @@ paths:
       tags: [Billing]
       summary: Invoice detail
       responses:
-        "200": {description: Invoice detail with DRAFT/APPROVED/SENT/PAID/CANCELLED workflow state}
+        "200": {description: Invoice detail with DRAFT/APPROVED/SENT/PAID/CANCELLED workflow state and payment_deadline_at after SENT}
   /api/v1/billing/invoices/{invoiceId}/approve:
     parameters:
       - {name: invoiceId, in: path, required: true, schema: {type: string}}
@@ -1307,7 +1307,8 @@ paths:
       summary: Distribute an approved invoice and enable payment collection
       description: >
         Moves APPROVED to SENT, queues Portal and email delivery records, emits the
-        Partner Portal billing notification and only then permits provider collection.
+        Partner Portal billing notification, sets payment_deadline_at to exactly 72 hours after send,
+        communicates the 72-hour settlement window and inactive-Portal rule, and only then permits provider collection.
       responses:
         "200": {description: Invoice moved to SENT and delivery/collection initiated}
         "409": {description: Invoice has not been approved}
@@ -1317,8 +1318,10 @@ paths:
     post:
       tags: [Billing]
       summary: Record an administrator-confirmed invoice payment
+      description: Only a SENT invoice may move to PAID; APPROVED cannot skip distribution.
       responses:
-        "200": {description: Invoice moved to PAID and finance/onboarding ledgers updated}
+        "200": {description: Invoice moved from SENT to PAID and finance/onboarding ledgers updated}
+        "409": {description: Invoice has not reached SENT}
   /api/v1/billing/invoices/{invoiceId}/cancel:
     parameters:
       - {name: invoiceId, in: path, required: true, schema: {type: string}}
