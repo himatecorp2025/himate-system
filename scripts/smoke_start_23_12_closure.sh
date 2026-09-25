@@ -14,16 +14,7 @@ COMPOSE_JSON="$(docker compose config --format json)"
 env_value() {
   service="$1"
   key="$2"
-  printf '%s' "$COMPOSE_JSON" | python3 - "$service" "$key" <<'PY'
-import json,sys
-service,key=sys.argv[1:]
-d=json.load(sys.stdin)
-e=d["services"][service]["environment"]
-if isinstance(e,dict):
-    print(e[key])
-else:
-    print(next(x.split("=",1)[1] for x in e if x.startswith(key+"=")))
-PY
+  printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; service,key=sys.argv[1:]; d=json.load(sys.stdin); e=d["services"][service]["environment"]; print(e[key] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith(key+"=")))' "$service" "$key"
 }
 
 CLOSURE_INTERNAL_TOKEN="$(env_value automation HIMATE_INTERNAL_TOKEN)"
@@ -32,10 +23,7 @@ OWNER_EMAIL="$(env_value gateway HIMATE_BOOTSTRAP_ADMIN_EMAIL)"
 OWNER_PASSWORD="$(env_value gateway HIMATE_BOOTSTRAP_ADMIN_PASSWORD)"
 
 automation_secret() {
-  printf '%s' "$AUTOMATION_KEYS" | python3 - "$1" <<'PY'
-import json,sys
-print(json.load(sys.stdin)[sys.argv[1]])
-PY
+  printf '%s' "$AUTOMATION_KEYS" | python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
 }
 
 echo "recreate private topology with production service-signature enforcement..."
