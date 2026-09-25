@@ -73,19 +73,21 @@ import json,sys;p=sys.argv[1];print(json.dumps([f"{p}.{i}" for i in range(1,17)]
 PY
 )"
 STARTER_KEYS="$(python3 - "$PREFIX" <<'PY'
-import json,sys;p=sys.argv[1];print(json.dumps([f"{p}.{i}" for i in range(1,4)]))
+import json,sys;p=sys.argv[1];print(json.dumps([f"{p}.{i}" for i in range(1,11)]))
 PY
 )"
 echo ok
 
-printf 'standard package limits are immutable 3 / 10 / 15... '
+printf 'Central-5 package contract is immutable 10 / 20 / Unlimited... '
 PLANS="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/plans")"
 python3 - "$PLANS" <<'PY'
 import json,sys
 d=json.loads(sys.argv[1]); p={x["plan_key"]:x for x in d["items"]}
-assert p["STARTER"]["module_limit"]==3,p["STARTER"]
-assert p["BUSINESS"]["module_limit"]==10,p["BUSINESS"]
-assert p["FLEX"]["module_limit"]==15,p["FLEX"]
+assert p["STARTER"]["module_limit"]==10,p["STARTER"]
+assert p["BUSINESS"]["module_limit"]==20,p["BUSINESS"]
+assert p["FLEX"]["module_limit"] is None,p["FLEX"]
+assert p["FLEX"]["selection_mode"]=="UNLIMITED",p["FLEX"]
+assert p["FLEX"]["display_name"]=="Premium",p["FLEX"]
 assert p["STARTER"]["annual_increase_percent"]==5,p["STARTER"]
 assert p["BUSINESS"]["annual_increase_percent"]==5,p["BUSINESS"]
 assert p["FLEX"]["annual_increase_percent"]==5,p["FLEX"]
@@ -95,7 +97,7 @@ test "$limit_code" = "409"
 grep -q 'STANDARD_PACKAGE_LIMIT' "$BODY"
 echo ok
 
-printf 'configure the fixed Starter package with exactly three modules... '
+printf 'configure the fixed Starter package with exactly ten modules... '
 starter_modules_payload="$(python3 - "$STARTER_KEYS" <<'PY'
 import json,sys;print(json.dumps({"fixed_module_keys":json.loads(sys.argv[1]),"reason":"START-23.11.3k Starter package"}))
 PY
@@ -171,7 +173,7 @@ assert d["charity_reviewed_by"],d
 PY
 echo ok
 
-printf 'approved Charity can select more than Flex maximum with no module-count cap... '
+printf 'approved Charity keeps direct no-cap module selection independent from paid package limits... '
 charity_modules_payload="$(python3 - "$ALL_KEYS" <<'PY'
 import json,sys
 print(json.dumps({"module_keys":json.loads(sys.argv[1]),"reason":"START-23.11.3k unrestricted Charity selection"}))
@@ -205,11 +207,11 @@ test "$before_count" = "$after_count"
 test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.billing_events WHERE partner_id='$charity_id' AND event_type='ZERO_DOLLAR_BILLING_CYCLE';")" -ge "1"
 echo ok
 
-printf 'central Starter price changes to 600 effective today and is auditable... '
+printf 'central Starter net price changes to 1090 effective today and is auditable... '
 price_payload="$(python3 - "$TODAY" <<'PY'
 import json,sys
 print(json.dumps({
- "monthly_price":600,"annual_list_price":7200,"annual_price":7200,
+ "monthly_price":1090,"annual_list_price":13080,"annual_price":13080,
  "effective_at":sys.argv[1],"reason":"START-23.11.3k mid-year central package increase"
 }))
 PY
@@ -217,9 +219,9 @@ PY
 STARTER_PRICE="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$price_payload" "$BASE_URL/api/v1/billing/plans/STARTER")"
 python3 - "$STARTER_PRICE" <<'PY'
 import json,sys
-d=json.loads(sys.argv[1]); assert d["monthly_price"]==600,d; assert d["module_limit"]==3,d; assert d["annual_increase_percent"]==5,d
+d=json.loads(sys.argv[1]); assert d["monthly_price"]==1090,d; assert d["module_limit"]==10,d; assert d["annual_increase_percent"]==5,d
 PY
-test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.subscription_plan_price_history WHERE plan_key='STARTER' AND monthly_price=600 AND change_type='MANUAL';")" -ge "1"
+test "$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT COUNT(*) FROM billing.subscription_plan_price_history WHERE plan_key='STARTER' AND monthly_price=1090 AND change_type='MANUAL';")" -ge "1"
 echo ok
 
 printf 'active paid Starter customer uses the central package price... '
@@ -236,19 +238,19 @@ curl -fsS -b "$COOKIE" -X PUT -H 'Content-Type: application/json' -d "$profile" 
 PAID_PLAN="$(curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d '{"plan_key":"STARTER","billing_frequency":"MONTHLY","reason":"START-23.11.3k paid Starter"}' "$BASE_URL/api/v1/billing/partners/$paid_id/plan")"
 python3 - "$PAID_PLAN" <<'PY'
 import json,sys
-d=json.loads(sys.argv[1]); assert d["plan_key"]=="STARTER",d; assert d["monthly_price"]==600,d; assert len(d["active_module_keys"])==3,d
+d=json.loads(sys.argv[1]); assert d["plan_key"]=="STARTER",d; assert d["monthly_price"]==1090,d; assert len(d["active_module_keys"])==10,d
 PY
 echo ok
 
-printf 'January 1 automatic uplift uses the latest 600 price: 600 x 1.05 = 630... '
+printf 'January 1 automatic uplift uses the latest 1090 net price: 1090 x 1.05 = 1144.50... '
 docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 -c "UPDATE billing.partner_plan_subscriptions SET current_period_start='$DEC1'::date,current_period_end='$JAN1'::date,next_billing_at='$JAN1'::date,status='ACTIVE' WHERE partner_id='$paid_id';" >/dev/null
 docker compose exec -T billing /app/service --run-invoice-cycle "$JAN1"
 annual_price="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT monthly_price FROM billing.subscription_plan_price_history WHERE plan_key='STARTER' AND effective_from='$JAN1'::date AND change_type='ANNUAL_INCREASE' ORDER BY id DESC LIMIT 1;")"
-test "$annual_price" = "630.00"
+test "$annual_price" = "1144.50"
 snapshot="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT monthly_price_snapshot FROM billing.partner_plan_subscriptions WHERE partner_id='$paid_id';")"
-test "$snapshot" = "630.00"
+test "$snapshot" = "1144.50"
 invoice_total="$(docker compose exec -T postgres psql -U himate -d himate -Atc "SELECT total FROM billing.invoices WHERE partner_id='$paid_id' AND billing_model='PLAN' AND charge_type='PLAN_MONTHLY' AND service_period_start='$JAN1'::date ORDER BY created_at DESC LIMIT 1;")"
-test "$invoice_total" = "630.00"
+test "$invoice_total" = "1144.50"
 echo ok
 
 printf 'commercial decisions and Charity approval are audit persisted... '
