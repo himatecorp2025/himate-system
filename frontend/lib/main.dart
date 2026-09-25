@@ -6028,6 +6028,388 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
+  void failure(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+    );
+  }
+
+  List<Map<String, dynamic>> get currencyRows {
+    final raw = overview['currencies'];
+    if (raw is! List) return <Map<String, dynamic>>[];
+    return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  List<Map<String, dynamic>> get onboardingRows {
+    final raw = overview['onboarding'];
+    if (raw is! Map || raw['items'] is! List) return <Map<String, dynamic>>[];
+    return (raw['items'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  List<Map<String, dynamic>> get filteredInvoices => invoiceFilter == 'ALL'
+      ? invoices
+      : invoices.where((invoice) => '${invoice['workflow_status'] ?? invoice['status'] ?? ''}' == invoiceFilter).toList();
+
+  String partnerName(String id) {
+    for (final partner in partners) {
+      if ('${partner['id'] ?? ''}' == id) {
+        final display = '${partner['display_name'] ?? ''}'.trim();
+        if (display.isNotEmpty) return display;
+      }
+    }
+    return id;
+  }
+
+  int workflowCount(String key) => currencyRows.fold<int>(0, (sum, row) => sum + (row[key] is num ? (row[key] as num).toInt() : int.tryParse('${row[key]}') ?? 0));
+
+  String moneyAcrossCurrencies(String key) {
+    final nonZero = currencyRows.where((row) => number(row[key]) != 0).toList();
+    if (nonZero.isEmpty) return '$0.00';
+    if (nonZero.length == 1) {
+      final row = nonZero.first;
+      return '${row['currency'] ?? 'USD'} ${number(row[key]).toStringAsFixed(2)}';
+    }
+    return '${nonZero.length} currencies';
+  }
+
+  String get chartCurrency => currencyRows.isEmpty ? 'USD' : '${currencyRows.first['currency'] ?? 'USD'}';
+
+  List<Map<String, dynamic>> get chartRows {
+    final raw = overview['monthly_paid'];
+    if (raw is! List) return <Map<String, dynamic>>[];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .where((row) => '${row['currency'] ?? ''}' == chartCurrency)
+        .toList();
+  }
+
+  Future<void> createManualInvoice({String? partnerID}) async {
+    String selectedPartner = partnerID ?? (partners.isNotEmpty ? '${partners.first['id'] ?? ''}' : '');
+    final description = TextEditingController(text: 'HIMATE service');
+    final net = TextEditingController();
+    final currency = TextEditingController(text: 'USD');
+    final start = TextEditingController();
+    final end = TextEditingController();
+    final due = TextEditingController();
+    final notes = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) => BrandDialog(
+          title: 'Create invoice draft',
+          subtitle: 'Manual invoices are always created as DRAFT. Approval is required before sending or collecting payment.',
+          icon: Icons.receipt_long_outlined,
+          width: 720,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              value: selectedPartner.isEmpty ? null : selectedPartner,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: uiLiteral('Partner')),
+              items: [
+                for (final p in partners)
+                  DropdownMenuItem(
+                    value: '${p['id']}',
+                    child: LText('${p['display_name'] ?? p['id']}'),
+                  ),
+              ],
+              onChanged: (value) => setLocal(() => selectedPartner = value ?? ''),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: description, decoration: InputDecoration(labelText: uiLiteral('Description'))),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(
+                controller: net,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: uiLiteral('Net amount')),
+              ),
+              second: TextField(controller: currency, decoration: InputDecoration(labelText: uiLiteral('Currency'))),
+            ),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Service period start'), hintText: 'YYYY-MM-DD')),
+              second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Service period end'), hintText: 'YYYY-MM-DD')),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: due, decoration: InputDecoration(labelText: uiLiteral('Due date'), hintText: 'YYYY-MM-DD')),
+            const SizedBox(height: 12),
+            TextField(controller: notes, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Notes'))),
+          ]),
+          primaryLabel: 'Create draft',
+          onPrimary: () => Navigator.pop(dialogContext, true),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      final amount = double.tryParse(net.text.trim().replaceAll(',', '.'));
+      if (selectedPartner.isEmpty || amount == null || amount <= 0 || description.text.trim().isEmpty) {
+        failure('Partner, description and a positive net amount are required.');
+      } else {
+        try {
+          await widget.api.post('/api/v1/billing/invoices', {
+            'partner_id': selectedPartner,
+            'currency': currency.text.trim().toUpperCase(),
+            'description': description.text.trim(),
+            'net_amount': amount,
+            'service_period_start': start.text.trim(),
+            'service_period_end_exclusive': end.text.trim(),
+            'due_date': due.text.trim(),
+            'notes': notes.text.trim(),
+          });
+          invoiceFilter = 'DRAFT';
+          await load();
+          if (mounted) success('Invoice draft created.');
+        } catch (e) {
+          if (mounted) failure(e.toString());
+        }
+      }
+    }
+
+    for (final controller in [description, net, currency, start, end, due, notes]) {
+      controller.dispose();
+    }
+  }
+
+  Future<void> invoiceAction(Map<String, dynamic> invoice, String action) async {
+    final reason = TextEditingController();
+    final paymentReference = TextEditingController();
+    final label = switch (action) {
+      'approve' => 'Approve invoice',
+      'send' => 'Send invoice',
+      'mark-paid' => 'Mark paid',
+      'cancel' => 'Cancel invoice',
+      _ => 'Update invoice',
+    };
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: label,
+        subtitle: '${invoice['id']} · ${partnerName('${invoice['partner_id']}')} · ${invoice['currency']} ${number(invoice['gross_total'] ?? invoice['total']).toStringAsFixed(2)}',
+        icon: action == 'cancel' ? Icons.cancel_outlined : Icons.receipt_long_outlined,
+        width: 560,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Reason / note'))),
+          if (action == 'mark-paid') ...[
+            const SizedBox(height: 12),
+            TextField(controller: paymentReference, decoration: InputDecoration(labelText: uiLiteral('Payment reference'))),
+          ],
+        ]),
+        primaryLabel: label,
+        onPrimary: () => Navigator.pop(dialogContext, true),
+      ),
+    );
+    if (ok == true) {
+      try {
+        await widget.api.post('/api/v1/billing/invoices/${invoice['id']}/$action', {
+          'reason': reason.text.trim(),
+          'payment_reference': paymentReference.text.trim(),
+        });
+        await load();
+        if (mounted) success('$label completed.');
+      } catch (e) {
+        if (mounted) failure(e.toString());
+      }
+    }
+    reason.dispose();
+    paymentReference.dispose();
+  }
+
+  Future<void> onboardingTransition(Map<String, dynamic> row, String nextState, {String? reason}) async {
+    try {
+      await widget.api.patch('/api/v1/billing/partners/${row['partner_id']}/onboarding', {
+        'state': nextState,
+        'classification': '${row['classification'] ?? 'UNCLASSIFIED'}',
+        'reason': reason ?? 'Central-6 administrator onboarding workflow',
+      });
+      await load();
+      if (mounted) success('Onboarding moved to ${_humanize(nextState)}.');
+    } catch (e) {
+      if (mounted) failure(e.toString());
+    }
+  }
+
+  Future<void> classifyOnboarding(Map<String, dynamic> row) async {
+    String classification = 'PAID';
+    final reason = TextEditingController();
+    final nominal = TextEditingController();
+    final evidence = TextEditingController();
+    final currency = TextEditingController(text: 'USD');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) => BrandDialog(
+          title: 'Classify partner',
+          subtitle: 'Paid partners continue through invoice and payment. Charity, Sponsored and Complimentary partners use documented zero-dollar support instead of an invoice.',
+          icon: Icons.rule_folder_outlined,
+          width: 680,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              value: classification,
+              decoration: InputDecoration(labelText: uiLiteral('Commercial classification')),
+              items: const [
+                DropdownMenuItem(value: 'PAID', child: LText('Paid')),
+                DropdownMenuItem(value: 'CHARITY', child: LText('Charity')),
+                DropdownMenuItem(value: 'SPONSORED', child: LText('Sponsored')),
+                DropdownMenuItem(value: 'COMPLIMENTARY', child: LText('Complimentary')),
+              ],
+              onChanged: (value) => setLocal(() => classification = value ?? 'PAID'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reason,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: uiLiteral(classification == 'PAID' ? 'Classification note' : 'Support / waiver reason'),
+              ),
+            ),
+            if (classification != 'PAID') ...[
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: nominal,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: uiLiteral('Nominal supported value')),
+                ),
+                second: TextField(controller: currency, decoration: InputDecoration(labelText: uiLiteral('Currency'))),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: evidence, decoration: InputDecoration(labelText: uiLiteral('Evidence reference'))),
+            ],
+          ]),
+          primaryLabel: 'Save classification',
+          onPrimary: () => Navigator.pop(dialogContext, true),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      if (classification != 'PAID' && reason.text.trim().isEmpty) {
+        failure('A documented support / waiver reason is required.');
+      } else {
+        try {
+          await widget.api.patch('/api/v1/billing/partners/${row['partner_id']}/onboarding', {
+            'state': 'CLASSIFIED',
+            'classification': classification,
+            'reason': reason.text.trim(),
+            'nominal_value': double.tryParse(nominal.text.trim().replaceAll(',', '.')) ?? 0,
+            'currency': currency.text.trim().toUpperCase(),
+            'evidence_reference': evidence.text.trim(),
+          });
+          await load();
+          if (mounted) success('Partner classification saved.');
+        } catch (e) {
+          if (mounted) failure(e.toString());
+        }
+      }
+    }
+
+    for (final controller in [reason, nominal, evidence, currency]) {
+      controller.dispose();
+    }
+  }
+
+  Widget onboardingAction(Map<String, dynamic> row) {
+    final state = '${row['state'] ?? ''}';
+    final classification = '${row['classification'] ?? 'UNCLASSIFIED'}';
+    switch (state) {
+      case 'REGISTERED':
+        return FilledButton.icon(
+          onPressed: () => onboardingTransition(row, 'PENDING_REVIEW'),
+          icon: const Icon(Icons.fact_check_outlined),
+          label: const LText('Start review'),
+        );
+      case 'PENDING_REVIEW':
+        return FilledButton.icon(
+          onPressed: () => classifyOnboarding(row),
+          icon: const Icon(Icons.rule_folder_outlined),
+          label: const LText('Classify'),
+        );
+      case 'CLASSIFIED':
+        if (classification == 'PAID') {
+          return FilledButton.icon(
+            onPressed: () => createManualInvoice(partnerID: '${row['partner_id']}'),
+            icon: const Icon(Icons.receipt_long_outlined),
+            label: const LText('Create invoice'),
+          );
+        }
+        return FilledButton.icon(
+          onPressed: () => onboardingTransition(row, 'ADMIN_APPROVAL', reason: 'Zero-dollar support documentation verified'),
+          icon: const Icon(Icons.verified_outlined),
+          label: const LText('Send to approval'),
+        );
+      case 'ADMIN_APPROVAL':
+        return FilledButton.icon(
+          onPressed: () => onboardingTransition(row, 'ACTIVE', reason: 'Final HIMATE administrator approval'),
+          icon: const Icon(Icons.check_circle_outline_rounded),
+          label: const LText('Activate partner'),
+        );
+      default:
+        return _StatusPill(label: _humanize(state).toUpperCase());
+    }
+  }
+
+  Widget financeChart() {
+    final rows = chartRows;
+    if (rows.isEmpty) {
+      return const _MessageCard(
+        icon: Icons.bar_chart_outlined,
+        title: 'No paid revenue yet',
+        message: 'Paid invoices will populate the 12-month finance chart.',
+      );
+    }
+    final maxValue = rows.fold<double>(0, (max, row) => math.max(max, number(row['paid'])));
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Expanded(child: LText('Paid revenue · last 12 months', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
+            _MiniCounter(label: chartCurrency),
+          ]),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 190,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final row in rows)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                        LText(
+                          number(row['paid']) == 0 ? '—' : number(row['paid']).toStringAsFixed(0),
+                          style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
+                        ),
+                        const SizedBox(height: 4),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          height: maxValue <= 0 ? 2 : math.max(2, 125 * number(row['paid']) / maxValue),
+                          decoration: BoxDecoration(
+                            color: brandGold.withOpacity(.72),
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        LText(
+                          '${row['month'] ?? ''}'.split('-').last,
+                          style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
+                        ),
+                      ]),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Future<void> editProfile() async {
     final legal = TextEditingController(text: '${profile?['legal_name'] ?? ''}');
     final registration = TextEditingController(text: '${profile?['registration_number'] ?? ''}');
