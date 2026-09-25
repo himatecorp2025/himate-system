@@ -26,6 +26,8 @@ Commercial invoices use the authoritative workflow:
 
 `DRAFT → APPROVED → SENT → PAID`
 
+`APPROVED → PAID` is forbidden: distribution is mandatory before payment can be recorded or collected. When an approved paid-partner invoice becomes `SENT`, Central-6 stores `payment_deadline_at` exactly 72 hours after the send timestamp. The partner-facing billing notification states that payment is due within 72 hours and that Partner Portal access remains inactive until payment is recorded and final HIMATE administrator approval is complete.
+
 A non-paid invoice may also move to `CANCELLED`.
 
 Automated recurring package and legacy billing cycles generate approval drafts. Collection and dunning are not allowed to start against draft invoices. A distributed invoice is made visible to the Partner Portal only after it reaches `SENT`; paid and cancelled distributed records remain visible for history.
