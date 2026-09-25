@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -92,6 +93,45 @@ func (a *app) automationCall(ctx context.Context, method, path string, payload a
 		}
 	}
 	return nil
+}
+
+func (a *app) partnerModuleEntitled(ctx context.Context, partnerID, moduleKey string) (bool, error) {
+	partnerID = strings.TrimSpace(partnerID)
+	moduleKey = strings.TrimSpace(moduleKey)
+	if partnerID == "" || moduleKey == "" {
+		return false, errors.New("partner_id and module_key are required for entitlement verification")
+	}
+	path := "/internal/v1/partner-portal/" + url.PathEscape(partnerID) + "/modules?locale=en"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+a.catalogHost+path, nil)
+	if err != nil {
+		return false, err
+	}
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return false, fmt.Errorf("catalog entitlement status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var out struct {
+		Items []struct {
+			Key         string `json:"key"`
+			AccessState string `json:"access_state"`
+			Executable  bool   `json:"executable"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&out); err != nil {
+		return false, err
+	}
+	for _, item := range out.Items {
+		if strings.TrimSpace(item.Key) == moduleKey {
+			return item.Executable && strings.EqualFold(strings.TrimSpace(item.AccessState), "ACTIVE"), nil
+		}
+	}
+	return false, nil
 }
 
 func (a *app) ensureAutomationSubscriptions(ctx context.Context) error {
@@ -218,6 +258,13 @@ func (a *app) consumeInvoiceDelivery(ctx context.Context, delivery automationDel
 	intent, err := intentFromAutomationDelivery(delivery)
 	if err != nil {
 		return err
+	}
+	entitled, err := a.partnerModuleEntitled(ctx, intent.PartnerID, invoiceModuleKey)
+	if err != nil {
+		return fmt.Errorf("verify %s organization entitlement: %w", invoiceModuleKey, err)
+	}
+	if !entitled {
+		return fmt.Errorf("%s organization entitlement is not ACTIVE and executable", invoiceModuleKey)
 	}
 	_, _, err = a.createAutomatedReady(
 		ctx,
