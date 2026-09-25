@@ -37,7 +37,7 @@ for token in [
 ]:
     require(token in billing, f"billing package contract missing: {token}")
 
-require(re.search(r"Version:\\s+17\\b", central5_billing) is not None, "Central-5 billing migration version 17 missing")
+require(re.search(r"Version:\s+17\b", central5_billing) is not None, "Central-5 billing migration version 17 missing")
 
 for token in [
     'central-5-packages-pricing-vat-unlimited',
@@ -63,7 +63,7 @@ for token in [
 ]:
     require(token in billing_main, f"billing runtime VAT contract missing: {token}")
 
-require(re.search(r"Version:\\s+11\\b", central5_catalog) is not None, "Central-5 catalog migration version 11 missing")
+require(re.search(r"Version:\s+11\b", central5_catalog) is not None, "Central-5 catalog migration version 11 missing")
 
 for token in [
     'partner_plan_entitlement_policies',
