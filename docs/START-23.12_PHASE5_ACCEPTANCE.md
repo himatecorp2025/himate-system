@@ -22,6 +22,8 @@ The compliance.partner_archives table is append-only/read-only at the database l
 
 One final archive exists per partner because ARCHIVED is terminal.
 
+File-backed Evidence remains physically retained as well: while an archive is inside its seven-year retention window, the Storage service rejects PUT and DELETE operations for that partner namespace. Existing objects remain readable for evidence validation, but cannot be overwritten or deleted.
+
 ### Access boundary
 
 The browser-facing endpoint is /api/v1/archives and requires audit.read.
