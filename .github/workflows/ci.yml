@@ -378,6 +378,7 @@ jobs:
           python3 scripts/audit_central_1.py
           python3 scripts/audit_central_2.py
           python3 scripts/audit_central_3.py
+          python3 scripts/audit_central_4.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
@@ -518,6 +519,8 @@ jobs:
         run: sh scripts/smoke_central_2.sh http://127.0.0.1:8080
       - name: Run Central-3 Partners runtime acceptance
         run: sh scripts/smoke_central_3.sh http://127.0.0.1:8080
+      - name: Run Central-4 Modules runtime acceptance
+        run: sh scripts/smoke_central_4.sh http://127.0.0.1:8080
       - name: Dump Phase 4/5/closure runtime diagnostics on failure
         if: failure()
         run: docker compose logs --no-color --tail=220 gateway partners catalog billing payments evidence storage notifications automation tenantfinance
