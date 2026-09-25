@@ -315,7 +315,7 @@ func (a *app) archiveByPartner(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusMethodNotAllowed, "READ_ONLY", "Compliance Archives are read-only")
 		return
 	}
-	partnerID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/archives/"), "/")
+	partnerID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/archives/"), "/")
 	if partnerID == "" || strings.Contains(partnerID, "/") {
 		common.APIError(w, 404, "NOT_FOUND", "Compliance Archive not found")
 		return
