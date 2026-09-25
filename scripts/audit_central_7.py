@@ -90,8 +90,8 @@ for forbidden in [
     "len(legacy)==38",
     'test "$ACTIVE_COUNT" = "38"',
 ]:
-    check(forbidden not in catalog + catalog_marketplace + central4 + central5,
-          f"Fixed module cardinality regressed into first-half contract: {forbidden}")
+    check(forbidden not in catalog + catalog_marketplace + billing_plans + catalog_plans,
+          f"Fixed module cardinality regressed into production/domain source: {forbidden}")
 
 for token in ["workflow_status,source", "'DRAFT','AUTOMATED'"]:
     check(token in billing_plans, f"Recurring invoices no longer start as approval drafts: {token}")
