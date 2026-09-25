@@ -1303,7 +1303,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/") && strings.Contains(r.URL.Path, "/modules"):
 		a.serveProxy(w, r, "catalog")
 	case r.URL.Path == "/api/v1/archives" || strings.HasPrefix(r.URL.Path, "/api/v1/archives/"):
-		a.serveProxy(w, r, "partners")
+		a.serveComplianceArchives(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/partners/"):
 		a.serveProxy(w, r, "partners")
 	case r.URL.Path == "/api/v1/modules", r.URL.Path == "/api/v1/module-groups", r.URL.Path == "/api/v1/module-commercial-matrix",
@@ -2133,6 +2133,43 @@ func (a *app) requireServiceReleases(w http.ResponseWriter, r *http.Request, ser
 		return false
 	}
 	return true
+}
+
+func (a *app) serveComplianceArchives(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, http.StatusMethodNotAllowed, "READ_ONLY", "Compliance Archives are read-only")
+		return
+	}
+	host := strings.TrimSpace(a.hosts["partners"])
+	if host == "" {
+		common.APIError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "partners service is temporarily unavailable")
+		return
+	}
+	internalPath := strings.Replace(r.URL.Path, "/api/v1/archives", "/internal/v1/archives", 1)
+	target := "http://" + host + internalPath
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "ARCHIVE_REQUEST", "Could not prepare Compliance Archive request")
+		return
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Himate-User-ID", strings.TrimSpace(r.Header.Get("X-Himate-User-ID")))
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
+	if err != nil {
+		common.APIError(w, http.StatusServiceUnavailable, "ARCHIVE_UNAVAILABLE", "Compliance Archive service is temporarily unavailable")
+		return
+	}
+	defer resp.Body.Close()
+	if contentType := strings.TrimSpace(resp.Header.Get("Content-Type")); contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func (a *app) serveProxy(w http.ResponseWriter, r *http.Request, service string) {
