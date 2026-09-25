@@ -297,13 +297,12 @@ func (a *app) adminMFAVerify(w http.ResponseWriter, r *http.Request) {
 	common.JSON(w,200,a.publicUser(u))
 }
 
-func partnerMFARequired(role string) bool {
-	switch strings.ToLower(strings.TrimSpace(role)) {
-	case "owner", "admin", "billing":
-		return true
-	default:
-		return false
-	}
+func partnerMFARequired(_ string) bool {
+	// Central-1 product policy: Partner Portal MFA is an optional security
+	// module (roadmap module 40), not a role-level login requirement.
+	// The MFA engine remains available so a later entitlement-controlled
+	// module can enable it without rebuilding the authentication flow.
+	return false
 }
 
 func (a *app) partnerMFAVerify(w http.ResponseWriter, r *http.Request) {
