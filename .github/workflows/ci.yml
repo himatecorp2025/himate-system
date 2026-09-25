@@ -204,10 +204,15 @@ jobs:
           test -s build/web/service-worker.js
           test -s build/web/pwa.js
           test -s build/web/manifest.json
-          if grep -q "flutter_service_worker.js" build/web/flutter_bootstrap.js; then
-            echo "Unexpected competing Flutter service worker registration" >&2
-            exit 1
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          bootstrap = Path("build/web/flutter_bootstrap.js").read_text()
+          pos = bootstrap.rfind("_flutter.loader.load(")
+          assert pos >= 0, "Flutter loader invocation is missing"
+          active_call = bootstrap[pos:]
+          assert "serviceWorkerSettings" not in active_call, "Unexpected active Flutter service worker configuration"
+          assert "onEntrypointLoaded" in active_call, "Custom Flutter startup hook is missing"
+          PY
           test -s build/web/art/statue_hero_r5.png
           test -s build/web/art/program_piano_r5.png
           test -s build/web/art/gallery_hall_r5.png
