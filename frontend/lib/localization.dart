@@ -676,6 +676,7 @@ class HimateI18n {
     'Verify': 'Ellenőrzés',
     'Failed': 'Sikertelen',
     'Monthly': 'Havi',
+    'Weekly': 'Heti',
     'Partner category': 'Partnerkategória',
     'Primary domain': 'Elsődleges domain',
     'Verified paid amount · USD': 'Ellenőrzött kifizetett összeg · USD',
