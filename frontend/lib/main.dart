@@ -2938,6 +2938,26 @@ class _PartnersPageState extends State<PartnersPage> {
     }
   }
 
+  Future<void> _loadPortfolioStats(int generation) async {
+    try {
+      final page = await widget.api.get(_portfolioStatsUri().toString());
+      if (!mounted || generation != _loadGeneration) return;
+      final counts = page['lifecycle_counts'];
+      setState(() {
+        portfolioTotal = (page['total'] as num?)?.toInt() ?? portfolioTotal;
+        portfolioReferenceCount = (page['reference_count'] as num?)?.toInt() ?? portfolioReferenceCount;
+        portfolioLifecycleCounts = counts is Map
+            ? <String, int>{
+                for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
+              }
+            : <String, int>{};
+        portfolioStatsReady = true;
+      });
+    } catch (_) {
+      // Global KPI counts are supplementary and must never block the partner list.
+    }
+  }
+
   Future<void> _loadPortfolioEnrichment(int generation, List<Map<String, dynamic>> baseRows) async {
     final ids = baseRows.map((p) => '${p['id'] ?? ''}').where((id) => id.isNotEmpty).toList();
     if (ids.isEmpty) return;
@@ -2975,6 +2995,7 @@ class _PartnersPageState extends State<PartnersPage> {
         loading = false;
       });
       unawaited(_loadPartnerStats(generation));
+      unawaited(_loadPortfolioStats(generation));
       unawaited(_loadPortfolioEnrichment(generation, List<Map<String, dynamic>>.from(coreRows)));
     } catch (e) {
       if (mounted && generation == _loadGeneration) {
@@ -2989,6 +3010,26 @@ class _PartnersPageState extends State<PartnersPage> {
     _searchDebounce = Timer(const Duration(milliseconds: 280), () {
       if (mounted) load(reset: true);
     });
+  }
+
+  void applyPortfolioPreset({String lifecycle = 'ALL', bool reference = false}) {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {
+      query = '';
+      categoryFilter = 'ALL';
+      lifecycleFilter = lifecycle;
+      healthFilter = 'ALL';
+      referenceOnly = reference;
+      offset = 0;
+    });
+    load(reset: true);
+  }
+
+  void clearReferenceFilter() {
+    if (!referenceOnly) return;
+    setState(() => referenceOnly = false);
+    load(reset: true);
   }
 
   void previousPage() {
