@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"himate.local/services/internal/common"
 )
@@ -189,16 +190,59 @@ func partnerRuntimeModuleKey(path string) string {
 	return strings.TrimSpace(parts[0])
 }
 
+type moduleRuntimeStatusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *moduleRuntimeStatusWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *moduleRuntimeStatusWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func (a *app) recordPartnerModuleUsage(u partnerUser, moduleKey, method, runtimePath string) {
+	partnerID := strings.TrimSpace(u.PartnerID)
+	userID := strings.TrimSpace(u.ID)
+	moduleKey = strings.TrimSpace(moduleKey)
+	method = strings.ToUpper(strings.TrimSpace(method))
+	runtimePath = strings.TrimSpace(runtimePath)
+	if partnerID == "" || userID == "" || moduleKey == "" || runtimePath == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
+		defer cancel()
+		var ignored map[string]any
+		_ = a.internalJSON(ctx, http.MethodPost, a.hosts["catalog"], "/internal/v1/module-usage-events", map[string]any{
+			"partner_id": partnerID,
+			"user_id": userID,
+			"module_key": moduleKey,
+			"http_method": method,
+			"runtime_path": runtimePath,
+		}, nil, &ignored)
+	}()
+}
+
 func (a *app) partnerModuleRuntime(w http.ResponseWriter, r *http.Request, u partnerUser) {
 	key := partnerRuntimeModuleKey(r.URL.Path)
 	module, ok := a.requirePartnerModuleExecution(w, r, u, key)
 	if !ok {
 		return
 	}
+	rec := &moduleRuntimeStatusWriter{ResponseWriter: w}
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/partner/api/v1/runtime/modules/"), "/")
 	parts := strings.Split(raw, "/")
 	if len(parts) == 2 && parts[1] == "access" && r.Method == http.MethodGet {
-		common.JSON(w, http.StatusOK, map[string]any{
+		common.JSON(rec, http.StatusOK, map[string]any{
 			"partner_id": u.PartnerID,
 			"user_id": u.ID,
 			"module_key": key,
@@ -206,13 +250,21 @@ func (a *app) partnerModuleRuntime(w http.ResponseWriter, r *http.Request, u par
 			"access_state": "GRANTED",
 			"security_rule": "PARTNER_ENTITLEMENT_INTERSECT_USER_ASSIGNMENT",
 		})
+		a.recordPartnerModuleUsage(u, key, r.Method, r.URL.Path)
 		return
 	}
 	if key == partnerInvoiceModuleKey {
-		a.partnerInvoiceModuleRuntime(w, r, u, parts)
+		a.partnerInvoiceModuleRuntime(rec, r, u, parts)
+		status := rec.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		if status < http.StatusBadRequest {
+			a.recordPartnerModuleUsage(u, key, r.Method, r.URL.Path)
+		}
 		return
 	}
-	common.APIError(w, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "No runtime operation is registered for this module path")
+	common.APIError(rec, http.StatusNotFound, "MODULE_RUNTIME_ROUTE_NOT_FOUND", "No runtime operation is registered for this module path")
 }
 
 func (a *app) partnerInvoiceModuleRuntime(w http.ResponseWriter, r *http.Request, u partnerUser, parts []string) {
