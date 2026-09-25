@@ -52,6 +52,7 @@ type app struct {
 	smtpPass         string
 	smtpFrom         string
 	secureCookie     bool
+	mfaRequired      bool
 	client           *http.Client
 	proxies          map[string]*httputil.ReverseProxy
 	hosts            map[string]string
@@ -143,6 +144,7 @@ func main() {
 	if resetTTLMinutes < 10 { resetTTLMinutes = 10 }
 	if resetTTLMinutes > 120 { resetTTLMinutes = 120 }
 	secure, _ := strconv.ParseBool(common.Env("COOKIE_SECURE", "true"))
+	mfaRequired, _ := strconv.ParseBool(common.Env("HIMATE_MFA_REQUIRED", "false"))
 	transport := &http.Transport{
 		MaxIdleConns:        64,
 		MaxIdleConnsPerHost: 16,
@@ -158,7 +160,7 @@ func main() {
 		smtpHost: strings.TrimSpace(os.Getenv("SMTP_HOST")), smtpPort: common.Env("SMTP_PORT", "587"),
 		smtpUser: strings.TrimSpace(os.Getenv("SMTP_USERNAME")), smtpPass: os.Getenv("SMTP_PASSWORD"),
 		smtpFrom: strings.TrimSpace(os.Getenv("SMTP_FROM")),
-		secureCookie: secure, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
+		secureCookie: secure, mfaRequired: mfaRequired, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
 		proxies: map[string]*httputil.ReverseProxy{},
 		loginAttempts: map[string]loginState{},
 		hosts: map[string]string{
@@ -218,11 +220,13 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/login", a.login)
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
+	mux.HandleFunc("/api/v1/auth/mfa/verify", a.adminMFAVerify)
 	mux.HandleFunc("/api/v1/auth/password-reset/request", a.passwordResetRequest)
 	mux.HandleFunc("/api/v1/auth/password-reset/confirm", a.passwordResetConfirm)
 	mux.HandleFunc("/partner/api/v1/auth/login", a.partnerLogin)
 	mux.HandleFunc("/partner/api/v1/auth/logout", a.partnerLogout)
 	mux.HandleFunc("/partner/api/v1/auth/me", a.partnerMe)
+	mux.HandleFunc("/partner/api/v1/auth/mfa/verify", a.partnerMFAVerify)
 	mux.HandleFunc("/partner/api/v1/", a.partnerAPI)
 	mux.HandleFunc("/api/v1/public/contact", a.publicContact)
 	mux.HandleFunc("/robots.txt", a.robots)
@@ -353,6 +357,7 @@ func (a *app) migrate(ctx context.Context) error {
 		retiredTestPartnerIdentityMigration(),
 		partnerUserModulePermissionsMigration(),
 		phase2DurabilityMigration(),
+		phase4MFAMigration(),
 	}); err != nil {
 		return err
 	}
@@ -492,6 +497,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.clearLoginFailures(key)
+	if a.beginMFAFlow(w, r, "ADMIN", u.ID, in.Remember, true) { return }
 	sessionTTL := a.ttl
 	if in.Remember { sessionTTL = a.rememberTTL }
 	token, _ := a.issueSession(u, sessionTTL)

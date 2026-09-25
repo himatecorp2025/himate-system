@@ -787,6 +787,8 @@ services:
         value: "true"
       - key: HIMATE_SESSION_TTL_HOURS
         value: "8"
+      - key: HIMATE_MFA_REQUIRED
+        value: "true"
       - key: HIMATE_PASSWORD_RESET_TTL_MINUTES
         value: "30"
       - key: HIMATE_PASSWORD_RESET_BASE_URL

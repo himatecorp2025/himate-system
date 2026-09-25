@@ -226,6 +226,7 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second);defer cancel()
 	if err:=a.partnerAccessAllowed(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
 	a.clearLoginFailures(key)
+	if a.beginMFAFlow(w,r,"PARTNER",u.ID,in.Remember,partnerMFARequired(u.Role)){return}
 	ttl:=a.ttl;if in.Remember{ttl=a.rememberTTL}
 	token,_:=a.issuePartnerSession(u,ttl)
 	cookie:=&http.Cookie{Name:partnerSessionCookie,Value:token,Path:"/partner",HttpOnly:true,Secure:a.secureCookie,SameSite:http.SameSiteStrictMode}

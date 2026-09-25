@@ -62,6 +62,59 @@ const canvas = brandIvory;
 const muted = brandTextSoft;
 const success = brandSuccess;
 
+Future<String?> promptMfaCode(BuildContext context, Map<String, dynamic> challenge) async {
+  final code = TextEditingController();
+  final setup = challenge['mfa_setup'] == true;
+  final secret = challenge['secret']?.toString() ?? '';
+  return showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Multi-factor authentication'),
+      content: SizedBox(
+        width: 430,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(setup
+                ? 'Add this account to your authenticator app, then enter the current six-digit code.'
+                : 'Enter the current six-digit code from your authenticator app.'),
+            if (setup && secret.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              const Text('Setup key'),
+              const SizedBox(height: 6),
+              SelectableText(secret),
+            ],
+            const SizedBox(height: 18),
+            TextField(
+              controller: code,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(labelText: 'Authentication code'),
+              onSubmitted: (value) {
+                final normalized = value.trim();
+                if (normalized.length == 6) Navigator.of(dialogContext).pop(normalized);
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            final normalized = code.text.trim();
+            if (normalized.length == 6) Navigator.of(dialogContext).pop(normalized);
+          },
+          child: const Text('Verify'),
+        ),
+      ],
+    ),
+  );
+}
+
 ThemeData buildBrandTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: brandNavy,
@@ -632,11 +685,22 @@ class _HimateAppState extends State<HimateApp> {
       );
 
   Future<void> login(String email, String password, bool remember) async {
-    user = await api.post('/api/v1/auth/login', {
+    var response = await api.post('/api/v1/auth/login', {
       'email': email,
       'password': password,
       'remember': remember,
     });
+    if (response['mfa_required'] == true) {
+      final context = navigatorKey.currentContext;
+      if (context == null) throw Exception('MFA dialog is unavailable.');
+      final code = await promptMfaCode(context, response);
+      if (code == null) throw Exception('Multi-factor authentication was cancelled.');
+      response = await api.post('/api/v1/auth/mfa/verify', {
+        'challenge_id': response['challenge_id'],
+        'code': code,
+      });
+    }
+    user = response;
     final preferred = user?['preferred_locale']?.toString();
     if (preferred == 'hu_HU' || preferred == 'en_US') {
       anonymousLocale = preferred!;
