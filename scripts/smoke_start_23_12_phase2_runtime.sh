@@ -2,7 +2,7 @@
 set -eu
 RUNTIME_URL="${1:-http://127.0.0.1:18081}"
 TOKEN="local-development-internal-token-123456789"
-VERSION="${HIMATE_APP_VERSION:-0.8.32-start-23.11.7}"
+VERSION="${HIMATE_APP_VERSION:-0.8.33-start-23.12}"
 STAMP="$(date +%s)"
 PAYLOAD="$(python3 - "$STAMP" <<'PY'
 import json,sys

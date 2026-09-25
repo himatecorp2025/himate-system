@@ -1,5 +1,7 @@
 module himate.local/services
 
-go 1.23
+go 1.27.0
 
-require github.com/jackc/pgx/v5 v5.7.2
+toolchain go1.27.1
+
+require github.com/jackc/pgx/v5 v5.11.0

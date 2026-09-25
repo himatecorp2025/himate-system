@@ -225,8 +225,8 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	if !valid{a.recordLoginFailure(key,now);common.APIError(w,401,"INVALID_CREDENTIALS","Invalid email or password");return}
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second);defer cancel()
 	if err:=a.partnerAccessAllowed(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
-	a.clearLoginFailures(key)
 	if a.beginMFAFlow(w,r,"PARTNER",u.ID,in.Remember,partnerMFARequired(u.Role)){return}
+	a.clearLoginFailures(key)
 	ttl:=a.ttl;if in.Remember{ttl=a.rememberTTL}
 	token,_:=a.issuePartnerSession(u,ttl)
 	cookie:=&http.Cookie{Name:partnerSessionCookie,Value:token,Path:"/partner",HttpOnly:true,Secure:a.secureCookie,SameSite:http.SameSiteStrictMode}
@@ -928,6 +928,10 @@ func (a *app) lastPartnerOwner(partnerID,excludeID string)bool{
 	return count==0
 }
 
+func partnerAuthenticationStateChanged(current,next partnerUser)bool{
+	return current.Active!=next.Active||current.Role!=next.Role||!strings.EqualFold(current.Email,next.Email)
+}
+
 func (a *app) updatePartnerUserRecord(w http.ResponseWriter,r *http.Request,actorRole,partnerID,targetID string){
 	var current partnerUser
 	err:=a.db.QueryRow(`SELECT id,partner_id,name,email,password_hash,role_key,active,preferred_locale,timezone,session_version,created_at,updated_at
@@ -955,7 +959,7 @@ func (a *app) updatePartnerUserRecord(w http.ResponseWriter,r *http.Request,acto
 		hash,err=hashPassword(*in.Password);if err!=nil{common.APIError(w,500,"PASSWORD","Could not secure password");return}
 		sessionVersion++;passwordChanged=true
 	}
-	if current.Active!=next.Active||current.Role!=next.Role{sessionVersion++}
+	if partnerAuthenticationStateChanged(current,next){sessionVersion++}
 	err=a.db.QueryRow(`UPDATE identity.partner_users SET name=$3,email=$4,password_hash=$5,role_key=$6,active=$7,session_version=$8,
 		password_changed_at=CASE WHEN $9 THEN NOW() ELSE password_changed_at END,updated_at=NOW()
 		WHERE id=$1 AND partner_id=$2

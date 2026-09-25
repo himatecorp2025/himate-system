@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -243,6 +244,26 @@ func TestAuditResponseWriterCapturesStatus(t *testing.T) {
 	_, _ = w.Write([]byte("ok"))
 	if w.status != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", w.status)
+	}
+}
+
+func TestSTART244LoginThrottleStateIsBounded(t *testing.T) {
+	a := &app{loginAttempts: map[string]loginState{}}
+	now := time.Unix(1760000000, 0).UTC()
+	for i := 0; i < loginAttemptMaxEntries+128; i++ {
+		a.recordLoginFailure(fmt.Sprintf("client-%d", i), now)
+	}
+	if got := len(a.loginAttempts); got > loginAttemptMaxEntries {
+		t.Fatalf("login throttle state grew beyond bound: %d > %d", got, loginAttemptMaxEntries)
+	}
+	stale := now.Add(-30 * time.Minute)
+	a.loginMu.Lock()
+	a.loginAttempts["stale-client"] = loginState{Failures: 1, WindowStart: stale}
+	a.pruneLoginAttemptsLocked(now)
+	_, remains := a.loginAttempts["stale-client"]
+	a.loginMu.Unlock()
+	if remains {
+		t.Fatal("expired login throttle state was not pruned")
 	}
 }
 
@@ -621,3 +642,14 @@ func TestSTART236PasswordResetProductionDeliveryConfiguration(t *testing.T) {
 		t.Fatal("missing sender must make password reset delivery unavailable")
 	}
 }
+
+func TestSTART243PublicOriginIgnoresUntrustedForwardedHost(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://himate.example/modules", nil)
+	req.Host = "himate.example"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "evil.example")
+	if got := publicOrigin(req); got != "https://himate.example" {
+		t.Fatalf("public origin=%q want=%q", got, "https://himate.example")
+	}
+}
+

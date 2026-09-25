@@ -34,6 +34,7 @@ import (
 
 const sessionCookie = "himate_session"
 const passwordIterations = 210000
+const loginAttemptMaxEntries = 4096
 
 type app struct {
 	db               *sql.DB
@@ -67,6 +68,37 @@ type loginState struct {
 	Failures     int
 	WindowStart  time.Time
 	BlockedUntil time.Time
+}
+
+func (a *app) pruneLoginAttemptsLocked(now time.Time) {
+	if len(a.loginAttempts) == 0 {
+		return
+	}
+	for key, state := range a.loginAttempts {
+		windowExpired := state.WindowStart.IsZero() || now.Sub(state.WindowStart) > 10*time.Minute
+		blockExpired := state.BlockedUntil.IsZero() || !now.Before(state.BlockedUntil)
+		if windowExpired && blockExpired {
+			delete(a.loginAttempts, key)
+		}
+	}
+	for len(a.loginAttempts) >= loginAttemptMaxEntries {
+		oldestKey := ""
+		var oldest time.Time
+		for key, state := range a.loginAttempts {
+			lastRelevant := state.WindowStart
+			if state.BlockedUntil.After(lastRelevant) {
+				lastRelevant = state.BlockedUntil
+			}
+			if oldestKey == "" || lastRelevant.Before(oldest) {
+				oldestKey = key
+				oldest = lastRelevant
+			}
+		}
+		if oldestKey == "" {
+			break
+		}
+		delete(a.loginAttempts, oldestKey)
+	}
 }
 
 type auditEvent struct {
@@ -153,7 +185,7 @@ func main() {
 	a := &app{
 		db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
-		version: common.Env("HIMATE_APP_VERSION", "0.8.32-start-23.11.7"),
+		version: common.Env("HIMATE_APP_VERSION", "0.8.33-start-23.12"),
 		ttl: time.Duration(ttlHours) * time.Hour, rememberTTL: time.Duration(rememberTTLHours) * time.Hour,
 		passwordResetTTL: time.Duration(resetTTLMinutes) * time.Minute,
 		resetBaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("HIMATE_PASSWORD_RESET_BASE_URL")), "/"),
@@ -427,6 +459,7 @@ func (a *app) loginAllowed(key string, now time.Time) bool {
 func (a *app) recordLoginFailure(key string, now time.Time) {
 	a.loginMu.Lock()
 	defer a.loginMu.Unlock()
+	a.pruneLoginAttemptsLocked(now)
 	state := a.loginAttempts[key]
 	if state.WindowStart.IsZero() || now.Sub(state.WindowStart) > 10*time.Minute {
 		state = loginState{WindowStart: now}
@@ -496,8 +529,8 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 401, "INVALID_CREDENTIALS", "Invalid email or password")
 		return
 	}
-	a.clearLoginFailures(key)
 	if a.beginMFAFlow(w, r, "ADMIN", u.ID, in.Remember, true) { return }
+	a.clearLoginFailures(key)
 	sessionTTL := a.ttl
 	if in.Remember { sessionTTL = a.rememberTTL }
 	token, _ := a.issueSession(u, sessionTTL)
@@ -2997,10 +3030,10 @@ func publicOrigin(r *http.Request) string {
 	if r.TLS != nil || strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
 		scheme = "https"
 	}
+	// Host is the authority selected by the public edge for this request.
+	// Do not trust X-Forwarded-Host here: unlike Host, application code cannot
+	// distinguish a client-supplied forwarded value from one added by a proxy.
 	host := strings.TrimSpace(r.Host)
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwarded != "" {
-		host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
-	}
 	if host == "" {
 		host = "localhost"
 	}
