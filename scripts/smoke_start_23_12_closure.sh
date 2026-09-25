@@ -18,6 +18,7 @@ env_value() {
 }
 
 CLOSURE_INTERNAL_TOKEN="$(env_value automation HIMATE_INTERNAL_TOKEN)"
+CLOSURE_APP_VERSION="$(env_value automation HIMATE_APP_VERSION)"
 AUTOMATION_KEYS="$(env_value automation HIMATE_AUTOMATION_SERVICE_KEYS_JSON)"
 OWNER_EMAIL="$(env_value gateway HIMATE_BOOTSTRAP_ADMIN_EMAIL)"
 OWNER_PASSWORD="$(env_value gateway HIMATE_BOOTSTRAP_ADMIN_PASSWORD)"
@@ -46,7 +47,7 @@ if [ "$i" -ge 90 ]; then
 fi
 
 printf 'unsigned internal traffic is rejected under production service identity... '
-code="$(curl -sS -o "$BODY" -w '%{http_code}' -X POST   -H "X-Himate-Internal-Token: $CLOSURE_INTERNAL_TOKEN"   -H 'Content-Type: application/json' -d '{"limit":1}'   "${AUTOMATION_URL%/}/internal/v1/automation/deliveries/claim")"
+code="$(curl -sS -o "$BODY" -w '%{http_code}' -X POST   -H "X-Himate-Internal-Token: $CLOSURE_INTERNAL_TOKEN"   -H "X-Himate-Expected-Version: $CLOSURE_APP_VERSION"   -H 'Content-Type: application/json' -d '{"limit":1}'   "${AUTOMATION_URL%/}/internal/v1/automation/deliveries/claim")"
 test "$code" = "403"
 grep -q 'SERVICE_IDENTITY' "$BODY"
 echo ok
@@ -80,7 +81,7 @@ partner="$(curl -fsS -b "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "
 PARTNER_ID="$(printf '%s' "$partner" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 
 printf 'Workshop passes both signature layers but finance fails closed without invoice entitlement... '
-CLOSURE_AUTOMATION_SECRET="$(automation_secret workshop)" CLOSURE_INTERNAL_TOKEN="$CLOSURE_INTERNAL_TOKEN" python3 scripts/start_23_12_closure_publish.py   "$AUTOMATION_URL" "$PARTNER_ID" "$STAMP" workshop workflow.billing_approved.v1 blocked >/dev/null
+CLOSURE_AUTOMATION_SECRET="$(automation_secret workshop)" CLOSURE_INTERNAL_TOKEN="$CLOSURE_INTERNAL_TOKEN" CLOSURE_APP_VERSION="$CLOSURE_APP_VERSION" python3 scripts/start_23_12_closure_publish.py   "$AUTOMATION_URL" "$PARTNER_ID" "$STAMP" workshop workflow.billing_approved.v1 blocked >/dev/null
 
 i=0
 while [ "$i" -lt 20 ]; do
@@ -118,7 +119,7 @@ SQL
 echo ok
 
 printf 'Scheduler passes both signature layers and finance succeeds after entitlement... '
-CLOSURE_AUTOMATION_SECRET="$(automation_secret scheduler)" CLOSURE_INTERNAL_TOKEN="$CLOSURE_INTERNAL_TOKEN" python3 scripts/start_23_12_closure_publish.py   "$AUTOMATION_URL" "$PARTNER_ID" "$STAMP" scheduler scheduler.job_closed_invoice_ready.v1 allowed >/dev/null
+CLOSURE_AUTOMATION_SECRET="$(automation_secret scheduler)" CLOSURE_INTERNAL_TOKEN="$CLOSURE_INTERNAL_TOKEN" CLOSURE_APP_VERSION="$CLOSURE_APP_VERSION" python3 scripts/start_23_12_closure_publish.py   "$AUTOMATION_URL" "$PARTNER_ID" "$STAMP" scheduler scheduler.job_closed_invoice_ready.v1 allowed >/dev/null
 
 i=0
 while [ "$i" -lt 30 ]; do
