@@ -81,11 +81,13 @@ for caller in [
     "automation","tenantfinance","notifications","health",
 ]:
     require(f"HIMATE_SERVICE_CALLER_ID: {caller}" in compose, f"Compose caller identity missing: {caller}")
-require(compose.count('HIMATE_REQUIRE_SERVICE_SIGNATURE: "false"') >= 19,
-        "Compose must keep service-signature enforcement in compatibility mode for inherited runtime smokes")
+require(compose.count('HIMATE_REQUIRE_SERVICE_SIGNATURE: "${HIMATE_REQUIRE_SERVICE_SIGNATURE:-false}"') >= 19,
+        "Compose must default to compatibility mode while allowing production-signature runtime override")
 require(render.count("key: HIMATE_REQUIRE_SERVICE_SIGNATURE") >= 19 and render.count('value: "true"') >= 19,
         "Render does not enforce service signatures across private services")
 require("HIMATE_SERVICE_CALLER_ID=gateway" in env_example, "service caller environment contract is undocumented")
+require('"workshop": true' in serviceauth and '"scheduler": true' in serviceauth,
+        "Phase 3B canonical Workshop/Scheduler producers are not recognized by the Phase 4 service-auth boundary")
 
 # Existing moderate browser headers remain in place; Phase 4 does not break Flutter with a CSP rewrite.
 for token in ["X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security"]:
