@@ -121,16 +121,18 @@ assert "finance" in d["effective_module_keys"],d
 PY
 echo ok
 
-printf 'ALL_OWNED viewer receives owned modules while all 38 remain visible... '
+printf 'ALL_OWNED viewer receives 38 owned modules while all 40 canonical cards remain discoverable... '
 VIEWER_MODULES="$(curl -fsS -b "$VIEWER_COOKIE" "$BASE_URL/partner/api/v1/modules")"
 python3 - "$VIEWER_MODULES" <<'PY'
 import json,sys
 d=json.loads(sys.argv[1]); items=d["items"]
-assert len(items)==38,len(items)
+assert len(items)==40,len(items)
 finance=next(x for x in items if x["key"]=="finance")
 workflow=next(x for x in items if x["key"]=="workshop_workflow")
+planned=[x for x in items if x["key"] in {"needs_assessment","two_factor_authentication"}]
 assert finance["access_state"]=="ACTIVE" and finance["user_executable"] is True,finance
 assert workflow["access_state"]=="ACTIVE" and workflow["user_executable"] is True,workflow
+assert len(planned)==2 and all(x["access_state"]=="COMING_SOON" and x["user_executable"] is False for x in planned),planned
 assert d["user_module_access"]["access_mode"]=="ALL_OWNED",d
 PY
 echo ok
@@ -148,7 +150,7 @@ VIEWER_MODULES="$(curl -fsS -b "$VIEWER_COOKIE" "$BASE_URL/partner/api/v1/module
 python3 - "$VIEWER_MODULES" <<'PY'
 import json,sys
 d=json.loads(sys.argv[1]); items=d["items"]
-assert len(items)==38,len(items)
+assert len(items)==40,len(items)
 finance=next(x for x in items if x["key"]=="finance")
 workflow=next(x for x in items if x["key"]=="workshop_workflow")
 assert finance["user_access_state"]=="GRANTED" and finance["user_executable"] is True,finance
