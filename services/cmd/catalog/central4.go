@@ -34,6 +34,7 @@ func central4CatalogMigration() common.Migration {
 			`UPDATE catalog.module_groups SET label='Finance & Invoicing',label_en='Finance & Invoicing',label_hu='Pénzügy és számlázás',sort_order=1,is_primary_navigation=TRUE WHERE group_key='finance_invoicing'`,
 			`UPDATE catalog.module_groups SET label='Marketing',label_en='Marketing',label_hu='Marketing',sort_order=3,is_primary_navigation=TRUE WHERE group_key='marketing'`,
 			`UPDATE catalog.module_groups SET label='Website & Events',label_en='Website & Events',label_hu='Weboldal és események',sort_order=4,is_primary_navigation=TRUE WHERE group_key='website_events'`,
+			`UPDATE catalog.module_groups SET is_primary_navigation=FALSE WHERE group_key='technical'`,
 		},
 	}
 }
