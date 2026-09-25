@@ -59,11 +59,15 @@ assert 'strings.HasSuffix(path, "/license/collect")' in gateway, "activation col
 for forbidden in [
     "Verified paid amount · USD",
     "controller: paid,",
-    "controller: paymentReference",
     "controller: paymentDate",
     "controller: verifiedBy",
 ]:
-    assert forbidden not in frontend, f"manual payment UI still present: {forbidden}"
+    assert forbidden not in frontend, f"manual activation/provider payment UI still present: {forbidden}"
+
+terms_start = frontend.index("Future<void> editTerms()")
+terms_end = frontend.index("Future<void> addDocument()", terms_start)
+terms_ui = frontend[terms_start:terms_end]
+assert "paymentReference" not in terms_ui, "activation-license UI must not expose a manual payment reference field"
 for token in [
     "/api/v1/payments/partners/",
     "/license/collect",
