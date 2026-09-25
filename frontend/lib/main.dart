@@ -3893,10 +3893,17 @@ class _PartnersPageState extends State<PartnersPage> {
 }
 
 class PartnerWorkspace extends StatefulWidget {
-  const PartnerWorkspace({required this.api, required this.partner, this.initialSection, super.key});
+  const PartnerWorkspace({
+    required this.api,
+    required this.partner,
+    this.initialSection,
+    this.onBack,
+    super.key,
+  });
   final Api api;
   final Map<String, dynamic> partner;
   final String? initialSection;
+  final VoidCallback? onBack;
 
   @override
   State<PartnerWorkspace> createState() => _PartnerWorkspaceState();
@@ -5182,7 +5189,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     return Scaffold(
       backgroundColor: brandIvory,
       appBar: AppBar(
-        leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
+        leading: IconButton(
+          tooltip: uiLiteral('Back to Partners'),
+          onPressed: widget.onBack ?? () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
         title: MediaQuery.sizeOf(context).width < 520
             ? const HimateLogo(compact: true, width: 34)
             : const HimateLogo(width: 170),
