@@ -44,7 +44,7 @@ require("partnerAuthenticationStateChanged" in partner,
         "partner authentication-state rotation helper is missing")
 require("!strings.EqualFold(current.Email,next.Email)" in partner.replace(" ", ""),
         "partner email changes no longer invalidate existing sessions")
-require("if partnerAuthenticationStateChanged(current,next){sessionVersion++}" in partner.replace(" ", ""),
+require("ifpartnerAuthenticationStateChanged(current,next){sessionVersion++}" in partner.replace(" ", ""),
         "partner authentication-state changes do not rotate session version")
 
 require("TestSTART241PartnerAuthenticationStateChangeRotatesSession" in partner_tests,
