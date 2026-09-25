@@ -36,6 +36,7 @@ checks = {
         "HIMATE_TENANT_FINANCE_DEFAULT_TERMS_DAYS",
         "HIMATE_TENANT_FINANCE_DEFAULT_ACCOUNTING_BASIS",
         "PARTNERS_HOSTPORT",
+        "CATALOG_HOSTPORT",
         "AUTOMATION_HOSTPORT",
     ],
     "services/cmd/tenantfinance/automation_consumer.go": [
@@ -48,6 +49,9 @@ checks = {
         "PartnerID:        event.PartnerID",
         "SourceID:         event.SubjectID",
         "/internal/v1/automation/deliveries/claim",
+        "partnerModuleEntitled",
+        "invoiceModuleKey",
+        "organization entitlement is not ACTIVE and executable",
         "createAutomatedReady",
         "ackAutomationDelivery",
         "failAutomationDelivery",
@@ -64,12 +68,14 @@ checks = {
         "tenantfinance:",
         "services/docker/tenantfinance.Dockerfile",
         "TENANT_FINANCE_HOSTPORT: tenantfinance:10000",
+        "CATALOG_HOSTPORT: catalog:10000",
         "HIMATE_AUTOMATION_FINANCE_SECRET: finance-automation-secret-local-123456789",
     ],
     "render.yaml": [
         "name: himate-tenant-finance",
         "dockerfilePath: ./services/docker/tenantfinance.Dockerfile",
         "key: TENANT_FINANCE_HOSTPORT",
+        "key: CATALOG_HOSTPORT",
         "key: HIMATE_AUTOMATION_FINANCE_SECRET",
     ],
 }
