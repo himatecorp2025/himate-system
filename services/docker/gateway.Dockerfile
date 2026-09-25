@@ -5,7 +5,7 @@ RUN flutter pub get
 COPY frontend/ ./
 RUN flutter build web --release --no-web-resources-cdn
 
-FROM golang:1.23-bookworm AS go-build
+FROM golang:1.27.1-bookworm AS go-build
 WORKDIR /src/services
 COPY services/go.mod ./
 COPY services/ ./
