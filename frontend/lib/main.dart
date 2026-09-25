@@ -5301,7 +5301,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                   eyebrow: 'PARTNER WORKSPACE  |  ${partner['id']}',
                   title: '${partner['display_name']}',
                   subtitle: [
-                    '${partner['category_name']}',
+                    _localizedPartnerCategory(partner),
                     '${partner['country']}',
                     _humanize('${partner['lifecycle']}'),
                     if ('${partner['primary_domain'] ?? ''}'.isNotEmpty) '${partner['primary_domain']}',
@@ -7638,6 +7638,13 @@ String _humanize(String value) {
       .join(' ');
 }
 
+String _localizedPartnerCategory(Map<String, dynamic> partner) {
+  final key = HimateI18n.activeLocale == 'hu_HU' ? 'category_name_hu' : 'category_name_en';
+  final localized = '${partner[key] ?? ''}'.trim();
+  if (localized.isNotEmpty) return localized;
+  return '${partner['category_name'] ?? ''}'.trim();
+}
+
 class ResponsiveFieldPair extends StatelessWidget {
   const ResponsiveFieldPair({
     required this.first,
@@ -8039,7 +8046,7 @@ class _PartnerCardState extends State<PartnerCard> {
                   const SizedBox(height: 16),
                   LText('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  LText('${p['category_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
+                  LText(_localizedPartnerCategory(p), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
                   const SizedBox(height: 7),
                   LText(
                     '${p['primary_domain'] ?? ''}',
@@ -8392,7 +8399,7 @@ class _PartnerDetailsCard extends StatelessWidget {
     children: [
       _DefinitionRow(label: 'Legal name', value: value(partner['legal_name'])),
       _DefinitionRow(label: 'Brand / DBA', value: value(partner['brand_name'])),
-      _DefinitionRow(label: 'Category', value: value(partner['category_name'])),
+      _DefinitionRow(label: 'Category', value: _localizedPartnerCategory(partner)),
       _DefinitionRow(label: 'Registration', value: value(partner['registration_number'])),
       _DefinitionRow(label: 'Tax ID', value: value(partner['tax_id'])),
       _DefinitionRow(label: 'Primary contact', value: value(partner['contact_name'])),
