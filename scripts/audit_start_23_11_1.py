@@ -95,10 +95,13 @@ require(
 for token in [
     "Publication status",
     "Implementation state",
-    "Partner-specific contract / quote",
+    "Commercial Control",
     "Quote / offer reference",
+    "Configured 30-day price",
+    "partner_price",
+    "partner_activation_fee",
 ]:
-    require(token in frontend, f"module admin UI missing: {token}")
+    require(token in frontend, f"module admin commercial UI missing: {token}")
 
 for token in [
     "Minimum monthly commitment",
