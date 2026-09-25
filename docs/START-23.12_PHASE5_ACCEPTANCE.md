@@ -46,6 +46,8 @@ It may cache public static assets, but it bypasses /api/, /partner/, /app, /logi
 
 The worker removes obsolete cache versions during activation. The public marketing shell receives a safe offline fallback; authenticated application routes do not.
 
+The Flutter shell uses a custom supported flutter_bootstrap.js so Flutter does not register its legacy cleanup/caching worker on the root scope. This leaves /service-worker.js as the sole active service-worker owner for the application scope.
+
 ## Phase 4 inheritance
 
 Phase 5 acceptance requires Phase 4 audit and runtime smoke to pass first. In particular Phase 5 preserves signed HttpOnly sessions and session invalidation, production MFA for privileged identities, SameSite Strict and browser-origin mutation checks, stripping/reconstruction of HIMATE authority headers at Gateway, HMAC-signed internal calls, tenant authority derived from authenticated sessions, and existing Billing, Payments and Evidence integrity controls.
