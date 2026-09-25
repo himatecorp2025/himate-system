@@ -157,6 +157,8 @@ jobs:
         run: sh scripts/smoke_start_23_12_phase4.sh http://127.0.0.1:8080
       - name: Run START-23.12 Phase 5 compliance/PWA/100-tenant checkpoint
         run: sh scripts/smoke_start_23_12_phase5.sh http://127.0.0.1:8080
+      - name: Run START-24 runtime security acceptance
+        run: sh scripts/smoke_start_24.sh http://127.0.0.1:8080
       - name: Stop test topology
         if: always()
         run: docker compose down -v
