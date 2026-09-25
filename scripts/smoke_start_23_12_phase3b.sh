@@ -8,10 +8,10 @@ VERSION="${HIMATE_APP_VERSION:-0.8.32-start-23.11.7}"
 docker compose exec -T postgres psql -U himate -d himate -v ON_ERROR_STOP=1 <<'SQL'
 INSERT INTO partners.partners(
   id,slug,display_name,legal_name,lifecycle,country,state_region,city,postal_code,address_line1,logo_url,
-  finance_contact_email,existing_partner,reference_partner
+  finance_contact_email,existing_partner,reference_partner,test_partner
 ) VALUES
-  ('ptr_phase3b_a','phase3b-a','Phase3B A','Phase3B A LLC Draft','LIVE','United States','NY','New York','10001','10 Finance Ave','https://example.test/a-logo.png','finance-a@example.test',TRUE,FALSE),
-  ('ptr_phase3b_b','phase3b-b','Phase3B B','Phase3B B LLC','LIVE','United States','NY','New York','10002','20 Finance Ave','https://example.test/b-logo.png','finance-b@example.test',TRUE,FALSE)
+  ('ptr_phase3b_a','phase3b-a','Phase3B A','Phase3B A LLC Draft','LIVE','United States','NY','New York','10001','10 Finance Ave','https://example.test/a-logo.png','finance-a@example.test',TRUE,FALSE,TRUE),
+  ('ptr_phase3b_b','phase3b-b','Phase3B B','Phase3B B LLC','LIVE','United States','NY','New York','10002','20 Finance Ave','https://example.test/b-logo.png','finance-b@example.test',TRUE,FALSE,TRUE)
 ON CONFLICT(id) DO UPDATE SET
   display_name=EXCLUDED.display_name,
   legal_name=EXCLUDED.legal_name,
@@ -22,7 +22,8 @@ ON CONFLICT(id) DO UPDATE SET
   postal_code=EXCLUDED.postal_code,
   address_line1=EXCLUDED.address_line1,
   logo_url=EXCLUDED.logo_url,
-  finance_contact_email=EXCLUDED.finance_contact_email;
+  finance_contact_email=EXCLUDED.finance_contact_email,
+  test_partner=TRUE;
 SQL
 
 python3 - "$BASE" "$AUTO_BASE" "$VERSION" <<'PY'
