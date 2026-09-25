@@ -45,10 +45,10 @@ func TestVerifyRejectsUnsignedAndStale(t *testing.T) {
 }
 
 
-func TestKnownCallerIncludesFrozenPhase3BProducers(t *testing.T) {
-	for _, caller := range []string{"workshop", "scheduler"} {
+func TestKnownCallerIncludesFrozenPhase3Producers(t *testing.T) {
+	for _, caller := range []string{"client-piano", "workshop", "scheduler"} {
 		if !KnownCaller(caller) {
-			t.Fatalf("Phase 3B canonical producer %q is not recognized by service auth", caller)
+			t.Fatalf("Phase 3 canonical producer %q is not recognized by service auth", caller)
 		}
 		if err := Sign(httptest.NewRequest(http.MethodPost, "http://automation/internal/v1/automation/events", nil), testToken, caller, time.Now().UTC()); err != nil {
 			t.Fatalf("Sign(%s): %v", caller, err)
