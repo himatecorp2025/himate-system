@@ -1707,7 +1707,7 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 			if dunningSuspendedAt.Valid { suspended = dunningSuspendedAt.Time }
 			if purgeDueAt.Valid { purgeDue = purgeDueAt.Time }
 			if operationalPurgedAt.Valid { purged = operationalPurgedAt.Time }
-			items = append(items, map[string]any{
+			item := map[string]any{
 				"id": invoiceID, "invoice_date": invoiceDate, "service_period_start": start, "service_period_end_exclusive": end,
 				"currency": currency, "base_fee": base, "module_fee": module, "total": total, "status": status, "provider_status": providerStatus,
 				"plan_key":planKey,"billing_frequency":billingFrequency,"charge_type":chargeType,"billing_model":billingModel,
@@ -1718,7 +1718,17 @@ func (a *app) invoices(w http.ResponseWriter, r *http.Request, id string) {
 				"payment_attempt_id": attemptID, "provider": provider, "provider_payment_id": providerPaymentID, "paid_at": paid,
 				"payment_failure_code": failureCode, "payment_failure_message": failureMessage, "created_at": created,
 				"items": a.invoiceItemsFor(invoiceID),
-			})
+			}
+			if meta, metaErr := a.invoiceWorkflowMeta(r.Context(), invoiceID); metaErr == nil {
+				for key, value := range meta { item[key] = value }
+			}
+			if strings.EqualFold(r.URL.Query().Get("partner_visible"), "true") {
+				workflow := fmt.Sprint(item["workflow_status"])
+				if workflow != invoiceSent && workflow != invoicePaid && workflow != invoiceCancelled {
+					continue
+				}
+			}
+			items = append(items, item)
 		}
 	}
 	common.JSON(w, 200, map[string]any{"items": items})
