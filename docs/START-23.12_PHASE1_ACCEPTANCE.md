@@ -51,13 +51,13 @@ The existing Partner service immutability rule for removing Golden Test mode rem
 
 ## Warning closure
 
-### STARTER / BUSINESS / FLEX cardinality
+### STARTER / BUSINESS / PREMIUM package contract
 
 The Phase 1 runtime smoke verifies the live test topology contract:
 
-- STARTER: module_limit = 3 and exactly 3 fixed modules.
-- BUSINESS: module_limit = 10 and exactly 10 fixed modules.
-- FLEX: module_limit = 15 and SELECTABLE.
+- STARTER: module_limit = 10 and exactly 10 fixed modules.
+- BUSINESS: module_limit = 20 and exactly 20 fixed modules.
+- PREMIUM (stable plan key `FLEX`): module_limit = null at the API boundary and selection_mode = UNLIMITED. Every current and future eligible module is included automatically.
 
 This is deliberately runtime evidence rather than a source-code assumption because fixed module rows are persisted configuration.
 

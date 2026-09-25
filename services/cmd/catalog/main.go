@@ -299,6 +299,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23112CatalogPlanMigration(),
 		start23113MarketplaceMigration(),
 		central4CatalogMigration(),
+		central5CatalogMigration(),
 	}); err != nil {
 		return err
 	}
@@ -711,7 +712,7 @@ func (a *app) ensurePartnerModules(partnerID string) error {
 		return err
 	}
 	if !testPartner {
-		return nil
+		return a.ensureDynamicPlanEntitlements(partnerID)
 	}
 	_, err = a.db.Exec(`UPDATE catalog.partner_modules
 		SET status='ACTIVE',
@@ -1344,7 +1345,7 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 
 const partnerModuleSelect = `SELECT
 	pm.partner_id,m.module_key,m.label_en,m.label_hu,m.group_key,g.label_en,g.label_hu,pm.status,pm.visible,pm.included_in_base,
-	pm.entitlement_state,pm.commercial_configured,pm.contract_currency,pm.quote_reference,pm.commercial_effective_at,pm.entitlement_source,
+	pm.entitlement_state,pm.commercial_configured,pm.contract_currency,pm.quote_reference,pm.commercial_effective_at,pm.entitlement_source,pm.plan_key,
 	m.publication_status,m.implementation_state,
 	m.default_monthly_price,pm.price_override,COALESCE(ep.new_price,pm.price_override,m.default_monthly_price),
 	CASE WHEN ep.new_price IS NOT NULL THEN 'PARTNER_HISTORY' WHEN pm.price_override IS NOT NULL THEN 'PARTNER_OVERRIDE' ELSE 'MODULE_REFERENCE_ONLY' END,
@@ -1390,7 +1391,7 @@ func nullableTime(v sql.NullTime) any {
 }
 
 func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
-	var id, k, labelEN, labelHU, g, groupEN, groupHU, st, entitlementState, contractCurrency, quoteReference, entitlementSource, publicationStatus, implementationState, currency, v, lv, availability, priceSource, activationSource string
+	var id, k, labelEN, labelHU, g, groupEN, groupHU, st, entitlementState, contractCurrency, quoteReference, entitlementSource, planKey, publicationStatus, implementationState, currency, v, lv, availability, priceSource, activationSource string
 	var vis, inc, commercialConfigured bool
 	var defPrice, price, defaultActivationFee, activationFee float64
 	var priceOverride, nextPrice, activationOverride, nextActivationFee sql.NullFloat64
@@ -1398,7 +1399,7 @@ func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
 	var t time.Time
 	err := s.Scan(
 		&id,&k,&labelEN,&labelHU,&g,&groupEN,&groupHU,&st,&vis,&inc,
-		&entitlementState,&commercialConfigured,&contractCurrency,&quoteReference,&commercialEffectiveAt,&entitlementSource,
+		&entitlementState,&commercialConfigured,&contractCurrency,&quoteReference,&commercialEffectiveAt,&entitlementSource,&planKey,
 		&publicationStatus,&implementationState,
 		&defPrice,&priceOverride,&price,&priceSource,&nextPrice,&nextPriceAt,
 		&defaultActivationFee,&activationOverride,&activationFee,&activationSource,&nextActivationFee,&nextActivationFeeAt,
@@ -1409,7 +1410,7 @@ func scanPartnerModule(s scanner, locale string) (map[string]any, error) {
 		"group_key": g, "group_label": common.Localized(groupEN,groupHU,locale), "group_label_en": groupEN, "group_label_hu": groupHU,
 		"status": st, "entitlement_state":entitlementState, "visible": vis, "included_in_base": inc,
 		"commercial_configured":commercialConfigured,"contract_currency":contractCurrency,"quote_reference":quoteReference,"commercial_effective_at":nullableTime(commercialEffectiveAt),
-		"entitlement_source":entitlementSource,
+		"entitlement_source":entitlementSource,"plan_key":planKey,
 		"publication_status":publicationStatus,"implementation_state":implementationState,
 		"default_monthly_price": defPrice, "reference_monthly_price":defPrice, "price_override": nullableFloat(priceOverride),
 		"partner_price": price, "price_source": priceSource, "pricing_authority":"PARTNER_CONTRACT",

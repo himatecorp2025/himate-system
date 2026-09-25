@@ -2115,7 +2115,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11.1",
       "e2e_proof": "scripts/smoke_start_23_11_1.sh: USD 1499 rejection -> negotiated activation/base/minimum/quote -> versioned readback",
-      "notes": "USD 1500 is the minimum monthly commitment for legacy/CUSTOM INDIVIDUAL_QUOTE contracts only; standard plan prices are authoritative for Starter/Business/Flex. Activation fees are partner-specific; the former fixed USD 13000 floor is removed. Invoice-cycle semantics remain START-23.11.2."
+      "notes": "USD 1500 is the minimum monthly commitment for legacy/CUSTOM INDIVIDUAL_QUOTE contracts only; standard package prices are authoritative for Starter/Business/Premium. Activation fees are partner-specific; the former fixed USD 13000 floor is removed. Invoice-cycle semantics remain START-23.11.2 plus Central-5 VAT handling."
     },
     {
       "id": "PARTNER-MODULE-CONTRACT-PRICING-23-11-1",
@@ -2138,7 +2138,7 @@
     {
       "id": "PLAN-PACKAGE-ADMIN-23-11-2",
       "surface": "modules.registry",
-      "ui": "Modules → Subscription Plans: configure fixed Starter/Business package membership and plan pricing visibility",
+      "ui": "Modules → Packages: configure fixed Starter/Business package membership and central package pricing",
       "kind": "mutation",
       "frontend_file": "frontend/lib/module_control_plane.dart",
       "source_token": "/api/v1/billing/plans/",
@@ -2150,16 +2150,16 @@
       "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11.2",
-      "e2e_proof": "scripts/smoke_start_23_11_2.sh configures exactly 3 Starter and 10 Business PUBLISHED+READY modules",
-      "notes": "Starter and Business package membership is HIMATE-administered. Existing fixed-package changes default to next calendar-month boundary."
+      "e2e_proof": "scripts/smoke_start_23_11_2.sh configures exactly 10 Starter and 20 Business PUBLISHED+READY modules; scripts/smoke_central_5.sh proves 10/20/Unlimited",
+      "notes": "Central-5 supersedes the original 3/10/15 package sizes. Starter and Business remain HIMATE-administered fixed packages; Premium uses the stable FLEX key with UNLIMITED entitlement."
     },
     {
       "id": "PARTNER-PLAN-SELECTION-23-11-2",
       "surface": "partner_portal.billing",
-      "ui": "Partner Portal Billing & Subscription plan selection / upgrade / downgrade",
+      "ui": "Partner Portal Billing & Packages selection / upgrade / downgrade",
       "kind": "mutation",
       "frontend_file": "frontend/lib/partner_portal.dart",
-      "source_token": "Partner Portal plan selection",
+      "source_token": "Partner Portal package selection",
       "method": "PATCH",
       "api_pattern": "/partner/api/v1/plan",
       "backend_service": "billing + catalog",
@@ -2168,26 +2168,26 @@
       "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11.2",
-      "e2e_proof": "scripts/smoke_start_23_11_2.sh proves activation gate, Starter→Business→Flex upgrades, scheduled downgrade and annual Flex prepay",
-      "notes": "Standard recurring price authority is the plan. Business annual list/charged amounts are 18000/16500 USD; Flex 30000/22500 USD."
+      "e2e_proof": "scripts/smoke_start_23_11_2.sh proves activation gate, Starter→Business→Premium upgrades, scheduled downgrade and annual Premium prepay; scripts/smoke_central_5.sh proves VAT-aware Premium checkout",
+      "notes": "Central-5 package prices are net: Starter USD 990, Business USD 1,490, Premium USD 2,490 per month, plus configured VAT. Premium keeps FLEX as the stable API key."
     },
     {
-      "id": "FLEX-MODULE-SELECTION-23-11-2",
+      "id": "PREMIUM-UNLIMITED-ENTITLEMENT-CENTRAL-5",
       "surface": "partner_portal.modules",
-      "ui": "Partner Portal Flex module-set management",
-      "kind": "mutation",
+      "ui": "Partner Portal Premium Unlimited entitlement",
+      "kind": "read",
       "frontend_file": "frontend/lib/partner_portal.dart",
-      "source_token": "/partner/api/v1/plan/modules",
-      "method": "PUT",
-      "api_pattern": "/partner/api/v1/plan/modules",
+      "source_token": "All current + future eligible modules",
+      "method": "GET",
+      "api_pattern": "/partner/api/v1/plan + /partner/api/v1/modules",
       "backend_service": "billing + catalog",
-      "persistence": "billing.partner_plan_module_selections + catalog.partner_modules",
-      "audit": "START-23.11.2 static audit + Compose acceptance",
-      "localization_state": "BILINGUAL_UI_PENDING_TRANSLATION_COVERAGE",
-      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "persistence": "billing.partner_plan_subscriptions + catalog.partner_plan_entitlement_policies + catalog.partner_modules",
+      "audit": "Central-5 static audit + Compose acceptance",
+      "localization_state": "BILINGUAL",
+      "current_state": "SOURCE_COMPLETE_PROD_UNVERIFIED",
       "target_phase": "23.11.2",
-      "e2e_proof": "scripts/smoke_start_23_11_2.sh schedules a new Flex selection and verifies Catalog entitlement convergence",
-      "notes": "Flex supports at most 15 PUBLISHED+READY modules. Normal module-set changes take effect at the next calendar-month boundary."
+      "e2e_proof": "scripts/smoke_central_5.sh proves Premium cannot accept a finite module list and newly released eligible modules become entitled automatically",
+      "notes": "Central-5 retires partner-managed Flex module selection. The stable FLEX key is displayed as Premium and uses UNLIMITED entitlement, so there is no finite module-count control in the Partner Portal."
     },
     {
       "id": "MODULE-MARKETPLACE-23-11-3",
@@ -2204,8 +2204,8 @@
       "localization_state": "BILINGUAL_MARKETPLACE_SUMMARY_AND_UI",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11.3",
-      "e2e_proof": "scripts/smoke_start_23_11_3.sh: canonical 38 discovery -> publish/READY -> Business 10 ACTIVE + 28 LOCKED -> Flex upgrade metadata -> activation bypass rejected",
-      "notes": "Discovery visibility is not execution authority. Canonical legacy-reference modules may be COMING_SOON and visible while arbitrary unpublished non-marketplace modules remain hidden."
+      "e2e_proof": "scripts/smoke_start_23_11_3.sh: canonical discovery -> publish/READY -> Business 20 ACTIVE + remaining released modules LOCKED -> Premium upgrade metadata -> activation bypass rejected",
+      "notes": "Discovery visibility is not execution authority. Business contains 20 fixed modules; released modules outside Business remain visible and can advertise Premium (stable FLEX key) as the unlimited upgrade path."
     },
     {
       "id": "PLATFORM-SECRET-UPSERT-23-11-3A",
@@ -2282,7 +2282,7 @@
     {
       "id": "PACKAGE-ADMIN-23-11-3K",
       "surface": "packages.admin",
-      "ui": "HIMATE Packages: update central package price and fixed module membership",
+      "ui": "HIMATE Packages: update central package price and fixed Starter/Business membership",
       "kind": "mutation",
       "frontend_file": "frontend/lib/main.dart",
       "source_token": "'/api/v1/billing/plans/$key'",
@@ -2295,7 +2295,7 @@
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.11.3",
       "e2e_proof": "scripts/smoke_start_23_11_3k.sh: central package price/effective-date and fixed module membership mutation -> persistence -> readback",
-      "notes": "START-23.11.3k Packages admin path. Starter max 3, Business max 10, Flex max 15; central price changes apply across active customers according to effective-date rules."
+      "notes": "Central-5 supersedes the former 3/10/15 capacities: Starter is 10 fixed modules, Business is 20 fixed modules, Premium is Unlimited. Central price changes remain effective-dated."
     },
     {
       "id": "PORTAL-CHARITY-REQUEST-23-11-3K",

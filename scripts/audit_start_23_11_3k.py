@@ -38,7 +38,7 @@ checks = [
     ),
     (
         "zero-dollar and non-paid billing never create invoices",
-        "if amount <= 0" in plans
+        ("if amount <= 0" in plans or "if netAmount <= 0" in plans)
         and "ZERO_DOLLAR_BILLING_CYCLE" in plans
         and "mode.BillingMode!=billingModePaid || nominalTotal<=0" in billing
         and "ZERO_DOLLAR_BILLING_CYCLE" in billing,
@@ -49,10 +49,11 @@ checks = [
         and "Commercial amounts cannot be negative" in billing,
     ),
     (
-        "standard package limits are fixed at 3 / 10 / 15",
-        'case "STARTER":\n\t\treturn 3,true' in plans
-        and 'case "BUSINESS":\n\t\treturn 10,true' in plans
-        and 'case "FLEX":\n\t\treturn 15,true' in plans
+        "Central-5 standard packages are fixed at Starter 10 / Business 20 / Premium Unlimited",
+        'case "STARTER":\n\t\treturn 10,true' in plans
+        and 'case "BUSINESS":\n\t\treturn 20,true' in plans
+        and 'case "FLEX":\n\t\treturn 0,true' in plans
+        and "selectionModeUnlimited" in plans
         and "STANDARD_PACKAGE_LIMIT" in plans,
     ),
     (
@@ -93,7 +94,8 @@ checks = [
     (
         "Partner Portal source is single-copy and structurally guarded",
         portal.count("class _PartnerPortalShellState") == 1
-        and portal.count("Future<List<String>?> chooseFlexModules") == 1
+        and portal.count("Future<List<String>?> chooseFlexModules") == 0
+        and "All current + future eligible modules" in portal
         and portal.count("Future<List<String>?> chooseCharityModules") == 1
         and portal.count("Future<void> requestCharityReview") == 1
         and portal.count("Future<void> manageCharityModules") == 1

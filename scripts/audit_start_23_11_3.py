@@ -107,7 +107,7 @@ require(
 )
 require("/partner/api/v1/modules:" in openapi, "Partner Marketplace API is not documented")
 require("Discovery visibility is not execution authority." in acceptance, "acceptance does not preserve discovery/execution boundary")
-require("exactly 10 canonical modules are ACTIVE" in acceptance, "Business 10-module acceptance is missing")
+require("exactly 20 canonical modules are ACTIVE" in acceptance, "Business 20-module acceptance is missing")
 require("every remaining released canonical module outside the active Business entitlement is LOCKED" in acceptance,
         "Business locked-module acceptance must be catalog-size independent")
 

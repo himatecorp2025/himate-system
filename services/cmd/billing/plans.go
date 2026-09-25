@@ -322,11 +322,11 @@ func roundPlanAmount(value float64) float64 {
 func standardPlanLimit(key string) (int,bool) {
 	switch strings.ToUpper(strings.TrimSpace(key)) {
 	case "STARTER":
-		return 3,true
-	case "BUSINESS":
 		return 10,true
+	case "BUSINESS":
+		return 20,true
 	case "FLEX":
-		return 15,true
+		return 0,true
 	default:
 		return 0,false
 	}
@@ -426,15 +426,17 @@ func (a *app) planReady(ctx context.Context, p subscriptionPlan, at time.Time) (
 func planMap(p subscriptionPlan, fixed []string, ready bool) map[string]any {
 	savings := p.AnnualListPrice - p.AnnualPrice
 	if savings < 0 { savings = 0 }
+	var moduleLimit any = p.ModuleLimit
+	if p.SelectionMode == selectionModeUnlimited { moduleLimit = nil }
 	return map[string]any{
 		"plan_key":p.Key,"display_name":p.Name,"currency":p.Currency,
 		"monthly_price":p.MonthlyPrice,"annual_list_price":p.AnnualListPrice,"annual_price":p.AnnualPrice,
 		"annual_savings":savings,"annual_free_months":p.AnnualFreeMonths,
 		"annual_increase_percent":p.AnnualIncreasePercent,
 		"price_effective_from":func() any { if p.PriceEffectiveFrom.IsZero(){return nil}; return p.PriceEffectiveFrom.Format("2006-01-02") }(),
-		"module_limit":p.ModuleLimit,"selection_mode":p.SelectionMode,
+		"module_limit":moduleLimit,"selection_mode":p.SelectionMode,
 		"customer_selectable":p.CustomerSelectable,"active":p.Active,"sort_order":p.SortOrder,
-		"fixed_module_keys":fixed,"ready":ready,
+		"fixed_module_keys":fixed,"ready":ready,"unlimited_modules":p.SelectionMode==selectionModeUnlimited,
 	}
 }
 
@@ -455,7 +457,9 @@ func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 		if err!=nil{common.APIError(w,500,"DB","Could not resolve subscription plan price");return}
 		ready, fixed, err := a.planReady(r.Context(), p, now)
 		if err != nil { common.APIError(w,500,"DB","Could not load plan modules"); return }
-		items = append(items, planMap(p,fixed,ready))
+		item:=planMap(p,fixed,ready)
+		if err:=a.decoratePackageMap(r.Context(),item,p);err!=nil{common.APIError(w,500,"DB","Could not load package pricing metadata");return}
+		items = append(items, item)
 	}
 	common.JSON(w,200,map[string]any{"items":items,"count":len(items),"pricing_authority":"SUBSCRIPTION_PLAN"})
 }
@@ -488,6 +492,34 @@ func (a *app) validatePublishedModuleKeys(ctx context.Context, keys []string) er
 	return nil
 }
 
+func (a *app) availablePublishedModuleKeys(ctx context.Context) ([]string,error) {
+	req, _ := http.NewRequestWithContext(ctx,http.MethodGet,"http://"+a.catalogHost+"/api/v1/modules",nil)
+	common.BindInternalRequest(req,a.token)
+	resp, err := common.DoInternal(a.client, req)
+	if err != nil { return nil,err }
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 { return nil,fmt.Errorf("catalog returned %d",resp.StatusCode) }
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil { return nil,err }
+	keys:=[]string{}
+	if raw,ok:=payload["items"].([]any);ok{
+		for _,item:=range raw{
+			if m,ok:=item.(map[string]any);ok{
+				key:=strings.TrimSpace(fmt.Sprint(m["key"]))
+				if key=="" { key=strings.TrimSpace(fmt.Sprint(m["module_key"])) }
+				if key!="" &&
+					strings.ToUpper(strings.TrimSpace(fmt.Sprint(m["publication_status"])))=="PUBLISHED" &&
+					strings.ToUpper(strings.TrimSpace(fmt.Sprint(m["implementation_state"])))=="READY" &&
+					strings.ToUpper(strings.TrimSpace(fmt.Sprint(m["availability"])))=="ACTIVE" {
+					keys=append(keys,key)
+				}
+			}
+		}
+	}
+	sort.Strings(keys)
+	return keys,nil
+}
+
 func uniqueModuleKeys(values []string) ([]string,error) {
 	seen:=map[string]bool{}
 	out:=[]string{}
@@ -512,7 +544,9 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method==http.MethodGet{
 		ready,fixed,err:=a.planReady(r.Context(),p,now)
 		if err!=nil{common.APIError(w,500,"DB","Could not load plan modules");return}
-		common.JSON(w,200,planMap(p,fixed,ready));return
+		out:=planMap(p,fixed,ready)
+		if err:=a.decoratePackageMap(r.Context(),out,p);err!=nil{common.APIError(w,500,"DB","Could not load package pricing metadata");return}
+		common.JSON(w,200,out);return
 	}
 	if r.Method!=http.MethodPatch { common.APIError(w,405,"METHOD","Use GET or PATCH");return }
 	var in struct{
@@ -559,7 +593,7 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 	if in.AnnualPrice!=nil{nextAnnual=*in.AnnualPrice}
 	if fixedLimit,standard:=standardPlanLimit(key);standard{
 		if in.ModuleLimit!=nil && *in.ModuleLimit!=fixedLimit{
-			common.APIError(w,409,"STANDARD_PACKAGE_LIMIT","Standard package module limits are fixed: Starter 3, Business 10, Flex 15")
+			common.APIError(w,409,"STANDARD_PACKAGE_LIMIT","Standard package module limits are fixed: Starter 10, Business 20, Premium Unlimited")
 			return
 		}
 		nextLimit=fixedLimit
@@ -620,6 +654,7 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 	if err!=nil{common.APIError(w,500,"DB","Could not reload plan");return}
 	ready,fixed,_:=a.planReady(r.Context(),current,now)
 	out:=planMap(current,fixed,ready)
+	if err:=a.decoratePackageMap(r.Context(),out,current);err!=nil{common.APIError(w,500,"DB","Could not load package pricing metadata");return}
 	if priceChanged&&effective.After(now){out["scheduled_price_effective_at"]=effective.Format("2006-01-02")}
 	common.JSON(w,200,out)
 }
@@ -647,20 +682,26 @@ func (a *app) partnerPlanMap(ctx context.Context,s partnerPlanSubscription) (map
 	p,err:=a.loadPlanAt(ctx,s.PlanKey,time.Now().UTC());if err!=nil{return nil,err}
 	monthly,list,annual,limit,mode:=a.effectivePlanPrices(s,p)
 	var modules []string
-	if mode=="FIXED"{modules,err=a.planModulesAt(ctx,p.Key,time.Now().UTC())}else if mode=="SELECTABLE"{modules,err=a.flexModulesAt(ctx,s.PartnerID,time.Now().UTC())}
+	if mode=="FIXED"{modules,err=a.planModulesAt(ctx,p.Key,time.Now().UTC())}else if mode=="SELECTABLE"{modules,err=a.flexModulesAt(ctx,s.PartnerID,time.Now().UTC())}else if mode==selectionModeUnlimited{modules,err=a.availablePublishedModuleKeys(ctx)}
 	if err!=nil{return nil,err}
 	var change any
 	if s.ChangeEffectiveAt.Valid{
 		change=map[string]any{"next_plan_key":s.NextPlanKey,"next_billing_frequency":s.NextBillingFrequency,"effective_at":dateOnly(s.ChangeEffectiveAt.Time).Format("2006-01-02")}
 	}
-	return map[string]any{
+	var moduleLimit any=limit
+	if mode==selectionModeUnlimited{moduleLimit=nil}
+	out:=map[string]any{
 		"partner_id":s.PartnerID,"plan_key":s.PlanKey,"display_name":p.Name,"billing_frequency":s.BillingFrequency,"status":s.Status,
 		"currency":p.Currency,"monthly_price":monthly,"annual_list_price":list,"annual_price":annual,"annual_savings":list-annual,
-		"module_limit":limit,"selection_mode":mode,"active_module_keys":modules,
+		"module_limit":moduleLimit,"selection_mode":mode,"entitlement_mode":mode,"unlimited_modules":mode==selectionModeUnlimited,
+		"active_module_keys":modules,"available_module_count":len(modules),
 		"current_period_start":dateOnly(s.CurrentPeriodStart).Format("2006-01-02"),
 		"current_period_end_exclusive":dateOnly(s.CurrentPeriodEnd).Format("2006-01-02"),
 		"next_billing_at":dateOnly(s.NextBillingAt).Format("2006-01-02"),"scheduled_change":change,
-	},nil
+	}
+	policy,err:=a.loadBillingTaxPolicy(ctx);if err!=nil{return nil,err}
+	addTaxQuote(out,monthly,annual,policy)
+	return out,nil
 }
 
 func sameModuleKeys(aKeys,bKeys []string) bool {
@@ -707,6 +748,9 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 	if target.SelectionMode=="SELECTABLE"{
 		if len(keys)>target.ModuleLimit{common.APIError(w,400,"MODULE_LIMIT",fmt.Sprintf("%s allows at most %d modules",target.Key,target.ModuleLimit));return}
 		if err=a.validatePublishedModuleKeys(r.Context(),keys);err!=nil{common.APIError(w,409,"MODULE_NOT_READY",err.Error());return}
+	}
+	if target.SelectionMode==selectionModeUnlimited && len(keys)>0{
+		common.APIError(w,409,"UNLIMITED_PLAN_MANAGED","Premium module entitlement is automatic and cannot be replaced by a partner-selected list");return
 	}
 	if target.Key=="CUSTOM"{
 		if in.CustomMonthlyPrice==nil{common.APIError(w,400,"CUSTOM_PRICE_REQUIRED","Custom monthly price is required");return}
@@ -755,9 +799,9 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		if frequency=="ANNUAL"{
 			actualAnnual:=annual
 			if commercialMode.BillingMode!=billingModePaid{actualAnnual=0}
-			invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_ANNUAL_PREPAY",start,end,list,actualAnnual)
+			invoiceID,grossCharge,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_ANNUAL_PREPAY",start,end,list,actualAnnual)
 			if err!=nil{common.APIError(w,500,"INVOICE","Could not create annual prepayment invoice");return}
-			if invoiceID!=""{a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,actualAnnual)}
+			if invoiceID!=""{a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,grossCharge)}
 		}
 		_,_=a.db.ExecContext(r.Context(),`INSERT INTO billing.plan_change_history(partner_id,new_plan_key,new_billing_frequency,change_type,effective_at,actor,reason)
 			VALUES($1,$2,$3,'INITIAL',$4,$5,$6)`,partnerID,target.Key,frequency,now,actor,reason)
@@ -836,9 +880,9 @@ func (a *app) partnerPlan(w http.ResponseWriter,r *http.Request,partnerID string
 		}
 		actualUpgradeCharge:=diff
 		if commercialMode.BillingMode!=billingModePaid{actualUpgradeCharge=0}
-		invoiceID,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_UPGRADE",now,current.CurrentPeriodEnd,diff,actualUpgradeCharge)
+		invoiceID,grossCharge,err:=a.createPlanInvoice(r.Context(),partnerID,target.Key,frequency,"PLAN_UPGRADE",now,current.CurrentPeriodEnd,diff,actualUpgradeCharge)
 		if err!=nil{common.APIError(w,500,"INVOICE","Could not create upgrade invoice");return}
-		if invoiceID!=""{a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,actualUpgradeCharge)}
+		if invoiceID!=""{a.queueInvoiceCollection(r.Context(),invoiceID,partnerID,target.Currency,grossCharge)}
 		_,_=a.db.ExecContext(r.Context(),`INSERT INTO billing.plan_change_history(partner_id,old_plan_key,new_plan_key,old_billing_frequency,new_billing_frequency,change_type,effective_at,upgrade_charge,actor,reason)
 			VALUES($1,$2,$3,$4,$5,'IMMEDIATE_UPGRADE',$6,$7,$8,$9)`,partnerID,current.PlanKey,target.Key,frequency,frequency,now,actualUpgradeCharge,actor,reason)
 		s,_:=a.loadPartnerPlan(r.Context(),partnerID)
@@ -879,11 +923,13 @@ func (a *app) partnerPlanModules(w http.ResponseWriter,r *http.Request,partnerID
 	p,err:=a.loadPlan(r.Context(),s.PlanKey);if err!=nil{common.APIError(w,500,"DB","Could not load plan");return}
 	if r.Method==http.MethodGet{
 		var keys []string
-		if p.SelectionMode=="FIXED"{keys,err=a.planModulesAt(r.Context(),p.Key,time.Now().UTC())}else if p.SelectionMode=="SELECTABLE"{keys,err=a.flexModulesAt(r.Context(),partnerID,time.Now().UTC())}
+		if p.SelectionMode=="FIXED"{keys,err=a.planModulesAt(r.Context(),p.Key,time.Now().UTC())}else if p.SelectionMode=="SELECTABLE"{keys,err=a.flexModulesAt(r.Context(),partnerID,time.Now().UTC())}else if p.SelectionMode==selectionModeUnlimited{keys,err=a.availablePublishedModuleKeys(r.Context())}
 		if err!=nil{common.APIError(w,500,"DB","Could not load plan module set");return}
-		common.JSON(w,200,map[string]any{"partner_id":partnerID,"plan_key":p.Key,"selection_mode":p.SelectionMode,"module_limit":p.ModuleLimit,"module_keys":keys});return
+		var limit any=p.ModuleLimit;if p.SelectionMode==selectionModeUnlimited{limit=nil}
+		common.JSON(w,200,map[string]any{"partner_id":partnerID,"plan_key":p.Key,"selection_mode":p.SelectionMode,"entitlement_mode":p.SelectionMode,"module_limit":limit,"module_keys":keys,"count":len(keys),"unlimited_modules":p.SelectionMode==selectionModeUnlimited});return
 	}
 	if r.Method!=http.MethodPut{common.APIError(w,405,"METHOD","Use GET or PUT");return}
+	if p.SelectionMode==selectionModeUnlimited{common.APIError(w,409,"UNLIMITED_PLAN_MANAGED","Premium includes all current and future eligible modules automatically");return}
 	if p.SelectionMode!="SELECTABLE"{common.APIError(w,409,"FIXED_PLAN","Starter and Business module sets are fixed by HIMATE");return}
 	var in struct{ModuleKeys []string `json:"module_keys"`; Reason string `json:"reason"`}
 	if common.Decode(r,&in)!=nil{common.APIError(w,400,"JSON","Invalid request");return}
@@ -899,9 +945,9 @@ func (a *app) syncPlanEntitlements(ctx context.Context,partnerID,planKey string,
 	p,err:=a.loadPlan(ctx,planKey);if err!=nil{return err}
 	if p.SelectionMode=="CUSTOM"{return nil}
 	var keys []string
-	if p.SelectionMode=="FIXED"{keys,err=a.planModulesAt(ctx,p.Key,at)}else{keys,err=a.flexModulesAt(ctx,partnerID,at)}
+	if p.SelectionMode=="FIXED"{keys,err=a.planModulesAt(ctx,p.Key,at)}else if p.SelectionMode=="SELECTABLE"{keys,err=a.flexModulesAt(ctx,partnerID,at)}else if p.SelectionMode==selectionModeUnlimited{keys=[]string{}}
 	if err!=nil{return err}
-	payload:=map[string]any{"plan_key":p.Key,"module_keys":keys,"reason":"Subscription plan entitlement synchronization"}
+	payload:=map[string]any{"plan_key":p.Key,"module_keys":keys,"entitlement_mode":p.SelectionMode,"reason":"Subscription plan entitlement synchronization"}
 	raw,_:=json.Marshal(payload)
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPut,"http://"+a.catalogHost+"/internal/v1/partners/"+partnerID+"/plan-entitlements",bytes.NewReader(raw))
 	if err!=nil{return err}
@@ -911,50 +957,62 @@ func (a *app) syncPlanEntitlements(ctx context.Context,partnerID,planKey string,
 	return nil
 }
 
-func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,chargeType string,start,end time.Time,listPrice,amount float64)(string,error){
+func (a *app) createPlanInvoice(ctx context.Context,partnerID,planKey,frequency,chargeType string,start,end time.Time,listPrice,amount float64)(string,float64,error){
 	start,end=dateOnly(start),dateOnly(end)
+	policy,err:=a.loadBillingTaxPolicy(ctx);if err!=nil{return "",0,err}
+	netAmount,taxAmount,grossAmount:=applyBillingTax(amount,policy)
 	key:=fmt.Sprintf("PLAN:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
-	if amount <= 0 {
+	if netAmount <= 0 {
 		eventKey:=fmt.Sprintf("ZERO_DOLLAR_BILLING_CYCLE:%s:%s:%s:%s",partnerID,chargeType,start.Format("2006-01-02"),planKey)
 		if err:=a.emitBillingEvent(ctx,eventKey,partnerID,"","ZERO_DOLLAR_BILLING_CYCLE",time.Now().UTC(),map[string]any{
 			"billing_model":"PLAN","plan_key":planKey,"billing_frequency":frequency,"charge_type":chargeType,
-			"list_price":listPrice,"total":0,
+			"list_price":listPrice,"net_total":0,"tax_rate_percent":policy.RatePercent,"tax_amount":0,"total":0,
 			"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":end.Format("2006-01-02"),
-		});err!=nil{return "",err}
-		return "",nil
+		});err!=nil{return "",0,err}
+		return "",0,nil
 	}
 	id:="inv_plan_"+strings.ReplaceAll(partnerID,"_","")+"_"+strings.ToLower(chargeType)+"_"+strings.ToLower(planKey)+"_"+start.Format("20060102")
-	discount:=listPrice-amount;if discount<0{discount=0}
-	tx,err:=a.db.BeginTx(ctx,nil);if err!=nil{return "",err}
+	discount:=listPrice-netAmount;if discount<0{discount=0}
+	tx,err:=a.db.BeginTx(ctx,nil);if err!=nil{return "",0,err}
 	defer tx.Rollback()
 	if _,err=tx.ExecContext(ctx,`INSERT INTO billing.invoices(
 		id,invoice_key,partner_id,invoice_date,service_period_start,service_period_end,currency,base_fee,module_fee,total,
-		minimum_commitment_adjustment,billing_model,plan_key,billing_frequency,charge_type,list_price,discount_amount
-	) VALUES($1,$2,$3,CURRENT_DATE,$4,$5,'USD',$6,0,$6,0,'PLAN',$7,$8,$9,$10,$11)
-	ON CONFLICT(invoice_key) DO NOTHING`,id,key,partnerID,start,end,amount,planKey,frequency,chargeType,listPrice,discount);err!=nil{return "",err}
-	if err=tx.QueryRowContext(ctx,`SELECT id FROM billing.invoices WHERE invoice_key=$1 FOR UPDATE`,key).Scan(&id);err!=nil{return "",err}
+		minimum_commitment_adjustment,billing_model,plan_key,billing_frequency,charge_type,list_price,discount_amount,
+		net_total,tax_rate_percent,tax_amount
+	) VALUES($1,$2,$3,CURRENT_DATE,$4,$5,'USD',$6,0,$7,0,'PLAN',$8,$9,$10,$11,$12,$6,$13,$14)
+	ON CONFLICT(invoice_key) DO NOTHING`,
+		id,key,partnerID,start,end,netAmount,grossAmount,planKey,frequency,chargeType,listPrice,discount,policy.RatePercent,taxAmount);err!=nil{return "",0,err}
+	if err=tx.QueryRowContext(ctx,`SELECT id FROM billing.invoices WHERE invoice_key=$1 FOR UPDATE`,key).Scan(&id);err!=nil{return "",0,err}
 	itemKey:="PLAN_ITEM:"+key
 	if _,err=tx.ExecContext(ctx,`INSERT INTO billing.invoice_items(
 		item_key,invoice_id,partner_id,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,status,invoiced_at,billing_model
 	) VALUES($1,$2,$3,'PLAN',$4,'USD',1,$5,$5,$6,$7,'INVOICED',NOW(),'PLAN')
 	ON CONFLICT(item_key) DO NOTHING`,
-		itemKey,id,partnerID,fmt.Sprintf("%s %s subscription",planKey,frequency),amount,start,end);err!=nil{return "",err}
+		itemKey,id,partnerID,fmt.Sprintf("%s %s subscription",planKey,frequency),netAmount,start,end);err!=nil{return "",0,err}
+	if taxAmount>0{
+		taxItemKey:="TAX_ITEM:"+key
+		if _,err=tx.ExecContext(ctx,`INSERT INTO billing.invoice_items(
+			item_key,invoice_id,partner_id,item_type,description,currency,quantity,unit_price,amount,period_start,period_end,status,invoiced_at,billing_model
+		) VALUES($1,$2,$3,'TAX',$4,'USD',1,$5,$5,$6,$7,'INVOICED',NOW(),'PLAN')
+		ON CONFLICT(item_key) DO NOTHING`,
+			taxItemKey,id,partnerID,fmt.Sprintf("%s %.2f%%",policy.Label,policy.RatePercent),taxAmount,start,end);err!=nil{return "",0,err}
+	}
 	var storedInvoice,storedPartner string
 	var storedAmount float64
 	if err=tx.QueryRowContext(ctx,`SELECT invoice_id,partner_id,amount FROM billing.invoice_items WHERE item_key=$1`,itemKey).
-		Scan(&storedInvoice,&storedPartner,&storedAmount);err!=nil{return "",err}
-	if storedInvoice!=id||storedPartner!=partnerID||math.Abs(storedAmount-amount)>0.005{
-		return "",fmt.Errorf("plan invoice item idempotency conflict for %s",itemKey)
+		Scan(&storedInvoice,&storedPartner,&storedAmount);err!=nil{return "",0,err}
+	if storedInvoice!=id||storedPartner!=partnerID||math.Abs(storedAmount-netAmount)>0.005{
+		return "",0,fmt.Errorf("plan invoice item idempotency conflict for %s",itemKey)
 	}
 	if err=emitBillingEventTx(ctx,tx,"INVOICE_GENERATED:"+id,partnerID,"","INVOICE_GENERATED",time.Now().UTC(),map[string]any{
 		"invoice_id":id,"billing_model":"PLAN","plan_key":planKey,"billing_frequency":frequency,"charge_type":chargeType,
-		"list_price":listPrice,"discount_amount":discount,"total":amount,
+		"list_price":listPrice,"discount_amount":discount,"net_total":netAmount,
+		"tax_rate_percent":policy.RatePercent,"tax_amount":taxAmount,"total":grossAmount,
 		"service_period_start":start.Format("2006-01-02"),"service_period_end_exclusive":end.Format("2006-01-02"),
-	});err!=nil{return "",err}
-	if err=tx.Commit();err!=nil{return "",err}
-	return id,nil
+	});err!=nil{return "",0,err}
+	if err=tx.Commit();err!=nil{return "",0,err}
+	return id,grossAmount,nil
 }
-
 func (a *app) applyDuePlanChanges(ctx context.Context,at time.Time) error{
 	at=dateOnly(at)
 	rows,err:=a.db.QueryContext(ctx,`SELECT partner_id,next_plan_key,next_billing_frequency FROM billing.partner_plan_subscriptions
@@ -1022,8 +1080,8 @@ func (a *app) runPlanBillingCycle(ctx context.Context,at time.Time) (map[string]
 		mode,err:=a.ensureCommercialMode(ctx,id);if err!=nil{return nil,err}
 		actualAmount:=amount
 		if mode.BillingMode!=billingModePaid{actualAmount=0}
-		invoiceID,err:=a.createPlanInvoice(ctx,id,p.Key,s.BillingFrequency,chargeType,start,end,listPrice,actualAmount);if err!=nil{return nil,err}
-		if invoiceID!=""{a.queueInvoiceCollection(ctx,invoiceID,id,p.Currency,actualAmount)}
+		invoiceID,grossCharge,err:=a.createPlanInvoice(ctx,id,p.Key,s.BillingFrequency,chargeType,start,end,listPrice,actualAmount);if err!=nil{return nil,err}
+		if invoiceID!=""{a.queueInvoiceCollection(ctx,invoiceID,id,p.Currency,grossCharge)}
 		next:=end
 		if _,err=a.db.ExecContext(ctx,`UPDATE billing.partner_plan_subscriptions SET current_period_start=$2,current_period_end=$3,next_billing_at=$4,
 			monthly_price_snapshot=$5,annual_list_price_snapshot=$6,annual_price_snapshot=$7,updated_at=NOW() WHERE partner_id=$1`,

@@ -215,11 +215,17 @@ echo ok
 
 printf 'authoritative HIMATE company profile mutates, reloads and restores... '
 company_before="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
-company_changed="$(printf '%s' "$company_before" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["contact_name"]="START 23.6 Acceptance "+sys.argv[1]; print(json.dumps(d))' "$STAMP")"
+company_write="$(printf '%s' "$company_before" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+keys=["legal_name","registration_number","address","tax_id","contact_name","email","phone","bank_name","bank_address","account_number","iban","swift","vat_rate_percent","vat_jurisdiction","tax_label"]
+print(json.dumps({k:d.get(k) for k in keys}))
+')"
+company_changed="$(printf '%s' "$company_write" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["contact_name"]="START 23.6 Acceptance "+sys.argv[1]; print(json.dumps(d))' "$STAMP")"
 curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_changed" "$BASE_URL/api/v1/billing/profile" >/dev/null
 company_after="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
-printf '%s' "$company_after" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["contact_name"]=="START 23.6 Acceptance "+sys.argv[1]' "$STAMP"
-curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_before" "$BASE_URL/api/v1/billing/profile" >/dev/null
+printf '%s' "$company_after" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["contact_name"]=="START 23.6 Acceptance "+sys.argv[1]; assert "vat_enabled" in d' "$STAMP"
+curl -fsS -b "$OWNER_COOKIE" -X PUT -H 'Content-Type: application/json' -d "$company_write" "$BASE_URL/api/v1/billing/profile" >/dev/null
 company_restored="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/billing/profile")"
 printf '%s' "$company_restored" | python3 -c 'import json,sys; before=json.loads(sys.argv[1]); after=json.load(sys.stdin); assert after["contact_name"]==before["contact_name"]' "$company_before"
 echo ok
