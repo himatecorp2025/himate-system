@@ -185,8 +185,19 @@ func onboardingMap(x onboardingState) map[string]any {
 }
 
 func (a *app) ensureOnboarding(ctx context.Context, partnerID string) (onboardingState, error) {
-	if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.partner_onboarding(partner_id)
-		VALUES($1) ON CONFLICT(partner_id) DO NOTHING`, partnerID); err != nil {
+	if _, err := a.db.ExecContext(ctx, `INSERT INTO billing.partner_onboarding(
+			partner_id,state,classification,portal_enabled,reviewed_at,reviewed_by,approved_at,approved_by,reason)
+		SELECT p.id,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN 'REGISTERED' ELSE 'ACTIVE' END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN 'UNCLASSIFIED' ELSE 'PAID' END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN FALSE ELSE TRUE END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN NULL ELSE NOW() END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN '' ELSE 'central-6-admin-default' END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN NULL ELSE NOW() END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN '' ELSE 'central-6-admin-default' END,
+			CASE WHEN COALESCE(p.onboarding_request_id,'')<>'' THEN 'Registration awaiting HIMATE review' ELSE 'HIMATE-admin-created partner' END
+		FROM partners.partners p WHERE p.id=$1
+		ON CONFLICT(partner_id) DO NOTHING`, partnerID); err != nil {
 		return onboardingState{}, err
 	}
 	var x onboardingState
