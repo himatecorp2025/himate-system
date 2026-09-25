@@ -322,11 +322,11 @@ func roundPlanAmount(value float64) float64 {
 func standardPlanLimit(key string) (int,bool) {
 	switch strings.ToUpper(strings.TrimSpace(key)) {
 	case "STARTER":
-		return 3,true
-	case "BUSINESS":
 		return 10,true
+	case "BUSINESS":
+		return 20,true
 	case "FLEX":
-		return 15,true
+		return 0,true
 	default:
 		return 0,false
 	}
@@ -426,15 +426,17 @@ func (a *app) planReady(ctx context.Context, p subscriptionPlan, at time.Time) (
 func planMap(p subscriptionPlan, fixed []string, ready bool) map[string]any {
 	savings := p.AnnualListPrice - p.AnnualPrice
 	if savings < 0 { savings = 0 }
+	var moduleLimit any = p.ModuleLimit
+	if p.SelectionMode == selectionModeUnlimited { moduleLimit = nil }
 	return map[string]any{
 		"plan_key":p.Key,"display_name":p.Name,"currency":p.Currency,
 		"monthly_price":p.MonthlyPrice,"annual_list_price":p.AnnualListPrice,"annual_price":p.AnnualPrice,
 		"annual_savings":savings,"annual_free_months":p.AnnualFreeMonths,
 		"annual_increase_percent":p.AnnualIncreasePercent,
 		"price_effective_from":func() any { if p.PriceEffectiveFrom.IsZero(){return nil}; return p.PriceEffectiveFrom.Format("2006-01-02") }(),
-		"module_limit":p.ModuleLimit,"selection_mode":p.SelectionMode,
+		"module_limit":moduleLimit,"selection_mode":p.SelectionMode,
 		"customer_selectable":p.CustomerSelectable,"active":p.Active,"sort_order":p.SortOrder,
-		"fixed_module_keys":fixed,"ready":ready,
+		"fixed_module_keys":fixed,"ready":ready,"unlimited_modules":p.SelectionMode==selectionModeUnlimited,
 	}
 }
 
@@ -455,7 +457,9 @@ func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 		if err!=nil{common.APIError(w,500,"DB","Could not resolve subscription plan price");return}
 		ready, fixed, err := a.planReady(r.Context(), p, now)
 		if err != nil { common.APIError(w,500,"DB","Could not load plan modules"); return }
-		items = append(items, planMap(p,fixed,ready))
+		item:=planMap(p,fixed,ready)
+		if err:=a.decoratePackageMap(r.Context(),item,p);err!=nil{common.APIError(w,500,"DB","Could not load package pricing metadata");return}
+		items = append(items, item)
 	}
 	common.JSON(w,200,map[string]any{"items":items,"count":len(items),"pricing_authority":"SUBSCRIPTION_PLAN"})
 }
@@ -488,6 +492,34 @@ func (a *app) validatePublishedModuleKeys(ctx context.Context, keys []string) er
 	return nil
 }
 
+func (a *app) availablePublishedModuleKeys(ctx context.Context) ([]string,error) {
+	req, _ := http.NewRequestWithContext(ctx,http.MethodGet,"http://"+a.catalogHost+"/api/v1/modules",nil)
+	common.BindInternalRequest(req,a.token)
+	resp, err := common.DoInternal(a.client, req)
+	if err != nil { return nil,err }
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 { return nil,fmt.Errorf("catalog returned %d",resp.StatusCode) }
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil { return nil,err }
+	keys:=[]string{}
+	if raw,ok:=payload["items"].([]any);ok{
+		for _,item:=range raw{
+			if m,ok:=item.(map[string]any);ok{
+				key:=strings.TrimSpace(fmt.Sprint(m["key"]))
+				if key=="" { key=strings.TrimSpace(fmt.Sprint(m["module_key"])) }
+				if key!="" &&
+					strings.ToUpper(strings.TrimSpace(fmt.Sprint(m["publication_status"])))=="PUBLISHED" &&
+					strings.ToUpper(strings.TrimSpace(fmt.Sprint(m["implementation_state"])))=="READY" &&
+					strings.ToUpper(strings.TrimSpace(fmt.Sprint(m["availability"])))=="ACTIVE" {
+					keys=append(keys,key)
+				}
+			}
+		}
+	}
+	sort.Strings(keys)
+	return keys,nil
+}
+
 func uniqueModuleKeys(values []string) ([]string,error) {
 	seen:=map[string]bool{}
 	out:=[]string{}
@@ -512,7 +544,9 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method==http.MethodGet{
 		ready,fixed,err:=a.planReady(r.Context(),p,now)
 		if err!=nil{common.APIError(w,500,"DB","Could not load plan modules");return}
-		common.JSON(w,200,planMap(p,fixed,ready));return
+		out:=planMap(p,fixed,ready)
+		if err:=a.decoratePackageMap(r.Context(),out,p);err!=nil{common.APIError(w,500,"DB","Could not load package pricing metadata");return}
+		common.JSON(w,200,out);return
 	}
 	if r.Method!=http.MethodPatch { common.APIError(w,405,"METHOD","Use GET or PATCH");return }
 	var in struct{
@@ -559,7 +593,7 @@ func (a *app) planByKey(w http.ResponseWriter, r *http.Request) {
 	if in.AnnualPrice!=nil{nextAnnual=*in.AnnualPrice}
 	if fixedLimit,standard:=standardPlanLimit(key);standard{
 		if in.ModuleLimit!=nil && *in.ModuleLimit!=fixedLimit{
-			common.APIError(w,409,"STANDARD_PACKAGE_LIMIT","Standard package module limits are fixed: Starter 3, Business 10, Flex 15")
+			common.APIError(w,409,"STANDARD_PACKAGE_LIMIT","Standard package module limits are fixed: Starter 10, Business 20, Premium Unlimited")
 			return
 		}
 		nextLimit=fixedLimit
