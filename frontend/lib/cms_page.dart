@@ -262,7 +262,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     try {
       final result = await widget.api.post('/api/v1/cms/pages/' + id + '/preview');
       final path = (result['preview_html_path'] ?? result['preview_path'] ?? '').toString();
-      if (path.isNotEmpty) html.window.open(path, '_blank');
+      if (path.isNotEmpty) openBrowserDownload(path);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
