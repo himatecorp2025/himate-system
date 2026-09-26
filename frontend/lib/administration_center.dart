@@ -217,10 +217,14 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
 
   Widget rootView() {
     final partnerCount = (kpis['partners'] as num?)?.toInt() ?? partners.length;
+    final admins = (company['active_administrators'] as num?)?.toInt() ?? 0;
+    final documents = (company['document_count'] as num?)?.toInt() ?? 0;
+    final auditEvents = (company['audit_event_count'] as num?)?.toInt() ?? 0;
+    final recoverability = (company['recoverability_status'] ?? 'UNVERIFIED').toString();
+
     return Content(
-      eyebrow: 'CENTRAL-14 · ADMINISTRATION',
-      title: 'Administration Center',
-      subtitle: 'Two separated administrative scopes: HIMATE corporate administration and partner administration. Domain ownership remains in the existing microservices.',
+      title: 'Administration',
+      subtitle: 'Central management of HIMATE, partner administration, documents, access and recovery.',
       actions: [
         OutlinedButton.icon(
           onPressed: loading ? null : () => load(),
@@ -231,13 +235,13 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _RuleStrip(items: [
-            _RuleItem(Icons.domain_outlined, 'HIMATE Center', 'Company administration'),
-            _RuleItem(Icons.business_center_outlined, 'Partner Center', 'Tenant-scoped administration'),
-            _RuleItem(Icons.manage_search_rounded, 'Search', 'Documents + audit + partners'),
-            _RuleItem(Icons.restore_rounded, 'Recovery', 'Verified restore points only'),
+          ResponsiveKpiGrid(children: [
+            Kpi(label: 'Administrators', value: '$admins', note: 'Active HIMATE administrators', icon: Icons.groups_2_outlined, accent: brandSteel),
+            Kpi(label: 'Documents', value: '$documents', note: 'Corporate document records', icon: Icons.folder_outlined, accent: brandGold),
+            Kpi(label: 'Audit events', value: '$auditEvents', note: 'Immutable central audit trail', icon: Icons.shield_outlined, accent: brandSuccess),
+            Kpi(label: 'Recovery', value: recoverability, note: 'Platform backup & restore verification', icon: Icons.restore_rounded, accent: recoverability == 'VERIFIED' ? brandSteel : brandWarning),
           ]),
-          const SizedBox(height: 22),
+          const SizedBox(height: 18),
           LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth < 760 ? constraints.maxWidth : (constraints.maxWidth - 14) / 2;
@@ -247,24 +251,61 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
                 children: [
                   SizedBox(
                     width: width,
-                    child: centerCard(
+                    child: _AdministrationCenterHeroCard(
                       title: 'HIMATE Administration Center',
-                      subtitle: 'Corporate finance administration, company documents, governance and audit, administrator access, settings and platform backup/recovery.',
-                      icon: Icons.apartment_rounded,
-                      metric: ((company['active_administrators'] as num?)?.toInt() ?? 0).toString() + ' ADMINS',
+                      subtitle: 'Corporate-level administration, settings, administrator access, documents, finance and platform recovery.',
+                      icon: Icons.settings_outlined,
+                      accent: brandSteel,
+                      bullets: const [
+                        'System configuration and governance',
+                        'Users, administrators and access',
+                        'Corporate documents and finance',
+                        'Platform backup and recovery',
+                      ],
+                      actionLabel: 'Open',
                       onTap: () => go('company'),
                     ),
                   ),
                   SizedBox(
                     width: width,
-                    child: centerCard(
+                    child: _AdministrationCenterHeroCard(
                       title: 'Partner Administration Center',
-                      subtitle: 'Partner-by-partner administration with financial records, documents, audit history and tenant backup/recovery in one scoped workspace.',
-                      icon: Icons.account_tree_outlined,
-                      metric: partnerCount.toString() + ' PARTNERS',
+                      subtitle: 'Partner-by-partner administration with tenant-scoped finance, documents, audit and recovery.',
+                      icon: Icons.groups_2_outlined,
+                      accent: brandGold,
+                      bullets: [
+                        '$partnerCount partner administration records',
+                        'Partner users and lifecycle context',
+                        'Tenant documents and audit history',
+                        'Verified partner backup and recovery',
+                      ],
+                      actionLabel: 'Open',
                       onTap: widget.canPartnersRead ? () => go('partners') : null,
                     ),
                   ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 640
+                  ? constraints.maxWidth
+                  : constraints.maxWidth < 1120
+                      ? (constraints.maxWidth - 12) / 2
+                      : (constraints.maxWidth - 36) / 4;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  if (widget.canBillingRead)
+                    SizedBox(width: width, child: _AdministrationQuickCard(title: 'Finance', subtitle: 'Billing identity and finance administration.', icon: Icons.paid_outlined, accent: brandSuccess, onTap: () => go('company_finance'))),
+                  if (widget.canBillingRead)
+                    SizedBox(width: width, child: _AdministrationQuickCard(title: 'Documents', subtitle: 'Corporate document registry and search.', icon: Icons.description_outlined, accent: brandSteel, onTap: () => go('company_documents'))),
+                  SizedBox(width: width, child: _AdministrationQuickCard(title: 'Permissions & Settings', subtitle: 'Roles, administrators, audit and settings.', icon: Icons.shield_outlined, accent: const Color(0xFF7557E8), onTap: () => go('company_governance'))),
+                  if (widget.canBackupsRead)
+                    SizedBox(width: width, child: _AdministrationQuickCard(title: 'System Backup & Recovery', subtitle: 'Encrypted restore points and verification.', icon: Icons.restore_rounded, accent: brandSteel, onTap: () => go('company_recovery'))),
                 ],
               );
             },
@@ -684,6 +725,101 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
         return rootView();
     }
   }
+}
+
+class _AdministrationCenterHeroCard extends StatelessWidget {
+  const _AdministrationCenterHeroCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    required this.bullets,
+    required this.actionLabel,
+    this.onTap,
+  });
+  final String title, subtitle, actionLabel;
+  final IconData icon;
+  final Color accent;
+  final List<String> bullets;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 330),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(colors: [brandWhite, accent.withOpacity(.045)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(width: 58,height:58,decoration:BoxDecoration(color:accent.withOpacity(.10),borderRadius:BorderRadius.circular(15)),child:Icon(icon,color:accent,size:29)),
+                  const SizedBox(width:14),
+                  Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                    LText(title,style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:25,fontWeight:FontWeight.w700)),
+                    const SizedBox(height:3),
+                    LText(subtitle,style:const TextStyle(color:brandTextSoft,fontSize:10.5,height:1.4)),
+                  ])),
+                ]),
+                const SizedBox(height:20),
+                for (final item in bullets)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(children:[
+                      Container(width:20,height:20,decoration:BoxDecoration(color:accent,borderRadius:BorderRadius.circular(99)),child:const Icon(Icons.check_rounded,color:Colors.white,size:13)),
+                      const SizedBox(width:9),
+                      Expanded(child:LText(item,style:const TextStyle(color:brandCharcoal,fontSize:10.5))),
+                    ]),
+                  ),
+                const Spacer(),
+                SizedBox(
+                  width: 210,
+                  child: FilledButton.icon(
+                    onPressed: onTap,
+                    style: FilledButton.styleFrom(backgroundColor: accent),
+                    icon: const Icon(Icons.open_in_new_rounded,size:17),
+                    label: LText(actionLabel),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _AdministrationQuickCard extends StatelessWidget {
+  const _AdministrationQuickCard({required this.title,required this.subtitle,required this.icon,required this.accent,this.onTap});
+  final String title,subtitle;
+  final IconData icon;
+  final Color accent;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: InkWell(
+      onTap:onTap,
+      borderRadius:BorderRadius.circular(16),
+      child:Padding(
+        padding:const EdgeInsets.all(17),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Container(width:42,height:42,decoration:BoxDecoration(color:accent.withOpacity(.09),borderRadius:BorderRadius.circular(12)),child:Icon(icon,color:accent,size:21)),
+          const SizedBox(height:13),
+          LText(title,style:const TextStyle(color:brandNavy,fontSize:12,fontWeight:FontWeight.w800)),
+          const SizedBox(height:6),
+          LText(subtitle,style:const TextStyle(color:brandTextSoft,fontSize:9.5,height:1.4)),
+          const SizedBox(height:12),
+          Row(children:[LText('Open',style:TextStyle(color:accent,fontSize:9.5,fontWeight:FontWeight.w700)),const Spacer(),Icon(Icons.arrow_forward_rounded,color:accent,size:16)]),
+        ]),
+      ),
+    ),
+  );
 }
 
 class AdministrationDocumentsPanel extends StatefulWidget {
