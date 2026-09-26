@@ -111,6 +111,12 @@ jobs:
           grep -q '^  /api/v1/dashboard/summary:' ../docs/openapi.yaml
           grep -q '^  /api/v1/search:' ../docs/openapi.yaml
           test -s ../docs/START-23.1_SURFACE_INVENTORY.md
+          test -s ../docs/CENTRAL-8_ACCEPTANCE.md
+          grep -q '^  /api/v1/partners/export.csv:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/packages/analytics:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/packages/export.csv:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/finance/export.csv:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/impact/export.csv:' ../docs/openapi.yaml
           test -s ../docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md
           test -s ../docs/adr/0005-klavierhaus-one-way-data-connector.md
       - run: go build ./cmd/...
@@ -382,6 +388,7 @@ jobs:
           python3 scripts/audit_central_5.py
           python3 scripts/audit_central_6.py
           python3 scripts/audit_central_7.py
+          python3 scripts/audit_central_8.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
@@ -530,6 +537,8 @@ jobs:
         run: sh scripts/smoke_central_6.sh http://127.0.0.1:8080
       - name: Run Central-7 first-half regression runtime closure
         run: sh scripts/smoke_central_7.sh http://127.0.0.1:8080
+      - name: Run Central-8 manual QA, analytics, export and loading runtime acceptance
+        run: sh scripts/smoke_central_8.sh http://127.0.0.1:8080
       - name: Dump Phase 4/5/closure runtime diagnostics on failure
         if: failure()
         run: docker compose logs --no-color --tail=220 gateway partners catalog billing payments evidence storage notifications automation tenantfinance
