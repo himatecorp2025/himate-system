@@ -3,13 +3,51 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:himate_frontend/main.dart';
 
+class _PresetHarness extends StatefulWidget {
+  const _PresetHarness({required this.rows});
+  final List<Map<String,dynamic>> rows;
+
+  @override
+  State<_PresetHarness> createState() => _PresetHarnessState();
+}
+
+class _PresetHarnessState extends State<_PresetHarness> {
+  late List<Map<String,dynamic>> visible;
+
+  @override
+  void initState() {
+    super.initState();
+    visible = List<Map<String,dynamic>>.from(widget.rows);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          Kpi(
+            label: 'Live partners',
+            value: '1',
+            note: 'Operational partner environments',
+            icon: Icons.public_outlined,
+            onTap: () => setState(() {
+              visible = central8PartnerPresetRows(widget.rows, lifecycle: 'LIVE');
+            }),
+          ),
+          for (final row in visible) Text('${row['id']}'),
+        ],
+      ),
+    );
+  }
+}
+
 void main() {
   test('Central-8 weekly Dashboard window shows the latest four real weeks', () {
     final rows = <Map<String,dynamic>>[
       for (var i = 1; i <= 6; i++)
         <String,dynamic>{
           'week': i,
-          'week_start': '2026-0${i < 7 ? i : 6}-01',
+          'week_start': '2026-0${i}-01',
           'value': i * 10,
         },
     ];
@@ -41,31 +79,7 @@ void main() {
       {'id': 'prospect', 'lifecycle': 'PROSPECT', 'reference_partner': false},
     ];
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: StatefulBuilder(
-          builder: (context, setState) {
-            var visible = rows;
-            return Scaffold(
-              body: Column(
-                children: [
-                  Kpi(
-                    label: 'Live partners',
-                    value: '1',
-                    note: 'Operational partner environments',
-                    icon: Icons.public_outlined,
-                    onTap: () => setState(() {
-                      visible = central8PartnerPresetRows(rows, lifecycle: 'LIVE');
-                    }),
-                  ),
-                  for (final row in visible) Text('${row['id']}'),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
+    await tester.pumpWidget(MaterialApp(home: _PresetHarness(rows: rows)));
 
     expect(find.text('live'), findsOneWidget);
     expect(find.text('prospect'), findsOneWidget);
