@@ -112,6 +112,7 @@ func main() {
 		})
 	})
 	mux.HandleFunc("/api/v1/billing/profile", a.profile)
+	mux.HandleFunc("/api/v1/billing/company/documents", a.companyDocuments)
 	mux.HandleFunc("/api/v1/billing/finance/overview", a.financeOverview)
 	mux.HandleFunc("/api/v1/billing/finance/export.pdf", a.financeExportPDF)
 	mux.HandleFunc("/api/v1/billing/packages/analytics", a.packageAnalytics)
@@ -126,6 +127,7 @@ func main() {
 	mux.HandleFunc("/internal/v1/payments/settlements", a.paymentSettlement)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	mux.HandleFunc("/internal/v1/analytics/dashboard", a.dashboardAnalytics)
+	mux.HandleFunc("/internal/v1/administration/summary", a.central14AdministrationSummary)
 	mux.HandleFunc("/internal/v1/partners/", a.internalPartnerRoutes)
 	common.Run(log, "billing", common.Env("PORT", "10000"), common.InternalAuth(a.token, mux))
 }
@@ -1601,7 +1603,21 @@ func (a *app) subscriptionByKey(w http.ResponseWriter, r *http.Request, id, modu
 func (a *app) documents(w http.ResponseWriter, r *http.Request, id string) {
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := a.db.Query(`SELECT id,kind,name,storage_url,note,uploaded_by,verified_by,mime_type,sha256,size_bytes,created_at FROM billing.documents WHERE partner_id=$1 ORDER BY created_at DESC`, id)
+		q:=strings.TrimSpace(r.URL.Query().Get("q"))
+		kindFilter:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("kind")))
+		query:=`SELECT id,kind,name,storage_url,note,uploaded_by,verified_by,mime_type,sha256,size_bytes,created_at
+			FROM billing.documents WHERE partner_id=$1`
+		args:=[]any{id}
+		if q!=""{
+			args=append(args,central14DocumentSearch(q))
+			query+=fmt.Sprintf(" AND (LOWER(name) LIKE $%d OR LOWER(kind) LIKE $%d OR LOWER(note) LIKE $%d OR LOWER(storage_url) LIKE $%d)",len(args),len(args),len(args),len(args))
+		}
+		if kindFilter!=""&&kindFilter!="ALL"{
+			args=append(args,kindFilter)
+			query+=fmt.Sprintf(" AND kind=$%d",len(args))
+		}
+		query+=" ORDER BY created_at DESC"
+		rows, err := a.db.Query(query,args...)
 		if err != nil { common.APIError(w, 500, "DB", "Could not load documents"); return }
 		defer rows.Close()
 		items := []map[string]any{}

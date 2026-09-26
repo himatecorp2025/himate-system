@@ -50,6 +50,12 @@ func (a *app) backupRoute(w http.ResponseWriter,r *http.Request){
 		common.JSON(w,200,mapRestorePoint(point))
 	case len(parts)==3&&parts[0]=="restore-points"&&parts[2]=="restore-test":
 		a.queueRestoreTest(w,r,parts[1])
+	case len(parts)==3&&parts[0]=="restore-points"&&parts[2]=="restore":
+		a.productionRestoreRoute(w,r,parts[1])
+	case len(parts)==2&&parts[0]=="restores":
+		a.restoreJobsRoute(w,r,parts[1])
+	case len(parts)==1&&parts[0]=="restores":
+		a.restoreJobsRoute(w,r,"")
 	case len(parts)==2&&parts[0]=="restore-tests":
 		if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
 		test,err:=scanRestoreTest(a.db.QueryRow(restoreTestSelect+` WHERE id=$1`,parts[1]))

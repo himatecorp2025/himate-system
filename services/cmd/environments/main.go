@@ -69,6 +69,7 @@ func main() {
 	mux.HandleFunc("/api/v1/environments/", a.environmentByID)
 	mux.HandleFunc("/internal/v1/environments/ensure-staging", a.ensureStaging)
 	mux.HandleFunc("/internal/v1/environments/deploy-staging", a.deployStaging)
+	mux.HandleFunc("/internal/v1/environments/recovery-release", a.recoveryRelease)
 	mux.HandleFunc("/internal/v1/environments/runtime-health", a.runtimeHealth)
 	mux.HandleFunc("/internal/v1/environments/summary", a.summary)
 	common.Run(log, "environments", common.Env("PORT", "10000"), common.InternalAuth(a.token, mux))
@@ -247,7 +248,13 @@ func (a *app) environmentByID(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w,404,"NOT_FOUND","Environment action not found"); return
 	}
 
-	if r.Method!=http.MethodPatch { common.APIError(w,405,"METHOD","Use PATCH"); return }
+	if r.Method==http.MethodGet {
+		e,err:=a.get(id)
+		if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found"); return }
+		common.JSON(w,http.StatusOK,mapEnvironment(e))
+		return
+	}
+	if r.Method!=http.MethodPatch { common.APIError(w,405,"METHOD","Use GET or PATCH"); return }
 	e, err:=a.get(id)
 	if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found"); return }
 	var in struct {
@@ -414,29 +421,46 @@ func (a *app) finalizeDeployment(ctx context.Context, e environment, release, ac
 	return e, nil
 }
 
+func (a *app) finalizeRecoveryDeployment(e environment, release string, latency int64) (environment, error) {
+	_,err:=a.db.Exec(`UPDATE environments.partner_environments
+		SET deployment_status='DEPLOYED',environment_status='SUSPENDED',active_release=$2,
+		    runtime_status='OK',runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW()
+		WHERE id=$1`,e.ID,strings.TrimSpace(release),latency)
+	if err!=nil{return e,err}
+	return a.get(e.ID)
+}
+
 func (a *app) deployRecord(ctx context.Context, e environment, release, actor string) (environment, error) {
-	wasLive := e.Kind == "PRODUCTION" && e.EnvironmentStatus == "LIVE"
+	return a.deployRecordWithOperation(ctx,e,release,actor,"",false)
+}
+
+func (a *app) deployRecordWithOperation(ctx context.Context,e environment,release,actor,operationID string,recovery bool)(environment,error){
+	wasLive := !recovery && e.Kind == "PRODUCTION" && e.EnvironmentStatus == "LIVE"
 	release = strings.TrimSpace(release)
 	if release == "" { release = e.DesiredRelease }
 	if release == "" { release = e.PlatformVersion }
 	if release == "" { release = "current" }
 
 	inProgressStatus := deploymentInProgressStatus(e)
+	if recovery { inProgressStatus = "SUSPENDED" }
 	_, _ = a.db.Exec(`UPDATE environments.partner_environments
 		SET deployment_status='DEPLOYING',environment_status=$2,runtime_status='CHECKING',updated_at=NOW()
 		WHERE id=$1`, e.ID, inProgressStatus)
 
-	var out map[string]any
-	latency, err := a.runtimeRequest(ctx, http.MethodPost, "/internal/v1/runtime/deploy", map[string]any{
+	payload:=map[string]any{
 		"partner_id": e.PartnerID,
 		"environment": e.Kind,
 		"hostname": e.Hostname,
 		"release": release,
 		"config": common.JSONRawOrEmpty(e.ConfigJSON),
-	}, &out)
+	}
+	if operationID=strings.TrimSpace(operationID);operationID!=""{payload["operation_id"]=operationID}
+	var out map[string]any
+	latency, err := a.runtimeRequest(ctx, http.MethodPost, "/internal/v1/runtime/deploy", payload, &out)
 	if err != nil {
 		failureStatus := "FAILED"
 		if wasLive { failureStatus = "LIVE" }
+		if recovery { failureStatus = "SUSPENDED" }
 		_, _ = a.db.Exec(`UPDATE environments.partner_environments
 			SET deployment_status='FAILED',environment_status=$2,runtime_status='ERROR',
 			    runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW()
@@ -447,17 +471,19 @@ func (a *app) deployRecord(ctx context.Context, e environment, release, actor st
 
 	switch runtimeProviderState(out) {
 	case "READY":
+		if recovery { return a.finalizeRecoveryDeployment(e,release,latency) }
 		return a.finalizeDeployment(ctx, e, release, actor, latency)
 	case "DEPLOYING":
 		_, _ = a.db.Exec(`UPDATE environments.partner_environments
-			SET deployment_status='DEPLOYING',runtime_status='DEPLOYING',
-			    runtime_latency_ms=$2,last_health_check=NOW(),updated_at=NOW()
-			WHERE id=$1`, e.ID, latency)
+			SET deployment_status='DEPLOYING',environment_status=$2,runtime_status='DEPLOYING',
+			    runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW()
+			WHERE id=$1`, e.ID, inProgressStatus, latency)
 		pending, _ := a.get(e.ID)
 		return pending, nil
 	default:
 		failureStatus := "FAILED"
 		if wasLive { failureStatus = "LIVE" }
+		if recovery { failureStatus = "SUSPENDED" }
 		_, _ = a.db.Exec(`UPDATE environments.partner_environments
 			SET deployment_status='FAILED',environment_status=$2,runtime_status='ERROR',
 			    runtime_latency_ms=$3,last_health_check=NOW(),updated_at=NOW()
@@ -465,6 +491,50 @@ func (a *app) deployRecord(ctx context.Context, e environment, release, actor st
 		failed, _ := a.get(e.ID)
 		return failed, fmt.Errorf("provider deployment returned unexpected state %q", runtimeProviderState(out))
 	}
+}
+
+func (a *app) recoveryRelease(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodPost{common.APIError(w,http.StatusMethodNotAllowed,"METHOD","Use POST");return}
+	var in struct{
+		EnvironmentID string `json:"environment_id"`
+		Release string `json:"release"`
+		OperationID string `json:"operation_id"`
+		AllowReuse bool `json:"allow_reuse"`
+	}
+	if common.Decode(r,&in)!=nil||strings.TrimSpace(in.EnvironmentID)==""||strings.TrimSpace(in.OperationID)==""{
+		common.APIError(w,http.StatusBadRequest,"VALIDATION","environment_id and operation_id are required");return
+	}
+	if len(strings.TrimSpace(in.OperationID))>160{common.APIError(w,http.StatusBadRequest,"VALIDATION","operation_id is too long");return}
+	e,err:=a.get(strings.TrimSpace(in.EnvironmentID))
+	if err!=nil{common.APIError(w,http.StatusNotFound,"NOT_FOUND","Environment not found");return}
+	release:=strings.TrimSpace(in.Release)
+	if release==""{release=e.ActiveRelease}
+	if release==""{release=e.DesiredRelease}
+	if release==""{release=e.PlatformVersion}
+	if release==""{
+		_,err=a.db.Exec(`UPDATE environments.partner_environments SET environment_status='SUSPENDED',updated_at=NOW() WHERE id=$1`,e.ID)
+		if err!=nil{common.APIError(w,500,"DB","Could not suspend recovered environment");return}
+		e,_=a.get(e.ID);common.JSON(w,http.StatusOK,mapEnvironment(e));return
+	}
+
+	if in.AllowReuse&&e.DeploymentStatus=="DEPLOYED"&&strings.TrimSpace(e.ActiveRelease)==release{
+		path:="/internal/v1/runtime/health?partner_id="+url.QueryEscape(e.PartnerID)+"&environment="+url.QueryEscape(e.Kind)
+		var runtime map[string]any
+		latency,probeErr:=a.runtimeRequest(r.Context(),http.MethodGet,path,nil,&runtime)
+		if probeErr==nil&&runtimeProviderState(runtime)=="READY"&&strings.TrimSpace(fmt.Sprint(runtime["release"]))==release{
+			e,err=a.finalizeRecoveryDeployment(e,release,latency)
+			if err!=nil{common.APIError(w,500,"DB","Could not finalize reused recovery runtime");return}
+			out:=mapEnvironment(e);out["recovery_reused"]=true
+			common.JSON(w,http.StatusOK,out);return
+		}
+	}
+
+	e,err=a.deployRecordWithOperation(r.Context(),e,release,strings.TrimSpace(r.Header.Get("X-Himate-User-ID")),strings.TrimSpace(in.OperationID),true)
+	if err!=nil{common.APIError(w,http.StatusBadGateway,"RECOVERY_RUNTIME_DEPLOY",err.Error());return}
+	out:=mapEnvironment(e);out["recovery_reused"]=false
+	code:=http.StatusOK
+	if e.DeploymentStatus=="DEPLOYING"{code=http.StatusAccepted}
+	common.JSON(w,code,out)
 }
 
 func (a *app) deployEnvironment(w http.ResponseWriter,r *http.Request,id string){

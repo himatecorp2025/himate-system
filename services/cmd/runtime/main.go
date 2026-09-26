@@ -337,11 +337,19 @@ func normalizedProviderStatus(raw string) string {
 }
 
 func deploymentRequestKey(partnerID,environment,hostname,release,providerName,serviceID string,config map[string]any) string {
+	return deploymentRequestKeyWithOperation(partnerID,environment,hostname,release,providerName,serviceID,config,"")
+}
+
+func deploymentRequestKeyWithOperation(partnerID,environment,hostname,release,providerName,serviceID string,config map[string]any,operationID string) string {
 	raw,_:=json.Marshal(config)
-	sum:=sha256.Sum256([]byte(strings.Join([]string{
+	fields:=[]string{
 		strings.TrimSpace(partnerID),strings.ToUpper(strings.TrimSpace(environment)),strings.ToLower(strings.TrimSpace(hostname)),
 		strings.TrimSpace(release),strings.ToLower(strings.TrimSpace(providerName)),strings.TrimSpace(serviceID),string(raw),
-	},"\x00")))
+	}
+	if operationID=strings.TrimSpace(operationID);operationID!=""{
+		fields=append(fields,"operation:"+operationID)
+	}
+	sum:=sha256.Sum256([]byte(strings.Join(fields,"\x00")))
 	return "dpl_"+fmt.Sprintf("%x",sum[:16])
 }
 
@@ -454,6 +462,7 @@ func (a *app) deploy(w http.ResponseWriter, r *http.Request) {
 		Hostname    string         `json:"hostname"`
 		Release     string         `json:"release"`
 		Config      map[string]any `json:"config"`
+		OperationID string         `json:"operation_id"`
 	}
 	if common.Decode(r, &in) != nil || strings.TrimSpace(in.PartnerID) == "" || strings.TrimSpace(in.Hostname) == "" {
 		common.APIError(w, http.StatusBadRequest, "VALIDATION", "partner_id and hostname are required")
@@ -469,6 +478,11 @@ func (a *app) deploy(w http.ResponseWriter, r *http.Request) {
 	in.Release = strings.TrimSpace(in.Release)
 	if in.Release == "" {
 		in.Release = "current"
+	}
+	in.OperationID = strings.TrimSpace(in.OperationID)
+	if len(in.OperationID) > 160 {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", "operation_id is too long")
+		return
 	}
 
 	provider, serviceID, err := a.deploymentProvider(in.Config)
@@ -492,7 +506,7 @@ func (a *app) deploy(w http.ResponseWriter, r *http.Request) {
 		CommitID:   commitID,
 		ClearCache: configBool(in.Config, "clear_build_cache"),
 	}
-	requestKey:=deploymentRequestKey(in.PartnerID,in.Environment,in.Hostname,in.Release,provider.Name(),serviceID,in.Config)
+	requestKey:=deploymentRequestKeyWithOperation(in.PartnerID,in.Environment,in.Hostname,in.Release,provider.Name(),serviceID,in.Config,in.OperationID)
 	configRaw,_:=json.Marshal(in.Config)
 	var inserted string
 	intentErr:=a.db.QueryRowContext(r.Context(),`INSERT INTO runtime.deployment_intents(

@@ -32,6 +32,7 @@ type app struct {
 	internalToken string
 	client        *http.Client
 	dbAdminURL    string
+	platformDBName string
 	storageHost   string
 	envHost       string
 	connectorHost string
@@ -95,8 +96,19 @@ func main() {
 		log.Error("backup encryption key", "error", "HIMATE_BACKUP_ENCRYPTION_KEY_B64 must decode to exactly 32 bytes")
 		os.Exit(1)
 	}
+	platformURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	parsedPlatformURL, parseErr := url.Parse(platformURL)
+	if parseErr != nil || parsedPlatformURL == nil {
+		log.Error("platform database URL", "error", "DATABASE_URL is invalid")
+		os.Exit(1)
+	}
+	platformDBName := strings.TrimPrefix(parsedPlatformURL.Path, "/")
+	if strings.TrimSpace(platformDBName) == "" {
+		log.Error("platform database URL", "error", "DATABASE_URL must include a database name")
+		os.Exit(1)
+	}
 	adminURL := strings.TrimSpace(os.Getenv("PARTNER_DATABASE_ADMIN_URL"))
-	if adminURL == "" { adminURL = strings.TrimSpace(os.Getenv("DATABASE_URL")) }
+	if adminURL == "" { adminURL = platformURL }
 	if _, err := partnerdb.AdminDSN(adminURL); err != nil {
 		log.Error("partner database admin URL", "error", err)
 		os.Exit(1)
@@ -117,7 +129,7 @@ func main() {
 	workers,_:=strconv.Atoi(common.Env("HIMATE_BACKUP_WORKERS","1"))
 	if workers<1{workers=1};if workers>4{workers=4}
 	a:=&app{
-		db:db,internalToken:os.Getenv("HIMATE_INTERNAL_TOKEN"),client:client,dbAdminURL:adminURL,
+		db:db,internalToken:os.Getenv("HIMATE_INTERNAL_TOKEN"),client:client,dbAdminURL:adminURL,platformDBName:platformDBName,
 		storageHost:os.Getenv("STORAGE_HOSTPORT"),envHost:os.Getenv("ENVIRONMENTS_HOSTPORT"),
 		connectorHost:os.Getenv("CONNECTOR_HOSTPORT"),partnersHost:os.Getenv("PARTNERS_HOSTPORT"),
 		workRoot:workRoot,key:key,provider:provider,wake:make(chan struct{},1),workers:workers,
@@ -126,8 +138,11 @@ func main() {
 
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
 	if err:=a.migrate(ctx);err!=nil{log.Error("migration","error",err);os.Exit(1)}
+	_,_=a.db.Exec(`INSERT INTO backups.policies(partner_id,retention_days,max_restore_points,schedule_hours,enabled)
+		VALUES('_platform',30,30,24,TRUE) ON CONFLICT(partner_id) DO NOTHING`)
 	_,_=a.db.Exec(`UPDATE backups.restore_points SET status='QUEUED',error='worker restarted before completion' WHERE status='RUNNING'`)
 	_,_=a.db.Exec(`UPDATE backups.restore_tests SET status='QUEUED',error='worker restarted before completion' WHERE status='RUNNING'`)
+	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET status='QUEUED',error='worker restarted before completion',started_at=NULL WHERE status='RUNNING'`)
 
 	for i:=0;i<a.workers;i++{go a.worker(i)}
 	go a.scheduler()
@@ -195,6 +210,28 @@ func (a *app) migrate(ctx context.Context) error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS backups_one_pending_partner_idx
 				ON backups.restore_points(partner_id)
 				WHERE status IN ('QUEUED','RUNNING')`,
+		}},
+		{Version:3,Name:"central14-production-restore-jobs",Statements:[]string{
+			`CREATE TABLE IF NOT EXISTS backups.restore_jobs(
+				id TEXT PRIMARY KEY,
+				restore_point_id TEXT NOT NULL REFERENCES backups.restore_points(id),
+				partner_id TEXT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'QUEUED',
+				safety_restore_point_id TEXT NOT NULL DEFAULT '',
+				database_ok BOOLEAN NOT NULL DEFAULT FALSE,
+				media_ok BOOLEAN NOT NULL DEFAULT FALSE,
+				config_ok BOOLEAN NOT NULL DEFAULT FALSE,
+				reason TEXT NOT NULL DEFAULT '',
+				created_by TEXT NOT NULL DEFAULT '',
+				error TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				started_at TIMESTAMPTZ,
+				completed_at TIMESTAMPTZ,
+				duration_ms BIGINT NOT NULL DEFAULT 0
+			)`,
+			`CREATE INDEX IF NOT EXISTS backups_restore_jobs_partner_idx ON backups.restore_jobs(partner_id,created_at DESC)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS backups_one_live_restore_partner_idx
+				ON backups.restore_jobs(partner_id) WHERE status IN ('QUEUED','RUNNING')`,
 		}},
 	})
 }

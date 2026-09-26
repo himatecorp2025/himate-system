@@ -140,7 +140,9 @@ func runCommand(ctx context.Context,env []string,name string,args ...string)erro
 }
 
 func (a *app) dumpDatabase(ctx context.Context,partnerID,target string)error{
-	dbName:=partnerdb.DatabaseName(partnerID);if dbName==""{return fmt.Errorf("invalid partner id")}
+	dbName:=partnerdb.DatabaseName(partnerID)
+	if partnerID=="_platform"{dbName=strings.TrimSpace(a.platformDBName)}
+	if dbName==""{return fmt.Errorf("invalid backup scope")}
 	env,err:=a.pgEnvironment(dbName);if err!=nil{return err}
 	return runCommand(ctx,env,"pg_dump","--format=custom","--no-owner","--no-privileges","--file",target)
 }
@@ -247,8 +249,18 @@ func (a *app) createRestorePoint(ctx context.Context,p restorePoint)error{
 	archivePath:=filepath.Join(work,"restore.tar.gz");encryptedPath:=filepath.Join(work,"restore.hmbk")
 
 	if err:=a.dumpDatabase(ctx,p.PartnerID,dbPath);err!=nil{return fmt.Errorf("database backup: %w",err)}
-	if err:=a.fetchToFile(ctx,a.storageHost,"/internal/v1/storage/partners/"+url.PathEscape(p.PartnerID)+"/archive",mediaPath);err!=nil{return fmt.Errorf("media backup: %w",err)}
-	config,err:=a.captureConfig(ctx,p.PartnerID);if err!=nil{return fmt.Errorf("configuration backup: %w",err)}
+	var config map[string]any
+	if p.PartnerID=="_platform"{
+		if err:=createTarGz(mediaPath,work,[]string{});err!=nil{return fmt.Errorf("platform media placeholder: %w",err)}
+		config=map[string]any{
+			"schema_version":1,"partner_id":"_platform","scope":"PLATFORM",
+			"database_name":a.platformDBName,"captured_at":time.Now().UTC(),
+		}
+	}else{
+		if err:=a.fetchToFile(ctx,a.storageHost,"/internal/v1/storage/partners/"+url.PathEscape(p.PartnerID)+"/archive",mediaPath);err!=nil{return fmt.Errorf("media backup: %w",err)}
+		var err error
+		config,err=a.captureConfig(ctx,p.PartnerID);if err!=nil{return fmt.Errorf("configuration backup: %w",err)}
+	}
 	if err:=writeJSONFile(configPath,config);err!=nil{return err}
 
 	dbSHA,dbBytes,err:=shaFile(dbPath);if err!=nil{return err}
@@ -297,6 +309,12 @@ func (a *app) restoreDatabase(ctx context.Context,dumpPath,partnerID,testID stri
 	if err:=runCommand(ctx,env,"pg_restore","--no-owner","--no-privileges","--exit-on-error","--dbname",name,dumpPath);err!=nil{return err}
 	u,err:=url.Parse(a.dbAdminURL);if err!=nil{return err};u.Path="/"+name
 	db,err:=sql.Open("pgx",u.String());if err!=nil{return err};defer db.Close()
+	if partnerID=="_platform"{
+		var identityExists bool
+		if err:=db.QueryRowContext(ctx,`SELECT to_regclass('identity.users') IS NOT NULL`).Scan(&identityExists);err!=nil{return fmt.Errorf("verify restored platform identity schema: %w",err)}
+		if !identityExists{return fmt.Errorf("restored platform identity schema is missing")}
+		return nil
+	}
 	var restoredPartner string
 	if err:=db.QueryRowContext(ctx,`SELECT value FROM partner_core.system_meta WHERE key='partner_id'`).Scan(&restoredPartner);err!=nil{return fmt.Errorf("verify restored partner identity: %w",err)}
 	if restoredPartner!=partnerID{return fmt.Errorf("restored partner identity mismatch")};return nil

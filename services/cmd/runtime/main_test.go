@@ -22,6 +22,17 @@ func TestDeploymentRequestKeyIsDeterministicAndScopeSensitive(t *testing.T) {
 	}
 }
 
+func TestDeploymentRequestKeyRecoveryOperationIsRetryStableAndDistinct(t *testing.T) {
+	config:=map[string]any{"provider":"local","source":"ci"}
+	normal:=deploymentRequestKey("ptr_1","PRODUCTION","one.example.com","release-1","local","",config)
+	recoveryA:=deploymentRequestKeyWithOperation("ptr_1","PRODUCTION","one.example.com","release-1","local","",config,"restore:rjob_1")
+	recoveryB:=deploymentRequestKeyWithOperation("ptr_1","PRODUCTION","one.example.com","release-1","local","",config,"restore:rjob_1")
+	rollback:=deploymentRequestKeyWithOperation("ptr_1","PRODUCTION","one.example.com","release-1","local","",config,"rollback:rjob_1")
+	if recoveryA==""||recoveryA!=recoveryB{t.Fatalf("recovery operation key must be retry-stable: %q %q",recoveryA,recoveryB)}
+	if recoveryA==normal{t.Fatal("recovery operation must not collide with the normal deployment intent")}
+	if rollback==recoveryA{t.Fatal("rollback operation must have an independent durable deployment intent")}
+}
+
 func TestNormalizedProviderStatus(t *testing.T) {
 	cases := map[string]string{
 		"live":              "READY",

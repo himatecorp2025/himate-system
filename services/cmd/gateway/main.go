@@ -968,6 +968,8 @@ func permissionResource(r *http.Request) string {
 		return "impact"
 	case path == "/api/v1/central/connections":
 		return "connectors"
+	case path == "/api/v1/central/administration":
+		return "administration"
 	case path == "/api/v1/audit/events":
 		return "audit"
 	case path == "/api/v1/notifications", strings.HasPrefix(path, "/api/v1/notifications/"):
@@ -1201,6 +1203,8 @@ func auditAction(r *http.Request) string {
 		return "BACKUP_RESTORE_POINT_QUEUED"
 	case strings.HasSuffix(path, "/restore-test") && r.Method == http.MethodPost:
 		return "BACKUP_RESTORE_TEST_QUEUED"
+	case strings.HasSuffix(path, "/restore") && strings.Contains(path, "/backups/restore-points/") && r.Method == http.MethodPost:
+		return "BACKUP_PRODUCTION_RESTORE_QUEUED"
 	case strings.Contains(path, "/backups/policies/") && r.Method == http.MethodPut:
 		return "BACKUP_POLICY_UPDATED"
 	case path == "/api/v1/backups/prune" && r.Method == http.MethodPost:
@@ -1344,6 +1348,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.globalSearch(w, r, u)
 	case r.URL.Path == "/api/v1/central/connections":
 		a.central13Connections(w, r, u)
+	case r.URL.Path == "/api/v1/central/administration":
+		a.central14Administration(w, r, u)
 	case r.URL.Path == "/api/v1/central/partners" || strings.HasPrefix(r.URL.Path, "/api/v1/central/partners/") ||
 		r.URL.Path == "/api/v1/central/modules" || r.URL.Path == "/api/v1/central/modules/commercial" ||
 		r.URL.Path == "/api/v1/central/packages" || r.URL.Path == "/api/v1/central/packages/supplementary" ||
@@ -1507,6 +1513,7 @@ func notificationDescriptor(event auditEvent) (severity,title,message,audience,d
 	case "ENVIRONMENT_DEPLOY": return "INFO","Deployment started","A partner environment deployment was requested.","environments.read","/app",true
 	case "ENVIRONMENT_LAUNCH": return "INFO","Production launch requested","A partner production launch was requested.","environments.read","/app",true
 	case "BACKUP_RESTORE_POINT_QUEUED","BACKUP_RESTORE_TEST_QUEUED": return "INFO","Backup operation queued","A recoverability operation was queued.","backups.read","/app",true
+	case "BACKUP_PRODUCTION_RESTORE_QUEUED": return "WARNING","Production restore queued","A verified partner production restore was requested. Review the audit trail and recovery job status.","backups.read","/app",true
 	case "SEO_SETTINGS_PUBLISHED": return "INFO","SEO settings published","Published SEO settings changed.","cms.read","/app",true
 	}
 	if event.Resource=="partners" && event.Method==http.MethodPost { return "INFO","Partner created","A new partner record was registered.","partners.read","/app",true }

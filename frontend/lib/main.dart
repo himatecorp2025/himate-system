@@ -21,6 +21,7 @@ part 'design_guide.dart';
 part 'seo_panel.dart';
 part 'start22_connector.dart';
 part 'administration_rbac.dart';
+part 'administration_center.dart';
 part 'brand_assets.dart';
 part 'backups_panel.dart';
 part 'domains_deployments.dart';
@@ -317,6 +318,11 @@ String centralConnectionsInitialPath() => Uri(
       queryParameters: const <String, String>{'limit': '120', 'offset': '0'},
     ).toString();
 
+String centralAdministrationInitialPath() => Uri(
+      path: '/api/v1/central/administration',
+      queryParameters: const <String, String>{'limit': '200', 'offset': '0'},
+    ).toString();
+
 class Api {
   Api() : client = BrowserClient()..withCredentials = true;
   final BrowserClient client;
@@ -396,6 +402,7 @@ class Api {
       add('/api/v1/central/partners');
       add('/api/v1/central/modules/commercial');
       add('/api/v1/central/connections');
+      add('/api/v1/central/administration');
       addDashboard();
     } else if (path.startsWith('/api/v1/partners') ||
         path.startsWith('/api/v1/partner-categories')) {
@@ -403,6 +410,7 @@ class Api {
       add('/api/v1/partner-categories');
       add('/api/v1/central/partners');
       add('/api/v1/central/modules/commercial');
+      add('/api/v1/central/administration');
       addDashboard();
     } else if (path.startsWith('/api/v1/modules') ||
         path.startsWith('/api/v1/module-groups')) {
@@ -420,6 +428,7 @@ class Api {
       add('/api/v1/central/finance');
       add('/api/v1/central/modules/commercial');
       add('/api/v1/central/partners');
+      add('/api/v1/central/administration');
       addDashboard();
     } else if (path.startsWith('/api/v1/impact') ||
         path.startsWith('/api/v1/evidence') ||
@@ -435,6 +444,7 @@ class Api {
       add('/api/v1/contact/inquiries');
     } else if (path.startsWith('/api/v1/backups')) {
       add('/api/v1/backups');
+      add('/api/v1/central/administration');
       add('/api/v1/system-health');
     } else if (path.startsWith('/api/v1/provisioning') ||
         path.startsWith('/api/v1/environments') ||
@@ -447,6 +457,7 @@ class Api {
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
       add('/api/v1/audit');
+      add('/api/v1/central/administration');
     } else if (path.startsWith('/api/v1/notifications')) {
       add('/api/v1/notifications');
     } else if (path.startsWith('/api/v1/auth')) {
@@ -723,6 +734,9 @@ class _HimateAppState extends State<HimateApp> {
     }
     if (_can('connectors.read')) {
       deferredTargets.add(centralConnectionsInitialPath());
+    }
+    if (_can('administration.read')) {
+      deferredTargets.add(centralAdministrationInitialPath());
     }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
       deferredTargets.add('/api/v1/system-health/snapshot');
@@ -2028,7 +2042,19 @@ class _ShellState extends State<Shell> {
         canConnections: can('connectors.read'),
       );
       case 7: return SystemPage(api: widget.api);
-      case 8: return AdministrationPage(api: widget.api, user: widget.user);
+      case 8:
+        return can('administration.read')
+            ? AdministrationCenterPage(
+                api: widget.api,
+                user: widget.user,
+                canPartnersRead: can('partners.read'),
+                canBillingRead: can('billing.read'),
+                canBillingWrite: can('billing.write') || can('billing.approve'),
+                canBackupsRead: can('backups.read'),
+                canBackupsApprove: can('backups.approve'),
+                canAuditRead: can('audit.read'),
+              )
+            : AdministrationPage(api: widget.api, user: widget.user);
       case 9: return ComplianceArchivesPage(api: widget.api);
       default: return const SizedBox.shrink();
     }
@@ -9031,9 +9057,10 @@ class _SystemPageState extends State<SystemPage> {
 
 
 class AdministrationPage extends StatefulWidget {
-  const AdministrationPage({required this.api, required this.user, super.key});
+  const AdministrationPage({required this.api, required this.user, this.onBack, super.key});
   final Api api;
   final Map<String, dynamic> user;
+  final VoidCallback? onBack;
 
   @override
   State<AdministrationPage> createState() => _AdministrationPageState();
@@ -9224,6 +9251,12 @@ class _AdministrationPageState extends State<AdministrationPage> {
       title: 'Administration',
       subtitle: 'Central audit history, administrator lifecycle, roles and backend-enforced permissions across the HIMATE control plane.',
       actions: [
+        if (widget.onBack != null)
+          OutlinedButton.icon(
+            onPressed: widget.onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const LText('Back'),
+          ),
         OutlinedButton.icon(
           onPressed: loading ? null : () => load(),
           icon: const Icon(Icons.refresh_rounded),

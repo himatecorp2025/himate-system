@@ -6,6 +6,10 @@ class BackupsPanel extends StatefulWidget {
     required this.initialSummary,
     required this.partnerIds,
     required this.initialProvider,
+    this.partnerLabels = const <String, String>{},
+    this.productionRestoreEligible = const <String, bool>{},
+    this.canMutate = true,
+    this.scopeToPartnerIds = false,
     super.key,
   });
 
@@ -13,6 +17,10 @@ class BackupsPanel extends StatefulWidget {
   final List<Map<String, dynamic>> initialSummary;
   final List<String> partnerIds;
   final String initialProvider;
+  final Map<String, String> partnerLabels;
+  final Map<String, bool> productionRestoreEligible;
+  final bool canMutate;
+  final bool scopeToPartnerIds;
 
   @override
   State<BackupsPanel> createState() => _BackupsPanelState();
@@ -41,8 +49,13 @@ class _BackupsPanelState extends State<BackupsPanel> {
   }
 
   List<Map<String, dynamic>> _copySummary(List<Map<String, dynamic>> value) {
-    final copied = [for (final item in value) Map<String, dynamic>.from(item)];
-    copied.sort((a, b) => '${a['partner_id']}'.compareTo('${b['partner_id']}'));
+    final allowed = widget.partnerIds.toSet();
+    final copied = [
+      for (final item in value)
+        if (!widget.scopeToPartnerIds || allowed.contains((item['partner_id'] ?? '').toString()))
+          Map<String, dynamic>.from(item),
+    ];
+    copied.sort((a, b) => (a['partner_id'] ?? '').toString().compareTo((b['partner_id'] ?? '').toString()));
     return copied;
   }
 
@@ -60,6 +73,11 @@ class _BackupsPanelState extends State<BackupsPanel> {
   String _value(dynamic value, {String fallback = '—'}) {
     final raw = value?.toString().trim() ?? '';
     return raw.isEmpty || raw == 'null' ? fallback : raw;
+  }
+
+  String _displayName(String partnerId) {
+    if (partnerId == '_platform') return 'HIMATE Platform';
+    return widget.partnerLabels[partnerId] ?? partnerId;
   }
 
   String _date(dynamic value) {
@@ -139,7 +157,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 value: selected,
                 decoration: InputDecoration(labelText: uiLiteral('Partner')),
                 items: [
-                  for (final id in ids) DropdownMenuItem(value: id, child: LText(id)),
+                  for (final id in ids) DropdownMenuItem(value: id, child: LText(_displayName(id))),
                 ],
                 onChanged: (value) {
                   if (value != null) setDialogState(() => selected = value);
@@ -266,6 +284,123 @@ class _BackupsPanelState extends State<BackupsPanel> {
     }
     await _refresh(quiet: true);
     _notify('Restore verification is still running. Refresh the panel to see the latest state.');
+  }
+
+  Future<void> _restoreProduction(String partnerId) async {
+    if (partnerId == '_platform') {
+      _notify('Platform production recovery is maintenance-only and cannot be executed from the live control plane.', failure: true);
+      return;
+    }
+    final summary = _summaryFor(partnerId);
+    final pointId = _value(summary['latest_restore_point_id'], fallback: '');
+    final recoverability = _value(summary['recoverability_status'], fallback: 'UNVERIFIED');
+    if (pointId.isEmpty || recoverability != 'VERIFIED') {
+      _notify('A VERIFIED restore point is required before production recovery.', failure: true);
+      return;
+    }
+    if (widget.productionRestoreEligible[partnerId] != true) {
+      _notify('Suspend the partner before production recovery. Test Partners are exempt from the suspension gate.', failure: true);
+      return;
+    }
+    final reason = TextEditingController();
+    final confirmation = TextEditingController();
+    String? dialogError;
+    final payload = await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => BrandDialog(
+          title: 'Restore verified partner backup',
+          subtitle: 'This is a production recovery operation. A fresh safety backup is created automatically before the verified restore point replaces the partner database, media and captured configuration.',
+          icon: Icons.restore_rounded,
+          primaryLabel: 'Start production restore',
+          onPrimary: () {
+            if (reason.text.trim().length < 5) {
+              setDialogState(() => dialogError = 'Enter a recovery reason of at least 5 characters.');
+              return;
+            }
+            final required = 'RESTORE $partnerId';
+            if (confirmation.text.trim() != required) {
+              setDialogState(() => dialogError = 'Type $required exactly to confirm.');
+              return;
+            }
+            Navigator.pop(dialogContext, <String, dynamic>{
+              'reason': reason.text.trim(),
+              'confirmation': confirmation.text.trim(),
+            });
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _DefinitionRow(label: 'Restore point', value: pointId),
+              _DefinitionRow(label: 'Recoverability', value: recoverability),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reason,
+                minLines: 2,
+                maxLines: 4,
+                decoration: InputDecoration(labelText: uiLiteral('Recovery reason')),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmation,
+                decoration: InputDecoration(
+                  labelText: uiLiteral('Confirmation'),
+                  hintText: 'RESTORE $partnerId',
+                ),
+              ),
+              const SizedBox(height: 10),
+              const LText(
+                'The restore job is audit-visible and component status is persisted for database, media and configuration recovery.',
+                style: TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                LText(dialogError!, style: const TextStyle(color: brandDanger, fontWeight: FontWeight.w600)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    reason.dispose();
+    confirmation.dispose();
+    if (payload == null || busy.contains(partnerId)) return;
+
+    setState(() => busy.add(partnerId));
+    try {
+      final job = await widget.api.post('/api/v1/backups/restore-points/$pointId/restore?partner_id=$partnerId', payload);
+      final jobId = _value(job['id'], fallback: '');
+      if (jobId.isEmpty) throw StateError('Backup service did not return a restore-job identifier.');
+      _notify('Production restore $jobId queued. A safety backup will be created first.');
+      await _pollProductionRestore(partnerId, jobId);
+    } catch (e) {
+      _notify(e.toString(), failure: true);
+    } finally {
+      if (mounted) setState(() => busy.remove(partnerId));
+    }
+  }
+
+  Future<void> _pollProductionRestore(String partnerId, String jobId) async {
+    for (var attempt = 0; attempt < 120; attempt++) {
+      if (!mounted) return;
+      await Future<void>.delayed(const Duration(seconds: 2));
+      try {
+        final job = await widget.api.get('/api/v1/backups/restores/$jobId', force: true);
+        final status = _value(job['status'], fallback: 'UNKNOWN');
+        if (status == 'FAILED') {
+          await _refresh(quiet: true);
+          _notify('Production restore failed: ' + _value(job['error'], fallback: 'Open audit logs for diagnostics.'), failure: true);
+          return;
+        }
+        if (status == 'COMPLETED') {
+          await _refresh(quiet: true);
+          _notify('Production restore completed. Database, media and configuration recovery passed.');
+          return;
+        }
+      } catch (_) {}
+    }
+    await _refresh(quiet: true);
+    _notify('Production restore is still running. Refresh the recovery panel for the latest state.');
   }
 
   Future<void> _editPolicy(String partnerId) async {
@@ -397,7 +532,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      LText(partnerId, style: const TextStyle(color: brandNavy, fontSize: 14, fontWeight: FontWeight.w700)),
+                      LText(_displayName(partnerId), style: const TextStyle(color: brandNavy, fontSize: 14, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 3),
                       SelectableText(
                         pointId.isEmpty ? 'No restore point yet' : pointId,
@@ -427,22 +562,42 @@ class _BackupsPanelState extends State<BackupsPanel> {
               runSpacing: 8,
               children: [
                 OutlinedButton.icon(
-                  onPressed: isBusy ? null : () => _editPolicy(partnerId),
+                  onPressed: isBusy || !widget.canMutate ? null : () => _editPolicy(partnerId),
                   icon: const Icon(Icons.policy_outlined, size: 17),
                   label: const LText('Policy'),
                 ),
                 FilledButton.icon(
-                  onPressed: isBusy ? null : () => _createRestorePoint(partnerId),
+                  onPressed: isBusy || !widget.canMutate ? null : () => _createRestorePoint(partnerId),
                   icon: const Icon(Icons.backup_outlined, size: 17),
                   label: const LText('Create restore point'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: isBusy || backupStatus != 'READY' || pointId.isEmpty ? null : () => _runRestoreTest(partnerId),
+                  onPressed: isBusy || !widget.canMutate || backupStatus != 'READY' || pointId.isEmpty ? null : () => _runRestoreTest(partnerId),
                   icon: const Icon(Icons.restore_page_outlined, size: 17),
                   label: const LText('Run restore test'),
                 ),
+                if (partnerId != '_platform')
+                  FilledButton.icon(
+                    onPressed: isBusy ||
+                            !widget.canMutate ||
+                            recoverability != 'VERIFIED' ||
+                            backupStatus != 'READY' ||
+                            pointId.isEmpty ||
+                            widget.productionRestoreEligible[partnerId] != true
+                        ? null
+                        : () => _restoreProduction(partnerId),
+                    icon: const Icon(Icons.restore_rounded, size: 17),
+                    label: const LText('Restore verified backup'),
+                  ),
               ],
             ),
+            if (partnerId == '_platform') ...[
+              const SizedBox(height: 10),
+              const LText(
+                'HIMATE platform restore points are automatically scheduled and restore-tested. Production platform replacement is intentionally maintenance-only because the live control-plane database cannot safely replace itself.',
+                style: TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+              ),
+            ],
             if (isBusy) ...[
               const SizedBox(height: 10),
               const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),

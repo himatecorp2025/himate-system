@@ -35,6 +35,11 @@ func (a *app) invalidateCentral10Caches(path string) {
 	path = strings.ToLower(strings.TrimSpace(path))
 	invalidatePartners := strings.Contains(path, "partner")
 	invalidateConnections := invalidatePartners || strings.Contains(path, "connector")
+	invalidateAdministration := invalidatePartners ||
+		strings.Contains(path, "billing") ||
+		strings.Contains(path, "invoice") ||
+		strings.Contains(path, "backup") ||
+		strings.Contains(path, "admin")
 	invalidateWorkspaceModules := invalidatePartners ||
 		strings.Contains(path, "module") ||
 		strings.Contains(path, "billing") ||
@@ -52,6 +57,9 @@ func (a *app) invalidateCentral10Caches(path string) {
 			remove = true
 		}
 		if invalidateConnections && strings.Contains(lowerKey, "/api/v1/central/connections?") {
+			remove = true
+		}
+		if invalidateAdministration && strings.Contains(lowerKey, "/api/v1/central/administration?") {
 			remove = true
 		}
 		if remove {
