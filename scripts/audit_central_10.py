@@ -158,6 +158,20 @@ for token in [
 ]:
     check(token in gateway, f"Go weekly read-model contract missing: {token}")
 
+# Dynamic-N contract: operational page/chunk sizes are allowed, but no total
+# partner/module ceiling may truncate the Central dataset.
+for token in [
+    "func (a *app) central10AllPartners",
+    "pageCount := (first.Total + pageSize - 1) / pageSize",
+    "central10StringChunks(partnerIDs, 80)",
+    "groupLimit := central10PositiveInt",
+]:
+    check(token in gateway, f"Central-10 dynamic-N contract missing: {token}")
+check("central10QueryLimit(r.URL.Query().Get(\"commercial_limit\"), 120, 200)" not in gateway,
+      "Commercial Matrix still has a fixed 200-group ceiling")
+check("maximum: 200, default: 120" not in openapi,
+      "OpenAPI still advertises a fixed 200-group Commercial Matrix ceiling")
+
 # Responsibility score: 20 explicit read-model capabilities. 19/20 is the
 # acceptance floor (95%). These are architecture responsibilities, not LOC.
 responsibilities = [
