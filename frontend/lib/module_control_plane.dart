@@ -400,7 +400,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   Widget commercialCard(Map<String, dynamic> row) {
     final partnerID = s(row['partner_id']);
     final moduleKey = s(row['key']);
-    final subscription = commercialSubscription(partnerID, moduleKey);
+    final subscription = row['subscription'] is Map
+        ? Map<String, dynamic>.from(row['subscription'] as Map)
+        : null;
     final configuredNext = row['next_partner_price'] ?? row['partner_price'];
     final nextAt = s(row['next_price_effective_at']).trim();
     final nextAtLabel = nextAt.isEmpty ? '' : (nextAt.length >= 10 ? nextAt.substring(0, 10) : nextAt);
@@ -419,9 +421,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 : subscription['auto_renew'] == true
                     ? 'Auto-renew'
                     : 'No renewal';
-    final primaryTitle = commercialPerspective == 'MODULE' ? s(row['label']) : partnerName(partnerID);
+    final resolvedPartnerName = s(row['partner_name']).isEmpty ? partnerName(partnerID) : s(row['partner_name']);
+    final primaryTitle = commercialPerspective == 'MODULE' ? s(row['label']) : resolvedPartnerName;
     final secondaryTitle = commercialPerspective == 'MODULE'
-        ? partnerName(partnerID) + ' · ' + partnerID
+        ? resolvedPartnerName + ' · ' + partnerID
         : s(row['label']) + ' · ' + moduleKey;
     final currentPeriodPrice = subscription == null
         ? '—'
@@ -479,6 +482,70 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             ],
           ),
         ]),
+      ),
+    );
+  }
+
+  Widget commercialGroupCard(Map<String, dynamic> group) {
+    final byModule = commercialPerspective == 'MODULE';
+    final rows = items(<String, dynamic>{
+      'items': byModule ? group['partners'] : group['modules'],
+    });
+    final title = byModule
+        ? (s(group['module_label']).isEmpty ? s(group['module_key']) : s(group['module_label']))
+        : (s(group['partner_name']).isEmpty ? s(group['partner_id']) : s(group['partner_name']));
+    final subtitle = byModule
+        ? '${s(group['module_key'])} · ${rows.length} ${uiLiteral('partners')}'
+        : '${s(group['partner_id'])} · ${rows.length} ${uiLiteral('modules')}';
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        maintainState: true,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        leading: Icon(
+          byModule ? Icons.extension_outlined : Icons.business_outlined,
+          color: byModule ? brandSteel : brandGold,
+        ),
+        title: LText(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14),
+        ),
+        subtitle: LText(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+        ),
+        children: [
+          if (rows.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: _MessageCard(
+                icon: Icons.inbox_outlined,
+                title: 'No assignments',
+                message: 'No partner-module assignments match this group.',
+              ),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 760
+                    ? constraints.maxWidth
+                    : (constraints.maxWidth - 10) / 2;
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final row in rows)
+                      SizedBox(width: width, child: commercialCard(row)),
+                  ],
+                );
+              },
+            ),
+        ],
       ),
     );
   }
@@ -1011,16 +1078,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
 
   Widget topicGroupCard(Map<String, dynamic> group) {
     final key = s(group['group_key']);
-    final groupModules = modulesForGroup(key);
-    final liveReady = groupModules.where((m) =>
-        s(m['availability']) == 'ACTIVE' &&
-        s(m['publication_status']) == 'PUBLISHED' &&
-        s(m['implementation_state']) == 'READY').length;
-    final inDevelopment = groupModules.where((m) => s(m['implementation_state']) == 'IN_DEVELOPMENT').length;
-    final assignments = groupModules.fold<int>(
-      0,
-      (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0),
-    );
+    final meta = topicByKey(key) ?? group;
+    final moduleCount = (meta['module_count'] as num?)?.toInt() ?? 0;
+    final liveReady = (meta['live_ready'] as num?)?.toInt() ?? 0;
+    final inDevelopment = (meta['in_development'] as num?)?.toInt() ?? 0;
+    final assignments = (meta['active_partner_assignments'] as num?)?.toInt() ?? 0;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1050,7 +1112,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             ),
             const SizedBox(height: 6),
             LText(
-              '${groupModules.length} ${uiLiteral('modules')}',
+              '$moduleCount ${uiLiteral('modules')}',
               style: const TextStyle(color: brandTextSoft, fontSize: 10.5, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 16),
