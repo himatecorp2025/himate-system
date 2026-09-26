@@ -1046,22 +1046,25 @@ paths:
   /api/v1/central/finance:
     get:
       tags: [Billing]
-      summary: Central-10 Finance presentation read model
+      summary: Central-10.1 materialized Finance screen snapshot
       description: >
-        Aggregates the billing profile, ledger overview, invoices, partner labels, workflow
-        KPIs and the selected paid-revenue series in Go for one-screen Flutter rendering.
+        Serves the persisted hot Finance snapshot without upstream fan-out on the request path.
+        Invoice filtering, partner-label joins, workflow KPIs and revenue-series selection are
+        computed in Go from the already-materialized snapshot.
       parameters:
         - {name: invoice_status, in: query, schema: {type: string, enum: [ALL, DRAFT, APPROVED, SENT, PAID, CANCELLED], default: ALL}}
         - {name: revenue_period, in: query, schema: {type: string, enum: [WEEKLY, MONTHLY], default: MONTHLY}}
         - {name: revenue_plan, in: query, schema: {type: string, enum: [ALL, STARTER, BUSINESS, FLEX], default: ALL}}
         - {name: currency, in: query, schema: {type: string}, description: Optional currency to select for the revenue series}
       responses:
-        "200": {description: Complete or explicitly partial Finance read model with ready-to-render KPI and chart models}
-        "502": {description: Core Finance sources unavailable and no stale snapshot exists}
+        "200": {description: Materialized Finance read model; ready=false only while a first-ever snapshot is warming}
   /api/v1/central/impact:
     get:
       tags: [Impact]
-      summary: Central-10 Impact, Evidence and Reports presentation read model
+      summary: Central-10.1 materialized Impact, Evidence and Reports snapshot
+      description: >
+        Serves Impact definitions, summary, Evidence and Reports from a persisted hot snapshot.
+        Evidence filtering and pagination are performed in Go without live upstream fan-out.
       parameters:
         - {name: evidence_query, in: query, schema: {type: string}}
         - {name: evidence_type, in: query, schema: {type: string}}
@@ -1071,8 +1074,7 @@ paths:
         - {name: evidence_limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 12}}
         - {name: evidence_offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
       responses:
-        "200": {description: Impact definitions, summary, backend-filtered Evidence and report list}
-        "502": {description: Impact read model unavailable and no stale snapshot exists}
+        "200": {description: Materialized Impact snapshot; ready=false only while a first-ever snapshot is warming}
   /api/v1/search:
     get:
       tags: [Dashboard]
