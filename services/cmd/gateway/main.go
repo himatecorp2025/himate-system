@@ -1203,6 +1203,8 @@ func auditAction(r *http.Request) string {
 		return "BACKUP_RESTORE_POINT_QUEUED"
 	case strings.HasSuffix(path, "/restore-test") && r.Method == http.MethodPost:
 		return "BACKUP_RESTORE_TEST_QUEUED"
+	case strings.HasSuffix(path, "/restore") && strings.Contains(path, "/backups/restore-points/") && r.Method == http.MethodPost:
+		return "BACKUP_PRODUCTION_RESTORE_QUEUED"
 	case strings.Contains(path, "/backups/policies/") && r.Method == http.MethodPut:
 		return "BACKUP_POLICY_UPDATED"
 	case path == "/api/v1/backups/prune" && r.Method == http.MethodPost:
@@ -1511,6 +1513,7 @@ func notificationDescriptor(event auditEvent) (severity,title,message,audience,d
 	case "ENVIRONMENT_DEPLOY": return "INFO","Deployment started","A partner environment deployment was requested.","environments.read","/app",true
 	case "ENVIRONMENT_LAUNCH": return "INFO","Production launch requested","A partner production launch was requested.","environments.read","/app",true
 	case "BACKUP_RESTORE_POINT_QUEUED","BACKUP_RESTORE_TEST_QUEUED": return "INFO","Backup operation queued","A recoverability operation was queued.","backups.read","/app",true
+	case "BACKUP_PRODUCTION_RESTORE_QUEUED": return "WARNING","Production restore queued","A verified partner production restore was requested. Review the audit trail and recovery job status.","backups.read","/app",true
 	case "SEO_SETTINGS_PUBLISHED": return "INFO","SEO settings published","Published SEO settings changed.","cms.read","/app",true
 	}
 	if event.Resource=="partners" && event.Method==http.MethodPost { return "INFO","Partner created","A new partner record was registered.","partners.read","/app",true }
