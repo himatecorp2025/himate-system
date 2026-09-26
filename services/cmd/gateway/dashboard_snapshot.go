@@ -79,6 +79,36 @@ func (a *app) loadDashboardSnapshot(year int) (map[string]any, time.Time, error)
 	return payload, updated.UTC(), nil
 }
 
+func (a *app) materializeDashboardActivity(ctx context.Context) ([]map[string]any, error) {
+	rows, err := a.db.QueryContext(ctx, `SELECT id,actor_name,action,resource,partner_id,outcome,created_at
+		FROM identity.audit_events
+		WHERE outcome='SUCCESS'
+		ORDER BY created_at DESC,id DESC
+		LIMIT 120`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0, 120)
+	for rows.Next() {
+		var id int64
+		var actorName, action, resource, partnerID, outcome string
+		var created time.Time
+		if err := rows.Scan(&id, &actorName, &action, &resource, &partnerID, &outcome, &created); err != nil {
+			return nil, err
+		}
+		items = append(items, map[string]any{
+			"id": id, "actor_name": actorName, "action": action, "resource": resource,
+			"partner_id": partnerID, "outcome": outcome, "created_at": created.UTC(),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 func (a *app) persistDashboardSnapshot(ctx context.Context, year int, payload map[string]any) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -188,9 +218,10 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 	var modules moduleResult
 	var billing map[string]any
 	var impact map[string]any
-	var partnerErr, moduleErr, billingErr, impactErr error
+	var activity []map[string]any
+	var partnerErr, moduleErr, billingErr, impactErr, activityErr error
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(5)
 	go func() {
 		defer wg.Done()
 		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners?limit=1&offset=0&include_archived=true", &partners)
@@ -206,6 +237,10 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 	go func() {
 		defer wg.Done()
 		impactErr = a.internalGET(ctx, a.hosts["impact"], "/internal/v1/impact/dashboard?year="+strconv.Itoa(year), &impact)
+	}()
+	go func() {
+		defer wg.Done()
+		activity, activityErr = a.materializeDashboardActivity(ctx)
 	}()
 	wg.Wait()
 
@@ -249,6 +284,22 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 		unavailable = append(unavailable, "impact")
 	}
 
+	activityBlock := map[string]any{
+		"items": activity,
+		"count": len(activity),
+		"source": "IDENTITY_APPEND_ONLY_AUDIT",
+		"status": "healthy",
+	}
+	if activityErr != nil {
+		activityBlock = map[string]any{
+			"items": []any{},
+			"count": 0,
+			"source": "IDENTITY_APPEND_ONLY_AUDIT",
+			"status": "degraded",
+		}
+		unavailable = append(unavailable, "activity")
+	}
+
 	sort.Strings(unavailable)
 	status := "healthy"
 	if len(unavailable) > 0 {
@@ -261,6 +312,7 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 		"modules":  moduleBlock,
 		"billing":  billingBlock,
 		"impact":   impactBlock,
+		"activity": activityBlock,
 		"system": map[string]any{
 			"status":       status,
 			"environment":  a.env,
@@ -304,6 +356,7 @@ func dashboardWarmingSnapshot(year int, env, version string) map[string]any {
 		"modules":  dashboardUnavailableBlock(),
 		"billing":  dashboardUnavailableBlock(),
 		"impact":   dashboardUnavailableBlock(),
+		"activity": map[string]any{"items": []any{}, "count": 0, "source": "IDENTITY_APPEND_ONLY_AUDIT", "status": "warming"},
 		"system": map[string]any{
 			"status":       "warming",
 			"environment":  env,
@@ -313,7 +366,7 @@ func dashboardWarmingSnapshot(year int, env, version string) map[string]any {
 		"meta": map[string]any{
 			"architecture": "MATERIALIZED_DASHBOARD_SNAPSHOT",
 			"status":       "warming",
-			"unavailable":  []string{"billing", "impact", "modules", "partners"},
+			"unavailable":  []string{"activity", "billing", "impact", "modules", "partners"},
 			"generated_at": time.Now().UTC(),
 		},
 	}
