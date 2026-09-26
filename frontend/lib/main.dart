@@ -7352,11 +7352,13 @@ class _FinancePageState extends State<FinancePage> {
         partners.isEmpty &&
         onboardingRows.isEmpty &&
         chartRows.isEmpty) {
-      return const Content(
+      return Content(
         eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
         title: 'Licensing & Finance',
-        subtitle: 'Loading the latest finance snapshot.',
-        child: _BrandLoading(),
+        subtitle: warming
+            ? 'Preparing the finance snapshot. The page will update automatically without continuous polling.'
+            : 'Loading the latest finance snapshot.',
+        child: const _BrandLoading(),
       );
     }
     final draftCount = (financeKpis['draft'] as num?)?.toInt() ?? 0;
