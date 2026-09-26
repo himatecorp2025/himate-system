@@ -236,7 +236,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
       };
       final path = (response[pathKey] ?? response['preview_path'] ?? '').toString();
       if (path.isEmpty) throw StateError('Design preview returned no preview path.');
-      html.window.open(path, '_blank');
+      openBrowserDownload(path);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: LText('${viewport[0].toUpperCase()}${viewport.substring(1)} website preview opened.')),
