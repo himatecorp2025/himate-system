@@ -998,31 +998,51 @@ paths:
   /api/v1/central/modules:
     get:
       tags: [Modules]
-      summary: Central-10 module registry and grouped commercial matrix read model
+      summary: Central-10.1 hot module registry snapshot
+      description: >
+        Returns the materialized Modules + Groups registry immediately. The request path
+        never waits for Partners, Billing or the Commercial Matrix.
       parameters:
         - {name: registry_q, in: query, schema: {type: string}}
         - {name: registry_group, in: query, schema: {type: string}}
         - {name: registry_type, in: query, schema: {type: string}}
         - {name: registry_preset, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Materialized registry, topics and KPI model; ready=false only while a first-ever snapshot is warming}
+  /api/v1/central/modules/commercial:
+    get:
+      tags: [Modules]
+      summary: Central-10.1 secondary commercial matrix snapshot
+      description: >
+        Returns partner/module commercial groups, partner choices and package definitions
+        from independently refreshed hot snapshots without blocking the Module Registry.
+      parameters:
         - {name: commercial_q, in: query, schema: {type: string}}
         - {name: commercial_partner, in: query, schema: {type: string}}
         - {name: commercial_module, in: query, schema: {type: string}}
         - {name: commercial_status, in: query, schema: {type: string, enum: [ALL, ACTIVE, NOT_LICENSED, MAINTENANCE]}}
         - {name: perspective, in: query, schema: {type: string, enum: [PARTNER, MODULE], default: PARTNER}}
-        - {name: commercial_limit, in: query, schema: {type: integer, minimum: 1, default: 120}, description: Presentation batch size; increasing it never caps the total partner/module dataset}
+        - {name: commercial_limit, in: query, schema: {type: integer, minimum: 1, default: 120}}
       responses:
-        "200": {description: Backend-filtered registry, topics, KPI model and partner- or module-grouped commercial matrix}
-        "502": {description: Core catalog read model unavailable and no stale snapshot exists}
+        "200": {description: Secondary commercial snapshot; ready=false while the independent snapshot is warming}
   /api/v1/central/packages:
     get:
       tags: [Billing]
-      summary: Central-10 canonical package read model
+      summary: Central-10.1 hot package-definition snapshot
       description: >
-        Returns canonical Starter, Business and Premium definitions, eligible modules
-        and package analytics. Pricing and entitlement authority remains in Go/Billing.
+        Returns canonical Starter, Business and Premium definitions immediately from the
+        materialized Billing Plans snapshot. Analytics and Catalog data never block package cards.
       responses:
-        "200": {description: Canonical package definitions and analytics}
-        "502": {description: Package definition source unavailable and no stale snapshot exists}
+        "200": {description: Canonical package definitions; ready=false only while a first-ever plan snapshot is warming}
+  /api/v1/central/packages/supplementary:
+    get:
+      tags: [Billing]
+      summary: Central-10.1 package supplementary snapshot
+      description: >
+        Returns independently refreshed eligible Catalog modules and package analytics
+        after the package cards are already usable.
+      responses:
+        "200": {description: Supplementary module catalog and package analytics with independent readiness flags}
   /api/v1/central/finance:
     get:
       tags: [Billing]
