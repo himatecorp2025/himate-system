@@ -1328,9 +1328,11 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 	summary := []map[string]any{}
 	evidenceAll := []map[string]any{}
 	reports := []map[string]any{}
+	analytics := map[string]any{}
 	if a.hasPermission(actor, "impact.read") {
 		definitions = step4Items(snapshot["definitions"])
 		summary = step4Items(snapshot["summary"])
+		analytics = step4Map(snapshot["analytics"])
 	}
 	if a.hasPermission(actor, "evidence.read") {
 		evidenceAll = step4Items(snapshot["evidence"])
@@ -1369,6 +1371,7 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 		"ready": true,
 		"definitions": definitions,
 		"summary": summary,
+		"analytics": analytics,
 		"evidence": filteredEvidence,
 		"evidence_total": total,
 		"reports": reports,
