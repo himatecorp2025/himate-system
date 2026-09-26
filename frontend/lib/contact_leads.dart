@@ -222,7 +222,7 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
                   IconButton(
                     tooltip: uiLiteral('Email contact'),
                     visualDensity: VisualDensity.compact,
-                    onPressed: () => html.window.open('mailto:${Uri.encodeComponent((lead['email'] ?? '').toString())}', '_self'),
+                    onPressed: () => openBrowserUrl('mailto:${Uri.encodeComponent((lead['email'] ?? '').toString())}', target: '_self'),
                     icon: const Icon(Icons.outgoing_mail, size: 18),
                   ),
                 ]),
