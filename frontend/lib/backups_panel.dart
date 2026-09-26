@@ -567,8 +567,27 @@ class _BackupsPanelState extends State<BackupsPanel> {
                   icon: const Icon(Icons.restore_page_outlined, size: 17),
                   label: const LText('Run restore test'),
                 ),
+                if (partnerId != '_platform')
+                  FilledButton.icon(
+                    onPressed: isBusy ||
+                            recoverability != 'VERIFIED' ||
+                            backupStatus != 'READY' ||
+                            pointId.isEmpty ||
+                            widget.productionRestoreEligible[partnerId] != true
+                        ? null
+                        : () => _restoreProduction(partnerId),
+                    icon: const Icon(Icons.restore_rounded, size: 17),
+                    label: const LText('Restore verified backup'),
+                  ),
               ],
             ),
+            if (partnerId == '_platform') ...[
+              const SizedBox(height: 10),
+              const LText(
+                'HIMATE platform restore points are automatically scheduled and restore-tested. Production platform replacement is intentionally maintenance-only because the live control-plane database cannot safely replace itself.',
+                style: TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+              ),
+            ],
             if (isBusy) ...[
               const SizedBox(height: 10),
               const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
