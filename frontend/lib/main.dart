@@ -330,6 +330,10 @@ class Api {
     final prefixes = <String>{};
     void add(String prefix) => prefixes.add(prefix);
 
+    // Every successful mutation can affect one or more Central backend read
+    // models. Never let the browser keep a pre-mutation screen snapshot.
+    add('/api/v1/central');
+
     if (path.startsWith('/partner/api/v1')) {
       add('/partner/api/v1');
     } else if (path.startsWith('/api/v1/partners') || path.startsWith('/api/v1/partner-categories')) {
