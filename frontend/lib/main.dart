@@ -4303,6 +4303,102 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     }
   }
 
+  Future<void> generateTestFixture() async {
+    final id = '${partner['id'] ?? ''}'.trim();
+    if (id.isEmpty || partner['test_partner'] != true) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: 'Generate Golden Test Partner fixture',
+        subtitle: 'Creates six months of clearly fictional piano-service business history for UI, Impact, Evidence and Reports testing.',
+        icon: Icons.science_outlined,
+        width: 620,
+        child: const _MessageCard(
+          icon: Icons.info_outline_rounded,
+          title: 'QA data only',
+          message: 'The fixture is deterministic and can be regenerated. Test Partner revenue and impact remain isolated from HIMATE platform aggregates.',
+        ),
+        primaryLabel: 'Generate fixture',
+        onPrimary: () => Navigator.pop(dialogContext, true),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final result = await widget.api.post('/api/v1/partners/$id/seed-test-fixture', const <String, dynamic>{});
+      if (!mounted) return;
+      await load();
+      if (!mounted) return;
+      success('${result['message'] ?? 'Golden Test Partner fixture generated.'}');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: LText('Test fixture generation failed: $e'), backgroundColor: brandDanger),
+      );
+    }
+  }
+
+  Future<void> purgeGoldenTestPartner() async {
+    final id = '${partner['id'] ?? ''}'.trim();
+    if (id.isEmpty || partner['test_partner'] != true) return;
+    final confirm = TextEditingController();
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Factory reset Golden Test Partner',
+          subtitle: 'Permanently deletes the Test Partner, its QA business data and persistent storage. No seven-year Compliance Archive is created for this QA-only purge.',
+          icon: Icons.delete_forever_outlined,
+          width: 660,
+          dismissEnabled: true,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _MessageCard(
+                icon: Icons.warning_amber_rounded,
+                title: 'Permanent QA deletion',
+                message: 'This action is allowed only for a Golden Test Partner. Security audit receipts remain, but the partner business dataset cannot be restored.',
+              ),
+              const SizedBox(height: 14),
+              LText('Type the exact Partner ID to confirm: $id'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confirm,
+                onChanged: (_) => setLocal(() {}),
+                decoration: const InputDecoration(labelText: 'Confirm Partner ID'),
+              ),
+            ],
+          ),
+          primaryLabel: 'Permanently delete test partner',
+          onPrimary: confirm.text.trim() == id
+              ? () => Navigator.pop(dialogContext, true)
+              : null,
+        ),
+      ),
+    );
+    final typed = confirm.text.trim();
+    confirm.dispose();
+    if (approved != true || typed != id || !mounted) return;
+    try {
+      await widget.api.post('/api/v1/partners/$id/purge-test-fixture', {
+        'confirm_partner_id': id,
+      });
+      if (!mounted) return;
+      success('Golden Test Partner permanently removed.');
+      if (widget.onBack != null) {
+        widget.onBack!();
+      } else {
+        Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: LText('Test Partner hard purge failed: $e'), backgroundColor: brandDanger),
+      );
+    }
+  }
+
   Future<void> _loadModuleView({bool force = false}) async {
     final id = '${partner['id'] ?? ''}';
     if (id.isEmpty) return;
@@ -5528,9 +5624,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     if ('${partner['primary_domain'] ?? ''}'.isNotEmpty) '${partner['primary_domain']}',
                     '${uiLiteral('Health')}: ${uiLiteral(_humanize('${partner['system_health'] ?? 'UNKNOWN'}'))}',
                     '${uiLiteral('Version')}: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
-                    if (partner['test_partner'] == true) 'TEST DATA · excluded from platform aggregates',
+                    if (partner['test_partner'] == true) 'TEST DATA · excluded from platform aggregates · factory-reset capable',
                   ].join(' · '),
                   actions: [
+                    if (partner['test_partner'] == true)
+                      OutlinedButton.icon(
+                        onPressed: supplementalLoading ? null : generateTestFixture,
+                        icon: const Icon(Icons.science_outlined),
+                        label: const LText('Generate QA fixture'),
+                      ),
+                    if (partner['test_partner'] == true)
+                      OutlinedButton.icon(
+                        onPressed: supplementalLoading ? null : purgeGoldenTestPartner,
+                        icon: const Icon(Icons.delete_forever_outlined),
+                        label: const LText('Factory reset test partner'),
+                      ),
                     OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const LText('Company data')),
                     FilledButton.icon(onPressed: terms != null && license != null ? editTerms : null, icon: const Icon(Icons.payments_outlined), label: const LText('Commercial terms')),
                   ],
