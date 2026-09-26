@@ -31,6 +31,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   List<Map<String, dynamic>> navigation = <Map<String, dynamic>>[];
   bool loading = true;
   bool saving = false;
+  bool previewActive = false;
   String? error;
   int version = 0;
   DateTime? publishedAt;
@@ -152,6 +153,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
       final draft = response['draft'];
       applyDesign(draft is Map ? Map<String, dynamic>.from(draft) : defaultDesign());
       version = (response['version'] as num?)?.toInt() ?? 0;
+      previewActive = response['preview_active'] == true;
       publishedAt = DateTime.tryParse((response['published_at'] ?? '').toString())?.toLocal();
     } catch (e) {
       if (!mounted) return;
@@ -257,6 +259,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
       if (path.isEmpty) throw StateError('Design preview returned no preview path.');
       openBrowserDownload(path);
       if (mounted) {
+        setState(() => previewActive = true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: LText('${viewport[0].toUpperCase()}${viewport.substring(1)} website preview opened.')),
         );
@@ -469,11 +472,11 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
             padding: const EdgeInsets.only(bottom: 12),
             child: _MessageCard(icon: Icons.warning_amber_rounded, title: 'Design settings loaded from defaults', message: error!),
           ),
-        const _RuleStrip(items: [
-          _RuleItem(Icons.palette_outlined, 'Brand', 'Published globally'),
-          _RuleItem(Icons.language_outlined, 'Languages', 'English + Hungarian labels'),
-          _RuleItem(Icons.visibility_outlined, 'Preview-safe', 'Draft before publish'),
-          _RuleItem(Icons.history_rounded, 'Audit', 'Every save/publish recorded'),
+        _RuleStrip(items: [
+          const _RuleItem(Icons.edit_note_outlined, 'Draft', 'Working brand draft'),
+          _RuleItem(Icons.visibility_outlined, 'Preview', previewActive ? 'READY · 30 min token' : 'NOT CREATED'),
+          _RuleItem(Icons.publish_outlined, 'Publish', publishedAt == null ? 'NOT PUBLISHED' : 'PUBLISHED · v$version'),
+          _RuleItem(Icons.verified_outlined, 'Active Brand', publishedAt == null ? 'INACTIVE' : 'ACTIVE ON WEBSITE'),
         ]),
         const SizedBox(height: 16),
         LayoutBuilder(
@@ -712,7 +715,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
             FilledButton.icon(
               onPressed: saving ? null : publish,
               icon: const Icon(Icons.publish_outlined),
-              label: const LText('Publish design'),
+              label: const LText('Publish Active Brand'),
             ),
           ],
         ),
