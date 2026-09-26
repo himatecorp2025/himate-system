@@ -157,6 +157,22 @@ for exact_prefetch in [
     check(exact_prefetch in frontend,
           f"Central-10.1 exact warmup/mount cache key missing: {exact_prefetch}")
 
+for shared_path_contract in [
+    "targets.add(centralDashboardInitialPath())",
+    "final path = centralDashboardInitialPath()",
+    "targets.add(centralModulesCommercialInitialPath())",
+    "targets.add(centralFinanceInitialPath())",
+    "return centralFinanceInitialPath();",
+    "targets.add(centralImpactInitialPath())",
+    "return centralImpactInitialPath();",
+    "valueListenable: api.cacheSignal(path)",
+]:
+    check(shared_path_contract in frontend,
+          f"Central-10.1 shared warmup/mount path or reactive SWR binding missing: {shared_path_contract}")
+
+check("if (defaultView) return centralModulesCommercialInitialPath();" in modules_ui,
+      "Central-10.1 Modules commercial default mount does not reuse the warmup cache key")
+
 dashboard_start = gateway_main.find("func (a *app) dashboard(")
 dashboard_end = gateway_main.find("\nfunc ", dashboard_start + 1)
 dashboard_body = gateway_main[dashboard_start:dashboard_end] if dashboard_start >= 0 and dashboard_end > dashboard_start else ""
