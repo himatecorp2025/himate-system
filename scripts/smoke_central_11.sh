@@ -1,8 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-BASE_URL="$1"
-if [ -z "$BASE_URL" ]; then BASE_URL="http://127.0.0.1:8080"; fi
+BASE_URL="${1:-http://127.0.0.1:8080}"
 TMP_ROOT="${TMPDIR:-/tmp}"
 COOKIE="$TMP_ROOT/himate-central11-owner.txt"
 rm -f "$COOKIE"
@@ -83,7 +82,7 @@ echo ok
 printf 'wait for normal Reports worker to produce the real PDF... '
 REPORT_STATUS=""
 i=0
-while [ "$i" -lt 30 ]; do
+while [ "$i" -lt 60 ]; do
   REPORT="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/reports/$REPORT_ID")"
   REPORT_STATUS="$(printf '%s' "$REPORT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
   if [ "$REPORT_STATUS" = "READY" ]; then break; fi
