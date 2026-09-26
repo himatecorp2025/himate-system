@@ -280,6 +280,119 @@ func (a *app) purgeTestNamespace(w http.ResponseWriter, r *http.Request, partner
 	})
 }
 
+func (a *app) restoreNamespace(w http.ResponseWriter, r *http.Request, partnerID string) {
+	root, err := a.pathFor(partnerID)
+	if err != nil {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		return
+	}
+	if contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type"))); contentType != "" && !strings.Contains(contentType, "gzip") && !strings.Contains(contentType, "octet-stream") {
+		common.APIError(w, http.StatusUnsupportedMediaType, "CONTENT_TYPE", "Partner media restore requires a gzip archive")
+		return
+	}
+	tmp, err := os.MkdirTemp(a.root, ".restore-"+partnerID+"-")
+	if err != nil {
+		common.APIError(w, 500, "STORAGE", "Could not create restore workspace")
+		return
+	}
+	defer os.RemoveAll(tmp)
+
+	reader := http.MaxBytesReader(w, r.Body, 512<<20)
+	gz, err := gzip.NewReader(reader)
+	if err != nil {
+		common.APIError(w, 400, "ARCHIVE", "Invalid gzip archive")
+		return
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	files := 0
+	var total int64
+	for {
+		header, nextErr := tr.Next()
+		if nextErr == io.EOF { break }
+		if nextErr != nil {
+			common.APIError(w, 400, "ARCHIVE", "Could not read media restore archive")
+			return
+		}
+		name := filepath.ToSlash(filepath.Clean(strings.TrimSpace(header.Name)))
+		if name == "." || name == "" || strings.HasPrefix(name, "../") || strings.Contains(name, "/../") || filepath.IsAbs(name) {
+			common.APIError(w, 400, "ARCHIVE", "Unsafe media restore path")
+			return
+		}
+		target := filepath.Join(tmp, filepath.FromSlash(name))
+		prefix := filepath.Clean(tmp) + string(os.PathSeparator)
+		if !strings.HasPrefix(filepath.Clean(target), prefix) {
+			common.APIError(w, 400, "ARCHIVE", "Media restore path escapes namespace")
+			return
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0700); err != nil {
+				common.APIError(w, 500, "STORAGE", "Could not create media restore directory")
+				return
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if header.Size < 0 || header.Size > maxObjectBytes || total+header.Size > 512<<20 {
+				common.APIError(w, http.StatusRequestEntityTooLarge, "ARCHIVE", "Media restore archive exceeds safety limits")
+				return
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+				common.APIError(w, 500, "STORAGE", "Could not create media restore directory")
+				return
+			}
+			out, openErr := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+			if openErr != nil {
+				common.APIError(w, 500, "STORAGE", "Could not write restored media")
+				return
+			}
+			_, copyErr := io.CopyN(out, tr, header.Size)
+			closeErr := out.Close()
+			if copyErr != nil || closeErr != nil {
+				common.APIError(w, 500, "STORAGE", "Could not persist restored media")
+				return
+			}
+			files++
+			total += header.Size
+		default:
+			common.APIError(w, 400, "ARCHIVE", "Media restore archive contains unsupported entry type")
+			return
+		}
+	}
+	if err := os.WriteFile(filepath.Join(tmp, ".himate-storage"), []byte(partnerID), 0600); err != nil {
+		common.APIError(w, 500, "STORAGE", "Could not create restored namespace marker")
+		return
+	}
+
+	old := ""
+	if _, statErr := os.Stat(root); statErr == nil {
+		old = root + ".pre-restore-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
+		if err := os.Rename(root, old); err != nil {
+			common.APIError(w, 500, "STORAGE", "Could not stage current media namespace")
+			return
+		}
+	} else if !os.IsNotExist(statErr) {
+		common.APIError(w, 500, "STORAGE", "Could not inspect current media namespace")
+		return
+	}
+	if err := os.Rename(tmp, root); err != nil {
+		if old != "" { _ = os.Rename(old, root) }
+		common.APIError(w, 500, "STORAGE", "Could not activate restored media namespace")
+		return
+	}
+	if old != "" { _ = os.RemoveAll(old) }
+	_, err = a.db.ExecContext(r.Context(), `INSERT INTO storage.partner_namespaces(partner_id,namespace_path,status,last_error,checked_at,updated_at)
+		VALUES($1,$2,'READY','',NOW(),NOW())
+		ON CONFLICT(partner_id) DO UPDATE SET namespace_path=EXCLUDED.namespace_path,status='READY',last_error='',checked_at=NOW(),updated_at=NOW()`,
+		partnerID, root)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Restored media is active but registry update failed")
+		return
+	}
+	common.JSON(w, http.StatusOK, map[string]any{
+		"partner_id": partnerID, "restored": true, "files": files, "bytes": total,
+	})
+}
+
 func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/storage/partners/"), "/")
 	parts := strings.Split(raw, "/")
@@ -296,10 +409,12 @@ func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, out)
 	case r.Method == http.MethodGet && action == "archive":
 		a.archiveNamespace(w, r, partnerID)
+	case r.Method == http.MethodPost && action == "restore-archive":
+		a.restoreNamespace(w, r, partnerID)
 	case r.Method == http.MethodPost && action == "purge-test":
 		a.purgeTestNamespace(w, r, partnerID)
 	default:
-		common.APIError(w, 405, "METHOD", "Use POST /ensure, GET /health, GET /archive or POST /purge-test")
+		common.APIError(w, 405, "METHOD", "Use POST /ensure, GET /health, GET /archive, POST /restore-archive or POST /purge-test")
 	}
 }
 
