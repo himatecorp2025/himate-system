@@ -86,8 +86,8 @@ for token in [
 ]:
     check(token in design, f"Design Guide actionable preview missing: {token}")
 for token in [
-    'width = "1440px"',
-    'height = "900px"',
+    'width := "1440px"',
+    'height := "900px"',
     'width = "834px"',
     'height = "1194px"',
     'width = "390px"',
