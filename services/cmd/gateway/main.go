@@ -1283,7 +1283,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			if status == 0 { status = http.StatusOK }
 			outcome := "SUCCESS"
 			if status >= 400 { outcome = "FAILED" }
-			if status < 400 { a.invalidateCentral10Caches() }
+			if status < 400 { a.invalidateCentral10Caches(r.URL.Path) }
 			newState := decodeAuditState(recorder.body.Bytes())
 			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
 				newState = requestState
