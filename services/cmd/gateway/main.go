@@ -966,6 +966,8 @@ func permissionResource(r *http.Request) string {
 		return "billing"
 	case path == "/api/v1/central/impact":
 		return "impact"
+	case path == "/api/v1/central/connections":
+		return "connectors"
 	case path == "/api/v1/audit/events":
 		return "audit"
 	case path == "/api/v1/notifications", strings.HasPrefix(path, "/api/v1/notifications/"):
@@ -1340,6 +1342,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.auditEvents(w, r)
 	case r.URL.Path == "/api/v1/search" && r.Method == http.MethodGet:
 		a.globalSearch(w, r, u)
+	case r.URL.Path == "/api/v1/central/connections":
+		a.central13Connections(w, r, u)
 	case r.URL.Path == "/api/v1/central/partners" || strings.HasPrefix(r.URL.Path, "/api/v1/central/partners/") ||
 		r.URL.Path == "/api/v1/central/modules" || r.URL.Path == "/api/v1/central/modules/commercial" ||
 		r.URL.Path == "/api/v1/central/packages" || r.URL.Path == "/api/v1/central/packages/supplementary" ||
