@@ -83,6 +83,10 @@ func (a *app) exportPartnersPDF(w http.ResponseWriter, r *http.Request) {
 			health, platformVersion, updatedAt.UTC().Format("2006-01-02"),
 		})
 	}
+	if r.URL.Query().Get("availability") == "1" {
+		common.JSON(w, http.StatusOK, map[string]any{"has_data": len(tableRows) > 0, "count": len(tableRows)})
+		return
+	}
 	common.WriteBrandedTablePDF(
 		w,
 		"himate-partners.pdf",
