@@ -294,7 +294,14 @@ String centralFinancePath({
       },
     ).toString();
 
-String centralFinanceInitialPath() => centralFinancePath();
+String centralFinanceInitialPath() => Uri(
+      path: '/api/v1/central/finance',
+      queryParameters: const <String, String>{
+        'invoice_status': 'ALL',
+        'revenue_period': 'MONTHLY',
+        'revenue_plan': 'ALL',
+      },
+    ).toString();
 
 String centralImpactInitialPath() => Uri(
       path: '/api/v1/central/impact',
@@ -6708,11 +6715,16 @@ class _FinancePageState extends State<FinancePage> {
     load();
   }
 
-  String _financePath() => centralFinancePath(
-        invoiceStatus: invoiceFilter,
-        revenuePeriod: revenuePeriod,
-        revenuePlan: revenuePlan,
-      );
+  String _financePath() {
+    if (invoiceFilter == 'ALL' && revenuePeriod == 'MONTHLY' && revenuePlan == 'ALL') {
+      return centralFinanceInitialPath();
+    }
+    return centralFinancePath(
+      invoiceStatus: invoiceFilter,
+      revenuePeriod: revenuePeriod,
+      revenuePlan: revenuePlan,
+    );
+  }
 
   Future<void> load({bool force = false}) async {
     final path = _financePath();
