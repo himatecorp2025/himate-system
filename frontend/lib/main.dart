@@ -2825,6 +2825,7 @@ class PartnersPage extends StatefulWidget {
 class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _portfolioSnapshot = <Map<String, dynamic>>[];
   bool loading = false;
   bool categoriesLoading = true;
   String? categoryRegistryWarning;
@@ -2949,6 +2950,37 @@ class _PartnersPageState extends State<PartnersPage> {
     return Uri(path: '/api/v1/partners', queryParameters: params);
   }
 
+  Uri _partnerExportUri() {
+    final params = <String, String>{};
+    if (query.trim().isNotEmpty) params['q'] = query.trim();
+    if (categoryFilter != 'ALL') params['category'] = categoryFilter;
+    if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
+    if (healthFilter != 'ALL') params['health'] = healthFilter;
+    if (referenceOnly) params['reference'] = 'true';
+    return Uri(path: '/api/v1/partners/export.csv', queryParameters: params.isEmpty ? null : params);
+  }
+
+  String _presetPartnerPath({String lifecycle = 'ALL', bool reference = false}) {
+    final params = <String, String>{
+      'limit': '$pageSize',
+      'offset': '0',
+      'core_only': 'true',
+      'include_stats': 'false',
+      if (lifecycle != 'ALL') 'lifecycle': lifecycle,
+      if (reference) 'reference': 'true',
+    };
+    return Uri(path: '/api/v1/partners', queryParameters: params).toString();
+  }
+
+  void _prefetchPortfolioPresets() {
+    widget.api.prefetch([
+      _presetPartnerPath(),
+      _presetPartnerPath(lifecycle: 'LIVE'),
+      _presetPartnerPath(lifecycle: 'PROSPECT'),
+      _presetPartnerPath(reference: true),
+    ]);
+  }
+
   Uri _partnerStatsUri() {
     final params = _partnerQueryParameters()
       ..['core_only'] = 'true'
@@ -3057,7 +3089,7 @@ class _PartnersPageState extends State<PartnersPage> {
   Future<void> load({bool reset = false, bool loadCategories = false}) async {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
-    if (mounted) setState(() { error = null; statsReady = false; });
+    if (mounted) setState(() { loading = true; error = null; statsReady = false; });
     if (loadCategories || categoryRegistryWarning != null) unawaited(_loadCategories(force: loadCategories));
 
     try {
@@ -3066,9 +3098,18 @@ class _PartnersPageState extends State<PartnersPage> {
       final coreRows = items(page);
       setState(() {
         partners = coreRows;
+        if (offset == 0 &&
+            query.trim().isEmpty &&
+            categoryFilter == 'ALL' &&
+            lifecycleFilter == 'ALL' &&
+            healthFilter == 'ALL' &&
+            !referenceOnly) {
+          _portfolioSnapshot = List<Map<String, dynamic>>.from(coreRows);
+        }
         hasMore = page['has_more'] == true;
         loading = false;
       });
+      if (offset == 0) _prefetchPortfolioPresets();
       unawaited(_loadPartnerStats(generation));
       unawaited(_loadPortfolioStats(generation));
       unawaited(_loadPortfolioEnrichment(generation, List<Map<String, dynamic>>.from(coreRows)));
@@ -3090,6 +3131,11 @@ class _PartnersPageState extends State<PartnersPage> {
   void applyPortfolioPreset({String lifecycle = 'ALL', bool reference = false}) {
     _searchDebounce?.cancel();
     _searchController.clear();
+    final optimistic = _portfolioSnapshot.where((row) {
+      if (lifecycle != 'ALL' && '${row['lifecycle'] ?? ''}' != lifecycle) return false;
+      if (reference && row['reference_partner'] != true) return false;
+      return true;
+    }).toList();
     setState(() {
       query = '';
       categoryFilter = 'ALL';
@@ -3097,8 +3143,10 @@ class _PartnersPageState extends State<PartnersPage> {
       healthFilter = 'ALL';
       referenceOnly = reference;
       offset = 0;
+      if (_portfolioSnapshot.isNotEmpty) partners = optimistic;
+      loading = true;
     });
-    load(reset: true);
+    unawaited(load(reset: true));
   }
 
   void clearReferenceFilter() {
@@ -3861,6 +3909,11 @@ class _PartnersPageState extends State<PartnersPage> {
       title: 'Partners',
       subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
       actions: [
+        OutlinedButton.icon(
+          onPressed: () => openBrowserDownload(_partnerExportUri().toString()),
+          icon: const Icon(Icons.download_outlined),
+          label: const LText('Export CSV'),
+        ),
         OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const LText('Add category')),
         FilledButton.icon(
           key: const Key('partners-new-partner-button'),
@@ -3968,7 +4021,11 @@ class _PartnersPageState extends State<PartnersPage> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
+                    if (loading) ...[
+                      const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+                      const SizedBox(height: 12),
+                    ],
                     Row(
                       children: [
                         LText('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
