@@ -231,6 +231,30 @@ for token in [
 check("Loading the latest module registry snapshot." in modules_ui,
       "Central-10.1 Modules Loading != Zero guard missing")
 
+check("bool loading = true;" in modules_ui,
+      "Central-10.1 Modules first frame can still render business zero before loading starts")
+check("registryKpis.isEmpty" in modules_ui and
+      "modules.isEmpty" in modules_ui and
+      "registryModules.isEmpty" in modules_ui and
+      "topicRows.isEmpty" in modules_ui and
+      "child: _BrandLoading()" in modules_ui,
+      "Central-10.1 Modules empty initial state is not protected by a loading skeleton")
+check("unawaited(loadCommercial());" in modules_ui and
+      modules_ui.find("unawaited(loadCommercial());") < modules_ui.find("await loadRegistry();"),
+      "Central-10.1 Modules supplementary commercial refresh still waits for the primary registry")
+
+dashboard_loading_start = frontend.find("if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null)")
+dashboard_loading_end = frontend.find("if (snapshot.hasError && snapshot.data == null)", dashboard_loading_start)
+dashboard_loading = frontend[dashboard_loading_start:dashboard_loading_end] if dashboard_loading_start >= 0 and dashboard_loading_end > dashboard_loading_start else ""
+for target in [
+    "onTap: canNavigate(1) ? () => onNavigate(1) : null",
+    "onTap: canNavigate(2) ? () => onNavigate(2) : null",
+    "onTap: canNavigate(4) ? () => onNavigate(4) : null",
+    "onTap: canNavigate(5) ? () => onNavigate(5) : null",
+]:
+    check(target in dashboard_loading,
+          f"Central-10.1 Dashboard loading card lost navigation callback: {target}")
+
 # CENTRAL-10.1 Step 3: Modules & Packages must be hot-snapshot/progressive surfaces.
 for route in [
     "/api/v1/central/modules/commercial",
@@ -254,6 +278,32 @@ for forbidden in ["internalGET(", "central10AllPartners(", "central10CommercialS
 for forbidden in ["internalGET(", "WaitGroup", "wg.Wait()"]:
     check(forbidden not in packages_primary,
           f"Step 3 Packages primary request still blocks on live fan-out: {forbidden}")
+
+for forbidden in ["PACKAGES_UNAVAILABLE", "http.StatusBadGateway", "http.StatusServiceUnavailable"]:
+    check(forbidden not in packages_primary,
+          f"Central-10.1 Packages primary path can still fail as a blocking availability error: {forbidden}")
+for required in [
+    "centralStep3SnapshotGet(centralStep3PlansKey)",
+    "a.requestCentralStep3Refresh()",
+    "common.JSON(w, http.StatusOK, payload)",
+    '"X-Himate-Cache", "warming"',
+    '"X-Himate-Cache", "hot-snapshot"',
+]:
+    check(required in packages_primary,
+          f"Central-10.1 Packages progressive snapshot contract missing: {required}")
+
+packages_supplementary = gateway[packages_supp_start:money_start]
+for required in [
+    "centralStep3SnapshotGet(centralStep3RegistryKey)",
+    "centralStep3SnapshotGet(centralStep3AnalyticsKey)",
+    '"modules_ready"',
+    '"analytics_ready"',
+]:
+    check(required in packages_supplementary,
+          f"Central-10.1 Packages supplementary snapshot contract missing: {required}")
+for forbidden in ["internalGET(", "WaitGroup", "wg.Wait()", "http.StatusBadGateway"]:
+    check(forbidden not in packages_supplementary,
+          f"Central-10.1 Packages supplementary request still blocks on live fan-out: {forbidden}")
 
 for token in [
     "central10Step3SnapshotMigration",
