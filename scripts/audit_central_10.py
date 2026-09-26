@@ -58,10 +58,10 @@ check("/api/v1/central/partners/{partnerId}/modules" in openapi,
 for token in [
     "final Map<int, Widget> _pageCache",
     "_pageCache.putIfAbsent",
-    "target = '/api/v1/central/packages'",
-    "target = '/api/v1/central/finance'",
-    "target = '/api/v1/central/impact'",
-    "target = '/api/v1/central/modules'",
+    "target = centralPackagesInitialPath()",
+    "target = centralFinanceInitialPath()",
+    "target = centralImpactInitialPath()",
+    "target = centralModulesInitialPath()",
     "add('/api/v1/central')",
 ]:
     check(token in frontend, f"Central-10 Flutter presentation/cache contract missing: {token}")
@@ -107,6 +107,41 @@ check("/api/v1/central/modules" in modules_ui,
       "Module Control Plane does not consume Central-10 read model")
 check("api.get('/api/v1/partners/$partnerId'" not in frontend,
       "Partner deep-link loader still performs a legacy pre-read before the Central read model")
+
+# CENTRAL-10.1 Step 1: exact network/cache contract.
+for token in [
+    "centralDashboardInitialPath()",
+    "centralPartnersInitialPath()",
+    "centralModulesInitialPath()",
+    "centralPackagesInitialPath()",
+    "centralFinanceInitialPath()",
+    "centralImpactInitialPath()",
+    "void Function(Map<String, dynamic> freshData)? onRefresh",
+    "Duration(milliseconds: 800)",
+]:
+    check(token in frontend, f"Central-10.1 Step 1 network/cache contract missing: {token}")
+
+check("Duration(milliseconds: 950)" not in frontend,
+      "Central-10.1 still uses the obsolete 950ms browser timeout")
+check("ctx,cancel:=context.WithTimeout(r.Context(),3*time.Second)" not in gateway_main,
+      "Central-10.1 Dashboard still allows a 3-second live read")
+check("ctx,cancel:=context.WithTimeout(r.Context(),central10ReadBudget)" in gateway_main,
+      "Central-10.1 Dashboard is not aligned to the Central backend read budget")
+check("force: loadCategories" not in frontend,
+      "Central-10.1 Partners first mount still bypasses warm cache/inflight data")
+check("onRefresh: applyModel" in frontend,
+      "Central-10.1 stateful Central pages do not consume SWR refresh callbacks")
+check("onRefresh: applyModel" in modules_ui,
+      "Central-10.1 Modules page does not consume SWR refresh callbacks")
+
+for token in [
+    "Loading the latest partner portfolio snapshot.",
+    "Loading the latest materialized finance snapshot.",
+    "Loading the latest impact and evidence snapshot.",
+]:
+    check(token in frontend, f"Central-10.1 Loading != Zero guard missing: {token}")
+check("Loading the latest module registry snapshot." in modules_ui,
+      "Central-10.1 Modules Loading != Zero guard missing")
 
 # Truthful loading and empty-data behavior.
 for token in [
