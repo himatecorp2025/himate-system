@@ -7302,42 +7302,44 @@ class _ImpactPageState extends State<ImpactPage> {
 
   String evidencePath() {
     final query = <String, String>{
-      'limit': '$evidenceLimit',
-      'offset': '$evidenceOffset',
+      'evidence_limit': '$evidenceLimit',
+      'evidence_offset': '$evidenceOffset',
     };
-    if (evidenceQuery.trim().isNotEmpty) query['q'] = evidenceQuery.trim();
+    if (evidenceQuery.trim().isNotEmpty) query['evidence_query'] = evidenceQuery.trim();
     if (evidenceTypeFilter.isNotEmpty) query['evidence_type'] = evidenceTypeFilter;
-    if (evidenceStatusFilter.isNotEmpty) query['verification_status'] = evidenceStatusFilter;
-    if (evidencePeriodStart.trim().isNotEmpty) query['period_start'] = evidencePeriodStart.trim();
-    if (evidencePeriodEnd.trim().isNotEmpty) query['period_end'] = evidencePeriodEnd.trim();
-    return Uri(path: '/api/v1/evidence', queryParameters: query).toString();
+    if (evidenceStatusFilter.isNotEmpty) query['evidence_status'] = evidenceStatusFilter;
+    if (evidencePeriodStart.trim().isNotEmpty) query['evidence_period_start'] = evidencePeriodStart.trim();
+    if (evidencePeriodEnd.trim().isNotEmpty) query['evidence_period_end'] = evidencePeriodEnd.trim();
+    return Uri(path: '/api/v1/central/impact', queryParameters: query).toString();
   }
 
   Future<void> load() async {
-    if (mounted) setState(() => error = null);
-    final failures = <String>[];
-
-    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
-      try {
-        final data = await widget.api.get(path);
-        if (mounted) setState(() => apply(data));
-      } catch (e) {
-        failures.add(e.toString());
-      }
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = null;
+      });
     }
-
-    await Future.wait<void>([
-      fetch('/api/v1/impact/definitions', (data) => definitions = items(data)),
-      fetch('/api/v1/impact/summary', (data) => summary = items(data)),
-      fetch(evidencePath(), (data) {
-        evidence = items(data);
-        evidenceTotal = (data['total'] as num?)?.toInt() ?? evidence.length;
-      }),
-      fetch('/api/v1/reports', (data) => reports = items(data)),
-    ]);
-
-    if (mounted && failures.length == 4) {
-      setState(() => error = failures.first);
+    try {
+      final model = await widget.api.get(
+        evidencePath(),
+        maxAge: const Duration(seconds: 5),
+      );
+      if (!mounted) return;
+      setState(() {
+        definitions = items(<String, dynamic>{'items': model['definitions']});
+        summary = items(<String, dynamic>{'items': model['summary']});
+        evidence = items(<String, dynamic>{'items': model['evidence']});
+        reports = items(<String, dynamic>{'items': model['reports']});
+        evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
+      });
     }
   }
 
