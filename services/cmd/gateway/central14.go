@@ -62,47 +62,67 @@ func (a *app) central14Administration(w http.ResponseWriter,r *http.Request,acto
 	var backups central14BackupSummary
 	var profile map[string]any
 	var partnerErr,billingErr,backupErr,profileErr error
+	canPartners:=a.hasPermission(actor,"partners.read")
+	canBilling:=a.hasPermission(actor,"billing.read")
+	canBackups:=a.hasPermission(actor,"backups.read")
+	canAudit:=a.hasPermission(actor,"audit.read")
 	var wg sync.WaitGroup
-	wg.Add(4)
-	go func(){defer wg.Done();partners,partnerErr=a.central13AllPartners(ctx)}()
-	go func(){defer wg.Done();billingErr=a.internalGET(ctx,a.hosts["billing"],"/internal/v1/administration/summary",&billing)}()
-	go func(){defer wg.Done();backupErr=a.internalGET(ctx,a.hosts["backups"],"/internal/v1/backups/summary",&backups)}()
-	go func(){defer wg.Done();profileErr=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/profile",&profile)}()
+	if canPartners {
+		wg.Add(1)
+		go func(){defer wg.Done();partners,partnerErr=a.central13AllPartners(ctx)}()
+	}
+	if canBilling {
+		wg.Add(2)
+		go func(){defer wg.Done();billingErr=a.internalGET(ctx,a.hosts["billing"],"/internal/v1/administration/summary",&billing)}()
+		go func(){defer wg.Done();profileErr=a.internalGET(ctx,a.hosts["billing"],"/api/v1/billing/profile",&profile)}()
+	}
+	if canBackups {
+		wg.Add(1)
+		go func(){defer wg.Done();backupErr=a.internalGET(ctx,a.hosts["backups"],"/internal/v1/backups/summary",&backups)}()
+	}
 	wg.Wait()
-	if partnerErr!=nil{
+	if canPartners && partnerErr!=nil{
 		common.APIError(w,http.StatusBadGateway,"ADMINISTRATION_UNAVAILABLE","Partner registry is temporarily unavailable")
 		return
 	}
 
 	unavailable:=[]string{}
-	if billingErr!=nil{unavailable=append(unavailable,"billing")}
-	if backupErr!=nil{unavailable=append(unavailable,"backups")}
-	if profileErr!=nil{unavailable=append(unavailable,"company_profile")}
+	if !canPartners{unavailable=append(unavailable,"partners_permission")}
+	if !canBilling{unavailable=append(unavailable,"billing_permission")}
+	if !canBackups{unavailable=append(unavailable,"backups_permission")}
+	if !canAudit{unavailable=append(unavailable,"audit_permission")}
+	if canBilling&&billingErr!=nil{unavailable=append(unavailable,"billing")}
+	if canBackups&&backupErr!=nil{unavailable=append(unavailable,"backups")}
+	if canBilling&&profileErr!=nil{unavailable=append(unavailable,"company_profile")}
 
 	billingByPartner:=mapByPartner(billing.Items)
 	backupByPartner:=mapByPartner(backups.Items)
 
 	type auditAggregate struct{Count int;Latest any}
 	audits:=map[string]auditAggregate{}
-	rows,err:=a.db.QueryContext(ctx,`SELECT partner_id,COUNT(*),MAX(created_at)
-		FROM identity.audit_events WHERE partner_id<>'' GROUP BY partner_id`)
-	if err==nil{
-		defer rows.Close()
-		for rows.Next(){
-			var id string
-			var count int
-			var latest time.Time
-			if rows.Scan(&id,&count,&latest)==nil{audits[id]=auditAggregate{Count:count,Latest:latest.UTC()}}
+	if canAudit {
+		rows,err:=a.db.QueryContext(ctx,`SELECT partner_id,COUNT(*),MAX(created_at)
+			FROM identity.audit_events WHERE partner_id<>'' GROUP BY partner_id`)
+		if err==nil{
+			defer rows.Close()
+			for rows.Next(){
+				var id string
+				var count int
+				var latest time.Time
+				if rows.Scan(&id,&count,&latest)==nil{audits[id]=auditAggregate{Count:count,Latest:latest.UTC()}}
+			}
+		}else{
+			unavailable=append(unavailable,"partner_audit")
 		}
-	}else{
-		unavailable=append(unavailable,"partner_audit")
 	}
 
 	var auditTotal,activeAdmins int
 	var latestAudit any
 	var latestAuditTime sql.NullTime
-	if err:=a.db.QueryRowContext(ctx,`SELECT COUNT(*),MAX(created_at) FROM identity.audit_events`).Scan(&auditTotal,&latestAuditTime);err==nil&&latestAuditTime.Valid{
-		latestAudit=latestAuditTime.Time.UTC()
+	if canAudit {
+		if err:=a.db.QueryRowContext(ctx,`SELECT COUNT(*),MAX(created_at) FROM identity.audit_events`).Scan(&auditTotal,&latestAuditTime);err==nil&&latestAuditTime.Valid{
+			latestAudit=latestAuditTime.Time.UTC()
+		}
 	}
 	_ = a.db.QueryRowContext(ctx,`SELECT COUNT(*) FROM identity.users WHERE active=TRUE`).Scan(&activeAdmins)
 
