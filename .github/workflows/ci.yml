@@ -110,6 +110,13 @@ jobs:
           grep -q '^  /api/v1/backups/scheduler/run:' ../docs/openapi.yaml
           grep -q '^  /api/v1/dashboard/summary:' ../docs/openapi.yaml
           grep -q '^  /api/v1/search:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/central/partners:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/central/partners/{partnerId}:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/central/modules:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/central/packages:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/central/finance:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/central/impact:' ../docs/openapi.yaml
+          test -s ../docs/CENTRAL-10_ACCEPTANCE.md
           test -s ../docs/START-23.1_SURFACE_INVENTORY.md
           test -s ../docs/CENTRAL-8_ACCEPTANCE.md
           grep -q '^  /api/v1/partners/export.pdf:' ../docs/openapi.yaml
@@ -390,6 +397,7 @@ jobs:
           python3 scripts/audit_central_7.py
           python3 scripts/audit_central_8.py
           python3 scripts/audit_central_9.py
+          python3 scripts/audit_central_10.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
@@ -542,6 +550,8 @@ jobs:
         run: sh scripts/smoke_central_8.sh http://127.0.0.1:8080
       - name: Run Central-9 premium UI, performance, weekly report and PDF-only runtime acceptance
         run: sh scripts/smoke_central_9.sh http://127.0.0.1:8080
+      - name: Run Central-10 backend-first read-model and sub-800ms runtime acceptance
+        run: sh scripts/smoke_central_10.sh http://127.0.0.1:8080
       - name: Dump Phase 4/5/closure runtime diagnostics on failure
         if: failure()
         run: docker compose logs --no-color --tail=220 gateway partners catalog billing payments evidence storage notifications automation tenantfinance
