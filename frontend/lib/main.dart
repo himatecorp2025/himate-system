@@ -6525,7 +6525,7 @@ class _FinancePageState extends State<FinancePage> {
       context: context,
       builder: (dialogContext) => BrandDialog(
         title: label,
-        subtitle: '${invoice['id']} · ${partnerName('${invoice['partner_id']}')} · ${invoice['currency']} ${number(invoice['gross_total'] ?? invoice['total']).toStringAsFixed(2)}',
+        subtitle: '${invoice['id']} · ${invoice['partner_name'] ?? invoice['partner_id']} · ${invoice['currency']} ${number(invoice['gross_total'] ?? invoice['total']).toStringAsFixed(2)}',
         icon: action == 'cancel' ? Icons.cancel_outlined : Icons.receipt_long_outlined,
         width: 560,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -6693,7 +6693,7 @@ class _FinancePageState extends State<FinancePage> {
   Widget financeChart() {
     final rows = chartRows;
     final windowLabel = revenuePeriod == 'WEEKLY' ? 'last 4 weeks' : 'last 12 months';
-    final planLabel = revenuePlan == 'ALL' ? 'All revenue' : revenuePlan;
+    final planLabel = revenuePlanLabel;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -6714,7 +6714,7 @@ class _FinancePageState extends State<FinancePage> {
                       DropdownMenuItem(value: 'MONTHLY', child: LText('Monthly')),
                     ],
                     onChanged: (value) {
-                      if (value != null) setState(() => revenuePeriod = value);
+                      if (value != null) applyRevenuePeriod(value);
                     },
                   ),
                 ),
@@ -6726,12 +6726,12 @@ class _FinancePageState extends State<FinancePage> {
                     decoration: const InputDecoration(labelText: 'Package'),
                     items: const [
                       DropdownMenuItem(value: 'ALL', child: LText('All')),
-                      DropdownMenuItem(value: 'Starter', child: LText('Starter')),
-                      DropdownMenuItem(value: 'Business', child: LText('Business')),
-                      DropdownMenuItem(value: 'Premium', child: LText('Premium')),
+                      DropdownMenuItem(value: 'STARTER', child: LText('Starter')),
+                      DropdownMenuItem(value: 'BUSINESS', child: LText('Business')),
+                      DropdownMenuItem(value: 'FLEX', child: LText('Premium')),
                     ],
                     onChanged: (value) {
-                      if (value != null) setState(() => revenuePlan = value);
+                      if (value != null) applyRevenuePlan(value);
                     },
                   ),
                 ),
@@ -6762,7 +6762,7 @@ class _FinancePageState extends State<FinancePage> {
             SizedBox(
               height: 205,
               child: LayoutBuilder(builder: (context, constraints) {
-                final maxValue = rows.fold<double>(0, (max, row) => math.max(max, number(row['paid'])));
+                final maxValue = chartMaxPaid;
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -6780,7 +6780,7 @@ class _FinancePageState extends State<FinancePage> {
                               duration: const Duration(milliseconds: 180),
                               height: maxValue <= 0 ? 2 : math.max(2, 135 * number(row['paid']) / maxValue),
                               decoration: BoxDecoration(
-                                color: revenuePlanKey == 'ALL' ? brandGold.withOpacity(.78) : brandNavy.withOpacity(.78),
+                                color: revenuePlan == 'ALL' ? brandGold.withOpacity(.78) : brandNavy.withOpacity(.78),
                                 borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
                               ),
                             ),
@@ -6911,17 +6911,12 @@ class _FinancePageState extends State<FinancePage> {
 
   @override
   Widget build(BuildContext context) {
-    final onboarding = overview['onboarding'] is Map
-        ? Map<String, dynamic>.from(overview['onboarding'] as Map)
-        : <String, dynamic>{};
-    final draftCount = workflowCount('draft');
-    final sentCount = workflowCount('sent');
-    final approvedCount = workflowCount('approved');
-    final paidCount = workflowCount('paid');
-    final pendingOnboarding = onboarding['pending'] is num
-        ? (onboarding['pending'] as num).toInt()
-        : int.tryParse('${onboarding['pending'] ?? 0}') ?? 0;
-    final visibleInvoices = filteredInvoices;
+    final draftCount = (financeKpis['draft'] as num?)?.toInt() ?? 0;
+    final sentCount = (financeKpis['sent'] as num?)?.toInt() ?? 0;
+    final approvedCount = (financeKpis['approved'] as num?)?.toInt() ?? 0;
+    final paidCount = (financeKpis['paid'] as num?)?.toInt() ?? 0;
+    final pendingOnboarding = (financeKpis['pending_onboarding'] as num?)?.toInt() ?? 0;
+    final visibleInvoices = invoices;
 
     void scrollToOnboarding() {
       final target = onboardingKey.currentContext;
@@ -6965,23 +6960,23 @@ class _FinancePageState extends State<FinancePage> {
                       note: 'Awaiting Central approval',
                       icon: Icons.edit_note_outlined,
                       accent: brandSteel,
-                      onTap: () => setState(() => invoiceFilter = 'DRAFT'),
+                      onTap: () => applyInvoiceFilter('DRAFT'),
                     ),
                     Kpi(
                       label: 'Outstanding',
-                      value: moneyAcrossCurrencies('outstanding'),
-                      note: '${approvedCount + sentCount} approved / sent invoices',
+                      value: '${financeKpis['outstanding_label'] ?? r'$0.00'}',
+                      note: '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} approved / sent invoices',
                       icon: Icons.outbox_outlined,
                       accent: brandGold,
-                      onTap: () => setState(() => invoiceFilter = sentCount > 0 ? 'SENT' : 'APPROVED'),
+                      onTap: () => applyInvoiceFilter(sentCount > 0 ? 'SENT' : 'APPROVED'),
                     ),
                     Kpi(
                       label: 'Paid YTD',
-                      value: moneyAcrossCurrencies('paid_ytd'),
+                      value: '${financeKpis['paid_ytd_label'] ?? r'$0.00'}',
                       note: '$paidCount paid invoices',
                       icon: Icons.payments_outlined,
                       accent: brandSuccess,
-                      onTap: () => setState(() => invoiceFilter = 'PAID'),
+                      onTap: () => applyInvoiceFilter('PAID'),
                     ),
                     Kpi(
                       label: 'Pending onboarding',
@@ -7016,7 +7011,7 @@ class _FinancePageState extends State<FinancePage> {
                       FilterChip(
                         selected: invoiceFilter == status,
                         label: LText(status == 'ALL' ? 'All' : _humanize(status)),
-                        onSelected: (_) => setState(() => invoiceFilter = status),
+                        onSelected: (_) => applyInvoiceFilter(status),
                       ),
                   ],
                 ),
@@ -7060,7 +7055,7 @@ class _FinancePageState extends State<FinancePage> {
                                       ]),
                                       const SizedBox(height: 5),
                                       LText(
-                                        partnerName(partnerID),
+                                        '${invoice['partner_name'] ?? partnerID}',
                                         style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600),
                                       ),
                                       const SizedBox(height: 2),
