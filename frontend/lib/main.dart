@@ -7878,9 +7878,8 @@ class _FinancePageState extends State<FinancePage> {
     }
 
     return Content(
-      eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
       title: 'Licensing & Finance',
-      subtitle: 'Partner onboarding, invoice approval, payment status and auditable finance controls. A partner reaches Portal access only after final HIMATE approval.',
+      subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
@@ -7915,12 +7914,12 @@ class _FinancePageState extends State<FinancePage> {
                 ResponsiveKpiGrid(
                   children: [
                     Kpi(
-                      label: 'Draft invoices',
-                      value: '$draftCount',
-                      note: 'Awaiting Central approval',
-                      icon: Icons.edit_note_outlined,
+                      label: 'Invoices',
+                      value: '${invoices.length}',
+                      note: '$draftCount draft · $approvedCount approved',
+                      icon: Icons.receipt_long_outlined,
                       accent: brandSteel,
-                      onTap: () => applyInvoiceFilter('DRAFT'),
+                      onTap: () => applyInvoiceFilter('ALL'),
                     ),
                     Kpi(
                       label: 'Outstanding',
@@ -7931,7 +7930,7 @@ class _FinancePageState extends State<FinancePage> {
                       onTap: () => applyInvoiceFilter(sentCount > 0 ? 'SENT' : 'APPROVED'),
                     ),
                     Kpi(
-                      label: 'Paid YTD',
+                      label: 'Settled',
                       value: '${financeKpis['paid_ytd_label'] ?? r'$0.00'}',
                       note: '$paidCount paid invoices',
                       icon: Icons.payments_outlined,
@@ -7950,6 +7949,53 @@ class _FinancePageState extends State<FinancePage> {
                 ),
                 const SizedBox(height: 20),
                 financeChart(),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardWidth = constraints.maxWidth < 760
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 24) / 3;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'Invoice approval queue',
+                            subtitle: 'Review and approve generated invoice drafts before they can be sent.',
+                            footer: '$draftCount awaiting approval',
+                            icon: Icons.fact_check_outlined,
+                            accent: brandSteel,
+                            onTap: () => applyInvoiceFilter('DRAFT'),
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'Partner onboarding',
+                            subtitle: 'Registration, commercial approval, license activation and Portal access.',
+                            footer: '$pendingOnboarding active onboarding processes',
+                            icon: Icons.group_add_outlined,
+                            accent: brandGold,
+                            onTap: scrollToOnboarding,
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'New invoice',
+                            subtitle: 'Create a draft invoice from an approved partner and commercial context.',
+                            footer: 'Create invoice',
+                            icon: Icons.add_card_outlined,
+                            accent: brandSuccess,
+                            onTap: partners.isEmpty ? null : () => createManualInvoice(),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -11280,6 +11326,57 @@ class _KpiState extends State<Kpi> {
       ),
     ),
   );
+}
+
+class _CentralActionCard extends StatelessWidget {
+  const _CentralActionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    this.footer,
+    this.onTap,
+  });
+  final String title, subtitle;
+  final IconData icon;
+  final Color accent;
+  final String? footer;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(13)),
+                    child: Icon(icon, color: accent, size: 23),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w700))),
+                  Icon(Icons.arrow_forward_rounded, color: accent, size: 19),
+                ]),
+                const SizedBox(height: 9),
+                LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.4)),
+                if (footer != null) ...[
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 10),
+                  LText(footer!, style: TextStyle(color: accent, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class ServiceCard extends StatelessWidget {
