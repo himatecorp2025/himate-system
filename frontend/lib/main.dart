@@ -2950,8 +2950,15 @@ class _PartnersPageState extends State<PartnersPage> {
     return params;
   }
 
-  Uri _centralPartnerUri() =>
-      Uri(path: '/api/v1/central/partners', queryParameters: _partnerQueryParameters());
+  Uri _centralPartnerUri() {
+    final params = _partnerQueryParameters();
+    if (params.length == 2 &&
+        params['limit'] == '$pageSize' &&
+        params['offset'] == '0') {
+      return Uri.parse(centralPartnersInitialPath());
+    }
+    return Uri(path: '/api/v1/central/partners', queryParameters: params);
+  }
 
   Uri _partnerExportUri() {
     final params = <String, String>{};
