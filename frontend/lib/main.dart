@@ -6709,12 +6709,21 @@ class _FinancePageState extends State<FinancePage> {
   String revenuePlan = 'ALL';
   final GlobalKey onboardingKey = GlobalKey();
   bool loading = true;
+  bool warming = false;
+  int _warmRetryCount = 0;
+  Timer? _warmRetry;
   String? error;
 
   @override
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void dispose() {
+    _warmRetry?.cancel();
+    super.dispose();
   }
 
   String _financePath() {
@@ -6742,17 +6751,34 @@ class _FinancePageState extends State<FinancePage> {
       if (model['ready'] != true) {
         setState(() {
           loading = true;
+          warming = true;
           error = null;
         });
-        Future<void>.delayed(const Duration(milliseconds: 400), () {
-          if (mounted && path == _financePath()) unawaited(load());
-        });
+        // Snapshot production is asynchronous. Hammering the Gateway every
+        // 400 ms cannot make the materializer finish faster and can compete
+        // with the very service calls needed to build the snapshot. Retry a
+        // bounded number of times, then leave an explicit warming state that
+        // the user can refresh manually.
+        _warmRetry?.cancel();
+        if (_warmRetryCount < 2) {
+          _warmRetryCount += 1;
+          _warmRetry = Timer(Duration(milliseconds: 900 * _warmRetryCount), () {
+            if (mounted && path == _financePath()) {
+              unawaited(load(force: true));
+            }
+          });
+        } else {
+          setState(() => loading = false);
+        }
         return;
       }
       final chart = model['chart'] is Map
           ? Map<String, dynamic>.from(model['chart'] as Map)
           : <String, dynamic>{};
+      _warmRetry?.cancel();
+      _warmRetryCount = 0;
       setState(() {
+        warming = false;
         profile = model['profile'] is Map
             ? Map<String, dynamic>.from(model['profile'] as Map)
             : null;
