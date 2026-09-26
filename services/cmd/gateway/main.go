@@ -1620,43 +1620,59 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 	serviceVersions := map[string]string{"gateway": a.version}
 	overall := "ok"
 	checkedAt := time.Now().UTC()
+
+	type dependencyResult struct {
+		name    string
+		status  string
+		version string
+	}
+	results := make(chan dependencyResult, len(a.hosts))
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	for name, host := range a.hosts {
-		if strings.TrimSpace(host) == "" {
-			services[name] = "unconfigured"
-			overall = "degraded"
-			continue
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/health", nil)
-		if err != nil {
-			cancel()
-			services[name] = "unavailable"
-			overall = "degraded"
-			continue
-		}
-		resp, err := a.client.Do(req)
-		cancel()
-		if err != nil || resp.StatusCode >= 300 {
-			services[name] = "unavailable"
-			overall = "degraded"
-		} else {
+		name, host := name, host
+		go func() {
+			if strings.TrimSpace(host) == "" {
+				results <- dependencyResult{name: name, status: "unconfigured"}
+				return
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/health", nil)
+			if err != nil {
+				results <- dependencyResult{name: name, status: "unavailable"}
+				return
+			}
+			resp, err := a.client.Do(req)
+			if resp != nil {
+				defer resp.Body.Close()
+			}
+			if err != nil || resp == nil || resp.StatusCode >= 300 {
+				results <- dependencyResult{name: name, status: "unavailable"}
+				return
+			}
 			version := strings.TrimSpace(resp.Header.Get("X-Himate-App-Version"))
-			serviceVersions[name] = version
 			switch {
 			case version == "":
-				services[name] = "version_unknown"
-				overall = "degraded"
+				results <- dependencyResult{name: name, status: "version_unknown"}
 			case version != a.version:
-				services[name] = "version_mismatch"
-				overall = "degraded"
+				results <- dependencyResult{name: name, status: "version_mismatch", version: version}
 			default:
-				services[name] = "ok"
+				results <- dependencyResult{name: name, status: "ok", version: version}
 			}
+		}()
+	}
+
+	for range a.hosts {
+		result := <-results
+		services[result.name] = result.status
+		if result.version != "" {
+			serviceVersions[result.name] = result.version
 		}
-		if resp != nil {
-			resp.Body.Close()
+		if result.status != "ok" {
+			overall = "degraded"
 		}
 	}
+
 	statusCode := http.StatusOK
 	if overall != "ok" {
 		statusCode = http.StatusServiceUnavailable
@@ -1669,6 +1685,7 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 		"architecture": "containerized-microservices-start-23.11.3k",
 		"readiness": true,
 		"checked_at": checkedAt,
+		"duration_ms": time.Since(checkedAt).Milliseconds(),
 		"services": services,
 		"service_versions": serviceVersions,
 		"release_consistent": overall == "ok",
