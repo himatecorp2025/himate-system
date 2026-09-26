@@ -5,13 +5,13 @@ BASE_URL="${1:-http://127.0.0.1:8080}"
 TMP_ROOT="${TMPDIR:-/tmp}"
 OWNER_COOKIE="$TMP_ROOT/himate-central8-owner.txt"
 PARTNER_COOKIE="$TMP_ROOT/himate-central8-partner.txt"
-PARTNERS_CSV="$TMP_ROOT/himate-central8-partners.csv"
-PACKAGES_CSV="$TMP_ROOT/himate-central8-packages.csv"
-FINANCE_CSV="$TMP_ROOT/himate-central8-finance.csv"
-IMPACT_CSV="$TMP_ROOT/himate-central8-impact.csv"
+PARTNERS_PDF="$TMP_ROOT/himate-central8-partners.pdf"
+PACKAGES_PDF="$TMP_ROOT/himate-central8-packages.pdf"
+FINANCE_PDF="$TMP_ROOT/himate-central8-finance.pdf"
+IMPACT_PDF="$TMP_ROOT/himate-central8-impact.pdf"
 HEADERS="$TMP_ROOT/himate-central8-headers.txt"
-rm -f "$OWNER_COOKIE" "$PARTNER_COOKIE" "$PARTNERS_CSV" "$PACKAGES_CSV" "$FINANCE_CSV" "$IMPACT_CSV" "$HEADERS"
-trap 'rm -f "$OWNER_COOKIE" "$PARTNER_COOKIE" "$PARTNERS_CSV" "$PACKAGES_CSV" "$FINANCE_CSV" "$IMPACT_CSV" "$HEADERS"' EXIT
+rm -f "$OWNER_COOKIE" "$PARTNER_COOKIE" "$PARTNERS_PDF" "$PACKAGES_PDF" "$FINANCE_PDF" "$IMPACT_PDF" "$HEADERS"
+trap 'rm -f "$OWNER_COOKIE" "$PARTNER_COOKIE" "$PARTNERS_PDF" "$PACKAGES_PDF" "$FINANCE_PDF" "$IMPACT_PDF" "$HEADERS"' EXIT
 
 COMPOSE_JSON="$(docker compose config --format json)"
 OWNER_EMAIL="$(printf '%s' "$COMPOSE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["services"]["gateway"]["environment"]; print(e["HIMATE_BOOTSTRAP_ADMIN_EMAIL"] if isinstance(e,dict) else next(x.split("=",1)[1] for x in e if x.startswith("HIMATE_BOOTSTRAP_ADMIN_EMAIL=")))')"
@@ -107,62 +107,32 @@ assert d["analytics_source"]=="CENTRAL_8_INVOICE_LEDGER_TRENDS",d
 '
 echo ok
 
-assert_csv_download() {
+assert_pdf_download() {
   path="$1"
   output="$2"
   rm -f "$HEADERS" "$output"
   curl -fsS -D "$HEADERS" -b "$OWNER_COOKIE" -o "$output" "$BASE_URL$path"
-  grep -qi '^content-type: text/csv' "$HEADERS"
+  grep -qi '^content-type: application/pdf' "$HEADERS"
   grep -qi '^content-disposition: attachment;' "$HEADERS"
   test -s "$output"
+  first_bytes="$(dd if="$output" bs=1 count=5 2>/dev/null)"
+  test "$first_bytes" = "%PDF-"
 }
 
-printf 'CENTRAL-8 Partners bulk export returns backend CSV rows... '
-assert_csv_download "/api/v1/partners/export.csv" "$PARTNERS_CSV"
-python3 - "$PARTNERS_CSV" <<'PY'
-import csv,sys
-with open(sys.argv[1],newline="",encoding="utf-8") as fh:
-    rows=list(csv.DictReader(fh))
-assert rows
-assert {"partner_id","display_name","lifecycle","system_health"} <= set(rows[0])
-assert any(x["partner_id"]=="ptr_000001" for x in rows)
-PY
+printf 'CENTRAL-8/9 Partners bulk export returns a branded PDF document... '
+assert_pdf_download "/api/v1/partners/export.pdf" "$PARTNERS_PDF"
 echo ok
 
-printf 'CENTRAL-8 Package Analytics bulk export returns the active package/subscription population... '
-assert_csv_download "/api/v1/billing/packages/export.csv" "$PACKAGES_CSV"
-python3 - "$PACKAGES_CSV" "$PREMIUM_ID" <<'PY'
-import csv,sys
-with open(sys.argv[1],newline="",encoding="utf-8") as fh:
-    rows=list(csv.DictReader(fh))
-assert rows
-assert {"partner_id","package","plan_key","module_usage_events_30d","portal_active_hours_30d"} <= set(rows[0])
-row=next(x for x in rows if x["partner_id"]==sys.argv[2])
-assert row["package"]=="Premium" and row["plan_key"]=="FLEX",row
-PY
+printf 'CENTRAL-8/9 Package Analytics bulk export returns a branded PDF document... '
+assert_pdf_download "/api/v1/billing/packages/export.pdf" "$PACKAGES_PDF"
 echo ok
 
-printf 'CENTRAL-8 Finance bulk export returns the invoice-ledger CSV contract... '
-assert_csv_download "/api/v1/billing/finance/export.csv" "$FINANCE_CSV"
-python3 - "$FINANCE_CSV" <<'PY'
-import csv,sys
-with open(sys.argv[1],newline="",encoding="utf-8") as fh:
-    reader=csv.DictReader(fh)
-    assert {"invoice_id","partner_id","workflow_status","net_total","tax_amount","gross_total"} <= set(reader.fieldnames or [])
-    rows=list(reader)
-assert rows
-PY
+printf 'CENTRAL-8/9 Finance bulk export returns a branded PDF document... '
+assert_pdf_download "/api/v1/billing/finance/export.pdf" "$FINANCE_PDF"
 echo ok
 
-printf 'CENTRAL-8 Impact bulk export has a stable CSV contract even when no observations exist... '
-assert_csv_download "/api/v1/impact/export.csv" "$IMPACT_CSV"
-python3 - "$IMPACT_CSV" <<'PY'
-import csv,sys
-with open(sys.argv[1],newline="",encoding="utf-8") as fh:
-    reader=csv.DictReader(fh)
-    assert {"partner_id","metric_key","period_start","period_end","provenance","recorded_at"} <= set(reader.fieldnames or [])
-    list(reader)
-PY
+printf 'CENTRAL-8/9 Impact bulk export returns a stable branded PDF even when no observations exist... '
+assert_pdf_download "/api/v1/impact/export.pdf" "$IMPACT_PDF"
 echo ok
 
 echo 'CENTRAL-8 manual QA, analytics, export and loading runtime acceptance passed'

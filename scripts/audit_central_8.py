@@ -59,8 +59,8 @@ for token in [
     check(token in billing, f"Package Analytics authoritative source missing: {token}")
 for token in [
     '"/api/v1/billing/packages/analytics"',
-    '"/api/v1/billing/packages/export.csv"',
-    '"/api/v1/billing/finance/export.csv"',
+    '"/api/v1/billing/packages/export.pdf"',
+    '"/api/v1/billing/finance/export.pdf"',
 ]:
     check(token in billing_main, f"Billing CENTRAL-8 endpoint is not registered: {token}")
 
@@ -77,16 +77,16 @@ check(partner_portal.count("recordPartnerPortalActivity(u)") >= 2,
       "Partner Portal activity is not recorded at login and authenticated API use")
 check("5-minute buckets" in billing, "Package Analytics does not disclose active-time bucket semantics")
 
-# Bulk export is backend-generated and route-backed.
-check('"/api/v1/partners/export.csv"' in partners_main, "Partners CSV route is not registered")
-check("encoding/csv" in partners and "exportPartnersCSV" in partners, "Partners CSV backend is missing")
-check('"/api/v1/impact/export.csv"' in impact_main, "Impact CSV route is not registered")
-check("encoding/csv" in impact and "exportImpactCSV" in impact, "Impact CSV backend is missing")
+# Bulk export is backend-generated, branded PDF and route-backed (Central-9 supersedes Central-8 CSV transport).
+check('"/api/v1/partners/export.pdf"' in partners_main, "Partners CSV route is not registered")
+check("exportPartnersPDF" in partners and "WriteBrandedTablePDF" in partners, "Partners branded PDF backend is missing")
+check('"/api/v1/impact/export.pdf"' in impact_main, "Impact CSV route is not registered")
+check("exportImpactPDF" in impact and "WriteBrandedTablePDF" in impact, "Impact branded PDF backend is missing")
 for token in [
-    "/api/v1/partners/export.csv",
-    "/api/v1/billing/packages/export.csv",
-    "/api/v1/billing/finance/export.csv",
-    "/api/v1/impact/export.csv",
+    "/api/v1/partners/export.pdf",
+    "/api/v1/billing/packages/export.pdf",
+    "/api/v1/billing/finance/export.pdf",
+    "/api/v1/impact/export.pdf",
 ]:
     check(token in frontend, f"Central UI does not expose functional export path: {token}")
 
@@ -115,8 +115,8 @@ for token in [
     "central8PartnerPresetRows",
 ]:
     check(token in frontend_test, f"CENTRAL-8 Flutter acceptance test missing: {token}")
-check("rows.sublist(rows.length - 4)" in frontend,
-      "Dashboard weekly window is no longer constrained to the latest four observations")
+check("elapsed.sublist(elapsed.length - 4)" in frontend and "!parsed.isAfter(startOfCurrentWeek)" in frontend,
+      "Dashboard weekly window must show the latest four elapsed observations and exclude future weeks")
 
 # Route-state persistence must update the browser URL when Central navigation changes.
 for token in [
@@ -148,7 +148,7 @@ check("duplicate package" not in frontend.lower(), "Unexpected duplicate-package
 # New manual-QA strings must participate in the bilingual literal system.
 for token in [
     "Package Analytics",
-    "Export CSV",
+    "Export PDF",
     "No package analytics yet",
 ]:
     check(token in localization or token in frontend, f"CENTRAL-8 UI label disappeared: {token}")

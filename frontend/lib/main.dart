@@ -44,19 +44,22 @@ Future<void> main() async {
   runApp(partnerPortal ? const PartnerPortalApp() : const HimateApp());
 }
 
-const brandNavy = Color(0xFF0B1F3B);
-const brandSteel = Color(0xFF2E5B87);
-const brandGold = Color(0xFFD4AF6B);
-const brandIvory = Color(0xFFF8F9FB);
-const brandMist = Color(0xFFE4E7EC);
-const brandCharcoal = Color(0xFF1F2937);
+const brandNavy = Color(0xFF72B7FF);
+const brandSteel = Color(0xFF28A8FF);
+const brandGold = Color(0xFFE2B95B);
+const brandIvory = Color(0xFF020914);
+const brandMist = Color(0xFF173653);
+const brandCharcoal = Color(0xFFF1F6FC);
 const brandWhite = Color(0xFFFFFFFF);
-const brandSuccess = Color(0xFF20866A);
-const brandWarning = Color(0xFFB7791F);
-const brandDanger = Color(0xFFB54444);
-const brandNavyDeep = Color(0xFF071426);
-const brandNavySoft = Color(0xFF143555);
-const brandTextSoft = Color(0xFF667085);
+const brandSuccess = Color(0xFF46D9AD);
+const brandWarning = Color(0xFFF3BD55);
+const brandDanger = Color(0xFFFF7878);
+const brandNavyDeep = Color(0xFF020914);
+const brandNavySoft = Color(0xFF0A3158);
+const brandTextSoft = Color(0xFFA9C0D8);
+const brandSurface = Color(0xFF07182A);
+const brandSurfaceRaised = Color(0xFF0B2540);
+const brandIonBlue = Color(0xFF19B5FF);
 
 const navy = brandNavy;
 const gold = brandGold;
@@ -65,7 +68,15 @@ const muted = brandTextSoft;
 const success = brandSuccess;
 
 List<Map<String,dynamic>> central8LatestWeeklyWindow(List<Map<String,dynamic>> rows) {
-  final source = rows.length <= 4 ? rows : rows.sublist(rows.length - 4);
+  final now = DateTime.now().toUtc();
+  final startOfCurrentWeek = DateTime.utc(now.year, now.month, now.day)
+      .subtract(Duration(days: now.weekday - DateTime.monday));
+  final elapsed = rows.where((row) {
+    final parsed = DateTime.tryParse('${row['week_start'] ?? ''}')?.toUtc();
+    return parsed != null && !parsed.isAfter(startOfCurrentWeek);
+  }).toList()
+    ..sort((a, b) => '${a['week_start'] ?? ''}'.compareTo('${b['week_start'] ?? ''}'));
+  final source = elapsed.length <= 4 ? elapsed : elapsed.sublist(elapsed.length - 4);
   return [
     for (final row in source)
       <String,dynamic>{
@@ -77,6 +88,21 @@ List<Map<String,dynamic>> central8LatestWeeklyWindow(List<Map<String,dynamic>> r
         })(),
       },
   ];
+}
+
+Map<String,dynamic> central9CanonicalPackage(String planKey) {
+  return switch (planKey.toUpperCase().trim()) {
+    'STARTER' => <String,dynamic>{'name':'Starter','price':990,'entitlement':'10 modules'},
+    'BUSINESS' => <String,dynamic>{'name':'Business','price':1490,'entitlement':'20 modules'},
+    'FLEX' => <String,dynamic>{'name':'Premium','price':2490,'entitlement':'Unlimited'},
+    _ => <String,dynamic>{'name':planKey,'price':0,'entitlement':'—'},
+  };
+}
+
+String central9CanonicalPackagePrice(String planKey) {
+  final package = central9CanonicalPackage(planKey);
+  final price = (package['price'] as num?)?.toInt() ?? 0;
+  return '\$' + intl.NumberFormat('#,##0', 'en_US').format(price) + ' + VAT';
 }
 
 List<Map<String,dynamic>> central8PartnerPresetRows(
@@ -146,118 +172,117 @@ Future<String?> promptMfaCode(BuildContext context, Map<String, dynamic> challen
 
 ThemeData buildBrandTheme() {
   final scheme = ColorScheme.fromSeed(
-    seedColor: brandNavy,
-    brightness: Brightness.light,
-    primary: brandNavy,
+    seedColor: brandIonBlue,
+    brightness: Brightness.dark,
+    primary: brandIonBlue,
     secondary: brandGold,
-    surface: brandWhite,
+    surface: brandSurfaceRaised,
     error: brandDanger,
   );
-  final base = GoogleFonts.interTextTheme();
-  final display = GoogleFonts.cormorantGaramondTextTheme();
+  final base = GoogleFonts.interTextTheme(ThemeData.dark().textTheme);
+  final display = GoogleFonts.cormorantGaramondTextTheme(ThemeData.dark().textTheme);
   return ThemeData(
     useMaterial3: true,
+    brightness: Brightness.dark,
     colorScheme: scheme,
-    scaffoldBackgroundColor: brandIvory,
+    scaffoldBackgroundColor: brandNavyDeep,
     visualDensity: VisualDensity.standard,
     splashFactory: InkSparkle.splashFactory,
     textTheme: base.copyWith(
-      displaySmall: display.displaySmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.7, height: 1.02),
-      headlineLarge: display.headlineLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.45, height: 1.03),
-      headlineMedium: display.headlineMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.3, height: 1.05),
-      headlineSmall: display.headlineSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w600, letterSpacing: -.15, height: 1.08),
-      titleLarge: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
-      titleMedium: base.titleMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      displaySmall: display.displaySmall?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.7, height: 1.02),
+      headlineLarge: display.headlineLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.45, height: 1.03),
+      headlineMedium: display.headlineMedium?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.3, height: 1.05),
+      headlineSmall: display.headlineSmall?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.15, height: 1.08),
+      titleLarge: display.titleLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w700),
+      titleMedium: base.titleMedium?.copyWith(color: brandWhite, fontWeight: FontWeight.w700),
       bodyLarge: base.bodyLarge?.copyWith(color: brandCharcoal, height: 1.5),
       bodyMedium: base.bodyMedium?.copyWith(color: brandCharcoal, height: 1.45),
       bodySmall: base.bodySmall?.copyWith(color: brandTextSoft, height: 1.4),
-      labelLarge: base.labelLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: .05),
+      labelLarge: base.labelLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w700, letterSpacing: .05),
     ),
     cardTheme: CardThemeData(
-      color: brandWhite,
-      elevation: 2,
+      color: brandSurfaceRaised,
+      elevation: 0,
       margin: EdgeInsets.zero,
-      shadowColor: brandNavy.withOpacity(.14),
+      shadowColor: brandIonBlue.withOpacity(.18),
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0x26071426), width: 1.2),
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: brandIonBlue.withOpacity(.24), width: 1.0),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: brandWhite,
+      fillColor: brandSurface,
       labelStyle: base.bodyMedium?.copyWith(color: brandTextSoft),
-      hintStyle: base.bodyMedium?.copyWith(color: const Color(0xFF98A2B3)),
-      prefixIconColor: brandSteel,
-      suffixIconColor: brandSteel,
+      hintStyle: base.bodyMedium?.copyWith(color: brandTextSoft.withOpacity(.72)),
+      prefixIconColor: brandIonBlue,
+      suffixIconColor: brandIonBlue,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFD7DEE7))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: brandSteel, width: 1.4)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: brandDanger)),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: brandMist)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: brandMist.withOpacity(.9))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandIonBlue, width: 1.5)),
+      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandDanger)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandMist)),
     ),
     checkboxTheme: CheckboxThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
-      fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? brandNavy : brandWhite),
-      checkColor: WidgetStateProperty.all(brandWhite),
-      side: const BorderSide(color: brandNavy, width: 1.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
+      fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? brandIonBlue : brandSurface),
+      checkColor: WidgetStateProperty.all(brandNavyDeep),
+      side: const BorderSide(color: brandIonBlue, width: 1.4),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.disabled)) return brandNavy.withOpacity(.42);
-          if (states.contains(WidgetState.hovered)) return const Color(0xFF102B50);
-          if (states.contains(WidgetState.pressed)) return const Color(0xFF06162B);
-          return brandNavy;
+          if (states.contains(WidgetState.disabled)) return brandIonBlue.withOpacity(.34);
+          if (states.contains(WidgetState.hovered)) return const Color(0xFF39C2FF);
+          if (states.contains(WidgetState.pressed)) return const Color(0xFF0E8FD5);
+          return brandIonBlue;
         }),
-        foregroundColor: WidgetStateProperty.all(brandWhite),
-        overlayColor: WidgetStateProperty.all(brandGold.withOpacity(.08)),
+        foregroundColor: WidgetStateProperty.all(brandNavyDeep),
+        overlayColor: WidgetStateProperty.all(brandWhite.withOpacity(.08)),
         padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 21, vertical: 16)),
-        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(7))),
-        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(9))),
+        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
         elevation: WidgetStateProperty.all(0),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandSteel : brandNavy),
-        side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.hovered) ? brandSteel : const Color(0xFFB9C5D3))),
-        overlayColor: WidgetStateProperty.all(brandSteel.withOpacity(.05)),
+        foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandWhite : brandNavy),
+        side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.hovered) ? brandIonBlue : brandMist)),
+        backgroundColor: WidgetStateProperty.all(brandSurface.withOpacity(.72)),
+        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.08)),
         padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
-        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(7))),
-        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(9))),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandSteel : brandNavy),
-        overlayColor: WidgetStateProperty.all(brandSteel.withOpacity(.05)),
-        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+        foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandWhite : brandNavy),
+        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.07)),
       ),
     ),
     iconButtonTheme: IconButtonThemeData(
       style: ButtonStyle(
         foregroundColor: WidgetStateProperty.all(brandNavy),
-        overlayColor: WidgetStateProperty.all(brandSteel.withOpacity(.07)),
+        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.08)),
       ),
     ),
     dividerColor: brandMist,
     scrollbarTheme: ScrollbarThemeData(
-      thumbColor: WidgetStateProperty.all(brandSteel.withOpacity(.35)),
+      thumbColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.42)),
       radius: const Radius.circular(12),
       thickness: WidgetStateProperty.all(6),
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: brandWhite,
-      foregroundColor: brandNavy,
+      backgroundColor: brandSurface,
+      foregroundColor: brandWhite,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
-      titleTextStyle: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w600),
+      titleTextStyle: display.titleLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w600),
     ),
   );
 }
-
 class ApiError implements Exception {
   ApiError(this.status, this.message);
   final int status;
@@ -592,6 +617,10 @@ class _HimateAppState extends State<HimateApp> {
     }
     if (_can('billing.read')) {
       paths.add('/api/v1/billing/profile');
+      paths.add('/api/v1/billing/plans');
+      paths.add('/api/v1/billing/packages/analytics');
+      paths.add('/api/v1/billing/finance/overview');
+      paths.add('/api/v1/billing/invoices');
     }
     if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
       paths.add('/api/v1/impact/definitions');
@@ -901,7 +930,7 @@ class PartnerRouteLoader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
-      future: api.get('/api/v1/partners/$partnerId', force: true),
+      future: api.get('/api/v1/partners/$partnerId', maxAge: const Duration(seconds: 20)),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
           return const Content(
@@ -1972,7 +2001,7 @@ class _ShellState extends State<Shell> {
                     Container(
                       height: 74,
                       padding: const EdgeInsets.symmetric(horizontal: 28),
-                      decoration: const BoxDecoration(color: brandWhite, border: Border(bottom: BorderSide(color: brandMist))),
+                      decoration: const BoxDecoration(color: brandSurface, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
                         children: [
                           if (!tablet)
@@ -2976,7 +3005,7 @@ class _PartnersPageState extends State<PartnersPage> {
     if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
     if (healthFilter != 'ALL') params['health'] = healthFilter;
     if (referenceOnly) params['reference'] = 'true';
-    return Uri(path: '/api/v1/partners/export.csv', queryParameters: params.isEmpty ? null : params);
+    return Uri(path: '/api/v1/partners/export.pdf', queryParameters: params.isEmpty ? null : params);
   }
 
   String _presetPartnerPath({String lifecycle = 'ALL', bool reference = false}) {
@@ -3931,7 +3960,7 @@ class _PartnersPageState extends State<PartnersPage> {
         OutlinedButton.icon(
           onPressed: () => openBrowserDownload(_partnerExportUri().toString()),
           icon: const Icon(Icons.download_outlined),
-          label: const LText('Export CSV'),
+          label: const LText('Export PDF'),
         ),
         OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const LText('Add category')),
         FilledButton.icon(
@@ -5904,7 +5933,7 @@ class _PackagesPageState extends State<PackagesPage> {
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
     try {
-      final result = await widget.api.get('/api/v1/billing/plans', force: true);
+      final result = await widget.api.get('/api/v1/billing/plans', maxAge: const Duration(seconds: 30));
       if (!mounted) return;
       final allPlans = items(result);
       setState(() {
@@ -5932,7 +5961,7 @@ class _PackagesPageState extends State<PackagesPage> {
   Future<void> _loadAnalytics() async {
     if (mounted) setState(() { analyticsLoading = true; analyticsError = null; });
     try {
-      final result = await widget.api.get('/api/v1/billing/packages/analytics', force: true);
+      final result = await widget.api.get('/api/v1/billing/packages/analytics', maxAge: const Duration(seconds: 20));
       if (!mounted) return;
       setState(() {
         analytics = result;
@@ -5957,9 +5986,7 @@ class _PackagesPageState extends State<PackagesPage> {
   }
 
   String _packageEntitlement(Map<String,dynamic> plan) =>
-      plan['selection_mode'] == 'UNLIMITED'
-          ? 'Unlimited modules'
-          : '${plan['module_limit'] ?? 0} included modules';
+      '${central9CanonicalPackage('${plan['plan_key']}')['entitlement']}';
 
   String moduleLabel(Map<String, dynamic> module) =>
       '${module['label'] ?? module['label_en'] ?? module['key'] ?? ''}';
@@ -6150,9 +6177,9 @@ class _PackagesPageState extends State<PackagesPage> {
       subtitle: 'Starter, Business and Premium package control with usage and commercial analytics.',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => openBrowserDownload('/api/v1/billing/packages/export.csv'),
+          onPressed: () => openBrowserDownload('/api/v1/billing/packages/export.pdf'),
           icon: const Icon(Icons.download_outlined),
-          label: const LText('Export CSV'),
+          label: const LText('Export PDF'),
         ),
         OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
       ],
@@ -6172,8 +6199,8 @@ class _PackagesPageState extends State<PackagesPage> {
                     SizedBox(
                       width: width,
                       child: _PackageOverviewCard(
-                        name: '${plan['display_name']}',
-                        price: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} / month + ${plan['tax_label'] ?? 'VAT'}',
+                        name: '${central9CanonicalPackage('${plan['plan_key']}')['name']}',
+                        price: central9CanonicalPackagePrice('${plan['plan_key']}'),
                         description: _packageDescription(plan),
                         entitlement: _packageEntitlement(plan),
                         active: plan['active'] == true,
@@ -6317,9 +6344,9 @@ class _PackageOverviewCardState extends State<_PackageOverviewCard> {
       duration: const Duration(milliseconds: 160),
       transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
       decoration: BoxDecoration(
-        color: brandWhite,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: hover ? brandGold.withOpacity(.62) : brandNavy.withOpacity(.18), width: hover ? 1.5 : 1.2),
+        color: brandSurfaceRaised,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: hover ? brandGold.withOpacity(.85) : brandIonBlue.withOpacity(.30), width: hover ? 1.5 : 1.0),
         boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
       ),
       child: Material(
@@ -6472,7 +6499,7 @@ class _FinancePageState extends State<FinancePage> {
 
     Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
       try {
-        final data = await widget.api.get(path, force: true);
+        final data = await widget.api.get(path, maxAge: const Duration(seconds: 15));
         if (!mounted) return;
         setState(() => apply(data));
       } catch (e) {
@@ -6484,7 +6511,7 @@ class _FinancePageState extends State<FinancePage> {
       fetch('/api/v1/billing/profile', (data) => profile = data),
       fetch('/api/v1/billing/finance/overview', (data) => overview = data),
       fetch('/api/v1/billing/invoices', (data) => invoices = items(data)),
-      fetch('/api/v1/partners?limit=200&offset=0&include_archived=false', (data) => partners = items(data)),
+      fetch('/api/v1/partners?limit=200&offset=0&include_archived=false&include_stats=false', (data) => partners = items(data)),
     ]);
 
     if (mounted) {
@@ -6578,7 +6605,7 @@ class _FinancePageState extends State<FinancePage> {
     final params = <String,String>{};
     if (invoiceFilter != 'ALL') params['status'] = invoiceFilter;
     if (revenuePlanKey != 'ALL') params['plan_key'] = revenuePlanKey;
-    return Uri(path: '/api/v1/billing/finance/export.csv', queryParameters: params.isEmpty ? null : params).toString();
+    return Uri(path: '/api/v1/billing/finance/export.pdf', queryParameters: params.isEmpty ? null : params).toString();
   }
 
   Future<void> createManualInvoice({String? partnerID}) async {
@@ -7097,7 +7124,7 @@ class _FinancePageState extends State<FinancePage> {
         OutlinedButton.icon(
           onPressed: () => openBrowserDownload(financeExportPath),
           icon: const Icon(Icons.download_outlined),
-          label: const LText('Export CSV'),
+          label: const LText('Export PDF'),
         ),
         OutlinedButton.icon(
           onPressed: editProfile,
@@ -7975,9 +8002,9 @@ class _ImpactPageState extends State<ImpactPage> {
             builder: (context, constraints) {
               final actions = <Widget>[
                 OutlinedButton.icon(
-                  onPressed: () => openBrowserDownload('/api/v1/impact/export.csv'),
+                  onPressed: () => openBrowserDownload('/api/v1/impact/export.pdf'),
                   icon: const Icon(Icons.download_outlined),
-                  label: const LText('Export CSV'),
+                  label: const LText('Export PDF'),
                 ),
                 OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
                 OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
@@ -9137,9 +9164,9 @@ class BrandDialog extends StatelessWidget {
 
             return Container(
               decoration: BoxDecoration(
-                color: brandWhite,
+                color: brandSurfaceRaised,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: brandMist),
+                border: Border.all(color: brandIonBlue.withOpacity(.24)),
                 boxShadow: [
                   BoxShadow(
                     color: brandNavy.withOpacity(.16),
@@ -9178,9 +9205,9 @@ class _FilterSurface extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: brandWhite,
+        color: brandSurfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: brandNavy.withOpacity(.14), width: 1.15),
+        border: Border.all(color: brandIonBlue.withOpacity(.24), width: 1.15),
         boxShadow: [BoxShadow(color: brandNavy.withOpacity(.055), blurRadius: 14, offset: const Offset(0, 5))],
       ),
       child: child,
@@ -9256,9 +9283,9 @@ class _PartnerCardState extends State<PartnerCard> {
         duration: const Duration(milliseconds: 180),
         transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
         decoration: BoxDecoration(
-          color: brandWhite,
+          color: brandSurfaceRaised,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: hover ? brandGold.withOpacity(.58) : brandNavy.withOpacity(.16), width: hover ? 1.5 : 1.2),
+          border: Border.all(color: hover ? brandGold.withOpacity(.78) : brandIonBlue.withOpacity(.24), width: hover ? 1.5 : 1.1),
           boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
         ),
         child: Material(
@@ -9460,9 +9487,9 @@ class WorkspaceCard extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 112),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: brandWhite,
+        color: brandSurfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: brandMist),
+        border: Border.all(color: brandIonBlue.withOpacity(.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -9561,9 +9588,9 @@ class _PartnerModuleCardState extends State<PartnerModuleCard> {
             duration: const Duration(milliseconds: 170),
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: brandWhite,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: hover ? brandGold.withOpacity(.42) : brandMist),
+              color: brandSurfaceRaised,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: hover ? brandGold.withOpacity(.72) : brandIonBlue.withOpacity(.22)),
               boxShadow: hover ? [BoxShadow(color: brandNavy.withOpacity(.06), blurRadius: 18, offset: const Offset(0, 7))] : const [],
             ),
             child: Column(
@@ -10150,8 +10177,16 @@ class Content extends StatelessWidget {
           ],
         );
 
-        return Scrollbar(
-          child: SingleChildScrollView(
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, animatedChild) => Opacity(
+            opacity: value,
+            child: Transform.translate(offset: Offset(0, 14 * (1 - value)), child: animatedChild),
+          ),
+          child: Scrollbar(
+            child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(padding, 24, padding, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -10186,6 +10221,7 @@ class Content extends StatelessWidget {
                 const SizedBox(height: 22),
                 child,
               ],
+            ),
             ),
           ),
         );
@@ -10253,9 +10289,9 @@ class _KpiState extends State<Kpi> {
           height: 132,
           transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
           decoration: BoxDecoration(
-            color: brandWhite,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: hover ? widget.accent.withOpacity(.24) : brandMist),
+            color: brandSurfaceRaised,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: hover ? widget.accent.withOpacity(.72) : brandIonBlue.withOpacity(.22)),
             boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .085 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
           ),
           child: Padding(
