@@ -3462,8 +3462,33 @@ func designFontCSS(value, fallback string) string {
 		return "Georgia,serif"
 	case "Arial":
 		return "Arial,sans-serif"
+	case "Palatino":
+		return "Palatino,\"Palatino Linotype\",serif"
+	case "Garamond":
+		return "Garamond,\"Times New Roman\",serif"
+	case "Times New Roman":
+		return "\"Times New Roman\",Times,serif"
+	case "Helvetica":
+		return "Helvetica,Arial,sans-serif"
+	case "Verdana":
+		return "Verdana,Geneva,sans-serif"
+	case "Trebuchet MS":
+		return "\"Trebuchet MS\",Arial,sans-serif"
+	case "Courier New":
+		return "\"Courier New\",Courier,monospace"
 	default:
 		return fallback
+	}
+}
+
+func designLayoutCSS(layout string) string {
+	switch strings.TrimSpace(layout) {
+	case "modern_grid":
+		return ".wrap{max-width:1280px!important}.hero .wrap,.section .wrap{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:28px}.hero .wrap>*{grid-column:span 6}.section-title,.section-head{grid-column:1/-1}.card,.feature,.program-card,.impact-card{border-radius:18px!important;box-shadow:0 10px 28px rgba(6,23,44,.08)}"
+	case "minimal":
+		return ".wrap{max-width:1120px!important}.section,.hero{padding-top:72px!important;padding-bottom:72px!important}.card,.feature,.program-card,.impact-card{box-shadow:none!important;border-radius:0!important;border-left:0!important;border-right:0!important}.btn,.login-pill{box-shadow:none!important}.hero h1,h1{letter-spacing:-.025em!important}.site-nav{box-shadow:none!important}"
+	default:
+		return ".wrap{max-width:1180px}.hero h1,h1{letter-spacing:-.012em}"
 	}
 }
 
@@ -3554,8 +3579,9 @@ func renderSiteDesignHTML(doc string, design publicSiteDesign, locale, currentPa
 	if radius < 0 || radius > 40 {
 		radius = 6
 	}
-	style := fmt.Sprintf("<style data-himate-design>:root{--navy:%s;--deep:%s;--gold:%s;--gold2:%s;--ivory:%s;--ink:%s}body{background:%s!important;color:%s!important;font-family:%s!important}h1,h2,h3,.serif{font-family:%s!important}.btn,.login-pill{border-radius:%dpx!important}</style>",
-		navy, navy, gold, gold, background, textColor, background, textColor, bodyFont, headingFont, radius)
+	layoutCSS := designLayoutCSS(design.LayoutKey)
+	style := fmt.Sprintf("<style data-himate-design data-layout=%q>:root{--navy:%s;--deep:%s;--gold:%s;--gold2:%s;--ivory:%s;--ink:%s}body{background:%s!important;color:%s!important;font-family:%s!important}h1,h2,h3,.serif{font-family:%s!important}.btn,.login-pill{border-radius:%dpx!important}%s</style>",
+		html.EscapeString(strings.TrimSpace(design.LayoutKey)), navy, navy, gold, gold, background, textColor, background, textColor, bodyFont, headingFont, radius, layoutCSS)
 	if headEnd := strings.Index(strings.ToLower(doc), "</head>"); headEnd >= 0 {
 		doc = doc[:headEnd] + style + "<!-- HIMATE DESIGN:PUBLISHED_OR_PREVIEW -->" + doc[headEnd:]
 	}
