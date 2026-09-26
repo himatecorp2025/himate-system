@@ -258,31 +258,34 @@ func (a *app) suspendPartnerEnvironments(ctx context.Context,partnerID string) e
 	return nil
 }
 
-func (a *app) restoreEnvironmentRelease(ctx context.Context,id,release string) error {
+func jsonEquivalent(left,right any) bool {
+	a,errA:=json.Marshal(left);b,errB:=json.Marshal(right)
+	return errA==nil&&errB==nil&&string(a)==string(b)
+}
+
+func (a *app) restoreEnvironmentRelease(ctx context.Context,id,release,operationID string,allowReuse bool) error {
 	release=strings.TrimSpace(release)
-	if release=="" {
-		return a.internalJSON(ctx,http.MethodPatch,a.envHost,"/api/v1/environments/"+url.PathEscape(id),
-			map[string]any{"environment_status":"SUSPENDED"},nil,false)
-	}
-	var deployed map[string]any
-	if err:=a.internalJSON(ctx,http.MethodPost,a.envHost,"/api/v1/environments/"+url.PathEscape(id)+"/deploy",
-		map[string]any{"release":release},&deployed,false);err!=nil{
-		return fmt.Errorf("deploy captured release %s: %w",release,err)
+	operationID=strings.TrimSpace(operationID)
+	if operationID==""{return fmt.Errorf("recovery operation id is required")}
+	payload:=map[string]any{
+		"environment_id":id,
+		"release":release,
+		"operation_id":operationID,
+		"allow_reuse":allowReuse,
 	}
 	for attempt:=0;attempt<150;attempt++{
-		state:=deployed
-		if attempt>0{
-			state=map[string]any{}
-			if err:=a.internalJSON(ctx,http.MethodGet,a.envHost,"/api/v1/environments/"+url.PathEscape(id),nil,&state,false);err!=nil{
-				return fmt.Errorf("poll restored environment %s: %w",id,err)
-			}
+		state:=map[string]any{}
+		if err:=a.internalJSON(ctx,http.MethodPost,a.envHost,"/internal/v1/environments/recovery-release",payload,&state,false);err!=nil{
+			return fmt.Errorf("recover captured release %s: %w",release,err)
 		}
 		deployment:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(state["deployment_status"])))
 		active:=strings.TrimSpace(fmt.Sprint(state["active_release"]))
 		if deployment=="FAILED"{return fmt.Errorf("captured release deployment failed for environment %s",id)}
-		if deployment=="DEPLOYED"&&active==release{
-			return a.internalJSON(ctx,http.MethodPatch,a.envHost,"/api/v1/environments/"+url.PathEscape(id),
-				map[string]any{"environment_status":"SUSPENDED"},nil,false)
+		if deployment=="DEPLOYED"&&(release==""||active==release){
+			if strings.ToUpper(strings.TrimSpace(fmt.Sprint(state["environment_status"])))!="SUSPENDED"{
+				return fmt.Errorf("recovered environment %s did not remain SUSPENDED",id)
+			}
+			return nil
 		}
 		select{
 		case <-ctx.Done():return ctx.Err()
@@ -292,7 +295,7 @@ func (a *app) restoreEnvironmentRelease(ctx context.Context,id,release string) e
 	return fmt.Errorf("captured release deployment timed out for environment %s",id)
 }
 
-func (a *app) restoreConfig(ctx context.Context,partnerID,configPath,actor,reason string) error {
+func (a *app) restoreConfig(ctx context.Context,partnerID,configPath,actor,reason,operationID string) error {
 	raw,err:=os.ReadFile(configPath);if err!=nil{return err}
 	var config map[string]any;if err:=json.Unmarshal(raw,&config);err!=nil{return err}
 	if fmt.Sprint(config["partner_id"])!=partnerID{return fmt.Errorf("restored configuration partner mismatch")}
@@ -310,13 +313,21 @@ func (a *app) restoreConfig(ctx context.Context,partnerID,configPath,actor,reaso
 		for _,value:=range environments{
 			env,ok:=value.(map[string]any);if !ok{continue}
 			id:=strings.TrimSpace(fmt.Sprint(env["id"]));if id==""{continue}
-			payload:=mapSubset(env,"platform_version","desired_release","config")
+			current:=map[string]any{}
+			currentErr:=a.internalJSON(ctx,http.MethodGet,a.envHost,"/api/v1/environments/"+url.PathEscape(id),nil,&current,false)
+			release:=strings.TrimSpace(fmt.Sprint(env["active_release"]))
+			if release==""{release=strings.TrimSpace(fmt.Sprint(env["desired_release"]))}
+			allowReuse:=currentErr==nil&&
+				strings.TrimSpace(fmt.Sprint(current["active_release"]))==release&&
+				strings.EqualFold(strings.TrimSpace(fmt.Sprint(current["deployment_status"])),"DEPLOYED")&&
+				strings.EqualFold(strings.TrimSpace(fmt.Sprint(current["runtime_status"])),"OK")&&
+				strings.EqualFold(strings.TrimSpace(fmt.Sprint(current["hostname"])),strings.TrimSpace(fmt.Sprint(env["hostname"])))&&
+				jsonEquivalent(current["config"],env["config"])
+			payload:=mapSubset(env,"hostname","platform_version","desired_release","config")
 			if len(payload)>0{
 				if err:=a.internalJSON(ctx,http.MethodPatch,a.envHost,"/api/v1/environments/"+url.PathEscape(id),payload,nil,false);err!=nil{return fmt.Errorf("restore environment %s: %w",id,err)}
 			}
-			release:=strings.TrimSpace(fmt.Sprint(env["active_release"]))
-			if release==""{release=strings.TrimSpace(fmt.Sprint(env["desired_release"]))}
-			if err:=a.restoreEnvironmentRelease(ctx,id,release);err!=nil{return fmt.Errorf("restore environment release %s: %w",id,err)}
+			if err:=a.restoreEnvironmentRelease(ctx,id,release,operationID+":"+id,allowReuse);err!=nil{return fmt.Errorf("restore environment release %s: %w",id,err)}
 		}
 	}
 	if desired,ok:=config["connector_desired_state"].(map[string]any);ok{
@@ -349,7 +360,7 @@ func (a *app) rollbackToSafetyRestorePoint(safety restorePoint,job restoreJob) e
 		return fmt.Errorf("rollback media: %w",err)
 	}
 	if err:=a.restoreConfig(ctx,job.PartnerID,filepath.Join(extracted,"config.json"),job.CreatedBy,
-		"automatic safety rollback after failed restore "+job.ID);err!=nil{
+		"automatic safety rollback after failed restore "+job.ID,"rollback:"+job.ID);err!=nil{
 		return fmt.Errorf("rollback configuration: %w",err)
 	}
 	return nil
@@ -390,7 +401,7 @@ func (a *app) processProductionRestore(ctx context.Context,job restoreJob) {
 		failAfterMutation(fmt.Errorf("media restore: %w",err));return
 	}
 	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET media_ok=TRUE WHERE id=$1`,job.ID)
-	if err:=a.restoreConfig(ctx,job.PartnerID,filepath.Join(extracted,"config.json"),job.CreatedBy,job.Reason);err!=nil{
+	if err:=a.restoreConfig(ctx,job.PartnerID,filepath.Join(extracted,"config.json"),job.CreatedBy,job.Reason,"restore:"+job.ID);err!=nil{
 		failAfterMutation(fmt.Errorf("configuration restore: %w",err));return
 	}
 	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET config_ok=TRUE,status='COMPLETED',error='',completed_at=NOW(),duration_ms=$2 WHERE id=$1`,
