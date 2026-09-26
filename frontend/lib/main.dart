@@ -2008,9 +2008,12 @@ class _ShellState extends State<Shell> {
     if (can('billing.read')) indexes.add(4);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(5);
     if (can('cms.read') || can('contact.read') || can('connectors.read')) indexes.add(6);
-    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
+    // The approved CENTRAL-16 information architecture places Administration
+    // before technical System & Operations. Compliance archives remain
+    // addressable by deep-link and from Administration, but are no longer a
+    // competing top-level workspace.
     if (can('administration.read') || can('audit.read')) indexes.add(8);
-    if (can('audit.read')) indexes.add(9);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
   }
@@ -2291,29 +2294,34 @@ class _SidebarContent extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: EdgeInsets.all(collapsed ? 10 : 12),
+          padding: EdgeInsets.fromLTRB(collapsed ? 10 : 24, 12, collapsed ? 10 : 18, 22),
           child: collapsed
               ? Tooltip(message: 'Sign out', child: _SidebarIconButton(icon: Icons.logout_rounded, onTap: onLogout))
-              : Container(
-                  padding: const EdgeInsets.all(11),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(.055), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(.08))),
-                  child: Row(
-                    children: [
-                      _Avatar(name: '${user['name'] ?? 'Admin User'}', dark: true),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            LText('${user['name'] ?? 'Admin User'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 11.5)),
-                            const SizedBox(height: 2),
-                            LText('${user['email'] ?? 'System Administrator'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: const Color(0xFF91A4B8), fontSize: 9.5)),
-                          ],
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Divider(color: Color(0x22FFFFFF), height: 1),
+                    const SizedBox(height: 18),
+                    LText('Nagyobb hatás.\nErősebb közösségek.\nFenntartható jövő.',
+                        style: GoogleFonts.cormorantGaramond(
+                          color: const Color(0xFFD9E2EC),
+                          fontSize: 16,
+                          height: 1.35,
+                          fontWeight: FontWeight.w500,
+                        )),
+                    const SizedBox(height: 14),
+                    Container(width: 26, height: 2, color: brandGold),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: LText('HIMATE System\nv1.2.0',
+                              style: TextStyle(color: Color(0xFF7890A7), fontSize: 9.5, height: 1.45)),
                         ),
-                      ),
-                      _SidebarIconButton(icon: Icons.logout_rounded, onTap: onLogout, size: 34),
-                    ],
-                  ),
+                        _SidebarIconButton(icon: Icons.logout_rounded, onTap: onLogout, size: 34),
+                      ],
+                    ),
+                  ],
                 ),
         ),
       ],
@@ -10801,42 +10809,72 @@ class _KpiState extends State<Kpi> {
   bool hover = false;
   @override
   Widget build(BuildContext context) => MouseRegion(
-    cursor:widget.onTap==null?MouseCursor.defer:SystemMouseCursors.click,
+    cursor: widget.onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
     onEnter: (_) => setState(() => hover = true),
     onExit: (_) => setState(() => hover = false),
-    child:Semantics(
-      button:widget.onTap!=null,
-      label:widget.label,
-      child:GestureDetector(
-        behavior:HitTestBehavior.opaque,
-        onTap:widget.onTap,
-        child:AnimatedContainer(
+    child: Semantics(
+      button: widget.onTap != null,
+      label: widget.label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           width: double.infinity,
-          height: 132,
-          transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+          height: 126,
+          transform: Matrix4.translationValues(0, hover ? -2 : 0, 0),
           decoration: BoxDecoration(
-            color: brandSurfaceRaised,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: hover ? widget.accent.withOpacity(.72) : brandIonBlue.withOpacity(.22)),
-            boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .085 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
+            color: brandWhite,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: hover ? widget.accent.withOpacity(.34) : brandMist),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF102642).withOpacity(hover ? .075 : .035),
+                blurRadius: hover ? 24 : 15,
+                offset: Offset(0, hover ? 8 : 5),
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.all(15),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Icon(widget.icon, color: widget.accent, size: 22),
-                const Spacer(),
-                if(widget.onTap!=null)Icon(Icons.arrow_forward_rounded,color:widget.accent,size:16)
-                else Container(width:5,height:5,decoration:BoxDecoration(color:widget.accent,shape:BoxShape.circle)),
-              ]),
-              const Spacer(),
-              LText(widget.label, style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: LText(widget.value, style: const TextStyle(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
-              LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.3)),
-            ]),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: widget.accent.withOpacity(.095),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(widget.icon, color: widget.accent, size: 22),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: LText(widget.label, style: const TextStyle(color: brandNavy, fontSize: 11.2, fontWeight: FontWeight.w700))),
+                          if (widget.onTap != null) Icon(Icons.arrow_forward_rounded, color: widget.accent, size: 15),
+                        ],
+                      ),
+                      const Spacer(),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: LText(widget.value, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                      ),
+                      const SizedBox(height: 4),
+                      LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
