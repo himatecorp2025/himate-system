@@ -148,13 +148,23 @@ for token in [
     '"weekly_paid_by_plan":weeklyByPlan',
 ]:
     check(token in billing_c6, f"Finance trend response missing: {token}")
-for token in [
+legacy_finance_selection = all(token in frontend for token in [
     "revenuePeriod",
     "revenuePlanKey",
     "weekly_paid_by_plan",
     "monthly_paid_by_plan",
-]:
-    check(token in frontend, f"Finance analytics UI contract missing: {token}")
+])
+backend_first_finance_selection = all(token in gateway_c10 for token in [
+    "func central10FinanceChart(",
+    'key = "weekly_paid_by_plan"',
+    'key = "monthly_paid_by_plan"',
+    'r.URL.Query().Get("revenue_period")',
+    'r.URL.Query().Get("revenue_plan")',
+])
+check(
+    legacy_finance_selection or backend_first_finance_selection,
+    "Finance analytics selection is missing from both legacy Flutter and Central-10 Go read model",
+)
 
 # Package Definition and Package Analytics are separate surfaces.
 check("title: 'Package Analytics'" in frontend, "Package Analytics surface is missing")
