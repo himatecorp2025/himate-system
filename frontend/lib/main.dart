@@ -7458,6 +7458,14 @@ class _FinancePageState extends State<FinancePage> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (warming) ...[
+                  const _MessageCard(
+                    icon: Icons.sync_rounded,
+                    title: 'Finance snapshot is warming',
+                    message: 'The latest persisted finance view is being prepared. Continuous polling is disabled; use Refresh if the snapshot is still unavailable.',
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 if (loading) const LinearProgressIndicator(minHeight: 2),
                 ResponsiveKpiGrid(
                   children: [
