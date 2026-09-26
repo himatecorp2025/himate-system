@@ -62,7 +62,7 @@ and Go-owned four-week elapsed Impact selection.
 - Flutter widgets may remain lazily mounted, but every permission-visible Central screen read model is prefetched before the first menu click.
 - Modules Commercial and Packages Supplementary snapshots are also prefetched so secondary data is warm before interaction.
 - Central browser request timeout is 800 ms.
-- Render readiness uses dependency-aware `/api/v1/health`; degraded dependencies fail closed with HTTP 503.
+- Render deployment health uses process-level `/api/v1/live` so a rolling deploy cannot deadlock on downstream services. Full dependency/readiness diagnostics remain on `/api/v1/health`, which fails closed with HTTP 503 when required dependencies are degraded.
 
 ## Commercial Matrix
 
