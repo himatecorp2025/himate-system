@@ -51,6 +51,8 @@ for route in [
     check(f"  {route}:" in openapi, f"Central-10 OpenAPI path missing: {route}")
 check("/api/v1/central/partners/{partnerId}" in openapi,
       "Central-10 Partner Workspace OpenAPI path missing")
+check("/api/v1/central/partners/{partnerId}/modules" in openapi,
+      "Central-10 Partner Workspace module read-model OpenAPI path missing")
 
 # Flutter must lazy-mount pages and prefetch only the current route read model.
 for token in [
@@ -80,6 +82,16 @@ for token, message in [
     ("commercialSubscription(", "Commercial Matrix still joins subscriptions in Flutter"),
     ("central8LatestWeeklyWindow", "Weekly-window read logic still exists in Flutter"),
     ("central9CanonicalPackage(", "Package pricing authority still exists in Flutter"),
+    ("filteredModules", "Partner Workspace still filters modules in Flutter"),
+    ("groupedFilteredModules", "Partner Workspace still groups modules in Flutter"),
+    ("_partnerModuleSection", "Partner Workspace section classification still lives in Flutter"),
+    ("subscriptionFor(", "Partner Workspace still joins subscriptions in Flutter"),
+    ("_builtInPartnerCategories", "Partner category fallback still lives in Flutter"),
+    ("_mergePartnerCategories", "Partner category merge/order still lives in Flutter"),
+    ("workflowCount(", "Finance workflow KPI aggregation still lives in Flutter"),
+    ("moneyAcrossCurrencies(", "Finance currency aggregation still lives in Flutter"),
+    ("filteredInvoices", "Finance invoice filtering still lives in Flutter"),
+    ("revenuePlanKey", "Finance revenue-series business selection still lives in Flutter"),
 ]:
     check(token not in frontend and token not in modules_ui, message)
 
@@ -124,6 +136,33 @@ for token in [
     "Partner companies and their active services",
 ]:
     check(token in modules_ui, f"Grouped Commercial Matrix UI missing: {token}")
+
+# Partner Workspace module read model, Finance read model and partner category
+# fallback are authoritative Go responsibilities.
+for token in [
+    "func central10PartnerModuleView(",
+    "func (a *app) central10PartnerModules(",
+    '"active_module_keys": activeKeys',
+    '"groups": groups',
+    "func central10FinanceChart(",
+    'row["partner_name"] = name',
+    '"outstanding_label"',
+    '"paid_ytd_label"',
+    "func central10PartnerCategories(",
+]:
+    check(token in gateway, f"Central-10 backend presentation-model contract missing: {token}")
+
+for token in [
+    "List<Map<String, dynamic>> moduleGroups",
+    "Map<String, dynamic> moduleKpis",
+    "List<String> activeModuleKeys",
+    "onChanged: updateModuleQuery",
+    "onChanged: (v) => updateModuleState(v ?? 'ALL')",
+]:
+    check(token in frontend, f"Partner Workspace presentation binding missing: {token}")
+
+check("widget.api.get(\n        _financePath()," in frontend,
+      "Finance does not load through its parameterized Go read model")
 
 # Canonical package authority is backend-only and exact.
 for token in [
@@ -172,27 +211,34 @@ check("central10QueryLimit(r.URL.Query().Get(\"commercial_limit\"), 120, 200)" n
 check("maximum: 200, default: 120" not in openapi,
       "OpenAPI still advertises a fixed 200-group Commercial Matrix ceiling")
 
-# Responsibility score: 20 explicit read-model capabilities. 19/20 is the
-# acceptance floor (95%). These are architecture responsibilities, not LOC.
+# Responsibility score: explicit user-visible read-model capabilities. The
+# acceptance floor is 95%; Flutter retains only presentation state and action input.
 responsibilities = [
     ("cache/degraded fallback", "central10StaleTTL" in gateway),
     ("bounded backend aggregation", "central10ReadBudget = 650 * time.Millisecond" in gateway),
     ("partner search/filter", 'values.Set("include_stats", "true")' in gateway),
     ("partner KPI aggregation", '"kpis": map[string]any{' in gateway),
     ("partner enrichment join", 'catalogByID :=' in gateway and 'billingByID :=' in gateway),
+    ("partner category fallback/merge/order", "central10PartnerCategories" in gateway),
     ("module registry filtering", "registryPreset :=" in gateway),
     ("module KPI aggregation", '"module_registry": len(modules.Items)' in gateway),
     ("commercial search", "commercialQ :=" in gateway),
     ("commercial partner/module/status filter", "statusFilter :=" in gateway),
     ("commercial sorting", "sort.Slice(ids" in gateway and "sort.Slice(keys" in gateway),
     ("commercial grouping", '"modules": rows' in gateway and '"partners": rows' in gateway),
-    ("subscription join", 'row["subscription"] = sub' in gateway),
+    ("commercial subscription join", 'row["subscription"] = sub' in gateway),
     ("package canonicalization", "central10CanonicalPlan" in gateway),
-    ("package analytics fan-out", "packageAnalytics" in gateway or '"/api/v1/billing/packages/analytics"' in gateway),
+    ("package analytics fan-out", '"/api/v1/billing/packages/analytics"' in gateway),
     ("finance screen aggregation", "central10Finance" in gateway and '"kpis": kpis' in gateway),
+    ("finance invoice filter/join", 'row["partner_name"] = name' in gateway and 'invoiceStatus :=' in gateway),
+    ("finance revenue chart selection", "central10FinanceChart" in gateway),
+    ("finance multi-currency ready labels", "central10MoneyLabel" in gateway),
     ("impact screen aggregation", "central10Impact" in gateway),
     ("impact evidence filtering", "evidenceQuery.Set" in gateway),
     ("partner workspace aggregation", "central10PartnerWorkspace" in gateway),
+    ("partner workspace module filter/group/KPIs", "central10PartnerModuleView" in gateway),
+    ("partner workspace subscription join", 'row["subscription"] = subscription' in gateway),
+    ("partner workspace environment selection", "central10ProductionEnvironment" in gateway),
     ("weekly window selection", "central10NormalizeDashboardImpact" in gateway),
     ("truthful data-presence semantics", 'out["has_data"] = false' in gateway and '"has_data":observationCount>0' in impact),
 ]
