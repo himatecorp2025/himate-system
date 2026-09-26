@@ -1869,42 +1869,58 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 ),
                 const SizedBox(height: 12),
                 Builder(builder: (context) {
-                  final rows = filteredCommercialRows;
-                  if (rows.isEmpty) {
+                  if (commercialGroups.isEmpty) {
                     return _MessageCard(
                       icon: Icons.price_change_outlined,
                       title: uiLiteral('No partner-module assignments found'),
                       message: uiLiteral('Adjust the filters or create partners/modules to populate the commercial matrix.'),
                     );
                   }
-                  final visibleRows = rows.take(commercialShown).toList();
-                  return Column(children: [
-                    LayoutBuilder(builder: (context, constraints) {
-                      final width = constraints.maxWidth < 680
-                          ? constraints.maxWidth
-                          : constraints.maxWidth < 1120
-                              ? (constraints.maxWidth - 12) / 2
-                              : (constraints.maxWidth - 24) / 3;
-                      return Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          for (final row in visibleRows)
-                            SizedBox(width: width, child: commercialCard(row)),
-                        ],
-                      );
-                    }),
-                    if (visibleRows.length < rows.length) ...[
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () => setState(() => commercialShown += 120),
-                        icon: const Icon(Icons.expand_more_rounded),
-                        label: LText(
-                          '${uiLiteral('Show more')} · ${rows.length - visibleRows.length} ${uiLiteral('remaining')}',
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SectionHeader(
+                        title: commercialPerspective == 'MODULE'
+                            ? uiLiteral('Modules and their partner companies')
+                            : uiLiteral('Partner companies and their active services'),
+                        subtitle: commercialPerspective == 'MODULE'
+                            ? uiLiteral('Open a module to see every company using it under the selected status and filters.')
+                            : uiLiteral('Open a company to see its assigned modules and commercial state.'),
+                        trailing: _MiniCounter(
+                          label: '$commercialAssignmentCount ${uiLiteral('assignments')}',
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(builder: (context, constraints) {
+                        final width = constraints.maxWidth < 720
+                            ? constraints.maxWidth
+                            : constraints.maxWidth < 1180
+                                ? (constraints.maxWidth - 12) / 2
+                                : (constraints.maxWidth - 24) / 3;
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            for (final group in commercialGroups)
+                              SizedBox(width: width, child: commercialGroupCard(group)),
+                          ],
+                        );
+                      }),
+                      if (commercialGroups.length < commercialGroupCount) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() => commercialShown += 120);
+                            unawaited(load());
+                          },
+                          icon: const Icon(Icons.expand_more_rounded),
+                          label: LText(
+                            '${uiLiteral('Show more')} · ${commercialGroupCount - commercialGroups.length} ${uiLiteral('remaining')}',
+                          ),
+                        ),
+                      ],
                     ],
-                  ]);
+                  );
                 }),
               ],
               if (loading) ...[
