@@ -5870,9 +5870,12 @@ class PackagesPage extends StatefulWidget {
 
 class _PackagesPageState extends State<PackagesPage> {
   bool loading = true;
+  bool analyticsLoading = true;
   String? error;
+  String? analyticsError;
   List<Map<String, dynamic>> plans = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+  Map<String,dynamic> analytics = <String,dynamic>{};
 
   @override
   void initState() {
@@ -5883,22 +5886,62 @@ class _PackagesPageState extends State<PackagesPage> {
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
     try {
-      final result = await Future.wait([
-        widget.api.get('/api/v1/billing/plans', force: true),
-        widget.api.get('/api/v1/modules', force: true),
-      ]);
+      final result = await widget.api.get('/api/v1/billing/plans', force: true);
       if (!mounted) return;
-      final allPlans = items(result[0]);
+      final allPlans = items(result);
       setState(() {
         plans = allPlans.where((p) => const {'STARTER', 'BUSINESS', 'FLEX'}.contains('${p['plan_key']}')).toList();
-        modules = items(result[1]).where((m) => m['system'] == true).toList();
         loading = false;
       });
+      unawaited(_loadModules());
+      unawaited(_loadAnalytics());
     } catch (e) {
       if (!mounted) return;
       setState(() { loading = false; error = e.toString(); });
     }
   }
+
+  Future<void> _loadModules() async {
+    try {
+      final result = await widget.api.get('/api/v1/modules');
+      if (!mounted) return;
+      setState(() => modules = items(result).where((m) => m['system'] == true).toList());
+    } catch (_) {
+      // Module definitions are needed only when package editing is opened.
+    }
+  }
+
+  Future<void> _loadAnalytics() async {
+    if (mounted) setState(() { analyticsLoading = true; analyticsError = null; });
+    try {
+      final result = await widget.api.get('/api/v1/billing/packages/analytics', force: true);
+      if (!mounted) return;
+      setState(() {
+        analytics = result;
+        analyticsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        analyticsLoading = false;
+        analyticsError = e.toString();
+      });
+    }
+  }
+
+  String _packageDescription(Map<String,dynamic> plan) {
+    return switch ('${plan['plan_key']}') {
+      'STARTER' => '10 HIMATE-defined modules for focused teams and first deployments.',
+      'BUSINESS' => '20 HIMATE-defined modules for broader operating workflows.',
+      'FLEX' => 'Unlimited access to every current and future eligible module.',
+      _ => '',
+    };
+  }
+
+  String _packageEntitlement(Map<String,dynamic> plan) =>
+      plan['selection_mode'] == 'UNLIMITED'
+          ? 'Unlimited modules'
+          : '${plan['module_limit'] ?? 0} included modules';
 
   String moduleLabel(Map<String, dynamic> module) =>
       '${module['label'] ?? module['label_en'] ?? module['key'] ?? ''}';
