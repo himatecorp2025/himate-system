@@ -864,15 +864,18 @@ func (a *app) financeOverview(w http.ResponseWriter,r *http.Request) {
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
 	if err:=a.syncOnboardingRegistry(r.Context());err!=nil{common.APIError(w,500,"DB","Could not synchronize partner onboarding registry");return}
 	type row struct{Currency string;Draft,Approved,Sent,Paid,Cancelled int;Outstanding,PaidYTD float64}
-	rows,err:=a.db.QueryContext(r.Context(),`SELECT currency,
-		COUNT(*) FILTER (WHERE workflow_status='DRAFT'),
-		COUNT(*) FILTER (WHERE workflow_status='APPROVED'),
-		COUNT(*) FILTER (WHERE workflow_status='SENT'),
-		COUNT(*) FILTER (WHERE workflow_status='PAID'),
-		COUNT(*) FILTER (WHERE workflow_status='CANCELLED'),
-		COALESCE(SUM(total) FILTER (WHERE workflow_status IN ('APPROVED','SENT')),0),
-		COALESCE(SUM(total) FILTER (WHERE workflow_status='PAID' AND paid_at>=date_trunc('year',NOW())),0)
-		FROM billing.invoices GROUP BY currency ORDER BY currency`)
+	rows,err:=a.db.QueryContext(r.Context(),`SELECT i.currency,
+		COUNT(*) FILTER (WHERE i.workflow_status='DRAFT'),
+		COUNT(*) FILTER (WHERE i.workflow_status='APPROVED'),
+		COUNT(*) FILTER (WHERE i.workflow_status='SENT'),
+		COUNT(*) FILTER (WHERE i.workflow_status='PAID'),
+		COUNT(*) FILTER (WHERE i.workflow_status='CANCELLED'),
+		COALESCE(SUM(i.total) FILTER (WHERE i.workflow_status IN ('APPROVED','SENT')),0),
+		COALESCE(SUM(i.total) FILTER (WHERE i.workflow_status='PAID' AND i.paid_at>=date_trunc('year',NOW())),0)
+		FROM billing.invoices i
+		LEFT JOIN partners.partners p ON p.id=i.partner_id
+		WHERE COALESCE(p.test_partner,FALSE)=FALSE
+		GROUP BY i.currency ORDER BY i.currency`)
 	if err!=nil{common.APIError(w,500,"DB","Could not calculate finance KPIs");return}
 	defer rows.Close()
 	currencies:=[]map[string]any{}
@@ -891,6 +894,10 @@ func (a *app) financeOverview(w http.ResponseWriter,r *http.Request) {
 		LEFT JOIN billing.invoices i ON i.workflow_status='PAID'
 			AND i.currency=c.currency
 			AND date_trunc('month',COALESCE(i.paid_at,i.created_at))=m.month
+			AND NOT EXISTS (
+				SELECT 1 FROM partners.partners tp
+				WHERE tp.id=i.partner_id AND tp.test_partner=TRUE
+			)
 		GROUP BY m.month,c.currency ORDER BY c.currency,m.month`)
 	if err!=nil{common.APIError(w,500,"DB","Could not calculate finance chart");return}
 	defer monthRows.Close()
@@ -902,7 +909,9 @@ func (a *app) financeOverview(w http.ResponseWriter,r *http.Request) {
 	_ = a.db.QueryRowContext(r.Context(),`SELECT
 		COUNT(*) FILTER (WHERE state<>'ACTIVE'),COUNT(*) FILTER (WHERE state='ACTIVE'),
 		COUNT(*) FILTER (WHERE classification IN ('CHARITY','SPONSORED','COMPLIMENTARY'))
-		FROM billing.partner_onboarding`).Scan(&pendingOnboarding,&activeOnboarding,&waived)
+		FROM billing.partner_onboarding o
+		LEFT JOIN partners.partners p ON p.id=o.partner_id
+		WHERE COALESCE(p.test_partner,FALSE)=FALSE`).Scan(&pendingOnboarding,&activeOnboarding,&waived)
 	onRows,err:=a.db.QueryContext(r.Context(),`SELECT o.partner_id,COALESCE(p.display_name,o.partner_id),o.state,o.classification,o.portal_enabled,o.updated_at
 		FROM billing.partner_onboarding o LEFT JOIN partners.partners p ON p.id=o.partner_id
 		WHERE o.state<>'ACTIVE' ORDER BY o.updated_at ASC LIMIT 50`)

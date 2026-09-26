@@ -1334,6 +1334,28 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       s(m['implementation_state']) == 'READY'
     ).toList();
 
+    if (candidates.length < limit) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => BrandDialog(
+          title: 'Package modules are not ready yet',
+          subtitle: 'This is configuration availability, not a loading failure.',
+          icon: Icons.hourglass_top_rounded,
+          width: 560,
+          child: _MessageCard(
+            icon: Icons.inventory_2_outlined,
+            title: 'Not enough PUBLISHED + READY modules',
+            message: '${s(plan['display_name'])} requires exactly $limit eligible modules. '
+                'There are currently ${candidates.length}. Publish and mark enough modules READY first.',
+          ),
+          primaryLabel: 'Close',
+          onPrimary: () => Navigator.pop(dialogContext),
+        ),
+      );
+      return;
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(

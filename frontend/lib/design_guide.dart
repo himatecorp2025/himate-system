@@ -361,38 +361,45 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            final preview = Container(
-              constraints: const BoxConstraints(minHeight: 220),
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: previewBackground,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: brandMist),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: 54,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(color: previewNavy, borderRadius: BorderRadius.circular(8)),
-                    child: Row(children: [
-                      Container(width: 24, height: 24, decoration: BoxDecoration(color: previewGold, shape: BoxShape.circle)),
-                      const SizedBox(width: 12),
-                      Expanded(child: LText('HIMATE website preview', style: TextStyle(color: previewBackground, fontWeight: FontWeight.w700))),
-                    ]),
-                  ),
-                  const SizedBox(height: 20),
-                  LText('Culture Fuels Tomorrow.', style: TextStyle(color: previewNavy, fontSize: 26, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 8),
-                  LText('The published Design Guide is applied without editing source code.', style: TextStyle(color: previewText)),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    decoration: BoxDecoration(color: previewGold, borderRadius: BorderRadius.circular(double.tryParse(radius.text) ?? 6)),
-                    child: LText('Primary action', style: TextStyle(color: previewNavy, fontWeight: FontWeight.w700)),
-                  ),
-                ],
+            final preview = InkWell(
+              onTap: saving ? null : () => createPreview('desktop'),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 220),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: previewBackground,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: brandMist),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 54,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(color: previewNavy, borderRadius: BorderRadius.circular(8)),
+                      child: Row(children: [
+                        Container(width: 24, height: 24, decoration: BoxDecoration(color: previewGold, shape: BoxShape.circle)),
+                        const SizedBox(width: 12),
+                        Expanded(child: LText('HIMATE website preview', style: TextStyle(color: previewBackground, fontWeight: FontWeight.w700))),
+                        Icon(Icons.open_in_new_rounded, size: 18, color: previewBackground),
+                      ]),
+                    ),
+                    const SizedBox(height: 20),
+                    LText('Culture Fuels Tomorrow.', style: TextStyle(color: previewNavy, fontSize: 26, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    LText('The published Design Guide is applied without editing source code.', style: TextStyle(color: previewText)),
+                    const SizedBox(height: 8),
+                    LText('Click the preview to open the real draft website in a new tab.', style: TextStyle(color: previewText, fontSize: 10.5)),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                      decoration: BoxDecoration(color: previewGold, borderRadius: BorderRadius.circular(double.tryParse(radius.text) ?? 6)),
+                      child: LText('Primary action', style: TextStyle(color: previewNavy, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
               ),
             );
 

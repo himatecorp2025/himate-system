@@ -228,6 +228,58 @@ func (a *app) archiveNamespace(w http.ResponseWriter, r *http.Request, partnerID
 	_ = gz.Close()
 }
 
+func (a *app) purgeTestNamespace(w http.ResponseWriter, r *http.Request, partnerID string) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+		return
+	}
+	if strings.TrimSpace(r.Header.Get("X-Himate-Test-Partner-Confirm")) != partnerID {
+		common.APIError(w, http.StatusBadRequest, "CONFIRMATION_REQUIRED", "Test Partner confirmation does not match")
+		return
+	}
+	var testPartner bool
+	if err := a.db.QueryRowContext(r.Context(), `SELECT test_partner FROM partners.partners WHERE id=$1`, partnerID).Scan(&testPartner); err != nil {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Test Partner not found")
+		return
+	}
+	if !testPartner {
+		common.APIError(w, http.StatusForbidden, "TEST_PARTNER_ONLY", "Storage hard purge is restricted to Test Partners")
+		return
+	}
+	locked, err := a.complianceRetentionLocked(r.Context(), partnerID)
+	if err != nil {
+		common.APIError(w, 500, "COMPLIANCE_RETENTION", "Could not verify archive retention")
+		return
+	}
+	if locked {
+		common.APIError(w, http.StatusLocked, "COMPLIANCE_RETENTION", "Archived partner storage cannot be hard-purged during retention")
+		return
+	}
+	root, err := a.pathFor(partnerID)
+	if err != nil {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		return
+	}
+	if raw, readErr := os.ReadFile(filepath.Join(root, ".himate-storage")); readErr == nil &&
+		strings.TrimSpace(string(raw)) != partnerID {
+		common.APIError(w, http.StatusConflict, "STORAGE_MARKER", "Storage namespace marker does not match the Test Partner")
+		return
+	}
+	if err := os.RemoveAll(root); err != nil && !os.IsNotExist(err) {
+		common.APIError(w, 500, "STORAGE", "Could not remove Test Partner storage namespace")
+		return
+	}
+	if _, err := a.db.ExecContext(r.Context(), `DELETE FROM storage.partner_namespaces WHERE partner_id=$1`, partnerID); err != nil {
+		common.APIError(w, 500, "DB", "Could not remove Test Partner storage registry")
+		return
+	}
+	common.JSON(w, http.StatusOK, map[string]any{
+		"partner_id": partnerID,
+		"hard_purged": true,
+		"storage_removed": true,
+	})
+}
+
 func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/storage/partners/"), "/")
 	parts := strings.Split(raw, "/")
@@ -244,8 +296,10 @@ func (a *app) partnerRoute(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, out)
 	case r.Method == http.MethodGet && action == "archive":
 		a.archiveNamespace(w, r, partnerID)
+	case r.Method == http.MethodPost && action == "purge-test":
+		a.purgeTestNamespace(w, r, partnerID)
 	default:
-		common.APIError(w, 405, "METHOD", "Use POST /ensure, GET /health or GET /archive")
+		common.APIError(w, 405, "METHOD", "Use POST /ensure, GET /health, GET /archive or POST /purge-test")
 	}
 }
 

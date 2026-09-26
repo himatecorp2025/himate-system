@@ -2566,6 +2566,42 @@
       "target_phase": "23.12",
       "e2e_proof": "scripts/smoke_start_23_12_phase2.sh + scripts/smoke_start_23_12_phase2_recovery.sh",
       "notes": "Reload/browser interruption resumes the same persisted saga rather than issuing a new Partner identity."
+    },
+    {
+      "id": "PARTNER-GOLDEN-QA-FIXTURE-CENTRAL-11",
+      "surface": "partner.profile",
+      "ui": "Golden Test Partner · Generate QA fixture",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/main.dart",
+      "source_token": "'/api/v1/partners/$id/seed-test-fixture'",
+      "method": "POST",
+      "api_pattern": "/api/v1/partners/{partnerId}/seed-test-fixture",
+      "backend_service": "gateway + partners + catalog + billing + impact + evidence + reports",
+      "persistence": "partners.partners + catalog.partner_modules + billing partner/invoice ledger + impact.metric_values + evidence.items + reports.jobs",
+      "audit": "durable central gateway mutation audit; System Owner only",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.12",
+      "e2e_proof": "scripts/smoke_central_11.sh: Golden Test activation -> deterministic six-month piano-service fixture -> finance isolation -> Impact/Evidence cardinality -> real report worker PDF",
+      "notes": "QA-only. Target must already be test_partner=true. Generated values are explicitly fictional and excluded from HIMATE platform aggregates."
+    },
+    {
+      "id": "PARTNER-GOLDEN-QA-PURGE-CENTRAL-11",
+      "surface": "partner.profile",
+      "ui": "Golden Test Partner · Factory reset",
+      "kind": "mutation",
+      "frontend_file": "frontend/lib/main.dart",
+      "source_token": "'/api/v1/partners/$id/purge-test-fixture'",
+      "method": "POST",
+      "api_pattern": "/api/v1/partners/{partnerId}/purge-test-fixture",
+      "backend_service": "gateway + partners + storage + shared PostgreSQL domain schemas",
+      "persistence": "hard removal of Golden Test Partner QA business rows and generated storage objects; identity.audit_events retained",
+      "audit": "durable central gateway mutation audit survives purge; System Owner only",
+      "localization_state": "BILINGUAL_UI",
+      "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
+      "target_phase": "23.12",
+      "e2e_proof": "scripts/smoke_central_11.sh: exact-ID confirmation -> report/storage cleanup -> cross-schema hard purge -> no Compliance Archive -> surviving SUCCESS audit receipt",
+      "notes": "Never applies to a normal partner. Blocked by legal Compliance Archive retention and while a Test Partner report is QUEUED/RUNNING."
     }
   ],
   "completed_through": "23.11.7"

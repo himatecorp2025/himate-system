@@ -1256,6 +1256,12 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if r.Method == http.MethodPost &&
+		(strings.HasSuffix(r.URL.Path, "/seed-test-fixture") || strings.HasSuffix(r.URL.Path, "/purge-test-fixture")) &&
+		!u.SystemOwner {
+		common.APIError(w, http.StatusForbidden, "OWNER_REQUIRED", "Only the HIMATE system owner can manage Golden Test Partner fixtures")
+		return
+	}
 
 	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 	if mutating {
@@ -3678,21 +3684,24 @@ func previewActiveClass(active bool) string {
 
 func designPreviewFrameHTML(token, viewport string) string {
 	width := "1440px"
-	label := "Desktop · 1440"
+	height := "900px"
+	label := "Desktop · 1440 × 900"
 	switch viewport {
 	case "tablet":
 		width = "834px"
-		label = "Tablet · 834"
+		height = "1194px"
+		label = "Tablet · 834 × 1194"
 	case "mobile":
 		width = "390px"
-		label = "Mobile · 390"
+		height = "844px"
+		label = "Mobile · 390 × 844"
 	default:
 		viewport = "desktop"
 	}
 	base := "/design-preview?token="+url.QueryEscape(token)
 	raw := base+"&viewport="+url.QueryEscape(viewport)+"&raw=1"
-	return fmt.Sprintf("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>HIMATE Design Preview</title><style>html,body{margin:0;background:#111827;color:#fff;font-family:Inter,Arial,sans-serif}.bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#06172c;border-bottom:1px solid #d4af6b}.bar a{color:#fff;text-decoration:none;border:1px solid #667085;border-radius:6px;padding:7px 10px}.bar a.active{border-color:#d4af6b;color:#f0d39a}.label{margin-left:auto;color:#cbd5e1}.stage{padding:20px;display:flex;justify-content:center;min-height:calc(100vh - 62px)}iframe{width:%s;height:calc(100vh - 88px);border:0;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.45)}</style></head><body><div class=\"bar\"><strong>HIMATE Design Preview</strong><a href=\"%s&viewport=desktop\" class=\"%s\">Desktop</a><a href=\"%s&viewport=tablet\" class=\"%s\">Tablet</a><a href=\"%s&viewport=mobile\" class=\"%s\">Mobile</a><span class=\"label\">%s</span></div><div class=\"stage\"><iframe title=\"HIMATE website design preview\" src=\"%s\"></iframe></div></body></html>",
-		width,
+	return fmt.Sprintf("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>HIMATE Design Preview</title><style>html,body{margin:0;background:#111827;color:#fff;font-family:Inter,Arial,sans-serif}.bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#06172c;border-bottom:1px solid #d4af6b}.bar a{color:#fff;text-decoration:none;border:1px solid #667085;border-radius:6px;padding:7px 10px}.bar a.active{border-color:#d4af6b;color:#f0d39a}.label{margin-left:auto;color:#cbd5e1}.stage{padding:20px;display:flex;justify-content:center;align-items:flex-start;min-height:calc(100vh - 62px);overflow:auto}iframe{display:block;width:%s;height:%s;max-width:none;flex:0 0 auto;border:0;border-radius:14px;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.45)}@media(max-width:700px){.bar{flex-wrap:wrap}.label{width:100%%;margin-left:0}.stage{padding:10px}}</style></head><body><div class=\"bar\"><strong>HIMATE Design Preview</strong><a href=\"%s&viewport=desktop\" class=\"%s\">Desktop</a><a href=\"%s&viewport=tablet\" class=\"%s\">Tablet</a><a href=\"%s&viewport=mobile\" class=\"%s\">Mobile</a><span class=\"label\">%s</span></div><div class=\"stage\"><iframe title=\"HIMATE website design preview\" src=\"%s\"></iframe></div></body></html>",
+		width, height,
 		html.EscapeString(base), previewActiveClass(viewport=="desktop"),
 		html.EscapeString(base), previewActiveClass(viewport=="tablet"),
 		html.EscapeString(base), previewActiveClass(viewport=="mobile"),

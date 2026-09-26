@@ -401,6 +401,10 @@ func (a *app) central8RevenueTrends(ctx context.Context) (weekly, monthlyByPlan,
 		FROM periods p CROSS JOIN currencies c
 		LEFT JOIN billing.invoices i ON i.workflow_status='PAID' AND i.currency=c.currency
 			AND date_trunc('week',COALESCE(i.paid_at,i.created_at))=p.period
+			AND NOT EXISTS (
+				SELECT 1 FROM partners.partners tp
+				WHERE tp.id=i.partner_id AND tp.test_partner=TRUE
+			)
 		GROUP BY p.period,c.currency ORDER BY c.currency,p.period`)
 	if err != nil {
 		return nil, nil, nil, err
@@ -439,6 +443,10 @@ func (a *app) central8RevenueTrends(ctx context.Context) (weekly, monthlyByPlan,
 			LEFT JOIN billing.invoices i ON i.workflow_status='PAID'
 				AND i.currency=c.currency AND i.plan_key=pl.plan_key
 				AND date_trunc('%s',COALESCE(i.paid_at,i.created_at))=p.period
+				AND NOT EXISTS (
+					SELECT 1 FROM partners.partners tp
+					WHERE tp.id=i.partner_id AND tp.test_partner=TRUE
+				)
 			GROUP BY p.period,c.currency,pl.plan_key,pl.display_name
 			ORDER BY c.currency,pl.plan_key,p.period`, series, trunc, step, format, trunc)
 		rows, err := a.db.QueryContext(ctx, query)

@@ -254,10 +254,17 @@ String centralDashboardInitialPath() => Uri(
       queryParameters: <String, String>{'year': '${DateTime.now().toUtc().year}'},
     ).toString();
 
-String centralPartnersInitialPath() => Uri(
-      path: '/api/v1/central/partners',
-      queryParameters: const <String, String>{'limit': '24', 'offset': '0'},
-    ).toString();
+String centralPartnersPresetPath({
+  String lifecycle = 'ALL',
+  bool reference = false,
+}) {
+  final query = <String, String>{'limit': '24', 'offset': '0'};
+  if (lifecycle != 'ALL') query['lifecycle'] = lifecycle;
+  if (reference) query['reference'] = 'true';
+  return Uri(path: '/api/v1/central/partners', queryParameters: query).toString();
+}
+
+String centralPartnersInitialPath() => centralPartnersPresetPath();
 
 String centralModulesInitialPath() => '/api/v1/central/modules';
 
@@ -273,6 +280,19 @@ String centralPackagesInitialPath() => '/api/v1/central/packages';
 
 String centralPackagesSupplementaryInitialPath() =>
     '/api/v1/central/packages/supplementary';
+
+String centralFinancePath({
+  String invoiceStatus = 'ALL',
+  String revenuePeriod = 'MONTHLY',
+  String revenuePlan = 'ALL',
+}) => Uri(
+      path: '/api/v1/central/finance',
+      queryParameters: <String, String>{
+        'invoice_status': invoiceStatus,
+        'revenue_period': revenuePeriod,
+        'revenue_plan': revenuePlan,
+      },
+    ).toString();
 
 String centralFinanceInitialPath() => Uri(
       path: '/api/v1/central/finance',
@@ -619,6 +639,11 @@ class _HimateAppState extends State<HimateApp> {
     }
     if (_can('partners.read')) {
       targets.add(centralPartnersInitialPath());
+      // The portfolio KPI cards are common first interactions. Warm their
+      // exact server-side filter keys so the first click is cache-backed too.
+      targets.add(centralPartnersPresetPath(lifecycle: 'LIVE'));
+      targets.add(centralPartnersPresetPath(lifecycle: 'PROSPECT'));
+      targets.add(centralPartnersPresetPath(reference: true));
     }
     if (_can('catalog.read')) {
       targets.add(centralModulesInitialPath());
@@ -628,9 +653,20 @@ class _HimateAppState extends State<HimateApp> {
       targets.add(centralPackagesInitialPath());
       targets.add(centralPackagesSupplementaryInitialPath());
       targets.add(centralFinanceInitialPath());
+      // Finance KPI/status cards use distinct cache keys. Prewarm the common
+      // first-click views against the same hot snapshot read model.
+      for (final status in const ['DRAFT', 'APPROVED', 'SENT', 'PAID']) {
+        targets.add(centralFinancePath(invoiceStatus: status));
+      }
     }
     if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
       targets.add(centralImpactInitialPath());
+    }
+    if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
+      targets.add('/api/v1/system-health/snapshot');
+      targets.add('/api/v1/provisioning/jobs');
+      targets.add('/api/v1/environments');
+      targets.add('/api/v1/backups/summary');
     }
 
     final path = Uri.base.path;
@@ -1784,6 +1820,26 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     selected = widget.initialSelected.clamp(0, navCount - 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_prebuildPriorityPages());
+    });
+  }
+
+  Future<void> _prebuildPriorityPages() async {
+    // API warmup makes the data hot; prebuilding the most frequently switched
+    // workspaces removes the remaining first-widget-mount penalty. Stagger the
+    // work so login/first paint stays responsive.
+    for (final index in const [1, 4, 5, 6, 7]) {
+      if (!mounted) return;
+      if (index == selected || !visibleNavIndexes().contains(index) || _pageCache.containsKey(index)) {
+        continue;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 90));
+      if (!mounted) return;
+      setState(() {
+        _pageCache.putIfAbsent(index, () => _pageForIndex(index));
+      });
+    }
   }
 
   static const int navCount = 10;
@@ -2918,7 +2974,7 @@ class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
   Map<String, dynamic> partnerKpis = <String, dynamic>{};
-  bool loading = false;
+  bool loading = true;
   bool categoriesLoading = true;
   String? categoryRegistryWarning;
   bool statsReady = false;
@@ -2977,10 +3033,24 @@ class _PartnersPageState extends State<PartnersPage> {
 
   Uri _centralPartnerUri() {
     final params = _partnerQueryParameters();
-    if (params.length == 2 &&
-        params['limit'] == '$pageSize' &&
-        params['offset'] == '0') {
-      return Uri.parse(centralPartnersInitialPath());
+    final defaultPage = params['limit'] == '$pageSize' && params['offset'] == '0';
+    final onlyLifecycle = defaultPage &&
+        query.trim().isEmpty &&
+        categoryFilter == 'ALL' &&
+        healthFilter == 'ALL' &&
+        !referenceOnly &&
+        (lifecycleFilter == 'ALL' || lifecycleFilter == 'LIVE' || lifecycleFilter == 'PROSPECT');
+    if (onlyLifecycle) {
+      return Uri.parse(centralPartnersPresetPath(lifecycle: lifecycleFilter));
+    }
+    final onlyReference = defaultPage &&
+        query.trim().isEmpty &&
+        categoryFilter == 'ALL' &&
+        lifecycleFilter == 'ALL' &&
+        healthFilter == 'ALL' &&
+        referenceOnly;
+    if (onlyReference) {
+      return Uri.parse(centralPartnersPresetPath(reference: true));
     }
     return Uri(path: '/api/v1/central/partners', queryParameters: params);
   }
@@ -4240,6 +4310,104 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     }
   }
 
+  Future<void> generateTestFixture() async {
+    final id = '${partner['id'] ?? ''}'.trim();
+    if (id.isEmpty || partner['test_partner'] != true) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: 'Generate Golden Test Partner fixture',
+        subtitle: 'Creates six months of clearly fictional piano-service business history for UI, Impact, Evidence and Reports testing.',
+        icon: Icons.science_outlined,
+        width: 620,
+        child: const _MessageCard(
+          icon: Icons.info_outline_rounded,
+          title: 'QA data only',
+          message: 'The fixture is deterministic and can be regenerated. Test Partner revenue and impact remain isolated from HIMATE platform aggregates.',
+        ),
+        primaryLabel: 'Generate fixture',
+        onPrimary: () => Navigator.pop(dialogContext, true),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final result = await widget.api.post('/api/v1/partners/$id/seed-test-fixture', const <String, dynamic>{});
+      if (!mounted) return;
+      await load();
+      if (!mounted) return;
+      success('${result['message'] ?? 'Golden Test Partner fixture generated.'}');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: LText('Test fixture generation failed: $e'), backgroundColor: brandDanger),
+      );
+    }
+  }
+
+  Future<void> purgeGoldenTestPartner() async {
+    final id = '${partner['id'] ?? ''}'.trim();
+    if (id.isEmpty || partner['test_partner'] != true) return;
+    final confirm = TextEditingController();
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Factory reset Golden Test Partner',
+          subtitle: 'Permanently deletes the Test Partner, its QA business data and persistent storage. No seven-year Compliance Archive is created for this QA-only purge.',
+          icon: Icons.delete_forever_outlined,
+          width: 660,
+          dismissEnabled: true,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _MessageCard(
+                icon: Icons.warning_amber_rounded,
+                title: 'Permanent QA deletion',
+                message: 'This action is allowed only for a Golden Test Partner. Security audit receipts remain, but the partner business dataset cannot be restored.',
+              ),
+              const SizedBox(height: 14),
+              LText('Type the exact Partner ID to confirm: $id'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confirm,
+                onChanged: (_) => setLocal(() {}),
+                decoration: const InputDecoration(labelText: 'Confirm Partner ID'),
+              ),
+            ],
+          ),
+          primaryLabel: 'Permanently delete test partner',
+          onPrimary: () {
+            if (confirm.text.trim() == id) {
+              Navigator.pop(dialogContext, true);
+            }
+          },
+        ),
+      ),
+    );
+    final typed = confirm.text.trim();
+    confirm.dispose();
+    if (approved != true || typed != id || !mounted) return;
+    try {
+      await widget.api.post('/api/v1/partners/$id/purge-test-fixture', {
+        'confirm_partner_id': id,
+      });
+      if (!mounted) return;
+      success('Golden Test Partner permanently removed.');
+      if (widget.onBack != null) {
+        widget.onBack!();
+      } else {
+        Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: LText('Test Partner hard purge failed: $e'), backgroundColor: brandDanger),
+      );
+    }
+  }
+
   Future<void> _loadModuleView({bool force = false}) async {
     final id = '${partner['id'] ?? ''}';
     if (id.isEmpty) return;
@@ -5465,9 +5633,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     if ('${partner['primary_domain'] ?? ''}'.isNotEmpty) '${partner['primary_domain']}',
                     '${uiLiteral('Health')}: ${uiLiteral(_humanize('${partner['system_health'] ?? 'UNKNOWN'}'))}',
                     '${uiLiteral('Version')}: ${'${partner['platform_version'] ?? ''}'.isEmpty ? '—' : partner['platform_version']}',
-                    if (partner['test_partner'] == true) 'TEST DATA · excluded from platform aggregates',
+                    if (partner['test_partner'] == true) 'TEST DATA · excluded from platform aggregates · factory-reset capable',
                   ].join(' · '),
                   actions: [
+                    if (partner['test_partner'] == true)
+                      OutlinedButton.icon(
+                        onPressed: supplementalLoading ? null : generateTestFixture,
+                        icon: const Icon(Icons.science_outlined),
+                        label: const LText('Generate QA fixture'),
+                      ),
+                    if (partner['test_partner'] == true)
+                      OutlinedButton.icon(
+                        onPressed: supplementalLoading ? null : purgeGoldenTestPartner,
+                        icon: const Icon(Icons.delete_forever_outlined),
+                        label: const LText('Factory reset test partner'),
+                      ),
                     OutlinedButton.icon(onPressed: editPartner, icon: const Icon(Icons.edit_outlined), label: const LText('Company data')),
                     FilledButton.icon(onPressed: terms != null && license != null ? editTerms : null, icon: const Icon(Icons.payments_outlined), label: const LText('Commercial terms')),
                   ],
@@ -6528,7 +6708,7 @@ class _FinancePageState extends State<FinancePage> {
   String revenuePeriod = 'MONTHLY';
   String revenuePlan = 'ALL';
   final GlobalKey onboardingKey = GlobalKey();
-  bool loading = false;
+  bool loading = true;
   String? error;
 
   @override
@@ -6541,12 +6721,11 @@ class _FinancePageState extends State<FinancePage> {
     if (invoiceFilter == 'ALL' && revenuePeriod == 'MONTHLY' && revenuePlan == 'ALL') {
       return centralFinanceInitialPath();
     }
-    final params = <String, String>{
-      'invoice_status': invoiceFilter,
-      'revenue_period': revenuePeriod,
-      'revenue_plan': revenuePlan,
-    };
-    return Uri(path: '/api/v1/central/finance', queryParameters: params).toString();
+    return centralFinancePath(
+      invoiceStatus: invoiceFilter,
+      revenuePeriod: revenuePeriod,
+      revenuePlan: revenuePlan,
+    );
   }
 
   Future<void> load({bool force = false}) async {
@@ -7473,7 +7652,7 @@ class _ImpactPageState extends State<ImpactPage> {
   String evidenceStatusFilter = '';
   String evidencePeriodStart = '';
   String evidencePeriodEnd = '';
-  bool loading = false;
+  bool loading = true;
   String? error;
 
   @override
@@ -8417,24 +8596,132 @@ class _ImpactPageState extends State<ImpactPage> {
   }
 }
 
-class SystemPage extends StatelessWidget {
+class SystemPage extends StatefulWidget {
   const SystemPage({required this.api, super.key});
   final Api api;
 
-  Future<List<Map<String, dynamic>>> _load() async {
+  @override
+  State<SystemPage> createState() => _SystemPageState();
+}
+
+class _SystemPageState extends State<SystemPage> {
+  late Future<List<Map<String, dynamic>>> _future;
+
+  Api get api => widget.api;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<Map<String, dynamic>>> _load({bool force = false}) async {
     final r = await Future.wait([
-      api.get('/api/v1/system-health/snapshot'),
-      api.get('/api/v1/provisioning/jobs'),
-      api.get('/api/v1/environments'),
-      api.get('/api/v1/backups/summary'),
+      api.get('/api/v1/system-health/snapshot', force: force, maxAge: const Duration(seconds: 15)),
+      api.get('/api/v1/provisioning/jobs', force: force, maxAge: const Duration(seconds: 15)),
+      api.get('/api/v1/environments', force: force, maxAge: const Duration(seconds: 15)),
+      api.get('/api/v1/backups/summary', force: force, maxAge: const Duration(seconds: 15)),
     ]);
     return r;
+  }
+
+  void _refresh() {
+    setState(() => _future = _load(force: true));
+  }
+
+  Future<void> _openDeveloperDiagnostics() async {
+    try {
+      final responses = await Future.wait([
+        api.get('/api/v1/system-health/snapshot', force: true, maxAge: const Duration(seconds: 5)),
+        api.get('/api/v1/audit/events?outcome=FAILED&limit=20&offset=0', force: true, maxAge: const Duration(seconds: 5)),
+      ]);
+      if (!mounted) return;
+      final health = responses[0];
+      final failures = items(responses[1]);
+      final services = items(<String, dynamic>{'items': health['services']});
+      final unhealthy = services.where((service) {
+        final status = '${service['status'] ?? 'UNKNOWN'}'.toUpperCase();
+        return status != 'OK' && status != 'HEALTHY' && status != 'LIVE' && status != 'READY';
+      }).toList();
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => BrandDialog(
+          title: 'Developer diagnostics',
+          subtitle: 'Current degraded services and the latest failed protected operations.',
+          icon: Icons.bug_report_outlined,
+          width: 820,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _RuleStrip(items: [
+                _RuleItem(Icons.monitor_heart_outlined, 'Control plane', '${health['status'] ?? 'UNKNOWN'}'),
+                _RuleItem(Icons.warning_amber_rounded, 'Degraded services', '${unhealthy.length}'),
+                _RuleItem(Icons.error_outline_rounded, 'Recent failed operations', '${failures.length}'),
+              ]),
+              const SizedBox(height: 16),
+              const _DialogSectionLabel('DEGRADED SERVICES'),
+              const SizedBox(height: 8),
+              if (unhealthy.isEmpty)
+                const LText('No degraded service is present in the current health snapshot.')
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final service in unhealthy)
+                      Chip(
+                        avatar: const Icon(Icons.warning_amber_rounded, size: 16),
+                        label: LText('${_humanize('${service['name'] ?? 'service'}')} · ${service['status'] ?? 'UNKNOWN'}'),
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('LATEST FAILED OPERATIONS'),
+              const SizedBox(height: 8),
+              if (failures.isEmpty)
+                const LText('No failed protected operation was recorded in the latest audit window.')
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: failures.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final event = failures[index];
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.error_outline_rounded, color: brandDanger),
+                        title: LText('${event['action'] ?? event['method'] ?? 'FAILED'} · HTTP ${event['status'] ?? '—'}'),
+                        subtitle: LText(
+                          '${event['path'] ?? '—'} · correlation ${event['correlation_id'] ?? event['request_id'] ?? '—'}',
+                          style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+          primaryLabel: 'Close',
+          onPrimary: () => Navigator.pop(dialogContext),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: LText('Developer diagnostics unavailable: $e'), backgroundColor: brandDanger),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _load(),
+      future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
           return const Content(
@@ -8484,6 +8771,18 @@ class SystemPage extends StatelessWidget {
           eyebrow: 'PLATFORM OPERATIONS',
           title: 'System & Operations',
           subtitle: 'Provisioning, partner environments, connectors, backups and central health across the containerized HIMATE control plane.',
+          actions: [
+            OutlinedButton.icon(
+              onPressed: _openDeveloperDiagnostics,
+              icon: const Icon(Icons.bug_report_outlined),
+              label: const LText('Developer diagnostics'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const LText('Refresh diagnostics'),
+            ),
+          ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
