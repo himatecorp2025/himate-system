@@ -8,6 +8,7 @@ class BackupsPanel extends StatefulWidget {
     required this.initialProvider,
     this.partnerLabels = const <String, String>{},
     this.productionRestoreEligible = const <String, bool>{},
+    this.canMutate = true,
     super.key,
   });
 
@@ -17,6 +18,7 @@ class BackupsPanel extends StatefulWidget {
   final String initialProvider;
   final Map<String, String> partnerLabels;
   final Map<String, bool> productionRestoreEligible;
+  final bool canMutate;
 
   @override
   State<BackupsPanel> createState() => _BackupsPanelState();
@@ -553,23 +555,24 @@ class _BackupsPanelState extends State<BackupsPanel> {
               runSpacing: 8,
               children: [
                 OutlinedButton.icon(
-                  onPressed: isBusy ? null : () => _editPolicy(partnerId),
+                  onPressed: isBusy || !widget.canMutate ? null : () => _editPolicy(partnerId),
                   icon: const Icon(Icons.policy_outlined, size: 17),
                   label: const LText('Policy'),
                 ),
                 FilledButton.icon(
-                  onPressed: isBusy ? null : () => _createRestorePoint(partnerId),
+                  onPressed: isBusy || !widget.canMutate ? null : () => _createRestorePoint(partnerId),
                   icon: const Icon(Icons.backup_outlined, size: 17),
                   label: const LText('Create restore point'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: isBusy || backupStatus != 'READY' || pointId.isEmpty ? null : () => _runRestoreTest(partnerId),
+                  onPressed: isBusy || !widget.canMutate || backupStatus != 'READY' || pointId.isEmpty ? null : () => _runRestoreTest(partnerId),
                   icon: const Icon(Icons.restore_page_outlined, size: 17),
                   label: const LText('Run restore test'),
                 ),
                 if (partnerId != '_platform')
                   FilledButton.icon(
                     onPressed: isBusy ||
+                            !widget.canMutate ||
                             recoverability != 'VERIFIED' ||
                             backupStatus != 'READY' ||
                             pointId.isEmpty ||
