@@ -92,6 +92,12 @@ func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor
 		return
 	}
 	started := time.Now()
+	cacheKey := central10CacheKey(actor, r)
+	if payload, ok, _ := central10Cached(cacheKey, true); ok {
+		w.Header().Set("X-Himate-Cache", "hit")
+		common.JSON(w, http.StatusOK, payload)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
 	defer cancel()
 
@@ -199,7 +205,7 @@ func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor
 			"generated_at": time.Now().UTC(),
 		},
 	}
-	central10Store(central10CacheKey(actor, r), payload)
+	central10Store(cacheKey, payload)
 	common.JSON(w, http.StatusOK, payload)
 }
 
