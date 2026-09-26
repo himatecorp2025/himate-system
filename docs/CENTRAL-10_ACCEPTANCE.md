@@ -61,7 +61,7 @@ and Go-owned four-week elapsed Impact selection.
 - Successful mutations use route-targeted Gateway and browser invalidation; unrelated Central screens are never globally flushed.
 - Flutter widgets may remain lazily mounted, but every permission-visible Central screen read model is prefetched before the first menu click.
 - Modules Commercial and Packages Supplementary snapshots are also prefetched so secondary data is warm before interaction.
-- Central browser request timeout is 800 ms.
+- Central read-model SLO remains sub-800 ms, but the browser no longer aborts Central/Dashboard requests at 800/950 ms. A single 4-second transport safety timeout prevents false client failures while materialized snapshots recover.
 - Render deployment health uses process-level `/api/v1/live` so a rolling deploy cannot deadlock on downstream services. Full dependency/readiness diagnostics remain on `/api/v1/health`, which fails closed with HTTP 503 when required dependencies are degraded.
 
 ## Commercial Matrix

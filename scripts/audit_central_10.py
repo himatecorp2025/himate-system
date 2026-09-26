@@ -22,6 +22,7 @@ gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
 step3_snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
+dashboard_snapshots = read("services/cmd/gateway/dashboard_snapshot.go")
 render = read("render.yaml")
 impact = read("services/cmd/impact/main.go")
 billing = read("services/cmd/billing/central8.go")
@@ -125,16 +126,53 @@ for token in [
     "centralDashboardInitialPath()",
     "centralPartnersInitialPath()",
     "centralModulesInitialPath()",
+    "centralModulesCommercialInitialPath()",
     "centralPackagesInitialPath()",
     "centralFinanceInitialPath()",
     "centralImpactInitialPath()",
     "void Function(Map<String, dynamic> freshData)? onRefresh",
-    "Duration(milliseconds: 800)",
+    "ValueListenable<int> cacheSignal(String path)",
+    "_storeCache(path, data, maxAge)",
+    "const timeout = Duration(seconds: 4)",
 ]:
     check(token in frontend, f"Central-10.1 Step 1 network/cache contract missing: {token}")
 
-check("Duration(milliseconds: 950)" not in frontend,
-      "Central-10.1 still uses the obsolete 950ms browser timeout")
+for obsolete_timeout in [
+    "Duration(milliseconds: 950)",
+    "Duration(milliseconds: 800)",
+]:
+    check(obsolete_timeout not in frontend,
+          f"Central-10.1 still uses obsolete browser cutoff: {obsolete_timeout}")
+
+for exact_prefetch in [
+    "'year': '${DateTime.now().toUtc().year}'",
+    "'perspective': 'PARTNER'",
+    "'commercial_limit': '120'",
+    "'invoice_status': 'ALL'",
+    "'revenue_period': 'MONTHLY'",
+    "'revenue_plan': 'ALL'",
+    "'evidence_limit': '12'",
+    "'evidence_offset': '0'",
+]:
+    check(exact_prefetch in frontend,
+          f"Central-10.1 exact warmup/mount cache key missing: {exact_prefetch}")
+
+for shared_path_contract in [
+    "targets.add(centralDashboardInitialPath())",
+    "final path = centralDashboardInitialPath()",
+    "targets.add(centralModulesCommercialInitialPath())",
+    "targets.add(centralFinanceInitialPath())",
+    "return centralFinanceInitialPath();",
+    "targets.add(centralImpactInitialPath())",
+    "return centralImpactInitialPath();",
+    "valueListenable: api.cacheSignal(path)",
+]:
+    check(shared_path_contract in frontend,
+          f"Central-10.1 shared warmup/mount path or reactive SWR binding missing: {shared_path_contract}")
+
+check("if (defaultView) return centralModulesCommercialInitialPath();" in modules_ui,
+      "Central-10.1 Modules commercial default mount does not reuse the warmup cache key")
+
 dashboard_start = gateway_main.find("func (a *app) dashboard(")
 dashboard_end = gateway_main.find("\nfunc ", dashboard_start + 1)
 dashboard_body = gateway_main[dashboard_start:dashboard_end] if dashboard_start >= 0 and dashboard_end > dashboard_start else ""
@@ -144,8 +182,21 @@ check("context.WithTimeout(" not in dashboard_body,
       "Central-10.1 Dashboard request path still waits on a live backend timeout")
 check("dashboardSnapshotForRead" in dashboard_body,
       "Central-10.1 Dashboard does not serve the materialized hot snapshot")
+check("dashboardRecentActivity" not in dashboard_body,
+      "Central-10.1 Dashboard request path still performs live activity I/O")
+check('"activity": activityBlock' in dashboard_snapshots,
+      "Central-10.1 Dashboard snapshot does not contain precomputed activity")
 check("force: loadCategories" not in frontend,
       "Central-10.1 Partners first mount still bypasses warm cache/inflight data")
+partners_init = frontend.find("class _PartnersPageState")
+partners_load = frontend.find("Future<void> load(", partners_init)
+partners_next_method = frontend.find("\n  void updateSearch(", partners_load)
+partners_init_block = frontend[partners_init:partners_load] if partners_init >= 0 and partners_load > partners_init else ""
+partners_load_block = frontend[partners_load:partners_next_method] if partners_load >= 0 and partners_next_method > partners_load else ""
+check("load(loadCategories: true);" in partners_init_block and "force: true" not in partners_init_block,
+      "Central-10.1 Partners first mount must reuse prefetch/inflight data without a forced duplicate request")
+check("bool force" not in partners_load_block and "force: force" not in partners_load_block,
+      "Central-10.1 Partners load path still exposes a forced duplicate-fetch escape hatch")
 check("central10ReadCache.items = map[string]central10CacheEntry{}" not in gateway,
       "Central-10.1 still globally flushes every Central read cache on mutation")
 check("invalidateCentral10Caches(r.URL.Path)" in gateway_main,
