@@ -6433,6 +6433,8 @@ class _FinancePageState extends State<FinancePage> {
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   String invoiceFilter = 'ALL';
+  String revenuePeriod = 'MONTHLY';
+  String revenuePlan = 'ALL';
   final GlobalKey onboardingKey = GlobalKey();
   bool loading = false;
   String? error;
@@ -6453,7 +6455,8 @@ class _FinancePageState extends State<FinancePage> {
     Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
       try {
         final data = await widget.api.get(path, force: true);
-        apply(data);
+        if (!mounted) return;
+        setState(() => apply(data));
       } catch (e) {
         failures.add(e.toString());
       }
@@ -6526,14 +6529,38 @@ class _FinancePageState extends State<FinancePage> {
 
   String get chartCurrency => currencyRows.isEmpty ? 'USD' : '${currencyRows.first['currency'] ?? 'USD'}';
 
+  String get revenuePlanKey => switch (revenuePlan) {
+    'Starter' => 'STARTER',
+    'Business' => 'BUSINESS',
+    'Premium' => 'FLEX',
+    _ => 'ALL',
+  };
+
   List<Map<String, dynamic>> get chartRows {
-    final raw = overview['monthly_paid'];
+    final byPlan = revenuePlanKey != 'ALL';
+    final key = revenuePeriod == 'WEEKLY'
+        ? (byPlan ? 'weekly_paid_by_plan' : 'weekly_paid')
+        : (byPlan ? 'monthly_paid_by_plan' : 'monthly_paid');
+    final raw = overview[key];
     if (raw is! List) return <Map<String, dynamic>>[];
     return raw
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
-        .where((row) => '${row['currency'] ?? ''}' == chartCurrency)
+        .where((row) =>
+            '${row['currency'] ?? ''}' == chartCurrency &&
+            (!byPlan || '${row['plan_key'] ?? ''}' == revenuePlanKey))
+        .map((row) => <String,dynamic>{
+              ...row,
+              'period': row['period'] ?? row['month'] ?? '',
+            })
         .toList();
+  }
+
+  String get financeExportPath {
+    final params = <String,String>{};
+    if (invoiceFilter != 'ALL') params['status'] = invoiceFilter;
+    if (revenuePlanKey != 'ALL') params['plan_key'] = revenuePlanKey;
+    return Uri(path: '/api/v1/billing/finance/export.csv', queryParameters: params.isEmpty ? null : params).toString();
   }
 
   Future<void> createManualInvoice({String? partnerID}) async {
