@@ -9151,9 +9151,9 @@ class BrandDialog extends StatelessWidget {
 
             return Container(
               decoration: BoxDecoration(
-                color: brandWhite,
+                color: brandSurfaceRaised,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: brandMist),
+                border: Border.all(color: brandIonBlue.withOpacity(.24)),
                 boxShadow: [
                   BoxShadow(
                     color: brandNavy.withOpacity(.16),
@@ -9192,9 +9192,9 @@ class _FilterSurface extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: brandWhite,
+        color: brandSurfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: brandNavy.withOpacity(.14), width: 1.15),
+        border: Border.all(color: brandIonBlue.withOpacity(.24), width: 1.15),
         boxShadow: [BoxShadow(color: brandNavy.withOpacity(.055), blurRadius: 14, offset: const Offset(0, 5))],
       ),
       child: child,
@@ -9270,9 +9270,9 @@ class _PartnerCardState extends State<PartnerCard> {
         duration: const Duration(milliseconds: 180),
         transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
         decoration: BoxDecoration(
-          color: brandWhite,
+          color: brandSurfaceRaised,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: hover ? brandGold.withOpacity(.58) : brandNavy.withOpacity(.16), width: hover ? 1.5 : 1.2),
+          border: Border.all(color: hover ? brandGold.withOpacity(.78) : brandIonBlue.withOpacity(.24), width: hover ? 1.5 : 1.1),
           boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
         ),
         child: Material(
@@ -9474,9 +9474,9 @@ class WorkspaceCard extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 112),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: brandWhite,
+        color: brandSurfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: brandMist),
+        border: Border.all(color: brandIonBlue.withOpacity(.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
