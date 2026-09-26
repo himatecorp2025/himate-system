@@ -4074,7 +4074,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   final GlobalKey _usersKey = GlobalKey();
   final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
-  int _supplementalLoadGeneration = 0;
 
   static const workspaceCards = <_WorkspaceSpec>[
     _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
@@ -4098,85 +4097,78 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     load();
   }
 
-  Future<Map<String, dynamic>?> _safeWorkspaceGet(String path, List<String> errors) async {
-    try {
-      return await widget.api.get(path).timeout(const Duration(seconds: 8));
-    } on TimeoutException {
-      errors.add('$path: timed out after 8 seconds');
-      return null;
-    } catch (e) {
-      errors.add('$path: $e');
-      return null;
-    }
-  }
-
-  Future<void> _loadSupplementary() async {
-    final generation = ++_supplementalLoadGeneration;
-    final id = '${partner['id']}';
-    if (mounted) setState(() { supplementalLoading = true; supplementalError = null; });
-    final errors = <String>[];
-
-    Future<void> loadOne(
-      String path,
-      void Function(Map<String,dynamic> data) apply,
-    ) async {
-      final data = await _safeWorkspaceGet(path, errors);
-      if (!mounted || generation != _supplementalLoadGeneration || data == null) return;
-      setState(() => apply(data));
-    }
-
-    await Future.wait<void>([
-      loadOne('/api/v1/partners/$id/modules', (data) => modules = items(data)),
-      loadOne('/api/v1/billing/partners/$id/summary', (data) => billing = data),
-      loadOne('/api/v1/billing/partners/$id/terms', (data) => terms = data),
-      loadOne('/api/v1/billing/partners/$id/license', (data) => license = data),
-      loadOne('/api/v1/billing/partners/$id/documents', (data) => documents = items(data)),
-      loadOne('/api/v1/billing/partners/$id/invoices', (data) => invoices = items(data)),
-      loadOne('/api/v1/billing/partners/$id/subscriptions', (data) => subscriptions = items(data)),
-      loadOne('/api/v1/environments?partner_id=$id', (data) => environments = items(data)),
-      loadOne('/api/v1/provisioning/jobs?partner_id=$id', (data) => provisioningJobs = items(data)),
-      loadOne('/api/v1/impact/summary?partner_id=$id', (data) => impactSummary = items(data)),
-      loadOne('/api/v1/connectors/$id/credential', (data) => connectorCredentials = items(data)),
-      loadOne('/api/v1/partners/$id/portal-users', (data) => portalUsers = items(data)),
-      loadOne('/api/v1/billing/partners/$id/agreement', (data) => agreement = data),
-      loadOne('/api/v1/billing/partners/$id/commercial-status', (data) => commercialStatus = data),
-      loadOne('/api/v1/billing/partners/$id/events', (data) => billingEvents = items(data)),
-      loadOne('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', (data) => websiteAdapter = data),
-      loadOne('/api/v1/payments/partners/$id/profile', (data) => paymentProfile = data),
-    ]);
-
-    if (!mounted || generation != _supplementalLoadGeneration) return;
-    setState(() {
-      supplementalLoading = false;
-      supplementalError = errors.isEmpty
-          ? null
-          : 'Some secondary services are temporarily unavailable. Available sections were loaded independently; missing sections will show an empty or unavailable state instead of blocking the page.';
-    });
-  }
-
   Future<void> load() async {
-    final hasPrimary = '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
-    if (mounted) setState(() { loading = !hasPrimary; error = null; });
-    final id = '${partner['id']}';
-    if (hasPrimary) {
-      _scrollToInitialSection();
-      unawaited(_loadSupplementary());
+    final hasPrimary =
+        '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
+    if (mounted) {
+      setState(() {
+        loading = !hasPrimary;
+        supplementalLoading = true;
+        error = null;
+        supplementalError = null;
+      });
     }
+    if (hasPrimary) _scrollToInitialSection();
+    final id = '${partner['id']}';
     try {
-      final core = await widget.api.get('/api/v1/partners/$id', maxAge: const Duration(seconds: 15));
+      final model = await widget.api.get(
+        '/api/v1/central/partners/$id',
+        maxAge: const Duration(seconds: 5),
+      );
       if (!mounted) return;
-      setState(() { partner = core; loading = false; });
+      final core = model['partner'] is Map
+          ? Map<String, dynamic>.from(model['partner'] as Map)
+          : partner;
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
+      final unavailable = meta['unavailable'] is List
+          ? (meta['unavailable'] as List).map((e) => '$e').toList()
+          : <String>[];
+      setState(() {
+        partner = core;
+        modules = items(<String, dynamic>{'items': model['modules']});
+        documents = items(<String, dynamic>{'items': model['documents']});
+        invoices = items(<String, dynamic>{'items': model['invoices']});
+        subscriptions = items(<String, dynamic>{'items': model['subscriptions']});
+        environments = items(<String, dynamic>{'items': model['environments']});
+        provisioningJobs = items(<String, dynamic>{'items': model['provisioning_jobs']});
+        impactSummary = items(<String, dynamic>{'items': model['impact_summary']});
+        connectorCredentials = items(<String, dynamic>{'items': model['connector_credentials']});
+        portalUsers = items(<String, dynamic>{'items': model['portal_users']});
+        billingEvents = items(<String, dynamic>{'items': model['billing_events']});
+        billing = model['billing'] is Map ? Map<String, dynamic>.from(model['billing'] as Map) : null;
+        terms = model['terms'] is Map ? Map<String, dynamic>.from(model['terms'] as Map) : null;
+        license = model['license'] is Map ? Map<String, dynamic>.from(model['license'] as Map) : null;
+        agreement = model['agreement'] is Map ? Map<String, dynamic>.from(model['agreement'] as Map) : null;
+        commercialStatus = model['commercial_status'] is Map
+            ? Map<String, dynamic>.from(model['commercial_status'] as Map)
+            : null;
+        paymentProfile = model['payment_profile'] is Map
+            ? Map<String, dynamic>.from(model['payment_profile'] as Map)
+            : null;
+        websiteAdapter = model['website_adapter'] is Map
+            ? Map<String, dynamic>.from(model['website_adapter'] as Map)
+            : null;
+        loading = false;
+        supplementalLoading = false;
+        supplementalError = unavailable.isEmpty
+            ? null
+            : 'Some secondary services are temporarily unavailable: ${unavailable.join(', ')}. Available sections remain usable.';
+      });
       _scrollToInitialSection();
-      if (!hasPrimary) unawaited(_loadSupplementary());
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          error = hasPrimary ? null : e.toString();
-          supplementalError ??= 'The latest partner master-data refresh failed. The already loaded partner record remains usable.';
-          loading = false;
-          if (!hasPrimary) supplementalLoading = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        supplementalLoading = false;
+        if (hasPrimary) {
+          supplementalError =
+              'The latest Go partner read model could not be refreshed. The already loaded partner record remains usable.';
+        } else {
+          error = e.toString();
+        }
+      });
     }
   }
 
