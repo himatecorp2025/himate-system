@@ -32,6 +32,7 @@ type app struct {
 	internalToken string
 	client        *http.Client
 	dbAdminURL    string
+	platformDBName string
 	storageHost   string
 	envHost       string
 	connectorHost string
@@ -95,8 +96,15 @@ func main() {
 		log.Error("backup encryption key", "error", "HIMATE_BACKUP_ENCRYPTION_KEY_B64 must decode to exactly 32 bytes")
 		os.Exit(1)
 	}
+	platformURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	parsedPlatformURL, parseErr := url.Parse(platformURL)
+	platformDBName := strings.TrimPrefix(parsedPlatformURL.Path, "/")
+	if parseErr != nil || strings.TrimSpace(platformDBName) == "" {
+		log.Error("platform database URL", "error", "DATABASE_URL must include a database name")
+		os.Exit(1)
+	}
 	adminURL := strings.TrimSpace(os.Getenv("PARTNER_DATABASE_ADMIN_URL"))
-	if adminURL == "" { adminURL = strings.TrimSpace(os.Getenv("DATABASE_URL")) }
+	if adminURL == "" { adminURL = platformURL }
 	if _, err := partnerdb.AdminDSN(adminURL); err != nil {
 		log.Error("partner database admin URL", "error", err)
 		os.Exit(1)
@@ -117,7 +125,7 @@ func main() {
 	workers,_:=strconv.Atoi(common.Env("HIMATE_BACKUP_WORKERS","1"))
 	if workers<1{workers=1};if workers>4{workers=4}
 	a:=&app{
-		db:db,internalToken:os.Getenv("HIMATE_INTERNAL_TOKEN"),client:client,dbAdminURL:adminURL,
+		db:db,internalToken:os.Getenv("HIMATE_INTERNAL_TOKEN"),client:client,dbAdminURL:adminURL,platformDBName:platformDBName,
 		storageHost:os.Getenv("STORAGE_HOSTPORT"),envHost:os.Getenv("ENVIRONMENTS_HOSTPORT"),
 		connectorHost:os.Getenv("CONNECTOR_HOSTPORT"),partnersHost:os.Getenv("PARTNERS_HOSTPORT"),
 		workRoot:workRoot,key:key,provider:provider,wake:make(chan struct{},1),workers:workers,
@@ -126,6 +134,8 @@ func main() {
 
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
 	if err:=a.migrate(ctx);err!=nil{log.Error("migration","error",err);os.Exit(1)}
+	_,_=a.db.Exec(`INSERT INTO backups.policies(partner_id,retention_days,max_restore_points,schedule_hours,enabled)
+		VALUES('_platform',30,30,24,TRUE) ON CONFLICT(partner_id) DO NOTHING`)
 	_,_=a.db.Exec(`UPDATE backups.restore_points SET status='QUEUED',error='worker restarted before completion' WHERE status='RUNNING'`)
 	_,_=a.db.Exec(`UPDATE backups.restore_tests SET status='QUEUED',error='worker restarted before completion' WHERE status='RUNNING'`)
 	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET status='QUEUED',error='worker restarted before completion',started_at=NULL WHERE status='RUNNING'`)
