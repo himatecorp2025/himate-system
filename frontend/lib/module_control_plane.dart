@@ -88,6 +88,15 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   }
 
   String _centralCommercialPath() {
+    final defaultView =
+        commercialPerspective == 'PARTNER' &&
+        commercialShown == 120 &&
+        commercialQuery.trim().isEmpty &&
+        commercialPartnerFilter == 'ALL' &&
+        commercialModuleFilter == 'ALL' &&
+        commercialStatusFilter == 'ALL';
+    if (defaultView) return centralModulesCommercialInitialPath();
+
     final params = <String, String>{
       'perspective': commercialPerspective,
       'commercial_limit': '$commercialShown',
