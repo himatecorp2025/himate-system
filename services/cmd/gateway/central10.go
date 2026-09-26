@@ -604,6 +604,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 	}
 
 	payload := map[string]any{
+		"module_options": modules.Items,
 		"registry": map[string]any{
 			"modules": filteredModules,
 			"groups": groups.Items,
