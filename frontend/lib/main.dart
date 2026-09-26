@@ -2578,9 +2578,20 @@ class _ImpactPanel extends StatefulWidget {
 class _ImpactPanelState extends State<_ImpactPanel> {
   bool weekly=false;
 
+  String _weeklyLabel(Map<String,dynamic> row) {
+    final parsed = DateTime.tryParse('${row['week_start'] ?? ''}');
+    if (parsed == null) return '${row['label'] ?? row['week'] ?? ''}';
+    return '${parsed.month}/${parsed.day}';
+  }
+
   @override
   Widget build(BuildContext context){
-    final trend=weekly?widget.weeklyTrend:widget.monthlyTrend;
+    final weeklyWindow = widget.weeklyTrend.length <= 4
+        ? widget.weeklyTrend
+        : widget.weeklyTrend.sublist(widget.weeklyTrend.length - 4);
+    final trend=weekly
+        ? [for (final row in weeklyWindow) <String,dynamic>{...row,'label':_weeklyLabel(row)}]
+        : widget.monthlyTrend;
     return SizedBox(
       height:330,
       child:Card(child:Padding(
