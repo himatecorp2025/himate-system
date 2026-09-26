@@ -359,7 +359,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
 
     setState(() => busy.add(partnerId));
     try {
-      final job = await widget.api.post('/api/v1/backups/restore-points/$pointId/restore', payload);
+      final job = await widget.api.post('/api/v1/backups/restore-points/$pointId/restore?partner_id=$partnerId', payload);
       final jobId = _value(job['id'], fallback: '');
       if (jobId.isEmpty) throw StateError('Backup service did not return a restore-job identifier.');
       _notify('Production restore $jobId queued. A safety backup will be created first.');
