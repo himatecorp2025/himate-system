@@ -1988,7 +1988,7 @@ class _ShellState extends State<Shell> {
     if (can('billing.read')) indexes.add(3);
     if (can('billing.read')) indexes.add(4);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(5);
-    if (can('cms.read') || can('contact.read')) indexes.add(6);
+    if (can('cms.read') || can('contact.read') || can('connectors.read')) indexes.add(6);
     if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
     if (can('administration.read') || can('audit.read')) indexes.add(8);
     if (can('audit.read')) indexes.add(9);
@@ -2011,7 +2011,12 @@ class _ShellState extends State<Shell> {
       case 3: return PackagesPage(api: widget.api);
       case 4: return FinancePage(api: widget.api);
       case 5: return ImpactPage(api: widget.api);
-      case 6: return WebsiteMarketingPage(api: widget.api);
+      case 6: return WebsiteMarketingPage(
+        api: widget.api,
+        canCms: can('cms.read'),
+        canContact: can('contact.read'),
+        canConnections: can('connectors.read'),
+      );
       case 7: return SystemPage(api: widget.api);
       case 8: return AdministrationPage(api: widget.api, user: widget.user);
       case 9: return ComplianceArchivesPage(api: widget.api);
