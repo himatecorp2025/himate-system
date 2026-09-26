@@ -390,6 +390,7 @@ func (a *app) migrate(ctx context.Context) error {
 		partnerUserModulePermissionsMigration(),
 		phase2DurabilityMigration(),
 		phase4MFAMigration(),
+		central8GatewayMigration(),
 	}); err != nil {
 		return err
 	}
