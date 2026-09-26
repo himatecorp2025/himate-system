@@ -238,7 +238,6 @@ for kind,item in b.items():
     if expected:
         assert a[kind].get("active_release")==expected,(kind,expected,a[kind])
     assert a[kind].get("environment_status")=="SUSPENDED",(kind,a[kind])
-assert a["PRODUCTION"]["active_release"]!=sys.argv[0] if False else True
 PY
 test "$(printf '%s' "$RESTORED_ENVS" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["active_release"] for x in d["items"] if x["kind"]=="PRODUCTION"))')" = "$BASELINE_PROD_RELEASE"
 echo ok
