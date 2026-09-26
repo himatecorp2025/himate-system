@@ -29,17 +29,19 @@ impact_main = read("services/cmd/impact/main.go")
 gateway_c10 = read("services/cmd/gateway/central10.go")
 openapi = read("docs/openapi.yaml")
 
-# Approved premium dark / IT-blue visual system.
+# CENTRAL-16 intentionally supersedes the Central-9 dark presentation layer
+# while preserving the architecture, performance, export and business contracts.
+# Accept the approved light canvas + dark navy navigation system.
 for token in [
-    "const brandNavyDeep = Color(0xFF020914)",
-    "const brandSurface = Color(0xFF07182A)",
-    "const brandSurfaceRaised = Color(0xFF0B2540)",
-    "const brandIonBlue = Color(0xFF19B5FF)",
-    "brightness: Brightness.dark",
-    "scaffoldBackgroundColor: brandNavyDeep",
+    "const brandNavyDeep = Color(0xFF071A2E)",
+    "const brandSurface = Color(0xFFFFFFFF)",
+    "const brandSurfaceRaised = Color(0xFFFFFFFF)",
+    "const brandIonBlue = Color(0xFF1769E0)",
+    "brightness: Brightness.light",
+    "scaffoldBackgroundColor: brandIvory",
     "TweenAnimationBuilder<double>",
 ]:
-    check(token in frontend, f"Central-9 premium visual contract missing: {token}")
+    check(token in frontend, f"Central-16 visual contract missing while running Central-9 regression: {token}")
 
 # Canonical package display remains exact. Central-10 moves display authority
 # out of Flutter and into the Go read model.
@@ -137,7 +139,7 @@ check("text/csv:" not in openapi, "OpenAPI still advertises text/csv for Central
 # Regression tests remain presentation-focused after Central-10 moved canonical
 # prices and weekly selection to Go.
 for token in [
-    "Central-9 premium dark visual contract remains active",
+    "Central-16 approved light navy-gold visual contract supersedes Central-9 dark presentation",
     "Central responsive presentation helpers remain deterministic",
 ]:
     check(token in frontend_test, f"Central-9 presentation regression test missing: {token}")
