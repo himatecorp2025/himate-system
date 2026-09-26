@@ -19,6 +19,10 @@ def check(condition: bool, message: str) -> None:
 frontend = read("frontend/lib/main.dart")
 dashboard = read("services/cmd/gateway/dashboard_snapshot.go")
 central10 = read("services/cmd/gateway/central10.go")
+step4 = read("services/cmd/gateway/central_step4_snapshots.go")
+modules_ui = read("frontend/lib/module_control_plane.dart")
+website_ui = read("frontend/lib/cms_page.dart")
+administration_ui = read("frontend/lib/administration_center.dart")
 
 # Shared approved visual system.
 for token in [
@@ -72,6 +76,93 @@ for token in [
 ]:
     check(token in central10, f"CENTRAL-16 canonical package contract missing: {token}")
 
+# Partners and overview-first navigation.
+for token in [
+    "Reference partners",
+    "PDF export",
+    "New partner",
+]:
+    check(token in frontend, f"CENTRAL-16 Partners contract missing: {token}")
+
+# Modules workspace switch and no unbounded warming retry loop.
+for token in [
+    "class _ModuleWorkspaceTabs",
+    "Topics",
+    "Partners",
+    "Modules",
+    "Connections",
+    "Module snapshot is warming",
+]:
+    check(token in modules_ui, f"CENTRAL-16 Modules contract missing: {token}")
+check("Future<void>.delayed(const Duration(milliseconds: 350)" not in modules_ui, "CENTRAL-16 Modules still contains automatic 350ms warming polling")
+check("Future<void>.delayed(const Duration(milliseconds: 500)" not in modules_ui, "CENTRAL-16 Modules still contains automatic 500ms warming polling")
+
+# Packages, Finance and Impact overview hierarchy.
+for token in [
+    "All packages",
+    "Active subscriptions",
+    "Custom packages",
+    "Package snapshot is warming",
+    "Invoice approval queue",
+    "Partner onboarding",
+    "New invoice",
+    "Active metrics",
+    "Pending review",
+    "Impact trend",
+    "Report creation",
+]:
+    check(token in frontend, f"CENTRAL-16 overview contract missing: {token}")
+check("Future<void>.delayed(const Duration(milliseconds: 350)" not in frontend, "CENTRAL-16 main UI still contains automatic 350ms warming polling")
+check("Future<void>.delayed(const Duration(milliseconds: 500)" not in frontend, "CENTRAL-16 main UI still contains automatic 500ms warming polling")
+
+# Impact weekly/monthly analytics must originate in the Go materialized read model.
+for token in [
+    '"analytics"',
+    '"kpis"',
+    '"pending_evidence"',
+]:
+    check(token in central10, f"CENTRAL-16 Impact gateway contract missing: {token}")
+for token in [
+    "/internal/v1/impact/dashboard?year=",
+    '"analytics":',
+]:
+    check(token in step4, f"CENTRAL-16 Impact materialization contract missing: {token}")
+
+# Website & Marketing control center.
+for token in [
+    "Design Guide",
+    "CMS",
+    "SEO",
+    "Domain & Deployment",
+    "Analytics",
+    "Partner Connections",
+    "class WebsiteDomainsPanel",
+    "class WebsiteAnalyticsPanel",
+]:
+    check(token in website_ui, f"CENTRAL-16 Website & Marketing contract missing: {token}")
+
+# Administration two-center hierarchy.
+for token in [
+    "HIMATE Administration Center",
+    "Partner Administration Center",
+    "System Backup & Recovery",
+    "class _AdministrationCenterHeroCard",
+    "class _AdministrationQuickCard",
+]:
+    check(token in administration_ui, f"CENTRAL-16 Administration contract missing: {token}")
+
+# System & Operations executive overview and developer diagnostics.
+for token in [
+    "System status",
+    "Partner systems",
+    "Deployments",
+    "Issues",
+    "class _SystemCurrentHealthCard",
+    "class _SystemInfrastructureSummary",
+    "Developer diagnostics",
+]:
+    check(token in frontend, f"CENTRAL-16 System & Operations contract missing: {token}")
+
 # No fixed card-count acceptance. Responsive/dynamic collection rendering stays data driven.
 check("for (final plan in plans)" in frontend, "CENTRAL-16 package rendering is not dynamic")
 check("for (final p in filtered)" in frontend, "CENTRAL-16 partner rendering is not dynamic")
@@ -82,4 +173,4 @@ if errors:
         print(" -", error)
     sys.exit(1)
 
-print("CENTRAL-16 design foundation + Dashboard/backend-first acceptance: PASS")
+print("CENTRAL-16 full redesign + backend-first functional acceptance: PASS")
