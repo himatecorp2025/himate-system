@@ -216,6 +216,10 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Loading the latest partner portfolio snapshot.': 'A legfrissebb partnerportfólió-pillanatkép betöltése.',
+    'Loading the latest module registry snapshot.': 'A legfrissebb modulregiszter-pillanatkép betöltése.',
+    'Loading the latest materialized finance snapshot.': 'A legfrissebb materializált pénzügyi pillanatkép betöltése.',
+    'Loading the latest impact and evidence snapshot.': 'A legfrissebb hatás- és bizonyíték-pillanatkép betöltése.',
     'New invoice': 'Új számla',
     'Draft invoices': 'Piszkozat számlák',
     'Awaiting Central approval': 'Központi jóváhagyásra vár',
