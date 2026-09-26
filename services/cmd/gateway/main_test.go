@@ -350,8 +350,8 @@ func TestGatewayHealthReportsMissingBindingAsDegraded(t *testing.T) {
 
 	a.health(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected health endpoint 200, got %d", rec.Code)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected readiness 503 while dependencies are degraded, got %d", rec.Code)
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, `"status":"degraded"`) {

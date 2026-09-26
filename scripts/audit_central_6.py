@@ -22,6 +22,7 @@ gateway = read("services/cmd/gateway/main.go")
 partner_gateway = read("services/cmd/gateway/partner_portal.go")
 ui = read("frontend/lib/main.dart")
 gateway_c10 = read("services/cmd/gateway/central10.go")
+gateway_c10_step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 partner_ui = read("frontend/lib/partner_portal.dart")
 localization = read("frontend/lib/localization.dart")
 openapi = read("docs/openapi.yaml")
@@ -159,7 +160,10 @@ require(
     "/api/v1/billing/finance/overview" in ui
     or (
         "/api/v1/central/finance" in ui
-        and '"/api/v1/billing/finance/overview"' in gateway_c10
+        and (
+            '"/api/v1/billing/finance/overview"' in gateway_c10
+            or '"/api/v1/billing/finance/overview"' in gateway_c10_step4
+        )
     ),
     "Central-6 Finance UI/read-model no longer reaches the authoritative Finance overview",
 )

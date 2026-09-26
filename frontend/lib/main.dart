@@ -6543,6 +6543,16 @@ class _FinancePageState extends State<FinancePage> {
 
     void applyModel(Map<String, dynamic> model) {
       if (!mounted || path != _financePath()) return;
+      if (model['ready'] != true) {
+        setState(() {
+          loading = true;
+          error = null;
+        });
+        Future<void>.delayed(const Duration(milliseconds: 400), () {
+          if (mounted && path == _financePath()) unawaited(load());
+        });
+        return;
+      }
       final chart = model['chart'] is Map
           ? Map<String, dynamic>.from(model['chart'] as Map)
           : <String, dynamic>{};
@@ -7488,6 +7498,16 @@ class _ImpactPageState extends State<ImpactPage> {
 
     void applyModel(Map<String, dynamic> model) {
       if (!mounted || path != evidencePath()) return;
+      if (model['ready'] != true) {
+        setState(() {
+          loading = true;
+          error = null;
+        });
+        Future<void>.delayed(const Duration(milliseconds: 400), () {
+          if (mounted && path == evidencePath()) unawaited(load());
+        });
+        return;
+      }
       setState(() {
         definitions = items(<String, dynamic>{'items': model['definitions']});
         summary = items(<String, dynamic>{'items': model['summary']});

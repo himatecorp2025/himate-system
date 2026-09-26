@@ -16,8 +16,8 @@ import (
 
 const (
 	central10ReadBudget = 650 * time.Millisecond
-	central10FreshTTL   = 5 * time.Second
-	central10StaleTTL   = 45 * time.Second
+	central10FreshTTL   = 30 * time.Second
+	central10StaleTTL   = 10 * time.Minute
 )
 
 type central10CacheEntry struct {
@@ -31,14 +31,49 @@ var central10ReadCache = struct {
 	items map[string]central10CacheEntry
 }{items: map[string]central10CacheEntry{}}
 
-func (a *app) invalidateCentral10Caches() {
+func (a *app) invalidateCentral10Caches(path string) {
+	path = strings.ToLower(strings.TrimSpace(path))
+	invalidatePartners := strings.Contains(path, "partner")
+	invalidateWorkspaceModules := invalidatePartners ||
+		strings.Contains(path, "module") ||
+		strings.Contains(path, "billing") ||
+		strings.Contains(path, "subscription")
+
 	central10ReadCache.Lock()
-	central10ReadCache.items = map[string]central10CacheEntry{}
+	for key := range central10ReadCache.items {
+		lowerKey := strings.ToLower(key)
+		remove := false
+		if invalidatePartners && strings.Contains(lowerKey, "/api/v1/central/partners?") {
+			remove = true
+		}
+		if invalidateWorkspaceModules &&
+			strings.Contains(lowerKey, "/api/v1/central/partners/") {
+			remove = true
+		}
+		if remove {
+			delete(central10ReadCache.items, key)
+		}
+	}
 	central10ReadCache.Unlock()
-	// Materialized screen snapshots remain readable while mutations queue
-	// background refreshes. Mutations must never blank a Central screen.
-	a.requestDashboardRefresh()
-	a.requestCentralStep3Refresh()
+
+	// Materialized screen snapshots are never destructively flushed. Relevant
+	// mutations only queue recomputation while last-known-good data remains hot.
+	switch {
+	case strings.Contains(path, "partner"):
+		a.requestDashboardRefresh()
+		a.requestCentralStep3Refresh()
+		a.requestCentralStep4Refresh()
+	case strings.Contains(path, "module"), strings.Contains(path, "catalog"):
+		a.requestDashboardRefresh()
+		a.requestCentralStep3Refresh()
+	case strings.Contains(path, "billing"), strings.Contains(path, "invoice"), strings.Contains(path, "subscription"):
+		a.requestDashboardRefresh()
+		a.requestCentralStep3Refresh()
+		a.requestCentralStep4Refresh()
+	case strings.Contains(path, "impact"), strings.Contains(path, "evidence"), strings.Contains(path, "report"):
+		a.requestDashboardRefresh()
+		a.requestCentralStep4Refresh()
+	}
 }
 
 func central10CacheKey(actor user, r *http.Request) string {
@@ -322,7 +357,9 @@ func (a *app) central10ReadModel(w http.ResponseWriter, r *http.Request, actor u
 	hotSnapshotRoute := r.URL.Path == "/api/v1/central/modules" ||
 		r.URL.Path == "/api/v1/central/modules/commercial" ||
 		r.URL.Path == "/api/v1/central/packages" ||
-		r.URL.Path == "/api/v1/central/packages/supplementary"
+		r.URL.Path == "/api/v1/central/packages/supplementary" ||
+		r.URL.Path == "/api/v1/central/finance" ||
+		r.URL.Path == "/api/v1/central/impact"
 	if !hotSnapshotRoute {
 		if payload, ok, _ := central10Cached(key, true); ok {
 			w.Header().Set("X-Himate-Cache", "hit")
@@ -1037,37 +1074,43 @@ func central10FinanceChart(overview map[string]any, period, planKey, requestedCu
 	}
 }
 
+func central10Step4Unavailable(raw any) []string {
+	values := []string{}
+	switch items := raw.(type) {
+	case []string:
+		values = append(values, items...)
+	case []any:
+		for _, item := range items {
+			if value := central10String(item); value != "" {
+				values = append(values, value)
+			}
+		}
+	}
+	sort.Strings(values)
+	return values
+}
+
 func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
-	defer cancel()
-
-	type page struct{ Items []map[string]any `json:"items"` }
-	var profile, overview map[string]any
-	var invoices page
-	var partners []map[string]any
-	var profileErr, overviewErr, invoicesErr, partnersErr error
-	var wg sync.WaitGroup
-	wg.Add(3)
-	go func(){ defer wg.Done(); profileErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/profile", &profile) }()
-	go func(){ defer wg.Done(); overviewErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/finance/overview", &overview) }()
-	go func(){ defer wg.Done(); invoicesErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/invoices", &invoices) }()
-	if a.hasPermission(actor, "partners.read") {
-		wg.Add(1)
-		go func(){ defer wg.Done(); partners, partnersErr = a.central10AllPartners(ctx) }()
-	}
-	wg.Wait()
-
-	if profileErr != nil && overviewErr != nil && invoicesErr != nil {
-		if stale, ok, _ := central10Cached(cacheKey, false); ok {
-			stale["meta"] = central10Meta(started, "stale", []string{"billing"})
-			w.Header().Set("X-Himate-Cache", "stale")
-			common.JSON(w, http.StatusOK, stale)
-			return
+	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4FinanceKey)
+	if !ok {
+		a.requestCentralStep4Refresh()
+		payload := map[string]any{
+			"ready": false,
+			"meta": centralStep4Meta(started, centralStep4FinanceKey, time.Time{}, "warming", []string{"finance_snapshot"}),
 		}
-		common.APIError(w, http.StatusBadGateway, "FINANCE_UNAVAILABLE", "Finance read model is temporarily unavailable")
+		w.Header().Set("X-Himate-Cache", "warming")
+		common.JSON(w, http.StatusOK, payload)
 		return
 	}
+	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
+		a.requestCentralStep4Refresh()
+	}
+
+	profile := step4Map(snapshot["profile"])
+	overview := step4Map(snapshot["overview"])
+	invoices := step4Items(snapshot["invoices"])
+	partners := step4Items(snapshot["partners"])
 
 	currencyRows := anyItems(overview["currencies"])
 	kpis := map[string]any{"draft": 0, "approved": 0, "sent": 0, "paid": 0, "cancelled": 0}
@@ -1090,7 +1133,7 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 
 	onboarding := map[string]any{}
 	if raw, ok := overview["onboarding"].(map[string]any); ok {
-		onboarding = raw
+		onboarding = central10CopyMap(raw)
 	}
 	onboardingItems := anyItems(onboarding["items"])
 	kpis["pending_onboarding"] = central10Int(onboarding["pending"])
@@ -1099,8 +1142,12 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 	for _, partner := range partners {
 		id := central10String(partner["id"])
 		name := central10String(partner["display_name"])
-		if name == "" { name = id }
-		if id != "" { partnerNames[id] = name }
+		if name == "" {
+			name = id
+		}
+		if id != "" {
+			partnerNames[id] = name
+		}
 	}
 
 	invoiceStatus := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("invoice_status")))
@@ -1109,12 +1156,14 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 	default:
 		invoiceStatus = "ALL"
 	}
-	filteredInvoices := make([]map[string]any, 0, len(invoices.Items))
-	for _, raw := range invoices.Items {
+	filteredInvoices := make([]map[string]any, 0, len(invoices))
+	for _, raw := range invoices {
 		row := central10CopyMap(raw)
 		partnerID := central10String(row["partner_id"])
 		name := partnerNames[partnerID]
-		if name == "" { name = partnerID }
+		if name == "" {
+			name = partnerID
+		}
 		row["partner_name"] = name
 		status := strings.ToUpper(central10String(row["workflow_status"]))
 		if status == "" {
@@ -1133,13 +1182,13 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 		r.URL.Query().Get("currency"),
 	)
 
-	unavailable := []string{}
-	if profileErr != nil { unavailable = append(unavailable, "billing_profile") }
-	if overviewErr != nil { unavailable = append(unavailable, "finance_overview") }
-	if invoicesErr != nil { unavailable = append(unavailable, "invoices") }
-	if partnersErr != nil { unavailable = append(unavailable, "partners") }
-	status := "healthy"; if len(unavailable) > 0 { status = "partial" }
+	unavailable := central10Step4Unavailable(snapshot["unavailable"])
+	status := central10String(snapshot["status"])
+	if status == "" {
+		status = "healthy"
+	}
 	payload := map[string]any{
+		"ready": true,
 		"profile": profile,
 		"overview": overview,
 		"invoices": filteredInvoices,
@@ -1149,84 +1198,115 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 		"onboarding_summary": onboarding,
 		"chart": chart,
 		"kpis": kpis,
-		"meta": central10Meta(started, status, unavailable),
+		"meta": centralStep4Meta(started, centralStep4FinanceKey, updatedAt, status, unavailable),
 	}
-	central10Store(cacheKey, payload)
-	w.Header().Set("X-Himate-Cache", "miss")
-	w.Header().Set("Server-Timing", fmt.Sprintf("central-finance;dur=%d", time.Since(started).Milliseconds()))
+	w.Header().Set("X-Himate-Cache", "hot-snapshot")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-finance-snapshot;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
+}
+
+func central10Step4EvidenceMatches(row map[string]any, r *http.Request) bool {
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("evidence_query")))
+	if query != "" && !strings.Contains(strings.ToLower(fmt.Sprint(row)), query) {
+		return false
+	}
+	if wanted := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("evidence_type"))); wanted != "" {
+		if strings.ToUpper(central10String(row["evidence_type"])) != wanted {
+			return false
+		}
+	}
+	if wanted := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("evidence_status"))); wanted != "" {
+		if strings.ToUpper(central10String(row["verification_status"])) != wanted {
+			return false
+		}
+	}
+	if start := strings.TrimSpace(r.URL.Query().Get("evidence_period_start")); start != "" {
+		rowEnd := central10String(row["period_end"])
+		if rowEnd == "" {
+			rowEnd = central10String(row["period_start"])
+		}
+		if rowEnd != "" && rowEnd < start {
+			return false
+		}
+	}
+	if end := strings.TrimSpace(r.URL.Query().Get("evidence_period_end")); end != "" {
+		rowStart := central10String(row["period_start"])
+		if rowStart != "" && rowStart > end {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
-	defer cancel()
+	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4ImpactKey)
+	if !ok {
+		a.requestCentralStep4Refresh()
+		payload := map[string]any{
+			"ready": false,
+			"meta": centralStep4Meta(started, centralStep4ImpactKey, time.Time{}, "warming", []string{"impact_snapshot"}),
+		}
+		w.Header().Set("X-Himate-Cache", "warming")
+		common.JSON(w, http.StatusOK, payload)
+		return
+	}
+	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
+		a.requestCentralStep4Refresh()
+	}
 
-	type page struct{ Items []map[string]any `json:"items"`; Total int `json:"total"` }
-	var definitions, summary, evidence, reports page
-	var definitionsErr, summaryErr, evidenceErr, reportsErr error
-	var wg sync.WaitGroup
+	definitions := []map[string]any{}
+	summary := []map[string]any{}
+	evidenceAll := []map[string]any{}
+	reports := []map[string]any{}
 	if a.hasPermission(actor, "impact.read") {
-		wg.Add(2)
-		go func(){ defer wg.Done(); definitionsErr = a.internalGET(ctx, a.hosts["impact"], "/api/v1/impact/definitions", &definitions) }()
-		go func(){ defer wg.Done(); summaryErr = a.internalGET(ctx, a.hosts["impact"], "/api/v1/impact/summary", &summary) }()
+		definitions = step4Items(snapshot["definitions"])
+		summary = step4Items(snapshot["summary"])
 	}
 	if a.hasPermission(actor, "evidence.read") {
-		wg.Add(1)
-		evidenceQuery := url.Values{}
-		evidenceQuery.Set("limit", strconv.Itoa(central10QueryLimit(r.URL.Query().Get("evidence_limit"), 12, 100)))
-		if raw := strings.TrimSpace(r.URL.Query().Get("evidence_offset")); raw != "" {
-			evidenceQuery.Set("offset", raw)
-		} else {
-			evidenceQuery.Set("offset", "0")
-		}
-		if raw := strings.TrimSpace(r.URL.Query().Get("evidence_query")); raw != "" {
-			evidenceQuery.Set("q", raw)
-		}
-		for _, pair := range [][2]string{
-			{"evidence_type", "evidence_type"},
-			{"evidence_status", "verification_status"},
-			{"evidence_period_start", "period_start"},
-			{"evidence_period_end", "period_end"},
-		} {
-			if raw := strings.TrimSpace(r.URL.Query().Get(pair[0])); raw != "" {
-				evidenceQuery.Set(pair[1], raw)
-			}
-		}
-		evidencePath := "/api/v1/evidence?" + evidenceQuery.Encode()
-		go func(){ defer wg.Done(); evidenceErr = a.internalGET(ctx, a.hosts["evidence"], evidencePath, &evidence) }()
+		evidenceAll = step4Items(snapshot["evidence"])
 	}
 	if a.hasPermission(actor, "reports.read") {
-		wg.Add(1)
-		go func(){ defer wg.Done(); reportsErr = a.internalGET(ctx, a.hosts["reports"], "/api/v1/reports", &reports) }()
+		reports = step4Items(snapshot["reports"])
 	}
-	wg.Wait()
 
-	unavailable := []string{}
-	if definitionsErr != nil { unavailable = append(unavailable, "impact_definitions") }
-	if summaryErr != nil { unavailable = append(unavailable, "impact_summary") }
-	if evidenceErr != nil { unavailable = append(unavailable, "evidence") }
-	if reportsErr != nil { unavailable = append(unavailable, "reports") }
-	status := "healthy"; if len(unavailable) > 0 { status = "partial" }
-	if len(unavailable) > 0 && len(definitions.Items) == 0 && len(summary.Items) == 0 && len(evidence.Items) == 0 && len(reports.Items) == 0 {
-		if stale, ok, _ := central10Cached(cacheKey, false); ok {
-			stale["meta"] = central10Meta(started, "stale", unavailable)
-			w.Header().Set("X-Himate-Cache", "stale")
-			common.JSON(w, http.StatusOK, stale)
-			return
+	filteredEvidence := make([]map[string]any, 0, len(evidenceAll))
+	for _, row := range evidenceAll {
+		if central10Step4EvidenceMatches(row, r) {
+			filteredEvidence = append(filteredEvidence, row)
 		}
 	}
-	payload := map[string]any{
-		"definitions": definitions.Items,
-		"summary": summary.Items,
-		"evidence": evidence.Items,
-		"evidence_total": evidence.Total,
-		"reports": reports.Items,
-		"meta": central10Meta(started, status, unavailable),
+	total := len(filteredEvidence)
+	limit := central10QueryLimit(r.URL.Query().Get("evidence_limit"), 12, 100)
+	offset, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("evidence_offset")))
+	if err != nil || offset < 0 {
+		offset = 0
 	}
-	central10Store(cacheKey, payload)
-	w.Header().Set("X-Himate-Cache", "miss")
-	w.Header().Set("Server-Timing", fmt.Sprintf("central-impact;dur=%d", time.Since(started).Milliseconds()))
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	filteredEvidence = filteredEvidence[offset:end]
+
+	unavailable := central10Step4Unavailable(snapshot["unavailable"])
+	status := central10String(snapshot["status"])
+	if status == "" {
+		status = "healthy"
+	}
+	payload := map[string]any{
+		"ready": true,
+		"definitions": definitions,
+		"summary": summary,
+		"evidence": filteredEvidence,
+		"evidence_total": total,
+		"reports": reports,
+		"meta": centralStep4Meta(started, centralStep4ImpactKey, updatedAt, status, unavailable),
+	}
+	w.Header().Set("X-Himate-Cache", "hot-snapshot")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-impact-snapshot;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
 }
 
