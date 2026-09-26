@@ -342,11 +342,14 @@ func deploymentRequestKey(partnerID,environment,hostname,release,providerName,se
 
 func deploymentRequestKeyWithOperation(partnerID,environment,hostname,release,providerName,serviceID string,config map[string]any,operationID string) string {
 	raw,_:=json.Marshal(config)
-	sum:=sha256.Sum256([]byte(strings.Join([]string{
+	fields:=[]string{
 		strings.TrimSpace(partnerID),strings.ToUpper(strings.TrimSpace(environment)),strings.ToLower(strings.TrimSpace(hostname)),
 		strings.TrimSpace(release),strings.ToLower(strings.TrimSpace(providerName)),strings.TrimSpace(serviceID),string(raw),
-		strings.TrimSpace(operationID),
-	},"\x00")))
+	}
+	if operationID=strings.TrimSpace(operationID);operationID!=""{
+		fields=append(fields,"operation:"+operationID)
+	}
+	sum:=sha256.Sum256([]byte(strings.Join(fields,"\x00")))
 	return "dpl_"+fmt.Sprintf("%x",sum[:16])
 }
 
