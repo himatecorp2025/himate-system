@@ -62,6 +62,9 @@ and Go-owned four-week elapsed Impact selection.
 - Flutter widgets may remain lazily mounted, but every permission-visible Central screen read model is prefetched before the first menu click.
 - Modules Commercial and Packages Supplementary snapshots are also prefetched so secondary data is warm before interaction.
 - Central read-model SLO remains sub-800 ms, but the browser no longer aborts Central/Dashboard requests at 800/950 ms. A single 4-second transport safety timeout prevents false client failures while materialized snapshots recover.
+- Dashboard loading KPI cards retain their permission-gated navigation callbacks while authoritative values are still warming.
+- Modules starts in an explicit loading state, never renders an initial business zero, and launches commercial supplementary refresh independently of the primary registry.
+- Packages primary delivery is Billing Plans hot-snapshot only; registry enrichment and package analytics are served through the supplementary hot-snapshot route and never gate the primary package cards.
 - Render deployment health uses process-level `/api/v1/live` so a rolling deploy cannot deadlock on downstream services. Full dependency/readiness diagnostics remain on `/api/v1/health`, which fails closed with HTTP 503 when required dependencies are degraded.
 
 ## Commercial Matrix
