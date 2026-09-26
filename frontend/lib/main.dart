@@ -2998,7 +2998,6 @@ class _PartnersPageState extends State<PartnersPage> {
   Future<void> load({
     bool reset = false,
     bool loadCategories = false,
-    bool force = false,
   }) async {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
@@ -3045,7 +3044,6 @@ class _PartnersPageState extends State<PartnersPage> {
     try {
       final model = await widget.api.get(
         path,
-        force: force,
         maxAge: const Duration(seconds: 5),
         onRefresh: applyModel,
       );
