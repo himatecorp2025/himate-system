@@ -700,7 +700,7 @@ class _HimateAppState extends State<HimateApp> {
 
   void setAnonymousLocale(String value) {
     final normalized = value == 'hu_HU' ? 'hu_HU' : 'en_US';
-    browserStorageGet('himate_locale') = normalized;
+    browserStorageSet('himate_locale', normalized);
     HimateI18n.activeLocale = normalized;
     api.clearCache();
     if (mounted) setState(() => anonymousLocale = normalized);
@@ -712,7 +712,7 @@ class _HimateAppState extends State<HimateApp> {
     if (preferred == 'hu_HU' || preferred == 'en_US') {
       anonymousLocale = preferred!;
       HimateI18n.activeLocale = preferred;
-      browserStorageGet('himate_locale') = preferred;
+      browserStorageSet('himate_locale', preferred);
     }
     api.clearCache();
     if (mounted) setState(() {});
@@ -746,7 +746,7 @@ class _HimateAppState extends State<HimateApp> {
     final preferred = user?['preferred_locale']?.toString();
     if (preferred == 'hu_HU' || preferred == 'en_US') {
       anonymousLocale = preferred!;
-      browserStorageGet('himate_locale') = preferred;
+      browserStorageSet('himate_locale', preferred);
     }
     if (!mounted) return;
     setState(() {});
@@ -3715,7 +3715,7 @@ class _PartnersPageState extends State<PartnersPage> {
             });
 
             try {
-              browserStorageGet(pendingOnboardingKey) = onboardingRequestId;
+              browserStorageSet(pendingOnboardingKey, onboardingRequestId);
               final onboarding = await widget.api.post('/api/v1/partner-onboarding', {
                 'request_id': onboardingRequestId,
                 'partner': partnerPayload(),
