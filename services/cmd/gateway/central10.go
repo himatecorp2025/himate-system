@@ -358,17 +358,20 @@ func central10CanonicalPlan(plan map[string]any, moduleByKey map[string]map[stri
 	case "STARTER":
 		out["display_name"] = "Starter"
 		out["monthly_price"] = 990
+		out["display_price"] = "$990 + VAT"
 		out["module_limit"] = 10
 		out["entitlement"] = "10 modules"
 	case "BUSINESS":
 		out["display_name"] = "Business"
 		out["monthly_price"] = 1490
+		out["display_price"] = "$1,490 + VAT"
 		out["module_limit"] = 20
 		out["entitlement"] = "20 modules"
 	case "FLEX", "PREMIUM":
 		out["plan_key"] = "FLEX"
 		out["display_name"] = "Premium"
 		out["monthly_price"] = 2490
+		out["display_price"] = "$2,490 + VAT"
 		out["module_limit"] = nil
 		out["entitlement"] = "Unlimited"
 	}
@@ -656,7 +659,13 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 		return
 	}
 	moduleByKey := map[string]map[string]any{}
-	for _, module := range modules.Items { moduleByKey[central10String(module["key"])] = module }
+	eligibleModules := make([]map[string]any, 0, len(modules.Items))
+	for _, module := range modules.Items {
+		moduleByKey[central10String(module["key"])] = module
+		if module["system"] == true {
+			eligibleModules = append(eligibleModules, module)
+		}
+	}
 	canonical := []map[string]any{}
 	for _, plan := range plans.Items {
 		key := strings.ToUpper(central10String(plan["plan_key"]))
@@ -675,6 +684,7 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 	if analytics == nil { analytics = map[string]any{"packages": []any{}, "partners": []any{}, "partner_count": 0} }
 	payload := map[string]any{
 		"plans": canonical,
+		"modules": eligibleModules,
 		"analytics": analytics,
 		"meta": central10Meta(started, status, unavailable),
 	}
