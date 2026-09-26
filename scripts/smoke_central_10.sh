@@ -185,7 +185,7 @@ assert isinstance(d.get("modules_ready"),bool)
 assert isinstance(d.get("analytics_ready"),bool)
 PY
 
-printf 'CENTRAL-10.1 process-cold snapshot recovery...\n'
+printf 'CENTRAL-10.1 process-cold exact first-render recovery...\n'
 docker compose restart gateway >/dev/null
 attempt=0
 until curl -fsS "$BASE_URL/api/v1/health" | grep -q '"status":"ok"'; do
@@ -196,6 +196,9 @@ until curl -fsS "$BASE_URL/api/v1/health" | grep -q '"status":"ok"'; do
   fi
   sleep 1
 done
+
+assert_fast_json "/api/v1/dashboard/summary?year=$YEAR" "Dashboard / cold gateway"
+assert_fast_read_model "/api/v1/central/partners?limit=24&offset=0" "Partners / cold gateway"
 assert_fast_read_model "/api/v1/central/modules" "Modules Registry / cold gateway"
 python3 - "$BODY" <<'PY'
 import json,sys
@@ -204,6 +207,7 @@ assert d.get("ready") is True
 assert len((d.get("registry") or {}).get("modules") or [])>0
 assert len((d.get("registry") or {}).get("topics") or [])>0
 PY
+assert_fast_read_model "/api/v1/central/modules/commercial?perspective=PARTNER&commercial_limit=120" "Modules Commercial / cold gateway"
 assert_fast_read_model "/api/v1/central/packages" "Packages / cold gateway"
 python3 - "$BODY" <<'PY'
 import json,sys
@@ -211,6 +215,9 @@ d=json.load(open(sys.argv[1]))
 assert d.get("ready") is True
 assert len(d.get("plans") or [])>=3
 PY
+assert_fast_read_model "/api/v1/central/packages/supplementary" "Packages Supplementary / cold gateway"
+assert_fast_read_model "/api/v1/central/finance?invoice_status=ALL&revenue_period=MONTHLY&revenue_plan=ALL" "Finance / cold gateway"
+assert_fast_read_model "/api/v1/central/impact?evidence_limit=12&evidence_offset=0" "Impact / cold gateway"
 
 printf 'CENTRAL-10 Finance backend read model...\n'
 assert_fast_read_model "/api/v1/central/finance?invoice_status=ALL&revenue_period=MONTHLY&revenue_plan=ALL" "Finance"
