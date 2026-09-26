@@ -11314,46 +11314,6 @@ class CatalogModuleCard extends StatelessWidget {
   }
 }
 
-class _OperationsHero extends StatelessWidget {
-  const _OperationsHero({required this.status, required this.environment, required this.version});
-  final String status, environment, version;
-
-  @override
-  Widget build(BuildContext context) {
-    final healthy = status.toLowerCase() == 'ok' || status.toLowerCase() == 'healthy';
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [brandNavyDeep, brandNavy, brandNavySoft]),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: brandGold.withOpacity(.18)),
-      ),
-      child: LayoutBuilder(builder: (context, c) {
-        final content = [
-          BrandMark(size: 46),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              LText(healthy ? 'Platform operational' : 'Platform requires attention', style: const TextStyle(color: brandWhite, fontSize: 24, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 5),
-              LText('Environment: $environment · Version: $version', style: const TextStyle(color: Color(0xFFB8C6D6), fontSize: 11)),
-            ]),
-          ),
-          _StatusPill(label: status),
-        ];
-        if (c.maxWidth < 620) {
-          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [content[0], content[1], content[2]]),
-            const SizedBox(height: 14),
-            content[3],
-          ]);
-        }
-        return Row(children: content);
-      }),
-    );
-  }
-}
-
 class _ArchitectureCard extends StatelessWidget {
   const _ArchitectureCard();
 
