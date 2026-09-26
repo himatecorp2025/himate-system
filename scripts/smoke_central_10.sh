@@ -187,7 +187,7 @@ PY
 printf 'CENTRAL-10.1 process-cold snapshot recovery...\n'
 docker compose restart gateway >/dev/null
 attempt=0
-until curl -fsS "$BASE_URL/api/v1/live" >/dev/null 2>&1; do
+until curl -fsS "$BASE_URL/api/v1/health" | grep -q '"status":"ok"'; do
   attempt=$((attempt + 1))
   if [ "$attempt" -ge 60 ]; then
     echo "Gateway did not recover after restart" >&2
@@ -216,6 +216,8 @@ assert_fast_read_model "/api/v1/central/finance?invoice_status=PAID&revenue_peri
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
+assert d.get("ready") is True, d
+assert (d.get("meta") or {}).get("delivery")=="MATERIALIZED_HOT_SNAPSHOT"
 assert isinstance(d.get("overview"),dict)
 assert isinstance(d.get("invoices"),list)
 assert isinstance(d.get("partners"),list)
@@ -236,6 +238,8 @@ assert_fast_read_model "/api/v1/central/impact?evidence_limit=12&evidence_offset
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
+assert d.get("ready") is True, d
+assert (d.get("meta") or {}).get("delivery")=="MATERIALIZED_HOT_SNAPSHOT"
 for key in ("definitions","summary","evidence","reports"):
     assert isinstance(d.get(key),list), (key,type(d.get(key)))
 PY
