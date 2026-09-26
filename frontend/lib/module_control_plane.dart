@@ -225,51 +225,6 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
   }
 
-  String partnerName(String partnerID) {
-    for (final partner in partners) {
-      if (s(partner['id']) == partnerID) {
-        final display = s(partner['display_name']).trim();
-        return display.isEmpty ? partnerID : display;
-      }
-    }
-    return partnerID;
-  }
-
-  Map<String, dynamic>? commercialSubscription(String partnerID, String moduleKey) {
-    for (final item in subscriptionRows) {
-      if (s(item['partner_id']) == partnerID && s(item['module_key']) == moduleKey) return item;
-    }
-    return null;
-  }
-
-  List<Map<String, dynamic>> get filteredCommercialRows {
-    final q = commercialQuery.trim().toLowerCase();
-    final rows = commercialRows.where((row) {
-      final partnerID = s(row['partner_id']);
-      final moduleKey = s(row['key']);
-      final text = [
-        partnerName(partnerID), partnerID, s(row['label']), moduleKey, s(row['group_label']),
-      ].join(' ').toLowerCase();
-      return (q.isEmpty || text.contains(q)) &&
-          (commercialPartnerFilter == 'ALL' || partnerID == commercialPartnerFilter) &&
-          (commercialModuleFilter == 'ALL' || moduleKey == commercialModuleFilter) &&
-          (commercialStatusFilter == 'ALL' || s(row['status']) == commercialStatusFilter);
-    }).toList();
-    rows.sort((a, b) {
-      final aPartner = partnerName(s(a['partner_id'])).toLowerCase();
-      final bPartner = partnerName(s(b['partner_id'])).toLowerCase();
-      final aModule = s(a['label']).toLowerCase();
-      final bModule = s(b['label']).toLowerCase();
-      if (commercialPerspective == 'MODULE') {
-        final moduleCompare = aModule.compareTo(bModule);
-        return moduleCompare != 0 ? moduleCompare : aPartner.compareTo(bPartner);
-      }
-      final partnerCompare = aPartner.compareTo(bPartner);
-      return partnerCompare != 0 ? partnerCompare : aModule.compareTo(bModule);
-    });
-    return rows;
-  }
-
   Future<void> showCommercialHistory(Map<String, dynamic> row) async {
     final partnerID = s(row['partner_id']);
     final moduleKey = s(row['key']);
