@@ -7956,6 +7956,11 @@ class _ImpactPageState extends State<ImpactPage> {
           LayoutBuilder(
             builder: (context, constraints) {
               final actions = <Widget>[
+                OutlinedButton.icon(
+                  onPressed: () => openBrowserDownload('/api/v1/impact/export.csv'),
+                  icon: const Icon(Icons.download_outlined),
+                  label: const LText('Export CSV'),
+                ),
                 OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
                 OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
                 OutlinedButton.icon(onPressed: addEvidence, icon: const Icon(Icons.verified_outlined), label: const LText('Upload Evidence')),
