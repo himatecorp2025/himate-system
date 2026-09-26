@@ -8,6 +8,7 @@ errors = []
 catalog = (ROOT / "services/cmd/catalog/main.go").read_text()
 billing = (ROOT / "services/cmd/billing/main.go").read_text()
 gateway = (ROOT / "services/cmd/gateway/main.go").read_text()
+gateway_c10 = (ROOT / "services/cmd/gateway/central10.go").read_text()
 ui = (ROOT / "frontend/lib/module_control_plane.dart").read_text()
 main = (ROOT / "frontend/lib/main.dart").read_text()
 matrix = json.loads((ROOT / "docs/START-23.1_FUNCTIONAL_MATRIX.json").read_text())
@@ -53,12 +54,19 @@ required_ui = [
     "Commercial history",
     "Partner activation fee",
     "Default activation fee",
-    "/api/v1/module-commercial-matrix",
-    "/api/v1/billing/subscription-matrix",
+    "/api/v1/central/modules",
 ]
 for token in required_ui:
     if token not in ui:
         errors.append(f"Module Control Plane missing START-23.2 UI contract: {token}")
+
+for token in [
+    '"/api/v1/module-commercial-matrix?partner_ids="+encoded',
+    '"/api/v1/billing/subscription-matrix?partner_ids="+encoded',
+    'row["subscription"] = sub',
+]:
+    if token not in gateway_c10:
+        errors.append(f"Central-10 Go read model missing START-23.2 source aggregation: {token}")
 
 legacy_tokens = [
     "await widget.api.post('/api/v1/modules'",
