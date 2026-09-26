@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"himate.local/services/internal/common"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -403,6 +404,48 @@ func deleteTestPartnerData(ctx context.Context, tx *sql.Tx, partnerID string) (m
 	return deleted, nil
 }
 
+func (a *app) purgeTestReportObjects(ctx context.Context, partnerID string) error {
+	rows, err := a.db.QueryContext(ctx, `SELECT pdf_namespace,pdf_object_key
+		FROM reports.jobs
+		WHERE partner_ids @> $1::jsonb AND pdf_namespace<>'' AND pdf_object_key<>''`,
+		fmt.Sprintf(`["%s"]`, partnerID))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type objectRef struct{ Namespace, Key string }
+	objects := []objectRef{}
+	for rows.Next() {
+		var ref objectRef
+		if err := rows.Scan(&ref.Namespace, &ref.Key); err != nil {
+			return err
+		}
+		objects = append(objects, ref)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, ref := range objects {
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+			"http://"+a.storageHost+"/internal/v1/storage/objects/"+url.PathEscape(ref.Namespace)+"/"+ref.Key, nil)
+		if err != nil {
+			return err
+		}
+		common.BindInternalRequest(req, a.token)
+		resp, err := common.DoInternal(a.client, req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode >= 300 && resp.StatusCode != http.StatusNotFound {
+			return fmt.Errorf("report storage purge returned HTTP %d", resp.StatusCode)
+		}
+	}
+	return nil
+}
+
 func (a *app) purgeTestStorage(ctx context.Context, partnerID string) error {
 	if strings.TrimSpace(a.storageHost) == "" {
 		return fmt.Errorf("storage service is not configured")
@@ -463,7 +506,12 @@ func (a *app) purgeTestPartner(w http.ResponseWriter, r *http.Request, id string
 	}
 
 	// Files live on the storage service's persistent disk and must be removed
-	// before the relational identity disappears.
+	// before the relational identity disappears. Reports use the shared _reports
+	// namespace, so remove their exact objects before deleting the report rows.
+	if err := a.purgeTestReportObjects(r.Context(), id); err != nil {
+		common.APIError(w, http.StatusBadGateway, "REPORT_STORAGE_PURGE", err.Error())
+		return
+	}
 	if err := a.purgeTestStorage(r.Context(), id); err != nil {
 		common.APIError(w, http.StatusBadGateway, "STORAGE_PURGE", err.Error())
 		return
