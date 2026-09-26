@@ -105,6 +105,8 @@ for token in [
     check(token in frontend, f"Flutter does not consume Central-10 read model: {token}")
 check("/api/v1/central/modules" in modules_ui,
       "Module Control Plane does not consume Central-10 read model")
+check("api.get('/api/v1/partners/$partnerId'" not in frontend,
+      "Partner deep-link loader still performs a legacy pre-read before the Central read model")
 
 # Truthful loading and empty-data behavior.
 for token in [
