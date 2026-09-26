@@ -2967,7 +2967,7 @@ class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
   Map<String, dynamic> partnerKpis = <String, dynamic>{};
-  bool loading = false;
+  bool loading = true;
   bool categoriesLoading = true;
   String? categoryRegistryWarning;
   bool statsReady = false;
@@ -6699,7 +6699,7 @@ class _FinancePageState extends State<FinancePage> {
   String revenuePeriod = 'MONTHLY';
   String revenuePlan = 'ALL';
   final GlobalKey onboardingKey = GlobalKey();
-  bool loading = false;
+  bool loading = true;
   String? error;
 
   @override
@@ -7638,7 +7638,7 @@ class _ImpactPageState extends State<ImpactPage> {
   String evidenceStatusFilter = '';
   String evidencePeriodStart = '';
   String evidencePeriodEnd = '';
-  bool loading = false;
+  bool loading = true;
   String? error;
 
   @override
