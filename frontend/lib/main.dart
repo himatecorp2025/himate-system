@@ -2938,6 +2938,9 @@ class _PartnersPageState extends State<PartnersPage> {
       final meta = model['meta'] is Map
           ? Map<String, dynamic>.from(model['meta'] as Map)
           : <String, dynamic>{};
+      final moduleView = model['module_view'] is Map
+          ? Map<String, dynamic>.from(model['module_view'] as Map)
+          : <String, dynamic>{};
       final unavailable = meta['unavailable'] is List
           ? (meta['unavailable'] as List).map((e) => '$e').toSet()
           : <String>{};
@@ -3971,6 +3974,10 @@ class PartnerWorkspace extends StatefulWidget {
 class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   late Map<String, dynamic> partner;
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> visibleModules = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> moduleGroups = <Map<String, dynamic>>[];
+  Map<String, dynamic> moduleKpis = <String, dynamic>{};
+  List<String> activeModuleKeys = <String>[];
   List<Map<String, dynamic>> documents = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptions = <Map<String, dynamic>>[];
@@ -3987,12 +3994,15 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? commercialStatus;
   Map<String, dynamic>? paymentProfile;
   Map<String, dynamic>? websiteAdapter;
+  Map<String, dynamic>? productionEnvironment;
+  String preferredConnectorEnvironment = 'STAGING';
   bool loading = true;
   bool supplementalLoading = true;
   String? error;
   String? supplementalError;
   String moduleQuery = '';
   String moduleState = 'ALL';
+  Timer? _moduleSearchDebounce;
   final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _companyKey = GlobalKey();
   final GlobalKey _environmentKey = GlobalKey();
@@ -4026,6 +4036,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     load();
   }
 
+  @override
+  void dispose() {
+    _moduleSearchDebounce?.cancel();
+    super.dispose();
+  }
+
   Future<void> load() async {
     final hasPrimary =
         '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
@@ -4057,6 +4073,14 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       setState(() {
         partner = core;
         modules = items(<String, dynamic>{'items': model['modules']});
+        visibleModules = items(<String, dynamic>{'items': moduleView['filtered_items']});
+        moduleGroups = items(<String, dynamic>{'items': moduleView['groups']});
+        moduleKpis = moduleView['kpis'] is Map
+            ? Map<String, dynamic>.from(moduleView['kpis'] as Map)
+            : <String, dynamic>{};
+        activeModuleKeys = moduleView['active_module_keys'] is List
+            ? (moduleView['active_module_keys'] as List).map((e) => '$e').toList()
+            : <String>[];
         documents = items(<String, dynamic>{'items': model['documents']});
         invoices = items(<String, dynamic>{'items': model['invoices']});
         subscriptions = items(<String, dynamic>{'items': model['subscriptions']});
@@ -4079,6 +4103,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         websiteAdapter = model['website_adapter'] is Map
             ? Map<String, dynamic>.from(model['website_adapter'] as Map)
             : null;
+        productionEnvironment = model['production_environment'] is Map
+            ? Map<String, dynamic>.from(model['production_environment'] as Map)
+            : null;
+        preferredConnectorEnvironment = '${model['preferred_connector_environment'] ?? 'STAGING'}';
         loading = false;
         supplementalLoading = false;
         supplementalError = unavailable.isEmpty
@@ -4099,6 +4127,56 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         }
       });
     }
+  }
+
+  Future<void> _loadModuleView({bool force = false}) async {
+    final id = '${partner['id'] ?? ''}';
+    if (id.isEmpty) return;
+    final params = <String, String>{};
+    if (moduleQuery.trim().isNotEmpty) params['q'] = moduleQuery.trim();
+    if (moduleState != 'ALL') params['state'] = moduleState;
+    final path = Uri(
+      path: '/api/v1/central/partners/$id/modules',
+      queryParameters: params.isEmpty ? null : params,
+    ).toString();
+    try {
+      final view = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 3),
+      );
+      if (!mounted) return;
+      setState(() {
+        modules = items(<String, dynamic>{'items': view['items']});
+        visibleModules = items(<String, dynamic>{'items': view['filtered_items']});
+        moduleGroups = items(<String, dynamic>{'items': view['groups']});
+        moduleKpis = view['kpis'] is Map
+            ? Map<String, dynamic>.from(view['kpis'] as Map)
+            : moduleKpis;
+        activeModuleKeys = view['active_module_keys'] is List
+            ? (view['active_module_keys'] as List).map((e) => '$e').toList()
+            : activeModuleKeys;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        supplementalError = 'Module view could not be refreshed: $e';
+      });
+    }
+  }
+
+  void updateModuleQuery(String value) {
+    moduleQuery = value;
+    _moduleSearchDebounce?.cancel();
+    _moduleSearchDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) unawaited(_loadModuleView());
+    });
+  }
+
+  void updateModuleState(String value) {
+    if (moduleState == value) return;
+    setState(() => moduleState = value);
+    unawaited(_loadModuleView());
   }
 
   void _scrollToInitialSection() {
