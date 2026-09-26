@@ -67,6 +67,10 @@ SELECT p.id
 FROM partners.partners p
 WHERE p.lifecycle<>'ARCHIVED'
   AND EXISTS(SELECT 1 FROM pg_database d WHERE d.datname='himate_'||p.id)
+  AND EXISTS(
+    SELECT 1 FROM environments.partner_environments e
+    WHERE e.partner_id=p.id AND e.kind='PRODUCTION' AND e.active_release<>''
+  )
 ORDER BY CASE WHEN p.id='ptr_000001' THEN 1 ELSE 0 END,p.id
 LIMIT 1;
 SQL
@@ -90,6 +94,11 @@ print(json.dumps({"display_name":sys.argv[1],"lifecycle":"SUSPENDED","reason":"C
 PY
 )"
 curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$BASELINE_PATCH" "$BASE_URL/api/v1/partners/$PARTNER_ID" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lifecycle"]=="SUSPENDED",d'
+BASELINE_ENVS="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/environments?partner_id=$PARTNER_ID")"
+PROD_ENV_ID="$(printf '%s' "$BASELINE_ENVS" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["id"] for x in d["items"] if x["kind"]=="PRODUCTION"))')"
+BASELINE_PROD_RELEASE="$(printf '%s' "$BASELINE_ENVS" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["active_release"] for x in d["items"] if x["kind"]=="PRODUCTION"))')"
+test -n "$PROD_ENV_ID"
+test -n "$BASELINE_PROD_RELEASE"
 docker compose exec -T postgres psql -U himate -d "$DB_NAME" -v ON_ERROR_STOP=1 -v marker="$BASELINE_DB" <<'SQL' >/dev/null
 INSERT INTO partner_core.system_meta(key,value)
 VALUES('central14_restore_marker',:'marker')
@@ -165,6 +174,19 @@ docker compose exec -T postgres psql -U himate -d "$DB_NAME" -v ON_ERROR_STOP=1 
 UPDATE partner_core.system_meta SET value=:'marker' WHERE key='central14_restore_marker';
 SQL
 docker compose exec -T storage sh -c "printf '%s' '$MUTATED_MEDIA' > '/data/partners/$PARTNER_ID/central14/marker.txt'"
+RUNTIME_MUTATION_RELEASE="central14-mutated-$STAMP"
+RUNTIME_MUTATION_PAYLOAD="$(python3 - "$RUNTIME_MUTATION_RELEASE" <<'PY'
+import json,sys
+print(json.dumps({"release":sys.argv[1]}))
+PY
+)"
+curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$RUNTIME_MUTATION_PAYLOAD" "$BASE_URL/api/v1/environments/$PROD_ENV_ID/deploy" | python3 -c 'import json,sys; d=json.load(sys.stdin); expected=sys.argv[1]; assert d["deployment_status"]=="DEPLOYED",d; assert d["active_release"]==expected,d' "$RUNTIME_MUTATION_RELEASE"
+RESUSPEND_PAYLOAD="$(python3 - <<'PY'
+import json
+print(json.dumps({"lifecycle":"SUSPENDED","reason":"CENTRAL-14 runtime divergence before verified recovery"}))
+PY
+)"
+curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json' -d "$RESUSPEND_PAYLOAD" "$BASE_URL/api/v1/partners/$PARTNER_ID" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["lifecycle"]=="SUSPENDED",d'
 echo ok
 
 printf 'queue verified production restore... '
@@ -204,7 +226,21 @@ test "$MEDIA_VALUE" = "$BASELINE_MEDIA"
 echo ok
 
 printf 'restored runtimes remain suspended and captured active releases are preserved... '
-curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/environments?partner_id=$PARTNER_ID" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert all(x["environment_status"]=="SUSPENDED" for x in d.get("items",[])),d'
+RESTORED_ENVS="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/environments?partner_id=$PARTNER_ID")"
+python3 - "$BASELINE_ENVS" "$RESTORED_ENVS" <<'PY'
+import json,sys
+before=json.loads(sys.argv[1]);after=json.loads(sys.argv[2])
+b={x["kind"]:x for x in before.get("items",[])}
+a={x["kind"]:x for x in after.get("items",[])}
+assert set(b).issubset(a),(b,a)
+for kind,item in b.items():
+    expected=(item.get("active_release") or "").strip()
+    if expected:
+        assert a[kind].get("active_release")==expected,(kind,expected,a[kind])
+    assert a[kind].get("environment_status")=="SUSPENDED",(kind,a[kind])
+assert a["PRODUCTION"]["active_release"]!=sys.argv[0] if False else True
+PY
+test "$(printf '%s' "$RESTORED_ENVS" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["active_release"] for x in d["items"] if x["kind"]=="PRODUCTION"))')" = "$BASELINE_PROD_RELEASE"
 echo ok
 
 printf 'production restore request is immutable-audit visible... '
