@@ -186,7 +186,7 @@ check("dashboardSnapshotForRead" in dashboard_body,
       "Central-10.1 Dashboard does not serve the materialized hot snapshot")
 check("dashboardRecentActivity" not in dashboard_body,
       "Central-10.1 Dashboard request path still performs live activity I/O")
-check('"activity": activityBlock' in dashboard_snapshots,
+check('"activity":activityBlock' in "".join(dashboard_snapshots.split()),
       "Central-10.1 Dashboard snapshot does not contain precomputed activity")
 check("force: loadCategories" not in frontend,
       "Central-10.1 Partners first mount still bypasses warm cache/inflight data")
@@ -248,13 +248,14 @@ check("unawaited(loadCommercial());" in modules_ui and
 dashboard_loading_start = frontend.find("if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null)")
 dashboard_loading_end = frontend.find("if (snapshot.hasError && snapshot.data == null)", dashboard_loading_start)
 dashboard_loading = frontend[dashboard_loading_start:dashboard_loading_end] if dashboard_loading_start >= 0 and dashboard_loading_end > dashboard_loading_start else ""
+dashboard_loading_compact = "".join(dashboard_loading.split())
 for target in [
-    "onTap: canNavigate(1) ? () => onNavigate(1) : null",
-    "onTap: canNavigate(2) ? () => onNavigate(2) : null",
-    "onTap: canNavigate(4) ? () => onNavigate(4) : null",
-    "onTap: canNavigate(5) ? () => onNavigate(5) : null",
+    "onTap:canNavigate(1)?()=>onNavigate(1):null",
+    "onTap:canNavigate(2)?()=>onNavigate(2):null",
+    "onTap:canNavigate(4)?()=>onNavigate(4):null",
+    "onTap:canNavigate(5)?()=>onNavigate(5):null",
 ]:
-    check(target in dashboard_loading,
+    check(target in dashboard_loading_compact,
           f"Central-10.1 Dashboard loading card lost navigation callback: {target}")
 
 # CENTRAL-10.1 Step 3: Modules & Packages must be hot-snapshot/progressive surfaces.
