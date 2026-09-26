@@ -17,6 +17,7 @@ import (
 type app struct {
 	db          *sql.DB
 	billingHost string
+	storageHost string
 	token       string
 	client      *http.Client
 }
@@ -67,6 +68,7 @@ func main() {
 	a := &app{
 		db: db,
 		billingHost: strings.TrimSpace(os.Getenv("BILLING_HOSTPORT")),
+		storageHost: strings.TrimSpace(os.Getenv("STORAGE_HOSTPORT")),
 		token: strings.TrimSpace(os.Getenv("HIMATE_INTERNAL_TOKEN")),
 		client: &http.Client{Timeout: 4 * time.Second},
 	}
@@ -600,9 +602,18 @@ func (a *app) provisioningAllowed(ctx context.Context, partnerID string) (bool, 
 func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/partners/"), "/")
 	parts := strings.Split(raw, "/")
-	if len(parts) == 2 && parts[0] != "" && parts[1] == "purge-operational" {
-		a.purgeOperationalPartner(w, r, parts[0])
-		return
+	if len(parts) == 2 && parts[0] != "" {
+		switch parts[1] {
+		case "purge-operational":
+			a.purgeOperationalPartner(w, r, parts[0])
+			return
+		case "seed-test-fixture":
+			a.seedTestPartnerFixture(w, r, parts[0])
+			return
+		case "purge-test-fixture":
+			a.purgeTestPartner(w, r, parts[0])
+			return
+		}
 	}
 	if len(parts) != 1 || parts[0] == "" {
 		common.APIError(w, 404, "NOT_FOUND", "Partner not found")
