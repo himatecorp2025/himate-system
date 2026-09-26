@@ -1075,6 +1075,23 @@ paths:
         - {name: evidence_offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
       responses:
         "200": {description: Materialized Impact snapshot; ready=false only while a first-ever snapshot is warming}
+  /api/v1/central/administration:
+    get:
+      tags: [Administration]
+      summary: CENTRAL-14 backend-first Administration Center read model
+      description: >
+        Composes HIMATE company administration and tenant-scoped partner administration from
+        authoritative Partners, Billing/Documents, Identity/Audit and Backups domains. Domain fields
+        are included only when the authenticated administrator has the matching read permission.
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: lifecycle, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 60}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        "200": {description: HIMATE company administration plus partner administration cards}
+        "403": {description: Administration read permission required}
+        "502": {description: Required authoritative administration source unavailable}
   /api/v1/central/connections:
     get:
       tags: [Connectors]
@@ -1481,6 +1498,20 @@ paths:
           content:
             application/pdf:
               schema: {type: string}
+  /api/v1/billing/company/documents:
+    get:
+      tags: [Billing, Administration]
+      summary: Search HIMATE corporate administrative documents
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: kind, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Corporate administrative document references}
+    post:
+      tags: [Billing, Administration]
+      summary: Register a HIMATE corporate administrative document reference
+      responses:
+        "201": {description: Corporate document reference registered}
   /api/v1/billing/invoices:
     get:
       tags: [Billing]
@@ -2104,6 +2135,12 @@ paths:
         in: path
         required: true
         schema: {type: string}
+    get:
+      tags: [Environments]
+      summary: Read one environment and current runtime deployment state
+      responses:
+        "200": {description: Environment with deployment, release and runtime state}
+        "404": {description: Environment not found}
     patch:
       tags: [Environments]
       summary: Update environment hostname, platform version, desired release and configuration
@@ -2507,6 +2544,57 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/RestoreTest"}
         "409": {description: Restore point is not READY or a test is already pending}
+  /api/v1/backups/restore-points/{restorePointId}/restore:
+    parameters:
+      - {name: restorePointId, in: path, required: true, schema: {type: string}}
+      - {name: partner_id, in: query, required: true, schema: {type: string}}
+    post:
+      tags: [Backups, Administration]
+      summary: Queue a verified partner production restore
+      description: >
+        Production recovery is accepted only for a READY restore point with a PASSED restore test.
+        Non-test partners must be SUSPENDED, the confirmation must exactly match RESTORE <partner_id>,
+        and a fresh encrypted safety restore point is created before any production mutation. Partner
+        database, media, captured configuration and captured runtime release are restored. Partial
+        production mutations trigger an automatic rollback from the safety restore point.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation, reason]
+              properties:
+                confirmation: {type: string}
+                reason: {type: string, minLength: 1}
+      responses:
+        "202":
+          description: Production restore job queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RestoreJob"}
+        "409": {description: Recovery gate rejected the request}
+  /api/v1/backups/restores:
+    get:
+      tags: [Backups, Administration]
+      summary: List production restore jobs
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Production restore job history}
+  /api/v1/backups/restores/{restoreJobId}:
+    parameters:
+      - {name: restoreJobId, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Backups, Administration]
+      summary: Read a production restore job
+      responses:
+        "200":
+          description: Production restore job status and component results
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RestoreJob"}
+        "404": {description: Restore job not found}
   /api/v1/backups/restore-tests:
     get:
       tags: [Backups]
@@ -3114,6 +3202,24 @@ components:
         error: {type: string}
         created_by: {type: string}
         created_at: {type: string, format: date-time}
+        completed_at: {type: [string, "null"], format: date-time}
+        duration_ms: {type: integer, format: int64}
+    RestoreJob:
+      type: object
+      properties:
+        id: {type: string}
+        restore_point_id: {type: string}
+        partner_id: {type: string}
+        status: {type: string, enum: [QUEUED, RUNNING, COMPLETED, FAILED]}
+        safety_restore_point_id: {type: string}
+        database_ok: {type: boolean}
+        media_ok: {type: boolean}
+        config_ok: {type: boolean}
+        reason: {type: string}
+        created_by: {type: string}
+        error: {type: string}
+        created_at: {type: string, format: date-time}
+        started_at: {type: [string, "null"], format: date-time}
         completed_at: {type: [string, "null"], format: date-time}
         duration_ms: {type: integer, format: int64}
     NewPartner:
