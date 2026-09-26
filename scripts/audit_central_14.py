@@ -25,6 +25,7 @@ storage=read("services/cmd/storage/main.go")
 billing=read("services/cmd/billing/main.go")
 billing14=read("services/cmd/billing/central14.go")
 environments=read("services/cmd/environments/main.go")
+runtime=read("services/cmd/runtime/main.go")
 openapi=read("docs/openapi.yaml")
 acceptance=read("docs/CENTRAL-14_ACCEPTANCE.md")
 
@@ -117,10 +118,29 @@ for token in [
     check(token in storage, f"atomic media restore contract missing: {token}")
 
 for token in [
-    '"/api/v1/environments/"+url.PathEscape(id)+"/deploy"',
-    'deployment=="DEPLOYED"&&active==release',
+    '"/internal/v1/environments/recovery-release"',
+    '"operation_id":operationID',
+    '"allow_reuse":allowReuse',
+    'jsonEquivalent(current["config"],env["config"])',
+    '"restore:"+job.ID',
+    '"rollback:"+job.ID',
 ]:
     check(token in restore, f"captured runtime release recovery missing: {token}")
+for token in [
+    'mux.HandleFunc("/internal/v1/environments/recovery-release", a.recoveryRelease)',
+    "func (a *app) finalizeRecoveryDeployment(",
+    "func (a *app) deployRecordWithOperation(",
+    "environment_status='SUSPENDED'",
+    'payload["operation_id"]=operationID',
+]:
+    check(token in environments, f"recovery-safe environment orchestration missing: {token}")
+for token in [
+    "func deploymentRequestKeyWithOperation(",
+    "OperationID string",
+    "requestKey:=deploymentRequestKeyWithOperation(",
+    '"operation:"+operationID',
+]:
+    check(token in runtime, f"recovery deployment idempotency missing: {token}")
 check("if r.Method==http.MethodGet" in environments and 'common.JSON(w,http.StatusOK,mapEnvironment(e))' in environments,
       "environment read endpoint for recovery polling missing")
 
