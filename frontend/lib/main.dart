@@ -259,13 +259,7 @@ String centralPartnersInitialPath() => Uri(
       queryParameters: const <String, String>{'limit': '24', 'offset': '0'},
     ).toString();
 
-String centralModulesInitialPath() => Uri(
-      path: '/api/v1/central/modules',
-      queryParameters: const <String, String>{
-        'perspective': 'PARTNER',
-        'commercial_limit': '120',
-      },
-    ).toString();
+String centralModulesInitialPath() => '/api/v1/central/modules';
 
 String centralPackagesInitialPath() => '/api/v1/central/packages';
 
@@ -5867,8 +5861,10 @@ class PackagesPage extends StatefulWidget {
 class _PackagesPageState extends State<PackagesPage> {
   bool loading = true;
   bool analyticsLoading = true;
+  bool modulesLoading = true;
   String? error;
   String? analyticsError;
+  String? modulesError;
   List<Map<String, dynamic>> plans = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
   Map<String,dynamic> analytics = <String,dynamic>{};
@@ -5883,32 +5879,23 @@ class _PackagesPageState extends State<PackagesPage> {
     if (mounted) {
       setState(() {
         loading = true;
-        analyticsLoading = true;
         error = null;
-        analyticsError = null;
       });
     }
     final path = centralPackagesInitialPath();
 
-    void applyModel(Map<String, dynamic> model) {
+    void applyPrimary(Map<String, dynamic> model) {
       if (!mounted) return;
-      final meta = model['meta'] is Map
-          ? Map<String, dynamic>.from(model['meta'] as Map)
-          : <String, dynamic>{};
-      final unavailable = meta['unavailable'] is List
-          ? (meta['unavailable'] as List).map((e) => '$e').toSet()
-          : <String>{};
+      if (model['ready'] != true) {
+        setState(() { loading = true; });
+        Future<void>.delayed(const Duration(milliseconds: 350), () {
+          if (mounted) unawaited(load());
+        });
+        return;
+      }
       setState(() {
         plans = items(<String, dynamic>{'items': model['plans']});
-        modules = items(<String, dynamic>{'items': model['modules']});
-        analytics = model['analytics'] is Map
-            ? Map<String, dynamic>.from(model['analytics'] as Map)
-            : <String, dynamic>{};
         loading = false;
-        analyticsLoading = false;
-        analyticsError = unavailable.contains('analytics')
-            ? 'Package analytics is temporarily unavailable. Package definitions remain usable.'
-            : null;
       });
     }
 
@@ -5916,15 +5903,78 @@ class _PackagesPageState extends State<PackagesPage> {
       final model = await widget.api.get(
         path,
         maxAge: const Duration(seconds: 5),
-        onRefresh: applyModel,
+        onRefresh: applyPrimary,
       );
-      applyModel(model);
+      applyPrimary(model);
+      if (model['ready'] == true) unawaited(loadSupplementary());
     } catch (e) {
       if (!mounted) return;
       setState(() {
         loading = false;
-        analyticsLoading = false;
         error = e.toString();
+      });
+    }
+  }
+
+  Future<void> loadSupplementary() async {
+    const path = '/api/v1/central/packages/supplementary';
+    if (mounted) {
+      setState(() {
+        analyticsLoading = true;
+        modulesLoading = true;
+        analyticsError = null;
+        modulesError = null;
+      });
+    }
+
+    void applySupplementary(Map<String, dynamic> model) {
+      if (!mounted) return;
+      if (model['ready'] != true) {
+        setState(() {
+          analyticsLoading = true;
+          modulesLoading = true;
+        });
+        Future<void>.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) unawaited(loadSupplementary());
+        });
+        return;
+      }
+      final modulesReady = model['modules_ready'] == true;
+      final analyticsReady = model['analytics_ready'] == true;
+      setState(() {
+        if (modulesReady) {
+          modules = items(<String, dynamic>{'items': model['modules']});
+          modulesError = null;
+        } else {
+          modulesError = 'Module catalog is temporarily unavailable. Package cards remain usable.';
+        }
+        if (analyticsReady) {
+          analytics = model['analytics'] is Map
+              ? Map<String, dynamic>.from(model['analytics'] as Map)
+              : <String, dynamic>{};
+          analyticsError = null;
+        } else {
+          analyticsError = 'Package analytics is temporarily unavailable. Package definitions remain usable.';
+        }
+        modulesLoading = false;
+        analyticsLoading = false;
+      });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applySupplementary,
+      );
+      applySupplementary(model);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        modulesLoading = false;
+        analyticsLoading = false;
+        modulesError = e.toString();
+        analyticsError = e.toString();
       });
     }
   }
@@ -5954,6 +6004,18 @@ class _PackagesPageState extends State<PackagesPage> {
     final mode = '${plan['selection_mode']}';
     final fixed = mode == 'FIXED';
     final unlimited = mode == 'UNLIMITED';
+    if (fixed && modulesLoading && modules.isEmpty) {
+      unawaited(loadSupplementary());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: LText('Module catalog is still loading. Package pricing is already available.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
     final price = TextEditingController(text: number(plan['monthly_price']).toStringAsFixed(2));
     final effective = TextEditingController();
     final reason = TextEditingController();
@@ -6165,6 +6227,17 @@ class _PackagesPageState extends State<PackagesPage> {
               );
             },
           ),
+          if (modulesLoading) ...[
+            const SizedBox(height: 10),
+            const LinearProgressIndicator(minHeight: 2),
+          ] else if (modulesError != null && modules.isEmpty) ...[
+            const SizedBox(height: 10),
+            _MessageCard(
+              icon: Icons.widgets_outlined,
+              title: 'Module catalog is temporarily unavailable',
+              message: modulesError!,
+            ),
+          ],
           const SizedBox(height: 24),
           _SectionHeader(
             title: 'Package Analytics',
