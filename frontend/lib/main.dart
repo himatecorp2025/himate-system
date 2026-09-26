@@ -555,6 +555,59 @@ class Api {
   }
 }
 
+Future<void> openPdfExportIfAvailable(
+  BuildContext context,
+  Api api,
+  String path,
+) async {
+  try {
+    final uri = Uri.parse(path);
+    final probeParams = <String, String>{
+      ...uri.queryParameters,
+      'availability': '1',
+    };
+    final probePath = uri.replace(queryParameters: probeParams).toString();
+    final probe = await api.get(
+      probePath,
+      force: true,
+      maxAge: Duration.zero,
+    );
+    if (!context.mounted) return;
+    if (probe['has_data'] != true) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(uiLiteral('No exportable data')),
+          content: Text(uiLiteral('There is no data to export for the current selection.')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(uiLiteral('OK')),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    openBrowserDownload(path);
+  } catch (_) {
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(uiLiteral('PDF export failed')),
+        content: Text(uiLiteral('The PDF export could not be prepared. Please try again.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(uiLiteral('OK')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 List<Map<String, dynamic>> items(Map<String, dynamic> json) {
   final raw = json['items'];
   if (raw is! List) return <Map<String, dynamic>>[];
@@ -3937,7 +3990,7 @@ class _PartnersPageState extends State<PartnersPage> {
       subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => openBrowserDownload(_partnerExportUri().toString()),
+          onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
           icon: const Icon(Icons.download_outlined),
           label: const LText('Export PDF'),
         ),
@@ -6393,7 +6446,7 @@ class _PackagesPageState extends State<PackagesPage> {
       subtitle: 'Starter, Business and Premium package control with usage and commercial analytics.',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => openBrowserDownload('/api/v1/billing/packages/export.pdf'),
+          onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/billing/packages/export.pdf'),
           icon: const Icon(Icons.download_outlined),
           label: const LText('Export PDF'),
         ),
@@ -7385,7 +7438,7 @@ class _FinancePageState extends State<FinancePage> {
       subtitle: 'Partner onboarding, invoice approval, payment status and auditable finance controls. A partner reaches Portal access only after final HIMATE approval.',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => openBrowserDownload(financeExportPath),
+          onPressed: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
           icon: const Icon(Icons.download_outlined),
           label: const LText('Export PDF'),
         ),
@@ -8305,7 +8358,7 @@ class _ImpactPageState extends State<ImpactPage> {
             builder: (context, constraints) {
               final actions = <Widget>[
                 OutlinedButton.icon(
-                  onPressed: () => openBrowserDownload('/api/v1/impact/export.pdf'),
+                  onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/impact/export.pdf'),
                   icon: const Icon(Icons.download_outlined),
                   label: const LText('Export PDF'),
                 ),
