@@ -65,6 +65,20 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   }
 
   String _centralModulesPath() {
+    final defaultView =
+        commercialPerspective == 'PARTNER' &&
+        commercialShown == 120 &&
+        query.trim().isEmpty &&
+        selectedGroupKey == null &&
+        groupFilter == 'ALL' &&
+        typeFilter == 'ALL' &&
+        registryPreset == 'TOPICS' &&
+        commercialQuery.trim().isEmpty &&
+        commercialPartnerFilter == 'ALL' &&
+        commercialModuleFilter == 'ALL' &&
+        commercialStatusFilter == 'ALL';
+    if (defaultView) return centralModulesInitialPath();
+
     final params = <String, String>{
       'perspective': commercialPerspective,
       'commercial_limit': '$commercialShown',
@@ -84,13 +98,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   }
 
   Future<void> load() async {
+    final path = _centralModulesPath();
     if (mounted) setState(() { loading = true; error = null; });
-    try {
-      final model = await widget.api.get(
-        _centralModulesPath(),
-        maxAge: const Duration(seconds: 5),
-      );
-      if (!mounted) return;
+
+    void applyModel(Map<String, dynamic> model) {
+      if (!mounted || path != _centralModulesPath()) return;
       final registry = model['registry'] is Map
           ? Map<String, dynamic>.from(model['registry'] as Map)
           : <String, dynamic>{};
@@ -112,6 +124,15 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         subscriptionPlans = items(<String, dynamic>{'items': model['plans']});
         loading = false;
       });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
+      applyModel(model);
     } catch (e) {
       if (mounted) setState(() { error = e.toString(); loading = false; });
     }
@@ -1559,6 +1580,20 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   @override
   Widget build(BuildContext context) {
     if (showSubscriptionPlans) return subscriptionPlansPage();
+
+    if (loading &&
+        registryKpis.isEmpty &&
+        modules.isEmpty &&
+        registryModules.isEmpty &&
+        groups.isEmpty &&
+        topicRows.isEmpty) {
+      return const Content(
+        eyebrow: 'MODULE CONTROL PLANE',
+        title: 'Modules',
+        subtitle: 'Loading the latest module registry snapshot.',
+        child: _BrandLoading(),
+      );
+    }
 
     final registryTotal = (registryKpis['module_registry'] as num?)?.toInt() ?? modules.length;
     final liveReady = (registryKpis['active_modules'] as num?)?.toInt() ?? 0;
