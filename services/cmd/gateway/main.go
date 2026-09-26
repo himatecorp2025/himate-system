@@ -57,9 +57,12 @@ type app struct {
 	client           *http.Client
 	proxies          map[string]*httputil.ReverseProxy
 	hosts            map[string]string
-	dashboardMu      sync.RWMutex
-	dashboardPayload map[string]any
-	dashboardExpires time.Time
+	dashboardMu        sync.RWMutex
+	dashboardPayload   map[string]any
+	dashboardExpires   time.Time
+	dashboardUpdatedAt time.Time
+	dashboardRefreshMu sync.Mutex
+	dashboardRefreshCh chan struct{}
 	loginMu          sync.Mutex
 	loginAttempts    map[string]loginState
 }
@@ -195,6 +198,7 @@ func main() {
 		secureCookie: secure, mfaRequired: mfaRequired, client: &http.Client{Timeout: 4 * time.Second, Transport: transport},
 		proxies: map[string]*httputil.ReverseProxy{},
 		loginAttempts: map[string]loginState{},
+		dashboardRefreshCh: make(chan struct{}, 1),
 		hosts: map[string]string{
 			"partners":     os.Getenv("PARTNERS_HOSTPORT"),
 			"catalog":      os.Getenv("CATALOG_HOSTPORT"),
@@ -246,6 +250,8 @@ func main() {
 		}
 		a.proxies[name] = p
 	}
+	a.bootstrapDashboardSnapshot()
+	go a.runDashboardMaterializer()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
@@ -391,6 +397,7 @@ func (a *app) migrate(ctx context.Context) error {
 		phase2DurabilityMigration(),
 		phase4MFAMigration(),
 		central8GatewayMigration(),
+		central10DashboardSnapshotMigration(),
 	}); err != nil {
 		return err
 	}
@@ -1892,99 +1899,52 @@ func (a *app) dashboardPayloadForActor(source map[string]any, actor user) map[st
 }
 
 func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
-	year,err:=dashboardYear(r)
-	if err!=nil { common.APIError(w,http.StatusBadRequest,"VALIDATION",err.Error());return }
-
-	activity,activityErr:=a.dashboardRecentActivity(actor,6)
-	refresh:=strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")),"true")
-	cacheable:=year==time.Now().UTC().Year() && !refresh
-
-	// The shared cache intentionally excludes permission-scoped recent activity.
-	// This prevents one administrator's visible audit domains from leaking to another.
-	a.dashboardMu.RLock()
-	if cacheable && a.dashboardPayload != nil && time.Now().Before(a.dashboardExpires) {
-		payload:=a.dashboardPayloadForActor(a.dashboardPayload,actor)
-		a.dashboardMu.RUnlock()
-		payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
-		if activityErr!=nil { payload["activity"]=map[string]any{"items":[]any{},"count":0,"source":"IDENTITY_APPEND_ONLY_AUDIT","status":"degraded"} }
-		w.Header().Set("X-Himate-Cache","hit")
-		common.JSON(w,http.StatusOK,payload)
-		return
-	}
-	stale:=a.dashboardPayload
-	a.dashboardMu.RUnlock()
-
-	started:=time.Now()
-	ctx,cancel:=context.WithTimeout(r.Context(),central10ReadBudget)
-	defer cancel()
-
-	var partnerResponse struct {
-		Items []map[string]any `json:"items"`
-		Total int `json:"total"`
-		LifecycleCounts map[string]int `json:"lifecycle_counts"`
-	}
-	var moduleResponse struct {
-		Items []map[string]any `json:"items"`
-		Count int `json:"count"`
-	}
-	var billingResponse map[string]any
-	var impactResponse map[string]any
-	var partnerErr,moduleErr,billingErr,impactErr error
-	var wg sync.WaitGroup
-	wg.Add(4)
-	go func(){ defer wg.Done(); partnerErr=a.internalGET(ctx,a.hosts["partners"],"/api/v1/partners?limit=1&offset=0&include_archived=true",&partnerResponse) }()
-	go func(){ defer wg.Done(); moduleErr=a.internalGET(ctx,a.hosts["catalog"],"/api/v1/modules",&moduleResponse) }()
-	go func(){ defer wg.Done(); billingErr=a.internalGET(ctx,a.hosts["billing"],fmt.Sprintf("/internal/v1/analytics/dashboard?year=%d",year),&billingResponse) }()
-	go func(){ defer wg.Done(); impactErr=a.internalGET(ctx,a.hosts["impact"],fmt.Sprintf("/internal/v1/impact/dashboard?year=%d",year),&impactResponse) }()
-	wg.Wait()
-
-	if cacheable && partnerErr!=nil && moduleErr!=nil && billingErr!=nil && impactErr!=nil && stale!=nil {
-		payload:=a.dashboardPayloadForActor(stale,actor)
-		payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
-		w.Header().Set("X-Himate-Cache","stale")
-		w.Header().Set("Server-Timing",fmt.Sprintf("dashboard;dur=%d",time.Since(started).Milliseconds()))
-		common.JSON(w,http.StatusOK,payload)
+	started := time.Now()
+	year, err := dashboardYear(r)
+	if err != nil {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", err.Error())
 		return
 	}
 
-	live:=partnerResponse.LifecycleCounts["LIVE"]
-	status:="healthy"
-	if partnerErr!=nil||moduleErr!=nil||billingErr!=nil||impactErr!=nil||activityErr!=nil { status="degraded" }
-	if billingResponse==nil { billingResponse=map[string]any{"year":year,"items":[]any{},"count":0,"source":"BILLING_PAID_LEDGER","status":"degraded"} }
-	if impactResponse==nil {
-		impactResponse=map[string]any{
-			"year":year,
-			"metric_key":"klavierhaus.events.attendance.attendee_count",
-			"people_reached_ytd":0,
-			"trend":[]any{},
-			"weekly_trend":[]any{},
-			"observation_count":0,
-			"has_data":false,
-			"source":"IMPACT_METRIC_VALUES",
-			"status":"degraded",
+	refreshRequested := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")), "true")
+	payload, updatedAt, stale := a.dashboardSnapshotForRead(year)
+	if payload == nil {
+		payload = dashboardWarmingSnapshot(year, a.env, a.version)
+		stale = true
+	}
+	if year == time.Now().UTC().Year() && (refreshRequested || stale) {
+		a.requestDashboardRefresh()
+		if refreshRequested {
+			w.Header().Set("X-Himate-Snapshot-Refresh", "queued")
 		}
 	}
-	impactResponse=central10NormalizeDashboardImpact(impactResponse)
-	core:=map[string]any{
-		"year":year,
-		"partners":map[string]any{"total":partnerResponse.Total,"live":live,"lifecycle_counts":partnerResponse.LifecycleCounts},
-		"modules":map[string]any{"catalog_total":moduleResponse.Count},
-		"billing":billingResponse,
-		"impact":impactResponse,
-		"system":map[string]any{"status":status,"environment":a.env,"version":a.version,"architecture":"containerized-microservices-start-23.9"},
+
+	activity, activityErr := a.dashboardRecentActivity(actor, 6)
+	out := a.dashboardPayloadForActor(payload, actor)
+	out["activity"] = map[string]any{
+		"items": activity, "count": len(activity), "source": "IDENTITY_APPEND_ONLY_AUDIT",
 	}
-	if cacheable {
-		a.dashboardMu.Lock()
-		a.dashboardPayload=core
-		a.dashboardExpires=time.Now().Add(10*time.Second)
-		a.dashboardMu.Unlock()
+	if activityErr != nil {
+		out["activity"] = map[string]any{
+			"items": []any{}, "count": 0, "source": "IDENTITY_APPEND_ONLY_AUDIT", "status": "degraded",
+		}
+	}
+	if meta, ok := out["meta"].(map[string]any); ok {
+		meta = copyDashboardPayload(meta)
+		if !updatedAt.IsZero() {
+			meta["snapshot_updated_at"] = updatedAt.UTC()
+			meta["snapshot_age_ms"] = time.Since(updatedAt).Milliseconds()
+		}
+		out["meta"] = meta
 	}
 
-	payload:=a.dashboardPayloadForActor(core,actor)
-	payload["activity"]=map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
-	w.Header().Set("X-Himate-Cache","miss")
-	w.Header().Set("Server-Timing",fmt.Sprintf("dashboard;dur=%d",time.Since(started).Milliseconds()))
-	common.JSON(w,http.StatusOK,payload)
+	cacheState := "hot"
+	if stale {
+		cacheState = "stale"
+	}
+	w.Header().Set("X-Himate-Cache", cacheState)
+	w.Header().Set("Server-Timing", fmt.Sprintf("dashboard-snapshot;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, http.StatusOK, out)
 }
 
 func searchText(values ...any) string {
