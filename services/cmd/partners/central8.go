@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,7 +10,7 @@ import (
 	"himate.local/services/internal/common"
 )
 
-func (a *app) exportPartnersCSV(w http.ResponseWriter, r *http.Request) {
+func (a *app) exportPartnersPDF(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
 		return
@@ -60,11 +59,8 @@ func (a *app) exportPartnersCSV(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := a.db.QueryContext(r.Context(), `SELECT
-		p.id,p.display_name,p.legal_name,COALESCE(c.name_en,''),COALESCE(c.name_hu,''),
-		p.lifecycle,p.existing_partner,p.reference_partner,p.test_partner,
-		p.primary_domain,p.country,p.state_region,p.city,p.contact_name,p.contact_email,
-		p.finance_contact_name,p.finance_contact_email,p.system_health,p.platform_version,
-		p.created_at,p.updated_at
+		p.id,p.display_name,COALESCE(c.name_en,''),p.lifecycle,p.country,p.city,
+		p.contact_email,p.system_health,p.platform_version,p.updated_at
 		FROM partners.partners p
 		LEFT JOIN partners.categories c ON c.id=p.category_id
 		WHERE `+strings.Join(where, " AND ")+`
@@ -75,38 +71,24 @@ func (a *app) exportPartnersCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="himate-partners.csv"`)
-	w.Header().Set("Cache-Control", "private, no-store")
-	writer := csv.NewWriter(w)
-	defer writer.Flush()
-	_ = writer.Write([]string{
-		"partner_id", "display_name", "legal_name", "category_en", "category_hu",
-		"lifecycle", "existing_partner", "reference_partner", "test_partner",
-		"primary_domain", "country", "state_region", "city", "contact_name", "contact_email",
-		"finance_contact_name", "finance_contact_email", "system_health", "platform_version",
-		"created_at", "updated_at",
-	})
+	tableRows := make([][]string, 0, 64)
 	for rows.Next() {
-		var id, displayName, legalName, categoryEN, categoryHU, lifecycle string
-		var existing, reference, testPartner bool
-		var primaryDomain, country, stateRegion, city, contactName, contactEmail string
-		var financeName, financeEmail, health, platformVersion string
-		var createdAt, updatedAt time.Time
-		if rows.Scan(
-			&id, &displayName, &legalName, &categoryEN, &categoryHU,
-			&lifecycle, &existing, &reference, &testPartner,
-			&primaryDomain, &country, &stateRegion, &city, &contactName, &contactEmail,
-			&financeName, &financeEmail, &health, &platformVersion, &createdAt, &updatedAt,
-		) != nil {
+		var id, displayName, categoryEN, lifecycle, country, city, contactEmail, health, platformVersion string
+		var updatedAt time.Time
+		if rows.Scan(&id, &displayName, &categoryEN, &lifecycle, &country, &city, &contactEmail, &health, &platformVersion, &updatedAt) != nil {
 			continue
 		}
-		_ = writer.Write([]string{
-			id, displayName, legalName, categoryEN, categoryHU, lifecycle,
-			strconv.FormatBool(existing), strconv.FormatBool(reference), strconv.FormatBool(testPartner),
-			primaryDomain, country, stateRegion, city, contactName, contactEmail,
-			financeName, financeEmail, health, platformVersion,
-			createdAt.UTC().Format(time.RFC3339), updatedAt.UTC().Format(time.RFC3339),
+		tableRows = append(tableRows, []string{
+			displayName, id, categoryEN, lifecycle, country, city, contactEmail,
+			health, platformVersion, updatedAt.UTC().Format("2006-01-02"),
 		})
 	}
+	common.WriteBrandedTablePDF(
+		w,
+		"himate-partners.pdf",
+		"HiMate Central - Partners",
+		"Filtered partner portfolio export",
+		[]string{"Partner", "ID", "Category", "Lifecycle", "Country", "City", "Contact", "Health", "Version", "Updated"},
+		tableRows,
+	)
 }
