@@ -13,6 +13,7 @@ def require(ok: bool, message: str) -> None:
         sys.exit(1)
 
 frontend = read("frontend/lib/main.dart")
+frontend_compact = "".join(frontend.split())
 impact = read("services/cmd/impact/main.go")
 gateway = read("services/cmd/gateway/main.go")
 localization = read("frontend/lib/localization.dart")
@@ -24,14 +25,14 @@ for target in [
     "onTap:canNavigate(4)?()=>onNavigate(4):null",
     "onTap:canNavigate(5)?()=>onNavigate(5):null",
 ]:
-    require(target in frontend, f"Dashboard KPI navigation missing: {target}")
+    require(target in frontend_compact, f"Dashboard KPI navigation missing: {target}")
 
 require("final VoidCallback? onTap;" in frontend, "KPI cards do not expose an interactive callback")
 require("weeklyTrend=items(<String,dynamic>{'items':impact['weekly_trend']})" in frontend,
         "Dashboard does not consume weekly Impact data")
 require("DropdownMenuItem(value:true,child:LText(uiLiteral('Weekly')))" in frontend,
         "Program Impact Weekly selector is missing")
-require("oldDelegate.labels.toString()!=labels.toString()" in frontend,
+require("oldDelegate.labels.toString()!=labels.toString()" in frontend_compact,
         "Impact chart does not repaint when period labels change")
 require("'Weekly': 'Heti'" in localization, "Weekly dashboard view is not bilingual")
 
@@ -78,20 +79,20 @@ require('impactBlock := dashboardStaleBlock(previous["impact"])' in dashboard_sn
         "Impact partial failure does not preserve last-known-good state")
 
 for target in [
-    "onTap: canNavigate(1) ? () => onNavigate(1) : null",
-    "onTap: canNavigate(2) ? () => onNavigate(2) : null",
-    "onTap: canNavigate(4) ? () => onNavigate(4) : null",
-    "onTap: canNavigate(5) ? () => onNavigate(5) : null",
+    "onTap:canNavigate(1)?()=>onNavigate(1):null",
+    "onTap:canNavigate(2)?()=>onNavigate(2):null",
+    "onTap:canNavigate(4)?()=>onNavigate(4):null",
+    "onTap:canNavigate(5)?()=>onNavigate(5):null",
 ]:
-    require(target in frontend, f"Loading-state Dashboard KPI is not clickable: {target}")
+    require(target in frontend_compact, f"Loading-state Dashboard KPI is not clickable: {target}")
 
-require("partnersAvailable?'${p['live']??0}':'—'" in frontend,
+require("partnersAvailable?'${p['live']??0}':'—'" in frontend_compact,
         "Dashboard partner outage can still render a false business zero")
-require("modulesAvailable?'${m['catalog_total']??0}':'—'" in frontend,
+require("modulesAvailable?'${m['catalog_total']??0}':'—'" in frontend_compact,
         "Dashboard module outage can still render a false business zero")
-require("!billingAvailable?'—'" in frontend,
+require("!billingAvailable?'—'" in frontend_compact,
         "Dashboard billing outage can still render a false revenue zero")
-require("!impactAvailable" in frontend and "?'—'" in frontend,
+require("!impactAvailable" in frontend_compact and "?'—'" in frontend_compact,
         "Dashboard impact outage can still render a false people-reached zero")
 
 print("Central-2 Dashboard acceptance: PASS")
