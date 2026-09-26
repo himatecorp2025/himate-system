@@ -81,6 +81,7 @@ func main() {
 	privateMux.HandleFunc("/api/v1/connectors/start22/records",a.start22RecordList)
 	privateMux.HandleFunc("/api/v1/connectors/",a.adminConnector)
 	privateMux.HandleFunc("/internal/v1/connectors/summary",a.summary)
+	privateMux.HandleFunc("/internal/v1/partner-connections",a.central13PartnerConnections)
 	privateMux.HandleFunc("/internal/v1/connectors/ensure",a.ensureCredential)
 	privateHandler:=common.InternalAuth(a.internalToken,privateMux)
 

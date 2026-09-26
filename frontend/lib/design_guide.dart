@@ -31,11 +31,31 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   List<Map<String, dynamic>> navigation = <Map<String, dynamic>>[];
   bool loading = true;
   bool saving = false;
+  bool previewActive = false;
   String? error;
   int version = 0;
   DateTime? publishedAt;
 
-  static const fonts = <String>['Cormorant Garamond', 'Inter', 'Georgia', 'Arial'];
+  static const headingFonts = <String>[
+    'Cormorant Garamond',
+    'Georgia',
+    'Palatino',
+    'Garamond',
+    'Times New Roman',
+    'Inter',
+    'Helvetica',
+    'Arial',
+  ];
+  static const bodyFonts = <String>[
+    'Inter',
+    'Helvetica',
+    'Arial',
+    'Verdana',
+    'Trebuchet MS',
+    'Georgia',
+    'Palatino',
+    'Courier New',
+  ];
   static const layouts = <String>['classic_editorial', 'modern_grid', 'minimal'];
 
   @override
@@ -113,8 +133,8 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
     logoMediaAssetId = assetSlots['header_wordmark'] ?? logoMediaAssetId;
     final requestedLayout = (design['layout_key'] ?? 'classic_editorial').toString();
     layoutKey = layouts.contains(requestedLayout) ? requestedLayout : 'classic_editorial';
-    headingFont = fonts.contains((design['heading_font'] ?? '').toString()) ? (design['heading_font'] ?? '').toString() : 'Cormorant Garamond';
-    bodyFont = fonts.contains((design['body_font'] ?? '').toString()) ? (design['body_font'] ?? '').toString() : 'Inter';
+    headingFont = headingFonts.contains((design['heading_font'] ?? '').toString()) ? (design['heading_font'] ?? '').toString() : 'Cormorant Garamond';
+    bodyFont = bodyFonts.contains((design['body_font'] ?? '').toString()) ? (design['body_font'] ?? '').toString() : 'Inter';
     final rawNav = design['navigation'];
     navigation = rawNav is List
         ? rawNav.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
@@ -133,6 +153,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
       final draft = response['draft'];
       applyDesign(draft is Map ? Map<String, dynamic>.from(draft) : defaultDesign());
       version = (response['version'] as num?)?.toInt() ?? 0;
+      previewActive = response['preview_active'] == true;
       publishedAt = DateTime.tryParse((response['published_at'] ?? '').toString())?.toLocal();
     } catch (e) {
       if (!mounted) return;
@@ -238,6 +259,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
       if (path.isEmpty) throw StateError('Design preview returned no preview path.');
       openBrowserDownload(path);
       if (mounted) {
+        setState(() => previewActive = true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: LText('${viewport[0].toUpperCase()}${viewport.substring(1)} website preview opened.')),
         );
@@ -301,11 +323,109 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
     return parsed == null || clean.length != 6 ? fallback : Color(0xFF000000 | parsed);
   }
 
-  Widget colorField(String label, TextEditingController controller) => TextField(
-        controller: controller,
-        onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(labelText: uiLiteral(label), hintText: '#06172C'),
-      );
+  String colorHex(Color color) =>
+      '#${(color.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+
+  Future<void> pickColor(String label, TextEditingController controller) async {
+    final initial = parseColor(controller.text, brandNavyDeep);
+    double red = initial.red.toDouble();
+    double green = initial.green.toDouble();
+    double blue = initial.blue.toDouble();
+
+    final chosen = await showDialog<Color>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) {
+          final preview = Color.fromARGB(255, red.round(), green.round(), blue.round());
+          Widget channel(String name, double value, ValueChanged<double> onChanged) => Row(
+                children: [
+                  SizedBox(width: 20, child: LText(name, style: const TextStyle(fontWeight: FontWeight.w700))),
+                  Expanded(
+                    child: Slider(
+                      value: value,
+                      min: 0,
+                      max: 255,
+                      divisions: 255,
+                      label: value.round().toString(),
+                      onChanged: (next) => setLocal(() => onChanged(next)),
+                    ),
+                  ),
+                  SizedBox(width: 36, child: Text(value.round().toString(), textAlign: TextAlign.right)),
+                ],
+              );
+          return AlertDialog(
+            title: LText(label),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 84,
+                    decoration: BoxDecoration(
+                      color: preview,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: brandMist),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SelectableText(colorHex(preview), style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  channel('R', red, (value) => red = value),
+                  channel('G', green, (value) => green = value),
+                  channel('B', blue, (value) => blue = value),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const LText('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  Color.fromARGB(255, red.round(), green.round(), blue.round()),
+                ),
+                child: const LText('Use color'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => controller.text = colorHex(chosen));
+  }
+
+  Widget colorField(String label, TextEditingController controller) {
+    final swatch = parseColor(controller.text, brandNavyDeep);
+    return TextField(
+      controller: controller,
+      textCapitalization: TextCapitalization.characters,
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: uiLiteral(label),
+        hintText: '#06172C',
+        suffixIcon: Padding(
+          padding: const EdgeInsets.all(9),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => pickColor(label, controller),
+            child: Tooltip(
+              message: uiLiteral('Choose color'),
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: swatch,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: brandMist),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget assetField(String label, String slot, List<Map<String, dynamic>> imageMedia, {String emptyLabel = 'Use built-in asset'}) {
     final current = assetSlots[slot] ?? '';
@@ -352,11 +472,11 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
             padding: const EdgeInsets.only(bottom: 12),
             child: _MessageCard(icon: Icons.warning_amber_rounded, title: 'Design settings loaded from defaults', message: error!),
           ),
-        const _RuleStrip(items: [
-          _RuleItem(Icons.palette_outlined, 'Brand', 'Published globally'),
-          _RuleItem(Icons.language_outlined, 'Languages', 'English + Hungarian labels'),
-          _RuleItem(Icons.visibility_outlined, 'Preview-safe', 'Draft before publish'),
-          _RuleItem(Icons.history_rounded, 'Audit', 'Every save/publish recorded'),
+        _RuleStrip(items: [
+          const _RuleItem(Icons.edit_note_outlined, 'Draft', 'Working brand draft'),
+          _RuleItem(Icons.visibility_outlined, 'Preview', previewActive ? 'READY · 30 min token' : 'NOT CREATED'),
+          _RuleItem(Icons.publish_outlined, 'Publish', publishedAt == null ? 'NOT PUBLISHED' : 'PUBLISHED · v$version'),
+          _RuleItem(Icons.verified_outlined, 'Active Brand', publishedAt == null ? 'INACTIVE' : 'ACTIVE ON WEBSITE'),
         ]),
         const SizedBox(height: 16),
         LayoutBuilder(
@@ -437,20 +557,20 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
                 ),
                 const SizedBox(height: 12),
                 ResponsiveFieldPair(
-                  first: colorField('Primary navy', navy),
-                  second: colorField('Brand gold', gold),
+                  first: colorField('Primary Color', navy),
+                  second: colorField('Brand Color', gold),
                 ),
                 const SizedBox(height: 12),
                 ResponsiveFieldPair(
-                  first: colorField('Page background', background),
-                  second: colorField('Body text color', textColor),
+                  first: colorField('Page Background', background),
+                  second: colorField('Body Text Color', textColor),
                 ),
                 const SizedBox(height: 12),
                 ResponsiveFieldPair(
                   first: DropdownButtonFormField<String>(
                     value: headingFont,
                     decoration: InputDecoration(labelText: uiLiteral('Heading font')),
-                    items: [for (final font in fonts) DropdownMenuItem(value: font, child: LText(font))],
+                    items: [for (final font in headingFonts) DropdownMenuItem(value: font, child: LText(font))],
                     onChanged: (value) {
                       if (value != null) setState(() => headingFont = value);
                     },
@@ -458,7 +578,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
                   second: DropdownButtonFormField<String>(
                     value: bodyFont,
                     decoration: InputDecoration(labelText: uiLiteral('Body font')),
-                    items: [for (final font in fonts) DropdownMenuItem(value: font, child: LText(font))],
+                    items: [for (final font in bodyFonts) DropdownMenuItem(value: font, child: LText(font))],
                     onChanged: (value) {
                       if (value != null) setState(() => bodyFont = value);
                     },
@@ -595,7 +715,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
             FilledButton.icon(
               onPressed: saving ? null : publish,
               icon: const Icon(Icons.publish_outlined),
-              label: const LText('Publish design'),
+              label: const LText('Publish Active Brand'),
             ),
           ],
         ),

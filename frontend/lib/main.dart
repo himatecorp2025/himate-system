@@ -31,6 +31,7 @@ part 'module_control_plane.dart';
 part 'notifications_panel.dart';
 part 'partner_portal.dart';
 part 'partner_design.dart';
+part 'partner_connections.dart';
 part 'commercial_automation_ui.dart';
 part 'compliance_archives.dart';
 
@@ -311,6 +312,11 @@ String centralImpactInitialPath() => Uri(
       },
     ).toString();
 
+String centralConnectionsInitialPath() => Uri(
+      path: '/api/v1/central/connections',
+      queryParameters: const <String, String>{'limit': '120', 'offset': '0'},
+    ).toString();
+
 class Api {
   Api() : client = BrowserClient()..withCredentials = true;
   final BrowserClient client;
@@ -389,6 +395,7 @@ class Api {
       add('/partner/api/v1');
       add('/api/v1/central/partners');
       add('/api/v1/central/modules/commercial');
+      add('/api/v1/central/connections');
       addDashboard();
     } else if (path.startsWith('/api/v1/partners') ||
         path.startsWith('/api/v1/partner-categories')) {
@@ -435,6 +442,7 @@ class Api {
       add('/api/v1/provisioning');
       add('/api/v1/environments');
       add('/api/v1/connectors');
+      add('/api/v1/central/connections');
       add('/api/v1/system-health');
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
@@ -712,6 +720,9 @@ class _HimateAppState extends State<HimateApp> {
     }
     if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
       deferredTargets.add(centralImpactInitialPath());
+    }
+    if (_can('connectors.read')) {
+      deferredTargets.add(centralConnectionsInitialPath());
     }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
       deferredTargets.add('/api/v1/system-health/snapshot');
@@ -1987,7 +1998,7 @@ class _ShellState extends State<Shell> {
     if (can('billing.read')) indexes.add(3);
     if (can('billing.read')) indexes.add(4);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(5);
-    if (can('cms.read') || can('contact.read')) indexes.add(6);
+    if (can('cms.read') || can('contact.read') || can('connectors.read')) indexes.add(6);
     if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
     if (can('administration.read') || can('audit.read')) indexes.add(8);
     if (can('audit.read')) indexes.add(9);
@@ -2010,7 +2021,12 @@ class _ShellState extends State<Shell> {
       case 3: return PackagesPage(api: widget.api);
       case 4: return FinancePage(api: widget.api);
       case 5: return ImpactPage(api: widget.api);
-      case 6: return WebsiteMarketingPage(api: widget.api);
+      case 6: return WebsiteMarketingPage(
+        api: widget.api,
+        canCms: can('cms.read'),
+        canContact: can('contact.read'),
+        canConnections: can('connectors.read'),
+      );
       case 7: return SystemPage(api: widget.api);
       case 8: return AdministrationPage(api: widget.api, user: widget.user);
       case 9: return ComplianceArchivesPage(api: widget.api);

@@ -50,8 +50,17 @@ class CMSSectionDraft {
 }
 
 class WebsiteMarketingPage extends StatefulWidget {
-  const WebsiteMarketingPage({required this.api, super.key});
+  const WebsiteMarketingPage({
+    required this.api,
+    this.canCms = true,
+    this.canContact = true,
+    this.canConnections = true,
+    super.key,
+  });
   final Api api;
+  final bool canCms;
+  final bool canContact;
+  final bool canConnections;
 
   @override
   State<WebsiteMarketingPage> createState() => _WebsiteMarketingPageState();
@@ -61,15 +70,17 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   List<Map<String, dynamic>> pages = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> media = <Map<String, dynamic>>[];
   bool loading = false;
+  String section = 'overview';
   String? error;
 
   @override
   void initState() {
     super.initState();
-    load();
+    if (widget.canCms) load();
   }
 
   Future<void> load() async {
+    if (!widget.canCms) return;
     if (mounted) setState(() => error = null);
     final failures = <String>[];
 
@@ -510,45 +521,139 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (loading) return const _BrandLoading();
-    if (error != null) {
-      return Content(
-        eyebrow: 'WEBSITE & MARKETING',
-        title: 'HIMATE CMS',
-        subtitle: 'Versioned marketing content and publishing workflow.',
-        child: _MessageCard(
-          icon: Icons.error_outline_rounded,
-          title: 'CMS unavailable',
-          message: error!,
+  Widget hubCard({
+    required String key,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required String metric,
+  }) {
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => setState(() => section = key),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(12)),
+                    child: Icon(icon, color: brandGold, size: 20),
+                  ),
+                  const Spacer(),
+                  _MiniCounter(label: metric),
+                ],
+              ),
+              const SizedBox(height: 16),
+              LText(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              const SizedBox(height: 6),
+              LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11, height: 1.45)),
+              const SizedBox(height: 14),
+              const Row(
+                children: [
+                  LText('Open workspace', style: TextStyle(color: brandGold, fontWeight: FontWeight.w700, fontSize: 10.5)),
+                  SizedBox(width: 5),
+                  Icon(Icons.arrow_forward_rounded, color: brandGold, size: 15),
+                ],
+              ),
+            ],
+          ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    return Content(
-      eyebrow: 'WEBSITE & MARKETING',
-      title: 'HIMATE CMS',
-      subtitle: 'Manage published website content, story video, media and SEO without editing source code.',
-      actions: [
-        OutlinedButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const LText('Upload media')),
-        FilledButton.icon(onPressed: createPage, icon: const Icon(Icons.add_rounded), label: const LText('New CMS page')),
-      ],
-      child: Column(
+  Widget hubOverview() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ContactLeadsPanel(api: widget.api),
-          const SizedBox(height: 28),
-          const Divider(height: 1),
+          const _RuleStrip(items: [
+            _RuleItem(Icons.web_outlined, 'Website', 'Content + brand system'),
+            _RuleItem(Icons.campaign_outlined, 'Marketing', 'SEO + customer inbox'),
+            _RuleItem(Icons.hub_outlined, 'Partner operations', 'Partner-first data connections'),
+            _RuleItem(Icons.visibility_outlined, 'Publishing', 'Draft → Preview → Active Brand'),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeader(
+            title: 'Website & Brand',
+            subtitle: 'Design, public content and media are separate workspaces with one controlled publish boundary.',
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 700
+                  ? constraints.maxWidth
+                  : constraints.maxWidth < 1120
+                      ? (constraints.maxWidth - 12) / 2
+                      : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  if (widget.canCms)
+                    SizedBox(width: width, child: hubCard(key: 'design', title: 'Design Guide', subtitle: 'Brand assets, color system, typography, layout family, real viewport preview and Active Brand publish.', icon: Icons.palette_outlined, metric: 'BRAND')),
+                  if (widget.canCms)
+                    SizedBox(width: width, child: hubCard(key: 'pages', title: 'CMS Pages', subtitle: 'Versioned public page content with independent draft, preview, publish and rollback history.', icon: Icons.web_outlined, metric: '${pages.length} PAGES')),
+                  if (widget.canCms)
+                    SizedBox(width: width, child: hubCard(key: 'media', title: 'Media Library', subtitle: 'Checksum-backed images and story video assets referenced by stable CMS asset IDs.', icon: Icons.perm_media_outlined, metric: '${media.length} ASSETS')),
+                ],
+              );
+            },
+          ),
           const SizedBox(height: 24),
-          SEOKeywordsPanel(api: widget.api, media: media),
-          const SizedBox(height: 28),
-          const Divider(height: 1),
+          const _SectionHeader(
+            title: 'Marketing',
+            subtitle: 'Audience-facing discovery and inbound customer operations without mixing them into CMS editing.',
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 700 ? constraints.maxWidth : (constraints.maxWidth - 12) / 2;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  if (widget.canCms)
+                    SizedBox(width: width, child: hubCard(key: 'seo', title: 'SEO & Keywords', subtitle: 'Bilingual metadata, page keyword coverage, Open Graph and structured discovery controls.', icon: Icons.travel_explore_outlined, metric: 'SEO')),
+                  if (widget.canContact)
+                    SizedBox(width: width, child: hubCard(key: 'leads', title: 'Customer Inbox', subtitle: 'Website contact inquiries and customer follow-up remain a dedicated marketing operations surface.', icon: Icons.mark_email_unread_outlined, metric: 'INBOX')),
+                ],
+              );
+            },
+          ),
           const SizedBox(height: 24),
-          DesignGuidePanel(api: widget.api, media: media),
-          const SizedBox(height: 28),
-          const Divider(height: 1),
-          const SizedBox(height: 24),
+          const _SectionHeader(
+            title: 'Partner Operations',
+            subtitle: 'Operational partner integrations are partner-first. Integration vendors appear only inside a partner when a real runtime record exists.',
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 700
+                  ? constraints.maxWidth
+                  : constraints.maxWidth < 1120
+                      ? (constraints.maxWidth - 12) / 2
+                      : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  if (widget.canConnections)
+                    SizedBox(width: width, child: hubCard(key: 'connections', title: 'Partner Data Connections', subtitle: 'Connection status, last successful sync, last error and real integrations for every partner.', icon: Icons.hub_outlined, metric: 'PARTNERS')),
+                ],
+              );
+            },
+          ),
+        ],
+      );
+
+  Widget cmsPagesSection() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           const _RuleStrip(items: [
             _RuleItem(Icons.edit_note_outlined, 'Workflow', 'DRAFT → PREVIEW → PUBLISHED'),
             _RuleItem(Icons.security_outlined, 'Public boundary', 'Published content only'),
@@ -576,14 +681,15 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                     : constraints.maxWidth < 1180
                         ? (constraints.maxWidth - 12) / 2
                         : (constraints.maxWidth - 24) / 3;
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [for (final page in pages) pageCard(page, width)],
-                );
+                return Wrap(spacing: 12, runSpacing: 12, children: [for (final page in pages) pageCard(page, width)]);
               },
             ),
-          const SizedBox(height: 24),
+        ],
+      );
+
+  Widget mediaSection() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           _SectionHeader(
             title: 'Media Assets',
             subtitle: 'CMS images and story videos are content-sniffed, checksum-backed and referenced by stable asset ID.',
@@ -612,22 +718,14 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                           icon: Icons.image_outlined,
                           action: IconButton(
                             tooltip: uiLiteral('Preview media'),
-                            onPressed: () => openBrowserDownload(
-                              '/api/v1/cms/media/' + (asset['id'] ?? '').toString() + '/preview',
-                            ),
+                            onPressed: () => openBrowserDownload('/api/v1/cms/media/' + (asset['id'] ?? '').toString() + '/preview'),
                             icon: const Icon(Icons.visibility_outlined),
                           ),
                           children: [
                             _DefinitionRow(label: 'Asset ID', value: (asset['id'] ?? '').toString()),
                             _DefinitionRow(label: 'Type', value: (asset['mime_type'] ?? '').toString()),
-                            _DefinitionRow(
-                              label: 'Alt text',
-                              value: (asset['alt_text'] ?? '').toString().isEmpty ? '—' : (asset['alt_text'] ?? '').toString(),
-                            ),
-                            _DefinitionRow(
-                              label: 'SHA-256',
-                              value: _cmsShort((asset['sha256'] ?? '').toString()),
-                            ),
+                            _DefinitionRow(label: 'Alt text', value: (asset['alt_text'] ?? '').toString().isEmpty ? '—' : (asset['alt_text'] ?? '').toString()),
+                            _DefinitionRow(label: 'SHA-256', value: _cmsShort((asset['sha256'] ?? '').toString())),
                           ],
                         ),
                       ),
@@ -636,7 +734,65 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
               },
             ),
         ],
-      ),
+      );
+
+  Widget activeSection() {
+    switch (section) {
+      case 'design':
+        return DesignGuidePanel(api: widget.api, media: media);
+      case 'pages':
+        return cmsPagesSection();
+      case 'media':
+        return mediaSection();
+      case 'seo':
+        return SEOKeywordsPanel(api: widget.api, media: media);
+      case 'leads':
+        return ContactLeadsPanel(api: widget.api);
+      case 'connections':
+        return PartnerConnectionsPanel(api: widget.api);
+      default:
+        return hubOverview();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const _BrandLoading();
+    if (error != null) {
+      return Content(
+        eyebrow: 'WEBSITE · MARKETING · PARTNER OPERATIONS',
+        title: 'Website & Marketing',
+        subtitle: 'Content, brand, discovery and partner operations workspaces.',
+        child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Website & Marketing unavailable', message: error!),
+      );
+    }
+
+    return Content(
+      eyebrow: 'WEBSITE · MARKETING · PARTNER OPERATIONS',
+      title: section == 'overview' ? 'Website & Marketing' : ({
+        'design': 'Design Guide',
+        'pages': 'CMS Pages',
+        'media': 'Media Library',
+        'seo': 'SEO & Keywords',
+        'leads': 'Customer Inbox',
+        'connections': 'Partner Data Connections',
+      }[section] ?? 'Website & Marketing'),
+      subtitle: section == 'overview'
+          ? 'A structured control center for public website, marketing and partner data operations.'
+          : 'Focused workspace · use Back to return to Website & Marketing.',
+      actions: [
+        if (section != 'overview')
+          OutlinedButton.icon(
+            onPressed: () => setState(() => section = 'overview'),
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const LText('Back'),
+          ),
+        if (section == 'pages')
+          FilledButton.icon(onPressed: createPage, icon: const Icon(Icons.add_rounded), label: const LText('New CMS page')),
+        if (section == 'media')
+          FilledButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const LText('Upload media')),
+      ],
+      child: activeSection(),
     );
   }
 }

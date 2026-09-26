@@ -121,6 +121,8 @@ jobs:
           test -s ../docs/CENTRAL-10_ACCEPTANCE.md
           test -s ../docs/CENTRAL-11_ACCEPTANCE.md
           test -s ../docs/CENTRAL-12_ACCEPTANCE.md
+          test -s ../docs/CENTRAL-13_ACCEPTANCE.md
+          grep -q '^  /api/v1/central/connections:' ../docs/openapi.yaml
           test -s ../docs/START-23.1_SURFACE_INVENTORY.md
           test -s ../docs/CENTRAL-8_ACCEPTANCE.md
           grep -q '^  /api/v1/partners/export.pdf:' ../docs/openapi.yaml
@@ -413,6 +415,7 @@ jobs:
           python3 scripts/audit_central_10.py
           python3 scripts/audit_central_11.py
           python3 scripts/audit_central_12.py
+          python3 scripts/audit_central_13.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
@@ -571,6 +574,8 @@ jobs:
         run: sh scripts/smoke_central_11.sh http://127.0.0.1:8080
       - name: Run Central-12 performance recovery, analytics and PDF empty-state acceptance
         run: sh scripts/smoke_central_12.sh http://127.0.0.1:8080
+      - name: Run Central-13 Website, Marketing and Partner Operations acceptance
+        run: sh scripts/smoke_central_13.sh http://127.0.0.1:8080
       - name: Dump Phase 4/5/closure runtime diagnostics on failure
         if: failure()
         run: docker compose logs --no-color --tail=220 gateway partners catalog billing payments evidence storage notifications automation tenantfinance

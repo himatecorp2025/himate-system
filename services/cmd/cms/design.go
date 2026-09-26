@@ -21,6 +21,13 @@ var designFonts = map[string]bool{
 	"Inter":              true,
 	"Georgia":            true,
 	"Arial":              true,
+	"Palatino":           true,
+	"Garamond":           true,
+	"Times New Roman":    true,
+	"Helvetica":          true,
+	"Verdana":            true,
+	"Trebuchet MS":       true,
+	"Courier New":        true,
 }
 
 var designLayouts = map[string]bool{
@@ -181,6 +188,18 @@ func (a *app) readSiteDesign() (siteDesign, siteDesign, int, string, time.Time, 
 	return normalizeSiteDesign(draft), normalizeSiteDesign(published), version, updatedBy, updatedAt, publishedAt, nil
 }
 
+func (a *app) designPreviewActive() bool {
+	var issuedAt sql.NullTime
+	if err := a.db.QueryRow("SELECT preview_token_issued_at FROM cms.site_design WHERE id=1").Scan(&issuedAt); err != nil {
+		return false
+	}
+	if !issuedAt.Valid {
+		return false
+	}
+	age := time.Since(issuedAt.Time)
+	return age >= -time.Minute && age <= 30*time.Minute
+}
+
 func designPayload(draft, published siteDesign, version int, updatedBy string, updatedAt time.Time, publishedAt sql.NullTime) map[string]any {
 	var publishedValue any
 	if publishedAt.Valid {
@@ -206,7 +225,9 @@ func (a *app) design(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load site design")
 		return
 	}
-	common.JSON(w, http.StatusOK, designPayload(draft, published, version, updatedBy, updatedAt, publishedAt))
+	payload := designPayload(draft, published, version, updatedBy, updatedAt, publishedAt)
+	payload["preview_active"] = a.designPreviewActive()
+	common.JSON(w, http.StatusOK, payload)
 }
 
 func (a *app) designAction(w http.ResponseWriter, r *http.Request) {
