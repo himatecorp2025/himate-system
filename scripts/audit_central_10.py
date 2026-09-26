@@ -180,7 +180,7 @@ responsibilities = [
     ("impact evidence filtering", "evidenceQuery.Set" in gateway),
     ("partner workspace aggregation", "central10PartnerWorkspace" in gateway),
     ("weekly window selection", "central10NormalizeDashboardImpact" in gateway),
-    ("truthful data-presence semantics", '"has_data":false' in gateway and '"has_data":observationCount>0' in impact),
+    ("truthful data-presence semantics", 'out["has_data"] = false' in gateway and '"has_data":observationCount>0' in impact),
 ]
 backend_units = sum(1 for _, ok in responsibilities if ok)
 backend_share = backend_units / len(responsibilities) * 100
