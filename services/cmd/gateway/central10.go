@@ -442,6 +442,38 @@ func central10PartnerCategories(locale string, remote []map[string]any) []map[st
 
 func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
+
+	// The default first page is the most common navigation target. Serve it
+	// from the persistent materialized snapshot so the request path never
+	// waits for downstream enrichment fan-out. Filtered/search/paginated views
+	// retain the live read-model path below.
+	q := r.URL.Query()
+	defaultView := strings.TrimSpace(q.Get("q")) == "" &&
+		strings.TrimSpace(q.Get("category")) == "" &&
+		strings.TrimSpace(q.Get("lifecycle")) == "" &&
+		strings.TrimSpace(q.Get("health")) == "" &&
+		strings.TrimSpace(q.Get("reference")) == "" &&
+		strings.TrimSpace(q.Get("include_archived")) == "" &&
+		(strings.TrimSpace(q.Get("limit")) == "" || strings.TrimSpace(q.Get("limit")) == "24") &&
+		(strings.TrimSpace(q.Get("offset")) == "" || strings.TrimSpace(q.Get("offset")) == "0")
+	if defaultView {
+		if snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
+			rawCategories := step4Items(snapshot["categories_raw"])
+			payload := map[string]any{
+				"items":      step4Items(snapshot["items"]),
+				"categories": central10PartnerCategories(common.RequestLocale(r), rawCategories),
+				"pagination": step4Map(snapshot["pagination"]),
+				"kpis":       step4Map(snapshot["kpis"]),
+				"meta":       centralStep4Meta(started, centralStep4PartnersKey, updatedAt, central10String(snapshot["status"]), central10Step4Unavailable(snapshot["unavailable"])),
+			}
+			w.Header().Set("X-Himate-Cache", "hot-snapshot")
+			w.Header().Set("Server-Timing", fmt.Sprintf("central-partners-snapshot;dur=%d", time.Since(started).Milliseconds()))
+			common.JSON(w, http.StatusOK, payload)
+			return
+		}
+		a.requestCentralStep4Refresh()
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
 	defer cancel()
 
