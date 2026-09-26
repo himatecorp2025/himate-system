@@ -89,3 +89,38 @@ func TestCentral10WeeklyWindowKeepsLatestFourElapsedWeeks(t *testing.T) {
 		t.Fatalf("last week = %s, want %s", last, currentMonday)
 	}
 }
+
+
+func TestCentral10CommercialLimitHasNoTotalDatasetCeiling(t *testing.T) {
+	for _, raw := range []string{"201", "500", "1000"} {
+		got := central10PositiveInt(raw, 120)
+		want := 0
+		for _, ch := range raw {
+			want = want*10 + int(ch-'0')
+		}
+		if got != want {
+			t.Fatalf("central10PositiveInt(%q) = %d, want %d", raw, got, want)
+		}
+	}
+}
+
+func TestCentral10CommercialChunkingPreservesMoreThanTwoHundredPartners(t *testing.T) {
+	ids := make([]string, 0, 205)
+	for i := 0; i < 205; i++ {
+		ids = append(ids, "partner")
+	}
+	chunks := central10StringChunks(ids, 80)
+	total := 0
+	for _, chunk := range chunks {
+		if len(chunk) > 80 {
+			t.Fatalf("chunk size = %d, want <= 80", len(chunk))
+		}
+		total += len(chunk)
+	}
+	if total != len(ids) {
+		t.Fatalf("chunked total = %d, want %d", total, len(ids))
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("chunk count = %d, want 3", len(chunks))
+	}
+}
