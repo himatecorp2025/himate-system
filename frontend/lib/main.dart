@@ -2938,9 +2938,6 @@ class _PartnersPageState extends State<PartnersPage> {
       final meta = model['meta'] is Map
           ? Map<String, dynamic>.from(model['meta'] as Map)
           : <String, dynamic>{};
-      final moduleView = model['module_view'] is Map
-          ? Map<String, dynamic>.from(model['module_view'] as Map)
-          : <String, dynamic>{};
       final unavailable = meta['unavailable'] is List
           ? (meta['unavailable'] as List).map((e) => '$e').toSet()
           : <String>{};
@@ -3014,6 +3011,12 @@ class _PartnersPageState extends State<PartnersPage> {
     );
   }
 
+  void failure(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+    );
+  }
+
   Future<void> addCategory() async {
     final nameEN = TextEditingController();
     final nameHU = TextEditingController();
@@ -3040,7 +3043,7 @@ class _PartnersPageState extends State<PartnersPage> {
       ),
     );
     if (ok == true && nameEN.text.trim().isNotEmpty && nameHU.text.trim().isNotEmpty) {
-      final created = await widget.api.post('/api/v1/partner-categories', {
+      await widget.api.post('/api/v1/partner-categories', {
         'name_en': nameEN.text.trim(),
         'name_hu': nameHU.text.trim(),
       });
@@ -4065,6 +4068,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           : partner;
       final meta = model['meta'] is Map
           ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
+      final moduleView = model['module_view'] is Map
+          ? Map<String, dynamic>.from(model['module_view'] as Map)
           : <String, dynamic>{};
       final unavailable = meta['unavailable'] is List
           ? (meta['unavailable'] as List).map((e) => '$e').toList()
