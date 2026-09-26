@@ -112,11 +112,11 @@ jobs:
           grep -q '^  /api/v1/search:' ../docs/openapi.yaml
           test -s ../docs/START-23.1_SURFACE_INVENTORY.md
           test -s ../docs/CENTRAL-8_ACCEPTANCE.md
-          grep -q '^  /api/v1/partners/export.csv:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/partners/export.pdf:' ../docs/openapi.yaml
           grep -q '^  /api/v1/billing/packages/analytics:' ../docs/openapi.yaml
-          grep -q '^  /api/v1/billing/packages/export.csv:' ../docs/openapi.yaml
-          grep -q '^  /api/v1/billing/finance/export.csv:' ../docs/openapi.yaml
-          grep -q '^  /api/v1/impact/export.csv:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/packages/export.pdf:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/billing/finance/export.pdf:' ../docs/openapi.yaml
+          grep -q '^  /api/v1/impact/export.pdf:' ../docs/openapi.yaml
           test -s ../docs/adr/0004-encrypted-offsite-backup-and-restore-verification.md
           test -s ../docs/adr/0005-klavierhaus-one-way-data-connector.md
       - run: go build ./cmd/...
