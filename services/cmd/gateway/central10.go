@@ -35,9 +35,10 @@ func (a *app) invalidateCentral10Caches() {
 	central10ReadCache.Lock()
 	central10ReadCache.items = map[string]central10CacheEntry{}
 	central10ReadCache.Unlock()
-	// Dashboard keeps the last-known-good materialized snapshot hot while a
-	// background refresh is queued. Mutations must never blank the screen.
+	// Materialized screen snapshots remain readable while mutations queue
+	// background refreshes. Mutations must never blank a Central screen.
 	a.requestDashboardRefresh()
+	a.requestCentralStep3Refresh()
 }
 
 func central10CacheKey(actor user, r *http.Request) string {
