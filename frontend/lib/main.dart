@@ -2703,10 +2703,10 @@ class DashboardPage extends StatelessWidget {
               title: uiLiteral('Dashboard'),
               subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
               child: ResponsiveKpiGrid(children: [
-                Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: brandSteel),
-                Kpi(label: uiLiteral('Active Modules'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.inventory_2_outlined, accent: brandGold),
-                Kpi(label: uiLiteral('Settled Revenue'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.paid_outlined, accent: brandSuccess),
-                Kpi(label: uiLiteral('Impact'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.eco_outlined, accent: brandSteel),
+                Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: brandSteel, onTap: canNavigate(1) ? () => onNavigate(1) : null),
+                Kpi(label: uiLiteral('Active Modules'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.inventory_2_outlined, accent: brandGold, onTap: canNavigate(2) ? () => onNavigate(2) : null),
+                Kpi(label: uiLiteral('Settled Revenue'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.paid_outlined, accent: brandSuccess, onTap: canNavigate(4) ? () => onNavigate(4) : null),
+                Kpi(label: uiLiteral('Impact'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.eco_outlined, accent: brandSteel, onTap: canNavigate(5) ? () => onNavigate(5) : null),
               ]),
             );
           }
