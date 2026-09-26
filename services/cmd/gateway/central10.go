@@ -318,10 +318,16 @@ func (a *app) central10ReadModel(w http.ResponseWriter, r *http.Request, actor u
 		return
 	}
 	key := central10CacheKey(actor, r)
-	if payload, ok, _ := central10Cached(key, true); ok {
-		w.Header().Set("X-Himate-Cache", "hit")
-		common.JSON(w, http.StatusOK, payload)
-		return
+	hotSnapshotRoute := r.URL.Path == "/api/v1/central/modules" ||
+		r.URL.Path == "/api/v1/central/modules/commercial" ||
+		r.URL.Path == "/api/v1/central/packages" ||
+		r.URL.Path == "/api/v1/central/packages/supplementary"
+	if !hotSnapshotRoute {
+		if payload, ok, _ := central10Cached(key, true); ok {
+			w.Header().Set("X-Himate-Cache", "hit")
+			common.JSON(w, http.StatusOK, payload)
+			return
+		}
 	}
 	switch {
 	case r.URL.Path == "/api/v1/central/partners":
@@ -330,8 +336,12 @@ func (a *app) central10ReadModel(w http.ResponseWriter, r *http.Request, actor u
 		a.central10PartnerModules(w, r, actor, key)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/central/partners/"):
 		a.central10PartnerWorkspace(w, r, actor, key)
+	case r.URL.Path == "/api/v1/central/modules/commercial":
+		a.central10ModulesCommercial(w, r, actor)
 	case r.URL.Path == "/api/v1/central/modules":
 		a.central10Modules(w, r, actor, key)
+	case r.URL.Path == "/api/v1/central/packages/supplementary":
+		a.central10PackagesSupplementary(w, r, actor)
 	case r.URL.Path == "/api/v1/central/packages":
 		a.central10Packages(w, r, actor, key)
 	case r.URL.Path == "/api/v1/central/finance":
@@ -614,72 +624,34 @@ func central10CanonicalPlan(plan map[string]any, moduleByKey map[string]map[stri
 
 func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
-	defer cancel()
-
-	type page struct{ Items []map[string]any `json:"items"`; Count int `json:"count"` }
-	var modules, groups, plans page
-	var partners []map[string]any
-	var modulesErr, groupsErr, partnersErr, plansErr error
-	var first sync.WaitGroup
-	first.Add(2)
-	go func(){ defer first.Done(); modulesErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/modules", &modules) }()
-	go func(){ defer first.Done(); groupsErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/module-groups", &groups) }()
-	if a.hasPermission(actor, "partners.read") {
-		first.Add(1)
-		go func(){ defer first.Done(); partners, partnersErr = a.central10AllPartners(ctx) }()
-	}
-	if a.hasPermission(actor, "billing.read") {
-		first.Add(1)
-		go func(){ defer first.Done(); plansErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/plans", &plans) }()
-	}
-	first.Wait()
-
-	if modulesErr != nil || groupsErr != nil {
-		if stale, ok, _ := central10Cached(cacheKey, false); ok {
-			stale["meta"] = central10Meta(started, "stale", []string{"catalog"})
-			w.Header().Set("X-Himate-Cache", "stale")
-			common.JSON(w, http.StatusOK, stale)
-			return
+	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep3RegistryKey)
+	if !ok {
+		a.requestCentralStep3Refresh()
+		payload := map[string]any{
+			"ready": false,
+			"module_options": []any{},
+			"registry": map[string]any{
+				"modules": []any{}, "groups": []any{}, "topics": []any{}, "kpis": map[string]any{},
+			},
+			"meta": centralStep3Meta(started, centralStep3RegistryKey, time.Time{}, "warming", []string{"catalog"}),
 		}
-		common.APIError(w, http.StatusBadGateway, "CATALOG_UNAVAILABLE", "Module read model is temporarily unavailable")
+		w.Header().Set("X-Himate-Cache", "warming")
+		common.JSON(w, http.StatusOK, payload)
 		return
 	}
-
-	partnerName := map[string]string{}
-	partnerIDs := []string{}
-	for _, p := range partners {
-		id := central10String(p["id"])
-		if id == "" { continue }
-		name := central10String(p["display_name"])
-		if name == "" { name = id }
-		partnerName[id] = name
-		partnerIDs = append(partnerIDs, id)
+	if time.Since(updatedAt) > 2*centralStep3RefreshInterval {
+		a.requestCentralStep3Refresh()
 	}
 
-	matrixItems, subscriptionItems, matrixErr, subscriptionsErr := a.central10CommercialSources(
-		ctx,
-		partnerIDs,
-		a.hasPermission(actor, "billing.read"),
-	)
-
-	subByKey := map[string]map[string]any{}
-	for _, item := range subscriptionItems {
-		key := central10String(item["partner_id"]) + "|" + central10String(item["module_key"])
-		subByKey[key] = item
-	}
-
-	moduleByKey := map[string]map[string]any{}
-	for _, module := range modules.Items {
-		moduleByKey[central10String(module["key"])] = module
-	}
+	modules := anyItems(snapshot["modules"])
+	groups := anyItems(snapshot["groups"])
 
 	registryQ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("registry_q")))
 	registryGroup := strings.TrimSpace(r.URL.Query().Get("registry_group"))
 	registryType := strings.TrimSpace(r.URL.Query().Get("registry_type"))
 	registryPreset := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("registry_preset")))
-	filteredModules := make([]map[string]any, 0, len(modules.Items))
-	for _, module := range modules.Items {
+	filteredModules := make([]map[string]any, 0, len(modules))
+	for _, module := range modules {
 		if registryQ != "" {
 			text := strings.ToLower(strings.Join([]string{
 				central10String(module["label"]), central10String(module["label_en"]), central10String(module["label_hu"]),
@@ -700,12 +672,12 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 		filteredModules = append(filteredModules, module)
 	}
 
-	topics := make([]map[string]any, 0, len(groups.Items))
-	for _, group := range groups.Items {
+	topics := make([]map[string]any, 0, len(groups))
+	for _, group := range groups {
 		groupKey := central10String(group["group_key"])
 		if group["is_primary_navigation"] != true { continue }
 		count, liveReady, inDevelopment, assignments := 0, 0, 0, 0
-		for _, module := range modules.Items {
+		for _, module := range modules {
 			if central10String(module["group_key"]) != groupKey { continue }
 			count++
 			if central10String(module["availability"]) == "ACTIVE" && central10String(module["publication_status"]) == "PUBLISHED" && central10String(module["implementation_state"]) == "READY" { liveReady++ }
@@ -718,6 +690,87 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 		row["in_development"] = inDevelopment
 		row["active_partner_assignments"] = assignments
 		topics = append(topics, row)
+	}
+
+	liveReady, sourceLinked, relationshipCount, activeAssignments := 0, 0, 0, 0
+	for _, module := range modules {
+		if central10String(module["availability"]) == "ACTIVE" && central10String(module["publication_status"]) == "PUBLISHED" && central10String(module["implementation_state"]) == "READY" { liveReady++ }
+		if central10String(module["source_repository"]) != "" { sourceLinked++ }
+		relationshipCount += central10Int(module["relationship_count"])
+		activeAssignments += central10Int(module["active_partner_count"])
+	}
+
+	payload := map[string]any{
+		"ready": true,
+		"module_options": modules,
+		"registry": map[string]any{
+			"modules": filteredModules,
+			"groups": groups,
+			"topics": topics,
+			"kpis": map[string]any{
+				"module_registry": len(modules), "active_modules": liveReady, "source_linked": sourceLinked,
+				"relationships": relationshipCount, "active_partner_assignments": activeAssignments,
+			},
+		},
+		"meta": centralStep3Meta(started, centralStep3RegistryKey, updatedAt, "healthy", nil),
+	}
+	w.Header().Set("X-Himate-Cache", "hot-snapshot")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-modules-registry;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, http.StatusOK, payload)
+}
+
+func (a *app) central10ModulesCommercial(w http.ResponseWriter, r *http.Request, actor user) {
+	started := time.Now()
+	commercialSnapshot, commercialUpdatedAt, commercialOK := centralStep3SnapshotGet(centralStep3CommercialKey)
+	registrySnapshot, _, registryOK := centralStep3SnapshotGet(centralStep3RegistryKey)
+	plansSnapshot, plansUpdatedAt, plansOK := centralStep3SnapshotGet(centralStep3PlansKey)
+	if !commercialOK {
+		a.requestCentralStep3Refresh()
+		payload := map[string]any{
+			"ready": false,
+			"partners": []any{},
+			"commercial": map[string]any{"available": false, "groups": []any{}},
+			"plans": []any{},
+			"meta": centralStep3Meta(started, centralStep3CommercialKey, time.Time{}, "warming", []string{"commercial_matrix"}),
+		}
+		w.Header().Set("X-Himate-Cache", "warming")
+		common.JSON(w, http.StatusOK, payload)
+		return
+	}
+	if time.Since(commercialUpdatedAt) > 2*centralStep3RefreshInterval || (plansOK && time.Since(plansUpdatedAt) > 2*centralStep3RefreshInterval) {
+		a.requestCentralStep3Refresh()
+	}
+
+	modules := []map[string]any{}
+	if registryOK { modules = anyItems(registrySnapshot["modules"]) }
+	partners := []map[string]any{}
+	matrixItems := []map[string]any{}
+	subscriptionItems := []map[string]any{}
+	if a.hasPermission(actor, "partners.read") {
+		partners = anyItems(commercialSnapshot["partners"])
+		matrixItems = anyItems(commercialSnapshot["matrix_items"])
+		if a.hasPermission(actor, "billing.read") {
+			subscriptionItems = anyItems(commercialSnapshot["subscription_items"])
+		}
+	}
+
+	partnerName := map[string]string{}
+	for _, p := range partners {
+		id := central10String(p["id"])
+		if id == "" { continue }
+		name := central10String(p["display_name"])
+		if name == "" { name = id }
+		partnerName[id] = name
+	}
+
+	subByKey := map[string]map[string]any{}
+	for _, item := range subscriptionItems {
+		key := central10String(item["partner_id"]) + "|" + central10String(item["module_key"])
+		subByKey[key] = item
+	}
+	moduleByKey := map[string]map[string]any{}
+	for _, module := range modules {
+		moduleByKey[central10String(module["key"])] = module
 	}
 
 	commercialQ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("commercial_q")))
@@ -735,9 +788,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 		name := partnerName[partnerID]
 		if name == "" { name = partnerID }
 		row["partner_name"] = name
-		if sub := subByKey[partnerID+"|"+moduleKey]; sub != nil {
-			row["subscription"] = sub
-		}
+		if sub := subByKey[partnerID+"|"+moduleKey]; sub != nil { row["subscription"] = sub }
 		if commercialQ != "" {
 			text := strings.ToLower(strings.Join([]string{name, partnerID, central10String(row["label"]), moduleKey, central10String(row["group_label"])}, " "))
 			if !strings.Contains(text, commercialQ) { continue }
@@ -786,96 +837,65 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 	totalGroups := len(grouped)
 	if len(grouped) > groupLimit { grouped = grouped[:groupLimit] }
 
-	liveReady, sourceLinked, relationshipCount, activeAssignments := 0, 0, 0, 0
-	for _, module := range modules.Items {
-		if central10String(module["availability"]) == "ACTIVE" && central10String(module["publication_status"]) == "PUBLISHED" && central10String(module["implementation_state"]) == "READY" { liveReady++ }
-		if central10String(module["source_repository"]) != "" { sourceLinked++ }
-		relationshipCount += central10Int(module["relationship_count"])
-		activeAssignments += central10Int(module["active_partner_count"])
-	}
-
-	unavailable := []string{}
-	if partnersErr != nil { unavailable = append(unavailable, "partners") }
-	if plansErr != nil { unavailable = append(unavailable, "plans") }
-	if matrixErr != nil { unavailable = append(unavailable, "commercial_matrix") }
-	if subscriptionsErr != nil { unavailable = append(unavailable, "subscription_matrix") }
-	status := "healthy"
-	if len(unavailable) > 0 { status = "partial" }
-
-	canonicalPlans := make([]map[string]any, 0, len(plans.Items))
-	for _, plan := range plans.Items {
-		key := strings.ToUpper(central10String(plan["plan_key"]))
-		if key == "STARTER" || key == "BUSINESS" || key == "FLEX" || key == "PREMIUM" {
-			canonicalPlans = append(canonicalPlans, central10CanonicalPlan(plan, moduleByKey))
+	canonicalPlans := []map[string]any{}
+	if a.hasPermission(actor, "billing.read") && plansOK {
+		for _, plan := range anyItems(plansSnapshot["plans"]) {
+			key := strings.ToUpper(central10String(plan["plan_key"]))
+			if key == "STARTER" || key == "BUSINESS" || key == "FLEX" || key == "PREMIUM" {
+				canonicalPlans = append(canonicalPlans, central10CanonicalPlan(plan, moduleByKey))
+			}
 		}
 	}
 
+	unavailable := []string{}
+	if commercialSnapshot["matrix_available"] != true { unavailable = append(unavailable, "commercial_matrix") }
+	if a.hasPermission(actor, "billing.read") && commercialSnapshot["subscriptions_available"] != true { unavailable = append(unavailable, "subscription_matrix") }
+	if a.hasPermission(actor, "billing.read") && !plansOK { unavailable = append(unavailable, "plans") }
+	status := "healthy"
+	if len(unavailable) > 0 { status = "partial" }
+
 	payload := map[string]any{
-		"module_options": modules.Items,
-		"registry": map[string]any{
-			"modules": filteredModules,
-			"groups": groups.Items,
-			"topics": topics,
-			"kpis": map[string]any{
-				"module_registry": len(modules.Items), "active_modules": liveReady, "source_linked": sourceLinked,
-				"relationships": relationshipCount, "active_partner_assignments": activeAssignments,
-			},
-		},
+		"ready": true,
+		"partners": partners,
 		"commercial": map[string]any{
+			"available": true,
 			"perspective": perspective,
 			"groups": grouped,
 			"group_count": totalGroups,
 			"assignment_count": len(filteredAssignments),
 		},
-		"partners": partners,
 		"plans": canonicalPlans,
-		"meta": central10Meta(started, status, unavailable),
+		"meta": centralStep3Meta(started, centralStep3CommercialKey, commercialUpdatedAt, status, unavailable),
 	}
-	central10Store(cacheKey, payload)
-	w.Header().Set("X-Himate-Cache", "miss")
-	w.Header().Set("Server-Timing", fmt.Sprintf("central-modules;dur=%d", time.Since(started).Milliseconds()))
+	w.Header().Set("X-Himate-Cache", "hot-snapshot")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-modules-commercial;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
 }
 
 func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
-	defer cancel()
-
-	type page struct{ Items []map[string]any `json:"items"` }
-	var plans, modules page
-	var analytics map[string]any
-	var plansErr, modulesErr, analyticsErr error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func(){ defer wg.Done(); plansErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/plans", &plans) }()
-	go func(){ defer wg.Done(); analyticsErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/packages/analytics", &analytics) }()
-	if a.hasPermission(actor, "catalog.read") {
-		wg.Add(1)
-		go func(){ defer wg.Done(); modulesErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/modules", &modules) }()
-	}
-	wg.Wait()
-
-	if plansErr != nil {
-		if stale, ok, _ := central10Cached(cacheKey, false); ok {
-			stale["meta"] = central10Meta(started, "stale", []string{"plans"})
-			w.Header().Set("X-Himate-Cache", "stale")
-			common.JSON(w, http.StatusOK, stale)
-			return
+	plansSnapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep3PlansKey)
+	if !ok {
+		a.requestCentralStep3Refresh()
+		payload := map[string]any{
+			"ready": false,
+			"plans": []any{},
+			"meta": centralStep3Meta(started, centralStep3PlansKey, time.Time{}, "warming", []string{"plans"}),
 		}
-		common.APIError(w, http.StatusBadGateway, "PACKAGES_UNAVAILABLE", "Package read model is temporarily unavailable")
+		w.Header().Set("X-Himate-Cache", "warming")
+		common.JSON(w, http.StatusOK, payload)
 		return
 	}
+	if time.Since(updatedAt) > 2*centralStep3RefreshInterval { a.requestCentralStep3Refresh() }
+
 	moduleByKey := map[string]map[string]any{}
-	eligibleModules := make([]map[string]any, 0, len(modules.Items))
-	for _, module := range modules.Items {
-		moduleByKey[central10String(module["key"])] = module
-		if module["system"] == true {
-			eligibleModules = append(eligibleModules, module)
+	if registrySnapshot, _, registryOK := centralStep3SnapshotGet(centralStep3RegistryKey); registryOK {
+		for _, module := range anyItems(registrySnapshot["modules"]) {
+			moduleByKey[central10String(module["key"])] = module
 		}
 	}
 	canonical := []map[string]any{}
-	for _, plan := range plans.Items {
+	for _, plan := range anyItems(plansSnapshot["plans"]) {
 		key := strings.ToUpper(central10String(plan["plan_key"]))
 		if key == "STARTER" || key == "BUSINESS" || key == "FLEX" || key == "PREMIUM" {
 			canonical = append(canonical, central10CanonicalPlan(plan, moduleByKey))
@@ -885,20 +905,55 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 		order := map[string]int{"STARTER": 1, "BUSINESS": 2, "FLEX": 3}
 		return order[central10String(canonical[i]["plan_key"])] < order[central10String(canonical[j]["plan_key"])]
 	})
-	unavailable := []string{}
-	if modulesErr != nil { unavailable = append(unavailable, "catalog") }
-	if analyticsErr != nil { unavailable = append(unavailable, "analytics") }
-	status := "healthy"; if len(unavailable) > 0 { status = "partial" }
-	if analytics == nil { analytics = map[string]any{"packages": []any{}, "partners": []any{}, "partner_count": 0} }
 	payload := map[string]any{
+		"ready": true,
 		"plans": canonical,
+		"meta": centralStep3Meta(started, centralStep3PlansKey, updatedAt, "healthy", nil),
+	}
+	w.Header().Set("X-Himate-Cache", "hot-snapshot")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-packages-plans;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, http.StatusOK, payload)
+}
+
+func (a *app) central10PackagesSupplementary(w http.ResponseWriter, r *http.Request, actor user) {
+	started := time.Now()
+	registrySnapshot, registryUpdatedAt, registryOK := centralStep3SnapshotGet(centralStep3RegistryKey)
+	analyticsSnapshot, analyticsUpdatedAt, analyticsOK := centralStep3SnapshotGet(centralStep3AnalyticsKey)
+	if !registryOK || !analyticsOK {
+		a.requestCentralStep3Refresh()
+	}
+
+	eligibleModules := []map[string]any{}
+	if registryOK && a.hasPermission(actor, "catalog.read") {
+		for _, module := range anyItems(registrySnapshot["modules"]) {
+			if module["system"] == true { eligibleModules = append(eligibleModules, module) }
+		}
+	}
+	analytics := map[string]any{}
+	if analyticsOK {
+		if raw, ok := analyticsSnapshot["analytics"].(map[string]any); ok {
+			analytics = central10CopyMap(raw)
+		}
+	}
+
+	unavailable := []string{}
+	if !registryOK { unavailable = append(unavailable, "catalog") }
+	if !analyticsOK { unavailable = append(unavailable, "analytics") }
+	status := "healthy"
+	if len(unavailable) == 2 { status = "warming" } else if len(unavailable) > 0 { status = "partial" }
+	updatedAt := registryUpdatedAt
+	if analyticsUpdatedAt.After(updatedAt) { updatedAt = analyticsUpdatedAt }
+
+	payload := map[string]any{
+		"ready": registryOK || analyticsOK,
+		"modules_ready": registryOK,
+		"analytics_ready": analyticsOK,
 		"modules": eligibleModules,
 		"analytics": analytics,
-		"meta": central10Meta(started, status, unavailable),
+		"meta": centralStep3Meta(started, "packages_supplementary", updatedAt, status, unavailable),
 	}
-	central10Store(cacheKey, payload)
-	w.Header().Set("X-Himate-Cache", "miss")
-	w.Header().Set("Server-Timing", fmt.Sprintf("central-packages;dur=%d", time.Since(started).Milliseconds()))
+	w.Header().Set("X-Himate-Cache", "hot-snapshot")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-packages-supplementary;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
 }
 
