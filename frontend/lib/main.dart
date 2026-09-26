@@ -4199,62 +4199,68 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final id = '${partner['id']}';
     if (mounted) setState(() { supplementalLoading = true; supplementalError = null; });
     final errors = <String>[];
-    final r = await Future.wait<Map<String, dynamic>?>([
-      _safeWorkspaceGet('/api/v1/partners/$id/modules', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/summary', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/terms', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/license', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/documents', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/invoices', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/subscriptions', errors),
-      _safeWorkspaceGet('/api/v1/environments?partner_id=$id', errors),
-      _safeWorkspaceGet('/api/v1/provisioning/jobs?partner_id=$id', errors),
-      _safeWorkspaceGet('/api/v1/impact/summary?partner_id=$id', errors),
-      _safeWorkspaceGet('/api/v1/connectors/$id/credential', errors),
-      _safeWorkspaceGet('/api/v1/partners/$id/portal-users', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/agreement', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/commercial-status', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/events', errors),
-      _safeWorkspaceGet('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', errors),
-      _safeWorkspaceGet('/api/v1/payments/partners/$id/profile', errors),
+
+    Future<void> loadOne(
+      String path,
+      void Function(Map<String,dynamic> data) apply,
+    ) async {
+      final data = await _safeWorkspaceGet(path, errors);
+      if (!mounted || generation != _supplementalLoadGeneration || data == null) return;
+      setState(() => apply(data));
+    }
+
+    await Future.wait<void>([
+      loadOne('/api/v1/partners/$id/modules', (data) => modules = items(data)),
+      loadOne('/api/v1/billing/partners/$id/summary', (data) => billing = data),
+      loadOne('/api/v1/billing/partners/$id/terms', (data) => terms = data),
+      loadOne('/api/v1/billing/partners/$id/license', (data) => license = data),
+      loadOne('/api/v1/billing/partners/$id/documents', (data) => documents = items(data)),
+      loadOne('/api/v1/billing/partners/$id/invoices', (data) => invoices = items(data)),
+      loadOne('/api/v1/billing/partners/$id/subscriptions', (data) => subscriptions = items(data)),
+      loadOne('/api/v1/environments?partner_id=$id', (data) => environments = items(data)),
+      loadOne('/api/v1/provisioning/jobs?partner_id=$id', (data) => provisioningJobs = items(data)),
+      loadOne('/api/v1/impact/summary?partner_id=$id', (data) => impactSummary = items(data)),
+      loadOne('/api/v1/connectors/$id/credential', (data) => connectorCredentials = items(data)),
+      loadOne('/api/v1/partners/$id/portal-users', (data) => portalUsers = items(data)),
+      loadOne('/api/v1/billing/partners/$id/agreement', (data) => agreement = data),
+      loadOne('/api/v1/billing/partners/$id/commercial-status', (data) => commercialStatus = data),
+      loadOne('/api/v1/billing/partners/$id/events', (data) => billingEvents = items(data)),
+      loadOne('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', (data) => websiteAdapter = data),
+      loadOne('/api/v1/payments/partners/$id/profile', (data) => paymentProfile = data),
     ]);
+
     if (!mounted || generation != _supplementalLoadGeneration) return;
     setState(() {
-      if (r[0] != null) modules = items(r[0]!);
-      if (r[1] != null) billing = r[1];
-      if (r[2] != null) terms = r[2];
-      if (r[3] != null) license = r[3];
-      if (r[4] != null) documents = items(r[4]!);
-      if (r[5] != null) invoices = items(r[5]!);
-      if (r[6] != null) subscriptions = items(r[6]!);
-      if (r[7] != null) environments = items(r[7]!);
-      if (r[8] != null) provisioningJobs = items(r[8]!);
-      if (r[9] != null) impactSummary = items(r[9]!);
-      if (r[10] != null) connectorCredentials = items(r[10]!);
-      if (r[11] != null) portalUsers = items(r[11]!);
-      if (r[12] != null) agreement = r[12];
-      if (r[13] != null) commercialStatus = r[13];
-      if (r[14] != null) billingEvents = items(r[14]!);
-      if (r[15] != null) websiteAdapter = r[15];
-      if (r[16] != null) paymentProfile = r[16];
       supplementalLoading = false;
       supplementalError = errors.isEmpty
           ? null
-          : 'Some secondary services timed out or are temporarily unavailable. Loaded data remains usable.';
+          : 'Some secondary services are temporarily unavailable. Available sections were loaded independently; missing sections will show an empty or unavailable state instead of blocking the page.';
     });
   }
 
   Future<void> load() async {
-    if (mounted) setState(() { loading = true; error = null; });
+    final hasPrimary = '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
+    if (mounted) setState(() { loading = !hasPrimary; error = null; });
     final id = '${partner['id']}';
+    if (hasPrimary) {
+      _scrollToInitialSection();
+      unawaited(_loadSupplementary());
+    }
     try {
-      final core = await widget.api.get('/api/v1/partners/$id', force: true);
+      final core = await widget.api.get('/api/v1/partners/$id', maxAge: const Duration(seconds: 15));
       if (!mounted) return;
       setState(() { partner = core; loading = false; });
       _scrollToInitialSection();
-      unawaited(_loadSupplementary());
+      if (!hasPrimary) unawaited(_loadSupplementary());
     } catch (e) {
-      if (mounted) setState(() { error = e.toString(); loading = false; supplementalLoading = false; });
+      if (mounted) {
+        setState(() {
+          error = hasPrimary ? null : e.toString();
+          supplementalError ??= 'The latest partner master-data refresh failed. The already loaded partner record remains usable.';
+          loading = false;
+          if (!hasPrimary) supplementalLoading = false;
+        });
+      }
     }
   }
 
@@ -5449,7 +5455,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (supplementalLoading) ...[
-                        const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+                        const _MessageCard(
+                          icon: Icons.sync_rounded,
+                          title: 'Secondary data is loading',
+                          message: 'The partner workspace is usable now. Billing, modules, impact and environment sections are loading independently.',
+                        ),
                         const SizedBox(height: 12),
                       ],
                       if (supplementalError != null) ...[
