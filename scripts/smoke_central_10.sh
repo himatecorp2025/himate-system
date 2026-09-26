@@ -111,15 +111,29 @@ for group in d["groups"]:
     assert isinstance(group.get("count"),int)
 PY
 
-printf 'CENTRAL-10 Modules + partner-grouped Commercial Matrix...\n'
-assert_fast_read_model "/api/v1/central/modules?perspective=PARTNER&commercial_status=ACTIVE&commercial_limit=120" "Modules / Partner Matrix"
+printf 'CENTRAL-10.1 Modules primary hot registry snapshot...\n'
+assert_fast_read_model "/api/v1/central/modules" "Modules Registry"
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
-registry=d.get("registry") or {}; commercial=d.get("commercial") or {}
-assert isinstance(registry.get("modules"),list)
-assert isinstance(registry.get("topics"),list)
+assert d.get("ready") is True, d
+registry=d.get("registry") or {}
+modules=registry.get("modules") or []
+topics=registry.get("topics") or []
+assert isinstance(modules,list) and len(modules)>0, modules
+assert isinstance(topics,list) and len(topics)>0, topics
 assert isinstance(registry.get("kpis"),dict)
+assert (d.get("meta") or {}).get("delivery")=="MATERIALIZED_HOT_SNAPSHOT"
+assert "commercial" not in d, "Primary Modules payload must not wait for the commercial layer"
+PY
+
+printf 'CENTRAL-10.1 partner-grouped Commercial Matrix secondary snapshot...\n'
+assert_fast_read_model "/api/v1/central/modules/commercial?perspective=PARTNER&commercial_status=ACTIVE&commercial_limit=120" "Modules Commercial / Partner"
+python3 - "$BODY" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+assert d.get("ready") is True, d
+commercial=d.get("commercial") or {}
 assert commercial.get("perspective")=="PARTNER"
 groups=commercial.get("groups") or []
 for group in groups:
@@ -127,8 +141,8 @@ for group in groups:
     assert isinstance(group.get("modules"),list)
 PY
 
-printf 'CENTRAL-10 module-grouped Commercial Matrix...\n'
-assert_fast_read_model "/api/v1/central/modules?perspective=MODULE&commercial_status=ACTIVE&commercial_limit=120" "Module Matrix"
+printf 'CENTRAL-10.1 module-grouped Commercial Matrix secondary snapshot...\n'
+assert_fast_read_model "/api/v1/central/modules/commercial?perspective=MODULE&commercial_status=ACTIVE&commercial_limit=120" "Modules Commercial / Module"
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
@@ -140,11 +154,13 @@ for group in groups:
     assert isinstance(group.get("partners"),list)
 PY
 
-printf 'CENTRAL-10 Packages backend read model and canonical pricing...\n'
-assert_fast_read_model "/api/v1/central/packages" "Packages"
+printf 'CENTRAL-10.1 Packages primary Billing Plans hot snapshot...\n'
+assert_fast_read_model "/api/v1/central/packages" "Packages / Plans"
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
+assert d.get("ready") is True, d
+assert "analytics" not in d and "modules" not in d, "Package cards must not wait for supplementary data"
 plans={p["plan_key"]:p for p in d.get("plans",[])}
 assert plans["STARTER"]["monthly_price"]==990 and plans["STARTER"]["module_limit"]==10
 assert plans["STARTER"]["display_price"]=="$990 + VAT"
@@ -153,6 +169,46 @@ assert plans["BUSINESS"]["display_price"]=="$1,490 + VAT"
 assert plans["FLEX"]["monthly_price"]==2490
 assert plans["FLEX"]["entitlement"]=="Unlimited"
 assert plans["FLEX"]["display_price"]=="$2,490 + VAT"
+assert (d.get("meta") or {}).get("delivery")=="MATERIALIZED_HOT_SNAPSHOT"
+PY
+
+printf 'CENTRAL-10.1 Packages supplementary Catalog + Analytics snapshot...\n'
+assert_fast_read_model "/api/v1/central/packages/supplementary" "Packages / Supplementary"
+python3 - "$BODY" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+assert d.get("ready") is True, d
+assert isinstance(d.get("modules"),list)
+assert isinstance(d.get("analytics"),dict)
+assert isinstance(d.get("modules_ready"),bool)
+assert isinstance(d.get("analytics_ready"),bool)
+PY
+
+printf 'CENTRAL-10.1 process-cold snapshot recovery...\n'
+docker compose restart gateway >/dev/null
+attempt=0
+until curl -fsS "$BASE_URL/api/v1/live" >/dev/null 2>&1; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 60 ]; then
+    echo "Gateway did not recover after restart" >&2
+    exit 1
+  fi
+  sleep 1
+done
+assert_fast_read_model "/api/v1/central/modules" "Modules Registry / cold gateway"
+python3 - "$BODY" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+assert d.get("ready") is True
+assert len((d.get("registry") or {}).get("modules") or [])>0
+assert len((d.get("registry") or {}).get("topics") or [])>0
+PY
+assert_fast_read_model "/api/v1/central/packages" "Packages / cold gateway"
+python3 - "$BODY" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+assert d.get("ready") is True
+assert len(d.get("plans") or [])>=3
 PY
 
 printf 'CENTRAL-10 Finance backend read model...\n'
