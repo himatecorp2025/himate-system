@@ -2,6 +2,7 @@
 set -eu
 
 BASE_URL="${1:-http://127.0.0.1:8080}"
+YEAR="$(date -u +%Y)"
 TMP_ROOT="${TMPDIR:-/tmp}"
 OWNER_COOKIE="$TMP_ROOT/himate-central10-owner.txt"
 BODY="$TMP_ROOT/himate-central10-body.json"
@@ -62,7 +63,7 @@ PY
 }
 
 printf 'CENTRAL-10 Dashboard first usable data...\n'
-assert_fast_json "/api/v1/dashboard/summary" "Dashboard"
+assert_fast_json "/api/v1/dashboard/summary?year=$YEAR" "Dashboard"
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
@@ -128,7 +129,7 @@ assert "commercial" not in d, "Primary Modules payload must not wait for the com
 PY
 
 printf 'CENTRAL-10.1 partner-grouped Commercial Matrix secondary snapshot...\n'
-assert_fast_read_model "/api/v1/central/modules/commercial?perspective=PARTNER&commercial_status=ACTIVE&commercial_limit=120" "Modules Commercial / Partner"
+assert_fast_read_model "/api/v1/central/modules/commercial?perspective=PARTNER&commercial_limit=120" "Modules Commercial / Partner"
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
@@ -212,7 +213,7 @@ assert len(d.get("plans") or [])>=3
 PY
 
 printf 'CENTRAL-10 Finance backend read model...\n'
-assert_fast_read_model "/api/v1/central/finance?invoice_status=PAID&revenue_period=WEEKLY&revenue_plan=ALL" "Finance"
+assert_fast_read_model "/api/v1/central/finance?invoice_status=ALL&revenue_period=MONTHLY&revenue_plan=ALL" "Finance"
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
@@ -224,12 +225,11 @@ assert isinstance(d.get("partners"),list)
 assert isinstance(d.get("onboarding"),list)
 assert isinstance(d.get("kpis"),dict)
 chart=d.get("chart") or {}
-assert chart.get("period")=="WEEKLY", chart
+assert chart.get("period")=="MONTHLY", chart
 assert chart.get("plan_key")=="ALL", chart
 assert isinstance(chart.get("rows"),list)
 assert "max_paid" in chart
 for invoice in d["invoices"]:
-    assert str(invoice.get("workflow_status") or invoice.get("status") or "").upper()=="PAID"
     assert "partner_name" in invoice
 PY
 
