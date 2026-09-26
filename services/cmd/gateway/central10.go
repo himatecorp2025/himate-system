@@ -66,6 +66,9 @@ func (a *app) invalidateCentral10Caches(path string) {
 	case strings.Contains(path, "module"), strings.Contains(path, "catalog"):
 		a.requestDashboardRefresh()
 		a.requestCentralStep3Refresh()
+		// Partners materialization contains catalog-derived module/commercial
+		// enrichment, so module changes must refresh that screen snapshot too.
+		a.requestCentralStep4Refresh()
 	case strings.Contains(path, "billing"), strings.Contains(path, "invoice"), strings.Contains(path, "subscription"):
 		a.requestDashboardRefresh()
 		a.requestCentralStep3Refresh()
@@ -459,8 +462,30 @@ func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor us
 	if defaultView {
 		if snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
 			rawCategories := step4Items(snapshot["categories_raw"])
+			snapshotItems := step4Items(snapshot["items"])
+			visibleItems := make([]map[string]any, 0, len(snapshotItems))
+			for _, raw := range snapshotItems {
+				row := central10CopyMap(raw)
+				if !a.hasPermission(actor, "catalog.read") {
+					delete(row, "active_modules")
+					delete(row, "extra_module_fee")
+				}
+				if !a.hasPermission(actor, "billing.read") {
+					delete(row, "base_service_fee")
+					delete(row, "service_value_30d")
+					delete(row, "currency")
+				}
+				if !a.hasPermission(actor, "health.read") {
+					delete(row, "system_health")
+					delete(row, "platform_version")
+					delete(row, "connector_health")
+					delete(row, "environment_status")
+					delete(row, "provisioning_status")
+				}
+				visibleItems = append(visibleItems, row)
+			}
 			payload := map[string]any{
-				"items":      step4Items(snapshot["items"]),
+				"items":      visibleItems,
 				"categories": central10PartnerCategories(common.RequestLocale(r), rawCategories),
 				"pagination": step4Map(snapshot["pagination"]),
 				"kpis":       step4Map(snapshot["kpis"]),
