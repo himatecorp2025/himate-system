@@ -7038,7 +7038,7 @@ class _FinancePageState extends State<FinancePage> {
       return const Content(
         eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
         title: 'Licensing & Finance',
-        subtitle: 'Loading the latest materialized finance snapshot.',
+        subtitle: 'Loading the latest finance snapshot.',
         child: _BrandLoading(),
       );
     }
