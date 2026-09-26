@@ -128,8 +128,10 @@ dashboard_end = gateway_main.find("\nfunc ", dashboard_start + 1)
 dashboard_body = gateway_main[dashboard_start:dashboard_end] if dashboard_start >= 0 and dashboard_end > dashboard_start else ""
 check("3*time.Second" not in dashboard_body,
       "Central-10.1 Dashboard still allows a 3-second live read")
-check("context.WithTimeout(r.Context(),central10ReadBudget)" in dashboard_body,
-      "Central-10.1 Dashboard is not aligned to the Central backend read budget")
+check("context.WithTimeout(" not in dashboard_body,
+      "Central-10.1 Dashboard request path still waits on a live backend timeout")
+check("dashboardSnapshotForRead" in dashboard_body,
+      "Central-10.1 Dashboard does not serve the materialized hot snapshot")
 check("force: loadCategories" not in frontend,
       "Central-10.1 Partners first mount still bypasses warm cache/inflight data")
 check("onRefresh: applyModel" in frontend,
