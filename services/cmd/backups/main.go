@@ -98,8 +98,12 @@ func main() {
 	}
 	platformURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	parsedPlatformURL, parseErr := url.Parse(platformURL)
+	if parseErr != nil || parsedPlatformURL == nil {
+		log.Error("platform database URL", "error", "DATABASE_URL is invalid")
+		os.Exit(1)
+	}
 	platformDBName := strings.TrimPrefix(parsedPlatformURL.Path, "/")
-	if parseErr != nil || strings.TrimSpace(platformDBName) == "" {
+	if strings.TrimSpace(platformDBName) == "" {
 		log.Error("platform database URL", "error", "DATABASE_URL must include a database name")
 		os.Exit(1)
 	}
