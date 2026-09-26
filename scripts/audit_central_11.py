@@ -35,12 +35,14 @@ for token in [
     "centralPartnersPresetPath(lifecycle: 'PROSPECT')",
     "centralPartnersPresetPath(reference: true)",
     "centralFinancePath(invoiceStatus: status)",
-    "targets.add('/api/v1/system-health/snapshot')",
-    "targets.add('/api/v1/provisioning/jobs')",
-    "targets.add('/api/v1/environments')",
-    "targets.add('/api/v1/backups/summary')",
+    "'/api/v1/system-health/snapshot'",
+    "'/api/v1/provisioning/jobs'",
+    "'/api/v1/environments'",
+    "'/api/v1/backups/summary'",
 ]:
     check(token in frontend, f"first-click prewarm contract missing: {token}")
+check("primaryTargets" in frontend and "deferredTargets" in frontend,
+      "Central prewarm tiers are missing")
 
 for class_name in [
     "class _PartnersPageState",
