@@ -50,8 +50,17 @@ class CMSSectionDraft {
 }
 
 class WebsiteMarketingPage extends StatefulWidget {
-  const WebsiteMarketingPage({required this.api, super.key});
+  const WebsiteMarketingPage({
+    required this.api,
+    this.canCms = true,
+    this.canContact = true,
+    this.canConnections = true,
+    super.key,
+  });
   final Api api;
+  final bool canCms;
+  final bool canContact;
+  final bool canConnections;
 
   @override
   State<WebsiteMarketingPage> createState() => _WebsiteMarketingPageState();
@@ -67,10 +76,11 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   @override
   void initState() {
     super.initState();
-    load();
+    if (widget.canCms) load();
   }
 
   Future<void> load() async {
+    if (!widget.canCms) return;
     if (mounted) setState(() => error = null);
     final failures = <String>[];
 
@@ -584,9 +594,12 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  SizedBox(width: width, child: hubCard(key: 'design', title: 'Design Guide', subtitle: 'Brand assets, color system, typography, layout family, real viewport preview and Active Brand publish.', icon: Icons.palette_outlined, metric: 'BRAND')),
-                  SizedBox(width: width, child: hubCard(key: 'pages', title: 'CMS Pages', subtitle: 'Versioned public page content with independent draft, preview, publish and rollback history.', icon: Icons.web_outlined, metric: '${pages.length} PAGES')),
-                  SizedBox(width: width, child: hubCard(key: 'media', title: 'Media Library', subtitle: 'Checksum-backed images and story video assets referenced by stable CMS asset IDs.', icon: Icons.perm_media_outlined, metric: '${media.length} ASSETS')),
+                  if (widget.canCms)
+                    SizedBox(width: width, child: hubCard(key: 'design', title: 'Design Guide', subtitle: 'Brand assets, color system, typography, layout family, real viewport preview and Active Brand publish.', icon: Icons.palette_outlined, metric: 'BRAND')),
+                  if (widget.canCms)
+                    SizedBox(width: width, child: hubCard(key: 'pages', title: 'CMS Pages', subtitle: 'Versioned public page content with independent draft, preview, publish and rollback history.', icon: Icons.web_outlined, metric: '${pages.length} PAGES')),
+                  if (widget.canCms)
+                    SizedBox(width: width, child: hubCard(key: 'media', title: 'Media Library', subtitle: 'Checksum-backed images and story video assets referenced by stable CMS asset IDs.', icon: Icons.perm_media_outlined, metric: '${media.length} ASSETS')),
                 ],
               );
             },
@@ -604,8 +617,10 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  SizedBox(width: width, child: hubCard(key: 'seo', title: 'SEO & Keywords', subtitle: 'Bilingual metadata, page keyword coverage, Open Graph and structured discovery controls.', icon: Icons.travel_explore_outlined, metric: 'SEO')),
-                  SizedBox(width: width, child: hubCard(key: 'leads', title: 'Customer Inbox', subtitle: 'Website contact inquiries and customer follow-up remain a dedicated marketing operations surface.', icon: Icons.mark_email_unread_outlined, metric: 'INBOX')),
+                  if (widget.canCms)
+                    SizedBox(width: width, child: hubCard(key: 'seo', title: 'SEO & Keywords', subtitle: 'Bilingual metadata, page keyword coverage, Open Graph and structured discovery controls.', icon: Icons.travel_explore_outlined, metric: 'SEO')),
+                  if (widget.canContact)
+                    SizedBox(width: width, child: hubCard(key: 'leads', title: 'Customer Inbox', subtitle: 'Website contact inquiries and customer follow-up remain a dedicated marketing operations surface.', icon: Icons.mark_email_unread_outlined, metric: 'INBOX')),
                 ],
               );
             },
@@ -627,7 +642,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  SizedBox(width: width, child: hubCard(key: 'connections', title: 'Partner Data Connections', subtitle: 'Connection status, last successful sync, last error and real integrations for every partner.', icon: Icons.hub_outlined, metric: 'PARTNERS')),
+                  if (widget.canConnections)
+                    SizedBox(width: width, child: hubCard(key: 'connections', title: 'Partner Data Connections', subtitle: 'Connection status, last successful sync, last error and real integrations for every partner.', icon: Icons.hub_outlined, metric: 'PARTNERS')),
                 ],
               );
             },
