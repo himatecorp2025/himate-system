@@ -342,6 +342,57 @@ func (a *app) central10ReadModel(w http.ResponseWriter, r *http.Request, actor u
 	}
 }
 
+func central10PartnerCategories(locale string, remote []map[string]any) []map[string]any {
+	type categorySeed struct {
+		id, en, hu, slug string
+	}
+	seeds := []categorySeed{
+		{"cat_001", "Classical Music", "Klasszikus zene", "classical-music"},
+		{"cat_002", "Fine Art", "Képzőművészet", "fine-art"},
+		{"cat_003", "Gallery", "Galéria", "gallery"},
+		{"cat_004", "Theatre", "Színház", "theatre"},
+		{"cat_005", "Cultural Organization", "Kulturális szervezet", "cultural-organization"},
+		{"cat_006", "Other", "Egyéb", "other"},
+	}
+	hu := strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "hu")
+	byID := make(map[string]map[string]any, len(seeds)+len(remote))
+	order := make(map[string]int, len(seeds))
+	for i, seed := range seeds {
+		name := seed.en
+		if hu { name = seed.hu }
+		byID[seed.id] = map[string]any{
+			"id": seed.id, "name": name, "name_en": seed.en, "name_hu": seed.hu,
+			"slug": seed.slug, "system": true,
+		}
+		order[seed.id] = i
+	}
+	for _, raw := range remote {
+		id := central10String(raw["id"])
+		if id == "" { continue }
+		row := central10CopyMap(raw)
+		if central10String(row["name"]) == "" {
+			if hu {
+				row["name"] = row["name_hu"]
+			} else {
+				row["name"] = row["name_en"]
+			}
+		}
+		byID[id] = row
+	}
+	out := make([]map[string]any, 0, len(byID))
+	for _, seed := range seeds {
+		out = append(out, byID[seed.id])
+		delete(byID, seed.id)
+	}
+	extra := make([]map[string]any, 0, len(byID))
+	for _, row := range byID { extra = append(extra, row) }
+	sort.Slice(extra, func(i, j int) bool {
+		return strings.ToLower(central10String(extra[i]["name"])) < strings.ToLower(central10String(extra[j]["name"]))
+	})
+	out = append(out, extra...)
+	return out
+}
+
 func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
@@ -492,9 +543,10 @@ func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor us
 		recordTotal = partners.Total
 	}
 
+	mergedCategories := central10PartnerCategories(common.RequestLocale(r), categories.Items)
 	payload := map[string]any{
 		"items": partners.Items,
-		"categories": categories.Items,
+		"categories": mergedCategories,
 		"pagination": map[string]any{
 			"count": partners.Count, "total": partners.Total, "limit": partners.Limit,
 			"offset": partners.Offset, "has_more": partners.HasMore,
