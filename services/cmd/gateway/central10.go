@@ -39,6 +39,7 @@ func (a *app) invalidateCentral10Caches() {
 	// background refreshes. Mutations must never blank a Central screen.
 	a.requestDashboardRefresh()
 	a.requestCentralStep3Refresh()
+	a.requestCentralStep4Refresh()
 }
 
 func central10CacheKey(actor user, r *http.Request) string {
