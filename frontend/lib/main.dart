@@ -863,7 +863,7 @@ class PartnerRouteLoader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
-      future: api.get('/api/v1/partners/$partnerId', maxAge: const Duration(seconds: 20)),
+      future: api.get('/api/v1/central/partners/$partnerId', maxAge: const Duration(seconds: 5)),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
           return const Content(
@@ -895,7 +895,9 @@ class PartnerRouteLoader extends StatelessWidget {
         }
         return PartnerWorkspace(
           api: api,
-          partner: snapshot.data!,
+          partner: snapshot.data!['partner'] is Map
+              ? Map<String, dynamic>.from(snapshot.data!['partner'] as Map)
+              : <String, dynamic>{},
           initialSection: initialSection,
           onBack: () => Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false),
         );
