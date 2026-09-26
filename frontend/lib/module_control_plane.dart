@@ -1690,7 +1690,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 _FilterSurface(
                   child: LayoutBuilder(builder: (context, constraints) {
                     final search = TextField(
-                      onChanged: (value) => setState(() => query = value),
+                      onChanged: (value) {
+                        setState(() => query = value);
+                        _scheduleRegistryReload();
+                      },
                       decoration: InputDecoration(
                         hintText: uiLiteral('Search modules...'),
                         prefixIcon: const Icon(Icons.search_rounded),
@@ -1704,7 +1707,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         for (final value in moduleTypes)
                           DropdownMenuItem(value: value, child: LText(uiLiteral(_humanize(value)))),
                       ],
-                      onChanged: (value) => setState(() => typeFilter = value ?? 'ALL'),
+                      onChanged: (value) {
+                        setState(() => typeFilter = value ?? 'ALL');
+                        unawaited(load());
+                      },
                     );
                     if (constraints.maxWidth < 760) {
                       return Column(children: [search, const SizedBox(height: 10), type]);
@@ -1771,7 +1777,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 _FilterSurface(
                   child: LayoutBuilder(builder: (context, constraints) {
                     final search = TextField(
-                      onChanged: (value) => setState(() { commercialQuery = value; commercialShown = 120; }),
+                      onChanged: (value) {
+                        setState(() { commercialQuery = value; commercialShown = 120; });
+                        _scheduleCommercialReload();
+                      },
                       decoration: InputDecoration(hintText: uiLiteral('Search partner or module...'), prefixIcon: const Icon(Icons.search_rounded)),
                     );
                     final partner = DropdownButtonFormField<String>(
@@ -1782,7 +1791,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         for (final item in partners)
                           DropdownMenuItem(value: s(item['id']), child: LText(partnerName(s(item['id'])))),
                       ],
-                      onChanged: (value) => setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; }),
+                      onChanged: (value) {
+                        setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; });
+                        unawaited(load());
+                      },
                     );
                     final module = DropdownButtonFormField<String>(
                       value: commercialModuleFilter,
@@ -1792,7 +1804,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         for (final item in modules)
                           DropdownMenuItem(value: s(item['key']), child: LText(moduleLabelForLocale(item))),
                       ],
-                      onChanged: (value) => setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; }),
+                      onChanged: (value) {
+                        setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; });
+                        unawaited(load());
+                      },
                     );
                     final status = DropdownButtonFormField<String>(
                       value: commercialStatusFilter,
@@ -1803,7 +1818,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         DropdownMenuItem(value: 'NOT_LICENSED', child: LText(uiLiteral('Not licensed'))),
                         DropdownMenuItem(value: 'MAINTENANCE', child: LText(uiLiteral('Maintenance'))),
                       ],
-                      onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
+                      onChanged: (value) {
+                        setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; });
+                        unawaited(load());
+                      },
                     );
                     final perspective = Wrap(
                       spacing: 8,
@@ -1812,12 +1830,18 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         ChoiceChip(
                           selected: commercialPerspective == 'PARTNER',
                           label: LText(uiLiteral('View by partner')),
-                          onSelected: (_) => setState(() => commercialPerspective = 'PARTNER'),
+                          onSelected: (_) {
+                            setState(() { commercialPerspective = 'PARTNER'; commercialShown = 120; });
+                            unawaited(load());
+                          },
                         ),
                         ChoiceChip(
                           selected: commercialPerspective == 'MODULE',
                           label: LText(uiLiteral('View by module')),
-                          onSelected: (_) => setState(() => commercialPerspective = 'MODULE'),
+                          onSelected: (_) {
+                            setState(() { commercialPerspective = 'MODULE'; commercialShown = 120; });
+                            unawaited(load());
+                          },
                         ),
                       ],
                     );
