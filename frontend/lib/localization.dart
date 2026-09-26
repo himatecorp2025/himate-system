@@ -825,7 +825,6 @@ class HimateI18n {
     'SUSPENDED': 'FELFÜGGESZTVE',
     'TESTING': 'TESZTELÉS',
     'LIVE': 'ÉLES',
-    'Export CSV': 'CSV exportálása',
     'Export PDF': 'PDF exportálása',
     'No module entitlement': 'Nincs moduljogosultság',
     'Secondary data is loading': 'A másodlagos adatok betöltése folyamatban',
