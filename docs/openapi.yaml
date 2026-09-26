@@ -948,6 +948,90 @@ paths:
       responses:
         "200": {description: Dashboard KPI, analytics, trend and permission-filtered activity snapshot}
         "400": {description: Invalid year}
+  /api/v1/central/partners:
+    get:
+      tags: [Partners]
+      summary: Central-10 backend-first partner portfolio read model
+      description: >
+        Returns ready-to-render partner rows, category options, pagination, KPI counts
+        and permitted service enrichment in one bounded Go read-model response.
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 24}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: lifecycle, in: query, schema: {type: string}}
+        - {name: health, in: query, schema: {type: string}}
+        - {name: reference, in: query, schema: {type: boolean}}
+      responses:
+        "200": {description: Backend-first partner screen model with meta performance envelope}
+        "502": {description: Authoritative partner read model unavailable and no stale snapshot exists}
+  /api/v1/central/partners/{partnerId}:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Partners]
+      summary: Central-10 complete Partner Workspace read model
+      description: >
+        Aggregates the permitted partner, catalog, billing, environment, provisioning,
+        impact, connector, payment and Partner Portal sections in Go so Flutter receives
+        one presentation model instead of orchestrating domain APIs.
+      responses:
+        "200": {description: Complete or explicitly partial Partner Workspace presentation model}
+        "502": {description: Primary partner record unavailable and no stale snapshot exists}
+  /api/v1/central/modules:
+    get:
+      tags: [Modules]
+      summary: Central-10 module registry and grouped commercial matrix read model
+      parameters:
+        - {name: registry_q, in: query, schema: {type: string}}
+        - {name: registry_group, in: query, schema: {type: string}}
+        - {name: registry_type, in: query, schema: {type: string}}
+        - {name: registry_preset, in: query, schema: {type: string}}
+        - {name: commercial_q, in: query, schema: {type: string}}
+        - {name: commercial_partner, in: query, schema: {type: string}}
+        - {name: commercial_module, in: query, schema: {type: string}}
+        - {name: commercial_status, in: query, schema: {type: string, enum: [ALL, ACTIVE, NOT_LICENSED, MAINTENANCE]}}
+        - {name: perspective, in: query, schema: {type: string, enum: [PARTNER, MODULE], default: PARTNER}}
+        - {name: commercial_limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 120}}
+      responses:
+        "200": {description: Backend-filtered registry, topics, KPI model and partner- or module-grouped commercial matrix}
+        "502": {description: Core catalog read model unavailable and no stale snapshot exists}
+  /api/v1/central/packages:
+    get:
+      tags: [Billing]
+      summary: Central-10 canonical package read model
+      description: >
+        Returns canonical Starter, Business and Premium definitions, eligible modules
+        and package analytics. Pricing and entitlement authority remains in Go/Billing.
+      responses:
+        "200": {description: Canonical package definitions and analytics}
+        "502": {description: Package definition source unavailable and no stale snapshot exists}
+  /api/v1/central/finance:
+    get:
+      tags: [Billing]
+      summary: Central-10 Finance presentation read model
+      description: >
+        Aggregates the billing profile, ledger overview, invoices, partner labels and
+        finance KPIs in Go for one-screen Flutter rendering.
+      responses:
+        "200": {description: Complete or explicitly partial Finance read model}
+        "502": {description: Core Finance sources unavailable and no stale snapshot exists}
+  /api/v1/central/impact:
+    get:
+      tags: [Impact]
+      summary: Central-10 Impact, Evidence and Reports presentation read model
+      parameters:
+        - {name: evidence_query, in: query, schema: {type: string}}
+        - {name: evidence_type, in: query, schema: {type: string}}
+        - {name: evidence_status, in: query, schema: {type: string}}
+        - {name: evidence_period_start, in: query, schema: {type: string, format: date}}
+        - {name: evidence_period_end, in: query, schema: {type: string, format: date}}
+        - {name: evidence_limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 12}}
+        - {name: evidence_offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        "200": {description: Impact definitions, summary, backend-filtered Evidence and report list}
+        "502": {description: Impact read model unavailable and no stale snapshot exists}
   /api/v1/search:
     get:
       tags: [Dashboard]
