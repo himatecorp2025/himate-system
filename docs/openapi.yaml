@@ -1253,6 +1253,50 @@ paths:
       responses:
         "200": {description: Updated partner}
         "409": {description: Invalid lifecycle transition or uniqueness conflict}
+  /api/v1/partners/{partnerId}/seed-test-fixture:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    post:
+      tags: [Partners]
+      summary: Generate the Golden Test Partner QA fixture
+      description: >
+        HIMATE System Owner-only QA operation. The target partner must already
+        have test_partner=true. Creates deterministic fictional six-month
+        piano-service master, commercial, invoice, Impact, Evidence and report
+        data. Test Partner values remain excluded from platform aggregates.
+      responses:
+        "200": {description: Golden Test Partner fixture generated}
+        "403": {description: System Owner or Golden Test Partner requirement not met}
+        "404": {description: Partner not found}
+  /api/v1/partners/{partnerId}/purge-test-fixture:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    post:
+      tags: [Partners]
+      summary: Permanently factory-reset a Golden Test Partner
+      description: >
+        HIMATE System Owner-only QA operation. Permanently removes the Golden
+        Test Partner business dataset, generated report objects and partner
+        storage without creating the normal seven-year Compliance Archive.
+        Security audit receipts remain. The operation is blocked if a legal
+        Compliance Archive exists or a Test Partner report is still processing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm_partner_id]
+              properties:
+                confirm_partner_id:
+                  type: string
+                  description: Must exactly match partnerId.
+      responses:
+        "200": {description: Golden Test Partner permanently removed}
+        "400": {description: Exact confirmation is missing}
+        "403": {description: System Owner or Golden Test Partner requirement not met}
+        "409": {description: Test Partner report is still processing}
+        "423": {description: Compliance retention prevents hard purge}
   /api/v1/module-groups:
     get:
       tags: [Modules]
