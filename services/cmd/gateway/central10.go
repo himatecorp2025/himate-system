@@ -327,6 +327,8 @@ func (a *app) central10ReadModel(w http.ResponseWriter, r *http.Request, actor u
 	switch {
 	case r.URL.Path == "/api/v1/central/partners":
 		a.central10Partners(w, r, actor, key)
+	case strings.HasPrefix(r.URL.Path, "/api/v1/central/partners/") && strings.HasSuffix(r.URL.Path, "/modules"):
+		a.central10PartnerModules(w, r, actor, key)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/central/partners/"):
 		a.central10PartnerWorkspace(w, r, actor, key)
 	case r.URL.Path == "/api/v1/central/modules":
@@ -1174,6 +1176,191 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 	common.JSON(w, http.StatusOK, payload)
 }
 
+func central10PartnerModuleSection(module map[string]any) (string, string) {
+	switch central10String(module["group_key"]) {
+	case "finance_invoicing":
+		return "FINANCE_INVOICING", "Finance & Invoicing"
+	case "marketing":
+		return "MARKETING", "Marketing"
+	case "website_events":
+		return "WEBSITE_EVENTS", "Website & Events"
+	default:
+		return "TECHNICAL_OPERATION", "Technical Operation"
+	}
+}
+
+func central10PartnerModuleView(
+	modules []map[string]any,
+	subscriptions []map[string]any,
+	query string,
+	state string,
+) map[string]any {
+	subscriptionByKey := map[string]map[string]any{}
+	for _, item := range subscriptions {
+		key := central10String(item["module_key"])
+		if key != "" { subscriptionByKey[key] = item }
+	}
+
+	query = strings.ToLower(strings.TrimSpace(query))
+	state = strings.ToUpper(strings.TrimSpace(state))
+	switch state {
+	case "ACTIVE", "NOT_LICENSED", "MAINTENANCE":
+	default:
+		state = "ALL"
+	}
+
+	kpis := map[string]any{
+		"total": len(modules),
+		"active": 0,
+		"maintenance": 0,
+		"base_included": 0,
+	}
+	activeKeys := []string{}
+	enriched := make([]map[string]any, 0, len(modules))
+	filtered := make([]map[string]any, 0, len(modules))
+	groupMap := map[string][]map[string]any{
+		"FINANCE_INVOICING": {},
+		"TECHNICAL_OPERATION": {},
+		"MARKETING": {},
+		"WEBSITE_EVENTS": {},
+	}
+
+	for _, raw := range modules {
+		row := central10CopyMap(raw)
+		moduleKey := central10String(row["key"])
+		if subscription := subscriptionByKey[moduleKey]; subscription != nil {
+			row["subscription"] = subscription
+		}
+		moduleState := strings.ToUpper(central10String(row["status"]))
+		switch moduleState {
+		case "ACTIVE":
+			kpis["active"] = central10Int(kpis["active"]) + 1
+			activeKeys = append(activeKeys, moduleKey)
+		case "MAINTENANCE":
+			kpis["maintenance"] = central10Int(kpis["maintenance"]) + 1
+		}
+		if row["included_in_base"] == true {
+			kpis["base_included"] = central10Int(kpis["base_included"]) + 1
+		}
+		enriched = append(enriched, row)
+
+		if state != "ALL" && moduleState != state {
+			continue
+		}
+		if query != "" {
+			haystack := strings.ToLower(strings.Join([]string{
+				central10String(row["label"]),
+				central10String(row["key"]),
+				central10String(row["group_label"]),
+			}, " "))
+			if !strings.Contains(haystack, query) {
+				continue
+			}
+		}
+		filtered = append(filtered, row)
+		sectionKey, _ := central10PartnerModuleSection(row)
+		groupMap[sectionKey] = append(groupMap[sectionKey], row)
+	}
+
+	groupOrder := []string{"FINANCE_INVOICING", "TECHNICAL_OPERATION", "MARKETING", "WEBSITE_EVENTS"}
+	groups := make([]map[string]any, 0, len(groupOrder))
+	for _, key := range groupOrder {
+		label := key
+		if rows := groupMap[key]; len(rows) > 0 {
+			_, label = central10PartnerModuleSection(rows[0])
+		} else {
+			switch key {
+			case "FINANCE_INVOICING": label = "Finance & Invoicing"
+			case "TECHNICAL_OPERATION": label = "Technical Operation"
+			case "MARKETING": label = "Marketing"
+			case "WEBSITE_EVENTS": label = "Website & Events"
+			}
+		}
+		groups = append(groups, map[string]any{
+			"key": key,
+			"label": label,
+			"items": groupMap[key],
+			"count": len(groupMap[key]),
+		})
+	}
+
+	return map[string]any{
+		"items": enriched,
+		"filtered_items": filtered,
+		"filtered_count": len(filtered),
+		"groups": groups,
+		"kpis": kpis,
+		"active_module_keys": activeKeys,
+		"query": query,
+		"state": state,
+	}
+}
+
+func central10ProductionEnvironment(environments []map[string]any) map[string]any {
+	for _, environment := range environments {
+		if strings.ToUpper(central10String(environment["kind"])) == "PRODUCTION" {
+			return environment
+		}
+	}
+	return nil
+}
+
+func (a *app) central10PartnerModules(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
+	started := time.Now()
+	if !a.hasPermission(actor, "catalog.read") {
+		common.APIError(w, http.StatusForbidden, "FORBIDDEN", "Catalog read permission required")
+		return
+	}
+	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/central/partners/"), "/")
+	parts := strings.Split(raw, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] != "modules" {
+		common.APIError(w, http.StatusNotFound, "PARTNER_MODULE_VIEW_NOT_FOUND", "Partner module read model not found")
+		return
+	}
+	partnerID := parts[0]
+	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
+	defer cancel()
+
+	type page struct{ Items []map[string]any `json:"items"` }
+	var modules, subscriptions page
+	var moduleErr, subscriptionErr error
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		moduleErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/partners/"+url.PathEscape(partnerID)+"/modules", &modules)
+	}()
+	if a.hasPermission(actor, "billing.read") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			subscriptionErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/partners/"+url.PathEscape(partnerID)+"/subscriptions", &subscriptions)
+		}()
+	}
+	wg.Wait()
+
+	if moduleErr != nil {
+		if stale, ok, _ := central10Cached(cacheKey, false); ok {
+			stale["meta"] = central10Meta(started, "stale", []string{"modules"})
+			w.Header().Set("X-Himate-Cache", "stale")
+			common.JSON(w, http.StatusOK, stale)
+			return
+		}
+		common.APIError(w, http.StatusBadGateway, "PARTNER_MODULES_UNAVAILABLE", "Partner module read model is temporarily unavailable")
+		return
+	}
+
+	unavailable := []string{}
+	if subscriptionErr != nil { unavailable = append(unavailable, "subscriptions") }
+	status := "healthy"; if len(unavailable) > 0 { status = "partial" }
+	view := central10PartnerModuleView(modules.Items, subscriptions.Items, r.URL.Query().Get("q"), r.URL.Query().Get("state"))
+	view["meta"] = central10Meta(started, status, unavailable)
+	central10Store(cacheKey, view)
+	w.Header().Set("X-Himate-Cache", "miss")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-partner-modules;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, http.StatusOK, view)
+}
+
 func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/central/partners/"), "/")
@@ -1248,6 +1435,11 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	}
 	wg.Wait()
 
+	moduleView := central10PartnerModuleView(modules.Items, subscriptions.Items, "", "ALL")
+	productionEnvironment := central10ProductionEnvironment(environments.Items)
+	preferredConnectorEnvironment := "STAGING"
+	if productionEnvironment != nil { preferredConnectorEnvironment = "PRODUCTION" }
+
 	if partner == nil {
 		if stale, ok, _ := central10Cached(cacheKey, false); ok {
 			stale["meta"] = central10Meta(started, "stale", unavailable)
@@ -1262,7 +1454,10 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	status := "healthy"; if len(unavailable) > 0 { status = "partial" }
 	payload := map[string]any{
 		"partner": partner,
-		"modules": modules.Items,
+		"modules": moduleView["items"],
+		"module_view": moduleView,
+		"production_environment": productionEnvironment,
+		"preferred_connector_environment": preferredConnectorEnvironment,
 		"billing": billing,
 		"terms": terms,
 		"license": license,
