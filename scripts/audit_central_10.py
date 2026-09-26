@@ -265,12 +265,12 @@ check('r.URL.Path == "/api/v1/central/finance"' in gateway and
       "Step 4 Finance/Impact hot routes missing")
 check("model['ready'] != true" in frontend,
       "Step 4 Flutter does not preserve Loading != Zero while snapshots warm")
-check("healthCheckPath: /api/v1/health" in render,
-      "Step 4 Render still uses liveness instead of dependency readiness")
-check("healthCheckPath: /api/v1/live" not in render,
-      "Step 4 obsolete Render liveness check survived")
+check("healthCheckPath: /api/v1/live" in render,
+      "Render deploy gate must use process liveness to avoid downstream-readiness deployment deadlocks")
+check("healthCheckPath: /api/v1/health" not in render,
+      "Render deploy gate still blocks on full dependency readiness")
 check("http.StatusServiceUnavailable" in gateway_main and '"readiness": true' in gateway_main,
-      "Step 4 /api/v1/health does not fail closed when dependencies are degraded")
+      "Step 4 /api/v1/health does not remain fail-closed for dependency diagnostics")
 
 # Truthful loading and empty-data behavior.
 for token in [
