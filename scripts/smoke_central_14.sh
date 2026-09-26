@@ -121,7 +121,12 @@ curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/billing/partners/$PARTNER_ID/documents?
 echo ok
 
 printf 'queue target partner restore point... '
-TARGET="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "{"partner_id":"$PARTNER_ID"}" "$BASE_URL/api/v1/backups")"
+TARGET_PAYLOAD="$(python3 - "$PARTNER_ID" <<'PY'
+import json,sys
+print(json.dumps({"partner_id":sys.argv[1]}))
+PY
+)"
+TARGET="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$TARGET_PAYLOAD" "$BASE_URL/api/v1/backups")"
 TARGET_POINT="$(printf '%s' "$TARGET" | json_field id)"
 test -n "$TARGET_POINT"
 echo "$TARGET_POINT"
