@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -60,6 +61,102 @@ func dashboardFreshBlock(raw map[string]any) map[string]any {
 		block["status"] = "healthy"
 	}
 	return block
+}
+
+
+func dashboardUSStateName(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	upper := strings.ToUpper(value)
+	names := map[string]string{
+		"AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California","CO":"Colorado",
+		"CT":"Connecticut","DE":"Delaware","FL":"Florida","GA":"Georgia","HI":"Hawaii","ID":"Idaho",
+		"IL":"Illinois","IN":"Indiana","IA":"Iowa","KS":"Kansas","KY":"Kentucky","LA":"Louisiana",
+		"ME":"Maine","MD":"Maryland","MA":"Massachusetts","MI":"Michigan","MN":"Minnesota",
+		"MS":"Mississippi","MO":"Missouri","MT":"Montana","NE":"Nebraska","NV":"Nevada",
+		"NH":"New Hampshire","NJ":"New Jersey","NM":"New Mexico","NY":"New York",
+		"NC":"North Carolina","ND":"North Dakota","OH":"Ohio","OK":"Oklahoma","OR":"Oregon",
+		"PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina","SD":"South Dakota",
+		"TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont","VA":"Virginia",
+		"WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming","DC":"District of Columbia",
+	}
+	if name, ok := names[upper]; ok {
+		return name
+	}
+	for _, name := range names {
+		if strings.EqualFold(name, value) {
+			return name
+		}
+	}
+	return value
+}
+
+func dashboardIsUnitedStates(raw string) bool {
+	value := strings.ToUpper(strings.TrimSpace(raw))
+	value = strings.ReplaceAll(value, ".", "")
+	switch value {
+	case "US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA":
+		return true
+	default:
+		return false
+	}
+}
+
+func dashboardPartnerGeo(partners []map[string]any) map[string]any {
+	stateCounts := map[string]int{}
+	rows := make([]map[string]any, 0, len(partners))
+	for _, partner := range partners {
+		if !dashboardIsUnitedStates(central10String(partner["country"])) {
+			continue
+		}
+		state := dashboardUSStateName(central10String(partner["state_region"]))
+		if state == "" {
+			continue
+		}
+		lifecycle := strings.ToUpper(central10String(partner["lifecycle"]))
+		if lifecycle == "LIVE" {
+			stateCounts[state]++
+		}
+		rows = append(rows, map[string]any{
+			"id":         partner["id"],
+			"name":       partner["display_name"],
+			"state":      state,
+			"city":       partner["city"],
+			"joined_at":  partner["created_at"],
+			"lifecycle":  lifecycle,
+			"reference":  partner["reference_partner"],
+		})
+	}
+	states := make([]map[string]any, 0, len(stateCounts))
+	activePartners := 0
+	for state, count := range stateCounts {
+		activePartners += count
+		states = append(states, map[string]any{"state": state, "count": count})
+	}
+	sort.Slice(states, func(i, j int) bool {
+		ci, cj := central10Int(states[i]["count"]), central10Int(states[j]["count"])
+		if ci != cj {
+			return ci > cj
+		}
+		return central10String(states[i]["state"]) < central10String(states[j]["state"])
+	})
+	sort.Slice(rows, func(i, j int) bool {
+		return central10String(rows[i]["joined_at"]) > central10String(rows[j]["joined_at"])
+	})
+	if len(rows) > 50 {
+		rows = rows[:50]
+	}
+	return map[string]any{
+		"available":       true,
+		"status":          "healthy",
+		"country":         "US",
+		"active_states":   len(states),
+		"active_partners": activePartners,
+		"states":          states,
+		"partners":        rows,
+	}
 }
 
 func (a *app) loadDashboardSnapshot(year int) (map[string]any, time.Time, error) {
@@ -219,9 +316,10 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 	var billing map[string]any
 	var impact map[string]any
 	var activity []map[string]any
-	var partnerErr, moduleErr, billingErr, impactErr, activityErr error
+	var geoPartners []map[string]any
+	var partnerErr, moduleErr, billingErr, impactErr, activityErr, geoErr error
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(6)
 	go func() {
 		defer wg.Done()
 		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners?limit=1&offset=0&include_archived=true", &partners)
@@ -241,6 +339,10 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 	go func() {
 		defer wg.Done()
 		activity, activityErr = a.materializeDashboardActivity(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		geoPartners, geoErr = a.central10AllPartners(ctx)
 	}()
 	wg.Wait()
 
@@ -284,6 +386,13 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 		unavailable = append(unavailable, "impact")
 	}
 
+	partnerGeoBlock := dashboardStaleBlock(previous["partner_geo"])
+	if geoErr == nil {
+		partnerGeoBlock = dashboardPartnerGeo(geoPartners)
+	} else {
+		unavailable = append(unavailable, "partner_geo")
+	}
+
 	activityBlock := map[string]any{
 		"items": activity,
 		"count": len(activity),
@@ -311,8 +420,9 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 		"partners": partnerBlock,
 		"modules":  moduleBlock,
 		"billing":  billingBlock,
-		"impact":   impactBlock,
-		"activity": activityBlock,
+		"impact":      impactBlock,
+		"partner_geo": partnerGeoBlock,
+		"activity":    activityBlock,
 		"system": map[string]any{
 			"status":       status,
 			"environment":  a.env,
@@ -360,8 +470,9 @@ func dashboardWarmingSnapshot(year int, env, version string) map[string]any {
 		"partners": dashboardUnavailableBlock(),
 		"modules":  dashboardUnavailableBlock(),
 		"billing":  dashboardUnavailableBlock(),
-		"impact":   dashboardUnavailableBlock(),
-		"activity": map[string]any{"items": []any{}, "count": 0, "source": "IDENTITY_APPEND_ONLY_AUDIT", "status": "warming"},
+		"impact":      dashboardUnavailableBlock(),
+		"partner_geo": dashboardUnavailableBlock(),
+		"activity":    map[string]any{"items": []any{}, "count": 0, "source": "IDENTITY_APPEND_ONLY_AUDIT", "status": "warming"},
 		"system": map[string]any{
 			"status":       "warming",
 			"environment":  env,
@@ -371,7 +482,7 @@ func dashboardWarmingSnapshot(year int, env, version string) map[string]any {
 		"meta": map[string]any{
 			"architecture": "MATERIALIZED_DASHBOARD_SNAPSHOT",
 			"status":       "warming",
-			"unavailable":  []string{"activity", "billing", "impact", "modules", "partners"},
+			"unavailable":  []string{"activity", "billing", "impact", "modules", "partner_geo", "partners"},
 			"generated_at": time.Now().UTC(),
 		},
 	}
