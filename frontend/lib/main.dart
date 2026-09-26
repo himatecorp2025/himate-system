@@ -318,6 +318,11 @@ String centralConnectionsInitialPath() => Uri(
       queryParameters: const <String, String>{'limit': '120', 'offset': '0'},
     ).toString();
 
+String centralAdministrationInitialPath() => Uri(
+      path: '/api/v1/central/administration',
+      queryParameters: const <String, String>{'limit': '200', 'offset': '0'},
+    ).toString();
+
 class Api {
   Api() : client = BrowserClient()..withCredentials = true;
   final BrowserClient client;
@@ -397,6 +402,7 @@ class Api {
       add('/api/v1/central/partners');
       add('/api/v1/central/modules/commercial');
       add('/api/v1/central/connections');
+      add('/api/v1/central/administration');
       addDashboard();
     } else if (path.startsWith('/api/v1/partners') ||
         path.startsWith('/api/v1/partner-categories')) {
@@ -404,6 +410,7 @@ class Api {
       add('/api/v1/partner-categories');
       add('/api/v1/central/partners');
       add('/api/v1/central/modules/commercial');
+      add('/api/v1/central/administration');
       addDashboard();
     } else if (path.startsWith('/api/v1/modules') ||
         path.startsWith('/api/v1/module-groups')) {
@@ -421,6 +428,7 @@ class Api {
       add('/api/v1/central/finance');
       add('/api/v1/central/modules/commercial');
       add('/api/v1/central/partners');
+      add('/api/v1/central/administration');
       addDashboard();
     } else if (path.startsWith('/api/v1/impact') ||
         path.startsWith('/api/v1/evidence') ||
@@ -436,6 +444,7 @@ class Api {
       add('/api/v1/contact/inquiries');
     } else if (path.startsWith('/api/v1/backups')) {
       add('/api/v1/backups');
+      add('/api/v1/central/administration');
       add('/api/v1/system-health');
     } else if (path.startsWith('/api/v1/provisioning') ||
         path.startsWith('/api/v1/environments') ||
@@ -448,6 +457,7 @@ class Api {
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
       add('/api/v1/audit');
+      add('/api/v1/central/administration');
     } else if (path.startsWith('/api/v1/notifications')) {
       add('/api/v1/notifications');
     } else if (path.startsWith('/api/v1/auth')) {
@@ -724,6 +734,9 @@ class _HimateAppState extends State<HimateApp> {
     }
     if (_can('connectors.read')) {
       deferredTargets.add(centralConnectionsInitialPath());
+    }
+    if (_can('administration.read')) {
+      deferredTargets.add(centralAdministrationInitialPath());
     }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
       deferredTargets.add('/api/v1/system-health/snapshot');
