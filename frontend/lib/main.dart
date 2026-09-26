@@ -148,12 +148,13 @@ ThemeData buildBrandTheme() {
     ),
     cardTheme: CardThemeData(
       color: brandWhite,
-      elevation: 0,
+      elevation: 2,
       margin: EdgeInsets.zero,
-      shadowColor: brandNavy.withOpacity(.08),
+      shadowColor: brandNavy.withOpacity(.14),
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: brandMist),
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0x26071426), width: 1.2),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -8801,7 +8802,8 @@ class _FilterSurface extends StatelessWidget {
       decoration: BoxDecoration(
         color: brandWhite,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: brandMist),
+        border: Border.all(color: brandNavy.withOpacity(.14), width: 1.15),
+        boxShadow: [BoxShadow(color: brandNavy.withOpacity(.055), blurRadius: 14, offset: const Offset(0, 5))],
       ),
       child: child,
     );
@@ -8878,8 +8880,8 @@ class _PartnerCardState extends State<PartnerCard> {
         decoration: BoxDecoration(
           color: brandWhite,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: hover ? brandGold.withOpacity(.42) : brandMist),
-          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .08 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
+          border: Border.all(color: hover ? brandGold.withOpacity(.58) : brandNavy.withOpacity(.16), width: hover ? 1.5 : 1.2),
+          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
         ),
         child: Material(
           color: Colors.transparent,
