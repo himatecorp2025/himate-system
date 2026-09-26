@@ -254,10 +254,17 @@ String centralDashboardInitialPath() => Uri(
       queryParameters: <String, String>{'year': '${DateTime.now().toUtc().year}'},
     ).toString();
 
-String centralPartnersInitialPath() => Uri(
-      path: '/api/v1/central/partners',
-      queryParameters: const <String, String>{'limit': '24', 'offset': '0'},
-    ).toString();
+String centralPartnersPresetPath({
+  String lifecycle = 'ALL',
+  bool reference = false,
+}) {
+  final query = <String, String>{'limit': '24', 'offset': '0'};
+  if (lifecycle != 'ALL') query['lifecycle'] = lifecycle;
+  if (reference) query['reference'] = 'true';
+  return Uri(path: '/api/v1/central/partners', queryParameters: query).toString();
+}
+
+String centralPartnersInitialPath() => centralPartnersPresetPath();
 
 String centralModulesInitialPath() => '/api/v1/central/modules';
 
@@ -274,14 +281,20 @@ String centralPackagesInitialPath() => '/api/v1/central/packages';
 String centralPackagesSupplementaryInitialPath() =>
     '/api/v1/central/packages/supplementary';
 
-String centralFinanceInitialPath() => Uri(
+String centralFinancePath({
+  String invoiceStatus = 'ALL',
+  String revenuePeriod = 'MONTHLY',
+  String revenuePlan = 'ALL',
+}) => Uri(
       path: '/api/v1/central/finance',
-      queryParameters: const <String, String>{
-        'invoice_status': 'ALL',
-        'revenue_period': 'MONTHLY',
-        'revenue_plan': 'ALL',
+      queryParameters: <String, String>{
+        'invoice_status': invoiceStatus,
+        'revenue_period': revenuePeriod,
+        'revenue_plan': revenuePlan,
       },
     ).toString();
+
+String centralFinanceInitialPath() => centralFinancePath();
 
 String centralImpactInitialPath() => Uri(
       path: '/api/v1/central/impact',
@@ -619,6 +632,11 @@ class _HimateAppState extends State<HimateApp> {
     }
     if (_can('partners.read')) {
       targets.add(centralPartnersInitialPath());
+      // The portfolio KPI cards are common first interactions. Warm their
+      // exact server-side filter keys so the first click is cache-backed too.
+      targets.add(centralPartnersPresetPath(lifecycle: 'LIVE'));
+      targets.add(centralPartnersPresetPath(lifecycle: 'PROSPECT'));
+      targets.add(centralPartnersPresetPath(reference: true));
     }
     if (_can('catalog.read')) {
       targets.add(centralModulesInitialPath());
@@ -628,9 +646,20 @@ class _HimateAppState extends State<HimateApp> {
       targets.add(centralPackagesInitialPath());
       targets.add(centralPackagesSupplementaryInitialPath());
       targets.add(centralFinanceInitialPath());
+      // Finance KPI/status cards use distinct cache keys. Prewarm the common
+      // first-click views against the same hot snapshot read model.
+      for (final status in const ['DRAFT', 'APPROVED', 'SENT', 'PAID']) {
+        targets.add(centralFinancePath(invoiceStatus: status));
+      }
     }
     if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
       targets.add(centralImpactInitialPath());
+    }
+    if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
+      targets.add('/api/v1/system-health/snapshot');
+      targets.add('/api/v1/provisioning/jobs');
+      targets.add('/api/v1/environments');
+      targets.add('/api/v1/backups/summary');
     }
 
     final path = Uri.base.path;
@@ -2977,10 +3006,24 @@ class _PartnersPageState extends State<PartnersPage> {
 
   Uri _centralPartnerUri() {
     final params = _partnerQueryParameters();
-    if (params.length == 2 &&
-        params['limit'] == '$pageSize' &&
-        params['offset'] == '0') {
-      return Uri.parse(centralPartnersInitialPath());
+    final defaultPage = params['limit'] == '$pageSize' && params['offset'] == '0';
+    final onlyLifecycle = defaultPage &&
+        query.trim().isEmpty &&
+        categoryFilter == 'ALL' &&
+        healthFilter == 'ALL' &&
+        !referenceOnly &&
+        (lifecycleFilter == 'ALL' || lifecycleFilter == 'LIVE' || lifecycleFilter == 'PROSPECT');
+    if (onlyLifecycle) {
+      return Uri.parse(centralPartnersPresetPath(lifecycle: lifecycleFilter));
+    }
+    final onlyReference = defaultPage &&
+        query.trim().isEmpty &&
+        categoryFilter == 'ALL' &&
+        lifecycleFilter == 'ALL' &&
+        healthFilter == 'ALL' &&
+        referenceOnly;
+    if (onlyReference) {
+      return Uri.parse(centralPartnersPresetPath(reference: true));
     }
     return Uri(path: '/api/v1/central/partners', queryParameters: params);
   }
@@ -6537,17 +6580,11 @@ class _FinancePageState extends State<FinancePage> {
     load();
   }
 
-  String _financePath() {
-    if (invoiceFilter == 'ALL' && revenuePeriod == 'MONTHLY' && revenuePlan == 'ALL') {
-      return centralFinanceInitialPath();
-    }
-    final params = <String, String>{
-      'invoice_status': invoiceFilter,
-      'revenue_period': revenuePeriod,
-      'revenue_plan': revenuePlan,
-    };
-    return Uri(path: '/api/v1/central/finance', queryParameters: params).toString();
-  }
+  String _financePath() => centralFinancePath(
+        invoiceStatus: invoiceFilter,
+        revenuePeriod: revenuePeriod,
+        revenuePlan: revenuePlan,
+      );
 
   Future<void> load({bool force = false}) async {
     final path = _financePath();
