@@ -341,6 +341,11 @@ func (a *app) dashboardSnapshotForRead(year int) (map[string]any, time.Time, boo
 		if len(payload) > 0 {
 			return payload, updated, time.Now().After(expires)
 		}
+		// bootstrapDashboardSnapshot already attempted the persisted snapshot before
+		// the HTTP server started. A current-year request must therefore never fall
+		// back to synchronous database I/O: return the warming contract immediately
+		// while the background materializer builds the first hot snapshot.
+		return nil, time.Time{}, true
 	}
 	payload, updated, err := a.loadDashboardSnapshot(year)
 	if err != nil {
