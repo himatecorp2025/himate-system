@@ -2534,10 +2534,10 @@ class DashboardPage extends StatelessWidget {
             title: uiLiteral('Welcome to HIMATE System'),
             subtitle: uiLiteral('The Go read model is assembling the first usable dashboard payload.'),
             child: ResponsiveKpiGrid(children: [
-              Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: const Color(0xFF0B5DA8)),
-              Kpi(label: uiLiteral('Active Programs'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.description_outlined, accent: brandNavy),
-              Kpi(label: uiLiteral('Revenue (YTD)'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.bar_chart_rounded, accent: brandGold),
-              Kpi(label: uiLiteral('People Reached'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_rounded, accent: brandNavy),
+              Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: const Color(0xFF0B5DA8), onTap: canNavigate(1) ? () => onNavigate(1) : null),
+              Kpi(label: uiLiteral('Active Programs'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.description_outlined, accent: brandNavy, onTap: canNavigate(2) ? () => onNavigate(2) : null),
+              Kpi(label: uiLiteral('Revenue (YTD)'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.bar_chart_rounded, accent: brandGold, onTap: canNavigate(4) ? () => onNavigate(4) : null),
+              Kpi(label: uiLiteral('People Reached'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_rounded, accent: brandNavy, onTap: canNavigate(5) ? () => onNavigate(5) : null),
             ]),
           );
         }
@@ -2554,14 +2554,20 @@ class DashboardPage extends StatelessWidget {
         final billing=Map<String,dynamic>.from(d['billing']??<String,dynamic>{});
         final impact=Map<String,dynamic>.from(d['impact']??<String,dynamic>{});
         final activity=Map<String,dynamic>.from(d['activity']??<String,dynamic>{});
+        final partnersAvailable=p['available']!=false;
+        final modulesAvailable=m['available']!=false;
+        final billingAvailable=billing['available']!=false;
+        final impactAvailable=impact['available']!=false;
         final billingAuthorized=billing['authorized']!=false;
         final impactAuthorized=impact['authorized']!=false;
         final impactHasData=impact['has_data']==true;
         final revenueRows=items(billing);
-        String revenueValue=billingAuthorized?'0':uiLiteral('Restricted');
-        String revenueNote=billingAuthorized
-            ?uiLiteral('No paid revenue recorded this year')
-            :uiLiteral('Billing permission required');
+        String revenueValue=!billingAvailable?'—':billingAuthorized?'0':uiLiteral('Restricted');
+        String revenueNote=!billingAvailable
+            ?uiLiteral('Loading authoritative value')
+            :billingAuthorized
+                ?uiLiteral('No paid revenue recorded this year')
+                :uiLiteral('Billing permission required');
         if(billingAuthorized&&revenueRows.length==1){
           final row=revenueRows.first;
           final currency='${row['currency']??''}';
@@ -2573,11 +2579,17 @@ class DashboardPage extends StatelessWidget {
               .map((row)=>_dashboardMoney('${row['currency']??''}',row['revenue_ytd']))
               .join(' · ');
         }
-        final people=impact['people_reached_ytd']??0;
-        final peopleValue=impactAuthorized?_dashboardCompact(people):uiLiteral('Restricted');
-        final peopleNote=impactAuthorized
-            ?uiLiteral('Verified attendance metric · YTD')
-            :uiLiteral('Impact permission required');
+        final people=impact['people_reached_ytd'];
+        final peopleValue=!impactAvailable
+            ?'—'
+            :impactAuthorized
+                ?_dashboardCompact(people??0)
+                :uiLiteral('Restricted');
+        final peopleNote=!impactAvailable
+            ?uiLiteral('Loading authoritative value')
+            :impactAuthorized
+                ?uiLiteral('Verified attendance metric · YTD')
+                :uiLiteral('Impact permission required');
         final hour=DateTime.now().hour;
         final greeting=hour<12?uiLiteral('Good morning,'):hour<18?uiLiteral('Good afternoon,'):uiLiteral('Good evening,');
         return Content(
@@ -2590,8 +2602,8 @@ class DashboardPage extends StatelessWidget {
               final cols=c.maxWidth<620?2:4;
               final w=(c.maxWidth-gap*(cols-1))/cols;
               return Wrap(spacing:gap,runSpacing:gap,children:[
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Partners'),value:'${p['live']??0}',note:uiLiteral('${p['total']??0} partner records'),icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8),onTap:canNavigate(1)?()=>onNavigate(1):null)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Programs'),value:'${m['catalog_total']??0}',note:uiLiteral('Available program modules'),icon:Icons.description_outlined,accent:brandNavy,onTap:canNavigate(2)?()=>onNavigate(2):null)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Partners'),value:partnersAvailable?'${p['live']??0}':'—',note:partnersAvailable?uiLiteral('${p['total']??0} partner records'):uiLiteral('Loading authoritative value'),icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8),onTap:canNavigate(1)?()=>onNavigate(1):null)),
+                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Programs'),value:modulesAvailable?'${m['catalog_total']??0}':'—',note:modulesAvailable?uiLiteral('Available program modules'):uiLiteral('Loading authoritative value'),icon:Icons.description_outlined,accent:brandNavy,onTap:canNavigate(2)?()=>onNavigate(2):null)),
                 SizedBox(width:w,child:Kpi(label:uiLiteral('Revenue (YTD)'),value:revenueValue,note:revenueNote,icon:Icons.bar_chart_rounded,accent:brandGold,onTap:canNavigate(4)?()=>onNavigate(4):null)),
                 SizedBox(width:w,child:Kpi(label:uiLiteral('People Reached'),value:peopleValue,note:peopleNote,icon:Icons.groups_rounded,accent:brandNavy,onTap:canNavigate(5)?()=>onNavigate(5):null)),
               ]);
