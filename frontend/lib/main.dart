@@ -6870,10 +6870,18 @@ class _PackagesPageState extends State<PackagesPage> {
         : <Map<String,dynamic>>[];
     final activityMeasured = analytics['portal_activity_measured'] == true;
 
+    final activeSubscriptions = analyticsPackages.fold<int>(
+      0,
+      (sum, row) => sum + ((row['active_partner_count'] as num?)?.toInt() ?? 0),
+    );
+    final customPackages = plans.where((plan) {
+      final key = '${plan['plan_key'] ?? ''}'.toUpperCase();
+      return key != 'STARTER' && key != 'BUSINESS' && key != 'FLEX' && key != 'PREMIUM';
+    }).length;
+
     return Content(
-      eyebrow: 'COMMERCIAL CONTROL PLANE',
       title: 'Packages',
-      subtitle: 'Starter, Business and Premium package control with usage and commercial analytics.',
+      subtitle: 'Subscription packages, module entitlements and configuration.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/billing/packages/export.pdf'),
@@ -6885,6 +6893,13 @@ class _PackagesPageState extends State<PackagesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ResponsiveKpiGrid(children: [
+            Kpi(label: 'All packages', value: '${plans.length}', note: 'Configured package definitions', icon: Icons.inventory_2_outlined, accent: brandSteel),
+            Kpi(label: 'Active subscriptions', value: '$activeSubscriptions', note: 'Partners with active package subscriptions', icon: Icons.groups_2_outlined, accent: brandSuccess),
+            Kpi(label: 'Module registry', value: '${modules.length}', note: 'Modules available for package entitlement', icon: Icons.widgets_outlined, accent: brandGold),
+            Kpi(label: 'Custom packages', value: '$customPackages', note: 'Non-canonical package definitions', icon: Icons.sell_outlined, accent: const Color(0xFF6C63D9)),
+          ]),
+          const SizedBox(height: 18),
           LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth < 720
