@@ -796,6 +796,46 @@ class _HimateAppState extends State<HimateApp> {
             : user == null
                 ? loginPage()
                 : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 1),
+        '/app/modules': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 2),
+        '/app/packages': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 3),
+        '/app/finance': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 4),
+        '/app/impact': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 5),
+        '/app/website': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 6),
+        '/app/system': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 7),
+        '/app/admin': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 8),
+        '/app/archives': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 9),
       },
       onGenerateRoute: (settings) {
         final name = settings.name ?? '';
@@ -1749,6 +1789,29 @@ class _ShellState extends State<Shell> {
     return values.contains('*') || values.contains(permission);
   }
 
+  String _routeForIndex(int index) => switch (index) {
+    0 => '/app',
+    1 => '/app/partners',
+    2 => '/app/modules',
+    3 => '/app/packages',
+    4 => '/app/finance',
+    5 => '/app/impact',
+    6 => '/app/website',
+    7 => '/app/system',
+    8 => '/app/admin',
+    9 => '/app/archives',
+    _ => '/app',
+  };
+
+  void _selectNav(int index) {
+    if (!visibleNavIndexes().contains(index) || selected == index) return;
+    setState(() => selected = index);
+    final route = _routeForIndex(index);
+    if (Uri.base.path != route) {
+      html.window.history.replaceState(null, '', route);
+    }
+  }
+
   List<int> visibleNavIndexes() {
     final indexes = <int>[];
     if (can('dashboard.read')) indexes.add(0);
@@ -1772,7 +1835,7 @@ class _ShellState extends State<Shell> {
         canNavigate: (index) => visibleNavIndexes().contains(index),
         onNavigate: (index) {
           if (!visibleNavIndexes().contains(index)) return;
-          setState(() => selected = index);
+          _selectNav(index);
         },
       );
       case 1: return PartnersPage(api: widget.api);
@@ -1843,7 +1906,7 @@ class _ShellState extends State<Shell> {
                   selected: visibleSelected,
                   collapsed: false,
                   user: widget.user,
-                  onSelect: (i) { setState(() => selected = visibleIndexes[i]); Navigator.pop(context); },
+                  onSelect: (i) { _selectNav(visibleIndexes[i]); Navigator.pop(context); },
                   onToggle: null,
                   onLogout: widget.onLogout,
                 ),
@@ -1869,7 +1932,7 @@ class _ShellState extends State<Shell> {
                     selected: visibleSelected,
                     collapsed: tablet || collapsed,
                     user: widget.user,
-                    onSelect: (i) => setState(() => selected = visibleIndexes[i]),
+                    onSelect: (i) => _selectNav(visibleIndexes[i]),
                     onToggle: tablet ? null : () => setState(() => collapsed = !collapsed),
                     onLogout: widget.onLogout,
                   ),
