@@ -775,10 +775,27 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 	}
 	if a.hasPermission(actor, "evidence.read") {
 		wg.Add(1)
-		evidencePath := "/api/v1/evidence"
-		if raw := strings.TrimSpace(r.URL.Query().Get("evidence_query")); raw != "" {
-			evidencePath += "?q=" + url.QueryEscape(raw)
+		evidenceQuery := url.Values{}
+		evidenceQuery.Set("limit", strconv.Itoa(central10QueryLimit(r.URL.Query().Get("evidence_limit"), 12, 100)))
+		if raw := strings.TrimSpace(r.URL.Query().Get("evidence_offset")); raw != "" {
+			evidenceQuery.Set("offset", raw)
+		} else {
+			evidenceQuery.Set("offset", "0")
 		}
+		if raw := strings.TrimSpace(r.URL.Query().Get("evidence_query")); raw != "" {
+			evidenceQuery.Set("q", raw)
+		}
+		for _, pair := range [][2]string{
+			{"evidence_type", "evidence_type"},
+			{"evidence_status", "verification_status"},
+			{"evidence_period_start", "period_start"},
+			{"evidence_period_end", "period_end"},
+		} {
+			if raw := strings.TrimSpace(r.URL.Query().Get(pair[0])); raw != "" {
+				evidenceQuery.Set(pair[1], raw)
+			}
+		}
+		evidencePath := "/api/v1/evidence?" + evidenceQuery.Encode()
 		go func(){ defer wg.Done(); evidenceErr = a.internalGET(ctx, a.hosts["evidence"], evidencePath, &evidence) }()
 	}
 	if a.hasPermission(actor, "reports.read") {
