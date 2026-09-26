@@ -19,7 +19,7 @@ const (
 
 func central10DashboardSnapshotMigration() common.Migration {
 	return common.Migration{
-		Version: 10,
+		Version: 17,
 		Name:    "central-10-1-dashboard-materialized-snapshot",
 		Statements: []string{
 			`CREATE TABLE IF NOT EXISTS identity.dashboard_snapshots(
