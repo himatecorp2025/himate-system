@@ -9,6 +9,7 @@ class BackupsPanel extends StatefulWidget {
     this.partnerLabels = const <String, String>{},
     this.productionRestoreEligible = const <String, bool>{},
     this.canMutate = true,
+    this.scopeToPartnerIds = false,
     super.key,
   });
 
@@ -19,6 +20,7 @@ class BackupsPanel extends StatefulWidget {
   final Map<String, String> partnerLabels;
   final Map<String, bool> productionRestoreEligible;
   final bool canMutate;
+  final bool scopeToPartnerIds;
 
   @override
   State<BackupsPanel> createState() => _BackupsPanelState();
@@ -47,8 +49,13 @@ class _BackupsPanelState extends State<BackupsPanel> {
   }
 
   List<Map<String, dynamic>> _copySummary(List<Map<String, dynamic>> value) {
-    final copied = [for (final item in value) Map<String, dynamic>.from(item)];
-    copied.sort((a, b) => '${a['partner_id']}'.compareTo('${b['partner_id']}'));
+    final allowed = widget.partnerIds.toSet();
+    final copied = [
+      for (final item in value)
+        if (!widget.scopeToPartnerIds || allowed.contains((item['partner_id'] ?? '').toString()))
+          Map<String, dynamic>.from(item),
+    ];
+    copied.sort((a, b) => (a['partner_id'] ?? '').toString().compareTo((b['partner_id'] ?? '').toString()));
     return copied;
   }
 
