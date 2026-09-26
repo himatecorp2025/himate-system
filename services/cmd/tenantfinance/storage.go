@@ -119,6 +119,16 @@ func (a *app) migrate(ctx context.Context) error {
 				FOR EACH ROW EXECUTE FUNCTION tenant_finance.reject_invoice_event_mutation()`,
 		}},
 		automation.OutboxMigration(2),
+		{Version: 3, Name: "central-11-golden-test-partner-purge-guard", Statements: []string{
+			`CREATE OR REPLACE FUNCTION tenant_finance.reject_invoice_event_mutation() RETURNS trigger AS $
+				BEGIN
+					IF TG_OP='DELETE' AND current_setting('himate.test_partner_purge', TRUE)=OLD.partner_id THEN
+						RETURN OLD;
+					END IF;
+					RAISE EXCEPTION 'tenant finance invoice events are append-only';
+				END;
+			$ LANGUAGE plpgsql`,
+		}},
 	})
 }
 
