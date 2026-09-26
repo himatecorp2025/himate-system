@@ -4378,9 +4378,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             ],
           ),
           primaryLabel: 'Permanently delete test partner',
-          onPrimary: confirm.text.trim() == id
-              ? () => Navigator.pop(dialogContext, true)
-              : null,
+          onPrimary: () {
+            if (confirm.text.trim() == id) {
+              Navigator.pop(dialogContext, true);
+            }
+          },
         ),
       ),
     );
