@@ -5,12 +5,14 @@ import 'package:himate_frontend/main.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test('Central-9 premium dark visual contract remains active', () {
-    expect(brandNavyDeep, const Color(0xFF020914));
-    expect(brandSurface, const Color(0xFF07182A));
-    expect(brandSurfaceRaised, const Color(0xFF0B2540));
-    expect(brandIonBlue, const Color(0xFF19B5FF));
-    expect(buildBrandTheme().brightness, Brightness.dark);
+
+  test('Central-16 approved light navy-gold visual contract supersedes Central-9 dark presentation', () {
+    expect(brandNavyDeep, const Color(0xFF071A2E));
+    expect(brandSurface, const Color(0xFFFFFFFF));
+    expect(brandSurfaceRaised, const Color(0xFFFFFFFF));
+    expect(brandIonBlue, const Color(0xFF1769E0));
+    expect(buildBrandTheme().brightness, Brightness.light);
+    expect(buildBrandTheme().scaffoldBackgroundColor, const Color(0xFFF6F8FC));
   });
 
   test('Central responsive presentation helpers remain deterministic', () {
