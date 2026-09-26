@@ -6,6 +6,8 @@ class BackupsPanel extends StatefulWidget {
     required this.initialSummary,
     required this.partnerIds,
     required this.initialProvider,
+    this.partnerLabels = const <String, String>{},
+    this.productionRestoreEligible = const <String, bool>{},
     super.key,
   });
 
@@ -13,6 +15,8 @@ class BackupsPanel extends StatefulWidget {
   final List<Map<String, dynamic>> initialSummary;
   final List<String> partnerIds;
   final String initialProvider;
+  final Map<String, String> partnerLabels;
+  final Map<String, bool> productionRestoreEligible;
 
   @override
   State<BackupsPanel> createState() => _BackupsPanelState();
@@ -60,6 +64,11 @@ class _BackupsPanelState extends State<BackupsPanel> {
   String _value(dynamic value, {String fallback = '—'}) {
     final raw = value?.toString().trim() ?? '';
     return raw.isEmpty || raw == 'null' ? fallback : raw;
+  }
+
+  String _displayName(String partnerId) {
+    if (partnerId == '_platform') return 'HIMATE Platform';
+    return widget.partnerLabels[partnerId] ?? partnerId;
   }
 
   String _date(dynamic value) {
@@ -139,7 +148,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 value: selected,
                 decoration: InputDecoration(labelText: uiLiteral('Partner')),
                 items: [
-                  for (final id in ids) DropdownMenuItem(value: id, child: LText(id)),
+                  for (final id in ids) DropdownMenuItem(value: id, child: LText(_displayName(id))),
                 ],
                 onChanged: (value) {
                   if (value != null) setDialogState(() => selected = value);
@@ -397,7 +406,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      LText(partnerId, style: const TextStyle(color: brandNavy, fontSize: 14, fontWeight: FontWeight.w700)),
+                      LText(_displayName(partnerId), style: const TextStyle(color: brandNavy, fontSize: 14, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 3),
                       SelectableText(
                         pointId.isEmpty ? 'No restore point yet' : pointId,
