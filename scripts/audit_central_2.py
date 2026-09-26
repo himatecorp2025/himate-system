@@ -68,9 +68,9 @@ for token in [
 ]:
     require(token in dashboard_snapshot, f"Materialized Dashboard contract missing: {token}")
 
-require('partnerBlock = dashboardStaleBlock(previous["partners"])' in dashboard_snapshot,
+require('partnerBlock := dashboardStaleBlock(previous["partners"])' in dashboard_snapshot,
         "Partner partial failure does not preserve last-known-good state")
-require('moduleBlock = dashboardStaleBlock(previous["modules"])' in dashboard_snapshot,
+require('moduleBlock := dashboardStaleBlock(previous["modules"])' in dashboard_snapshot,
         "Module partial failure does not preserve last-known-good state")
 require('billingBlock := dashboardStaleBlock(previous["billing"])' in dashboard_snapshot,
         "Billing partial failure does not preserve last-known-good state")
