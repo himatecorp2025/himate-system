@@ -31,6 +31,7 @@ part 'module_control_plane.dart';
 part 'notifications_panel.dart';
 part 'partner_portal.dart';
 part 'partner_design.dart';
+part 'partner_connections.dart';
 part 'commercial_automation_ui.dart';
 part 'compliance_archives.dart';
 
