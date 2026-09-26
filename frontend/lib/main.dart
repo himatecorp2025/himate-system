@@ -3181,7 +3181,7 @@ class _PartnersPageState extends State<PartnersPage> {
 
     var categoryOptions = _mergePartnerCategories(categories);
     if (categoryRegistryWarning != null && !categoriesLoading) {
-      unawaited(_loadCategories(force: true));
+      unawaited(load(loadCategories: true));
     }
 
     final displayName = TextEditingController();
@@ -3299,8 +3299,12 @@ class _PartnersPageState extends State<PartnersPage> {
             categoryRefreshStarted = true;
             unawaited(() async {
               try {
-                final response = await widget.api.get('/api/v1/partner-categories', force: true);
-                final loaded = items(response);
+                final response = await widget.api.get(
+                  '/api/v1/central/partners?limit=1&offset=0',
+                  force: true,
+                  maxAge: const Duration(seconds: 5),
+                );
+                final loaded = items(<String, dynamic>{'items': response['categories']});
                 final merged = _mergePartnerCategories(loaded);
                 final warning = loaded.isEmpty
                     ? 'The live category registry returned no rows. Built-in partner categories are shown.'
