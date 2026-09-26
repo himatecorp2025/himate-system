@@ -17,6 +17,7 @@ def check(condition: bool, message: str) -> None:
         errors.append(message)
 
 frontend = read("frontend/lib/main.dart")
+browser_platform = read("frontend/lib/browser_platform.dart")
 frontend_test = read("frontend/test/central8_manual_qa_test.dart")
 localization = read("frontend/lib/localization.dart")
 billing = read("services/cmd/billing/central8.go")
@@ -135,11 +136,12 @@ check(
 )
 
 # Route-state persistence must update the browser URL when Central navigation changes.
-for token in [
-    "String _routeForIndex(int index)",
-    "html.window.history.replaceState(null, '', route)",
-]:
-    check(token in frontend, f"Central route-state persistence missing: {token}")
+check("String _routeForIndex(int index)" in frontend,
+      "Central route-state persistence route mapping is missing")
+check("replaceBrowserHistory('', route)" in frontend,
+      "Central route-state persistence call is missing")
+check("web.window.history.replaceState(null, title, path)" in browser_platform,
+      "WASM-compatible browser history adapter is missing")
 
 # Finance analytics must expose weekly/monthly and plan-specific paid revenue.
 for token in [
