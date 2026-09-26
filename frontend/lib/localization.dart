@@ -231,7 +231,7 @@ class HimateI18n {
     'Design, public content and media are separate workspaces with one controlled publish boundary.': 'Az arculat, a nyilvános tartalom és a média külön munkaterületek, egyetlen kontrollált publikálási határral.',
     'Audience-facing discovery and inbound customer operations without mixing them into CMS editing.': 'Keresőoptimalizálás és bejövő ügyfélkezelés a CMS-szerkesztéstől elkülönítve.',
     'Partner Operations': 'Partnerüzemeltetés',
-    'Operational partner integrations are partner-first. Vendors such as Klaviyo appear only inside a partner when a real integration exists.': 'A partnerintegrációk partnerközpontúak. Egy szolgáltató, például a Klaviyo, csak annál a partnernél jelenik meg, ahol valós integrációs rekord létezik.',
+    'Operational partner integrations are partner-first. Integration vendors appear only inside a partner when a real runtime record exists.': 'A partnerintegrációk partnerközpontúak. Integrációs szolgáltató csak annál a partnernél jelenik meg, ahol valós futásidejű rekord létezik.',
     'Partner Data Connections': 'Partner adatkapcsolatok',
     'Partner-first runtime view of real Connector credentials, sync state and Website Adapters. Integration vendors appear only when configured for that partner.': 'Partnerközpontú futásidejű nézet a valós Connector-hitelesítő adatokról, szinkronállapotról és weboldal-adapterekről. Integrációs szolgáltató csak akkor jelenik meg, ha az adott partnerhez ténylegesen be van állítva.',
     'Last Successful Sync': 'Utolsó sikeres szinkron',
