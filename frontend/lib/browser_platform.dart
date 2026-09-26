@@ -29,8 +29,12 @@ Future<Uint8List> readBrowserFile(BrowserFile file) async {
   return Uint8List.view(jsBuffer.toDart);
 }
 
+void openBrowserUrl(String path, {String target = '_blank'}) {
+  web.window.open(path, target);
+}
+
 void openBrowserDownload(String path) {
-  web.window.open(path, '_blank');
+  openBrowserUrl(path);
 }
 
 String? browserStorageGet(String key) =>
