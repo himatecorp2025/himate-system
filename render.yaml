@@ -778,7 +778,7 @@ services:
     runtime: docker
     dockerfilePath: ./services/docker/gateway.Dockerfile
     dockerContext: .
-    healthCheckPath: /api/v1/live
+    healthCheckPath: /api/v1/health
     renderSubdomainPolicy: enabled
     autoDeploy: false
     envVars:
