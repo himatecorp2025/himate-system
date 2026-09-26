@@ -2412,22 +2412,21 @@ class _SidebarIconButton extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.name, this.dark = false});
+  const _Avatar({required this.name});
   final String name;
-  final bool dark;
 
   @override
   Widget build(BuildContext context) {
     final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
     final initials = parts.isEmpty ? 'AU' : parts.take(2).map((e) => e[0].toUpperCase()).join();
     return Container(
-      width: 34,
-      height: 34,
+      width: 38,
+      height: 38,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: dark ? brandSteel : const Color(0xFF165A9B),
+        color: brandNavy,
         shape: BoxShape.circle,
-        border: Border.all(color: dark ? Colors.white.withOpacity(.14) : Colors.transparent),
+        border: Border.all(color: brandMist),
       ),
       child: LText(initials, style: const TextStyle(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 10)),
     );
