@@ -1,0 +1,386 @@
+{
+  "audit": "CENTRAL-15",
+  "scope": [
+    "CENTRAL-12",
+    "CENTRAL-13",
+    "CENTRAL-14"
+  ],
+  "baseline": {
+    "develop_merge_commit": "724faa9dc05cd56589b95d1e1e95ee92c25bbe17",
+    "central14_ci_run": 2477,
+    "central14_ci_head": "0bafaca832ec1e03666e3b3649c3df1c5caeddde",
+    "central14_ci_result": "Go SUCCESS / Flutter SUCCESS / Compose SUCCESS / CENTRAL-14 runtime SUCCESS"
+  },
+  "requirements": [
+    {
+      "id": "C12-01",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Partners default screen renders from backend materialized hot snapshot and first usable data stays under 800 ms.",
+      "evidence": [
+        "services/cmd/gateway/central_step4_snapshots.go",
+        "services/cmd/gateway/central10.go",
+        "scripts/smoke_central_12.sh"
+      ]
+    },
+    {
+      "id": "C12-02",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Filtered/search/paginated Partners views remain authoritative and permission-aware.",
+      "evidence": [
+        "services/cmd/gateway/central10.go"
+      ]
+    },
+    {
+      "id": "C12-03",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Licensing & Finance uses a materialized backend read model, bounded warm-up and sub-800 ms hot reads.",
+      "evidence": [
+        "services/cmd/gateway/central_step4_snapshots.go",
+        "frontend/lib/main.dart",
+        "scripts/smoke_central_12.sh"
+      ]
+    },
+    {
+      "id": "C12-04",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "No infinite loading/retry loop when Finance or analytics data is absent/warming.",
+      "evidence": [
+        "frontend/lib/main.dart",
+        "scripts/audit_central_12.py"
+      ]
+    },
+    {
+      "id": "C12-05",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Package Analytics is backed by real Billing subscriptions, module usage and Portal activity, including authoritative package/partner counts.",
+      "evidence": [
+        "services/cmd/billing/central8.go",
+        "frontend/lib/main.dart",
+        "scripts/smoke_central_12.sh"
+      ]
+    },
+    {
+      "id": "C12-06",
+      "round": "CENTRAL-12",
+      "status": "GAP",
+      "requirement": "Package Analytics includes the requested industry/category split.",
+      "evidence": [
+        "services/cmd/billing/central8.go",
+        "frontend/lib/main.dart"
+      ],
+      "finding": "The analytics model has package counts, billing frequency, module usage and Portal activity, but no partner category/industry dimension or industry aggregate."
+    },
+    {
+      "id": "C12-07",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Partners PDF exporter shows an explicit no-exportable-data modal instead of downloading an empty PDF.",
+      "evidence": [
+        "frontend/lib/main.dart",
+        "services/cmd/partners/central8.go",
+        "scripts/smoke_central_12.sh"
+      ]
+    },
+    {
+      "id": "C12-08",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Packages PDF exporter shows an explicit no-exportable-data modal instead of downloading an empty PDF.",
+      "evidence": [
+        "frontend/lib/main.dart",
+        "services/cmd/billing/central8.go",
+        "scripts/smoke_central_12.sh"
+      ]
+    },
+    {
+      "id": "C12-09",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Licensing & Finance PDF exporter shows an explicit no-exportable-data modal instead of downloading an empty PDF.",
+      "evidence": [
+        "frontend/lib/main.dart",
+        "services/cmd/billing/central8.go",
+        "scripts/smoke_central_12.sh"
+      ]
+    },
+    {
+      "id": "C12-10",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Impact & Reports PDF exporter shows an explicit no-exportable-data modal instead of downloading an empty PDF.",
+      "evidence": [
+        "frontend/lib/main.dart",
+        "services/cmd/impact/central8.go",
+        "scripts/smoke_central_12.sh"
+      ]
+    },
+    {
+      "id": "C12-11",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Licensing & Finance operational invoice workflow remains functional: manual draft, approve, send, mark paid, cancel and invoice PDF.",
+      "evidence": [
+        "frontend/lib/main.dart",
+        "services/cmd/billing/central6.go",
+        "full regression in HIMATE CI #2477"
+      ]
+    },
+    {
+      "id": "C12-12",
+      "round": "CENTRAL-12",
+      "status": "PASS",
+      "requirement": "Modules and Package definitions are not redesigned by CENTRAL-12.",
+      "evidence": [
+        "PR #84 changed-file scope"
+      ]
+    },
+    {
+      "id": "C13-01",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Website & Marketing retains bilingual EN/HU labels and descriptions.",
+      "evidence": [
+        "frontend/lib/localization.dart",
+        "scripts/audit_central_13.py"
+      ]
+    },
+    {
+      "id": "C13-02",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Design color labels are Primary Color, Brand Color, Page Background and Body Text Color.",
+      "evidence": [
+        "frontend/lib/design_guide.dart"
+      ]
+    },
+    {
+      "id": "C13-03",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Each color field exposes a visible color swatch/picker synchronized to HEX.",
+      "evidence": [
+        "frontend/lib/design_guide.dart"
+      ]
+    },
+    {
+      "id": "C13-04",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Heading and body font catalogs are expanded independently and backend validation accepts the same fonts.",
+      "evidence": [
+        "frontend/lib/design_guide.dart",
+        "services/cmd/cms/design.go"
+      ]
+    },
+    {
+      "id": "C13-05",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Changing layout family changes presentation CSS without mutating CMS content/mechanical logic.",
+      "evidence": [
+        "services/cmd/cms/design.go",
+        "services/cmd/gateway/main.go",
+        "scripts/smoke_central_13.sh"
+      ]
+    },
+    {
+      "id": "C13-06",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Backend generates real desktop/tablet/mobile previews at 1440x900, 834x1194 and 390x844.",
+      "evidence": [
+        "scripts/smoke_central_13.sh",
+        "services/cmd/cms/design.go"
+      ]
+    },
+    {
+      "id": "C13-07",
+      "round": "CENTRAL-13",
+      "status": "GAP",
+      "requirement": "The Design Guide shows an automatically loaded real website preview inside the editor, not only a schematic card/new-tab preview.",
+      "evidence": [
+        "frontend/lib/design_guide.dart"
+      ],
+      "finding": "The inline preview is a locally composed illustrative card. createPreview() opens the real backend preview in a new browser tab; it is not embedded/automatically loaded inside the Design Guide."
+    },
+    {
+      "id": "C13-08",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Publish Active Brand performs a real CMS publish and the public website uses the published design.",
+      "evidence": [
+        "frontend/lib/design_guide.dart",
+        "services/cmd/cms/design.go",
+        "scripts/smoke_central_13.sh"
+      ]
+    },
+    {
+      "id": "C13-09",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Klaviyo-specific top-level data connection is replaced by Partner Data Connections.",
+      "evidence": [
+        "frontend/lib/partner_connections.dart",
+        "frontend/lib/cms_page.dart",
+        "services/cmd/gateway/central13.go"
+      ]
+    },
+    {
+      "id": "C13-10",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Partner connection cards show partner name, Active/Inactive/Suspended/Deleted state and runtime integration details.",
+      "evidence": [
+        "frontend/lib/partner_connections.dart",
+        "services/cmd/gateway/central13.go",
+        "scripts/smoke_central_13.sh"
+      ]
+    },
+    {
+      "id": "C13-11",
+      "round": "CENTRAL-13",
+      "status": "PASS",
+      "requirement": "Partner Data Connections uses compact responsive cards and real Connector/Website Adapter records without synthetic vendor rows.",
+      "evidence": [
+        "frontend/lib/partner_connections.dart",
+        "services/cmd/connector/central13.go",
+        "scripts/smoke_central_13.sh"
+      ]
+    },
+    {
+      "id": "C14-01",
+      "round": "CENTRAL-14",
+      "status": "PASS",
+      "requirement": "Administration landing has exactly two main centers: HIMATE Administration Center and Partner Administration Center.",
+      "evidence": [
+        "frontend/lib/administration_center.dart",
+        "scripts/audit_central_14.py"
+      ]
+    },
+    {
+      "id": "C14-02",
+      "round": "CENTRAL-14",
+      "status": "PASS",
+      "requirement": "HIMATE center provides financial administration, corporate documents, governance/settings/access, audit/search and backup/recovery workspaces.",
+      "evidence": [
+        "frontend/lib/administration_center.dart"
+      ]
+    },
+    {
+      "id": "C14-03",
+      "round": "CENTRAL-14",
+      "status": "PASS",
+      "requirement": "Partner center renders partner cards and tenant-scoped financial, documents, audit/log and backup/recovery workspaces.",
+      "evidence": [
+        "frontend/lib/administration_center.dart",
+        "services/cmd/gateway/central14.go"
+      ]
+    },
+    {
+      "id": "C14-04",
+      "round": "CENTRAL-14",
+      "status": "PASS",
+      "requirement": "Company and partner document registries are searchable server-side.",
+      "evidence": [
+        "frontend/lib/administration_center.dart",
+        "services/cmd/billing/main.go",
+        "services/cmd/billing/central14.go"
+      ]
+    },
+    {
+      "id": "C14-05",
+      "round": "CENTRAL-14",
+      "status": "PASS",
+      "requirement": "HIMATE platform has an enabled periodic encrypted backup policy and real restore verification.",
+      "evidence": [
+        "services/cmd/backups/main.go",
+        "services/cmd/backups/worker.go",
+        "scripts/smoke_central_14.sh"
+      ]
+    },
+    {
+      "id": "C14-06",
+      "round": "CENTRAL-14",
+      "status": "GAP",
+      "requirement": "Every partner receives periodic backup automatically without first requiring a manual backup or policy mutation.",
+      "evidence": [
+        "services/cmd/backups/main.go",
+        "services/cmd/backups/worker.go"
+      ],
+      "finding": "Scheduler iterates only existing backups.policies rows. Partner policy is created lazily by ensurePolicy() when a backup/policy call occurs; new partners are not automatically enrolled."
+    },
+    {
+      "id": "C14-07",
+      "round": "CENTRAL-14",
+      "status": "PASS",
+      "requirement": "Verified partner production restore restores database, media, config and captured runtime release with safety backup, audit and rollback guards.",
+      "evidence": [
+        "services/cmd/backups/central14_restore.go",
+        "services/cmd/storage/main.go",
+        "services/cmd/environments/main.go",
+        "services/cmd/runtime/main.go",
+        "scripts/smoke_central_14.sh"
+      ]
+    },
+    {
+      "id": "C14-08",
+      "round": "CENTRAL-14",
+      "status": "GAP",
+      "requirement": "Operator can select either the latest or an earlier retained restore point for partner recovery.",
+      "evidence": [
+        "services/cmd/backups/api.go",
+        "frontend/lib/backups_panel.dart"
+      ],
+      "finding": "Backend GET /api/v1/backups?partner_id=... lists retained restore points, but the UI restore flow always reads latest_restore_point_id from summary and offers no restore-point history selector."
+    },
+    {
+      "id": "C14-09",
+      "round": "CENTRAL-14",
+      "status": "GAP",
+      "requirement": "HIMATE platform itself can be restored to a retained restore point through a defined maintenance recovery procedure.",
+      "evidence": [
+        "services/cmd/backups/central14_restore.go",
+        "docs/CENTRAL-14_ACCEPTANCE.md"
+      ],
+      "finding": "Platform backup and restore-test exist, but production restore explicitly rejects _platform and the repository contains no separate platform maintenance restore script/runbook."
+    },
+    {
+      "id": "C14-10",
+      "round": "CENTRAL-14",
+      "status": "PASS",
+      "requirement": "Restore operations are permission-gated and centrally audited.",
+      "evidence": [
+        "services/cmd/gateway/main.go",
+        "services/cmd/backups/central14_restore.go",
+        "scripts/smoke_central_14.sh"
+      ]
+    },
+    {
+      "id": "C14-11",
+      "round": "CENTRAL-14",
+      "status": "PASS",
+      "requirement": "Archive work is not pulled into CENTRAL-14 active operational scope.",
+      "evidence": [
+        "PR #86 changed-file scope",
+        "docs/CENTRAL-14_ACCEPTANCE.md"
+      ]
+    },
+    {
+      "id": "ARCH-01",
+      "round": "GLOBAL",
+      "status": "PASS",
+      "requirement": "CENTRAL-12/13/14 preserve backend-first domain ownership, microservice boundaries, containerized runtime acceptance and Flutter presentation-oriented architecture.",
+      "evidence": [
+        "docs/CENTRAL-12_ACCEPTANCE.md",
+        "docs/CENTRAL-13_ACCEPTANCE.md",
+        "docs/CENTRAL-14_ACCEPTANCE.md",
+        "HIMATE CI #2477"
+      ]
+    }
+  ]
+}
