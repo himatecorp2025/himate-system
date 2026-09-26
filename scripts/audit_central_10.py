@@ -190,9 +190,13 @@ check("force: loadCategories" not in frontend,
       "Central-10.1 Partners first mount still bypasses warm cache/inflight data")
 partners_init = frontend.find("class _PartnersPageState")
 partners_load = frontend.find("Future<void> load(", partners_init)
+partners_next_method = frontend.find("\n  void updateSearch(", partners_load)
 partners_init_block = frontend[partners_init:partners_load] if partners_init >= 0 and partners_load > partners_init else ""
+partners_load_block = frontend[partners_load:partners_next_method] if partners_load >= 0 and partners_next_method > partners_load else ""
 check("load(loadCategories: true);" in partners_init_block and "force: true" not in partners_init_block,
       "Central-10.1 Partners first mount must reuse prefetch/inflight data without a forced duplicate request")
+check("bool force" not in partners_load_block and "force: force" not in partners_load_block,
+      "Central-10.1 Partners load path still exposes a forced duplicate-fetch escape hatch")
 check("central10ReadCache.items = map[string]central10CacheEntry{}" not in gateway,
       "Central-10.1 still globally flushes every Central read cache on mutation")
 check("invalidateCentral10Caches(r.URL.Path)" in gateway_main,
