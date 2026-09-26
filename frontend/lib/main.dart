@@ -46,22 +46,22 @@ Future<void> main() async {
   runApp(partnerPortal ? const PartnerPortalApp() : const HimateApp());
 }
 
-const brandNavy = Color(0xFF72B7FF);
-const brandSteel = Color(0xFF28A8FF);
-const brandGold = Color(0xFFE2B95B);
-const brandIvory = Color(0xFF020914);
-const brandMist = Color(0xFF173653);
-const brandCharcoal = Color(0xFFF1F6FC);
+const brandNavy = Color(0xFF102642);
+const brandSteel = Color(0xFF1769E0);
+const brandGold = Color(0xFFD2A323);
+const brandIvory = Color(0xFFF6F8FC);
+const brandMist = Color(0xFFE5EAF1);
+const brandCharcoal = Color(0xFF17243B);
 const brandWhite = Color(0xFFFFFFFF);
-const brandSuccess = Color(0xFF46D9AD);
-const brandWarning = Color(0xFFF3BD55);
-const brandDanger = Color(0xFFFF7878);
-const brandNavyDeep = Color(0xFF020914);
-const brandNavySoft = Color(0xFF0A3158);
-const brandTextSoft = Color(0xFFA9C0D8);
-const brandSurface = Color(0xFF07182A);
-const brandSurfaceRaised = Color(0xFF0B2540);
-const brandIonBlue = Color(0xFF19B5FF);
+const brandSuccess = Color(0xFF18A957);
+const brandWarning = Color(0xFFD99A13);
+const brandDanger = Color(0xFFD94A4A);
+const brandNavyDeep = Color(0xFF071A2E);
+const brandNavySoft = Color(0xFF123452);
+const brandTextSoft = Color(0xFF6D7C91);
+const brandSurface = Color(0xFFFFFFFF);
+const brandSurfaceRaised = Color(0xFFFFFFFF);
+const brandIonBlue = Color(0xFF1769E0);
 
 const navy = brandNavy;
 const gold = brandGold;
@@ -126,114 +126,109 @@ Future<String?> promptMfaCode(BuildContext context, Map<String, dynamic> challen
 
 ThemeData buildBrandTheme() {
   final scheme = ColorScheme.fromSeed(
-    seedColor: brandIonBlue,
-    brightness: Brightness.dark,
-    primary: brandIonBlue,
+    seedColor: brandSteel,
+    brightness: Brightness.light,
+    primary: brandSteel,
     secondary: brandGold,
-    surface: brandSurfaceRaised,
+    surface: brandWhite,
     error: brandDanger,
   );
-  final base = GoogleFonts.interTextTheme(ThemeData.dark().textTheme);
-  final display = GoogleFonts.cormorantGaramondTextTheme(ThemeData.dark().textTheme);
+  final base = GoogleFonts.interTextTheme(ThemeData.light().textTheme);
+  final display = GoogleFonts.cormorantGaramondTextTheme(ThemeData.light().textTheme);
+  const inputBorder = OutlineInputBorder(
+    borderRadius: BorderRadius.all(Radius.circular(12)),
+    borderSide: BorderSide(color: brandMist),
+  );
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
+    brightness: Brightness.light,
     colorScheme: scheme,
-    scaffoldBackgroundColor: brandNavyDeep,
+    scaffoldBackgroundColor: brandIvory,
     visualDensity: VisualDensity.standard,
     splashFactory: InkSparkle.splashFactory,
+    dividerColor: brandMist,
     textTheme: base.copyWith(
-      displaySmall: display.displaySmall?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.7, height: 1.02),
-      headlineLarge: display.headlineLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.45, height: 1.03),
-      headlineMedium: display.headlineMedium?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.3, height: 1.05),
-      headlineSmall: display.headlineSmall?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.15, height: 1.08),
-      titleLarge: display.titleLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w700),
-      titleMedium: base.titleMedium?.copyWith(color: brandWhite, fontWeight: FontWeight.w700),
-      bodyLarge: base.bodyLarge?.copyWith(color: brandCharcoal, height: 1.5),
-      bodyMedium: base.bodyMedium?.copyWith(color: brandCharcoal, height: 1.45),
-      bodySmall: base.bodySmall?.copyWith(color: brandTextSoft, height: 1.4),
-      labelLarge: base.labelLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w700, letterSpacing: .05),
+      displaySmall: display.displaySmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.7, height: 1.02),
+      headlineLarge: display.headlineLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.45, height: 1.03),
+      headlineMedium: display.headlineMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.3, height: 1.05),
+      headlineSmall: display.headlineSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.15, height: 1.08),
+      titleLarge: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      titleMedium: base.titleMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      titleSmall: base.titleSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      bodyLarge: base.bodyLarge?.copyWith(color: brandCharcoal),
+      bodyMedium: base.bodyMedium?.copyWith(color: brandCharcoal),
+      bodySmall: base.bodySmall?.copyWith(color: brandTextSoft),
+      labelLarge: base.labelLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
     ),
     cardTheme: CardThemeData(
-      color: brandSurfaceRaised,
+      color: brandWhite,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
-      shadowColor: brandIonBlue.withOpacity(.18),
-      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: brandIonBlue.withOpacity(.24), width: 1.0),
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: brandMist),
       ),
     ),
-    inputDecorationTheme: InputDecorationTheme(
+    inputDecorationTheme: const InputDecorationTheme(
       filled: true,
-      fillColor: brandSurface,
-      labelStyle: base.bodyMedium?.copyWith(color: brandTextSoft),
-      hintStyle: base.bodyMedium?.copyWith(color: brandTextSoft.withOpacity(.72)),
-      prefixIconColor: brandIonBlue,
-      suffixIconColor: brandIonBlue,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: brandMist.withOpacity(.9))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandIonBlue, width: 1.5)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandDanger)),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandMist)),
-    ),
-    checkboxTheme: CheckboxThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-      fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? brandIonBlue : brandSurface),
-      checkColor: WidgetStateProperty.all(brandNavyDeep),
-      side: const BorderSide(color: brandIonBlue, width: 1.4),
+      fillColor: Color(0xFFF9FBFE),
+      border: inputBorder,
+      enabledBorder: inputBorder,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderSide: BorderSide(color: brandSteel, width: 1.4),
+      ),
+      hintStyle: TextStyle(color: Color(0xFF8B98AA), fontSize: 12),
+      labelStyle: TextStyle(color: brandTextSoft, fontSize: 12),
+      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.disabled)) return brandIonBlue.withOpacity(.34);
-          if (states.contains(WidgetState.hovered)) return const Color(0xFF39C2FF);
-          if (states.contains(WidgetState.pressed)) return const Color(0xFF0E8FD5);
-          return brandIonBlue;
-        }),
-        foregroundColor: WidgetStateProperty.all(brandNavyDeep),
-        overlayColor: WidgetStateProperty.all(brandWhite.withOpacity(.08)),
-        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 21, vertical: 16)),
-        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(9))),
-        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
-        elevation: WidgetStateProperty.all(0),
+      style: FilledButton.styleFrom(
+        backgroundColor: brandNavy,
+        foregroundColor: brandWhite,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandWhite : brandNavy),
-        side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.hovered) ? brandIonBlue : brandMist)),
-        backgroundColor: WidgetStateProperty.all(brandSurface.withOpacity(.72)),
-        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.08)),
-        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
-        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(9))),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: brandNavy,
+        side: const BorderSide(color: brandMist),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandWhite : brandNavy),
-        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.07)),
-      ),
+      style: TextButton.styleFrom(foregroundColor: brandSteel, textStyle: const TextStyle(fontWeight: FontWeight.w700)),
     ),
-    iconButtonTheme: IconButtonThemeData(
-      style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.all(brandNavy),
-        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.08)),
-      ),
+    chipTheme: ChipThemeData(
+      backgroundColor: const Color(0xFFF1F4F8),
+      selectedColor: const Color(0xFFE9F2FF),
+      side: const BorderSide(color: brandMist),
+      labelStyle: const TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w600),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
     ),
-    dividerColor: brandMist,
-    scrollbarTheme: ScrollbarThemeData(
-      thumbColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.42)),
-      radius: const Radius.circular(12),
-      thickness: WidgetStateProperty.all(6),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: brandNavyDeep,
+      contentTextStyle: const TextStyle(color: brandWhite),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: brandWhite,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      titleTextStyle: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: brandSurface,
-      foregroundColor: brandWhite,
+      backgroundColor: brandWhite,
+      foregroundColor: brandNavy,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
-      titleTextStyle: display.titleLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w600),
+      titleTextStyle: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      iconTheme: const IconThemeData(color: brandNavy),
     ),
   );
 }
