@@ -5799,47 +5799,44 @@ class _PackagesPageState extends State<PackagesPage> {
   }
 
   Future<void> load() async {
-    if (mounted) setState(() { loading = true; error = null; });
-    try {
-      final result = await widget.api.get('/api/v1/billing/plans', maxAge: const Duration(seconds: 30));
-      if (!mounted) return;
-      final allPlans = items(result);
+    if (mounted) {
       setState(() {
-        plans = allPlans.where((p) => const {'STARTER', 'BUSINESS', 'FLEX'}.contains('${p['plan_key']}')).toList();
+        loading = true;
+        analyticsLoading = true;
+        error = null;
+        analyticsError = null;
+      });
+    }
+    try {
+      final model = await widget.api.get(
+        '/api/v1/central/packages',
+        maxAge: const Duration(seconds: 5),
+      );
+      if (!mounted) return;
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
+      final unavailable = meta['unavailable'] is List
+          ? (meta['unavailable'] as List).map((e) => '$e').toSet()
+          : <String>{};
+      setState(() {
+        plans = items(<String, dynamic>{'items': model['plans']});
+        modules = items(<String, dynamic>{'items': model['modules']});
+        analytics = model['analytics'] is Map
+            ? Map<String, dynamic>.from(model['analytics'] as Map)
+            : <String, dynamic>{};
         loading = false;
-      });
-      unawaited(_loadModules());
-      unawaited(_loadAnalytics());
-    } catch (e) {
-      if (!mounted) return;
-      setState(() { loading = false; error = e.toString(); });
-    }
-  }
-
-  Future<void> _loadModules() async {
-    try {
-      final result = await widget.api.get('/api/v1/modules');
-      if (!mounted) return;
-      setState(() => modules = items(result).where((m) => m['system'] == true).toList());
-    } catch (_) {
-      // Module definitions are needed only when package editing is opened.
-    }
-  }
-
-  Future<void> _loadAnalytics() async {
-    if (mounted) setState(() { analyticsLoading = true; analyticsError = null; });
-    try {
-      final result = await widget.api.get('/api/v1/billing/packages/analytics', maxAge: const Duration(seconds: 20));
-      if (!mounted) return;
-      setState(() {
-        analytics = result;
         analyticsLoading = false;
+        analyticsError = unavailable.contains('analytics')
+            ? 'Package analytics is temporarily unavailable. Package definitions remain usable.'
+            : null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        loading = false;
         analyticsLoading = false;
-        analyticsError = e.toString();
+        error = e.toString();
       });
     }
   }
@@ -5854,7 +5851,7 @@ class _PackagesPageState extends State<PackagesPage> {
   }
 
   String _packageEntitlement(Map<String,dynamic> plan) =>
-      '${central9CanonicalPackage('${plan['plan_key']}')['entitlement']}';
+      '${plan['entitlement'] ?? '—'}';
 
   String moduleLabel(Map<String, dynamic> module) =>
       '${module['label'] ?? module['label_en'] ?? module['key'] ?? ''}';
@@ -6067,8 +6064,8 @@ class _PackagesPageState extends State<PackagesPage> {
                     SizedBox(
                       width: width,
                       child: _PackageOverviewCard(
-                        name: '${central9CanonicalPackage('${plan['plan_key']}')['name']}',
-                        price: central9CanonicalPackagePrice('${plan['plan_key']}'),
+                        name: '${plan['display_name'] ?? plan['plan_key']}',
+                        price: '${plan['display_price'] ?? '—'}',
                         description: _packageDescription(plan),
                         entitlement: _packageEntitlement(plan),
                         active: plan['active'] == true,
