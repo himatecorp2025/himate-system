@@ -5,6 +5,7 @@ root = Path(__file__).resolve().parents[1]
 
 frontend = (root / "frontend/lib/main.dart").read_text(encoding="utf-8")
 partners = (root / "services/cmd/partners/main.go").read_text(encoding="utf-8")
+gateway_c10 = (root / "services/cmd/gateway/central10.go").read_text(encoding="utf-8")
 openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 
@@ -17,23 +18,31 @@ required_names = ["Classical Music", "Fine Art", "Gallery", "Theatre", "Cultural
 
 checks = [
     (
-        "frontend embeds the complete built-in category catalog",
-        all(token in partner_page for token in required_ids)
-        and all(name in partner_page for name in required_names),
+        "Go Central read model embeds the complete built-in category catalog",
+        all(token in gateway_c10 for token in required_ids)
+        and all(name in gateway_c10 for name in required_names)
+        and "central10PartnerCategories" in gateway_c10,
     ),
     (
         "New Partner never falls back to Other-only",
         "<String, dynamic>{'id': 'cat_006', 'name': 'Other'}" not in partner_page,
     ),
     (
-        "live category registry is merged on top of built-ins",
-        "_mergePartnerCategories" in partner_page
-        and "byID[id] = Map<String, dynamic>.from(item)" in partner_page,
+        "live category registry is merged on top of Go built-ins",
+        "byID[id] = row" in gateway_c10
+        and '"categories": mergedCategories' in gateway_c10
+        and 'categoriesErr != nil' in gateway_c10,
     ),
     (
-        "New Partner refreshes the live category registry without blocking the modal",
-        "widget.api.get('/api/v1/partner-categories', force: true)" in partner_page
+        "New Partner refreshes the Central category read model without blocking the modal",
+        "/api/v1/central/partners?limit=1&offset=0" in partner_page
+        and "response['categories']" in partner_page
         and "categoryRefreshStarted" in partner_page,
+    ),
+    (
+        "category read-model failure keeps the already loaded Go snapshot usable",
+        "The already loaded Go category snapshot remains available." in partner_page
+        and "partner_categories" in partner_page,
     ),
     (
         "legacy misleading loading message is removed",
