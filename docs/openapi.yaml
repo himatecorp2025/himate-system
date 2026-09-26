@@ -993,7 +993,7 @@ paths:
         - {name: commercial_module, in: query, schema: {type: string}}
         - {name: commercial_status, in: query, schema: {type: string, enum: [ALL, ACTIVE, NOT_LICENSED, MAINTENANCE]}}
         - {name: perspective, in: query, schema: {type: string, enum: [PARTNER, MODULE], default: PARTNER}}
-        - {name: commercial_limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 120}}
+        - {name: commercial_limit, in: query, schema: {type: integer, minimum: 1, default: 120}, description: Presentation batch size; increasing it never caps the total partner/module dataset}
       responses:
         "200": {description: Backend-filtered registry, topics, KPI model and partner- or module-grouped commercial matrix}
         "502": {description: Core catalog read model unavailable and no stale snapshot exists}
