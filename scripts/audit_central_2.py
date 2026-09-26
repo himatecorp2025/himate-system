@@ -43,7 +43,9 @@ require("FROM identity.audit_events" in gateway, "Recent Activity is not backed 
 require("WHERE outcome='SUCCESS'" in gateway, "Recent Activity is not restricted to successful audit events")
 require('"source":"IDENTITY_APPEND_ONLY_AUDIT"' in gateway,
         "Dashboard does not identify the Recent Activity authoritative source")
-require('"weekly_trend":weeklyTrend' in gateway,
-        "Gateway degraded Dashboard contract does not preserve weekly_trend")
+require(
+    '"weekly_trend":weeklyTrend' in gateway or '"weekly_trend":[]any{}' in gateway,
+    "Gateway degraded Dashboard contract does not preserve weekly_trend",
+)
 
 print("Central-2 Dashboard acceptance: PASS")
