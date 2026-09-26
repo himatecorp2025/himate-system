@@ -6833,57 +6833,112 @@ class _FinancePageState extends State<FinancePage> {
 
   Widget financeChart() {
     final rows = chartRows;
-    if (rows.isEmpty) {
-      return const _MessageCard(
-        icon: Icons.bar_chart_outlined,
-        title: 'No paid revenue yet',
-        message: 'Paid invoices will populate the 12-month finance chart.',
-      );
-    }
-    final maxValue = rows.fold<double>(0, (max, row) => math.max(max, number(row['paid'])));
+    final windowLabel = revenuePeriod == 'WEEKLY' ? 'last 4 weeks' : 'last 12 months';
+    final planLabel = revenuePlan == 'ALL' ? 'All revenue' : revenuePlan;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Expanded(child: LText('Paid revenue · last 12 months', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
-            _MiniCounter(label: chartCurrency),
-          ]),
-          const SizedBox(height: 18),
-          SizedBox(
-            height: 190,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+          LayoutBuilder(builder: (context, constraints) {
+            final controls = Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                for (final row in rows)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                        LText(
-                          number(row['paid']) == 0 ? '—' : number(row['paid']).toStringAsFixed(0),
-                          style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
-                        ),
-                        const SizedBox(height: 4),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          height: maxValue <= 0 ? 2 : math.max(2, 125 * number(row['paid']) / maxValue),
-                          decoration: BoxDecoration(
-                            color: brandGold.withOpacity(.72),
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        LText(
-                          '${row['month'] ?? ''}'.split('-').last,
-                          style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
-                        ),
-                      ]),
-                    ),
+                SizedBox(
+                  width: 132,
+                  child: DropdownButtonFormField<String>(
+                    value: revenuePeriod,
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Period'),
+                    items: const [
+                      DropdownMenuItem(value: 'WEEKLY', child: LText('Weekly')),
+                      DropdownMenuItem(value: 'MONTHLY', child: LText('Monthly')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => revenuePeriod = value);
+                    },
                   ),
+                ),
+                SizedBox(
+                  width: 150,
+                  child: DropdownButtonFormField<String>(
+                    value: revenuePlan,
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Package'),
+                    items: const [
+                      DropdownMenuItem(value: 'ALL', child: LText('All')),
+                      DropdownMenuItem(value: 'Starter', child: LText('Starter')),
+                      DropdownMenuItem(value: 'Business', child: LText('Business')),
+                      DropdownMenuItem(value: 'Premium', child: LText('Premium')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => revenuePlan = value);
+                    },
+                  ),
+                ),
               ],
+            );
+            if (constraints.maxWidth < 720) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                LText('Paid revenue · $windowLabel · $planLabel', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14)),
+                const SizedBox(height: 12),
+                controls,
+              ]);
+            }
+            return Row(children: [
+              Expanded(child: LText('Paid revenue · $windowLabel · $planLabel', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
+              controls,
+              const SizedBox(width: 8),
+              _MiniCounter(label: chartCurrency),
+            ]);
+          }),
+          const SizedBox(height: 18),
+          if (rows.isEmpty)
+            const _MessageCard(
+              icon: Icons.bar_chart_outlined,
+              title: 'No paid revenue in this view',
+              message: 'There is no ledger data for the selected period/package. The chart stays empty instead of retrying indefinitely.',
+            )
+          else
+            SizedBox(
+              height: 205,
+              child: LayoutBuilder(builder: (context, constraints) {
+                final maxValue = rows.fold<double>(0, (max, row) => math.max(max, number(row['paid'])));
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (final row in rows)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                            LText(
+                              number(row['paid']) == 0 ? '—' : number(row['paid']).toStringAsFixed(0),
+                              style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
+                            ),
+                            const SizedBox(height: 4),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              height: maxValue <= 0 ? 2 : math.max(2, 135 * number(row['paid']) / maxValue),
+                              decoration: BoxDecoration(
+                                color: revenuePlanKey == 'ALL' ? brandGold.withOpacity(.78) : brandNavy.withOpacity(.78),
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            LText(
+                              '${row['period'] ?? ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.fade,
+                              style: const TextStyle(color: brandTextSoft, fontSize: 8.2),
+                            ),
+                          ]),
+                        ),
+                      ),
+                  ],
+                );
+              }),
             ),
-          ),
         ]),
       ),
     );
@@ -7021,6 +7076,11 @@ class _FinancePageState extends State<FinancePage> {
       title: 'Licensing & Finance',
       subtitle: 'Partner onboarding, invoice approval, payment status and auditable finance controls. A partner reaches Portal access only after final HIMATE approval.',
       actions: [
+        OutlinedButton.icon(
+          onPressed: () => openBrowserDownload(financeExportPath),
+          icon: const Icon(Icons.download_outlined),
+          label: const LText('Export CSV'),
+        ),
         OutlinedButton.icon(
           onPressed: editProfile,
           icon: const Icon(Icons.account_balance_outlined),
