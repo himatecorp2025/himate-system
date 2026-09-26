@@ -71,6 +71,9 @@ func (a *app) verifiedRestorePoint(point restorePoint) error {
 }
 
 func (a *app) partnerRestoreAllowed(ctx context.Context, partnerID string) error {
+	if strings.TrimSpace(partnerID)=="_platform" {
+		return fmt.Errorf("platform production restore is maintenance-only and cannot run from the live backup service")
+	}
 	var partner map[string]any
 	if err := a.internalJSON(ctx,http.MethodGet,a.partnersHost,"/api/v1/partners/"+url.PathEscape(partnerID),nil,&partner,false); err != nil {
 		return fmt.Errorf("load partner restore state: %w",err)
@@ -237,6 +240,58 @@ func mapSubset(source map[string]any,keys ...string) map[string]any {
 	return out
 }
 
+func (a *app) suspendPartnerEnvironments(ctx context.Context,partnerID string) error {
+	var response map[string]any
+	if err:=a.internalJSON(ctx,http.MethodGet,a.envHost,"/api/v1/environments?partner_id="+url.QueryEscape(partnerID),nil,&response,false);err!=nil{
+		return fmt.Errorf("load partner environments before recovery: %w",err)
+	}
+	items,ok:=response["items"].([]any)
+	if !ok{return nil}
+	for _,value:=range items{
+		env,ok:=value.(map[string]any);if !ok{continue}
+		id:=strings.TrimSpace(fmt.Sprint(env["id"]));if id==""{continue}
+		if err:=a.internalJSON(ctx,http.MethodPatch,a.envHost,"/api/v1/environments/"+url.PathEscape(id),
+			map[string]any{"environment_status":"SUSPENDED"},nil,false);err!=nil{
+			return fmt.Errorf("suspend environment %s for recovery: %w",id,err)
+		}
+	}
+	return nil
+}
+
+func (a *app) restoreEnvironmentRelease(ctx context.Context,id,release string) error {
+	release=strings.TrimSpace(release)
+	if release=="" {
+		return a.internalJSON(ctx,http.MethodPatch,a.envHost,"/api/v1/environments/"+url.PathEscape(id),
+			map[string]any{"environment_status":"SUSPENDED"},nil,false)
+	}
+	var deployed map[string]any
+	if err:=a.internalJSON(ctx,http.MethodPost,a.envHost,"/api/v1/environments/"+url.PathEscape(id)+"/deploy",
+		map[string]any{"release":release},&deployed,false);err!=nil{
+		return fmt.Errorf("deploy captured release %s: %w",release,err)
+	}
+	for attempt:=0;attempt<150;attempt++{
+		state:=deployed
+		if attempt>0{
+			state=map[string]any{}
+			if err:=a.internalJSON(ctx,http.MethodGet,a.envHost,"/api/v1/environments/"+url.PathEscape(id),nil,&state,false);err!=nil{
+				return fmt.Errorf("poll restored environment %s: %w",id,err)
+			}
+		}
+		deployment:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(state["deployment_status"])))
+		active:=strings.TrimSpace(fmt.Sprint(state["active_release"]))
+		if deployment=="FAILED"{return fmt.Errorf("captured release deployment failed for environment %s",id)}
+		if deployment=="DEPLOYED"&&active==release{
+			return a.internalJSON(ctx,http.MethodPatch,a.envHost,"/api/v1/environments/"+url.PathEscape(id),
+				map[string]any{"environment_status":"SUSPENDED"},nil,false)
+		}
+		select{
+		case <-ctx.Done():return ctx.Err()
+		case <-time.After(2*time.Second):
+		}
+	}
+	return fmt.Errorf("captured release deployment timed out for environment %s",id)
+}
+
 func (a *app) restoreConfig(ctx context.Context,partnerID,configPath,actor,reason string) error {
 	raw,err:=os.ReadFile(configPath);if err!=nil{return err}
 	var config map[string]any;if err:=json.Unmarshal(raw,&config);err!=nil{return err}
@@ -255,9 +310,13 @@ func (a *app) restoreConfig(ctx context.Context,partnerID,configPath,actor,reaso
 		for _,value:=range environments{
 			env,ok:=value.(map[string]any);if !ok{continue}
 			id:=strings.TrimSpace(fmt.Sprint(env["id"]));if id==""{continue}
-			payload:=mapSubset(env,"platform_version","desired_release","active_release","config")
-			if len(payload)==0{continue}
-			if err:=a.internalJSON(ctx,http.MethodPatch,a.envHost,"/api/v1/environments/"+url.PathEscape(id),payload,nil,false);err!=nil{return fmt.Errorf("restore environment %s: %w",id,err)}
+			payload:=mapSubset(env,"platform_version","desired_release","config")
+			if len(payload)>0{
+				if err:=a.internalJSON(ctx,http.MethodPatch,a.envHost,"/api/v1/environments/"+url.PathEscape(id),payload,nil,false);err!=nil{return fmt.Errorf("restore environment %s: %w",id,err)}
+			}
+			release:=strings.TrimSpace(fmt.Sprint(env["active_release"]))
+			if release==""{release=strings.TrimSpace(fmt.Sprint(env["desired_release"]))}
+			if err:=a.restoreEnvironmentRelease(ctx,id,release);err!=nil{return fmt.Errorf("restore environment release %s: %w",id,err)}
 		}
 	}
 	if desired,ok:=config["connector_desired_state"].(map[string]any);ok{
@@ -282,6 +341,7 @@ func (a *app) processProductionRestore(ctx context.Context,job restoreJob) {
 	if err:=a.verifiedRestorePoint(point);err!=nil{fail(err);return}
 	safety,err:=a.createSafetyRestorePoint(ctx,job.PartnerID,job.CreatedBy);if err!=nil{fail(fmt.Errorf("pre-restore safety backup: %w",err));return}
 	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET safety_restore_point_id=$2 WHERE id=$1`,job.ID,safety.ID)
+	if err:=a.suspendPartnerEnvironments(ctx,job.PartnerID);err!=nil{fail(err);return}
 
 	work,err:=a.unpackRestorePoint(ctx,point,"production-"+job.ID)
 	if err!=nil{fail(err);return}
