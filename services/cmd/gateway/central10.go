@@ -150,6 +150,169 @@ func central10QueryLimit(raw string, fallback, max int) int {
 	return n
 }
 
+func central10PositiveInt(raw string, fallback int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < 1 {
+		return fallback
+	}
+	return n
+}
+
+type central10ItemsPage struct {
+	Items   []map[string]any `json:"items"`
+	Count   int              `json:"count"`
+	Total   int              `json:"total"`
+	Limit   int              `json:"limit"`
+	Offset  int              `json:"offset"`
+	HasMore bool             `json:"has_more"`
+}
+
+func (a *app) central10AllPartners(ctx context.Context) ([]map[string]any, error) {
+	const pageSize = 200
+	var first central10ItemsPage
+	if err := a.internalGET(
+		ctx,
+		a.hosts["partners"],
+		"/api/v1/partners?limit=200&offset=0&include_archived=false&include_stats=true",
+		&first,
+	); err != nil {
+		return nil, err
+	}
+	if !first.HasMore || first.Total <= len(first.Items) {
+		return first.Items, nil
+	}
+
+	pageCount := (first.Total + pageSize - 1) / pageSize
+	pages := make([][]map[string]any, pageCount)
+	pages[0] = first.Items
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	var errMu sync.Mutex
+	var firstErr error
+
+	for pageIndex := 1; pageIndex < pageCount; pageIndex++ {
+		pageIndex := pageIndex
+		offset := pageIndex * pageSize
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				errMu.Lock()
+				if firstErr == nil { firstErr = ctx.Err() }
+				errMu.Unlock()
+				return
+			}
+			var page central10ItemsPage
+			path := fmt.Sprintf(
+				"/api/v1/partners?limit=%d&offset=%d&include_archived=false&include_stats=false",
+				pageSize,
+				offset,
+			)
+			if err := a.internalGET(ctx, a.hosts["partners"], path, &page); err != nil {
+				errMu.Lock()
+				if firstErr == nil { firstErr = err }
+				errMu.Unlock()
+				return
+			}
+			pages[pageIndex] = page.Items
+		}()
+	}
+	wg.Wait()
+
+	items := make([]map[string]any, 0, first.Total)
+	for _, page := range pages {
+		items = append(items, page...)
+	}
+	if firstErr != nil {
+		return items, firstErr
+	}
+	return items, nil
+}
+
+func central10StringChunks(values []string, size int) [][]string {
+	if size < 1 { size = 1 }
+	chunks := make([][]string, 0, (len(values)+size-1)/size)
+	for start := 0; start < len(values); start += size {
+		end := start + size
+		if end > len(values) { end = len(values) }
+		chunks = append(chunks, values[start:end])
+	}
+	return chunks
+}
+
+func (a *app) central10CommercialSources(
+	ctx context.Context,
+	partnerIDs []string,
+	includeBilling bool,
+) (matrixItems []map[string]any, subscriptionItems []map[string]any, matrixErr error, subscriptionErr error) {
+	if len(partnerIDs) == 0 {
+		return []map[string]any{}, []map[string]any{}, nil, nil
+	}
+
+	chunks := central10StringChunks(partnerIDs, 80)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	sem := make(chan struct{}, 8)
+
+	for _, ids := range chunks {
+		ids := append([]string(nil), ids...)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				mu.Lock()
+				if matrixErr == nil { matrixErr = ctx.Err() }
+				mu.Unlock()
+				return
+			}
+			var page central10ItemsPage
+			encoded := url.QueryEscape(strings.Join(ids, ","))
+			err := a.internalGET(ctx, a.hosts["catalog"], "/api/v1/module-commercial-matrix?partner_ids="+encoded, &page)
+			mu.Lock()
+			if err != nil {
+				if matrixErr == nil { matrixErr = err }
+			} else {
+				matrixItems = append(matrixItems, page.Items...)
+			}
+			mu.Unlock()
+		}()
+
+		if includeBilling {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				select {
+				case sem <- struct{}{}:
+					defer func() { <-sem }()
+				case <-ctx.Done():
+					mu.Lock()
+					if subscriptionErr == nil { subscriptionErr = ctx.Err() }
+					mu.Unlock()
+					return
+				}
+				var page central10ItemsPage
+				encoded := url.QueryEscape(strings.Join(ids, ","))
+				err := a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/subscription-matrix?partner_ids="+encoded, &page)
+				mu.Lock()
+				if err != nil {
+					if subscriptionErr == nil { subscriptionErr = err }
+				} else {
+					subscriptionItems = append(subscriptionItems, page.Items...)
+				}
+				mu.Unlock()
+			}()
+		}
+	}
+	wg.Wait()
+	return matrixItems, subscriptionItems, matrixErr, subscriptionErr
+}
+
 func (a *app) central10ReadModel(w http.ResponseWriter, r *http.Request, actor user) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
@@ -404,7 +567,8 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 	defer cancel()
 
 	type page struct{ Items []map[string]any `json:"items"`; Count int `json:"count"` }
-	var modules, groups, partners, plans page
+	var modules, groups, plans page
+	var partners []map[string]any
 	var modulesErr, groupsErr, partnersErr, plansErr error
 	var first sync.WaitGroup
 	first.Add(2)
@@ -412,7 +576,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 	go func(){ defer first.Done(); groupsErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/module-groups", &groups) }()
 	if a.hasPermission(actor, "partners.read") {
 		first.Add(1)
-		go func(){ defer first.Done(); partnersErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners?limit=200&offset=0&include_archived=false&include_stats=false", &partners) }()
+		go func(){ defer first.Done(); partners, partnersErr = a.central10AllPartners(ctx) }()
 	}
 	if a.hasPermission(actor, "billing.read") {
 		first.Add(1)
@@ -433,7 +597,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 
 	partnerName := map[string]string{}
 	partnerIDs := []string{}
-	for _, p := range partners.Items {
+	for _, p := range partners {
 		id := central10String(p["id"])
 		if id == "" { continue }
 		name := central10String(p["display_name"])
@@ -442,22 +606,14 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 		partnerIDs = append(partnerIDs, id)
 	}
 
-	var matrix, subscriptions page
-	var matrixErr, subscriptionsErr error
-	if len(partnerIDs) > 0 {
-		encoded := url.QueryEscape(strings.Join(partnerIDs, ","))
-		var second sync.WaitGroup
-		second.Add(1)
-		go func(){ defer second.Done(); matrixErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/module-commercial-matrix?partner_ids="+encoded, &matrix) }()
-		if a.hasPermission(actor, "billing.read") {
-			second.Add(1)
-			go func(){ defer second.Done(); subscriptionsErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/subscription-matrix?partner_ids="+encoded, &subscriptions) }()
-		}
-		second.Wait()
-	}
+	matrixItems, subscriptionItems, matrixErr, subscriptionsErr := a.central10CommercialSources(
+		ctx,
+		partnerIDs,
+		a.hasPermission(actor, "billing.read"),
+	)
 
 	subByKey := map[string]map[string]any{}
-	for _, item := range subscriptions.Items {
+	for _, item := range subscriptionItems {
 		key := central10String(item["partner_id"]) + "|" + central10String(item["module_key"])
 		subByKey[key] = item
 	}
@@ -521,7 +677,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 	if perspective != "MODULE" { perspective = "PARTNER" }
 
 	filteredAssignments := make([]map[string]any, 0, len(matrix.Items))
-	for _, raw := range matrix.Items {
+	for _, raw := range matrixItems {
 		row := central10CopyMap(raw)
 		partnerID := central10String(row["partner_id"])
 		moduleKey := central10String(row["key"])
@@ -575,7 +731,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 			grouped = append(grouped, map[string]any{"partner_id": id, "partner_name": partnerName[id], "modules": rows, "module_count": len(rows)})
 		}
 	}
-	groupLimit := central10QueryLimit(r.URL.Query().Get("commercial_limit"), 120, 200)
+	groupLimit := central10PositiveInt(r.URL.Query().Get("commercial_limit"), 120)
 	totalGroups := len(grouped)
 	if len(grouped) > groupLimit { grouped = grouped[:groupLimit] }
 
@@ -620,7 +776,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 			"group_count": totalGroups,
 			"assignment_count": len(filteredAssignments),
 		},
-		"partners": partners.Items,
+		"partners": partners,
 		"plans": canonicalPlans,
 		"meta": central10Meta(started, status, unavailable),
 	}
@@ -702,7 +858,8 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 
 	type page struct{ Items []map[string]any `json:"items"` }
 	var profile, overview map[string]any
-	var invoices, partners page
+	var invoices page
+	var partners []map[string]any
 	var profileErr, overviewErr, invoicesErr, partnersErr error
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -711,7 +868,7 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 	go func(){ defer wg.Done(); invoicesErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/invoices", &invoices) }()
 	if a.hasPermission(actor, "partners.read") {
 		wg.Add(1)
-		go func(){ defer wg.Done(); partnersErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners?limit=200&offset=0&include_archived=false&include_stats=false", &partners) }()
+		go func(){ defer wg.Done(); partners, partnersErr = a.central10AllPartners(ctx) }()
 	}
 	wg.Wait()
 
@@ -750,7 +907,7 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 		"profile": profile,
 		"overview": overview,
 		"invoices": invoices.Items,
-		"partners": partners.Items,
+		"partners": partners,
 		"kpis": kpis,
 		"meta": central10Meta(started, status, unavailable),
 	}
