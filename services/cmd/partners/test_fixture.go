@@ -340,6 +340,16 @@ func deleteTestPartnerData(ctx context.Context, tx *sql.Tx, partnerID string) (m
 	deleted := map[string]int64{}
 
 	// Child/link tables whose ownership is indirect.
+	// automation.deliveries has no partner_id and RESTRICTs deletion of
+	// automation.events, so remove partner-owned deliveries before the generic
+	// partner_id sweep reaches automation.events.
+	if res, err := tx.ExecContext(ctx, `DELETE FROM automation.deliveries
+		WHERE event_id IN (SELECT id FROM automation.events WHERE partner_id=$1)`, partnerID); err != nil {
+		return nil, err
+	} else {
+		n, _ := res.RowsAffected()
+		deleted["automation.deliveries"] += n
+	}
 	if res, err := tx.ExecContext(ctx, `DELETE FROM evidence.report_links
 		WHERE evidence_id IN (SELECT id FROM evidence.items WHERE partner_id=$1)
 		   OR report_id IN (SELECT id FROM reports.jobs WHERE partner_ids @> $2::jsonb)`,
