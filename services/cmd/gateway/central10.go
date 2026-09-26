@@ -1347,6 +1347,18 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 			filteredEvidence = append(filteredEvidence, row)
 		}
 	}
+	pendingEvidence := 0
+	for _, row := range evidenceAll {
+		if strings.ToUpper(central10String(row["verification_status"])) == "UNVERIFIED" {
+			pendingEvidence++
+		}
+	}
+	readyReports := 0
+	for _, row := range reports {
+		if strings.ToUpper(central10String(row["status"])) == "READY" {
+			readyReports++
+		}
+	}
 	total := len(filteredEvidence)
 	limit := central10QueryLimit(r.URL.Query().Get("evidence_limit"), 12, 100)
 	offset, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("evidence_offset")))
@@ -1375,6 +1387,13 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 		"evidence": filteredEvidence,
 		"evidence_total": total,
 		"reports": reports,
+		"kpis": map[string]any{
+			"active_metrics": len(definitions),
+			"evidence_total": len(evidenceAll),
+			"reports_total": len(reports),
+			"ready_reports": readyReports,
+			"pending_evidence": pendingEvidence,
+		},
 		"meta": centralStep4Meta(started, centralStep4ImpactKey, updatedAt, status, unavailable),
 	}
 	w.Header().Set("X-Himate-Cache", "hot-snapshot")
