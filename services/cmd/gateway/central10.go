@@ -851,6 +851,85 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 	common.JSON(w, http.StatusOK, payload)
 }
 
+func central10MoneyLabel(rows []map[string]any, key string) string {
+	nonZero := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if central10Float(row[key]) != 0 {
+			nonZero = append(nonZero, row)
+		}
+	}
+	if len(nonZero) == 0 {
+		return "$0.00"
+	}
+	if len(nonZero) == 1 {
+		return fmt.Sprintf("%s %.2f", central10String(nonZero[0]["currency"]), central10Float(nonZero[0][key]))
+	}
+	return fmt.Sprintf("%d currencies", len(nonZero))
+}
+
+func central10FinanceChart(overview map[string]any, period, planKey, requestedCurrency string) map[string]any {
+	period = strings.ToUpper(strings.TrimSpace(period))
+	if period != "WEEKLY" {
+		period = "MONTHLY"
+	}
+	planKey = strings.ToUpper(strings.TrimSpace(planKey))
+	switch planKey {
+	case "STARTER", "BUSINESS", "FLEX":
+	default:
+		planKey = "ALL"
+	}
+
+	currencyRows := anyItems(overview["currencies"])
+	currency := strings.ToUpper(strings.TrimSpace(requestedCurrency))
+	if currency == "" && len(currencyRows) > 0 {
+		currency = strings.ToUpper(central10String(currencyRows[0]["currency"]))
+	}
+	if currency == "" {
+		currency = "USD"
+	}
+
+	byPlan := planKey != "ALL"
+	key := "monthly_paid"
+	if period == "WEEKLY" {
+		key = "weekly_paid"
+	}
+	if byPlan {
+		if period == "WEEKLY" {
+			key = "weekly_paid_by_plan"
+		} else {
+			key = "monthly_paid_by_plan"
+		}
+	}
+
+	rawRows := anyItems(overview[key])
+	rows := make([]map[string]any, 0, len(rawRows))
+	maxPaid := 0.0
+	for _, raw := range rawRows {
+		if strings.ToUpper(central10String(raw["currency"])) != currency {
+			continue
+		}
+		if byPlan && strings.ToUpper(central10String(raw["plan_key"])) != planKey {
+			continue
+		}
+		row := central10CopyMap(raw)
+		if central10String(row["period"]) == "" {
+			row["period"] = row["month"]
+		}
+		paid := central10Float(row["paid"])
+		if paid > maxPaid {
+			maxPaid = paid
+		}
+		rows = append(rows, row)
+	}
+	return map[string]any{
+		"period": period,
+		"plan_key": planKey,
+		"currency": currency,
+		"rows": rows,
+		"max_paid": mathRound2(maxPaid),
+	}
+}
+
 func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
@@ -883,11 +962,12 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 		return
 	}
 
+	currencyRows := anyItems(overview["currencies"])
 	kpis := map[string]any{"draft": 0, "approved": 0, "sent": 0, "paid": 0, "cancelled": 0}
-	if rows := anyItems(overview["currencies"]); len(rows) > 0 {
-		outstanding := make([]map[string]any, 0, len(rows))
-		paidYTD := make([]map[string]any, 0, len(rows))
-		for _, row := range rows {
+	if len(currencyRows) > 0 {
+		outstanding := make([]map[string]any, 0, len(currencyRows))
+		paidYTD := make([]map[string]any, 0, len(currencyRows))
+		for _, row := range currencyRows {
 			for _, key := range []string{"draft", "approved", "sent", "paid", "cancelled"} {
 				kpis[key] = central10Int(kpis[key]) + central10Int(row[key])
 			}
@@ -897,6 +977,55 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 		kpis["outstanding"] = outstanding
 		kpis["paid_ytd"] = paidYTD
 	}
+	kpis["outstanding_label"] = central10MoneyLabel(currencyRows, "outstanding")
+	kpis["paid_ytd_label"] = central10MoneyLabel(currencyRows, "paid_ytd")
+	kpis["outstanding_invoice_count"] = central10Int(kpis["approved"]) + central10Int(kpis["sent"])
+
+	onboarding := map[string]any{}
+	if raw, ok := overview["onboarding"].(map[string]any); ok {
+		onboarding = raw
+	}
+	onboardingItems := anyItems(onboarding["items"])
+	kpis["pending_onboarding"] = central10Int(onboarding["pending"])
+
+	partnerNames := make(map[string]string, len(partners))
+	for _, partner := range partners {
+		id := central10String(partner["id"])
+		name := central10String(partner["display_name"])
+		if name == "" { name = id }
+		if id != "" { partnerNames[id] = name }
+	}
+
+	invoiceStatus := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("invoice_status")))
+	switch invoiceStatus {
+	case "DRAFT", "APPROVED", "SENT", "PAID", "CANCELLED":
+	default:
+		invoiceStatus = "ALL"
+	}
+	filteredInvoices := make([]map[string]any, 0, len(invoices.Items))
+	for _, raw := range invoices.Items {
+		row := central10CopyMap(raw)
+		partnerID := central10String(row["partner_id"])
+		name := partnerNames[partnerID]
+		if name == "" { name = partnerID }
+		row["partner_name"] = name
+		status := strings.ToUpper(central10String(row["workflow_status"]))
+		if status == "" {
+			status = strings.ToUpper(central10String(row["status"]))
+		}
+		if invoiceStatus != "ALL" && status != invoiceStatus {
+			continue
+		}
+		filteredInvoices = append(filteredInvoices, row)
+	}
+
+	chart := central10FinanceChart(
+		overview,
+		r.URL.Query().Get("revenue_period"),
+		r.URL.Query().Get("revenue_plan"),
+		r.URL.Query().Get("currency"),
+	)
+
 	unavailable := []string{}
 	if profileErr != nil { unavailable = append(unavailable, "billing_profile") }
 	if overviewErr != nil { unavailable = append(unavailable, "finance_overview") }
@@ -906,8 +1035,12 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 	payload := map[string]any{
 		"profile": profile,
 		"overview": overview,
-		"invoices": invoices.Items,
+		"invoices": filteredInvoices,
+		"invoice_filter": invoiceStatus,
 		"partners": partners,
+		"onboarding": onboardingItems,
+		"onboarding_summary": onboarding,
+		"chart": chart,
 		"kpis": kpis,
 		"meta": central10Meta(started, status, unavailable),
 	}
