@@ -20,6 +20,7 @@ frontend = read("frontend/lib/main.dart")
 modules_ui = read("frontend/lib/module_control_plane.dart")
 gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
+step3_snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
 impact = read("services/cmd/impact/main.go")
 billing = read("services/cmd/billing/central8.go")
 openapi = read("docs/openapi.yaml")
@@ -147,6 +148,63 @@ for token in [
     check(token in frontend, f"Central-10.1 Loading != Zero guard missing: {token}")
 check("Loading the latest module registry snapshot." in modules_ui,
       "Central-10.1 Modules Loading != Zero guard missing")
+
+# CENTRAL-10.1 Step 3: Modules & Packages must be hot-snapshot/progressive surfaces.
+for route in [
+    "/api/v1/central/modules/commercial",
+    "/api/v1/central/packages/supplementary",
+]:
+    check(route in gateway, f"Central-10.1 Step 3 route missing in Gateway read model: {route}")
+    check(route in gateway_main, f"Central-10.1 Step 3 route missing in top-level API dispatcher: {route}")
+    check(f"  {route}:" in openapi, f"Central-10.1 Step 3 OpenAPI path missing: {route}")
+
+modules_start = gateway.find("func (a *app) central10Modules(")
+modules_commercial_start = gateway.find("func (a *app) central10ModulesCommercial(", modules_start)
+packages_start = gateway.find("func (a *app) central10Packages(", modules_commercial_start)
+packages_supp_start = gateway.find("func (a *app) central10PackagesSupplementary(", packages_start)
+money_start = gateway.find("func central10MoneyLabel(", packages_supp_start)
+modules_primary = gateway[modules_start:modules_commercial_start]
+packages_primary = gateway[packages_start:packages_supp_start]
+
+for forbidden in ["internalGET(", "central10AllPartners(", "central10CommercialSources(", "WaitGroup", "wg.Wait()"]:
+    check(forbidden not in modules_primary,
+          f"Step 3 Modules primary request still blocks on live fan-out: {forbidden}")
+for forbidden in ["internalGET(", "WaitGroup", "wg.Wait()"]:
+    check(forbidden not in packages_primary,
+          f"Step 3 Packages primary request still blocks on live fan-out: {forbidden}")
+
+for token in [
+    "central10Step3SnapshotMigration",
+    "identity.central_screen_snapshots",
+    "refreshCentralStep3Registry",
+    "refreshCentralStep3Plans",
+    "refreshCentralStep3Analytics",
+    "refreshCentralStep3Commercial",
+    '"delivery"] = "MATERIALIZED_HOT_SNAPSHOT"',
+]:
+    check(token in step3_snapshots, f"Step 3 materialized snapshot contract missing: {token}")
+
+for token in [
+    "Future<void> loadRegistry()",
+    "Future<void> loadCommercial()",
+    "/api/v1/central/modules/commercial",
+    "commercialLoading",
+    "commercialReady",
+]:
+    check(token in modules_ui, f"Step 3 Modules progressive Flutter contract missing: {token}")
+
+for token in [
+    "Future<void> loadSupplementary()",
+    "/api/v1/central/packages/supplementary",
+    "modulesLoading",
+    "Package cards remain usable while analytics loads independently.",
+]:
+    check(token in frontend, f"Step 3 Packages progressive Flutter contract missing: {token}")
+
+check("String centralModulesInitialPath() => '/api/v1/central/modules';" in frontend,
+      "Step 3 Modules prefetch does not target the primary registry snapshot")
+check("registry.get(\"modules\")" not in frontend,
+      "Step 3 regression guard: unexpected registry transform moved into main Flutter shell")
 
 # Truthful loading and empty-data behavior.
 for token in [
@@ -286,14 +344,14 @@ responsibilities = [
     ("partner enrichment join", 'catalogByID :=' in gateway and 'billingByID :=' in gateway),
     ("partner category fallback/merge/order", "central10PartnerCategories" in gateway),
     ("module registry filtering", "registryPreset :=" in gateway),
-    ("module KPI aggregation", '"module_registry": len(modules.Items)' in gateway),
+    ("module KPI aggregation", '"module_registry": len(modules)' in gateway),
     ("commercial search", "commercialQ :=" in gateway),
     ("commercial partner/module/status filter", "statusFilter :=" in gateway),
     ("commercial sorting", "sort.Slice(ids" in gateway and "sort.Slice(keys" in gateway),
     ("commercial grouping", '"modules": rows' in gateway and '"partners": rows' in gateway),
     ("commercial subscription join", 'row["subscription"] = sub' in gateway),
     ("package canonicalization", "central10CanonicalPlan" in gateway),
-    ("package analytics fan-out", '"/api/v1/billing/packages/analytics"' in gateway),
+    ("package analytics materialization", '"/api/v1/billing/packages/analytics"' in step3_snapshots),
     ("finance screen aggregation", "central10Finance" in gateway and '"kpis": kpis' in gateway),
     ("finance invoice filter/join", 'row["partner_name"] = name' in gateway and 'invoiceStatus :=' in gateway),
     ("finance revenue chart selection", "central10FinanceChart" in gateway),

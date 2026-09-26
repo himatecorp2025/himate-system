@@ -251,7 +251,9 @@ func main() {
 		a.proxies[name] = p
 	}
 	a.bootstrapDashboardSnapshot()
+	a.bootstrapCentralStep3Snapshots()
 	go a.runDashboardMaterializer()
+	go a.runCentralStep3Materializer()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
@@ -398,6 +400,7 @@ func (a *app) migrate(ctx context.Context) error {
 		phase4MFAMigration(),
 		central8GatewayMigration(),
 		central10DashboardSnapshotMigration(),
+		central10Step3SnapshotMigration(),
 	}); err != nil {
 		return err
 	}
@@ -956,9 +959,9 @@ func permissionResource(r *http.Request) string {
 		return "dashboard"
 	case path == "/api/v1/central/partners", strings.HasPrefix(path, "/api/v1/central/partners/"):
 		return "partners"
-	case path == "/api/v1/central/modules":
+	case path == "/api/v1/central/modules", path == "/api/v1/central/modules/commercial":
 		return "catalog"
-	case path == "/api/v1/central/packages", path == "/api/v1/central/finance":
+	case path == "/api/v1/central/packages", path == "/api/v1/central/packages/supplementary", path == "/api/v1/central/finance":
 		return "billing"
 	case path == "/api/v1/central/impact":
 		return "impact"
@@ -1331,7 +1334,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/v1/search" && r.Method == http.MethodGet:
 		a.globalSearch(w, r, u)
 	case r.URL.Path == "/api/v1/central/partners" || strings.HasPrefix(r.URL.Path, "/api/v1/central/partners/") ||
-		r.URL.Path == "/api/v1/central/modules" || r.URL.Path == "/api/v1/central/packages" ||
+		r.URL.Path == "/api/v1/central/modules" || r.URL.Path == "/api/v1/central/modules/commercial" ||
+		r.URL.Path == "/api/v1/central/packages" || r.URL.Path == "/api/v1/central/packages/supplementary" ||
 		r.URL.Path == "/api/v1/central/finance" || r.URL.Path == "/api/v1/central/impact":
 		a.central10ReadModel(w, r, u)
 	case r.URL.Path == "/api/v1/notifications" || strings.HasPrefix(r.URL.Path, "/api/v1/notifications/"):
