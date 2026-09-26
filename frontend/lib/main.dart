@@ -4297,6 +4297,28 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? get provisioningJob =>
       provisioningJobs.isEmpty ? null : provisioningJobs.first;
 
+  String _partnerModuleSection(Map<String,dynamic> module) {
+    return switch ('${module['group_key'] ?? ''}') {
+      'finance_invoicing' => 'Finance & Invoicing',
+      'marketing' => 'Marketing',
+      'website_events' => 'Website & Events',
+      _ => 'Technical Operation',
+    };
+  }
+
+  Map<String,List<Map<String,dynamic>>> get groupedFilteredModules {
+    final grouped = <String,List<Map<String,dynamic>>>{
+      'Finance & Invoicing': <Map<String,dynamic>>[],
+      'Technical Operation': <Map<String,dynamic>>[],
+      'Marketing': <Map<String,dynamic>>[],
+      'Website & Events': <Map<String,dynamic>>[],
+    };
+    for (final module in filteredModules) {
+      grouped[_partnerModuleSection(module)]!.add(module);
+    }
+    return grouped;
+  }
+
   Future<void> startProvisioning() async {
     final lifecycle = '${partner['lifecycle'] ?? ''}';
     if (!const {'READY_TO_PROVISION', 'PROVISIONING', 'CONFIGURATION'}.contains(lifecycle)) {
@@ -5639,19 +5661,37 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      LayoutBuilder(
-                        builder: (context, c) {
-                          final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                          return Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              for (final m in filteredModules)
-                                SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
-                            ],
-                          );
-                        },
-                      ),
+                      for (final entry in groupedFilteredModules.entries) ...[
+                        _SectionHeader(
+                          title: entry.key,
+                          subtitle: entry.value.isEmpty
+                              ? 'No modules in this category for this partner.'
+                              : '${entry.value.length} module${entry.value.length == 1 ? '' : 's'} in this partner category.',
+                          trailing: _MiniCounter(label: '${entry.value.length} MODULES'),
+                        ),
+                        const SizedBox(height: 10),
+                        if (entry.value.isEmpty)
+                          const _MessageCard(
+                            icon: Icons.inbox_outlined,
+                            title: 'No module entitlement',
+                            message: 'There is no module to load in this category. The page will not retry an empty dataset.',
+                          )
+                        else
+                          LayoutBuilder(
+                            builder: (context, c) {
+                              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                              return Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  for (final m in entry.value)
+                                    SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
+                                ],
+                              );
+                            },
+                          ),
+                        const SizedBox(height: 18),
+                      ],
                       const SizedBox(height: 26),
                       KeyedSubtree(
                         key: _financeKey,
