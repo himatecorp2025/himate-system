@@ -21,6 +21,7 @@ part 'design_guide.dart';
 part 'seo_panel.dart';
 part 'start22_connector.dart';
 part 'administration_rbac.dart';
+part 'administration_center.dart';
 part 'brand_assets.dart';
 part 'backups_panel.dart';
 part 'domains_deployments.dart';
@@ -2028,7 +2029,19 @@ class _ShellState extends State<Shell> {
         canConnections: can('connectors.read'),
       );
       case 7: return SystemPage(api: widget.api);
-      case 8: return AdministrationPage(api: widget.api, user: widget.user);
+      case 8:
+        return can('administration.read')
+            ? AdministrationCenterPage(
+                api: widget.api,
+                user: widget.user,
+                canPartnersRead: can('partners.read'),
+                canBillingRead: can('billing.read'),
+                canBillingWrite: can('billing.write') || can('billing.approve'),
+                canBackupsRead: can('backups.read'),
+                canBackupsApprove: can('backups.approve'),
+                canAuditRead: can('audit.read'),
+              )
+            : AdministrationPage(api: widget.api, user: widget.user);
       case 9: return ComplianceArchivesPage(api: widget.api);
       default: return const SizedBox.shrink();
     }
@@ -9031,9 +9044,10 @@ class _SystemPageState extends State<SystemPage> {
 
 
 class AdministrationPage extends StatefulWidget {
-  const AdministrationPage({required this.api, required this.user, super.key});
+  const AdministrationPage({required this.api, required this.user, this.onBack, super.key});
   final Api api;
   final Map<String, dynamic> user;
+  final VoidCallback? onBack;
 
   @override
   State<AdministrationPage> createState() => _AdministrationPageState();
@@ -9224,6 +9238,12 @@ class _AdministrationPageState extends State<AdministrationPage> {
       title: 'Administration',
       subtitle: 'Central audit history, administrator lifecycle, roles and backend-enforced permissions across the HIMATE control plane.',
       actions: [
+        if (widget.onBack != null)
+          OutlinedButton.icon(
+            onPressed: widget.onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const LText('Back'),
+          ),
         OutlinedButton.icon(
           onPressed: loading ? null : () => load(),
           icon: const Icon(Icons.refresh_rounded),
