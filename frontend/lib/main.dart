@@ -312,6 +312,11 @@ String centralImpactInitialPath() => Uri(
       },
     ).toString();
 
+String centralConnectionsInitialPath() => Uri(
+      path: '/api/v1/central/connections',
+      queryParameters: const <String, String>{'limit': '120', 'offset': '0'},
+    ).toString();
+
 class Api {
   Api() : client = BrowserClient()..withCredentials = true;
   final BrowserClient client;
@@ -390,6 +395,7 @@ class Api {
       add('/partner/api/v1');
       add('/api/v1/central/partners');
       add('/api/v1/central/modules/commercial');
+      add('/api/v1/central/connections');
       addDashboard();
     } else if (path.startsWith('/api/v1/partners') ||
         path.startsWith('/api/v1/partner-categories')) {
@@ -436,6 +442,7 @@ class Api {
       add('/api/v1/provisioning');
       add('/api/v1/environments');
       add('/api/v1/connectors');
+      add('/api/v1/central/connections');
       add('/api/v1/system-health');
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
@@ -713,6 +720,9 @@ class _HimateAppState extends State<HimateApp> {
     }
     if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
       deferredTargets.add(centralImpactInitialPath());
+    }
+    if (_can('connectors.read')) {
+      deferredTargets.add(centralConnectionsInitialPath());
     }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
       deferredTargets.add('/api/v1/system-health/snapshot');
