@@ -34,6 +34,7 @@ var central10ReadCache = struct {
 func (a *app) invalidateCentral10Caches(path string) {
 	path = strings.ToLower(strings.TrimSpace(path))
 	invalidatePartners := strings.Contains(path, "partner")
+	invalidateConnections := invalidatePartners || strings.Contains(path, "connector")
 	invalidateWorkspaceModules := invalidatePartners ||
 		strings.Contains(path, "module") ||
 		strings.Contains(path, "billing") ||
@@ -48,6 +49,9 @@ func (a *app) invalidateCentral10Caches(path string) {
 		}
 		if invalidateWorkspaceModules &&
 			strings.Contains(lowerKey, "/api/v1/central/partners/") {
+			remove = true
+		}
+		if invalidateConnections && strings.Contains(lowerKey, "/api/v1/central/connections?") {
 			remove = true
 		}
 		if remove {
