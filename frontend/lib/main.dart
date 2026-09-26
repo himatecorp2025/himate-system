@@ -631,52 +631,56 @@ class _HimateAppState extends State<HimateApp> {
   void _warmControlPlane() {
     if (user == null) return;
 
-    // Warm every permission-visible Central screen before the first menu
-    // click. Widgets can stay lazily mounted because their read models are hot.
-    final targets = <String>{};
+    // Keep login/navigation responsive by warming only the first screen keys
+    // immediately. Preset/status variants are useful, but firing all of them
+    // at once competes with the user's first real navigation request.
+    final primaryTargets = <String>{};
+    final deferredTargets = <String>{};
     if (_can('dashboard.read')) {
-      targets.add(centralDashboardInitialPath());
+      primaryTargets.add(centralDashboardInitialPath());
     }
     if (_can('partners.read')) {
-      targets.add(centralPartnersInitialPath());
-      // The portfolio KPI cards are common first interactions. Warm their
-      // exact server-side filter keys so the first click is cache-backed too.
-      targets.add(centralPartnersPresetPath(lifecycle: 'LIVE'));
-      targets.add(centralPartnersPresetPath(lifecycle: 'PROSPECT'));
-      targets.add(centralPartnersPresetPath(reference: true));
+      primaryTargets.add(centralPartnersInitialPath());
+      deferredTargets.add(centralPartnersPresetPath(lifecycle: 'LIVE'));
+      deferredTargets.add(centralPartnersPresetPath(lifecycle: 'PROSPECT'));
+      deferredTargets.add(centralPartnersPresetPath(reference: true));
     }
     if (_can('catalog.read')) {
-      targets.add(centralModulesInitialPath());
-      targets.add(centralModulesCommercialInitialPath());
+      primaryTargets.add(centralModulesInitialPath());
+      deferredTargets.add(centralModulesCommercialInitialPath());
     }
     if (_can('billing.read')) {
-      targets.add(centralPackagesInitialPath());
-      targets.add(centralPackagesSupplementaryInitialPath());
-      targets.add(centralFinanceInitialPath());
-      // Finance KPI/status cards use distinct cache keys. Prewarm the common
-      // first-click views against the same hot snapshot read model.
+      primaryTargets.add(centralPackagesInitialPath());
+      deferredTargets.add(centralPackagesSupplementaryInitialPath());
+      primaryTargets.add(centralFinanceInitialPath());
       for (final status in const ['DRAFT', 'APPROVED', 'SENT', 'PAID']) {
-        targets.add(centralFinancePath(invoiceStatus: status));
+        deferredTargets.add(centralFinancePath(invoiceStatus: status));
       }
     }
     if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
-      targets.add(centralImpactInitialPath());
+      deferredTargets.add(centralImpactInitialPath());
     }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
-      targets.add('/api/v1/system-health/snapshot');
-      targets.add('/api/v1/provisioning/jobs');
-      targets.add('/api/v1/environments');
-      targets.add('/api/v1/backups/summary');
+      deferredTargets.add('/api/v1/system-health/snapshot');
+      deferredTargets.add('/api/v1/provisioning/jobs');
+      deferredTargets.add('/api/v1/environments');
+      deferredTargets.add('/api/v1/backups/summary');
     }
 
     final path = Uri.base.path;
     if (_can('partners.read') && path.startsWith('/app/partners/')) {
       final id = path.substring('/app/partners/'.length).split('/').first;
-      if (id.isNotEmpty) targets.add('/api/v1/central/partners/$id');
+      if (id.isNotEmpty) primaryTargets.add('/api/v1/central/partners/$id');
     }
 
-    if (targets.isNotEmpty) {
-      api.prefetch(targets, maxAge: const Duration(seconds: 30));
+    if (primaryTargets.isNotEmpty) {
+      api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30));
+    }
+    if (deferredTargets.isNotEmpty) {
+      Timer(const Duration(milliseconds: 1500), () {
+        if (!mounted || user == null) return;
+        api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30));
+      });
     }
   }
 
