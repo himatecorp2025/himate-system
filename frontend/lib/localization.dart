@@ -216,6 +216,13 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Commercial Matrix unavailable': 'A kereskedelmi mátrix nem érhető el',
+    'Loading Commercial Matrix': 'Kereskedelmi mátrix betöltése',
+    'Loading package definitions from the hot commercial snapshot.': 'Csomagdefiníciók betöltése a gyors kereskedelmi pillanatképből.',
+    'The module registry is already usable. Partner and billing data are loading independently.': 'A modulregiszter már használható. A partner- és számlázási adatok külön töltődnek be.',
+    'Module catalog is still loading. Package pricing is already available.': 'A modulkatalógus még töltődik. A csomagárak már elérhetők.',
+    'Module catalog is temporarily unavailable. Package cards remain usable.': 'A modulkatalógus átmenetileg nem érhető el. A csomagkártyák továbbra is használhatók.',
+    'Package cards remain usable while analytics loads independently.': 'A csomagkártyák használhatók, miközben az analitika külön töltődik be.',
     'Loading the latest partner portfolio snapshot.': 'A legfrissebb partnerportfólió-pillanatkép betöltése.',
     'Loading the latest module registry snapshot.': 'A legfrissebb modulregiszter-pillanatkép betöltése.',
     'Loading the latest finance snapshot.': 'A legfrissebb pénzügyi pillanatkép betöltése.',
