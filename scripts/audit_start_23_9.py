@@ -72,7 +72,7 @@ for token in (
     'a.hasPermission(actor,"cms.read")',
     'a.hasPermission(actor,"administration.read")',
     'a.hasPermission(actor,"audit.read")',
-    "cacheable:=year==time.Now().UTC().Year()",
+    "dashboardSnapshotForRead",
     "dashboardPayloadForActor",
     'a.hasPermission(actor,"billing.read")',
     'a.hasPermission(actor,"impact.read")',
