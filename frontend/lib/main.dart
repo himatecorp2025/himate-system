@@ -2862,7 +2862,7 @@ class PartnersPage extends StatefulWidget {
 class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _portfolioSnapshot = <Map<String, dynamic>>[];
+  Map<String, dynamic> partnerKpis = <String, dynamic>{};
   bool loading = false;
   bool categoriesLoading = true;
   String? categoryRegistryWarning;
@@ -2878,12 +2878,6 @@ class _PartnersPageState extends State<PartnersPage> {
   static const int pageSize = 24;
   int offset = 0;
   int total = 0;
-  int referenceCount = 0;
-  Map<String, int> lifecycleCounts = <String, int>{};
-  int portfolioTotal = 0;
-  int portfolioReferenceCount = 0;
-  Map<String, int> portfolioLifecycleCounts = <String, int>{};
-  bool portfolioStatsReady = false;
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
 
@@ -2980,12 +2974,8 @@ class _PartnersPageState extends State<PartnersPage> {
     return params;
   }
 
-  Uri _partnerUri() {
-    final params = _partnerQueryParameters()
-      ..['core_only'] = 'true'
-      ..['include_stats'] = 'false';
-    return Uri(path: '/api/v1/partners', queryParameters: params);
-  }
+  Uri _centralPartnerUri() =>
+      Uri(path: '/api/v1/central/partners', queryParameters: _partnerQueryParameters());
 
   Uri _partnerExportUri() {
     final params = <String, String>{};
@@ -2997,162 +2987,57 @@ class _PartnersPageState extends State<PartnersPage> {
     return Uri(path: '/api/v1/partners/export.pdf', queryParameters: params.isEmpty ? null : params);
   }
 
-  String _presetPartnerPath({String lifecycle = 'ALL', bool reference = false}) {
-    final params = <String, String>{
-      'limit': '$pageSize',
-      'offset': '0',
-      'core_only': 'true',
-      'include_stats': 'false',
-      if (lifecycle != 'ALL') 'lifecycle': lifecycle,
-      if (reference) 'reference': 'true',
-    };
-    return Uri(path: '/api/v1/partners', queryParameters: params).toString();
-  }
-
-  void _prefetchPortfolioPresets() {
-    widget.api.prefetch([
-      _presetPartnerPath(),
-      _presetPartnerPath(lifecycle: 'LIVE'),
-      _presetPartnerPath(lifecycle: 'PROSPECT'),
-      _presetPartnerPath(reference: true),
-    ]);
-  }
-
-  Uri _partnerStatsUri() {
-    final params = _partnerQueryParameters()
-      ..['core_only'] = 'true'
-      ..['stats_only'] = 'true';
-    return Uri(path: '/api/v1/partners', queryParameters: params);
-  }
-
-  Uri _portfolioStatsUri() => Uri(
-        path: '/api/v1/partners',
-        queryParameters: const <String, String>{
-          'limit': '1',
-          'offset': '0',
-          'stats_only': 'true',
-          'core_only': 'true',
-        },
-      );
-
-  Future<void> _loadCategories({bool force = false}) async {
-    if (mounted) setState(() => categoriesLoading = true);
-    try {
-      final response = await widget.api.get('/api/v1/partner-categories', force: force);
-      final loaded = items(response);
-      if (mounted) {
-        setState(() {
-          categories = _mergePartnerCategories(loaded);
-          categoryRegistryWarning = loaded.isEmpty
-              ? 'The live category registry returned no rows. Built-in partner categories are shown.'
-              : null;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          categories = _mergePartnerCategories(categories);
-          categoryRegistryWarning =
-              'The live category registry is temporarily unavailable. Built-in partner categories remain available.';
-        });
-      }
-    } finally {
-      if (mounted) setState(() => categoriesLoading = false);
-    }
-  }
-
-  Future<void> _loadPartnerStats(int generation) async {
-    if (mounted && generation == _loadGeneration) setState(() => statsReady = false);
-    try {
-      final page = await widget.api.get(_partnerStatsUri().toString());
-      if (!mounted || generation != _loadGeneration) return;
-      final counts = page['lifecycle_counts'];
-      setState(() {
-        total = (page['total'] as num?)?.toInt() ?? total;
-        referenceCount = (page['reference_count'] as num?)?.toInt() ?? 0;
-        lifecycleCounts = counts is Map
-            ? <String, int>{
-                for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
-              }
-            : <String, int>{};
-        statsReady = true;
-      });
-    } catch (_) {
-      // Exact counts are supplementary and must never block partner rows.
-    }
-  }
-
-  Future<void> _loadPortfolioStats(int generation) async {
-    try {
-      final page = await widget.api.get(_portfolioStatsUri().toString());
-      if (!mounted || generation != _loadGeneration) return;
-      final counts = page['lifecycle_counts'];
-      setState(() {
-        portfolioTotal = (page['total'] as num?)?.toInt() ?? portfolioTotal;
-        portfolioReferenceCount = (page['reference_count'] as num?)?.toInt() ?? portfolioReferenceCount;
-        portfolioLifecycleCounts = counts is Map
-            ? <String, int>{
-                for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
-              }
-            : <String, int>{};
-        portfolioStatsReady = true;
-      });
-    } catch (_) {
-      // Global KPI counts are supplementary and must never block the partner list.
-    }
-  }
-
-  Future<void> _loadPortfolioEnrichment(int generation, List<Map<String, dynamic>> baseRows) async {
-    final ids = baseRows.map((p) => '${p['id'] ?? ''}').where((id) => id.isNotEmpty).toList();
-    if (ids.isEmpty) return;
-    try {
-      final uri = Uri(path: '/api/v1/partners/portfolio', queryParameters: {'ids': ids.join(',')});
-      final response = await widget.api.get(uri.toString());
-      if (!mounted || generation != _loadGeneration) return;
-      final byId = <String, Map<String, dynamic>>{
-        for (final row in items(response)) '${row['partner_id']}': row,
-      };
-      setState(() {
-        partners = partners.map((row) {
-          final extra = byId['${row['id']}'];
-          return extra == null ? row : <String, dynamic>{...row, ...extra};
-        }).toList();
-      });
-    } catch (_) {
-      // Enrichment is optional: never block core partner data.
-    }
-  }
-
   Future<void> load({bool reset = false, bool loadCategories = false}) async {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
-    if (mounted) setState(() { loading = true; error = null; statsReady = false; });
-    if (loadCategories || categoryRegistryWarning != null) unawaited(_loadCategories(force: loadCategories));
-
-    try {
-      final page = await widget.api.get(_partnerUri().toString());
-      if (!mounted || generation != _loadGeneration) return;
-      final coreRows = items(page);
+    if (mounted) {
       setState(() {
-        partners = coreRows;
-        if (offset == 0 &&
-            query.trim().isEmpty &&
-            categoryFilter == 'ALL' &&
-            lifecycleFilter == 'ALL' &&
-            healthFilter == 'ALL' &&
-            !referenceOnly) {
-          _portfolioSnapshot = List<Map<String, dynamic>>.from(coreRows);
-        }
-        hasMore = page['has_more'] == true;
-        loading = false;
+        loading = true;
+        error = null;
+        statsReady = false;
+        if (loadCategories) categoriesLoading = true;
       });
-      if (offset == 0) _prefetchPortfolioPresets();
-      unawaited(_loadPartnerStats(generation));
-      unawaited(_loadPortfolioStats(generation));
-      unawaited(_loadPortfolioEnrichment(generation, List<Map<String, dynamic>>.from(coreRows)));
+    }
+    try {
+      final model = await widget.api.get(
+        _centralPartnerUri().toString(),
+        force: loadCategories,
+        maxAge: const Duration(seconds: 5),
+      );
+      if (!mounted || generation != _loadGeneration) return;
+      final categoryRows = items(<String, dynamic>{'items': model['categories']});
+      final pagination = model['pagination'] is Map
+          ? Map<String, dynamic>.from(model['pagination'] as Map)
+          : <String, dynamic>{};
+      final kpis = model['kpis'] is Map
+          ? Map<String, dynamic>.from(model['kpis'] as Map)
+          : <String, dynamic>{};
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
+      final unavailable = meta['unavailable'] is List
+          ? (meta['unavailable'] as List).map((e) => '$e').toSet()
+          : <String>{};
+      setState(() {
+        partners = items(model);
+        categories = _mergePartnerCategories(categoryRows);
+        partnerKpis = kpis;
+        total = (pagination['total'] as num?)?.toInt() ?? partners.length;
+        hasMore = pagination['has_more'] == true;
+        statsReady = true;
+        loading = false;
+        categoriesLoading = false;
+        categoryRegistryWarning = unavailable.contains('partner_categories')
+            ? 'The live category registry is temporarily unavailable. Built-in partner categories remain available.'
+            : null;
+      });
     } catch (e) {
       if (mounted && generation == _loadGeneration) {
-        setState(() { error = e.toString(); loading = false; });
+        setState(() {
+          error = e.toString();
+          loading = false;
+          categoriesLoading = false;
+        });
       }
     }
   }
@@ -3160,7 +3045,7 @@ class _PartnersPageState extends State<PartnersPage> {
   void updateSearch(String value) {
     query = value;
     _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
+    _searchDebounce = Timer(const Duration(milliseconds: 240), () {
       if (mounted) load(reset: true);
     });
   }
@@ -3168,11 +3053,6 @@ class _PartnersPageState extends State<PartnersPage> {
   void applyPortfolioPreset({String lifecycle = 'ALL', bool reference = false}) {
     _searchDebounce?.cancel();
     _searchController.clear();
-    final optimistic = central8PartnerPresetRows(
-      _portfolioSnapshot,
-      lifecycle: lifecycle,
-      reference: reference,
-    );
     setState(() {
       query = '';
       categoryFilter = 'ALL';
@@ -3180,8 +3060,6 @@ class _PartnersPageState extends State<PartnersPage> {
       healthFilter = 'ALL';
       referenceOnly = reference;
       offset = 0;
-      if (_portfolioSnapshot.isNotEmpty) partners = optimistic;
-      loading = true;
     });
     unawaited(load(reset: true));
   }
@@ -3189,19 +3067,19 @@ class _PartnersPageState extends State<PartnersPage> {
   void clearReferenceFilter() {
     if (!referenceOnly) return;
     setState(() => referenceOnly = false);
-    load(reset: true);
+    unawaited(load(reset: true));
   }
 
   void previousPage() {
     if (offset <= 0) return;
     offset = offset >= pageSize ? offset - pageSize : 0;
-    load();
+    unawaited(load());
   }
 
   void nextPage() {
     if (!hasMore) return;
     offset += pageSize;
-    load();
+    unawaited(load());
   }
 
   void success(String message) {
@@ -3933,13 +3811,10 @@ class _PartnersPageState extends State<PartnersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final kpiCounts = portfolioStatsReady ? portfolioLifecycleCounts : lifecycleCounts;
-    final live = kpiCounts['LIVE'] ?? 0;
-    final prospects = kpiCounts['PROSPECT'] ?? 0;
-    final reference = portfolioStatsReady ? portfolioReferenceCount : referenceCount;
-    final allRecords = portfolioStatsReady
-        ? portfolioTotal
-        : lifecycleCounts.values.fold<int>(0, (sum, value) => sum + value);
+    final live = (partnerKpis['live_partners'] as num?)?.toInt() ?? 0;
+    final prospects = (partnerKpis['prospects'] as num?)?.toInt() ?? 0;
+    final reference = (partnerKpis['reference_partners'] as num?)?.toInt() ?? 0;
+    final allRecords = (partnerKpis['partner_records'] as num?)?.toInt() ?? 0;
 
     return Content(
       eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
