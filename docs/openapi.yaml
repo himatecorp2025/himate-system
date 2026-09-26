@@ -1031,10 +1031,10 @@ paths:
         "400": {description: Invalid JSON payload or partner validation error}
         "409": {description: Primary domain is already assigned to another partner}
         "503": {description: Partner onboarding is blocked because one or more required microservices are unavailable, unversioned, or running a different release}
-  /api/v1/partners/export.csv:
+  /api/v1/partners/export.pdf:
     get:
       tags: [Partners]
-      summary: Export the filtered Central partner portfolio as CSV
+      summary: Export the filtered Central partner portfolio as branded PDF
       parameters:
         - {name: q, in: query, schema: {type: string}}
         - {name: category, in: query, schema: {type: string}}
@@ -1044,9 +1044,9 @@ paths:
         - {name: include_archived, in: query, schema: {type: boolean}}
       responses:
         "200":
-          description: CSV export of matching partner master-data records
+          description: Branded PDF export of matching partner master-data records
           content:
-            text/csv:
+            application/pdf:
               schema: {type: string}
   /api/v1/partners/{partnerId}/logo:
     parameters:
@@ -1280,18 +1280,18 @@ paths:
       description: Returns currency-safe invoice KPIs, 12-month and latest-four-week paid-revenue series, package-specific paid-revenue series, and the pending commercial-onboarding queue.
       responses:
         "200": {description: Finance KPIs, monthly/weekly paid revenue by currency and package, plus onboarding queue}
-  /api/v1/billing/finance/export.csv:
+  /api/v1/billing/finance/export.pdf:
     get:
       tags: [Billing]
-      summary: Export Central invoice-ledger data as CSV
+      summary: Export Central invoice-ledger data as branded PDF
       parameters:
         - {name: status, in: query, schema: {type: string, enum: [ALL, DRAFT, APPROVED, SENT, PAID, CANCELLED]}}
         - {name: plan_key, in: query, schema: {type: string}}
       responses:
         "200":
-          description: CSV export of the immutable invoice ledger and payment state
+          description: Branded PDF export of the immutable invoice ledger and payment state
           content:
-            text/csv:
+            application/pdf:
               schema: {type: string}
   /api/v1/billing/invoices:
     get:
@@ -1381,15 +1381,15 @@ paths:
         five-minute-bucket estimate and is never backfilled with fabricated history.
       responses:
         "200": {description: Package aggregates and partner-level subscription, usage and Portal activity metrics}
-  /api/v1/billing/packages/export.csv:
+  /api/v1/billing/packages/export.pdf:
     get:
       tags: [Billing]
-      summary: Export package analytics as CSV
+      summary: Export package analytics as branded PDF
       responses:
         "200":
-          description: CSV export of partner package/subscription analytics
+          description: Branded PDF export of partner package/subscription analytics
           content:
-            text/csv:
+            application/pdf:
               schema: {type: string}
   /api/v1/billing/plans:
     get:
@@ -2419,18 +2419,18 @@ paths:
         - {name: period_end, in: query, schema: {type: string, format: date}}
       responses:
         "200": {description: Aggregated impact metrics for the optional overlap period}
-  /api/v1/impact/export.csv:
+  /api/v1/impact/export.pdf:
     get:
       tags: [Impact]
-      summary: Export recorded impact observations as CSV
+      summary: Export recorded impact observations as branded PDF
       parameters:
         - {name: partner_id, in: query, schema: {type: string}}
         - {name: metric_key, in: query, schema: {type: string}}
       responses:
         "200":
-          description: CSV export of impact metric observations and provenance
+          description: Branded PDF export of impact metric observations and provenance
           content:
-            text/csv:
+            application/pdf:
               schema: {type: string}
   /api/v1/evidence:
     get:
