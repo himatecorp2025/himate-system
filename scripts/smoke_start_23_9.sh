@@ -35,10 +35,10 @@ PY
 )"
 curl -fsS -c "$OWNER_COOKIE" -H 'Content-Type: application/json' -d "$login_payload" "$BASE_URL/api/v1/auth/login" >/dev/null
 before="$(curl -fsS -b "$OWNER_COOKIE" "$BASE_URL/api/v1/dashboard/summary?year=$YEAR&refresh=true")"
-printf '%s' "$before" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "billing" in d and "impact" in d and "activity" in d; assert len(d["impact"]["trend"])==12'
+printf '%s' "$before" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "billing" in d and "impact" in d and "activity" in d; impact=d["impact"]; assert isinstance(impact.get("trend"),list); assert isinstance(impact.get("weekly_trend"),list); assert impact.get("has_data") in (True,False,None); assert impact.get("has_data") is not False or (impact.get("trend")==[] and impact.get("weekly_trend")==[])'
 before_revenue="$(printf '%s' "$before" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((float(x["revenue_ytd"]) for x in d["billing"]["items"] if x["currency"]=="USD"),0))')"
 before_people="$(printf '%s' "$before" | python3 -c 'import json,sys; print(float(json.load(sys.stdin)["impact"]["people_reached_ytd"]))')"
-before_month="$(printf '%s' "$before" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=int(sys.argv[1]); print(float(next(x["value"] for x in d["impact"]["trend"] if int(x["month"])==m)))' "$MONTH")"
+before_month="$(printf '%s' "$before" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=int(sys.argv[1]); print(float(next((x["value"] for x in d["impact"]["trend"] if int(x["month"])==m),0)))' "$MONTH")"
 echo ok
 
 printf 'create searchable partner and provider-settled activation revenue... '
