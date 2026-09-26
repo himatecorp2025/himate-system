@@ -1256,6 +1256,12 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if r.Method == http.MethodPost &&
+		(strings.HasSuffix(r.URL.Path, "/seed-test-fixture") || strings.HasSuffix(r.URL.Path, "/purge-test-fixture")) &&
+		!u.SystemOwner {
+		common.APIError(w, http.StatusForbidden, "OWNER_REQUIRED", "Only the HIMATE system owner can manage Golden Test Partner fixtures")
+		return
+	}
 
 	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 	if mutating {
