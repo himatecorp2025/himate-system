@@ -251,7 +251,9 @@ func main() {
 		a.proxies[name] = p
 	}
 	a.bootstrapDashboardSnapshot()
+	a.bootstrapCentralStep3Snapshots()
 	go a.runDashboardMaterializer()
+	go a.runCentralStep3Materializer()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
@@ -398,6 +400,7 @@ func (a *app) migrate(ctx context.Context) error {
 		phase4MFAMigration(),
 		central8GatewayMigration(),
 		central10DashboardSnapshotMigration(),
+		central10Step3SnapshotMigration(),
 	}); err != nil {
 		return err
 	}
