@@ -18,6 +18,7 @@ def require(condition: bool, message: str) -> None:
 billing = read("services/cmd/billing/main.go")
 impact = read("services/cmd/impact/main.go")
 gateway = read("services/cmd/gateway/main.go")
+dashboard_snapshot = read("services/cmd/gateway/dashboard_snapshot.go")
 frontend = read("frontend/lib/main.dart")
 matrix = json.loads(read("docs/START-23.1_FUNCTIONAL_MATRIX.json"))
 ci = read(".github/workflows/ci.yml")
@@ -61,7 +62,7 @@ for token in (
 
 for token in (
     'path == "/api/v1/dashboard/summary", path == "/api/v1/search"',
-    "dashboardRecentActivity",
+    "dashboardActivityForActor",
     "IDENTITY_APPEND_ONLY_AUDIT",
     "permissionResource+\".read\"",
     "func (a *app) globalSearch",
@@ -79,6 +80,15 @@ for token in (
     '"authorized":false',
 ):
     require(token in gateway, f"Gateway START-23.9 contract missing {token!r}")
+
+for token in (
+    "materializeDashboardActivity",
+    "FROM identity.audit_events",
+    "WHERE outcome='SUCCESS'",
+    '"activity": activityBlock',
+):
+    require(token in dashboard_snapshot,
+            f"Dashboard snapshot START-23.9 activity contract missing {token!r}")
 
 for stale in (
     "Billing analytics upcoming",

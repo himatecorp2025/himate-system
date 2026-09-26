@@ -19,7 +19,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   Map<String, dynamic> registryKpis = <String, dynamic>{};
   bool showSubscriptionPlans = false;
   bool showCommercialMatrix = false;
-  bool loading = false;
+  bool loading = true;
   bool commercialLoading = true;
   bool commercialReady = false;
   String? error;
@@ -109,8 +109,12 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   }
 
   Future<void> load() async {
-    await loadRegistry();
+    // Primary registry and supplementary commercial data are independent.
+    // Start the heavier commercial refresh immediately, but only await the
+    // primary registry so the Modules surface becomes usable as soon as its
+    // hot snapshot is available.
     unawaited(loadCommercial());
+    await loadRegistry();
   }
 
   Future<void> loadRegistry() async {

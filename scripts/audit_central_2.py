@@ -40,9 +40,9 @@ require('"weekly_trend":weeklyTrend' in impact, "Impact service does not expose 
 require(impact.count("COALESCE(p.test_partner,FALSE)=FALSE") >= 3,
         "Dashboard Impact aggregation must continue excluding test partners")
 
-require("FROM identity.audit_events" in gateway, "Recent Activity is not backed by the append-only audit store")
-require("WHERE outcome='SUCCESS'" in gateway, "Recent Activity is not restricted to successful audit events")
-require('"source":"IDENTITY_APPEND_ONLY_AUDIT"' in gateway,
+require("FROM identity.audit_events" in dashboard_snapshot, "Recent Activity is not backed by the append-only audit store")
+require("WHERE outcome='SUCCESS'" in dashboard_snapshot, "Recent Activity is not restricted to successful audit events")
+require("IDENTITY_APPEND_ONLY_AUDIT" in dashboard_snapshot and "IDENTITY_APPEND_ONLY_AUDIT" in gateway,
         "Dashboard does not identify the Recent Activity authoritative source")
 require(
     '"weekly_trend":weeklyTrend' in gateway or '"weekly_trend":[]any{}' in gateway or

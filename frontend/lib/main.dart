@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material show Text;
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -295,12 +296,22 @@ class Api {
   final BrowserClient client;
   final Map<String, _ApiCacheEntry> _cache = <String, _ApiCacheEntry>{};
   final Map<String, Future<Map<String, dynamic>>> _inflight = <String, Future<Map<String, dynamic>>>{};
+  final Map<String, ValueNotifier<int>> _cacheSignals = <String, ValueNotifier<int>>{};
+
+  ValueListenable<int> cacheSignal(String path) =>
+      _cacheSignals.putIfAbsent(path, () => ValueNotifier<int>(0));
+
+  void _storeCache(String path, Map<String, dynamic> data, Duration maxAge) {
+    _cache[path] = _ApiCacheEntry(data, DateTime.now().add(maxAge));
+    final signal = _cacheSignals[path];
+    if (signal != null) signal.value = signal.value + 1;
+  }
 
   Future<Map<String, dynamic>> _fetchGet(String path, Duration maxAge) {
     final pending = _inflight[path];
     if (pending != null) return pending;
     final future = request('GET', path).then((data) {
-      _cache[path] = _ApiCacheEntry(data, DateTime.now().add(maxAge));
+      _storeCache(path, data, maxAge);
       return data;
     }).whenComplete(() => _inflight.remove(path));
     _inflight[path] = future;
@@ -315,7 +326,7 @@ class Api {
   }) {
     if (force) {
       return request('GET', path).then((data) {
-        _cache[path] = _ApiCacheEntry(data, DateTime.now().add(maxAge));
+        _storeCache(path, data, maxAge);
         return data;
       });
     }
@@ -494,9 +505,10 @@ class Api {
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;
     final uri = Uri.parse(path);
-    final timeout = (path.startsWith('/api/v1/central/') || path.startsWith('/api/v1/dashboard/'))
-        ? const Duration(milliseconds: 800)
-        : const Duration(seconds: 4);
+    // Central performance is an API/SLO concern, not a browser-abort policy.
+    // Keep one transport safety timeout so a temporary >800 ms response cannot
+    // be converted into a false client failure while hot snapshots recover.
+    const timeout = Duration(seconds: 4);
     if (method == 'POST') {
       response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(timeout);
     } else if (method == 'PUT') {
@@ -2523,14 +2535,10 @@ class DashboardPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final year = DateTime.now().toUtc().year;
     final path = centralDashboardInitialPath();
-    return StatefulBuilder(
-      builder: (context, refresh) => FutureBuilder<Map<String, dynamic>>(
-      future: api.get(
-        path,
-        onRefresh: (_) {
-          if (context.mounted) refresh(() {});
-        },
-      ),
+    return ValueListenableBuilder<int>(
+      valueListenable: api.cacheSignal(path),
+      builder: (context, _, __) => FutureBuilder<Map<String, dynamic>>(
+      future: api.get(path),
       initialData: api.peek(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
@@ -2990,7 +2998,6 @@ class _PartnersPageState extends State<PartnersPage> {
   Future<void> load({
     bool reset = false,
     bool loadCategories = false,
-    bool force = false,
   }) async {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
@@ -3037,7 +3044,6 @@ class _PartnersPageState extends State<PartnersPage> {
     try {
       final model = await widget.api.get(
         path,
-        force: force,
         maxAge: const Duration(seconds: 5),
         onRefresh: applyModel,
       );
