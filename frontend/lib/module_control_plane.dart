@@ -1560,13 +1560,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   Widget build(BuildContext context) {
     if (showSubscriptionPlans) return subscriptionPlansPage();
 
-    final liveReady = modules.where((m) =>
-        s(m['availability']) == 'ACTIVE' &&
-        s(m['publication_status']) == 'PUBLISHED' &&
-        s(m['implementation_state']) == 'READY').length;
-    final linked = modules.where((m) => s(m['source_repository']).trim().isNotEmpty).length;
-    final relations = modules.fold<int>(0, (sum, m) => sum + ((m['relationship_count'] as num?)?.toInt() ?? 0));
-    final partnerUsage = modules.fold<int>(0, (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0));
+    final registryTotal = (registryKpis['module_registry'] as num?)?.toInt() ?? modules.length;
+    final liveReady = (registryKpis['active_modules'] as num?)?.toInt() ?? 0;
+    final linked = (registryKpis['source_linked'] as num?)?.toInt() ?? 0;
+    final relations = (registryKpis['relationships'] as num?)?.toInt() ?? 0;
+    final partnerUsage = (registryKpis['active_partner_assignments'] as num?)?.toInt() ?? 0;
     final currentGroup = selectedGroupKey == null ? null : groupByKey(selectedGroupKey!);
     final topicOverview = selectedGroupKey == null && registryPreset == 'TOPICS';
 
@@ -1618,7 +1616,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               ResponsiveKpiGrid(children: [
                 Kpi(
                   label: uiLiteral('Module registry'),
-                  value: modules.length.toString(),
+                  value: registryTotal.toString(),
                   note: uiLiteral('Canonical + custom modules'),
                   icon: Icons.hub_outlined,
                   accent: brandNavy,
@@ -1665,7 +1663,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     subtitle: registrySubtitle,
                     trailing: _MiniCounter(
                       label: topicOverview
-                          ? '${primaryGroups.length} ${uiLiteral('topics')} · ${modules.length} ${uiLiteral('modules')}'
+                          ? '${topicRows.length} ${uiLiteral('topics')} · $registryTotal ${uiLiteral('modules')}'
                           : '${filtered.length} ${uiLiteral('modules')}',
                     ),
                   ),
@@ -1683,7 +1681,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final group in primaryGroups)
+                      for (final group in topicRows)
                         SizedBox(width: width, child: topicGroupCard(group)),
                     ],
                   );
