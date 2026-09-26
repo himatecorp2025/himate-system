@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/csv"
 	"fmt"
 	"net/http"
 	"strings"
@@ -282,14 +281,19 @@ func (a *app) packageAnalytics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func central8WriteCSVHeader(w http.ResponseWriter, filename string) *csv.Writer {
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	w.Header().Set("Cache-Control", "private, no-store")
-	return csv.NewWriter(w)
+func central9PlanPrice(planKey string) (string, string) {
+	switch strings.ToUpper(strings.TrimSpace(planKey)) {
+	case "STARTER":
+		return "$990 + VAT", "10 modules"
+	case "BUSINESS":
+		return "$1,490 + VAT", "20 modules"
+	case "FLEX":
+		return "$2,490 + VAT", "Unlimited"
+	default:
+		return "-", "-"
+	}
 }
-
-func (a *app) packageExportCSV(w http.ResponseWriter, r *http.Request) {
+func (a *app) packageExportPDF(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
 		return
@@ -299,45 +303,45 @@ func (a *app) packageExportCSV(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, 500, "DB", "Could not export package analytics")
 		return
 	}
-	writer := central8WriteCSVHeader(w, "himate-package-analytics.csv")
-	defer writer.Flush()
-	_ = writer.Write([]string{
-		"partner_id", "display_name", "legal_name", "country", "package", "plan_key",
-		"billing_frequency", "status", "classification", "onboarding_state",
-		"current_period_start", "current_period_end_exclusive", "next_billing_at",
-		"quote_reference", "minimum_monthly_commitment", "module_usage_events_7d",
-		"module_usage_events_30d", "first_module_use", "last_module_use",
-		"portal_activity_measured", "portal_active_hours_30d", "portal_requests_30d",
-		"portal_first_seen_30d", "portal_last_seen_30d",
-	})
+	tableRows := make([][]string, 0, len(rows))
 	for _, row := range rows {
-		_ = writer.Write([]string{
-			row.PartnerID, row.DisplayName, row.LegalName, row.Country, row.PlanName, row.PlanKey,
-			row.BillingFrequency, row.Status, row.Classification, row.OnboardingState,
-			row.CurrentPeriodStart.Format("2006-01-02"), row.CurrentPeriodEnd.Format("2006-01-02"), row.NextBillingAt.Format("2006-01-02"),
-			row.QuoteReference, fmt.Sprintf("%.2f", row.MinimumMonthlyCommitment),
-			fmt.Sprint(row.ModuleEvents7D), fmt.Sprint(row.ModuleEvents30D),
-			func() string { if row.FirstModuleUse.Valid { return row.FirstModuleUse.Time.UTC().Format(time.RFC3339) }; return "" }(),
-			func() string { if row.LastModuleUse.Valid { return row.LastModuleUse.Time.UTC().Format(time.RFC3339) }; return "" }(),
-			fmt.Sprint(activityMeasured), fmt.Sprintf("%.2f", float64(row.PortalActiveBuckets30D)*5.0/60.0),
-			fmt.Sprint(row.PortalRequests30D),
-			func() string { if row.PortalFirstSeen30D.Valid { return row.PortalFirstSeen30D.Time.UTC().Format(time.RFC3339) }; return "" }(),
-			func() string { if row.PortalLastSeen30D.Valid { return row.PortalLastSeen30D.Time.UTC().Format(time.RFC3339) }; return "" }(),
+		price, entitlement := central9PlanPrice(row.PlanKey)
+		portalHours := "-"
+		if activityMeasured {
+			portalHours = fmt.Sprintf("%.1f h", float64(row.PortalActiveBuckets30D)*5.0/60.0)
+		}
+		tableRows = append(tableRows, []string{
+			row.DisplayName,
+			row.PlanName,
+			price,
+			entitlement,
+			row.BillingFrequency,
+			row.Status,
+			fmt.Sprintf("%d", row.ModuleEvents30D),
+			portalHours,
+			row.NextBillingAt.Format("2006-01-02"),
 		})
 	}
+	common.WriteBrandedTablePDF(
+		w,
+		"himate-package-analytics.pdf",
+		"HiMate Central - Packages",
+		"Package portfolio, usage and commercial analytics",
+		[]string{"Partner", "Package", "Price", "Entitlement", "Billing", "Status", "Module uses / 30d", "Portal / 30d", "Next billing"},
+		tableRows,
+	)
 }
-
-func (a *app) financeExportCSV(w http.ResponseWriter, r *http.Request) {
+func (a *app) financeExportPDF(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
 		return
 	}
 	status := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("status")))
 	plan := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("plan_key")))
-	query := `SELECT id,partner_id,invoice_date,service_period_start,service_period_end,currency,
+	query := `SELECT id,partner_id,invoice_date,currency,
 		COALESCE(plan_key,''),COALESCE(billing_frequency,''),COALESCE(charge_type,''),
 		workflow_status,COALESCE(net_total,total),COALESCE(tax_rate_percent,0),COALESCE(tax_amount,0),total,
-		COALESCE(provider,''),COALESCE(provider_payment_id,''),paid_at,created_at
+		paid_at
 		FROM billing.invoices WHERE 1=1`
 	args := []any{}
 	if status != "" && status != "ALL" {
@@ -348,41 +352,43 @@ func (a *app) financeExportCSV(w http.ResponseWriter, r *http.Request) {
 		args = append(args, plan)
 		query += fmt.Sprintf(" AND plan_key=$%d", len(args))
 	}
-	query += " ORDER BY invoice_date DESC,created_at DESC"
+	query += " ORDER BY invoice_date DESC,id DESC"
 	rows, err := a.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		common.APIError(w, 500, "DB", "Could not export finance data")
 		return
 	}
 	defer rows.Close()
-	writer := central8WriteCSVHeader(w, "himate-finance.csv")
-	defer writer.Flush()
-	_ = writer.Write([]string{
-		"invoice_id", "partner_id", "invoice_date", "service_period_start", "service_period_end_exclusive",
-		"currency", "plan_key", "billing_frequency", "charge_type", "workflow_status",
-		"net_total", "tax_rate_percent", "tax_amount", "gross_total", "provider",
-		"provider_payment_id", "paid_at", "created_at",
-	})
+
+	tableRows := make([][]string, 0, 64)
 	for rows.Next() {
-		var id, partnerID, currency, planKey, frequency, chargeType, workflow, provider, providerPaymentID string
-		var invoiceDate, start, end, created time.Time
+		var id, partnerID, currency, planKey, frequency, chargeType, workflow string
+		var invoiceDate time.Time
 		var paidAt sql.NullTime
 		var net, taxRate, tax, gross float64
-		if rows.Scan(&id, &partnerID, &invoiceDate, &start, &end, &currency, &planKey, &frequency,
-			&chargeType, &workflow, &net, &taxRate, &tax, &gross, &provider, &providerPaymentID, &paidAt, &created) != nil {
+		if rows.Scan(&id, &partnerID, &invoiceDate, &currency, &planKey, &frequency,
+			&chargeType, &workflow, &net, &taxRate, &tax, &gross, &paidAt) != nil {
 			continue
 		}
-		_ = writer.Write([]string{
-			id, partnerID, invoiceDate.Format("2006-01-02"), start.Format("2006-01-02"), end.Format("2006-01-02"),
-			currency, planKey, frequency, chargeType, workflow,
-			fmt.Sprintf("%.2f", net), fmt.Sprintf("%.2f", taxRate), fmt.Sprintf("%.2f", tax), fmt.Sprintf("%.2f", gross),
-			provider, providerPaymentID,
-			func() string { if paidAt.Valid { return paidAt.Time.UTC().Format(time.RFC3339) }; return "" }(),
-			created.UTC().Format(time.RFC3339),
+		paid := "-"
+		if paidAt.Valid {
+			paid = paidAt.Time.UTC().Format("2006-01-02")
+		}
+		tableRows = append(tableRows, []string{
+			id, partnerID, invoiceDate.Format("2006-01-02"), central8PlanName(planKey),
+			chargeType, workflow, currency + " " + fmt.Sprintf("%.2f", net),
+			fmt.Sprintf("%.2f%%", taxRate), currency + " " + fmt.Sprintf("%.2f", gross), paid,
 		})
 	}
+	common.WriteBrandedTablePDF(
+		w,
+		"himate-finance.pdf",
+		"HiMate Central - Finance",
+		"Filtered invoice and paid-revenue ledger export",
+		[]string{"Invoice", "Partner", "Date", "Package", "Charge", "Status", "Net", "VAT", "Gross", "Paid"},
+		tableRows,
+	)
 }
-
 func (a *app) central8RevenueTrends(ctx context.Context) (weekly, monthlyByPlan, weeklyByPlan []map[string]any, err error) {
 	weeklyRows, err := a.db.QueryContext(ctx, `
 		WITH periods AS (
