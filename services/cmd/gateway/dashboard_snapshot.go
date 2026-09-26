@@ -107,6 +107,15 @@ func dashboardIsUnitedStates(raw string) bool {
 func dashboardPartnerGeo(partners []map[string]any) map[string]any {
 	stateCounts := map[string]int{}
 	rows := make([]map[string]any, 0, len(partners))
+	activeModulesByPartner := map[string]int{}
+	if snapshot, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
+		for _, row := range step4Items(snapshot["items"]) {
+			id := central10String(row["id"])
+			if id != "" {
+				activeModulesByPartner[id] = central10Int(row["active_modules"])
+			}
+		}
+	}
 	for _, partner := range partners {
 		if !dashboardIsUnitedStates(central10String(partner["country"])) {
 			continue
@@ -119,14 +128,16 @@ func dashboardPartnerGeo(partners []map[string]any) map[string]any {
 		if lifecycle == "LIVE" {
 			stateCounts[state]++
 		}
+		id := central10String(partner["id"])
 		rows = append(rows, map[string]any{
-			"id":         partner["id"],
-			"name":       partner["display_name"],
-			"state":      state,
-			"city":       partner["city"],
-			"joined_at":  partner["created_at"],
-			"lifecycle":  lifecycle,
-			"reference":  partner["reference_partner"],
+			"id":             partner["id"],
+			"name":           partner["display_name"],
+			"state":          state,
+			"city":           partner["city"],
+			"joined_at":      partner["created_at"],
+			"lifecycle":      lifecycle,
+			"reference":      partner["reference_partner"],
+			"active_modules": activeModulesByPartner[id],
 		})
 	}
 	states := make([]map[string]any, 0, len(stateCounts))
