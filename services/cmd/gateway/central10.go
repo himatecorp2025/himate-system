@@ -676,7 +676,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 	perspective := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("perspective")))
 	if perspective != "MODULE" { perspective = "PARTNER" }
 
-	filteredAssignments := make([]map[string]any, 0, len(matrix.Items))
+	filteredAssignments := make([]map[string]any, 0, len(matrixItems))
 	for _, raw := range matrixItems {
 		row := central10CopyMap(raw)
 		partnerID := central10String(row["partner_id"])
