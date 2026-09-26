@@ -51,6 +51,11 @@ services:
           type: pserv
           name: himate-billing
           property: hostport
+      - key: STORAGE_HOSTPORT
+        fromService:
+          type: pserv
+          name: himate-storage
+          property: hostport
 
   - type: pserv
     name: himate-billing
