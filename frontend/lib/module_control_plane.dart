@@ -10,11 +10,13 @@ class ModuleControlPlanePage extends StatefulWidget {
 
 class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> registryModules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> groups = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> topicRows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> commercialRows = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> subscriptionRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> commercialGroups = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptionPlans = <Map<String, dynamic>>[];
+  Map<String, dynamic> registryKpis = <String, dynamic>{};
   bool showSubscriptionPlans = false;
   bool showCommercialMatrix = false;
   bool loading = false;
@@ -30,6 +32,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   String commercialStatusFilter = 'ALL';
   String commercialPerspective = 'PARTNER';
   int commercialShown = 120;
+  int commercialGroupCount = 0;
+  int commercialAssignmentCount = 0;
+  Timer? _registryDebounce;
+  Timer? _commercialDebounce;
 
   static const moduleTypes = <String>[
     'CORE','FEATURE','INTEGRATION','REPORTING','WEBSITE','FINANCE','INFRASTRUCTURE',
@@ -51,42 +57,78 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     load();
   }
 
+  @override
+  void dispose() {
+    _registryDebounce?.cancel();
+    _commercialDebounce?.cancel();
+    super.dispose();
+  }
+
+  String _centralModulesPath() {
+    final params = <String, String>{
+      'perspective': commercialPerspective,
+      'commercial_limit': '$commercialShown',
+    };
+    if (query.trim().isNotEmpty) params['registry_q'] = query.trim();
+    final effectiveGroup = selectedGroupKey ?? (groupFilter == 'ALL' ? null : groupFilter);
+    if (effectiveGroup != null && effectiveGroup.isNotEmpty) params['registry_group'] = effectiveGroup;
+    if (typeFilter != 'ALL') params['registry_type'] = typeFilter;
+    if (registryPreset != 'TOPICS' && registryPreset != 'ALL') {
+      params['registry_preset'] = registryPreset;
+    }
+    if (commercialQuery.trim().isNotEmpty) params['commercial_q'] = commercialQuery.trim();
+    if (commercialPartnerFilter != 'ALL') params['commercial_partner'] = commercialPartnerFilter;
+    if (commercialModuleFilter != 'ALL') params['commercial_module'] = commercialModuleFilter;
+    if (commercialStatusFilter != 'ALL') params['commercial_status'] = commercialStatusFilter;
+    return Uri(path: '/api/v1/central/modules', queryParameters: params).toString();
+  }
+
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
     try {
-      final responses = await Future.wait([
-        widget.api.get('/api/v1/modules', force: true),
-        widget.api.get('/api/v1/module-groups', force: true),
-        widget.api.get('/api/v1/partners?limit=200&offset=0&core_only=true', force: true),
-        widget.api.get('/api/v1/billing/plans', force: true),
-      ]);
-      final partnerItems = items(responses[2]);
-      final partnerIDs = partnerItems.map((p) => s(p['id'])).where((id) => id.isNotEmpty).toList();
-      Map<String, dynamic> matrix = <String, dynamic>{'items': <Map<String, dynamic>>[]};
-      Map<String, dynamic> subscriptions = <String, dynamic>{'items': <Map<String, dynamic>>[]};
-      if (partnerIDs.isNotEmpty) {
-        final encoded = Uri.encodeQueryComponent(partnerIDs.join(','));
-        final commercial = await Future.wait([
-          widget.api.get('/api/v1/module-commercial-matrix?partner_ids=$encoded', force: true),
-          widget.api.get('/api/v1/billing/subscription-matrix?partner_ids=$encoded', force: true),
-        ]);
-        matrix = commercial[0];
-        subscriptions = commercial[1];
-      }
+      final model = await widget.api.get(
+        _centralModulesPath(),
+        maxAge: const Duration(seconds: 5),
+      );
       if (!mounted) return;
+      final registry = model['registry'] is Map
+          ? Map<String, dynamic>.from(model['registry'] as Map)
+          : <String, dynamic>{};
+      final commercial = model['commercial'] is Map
+          ? Map<String, dynamic>.from(model['commercial'] as Map)
+          : <String, dynamic>{};
       setState(() {
-        modules = items(responses[0]);
-        groups = items(responses[1]);
-        partners = partnerItems;
-        commercialRows = items(matrix);
-        subscriptionRows = items(subscriptions);
-        subscriptionPlans = items(responses[3]);
-        commercialShown = 120;
+        modules = items(<String, dynamic>{'items': model['module_options']});
+        registryModules = items(<String, dynamic>{'items': registry['modules']});
+        groups = items(<String, dynamic>{'items': registry['groups']});
+        topicRows = items(<String, dynamic>{'items': registry['topics']});
+        registryKpis = registry['kpis'] is Map
+            ? Map<String, dynamic>.from(registry['kpis'] as Map)
+            : <String, dynamic>{};
+        partners = items(<String, dynamic>{'items': model['partners']});
+        commercialGroups = items(<String, dynamic>{'items': commercial['groups']});
+        commercialGroupCount = (commercial['group_count'] as num?)?.toInt() ?? commercialGroups.length;
+        commercialAssignmentCount = (commercial['assignment_count'] as num?)?.toInt() ?? 0;
+        subscriptionPlans = items(<String, dynamic>{'items': model['plans']});
         loading = false;
       });
     } catch (e) {
       if (mounted) setState(() { error = e.toString(); loading = false; });
     }
+  }
+
+  void _scheduleRegistryReload() {
+    _registryDebounce?.cancel();
+    _registryDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) unawaited(load());
+    });
+  }
+
+  void _scheduleCommercialReload() {
+    _commercialDebounce?.cancel();
+    _commercialDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) unawaited(load());
+    });
   }
 
   void notify(String message, {bool failure = false}) {
@@ -97,29 +139,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     ));
   }
 
-  List<Map<String, dynamic>> get filtered {
-    final q = query.trim().toLowerCase();
-    return modules.where((module) {
-      final text = [
-        s(module['label']), s(module['label_en']), s(module['label_hu']), s(module['key']),
-        s(module['group_label']), s(module['source_repository']), s(module['source_path']), s(module['owner_team']),
-      ].join(' ').toLowerCase();
-      final selectedGroupMatches = selectedGroupKey == null || s(module['group_key']) == selectedGroupKey;
-      final presetMatches = switch (registryPreset) {
-        'ACTIVE' => s(module['availability']) == 'ACTIVE' &&
-            s(module['publication_status']) == 'PUBLISHED' &&
-            s(module['implementation_state']) == 'READY',
-        'SOURCE_LINKED' => s(module['source_repository']).trim().isNotEmpty,
-        'RELATIONSHIPS' => ((module['relationship_count'] as num?)?.toInt() ?? 0) > 0,
-        _ => true,
-      };
-      return (q.isEmpty || text.contains(q)) &&
-          selectedGroupMatches &&
-          presetMatches &&
-          (groupFilter == 'ALL' || s(module['group_key']) == groupFilter) &&
-          (typeFilter == 'ALL' || s(module['module_type']) == typeFilter);
-    }).toList();
-  }
+  List<Map<String, dynamic>> get filtered => registryModules;
 
   String groupLabel(Map<String, dynamic> group) {
     final key = HimateI18n.activeLocale == 'hu_HU' ? 'label_hu' : 'label_en';
@@ -133,9 +153,6 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     return localized.isEmpty ? s(module['label']) : localized;
   }
 
-  List<Map<String, dynamic>> modulesForGroup(String groupKey) =>
-      modules.where((module) => s(module['group_key']) == groupKey).toList();
-
   List<Map<String, dynamic>> get primaryGroups =>
       groups.where((group) => group['is_primary_navigation'] == true).toList();
 
@@ -146,46 +163,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     return null;
   }
 
-  void showTopicOverview() {
-    setState(() {
-      selectedGroupKey = null;
-      registryPreset = 'TOPICS';
-      groupFilter = 'ALL';
-      typeFilter = 'ALL';
-      query = '';
-    });
-  }
-
-  void applyRegistryPreset(String preset) {
-    setState(() {
-      selectedGroupKey = null;
-      registryPreset = preset;
-      groupFilter = 'ALL';
-      typeFilter = 'ALL';
-      query = '';
-    });
-  }
-
-  void openTopic(String groupKey) {
-    setState(() {
-      selectedGroupKey = groupKey;
-      registryPreset = 'ALL';
-      groupFilter = 'ALL';
-      typeFilter = 'ALL';
-      query = '';
-    });
-  }
-
-  Future<void> moveModuleToGroup(Map<String, dynamic> module, String targetGroupKey) async {
-    final current = s(module['group_key']);
-    if (targetGroupKey.isEmpty || targetGroupKey == current) return;
-    try {
-      await widget.api.patch('/api/v1/modules/' + s(module['key']), {'group_key': targetGroupKey});
-      await load();
-      if (mounted) notify('Module moved to ' + groupLabel(groupByKey(targetGroupKey) ?? <String, dynamic>{'label': targetGroupKey}) + '.');
-    } catch (e) {
-      if (mounted) notify(e.toString(), failure: true);
+  Map<String, dynamic>? topicByKey(String key) {
+    for (final topic in topicRows) {
+      if (s(topic['group_key']) == key) return topic;
     }
+    return null;
   }
 
   String partnerName(String partnerID) {
@@ -198,39 +180,49 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     return partnerID;
   }
 
-  Map<String, dynamic>? commercialSubscription(String partnerID, String moduleKey) {
-    for (final item in subscriptionRows) {
-      if (s(item['partner_id']) == partnerID && s(item['module_key']) == moduleKey) return item;
-    }
-    return null;
+  void showTopicOverview() {
+    setState(() {
+      selectedGroupKey = null;
+      registryPreset = 'TOPICS';
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
+    });
+    unawaited(load());
   }
 
-  List<Map<String, dynamic>> get filteredCommercialRows {
-    final q = commercialQuery.trim().toLowerCase();
-    final rows = commercialRows.where((row) {
-      final partnerID = s(row['partner_id']);
-      final moduleKey = s(row['key']);
-      final text = [
-        partnerName(partnerID), partnerID, s(row['label']), moduleKey, s(row['group_label']),
-      ].join(' ').toLowerCase();
-      return (q.isEmpty || text.contains(q)) &&
-          (commercialPartnerFilter == 'ALL' || partnerID == commercialPartnerFilter) &&
-          (commercialModuleFilter == 'ALL' || moduleKey == commercialModuleFilter) &&
-          (commercialStatusFilter == 'ALL' || s(row['status']) == commercialStatusFilter);
-    }).toList();
-    rows.sort((a, b) {
-      final aPartner = partnerName(s(a['partner_id'])).toLowerCase();
-      final bPartner = partnerName(s(b['partner_id'])).toLowerCase();
-      final aModule = s(a['label']).toLowerCase();
-      final bModule = s(b['label']).toLowerCase();
-      if (commercialPerspective == 'MODULE') {
-        final moduleCompare = aModule.compareTo(bModule);
-        return moduleCompare != 0 ? moduleCompare : aPartner.compareTo(bPartner);
-      }
-      final partnerCompare = aPartner.compareTo(bPartner);
-      return partnerCompare != 0 ? partnerCompare : aModule.compareTo(bModule);
+  void applyRegistryPreset(String preset) {
+    setState(() {
+      selectedGroupKey = null;
+      registryPreset = preset;
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
     });
-    return rows;
+    unawaited(load());
+  }
+
+  void openTopic(String groupKey) {
+    setState(() {
+      selectedGroupKey = groupKey;
+      registryPreset = 'ALL';
+      groupFilter = 'ALL';
+      typeFilter = 'ALL';
+      query = '';
+    });
+    unawaited(load());
+  }
+
+  Future<void> moveModuleToGroup(Map<String, dynamic> module, String targetGroupKey) async {
+    final current = s(module['group_key']);
+    if (targetGroupKey.isEmpty || targetGroupKey == current) return;
+    try {
+      await widget.api.patch('/api/v1/modules/' + s(module['key']), {'group_key': targetGroupKey});
+      await load();
+      if (mounted) notify('Module moved to ' + groupLabel(groupByKey(targetGroupKey) ?? <String, dynamic>{'label': targetGroupKey}) + '.');
+    } catch (e) {
+      if (mounted) notify(e.toString(), failure: true);
+    }
   }
 
   Future<void> showCommercialHistory(Map<String, dynamic> row) async {
@@ -408,7 +400,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   Widget commercialCard(Map<String, dynamic> row) {
     final partnerID = s(row['partner_id']);
     final moduleKey = s(row['key']);
-    final subscription = commercialSubscription(partnerID, moduleKey);
+    final subscription = row['subscription'] is Map
+        ? Map<String, dynamic>.from(row['subscription'] as Map)
+        : null;
     final configuredNext = row['next_partner_price'] ?? row['partner_price'];
     final nextAt = s(row['next_price_effective_at']).trim();
     final nextAtLabel = nextAt.isEmpty ? '' : (nextAt.length >= 10 ? nextAt.substring(0, 10) : nextAt);
@@ -427,9 +421,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 : subscription['auto_renew'] == true
                     ? 'Auto-renew'
                     : 'No renewal';
-    final primaryTitle = commercialPerspective == 'MODULE' ? s(row['label']) : partnerName(partnerID);
+    final resolvedPartnerName = s(row['partner_name']).isEmpty ? partnerName(partnerID) : s(row['partner_name']);
+    final primaryTitle = commercialPerspective == 'MODULE' ? s(row['label']) : resolvedPartnerName;
     final secondaryTitle = commercialPerspective == 'MODULE'
-        ? partnerName(partnerID) + ' · ' + partnerID
+        ? resolvedPartnerName + ' · ' + partnerID
         : s(row['label']) + ' · ' + moduleKey;
     final currentPeriodPrice = subscription == null
         ? '—'
@@ -487,6 +482,70 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             ],
           ),
         ]),
+      ),
+    );
+  }
+
+  Widget commercialGroupCard(Map<String, dynamic> group) {
+    final byModule = commercialPerspective == 'MODULE';
+    final rows = items(<String, dynamic>{
+      'items': byModule ? group['partners'] : group['modules'],
+    });
+    final title = byModule
+        ? (s(group['module_label']).isEmpty ? s(group['module_key']) : s(group['module_label']))
+        : (s(group['partner_name']).isEmpty ? s(group['partner_id']) : s(group['partner_name']));
+    final subtitle = byModule
+        ? '${s(group['module_key'])} · ${rows.length} ${uiLiteral('partners')}'
+        : '${s(group['partner_id'])} · ${rows.length} ${uiLiteral('modules')}';
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        maintainState: true,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        leading: Icon(
+          byModule ? Icons.extension_outlined : Icons.business_outlined,
+          color: byModule ? brandSteel : brandGold,
+        ),
+        title: LText(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14),
+        ),
+        subtitle: LText(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+        ),
+        children: [
+          if (rows.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: _MessageCard(
+                icon: Icons.inbox_outlined,
+                title: 'No assignments',
+                message: 'No partner-module assignments match this group.',
+              ),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 760
+                    ? constraints.maxWidth
+                    : (constraints.maxWidth - 10) / 2;
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final row in rows)
+                      SizedBox(width: width, child: commercialCard(row)),
+                  ],
+                );
+              },
+            ),
+        ],
       ),
     );
   }
@@ -1019,16 +1078,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
 
   Widget topicGroupCard(Map<String, dynamic> group) {
     final key = s(group['group_key']);
-    final groupModules = modulesForGroup(key);
-    final liveReady = groupModules.where((m) =>
-        s(m['availability']) == 'ACTIVE' &&
-        s(m['publication_status']) == 'PUBLISHED' &&
-        s(m['implementation_state']) == 'READY').length;
-    final inDevelopment = groupModules.where((m) => s(m['implementation_state']) == 'IN_DEVELOPMENT').length;
-    final assignments = groupModules.fold<int>(
-      0,
-      (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0),
-    );
+    final meta = topicByKey(key) ?? group;
+    final moduleCount = (meta['module_count'] as num?)?.toInt() ?? 0;
+    final liveReady = (meta['live_ready'] as num?)?.toInt() ?? 0;
+    final inDevelopment = (meta['in_development'] as num?)?.toInt() ?? 0;
+    final assignments = (meta['active_partner_assignments'] as num?)?.toInt() ?? 0;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1058,7 +1112,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             ),
             const SizedBox(height: 6),
             LText(
-              '${groupModules.length} ${uiLiteral('modules')}',
+              '$moduleCount ${uiLiteral('modules')}',
               style: const TextStyle(color: brandTextSoft, fontSize: 10.5, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 16),
@@ -1506,13 +1560,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   Widget build(BuildContext context) {
     if (showSubscriptionPlans) return subscriptionPlansPage();
 
-    final liveReady = modules.where((m) =>
-        s(m['availability']) == 'ACTIVE' &&
-        s(m['publication_status']) == 'PUBLISHED' &&
-        s(m['implementation_state']) == 'READY').length;
-    final linked = modules.where((m) => s(m['source_repository']).trim().isNotEmpty).length;
-    final relations = modules.fold<int>(0, (sum, m) => sum + ((m['relationship_count'] as num?)?.toInt() ?? 0));
-    final partnerUsage = modules.fold<int>(0, (sum, m) => sum + ((m['active_partner_count'] as num?)?.toInt() ?? 0));
+    final registryTotal = (registryKpis['module_registry'] as num?)?.toInt() ?? modules.length;
+    final liveReady = (registryKpis['active_modules'] as num?)?.toInt() ?? 0;
+    final linked = (registryKpis['source_linked'] as num?)?.toInt() ?? 0;
+    final relations = (registryKpis['relationships'] as num?)?.toInt() ?? 0;
+    final partnerUsage = (registryKpis['active_partner_assignments'] as num?)?.toInt() ?? 0;
     final currentGroup = selectedGroupKey == null ? null : groupByKey(selectedGroupKey!);
     final topicOverview = selectedGroupKey == null && registryPreset == 'TOPICS';
 
@@ -1564,7 +1616,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               ResponsiveKpiGrid(children: [
                 Kpi(
                   label: uiLiteral('Module registry'),
-                  value: modules.length.toString(),
+                  value: registryTotal.toString(),
                   note: uiLiteral('Canonical + custom modules'),
                   icon: Icons.hub_outlined,
                   accent: brandNavy,
@@ -1611,7 +1663,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     subtitle: registrySubtitle,
                     trailing: _MiniCounter(
                       label: topicOverview
-                          ? '${primaryGroups.length} ${uiLiteral('topics')} · ${modules.length} ${uiLiteral('modules')}'
+                          ? '${topicRows.length} ${uiLiteral('topics')} · $registryTotal ${uiLiteral('modules')}'
                           : '${filtered.length} ${uiLiteral('modules')}',
                     ),
                   ),
@@ -1629,7 +1681,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final group in primaryGroups)
+                      for (final group in topicRows)
                         SizedBox(width: width, child: topicGroupCard(group)),
                     ],
                   );
@@ -1638,7 +1690,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 _FilterSurface(
                   child: LayoutBuilder(builder: (context, constraints) {
                     final search = TextField(
-                      onChanged: (value) => setState(() => query = value),
+                      onChanged: (value) {
+                        setState(() => query = value);
+                        _scheduleRegistryReload();
+                      },
                       decoration: InputDecoration(
                         hintText: uiLiteral('Search modules...'),
                         prefixIcon: const Icon(Icons.search_rounded),
@@ -1652,7 +1707,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         for (final value in moduleTypes)
                           DropdownMenuItem(value: value, child: LText(uiLiteral(_humanize(value)))),
                       ],
-                      onChanged: (value) => setState(() => typeFilter = value ?? 'ALL'),
+                      onChanged: (value) {
+                        setState(() => typeFilter = value ?? 'ALL');
+                        unawaited(load());
+                      },
                     );
                     if (constraints.maxWidth < 760) {
                       return Column(children: [search, const SizedBox(height: 10), type]);
@@ -1719,7 +1777,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 _FilterSurface(
                   child: LayoutBuilder(builder: (context, constraints) {
                     final search = TextField(
-                      onChanged: (value) => setState(() { commercialQuery = value; commercialShown = 120; }),
+                      onChanged: (value) {
+                        setState(() { commercialQuery = value; commercialShown = 120; });
+                        _scheduleCommercialReload();
+                      },
                       decoration: InputDecoration(hintText: uiLiteral('Search partner or module...'), prefixIcon: const Icon(Icons.search_rounded)),
                     );
                     final partner = DropdownButtonFormField<String>(
@@ -1730,7 +1791,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         for (final item in partners)
                           DropdownMenuItem(value: s(item['id']), child: LText(partnerName(s(item['id'])))),
                       ],
-                      onChanged: (value) => setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; }),
+                      onChanged: (value) {
+                        setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; });
+                        unawaited(load());
+                      },
                     );
                     final module = DropdownButtonFormField<String>(
                       value: commercialModuleFilter,
@@ -1740,7 +1804,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         for (final item in modules)
                           DropdownMenuItem(value: s(item['key']), child: LText(moduleLabelForLocale(item))),
                       ],
-                      onChanged: (value) => setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; }),
+                      onChanged: (value) {
+                        setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; });
+                        unawaited(load());
+                      },
                     );
                     final status = DropdownButtonFormField<String>(
                       value: commercialStatusFilter,
@@ -1751,7 +1818,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         DropdownMenuItem(value: 'NOT_LICENSED', child: LText(uiLiteral('Not licensed'))),
                         DropdownMenuItem(value: 'MAINTENANCE', child: LText(uiLiteral('Maintenance'))),
                       ],
-                      onChanged: (value) => setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; }),
+                      onChanged: (value) {
+                        setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; });
+                        unawaited(load());
+                      },
                     );
                     final perspective = Wrap(
                       spacing: 8,
@@ -1760,12 +1830,18 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         ChoiceChip(
                           selected: commercialPerspective == 'PARTNER',
                           label: LText(uiLiteral('View by partner')),
-                          onSelected: (_) => setState(() => commercialPerspective = 'PARTNER'),
+                          onSelected: (_) {
+                            setState(() { commercialPerspective = 'PARTNER'; commercialShown = 120; });
+                            unawaited(load());
+                          },
                         ),
                         ChoiceChip(
                           selected: commercialPerspective == 'MODULE',
                           label: LText(uiLiteral('View by module')),
-                          onSelected: (_) => setState(() => commercialPerspective = 'MODULE'),
+                          onSelected: (_) {
+                            setState(() { commercialPerspective = 'MODULE'; commercialShown = 120; });
+                            unawaited(load());
+                          },
                         ),
                       ],
                     );
@@ -1793,42 +1869,58 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 ),
                 const SizedBox(height: 12),
                 Builder(builder: (context) {
-                  final rows = filteredCommercialRows;
-                  if (rows.isEmpty) {
+                  if (commercialGroups.isEmpty) {
                     return _MessageCard(
                       icon: Icons.price_change_outlined,
                       title: uiLiteral('No partner-module assignments found'),
                       message: uiLiteral('Adjust the filters or create partners/modules to populate the commercial matrix.'),
                     );
                   }
-                  final visibleRows = rows.take(commercialShown).toList();
-                  return Column(children: [
-                    LayoutBuilder(builder: (context, constraints) {
-                      final width = constraints.maxWidth < 680
-                          ? constraints.maxWidth
-                          : constraints.maxWidth < 1120
-                              ? (constraints.maxWidth - 12) / 2
-                              : (constraints.maxWidth - 24) / 3;
-                      return Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          for (final row in visibleRows)
-                            SizedBox(width: width, child: commercialCard(row)),
-                        ],
-                      );
-                    }),
-                    if (visibleRows.length < rows.length) ...[
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () => setState(() => commercialShown += 120),
-                        icon: const Icon(Icons.expand_more_rounded),
-                        label: LText(
-                          '${uiLiteral('Show more')} · ${rows.length - visibleRows.length} ${uiLiteral('remaining')}',
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SectionHeader(
+                        title: commercialPerspective == 'MODULE'
+                            ? uiLiteral('Modules and their partner companies')
+                            : uiLiteral('Partner companies and their active services'),
+                        subtitle: commercialPerspective == 'MODULE'
+                            ? uiLiteral('Open a module to see every company using it under the selected status and filters.')
+                            : uiLiteral('Open a company to see its assigned modules and commercial state.'),
+                        trailing: _MiniCounter(
+                          label: '$commercialAssignmentCount ${uiLiteral('assignments')}',
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(builder: (context, constraints) {
+                        final width = constraints.maxWidth < 720
+                            ? constraints.maxWidth
+                            : constraints.maxWidth < 1180
+                                ? (constraints.maxWidth - 12) / 2
+                                : (constraints.maxWidth - 24) / 3;
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            for (final group in commercialGroups)
+                              SizedBox(width: width, child: commercialGroupCard(group)),
+                          ],
+                        );
+                      }),
+                      if (commercialGroups.length < commercialGroupCount) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() => commercialShown += 120);
+                            unawaited(load());
+                          },
+                          icon: const Icon(Icons.expand_more_rounded),
+                          label: LText(
+                            '${uiLiteral('Show more')} · ${commercialGroupCount - commercialGroups.length} ${uiLiteral('remaining')}',
+                          ),
+                        ),
+                      ],
                     ],
-                  ]);
+                  );
                 }),
               ],
               if (loading) ...[

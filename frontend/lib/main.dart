@@ -67,55 +67,7 @@ const canvas = brandIvory;
 const muted = brandTextSoft;
 const success = brandSuccess;
 
-List<Map<String,dynamic>> central8LatestWeeklyWindow(List<Map<String,dynamic>> rows) {
-  final now = DateTime.now().toUtc();
-  final startOfCurrentWeek = DateTime.utc(now.year, now.month, now.day)
-      .subtract(Duration(days: now.weekday - DateTime.monday));
-  final elapsed = rows.where((row) {
-    final parsed = DateTime.tryParse('${row['week_start'] ?? ''}')?.toUtc();
-    return parsed != null && !parsed.isAfter(startOfCurrentWeek);
-  }).toList()
-    ..sort((a, b) => '${a['week_start'] ?? ''}'.compareTo('${b['week_start'] ?? ''}'));
-  final source = elapsed.length <= 4 ? elapsed : elapsed.sublist(elapsed.length - 4);
-  return [
-    for (final row in source)
-      <String,dynamic>{
-        ...row,
-        'label': (() {
-          final parsed = DateTime.tryParse('${row['week_start'] ?? ''}');
-          if (parsed == null) return '${row['label'] ?? row['week'] ?? ''}';
-          return '${parsed.month}/${parsed.day}';
-        })(),
-      },
-  ];
-}
 
-Map<String,dynamic> central9CanonicalPackage(String planKey) {
-  return switch (planKey.toUpperCase().trim()) {
-    'STARTER' => <String,dynamic>{'name':'Starter','price':990,'entitlement':'10 modules'},
-    'BUSINESS' => <String,dynamic>{'name':'Business','price':1490,'entitlement':'20 modules'},
-    'FLEX' => <String,dynamic>{'name':'Premium','price':2490,'entitlement':'Unlimited'},
-    _ => <String,dynamic>{'name':planKey,'price':0,'entitlement':'—'},
-  };
-}
-
-String central9CanonicalPackagePrice(String planKey) {
-  final package = central9CanonicalPackage(planKey);
-  final price = (package['price'] as num?)?.toInt() ?? 0;
-  return '\$' + intl.NumberFormat('#,##0', 'en_US').format(price) + ' + VAT';
-}
-
-List<Map<String,dynamic>> central8PartnerPresetRows(
-  List<Map<String,dynamic>> rows, {
-  String lifecycle = 'ALL',
-  bool reference = false,
-}) {
-  return rows.where((row) {
-    if (lifecycle != 'ALL' && '${row['lifecycle'] ?? ''}' != lifecycle) return false;
-    if (reference && row['reference_partner'] != true) return false;
-    return true;
-  }).toList();
-}
 
 Future<String?> promptMfaCode(BuildContext context, Map<String, dynamic> challenge) async {
   final code = TextEditingController();
@@ -351,6 +303,10 @@ class Api {
     final prefixes = <String>{};
     void add(String prefix) => prefixes.add(prefix);
 
+    // Every successful mutation can affect one or more Central backend read
+    // models. Never let the browser keep a pre-mutation screen snapshot.
+    add('/api/v1/central');
+
     if (path.startsWith('/partner/api/v1')) {
       add('/partner/api/v1');
     } else if (path.startsWith('/api/v1/partners') || path.startsWith('/api/v1/partner-categories')) {
@@ -473,7 +429,9 @@ class Api {
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;
     final uri = Uri.parse(path);
-    final timeout = const Duration(seconds: 4);
+    final timeout = (path.startsWith('/api/v1/central/') || path.startsWith('/api/v1/dashboard/'))
+        ? const Duration(milliseconds: 950)
+        : const Duration(seconds: 4);
     if (method == 'POST') {
       response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(timeout);
     } else if (method == 'PUT') {
@@ -598,56 +556,31 @@ class _HimateAppState extends State<HimateApp> {
 
   void _warmControlPlane() {
     if (user == null) return;
-    final paths = <String>[];
-    if (_can('dashboard.read')) {
-      paths.add('/api/v1/dashboard/summary');
+    final path = Uri.base.path;
+    String? target;
+    if (path == '/app' || path == '/app/') {
+      if (_can('dashboard.read')) target = '/api/v1/dashboard/summary';
+    } else if (path == '/app/partners') {
+      if (_can('partners.read')) target = '/api/v1/central/partners?limit=24&offset=0';
+    } else if (path.startsWith('/app/partners/')) {
+      if (_can('partners.read')) {
+        final id = path.substring('/app/partners/'.length).split('/').first;
+        if (id.isNotEmpty) target = '/api/v1/central/partners/$id';
+      }
+    } else if (path == '/app/modules') {
+      if (_can('catalog.read')) target = '/api/v1/central/modules';
+    } else if (path == '/app/packages') {
+      if (_can('billing.read')) target = '/api/v1/central/packages';
+    } else if (path == '/app/finance') {
+      if (_can('billing.read')) target = '/api/v1/central/finance';
+    } else if (path == '/app/impact') {
+      if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
+        target = '/api/v1/central/impact';
+      }
     }
-    if (_can('partners.read')) {
-      paths.add('/api/v1/partner-categories');
-      paths.add(Uri(path: '/api/v1/partners', queryParameters: const {
-        'limit': '24',
-        'offset': '0',
-        'core_only': 'true',
-        'include_stats': 'false',
-      }).toString());
+    if (target != null) {
+      api.prefetch([target], maxAge: const Duration(seconds: 5));
     }
-    if (_can('billing.read') || _can('catalog.read')) {
-      paths.add('/api/v1/modules');
-      paths.add('/api/v1/module-groups');
-    }
-    if (_can('billing.read')) {
-      paths.add('/api/v1/billing/profile');
-      paths.add('/api/v1/billing/plans');
-      paths.add('/api/v1/billing/packages/analytics');
-      paths.add('/api/v1/billing/finance/overview');
-      paths.add('/api/v1/billing/invoices');
-    }
-    if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
-      paths.add('/api/v1/impact/definitions');
-      paths.add('/api/v1/impact/summary');
-      paths.add(Uri(path: '/api/v1/evidence', queryParameters: const {'limit': '12', 'offset': '0'}).toString());
-      paths.add('/api/v1/reports');
-    }
-    if (_can('cms.read')) {
-      paths.add('/api/v1/cms/pages');
-      paths.add('/api/v1/cms/media');
-    }
-    if (_can('contact.read')) {
-      paths.add(Uri(path: '/api/v1/contact/inquiries', queryParameters: const {'limit': '25', 'offset': '0'}).toString());
-    }
-    if (_can('health.read') || _can('provisioning.read') || _can('environments.read')) {
-      if (_can('health.read')) paths.add('/api/v1/system-health/snapshot');
-      if (_can('provisioning.read')) paths.add('/api/v1/provisioning/jobs');
-      if (_can('environments.read')) paths.add('/api/v1/environments');
-    }
-    if (_can('administration.read') || _can('audit.read')) {
-      paths.add(Uri(path: '/api/v1/audit/events', queryParameters: const {'limit': '50', 'offset': '0'}).toString());
-    }
-    if (_can('administration.read')) {
-      paths.add('/api/v1/admin/roles');
-      paths.add('/api/v1/admin/users');
-    }
-    api.prefetch(paths);
   }
 
   Future<void> _loadPublishedBrandAssets() async {
@@ -930,7 +863,7 @@ class PartnerRouteLoader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
-      future: api.get('/api/v1/partners/$partnerId', maxAge: const Duration(seconds: 20)),
+      future: api.get('/api/v1/central/partners/$partnerId', maxAge: const Duration(seconds: 5)),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
           return const Content(
@@ -962,7 +895,9 @@ class PartnerRouteLoader extends StatelessWidget {
         }
         return PartnerWorkspace(
           api: api,
-          partner: snapshot.data!,
+          partner: snapshot.data!['partner'] is Map
+              ? Map<String, dynamic>.from(snapshot.data!['partner'] as Map)
+              : <String, dynamic>{},
           initialSection: initialSection,
           onBack: () => Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false),
         );
@@ -1782,6 +1717,7 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   late int selected;
   bool collapsed = false;
+  final Map<int, Widget> _pageCache = <int, Widget>{};
 
   @override
   void initState() {
@@ -1910,12 +1846,15 @@ class _ShellState extends State<Shell> {
 
   Widget pageStack() {
     final visible = visibleNavIndexes().toSet();
+    Widget cachedPage(int index) => _pageCache.putIfAbsent(index, () => _pageForIndex(index));
     return IndexedStack(
       index: selected,
       sizing: StackFit.expand,
       children: [
         for (var index = 0; index < navCount; index++)
-          visible.contains(index) ? _pageForIndex(index) : const SizedBox.shrink(),
+          visible.contains(index) && (index == selected || _pageCache.containsKey(index))
+              ? cachedPage(index)
+              : const SizedBox.shrink(),
       ],
     );
   }
@@ -2539,6 +2478,19 @@ class DashboardPage extends StatelessWidget {
       future: api.get(path),
       initialData: api.peek(path),
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+          return Content(
+            eyebrow: uiLiteral('Loading live control-plane data'),
+            title: uiLiteral('Welcome to HIMATE System'),
+            subtitle: uiLiteral('The Go read model is assembling the first usable dashboard payload.'),
+            child: ResponsiveKpiGrid(children: [
+              Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: const Color(0xFF0B5DA8)),
+              Kpi(label: uiLiteral('Active Programs'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.description_outlined, accent: brandNavy),
+              Kpi(label: uiLiteral('Revenue (YTD)'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.bar_chart_rounded, accent: brandGold),
+              Kpi(label: uiLiteral('People Reached'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_rounded, accent: brandNavy),
+            ]),
+          );
+        }
         if (snapshot.hasError && snapshot.data == null) {
           return Content(
             title: uiLiteral('Welcome to HIMATE System'),
@@ -2554,6 +2506,7 @@ class DashboardPage extends StatelessWidget {
         final activity=Map<String,dynamic>.from(d['activity']??<String,dynamic>{});
         final billingAuthorized=billing['authorized']!=false;
         final impactAuthorized=impact['authorized']!=false;
+        final impactHasData=impact['has_data']==true;
         final revenueRows=items(billing);
         String revenueValue=billingAuthorized?'0':uiLiteral('Restricted');
         String revenueNote=billingAuthorized
@@ -2599,12 +2552,12 @@ class DashboardPage extends StatelessWidget {
               final weeklyTrend=items(<String,dynamic>{'items':impact['weekly_trend']});
               final activities=items(activity);
               if(c.maxWidth<900)return Column(children:[
-                _ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized),
+                _ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized,hasData:impactHasData),
                 const SizedBox(height:16),
                 _ActivityPanel(items:activities),
               ]);
               return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Expanded(flex:7,child:_ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized)),
+                Expanded(flex:7,child:_ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized,hasData:impactHasData)),
                 const SizedBox(width:16),
                 Expanded(flex:4,child:_ActivityPanel(items:activities)),
               ]);
@@ -2622,11 +2575,13 @@ class _ImpactPanel extends StatefulWidget {
     required this.weeklyTrend,
     required this.year,
     required this.authorized,
+    required this.hasData,
   });
   final List<Map<String,dynamic>> monthlyTrend;
   final List<Map<String,dynamic>> weeklyTrend;
   final int year;
   final bool authorized;
+  final bool hasData;
 
   @override
   State<_ImpactPanel> createState()=>_ImpactPanelState();
@@ -2637,9 +2592,7 @@ class _ImpactPanelState extends State<_ImpactPanel> {
 
   @override
   Widget build(BuildContext context){
-    final trend=weekly
-        ? central8LatestWeeklyWindow(widget.weeklyTrend)
-        : widget.monthlyTrend;
+    final trend=weekly ? widget.weeklyTrend : widget.monthlyTrend;
     return SizedBox(
       height:330,
       child:Card(child:Padding(
@@ -2675,14 +2628,28 @@ class _ImpactPanelState extends State<_ImpactPanel> {
           ]),
           const SizedBox(height:12),
           Expanded(
-            child:widget.authorized
-                ?_ImpactChart(trend:trend)
-                :Center(
+            child:!widget.authorized
+                ? Center(
                     child:LText(
                       uiLiteral('Impact permission required'),
                       style:GoogleFonts.inter(color:brandTextSoft,fontSize:11.5),
                     ),
-                  ),
+                  )
+                : !widget.hasData || trend.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.insights_outlined, color: brandSteel, size: 26),
+                            const SizedBox(height: 8),
+                            LText(
+                              uiLiteral(weekly ? 'No weekly impact data recorded yet.' : 'No monthly impact data recorded yet.'),
+                              style: GoogleFonts.inter(color: brandTextSoft, fontSize: 11.5),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _ImpactChart(trend:trend),
           ),
         ]),
       )),
@@ -2716,7 +2683,8 @@ class _ImpactChartPainter extends CustomPainter {
     final grid=Paint()..color=brandMist.withOpacity(.82)..strokeWidth=.8;
     for(var i=0;i<=4;i++){final y=chart.top+chart.height*i/4;canvas.drawLine(Offset(chart.left,y),Offset(chart.right,y),grid);}
 
-    final vals=values.isEmpty?<double>[0]:values;
+    if (values.isEmpty) return;
+    final vals=values;
     final names=labels.length==vals.length?labels:List<String>.generate(vals.length,(i)=>'${i+1}');
     final divisor=vals.length>1?vals.length-1:1;
     final labelStep=names.length<=12?1:((names.length-1)/11).ceil();
@@ -2873,7 +2841,7 @@ class PartnersPage extends StatefulWidget {
 class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _portfolioSnapshot = <Map<String, dynamic>>[];
+  Map<String, dynamic> partnerKpis = <String, dynamic>{};
   bool loading = false;
   bool categoriesLoading = true;
   String? categoryRegistryWarning;
@@ -2889,12 +2857,6 @@ class _PartnersPageState extends State<PartnersPage> {
   static const int pageSize = 24;
   int offset = 0;
   int total = 0;
-  int referenceCount = 0;
-  Map<String, int> lifecycleCounts = <String, int>{};
-  int portfolioTotal = 0;
-  int portfolioReferenceCount = 0;
-  Map<String, int> portfolioLifecycleCounts = <String, int>{};
-  bool portfolioStatsReady = false;
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
 
@@ -2911,63 +2873,9 @@ class _PartnersPageState extends State<PartnersPage> {
     'ARCHIVED',
   ];
 
-  List<Map<String, dynamic>> _builtInPartnerCategories() {
-    final hu = HimateI18n.activeLocale == 'hu_HU';
-    const rows = <List<String>>[
-      <String>['cat_001', 'Classical Music', 'Klasszikus zene', 'classical-music'],
-      <String>['cat_002', 'Fine Art', 'Képzőművészet', 'fine-art'],
-      <String>['cat_003', 'Gallery', 'Galéria', 'gallery'],
-      <String>['cat_004', 'Theatre', 'Színház', 'theatre'],
-      <String>['cat_005', 'Cultural Organization', 'Kulturális szervezet', 'cultural-organization'],
-      <String>['cat_006', 'Other', 'Egyéb', 'other'],
-    ];
-    return rows
-        .map((row) => <String, dynamic>{
-              'id': row[0],
-              'name': hu ? row[2] : row[1],
-              'name_en': row[1],
-              'name_hu': row[2],
-              'slug': row[3],
-              'system': true,
-            })
-        .toList();
-  }
-
-  List<Map<String, dynamic>> _mergePartnerCategories(Iterable<Map<String, dynamic>> remote) {
-    final byID = <String, Map<String, dynamic>>{
-      for (final item in _builtInPartnerCategories()) '${item['id']}': item,
-    };
-    for (final item in remote) {
-      final id = '${item['id'] ?? ''}'.trim();
-      if (id.isEmpty) continue;
-      byID[id] = Map<String, dynamic>.from(item);
-    }
-    final systemOrder = <String, int>{
-      'cat_001': 1,
-      'cat_002': 2,
-      'cat_003': 3,
-      'cat_004': 4,
-      'cat_005': 5,
-      'cat_006': 6,
-    };
-    final result = byID.values.toList()
-      ..sort((a, b) {
-        final aid = '${a['id']}';
-        final bid = '${b['id']}';
-        final ao = systemOrder[aid];
-        final bo = systemOrder[bid];
-        if (ao != null && bo != null) return ao.compareTo(bo);
-        if (ao != null) return -1;
-        if (bo != null) return 1;
-        return '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase());
-      });
-    return result;
-  }
-
   @override
   void initState() {
     super.initState();
-    categories = _builtInPartnerCategories();
     load(loadCategories: true);
   }
 
@@ -2991,12 +2899,8 @@ class _PartnersPageState extends State<PartnersPage> {
     return params;
   }
 
-  Uri _partnerUri() {
-    final params = _partnerQueryParameters()
-      ..['core_only'] = 'true'
-      ..['include_stats'] = 'false';
-    return Uri(path: '/api/v1/partners', queryParameters: params);
-  }
+  Uri _centralPartnerUri() =>
+      Uri(path: '/api/v1/central/partners', queryParameters: _partnerQueryParameters());
 
   Uri _partnerExportUri() {
     final params = <String, String>{};
@@ -3008,162 +2912,57 @@ class _PartnersPageState extends State<PartnersPage> {
     return Uri(path: '/api/v1/partners/export.pdf', queryParameters: params.isEmpty ? null : params);
   }
 
-  String _presetPartnerPath({String lifecycle = 'ALL', bool reference = false}) {
-    final params = <String, String>{
-      'limit': '$pageSize',
-      'offset': '0',
-      'core_only': 'true',
-      'include_stats': 'false',
-      if (lifecycle != 'ALL') 'lifecycle': lifecycle,
-      if (reference) 'reference': 'true',
-    };
-    return Uri(path: '/api/v1/partners', queryParameters: params).toString();
-  }
-
-  void _prefetchPortfolioPresets() {
-    widget.api.prefetch([
-      _presetPartnerPath(),
-      _presetPartnerPath(lifecycle: 'LIVE'),
-      _presetPartnerPath(lifecycle: 'PROSPECT'),
-      _presetPartnerPath(reference: true),
-    ]);
-  }
-
-  Uri _partnerStatsUri() {
-    final params = _partnerQueryParameters()
-      ..['core_only'] = 'true'
-      ..['stats_only'] = 'true';
-    return Uri(path: '/api/v1/partners', queryParameters: params);
-  }
-
-  Uri _portfolioStatsUri() => Uri(
-        path: '/api/v1/partners',
-        queryParameters: const <String, String>{
-          'limit': '1',
-          'offset': '0',
-          'stats_only': 'true',
-          'core_only': 'true',
-        },
-      );
-
-  Future<void> _loadCategories({bool force = false}) async {
-    if (mounted) setState(() => categoriesLoading = true);
-    try {
-      final response = await widget.api.get('/api/v1/partner-categories', force: force);
-      final loaded = items(response);
-      if (mounted) {
-        setState(() {
-          categories = _mergePartnerCategories(loaded);
-          categoryRegistryWarning = loaded.isEmpty
-              ? 'The live category registry returned no rows. Built-in partner categories are shown.'
-              : null;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          categories = _mergePartnerCategories(categories);
-          categoryRegistryWarning =
-              'The live category registry is temporarily unavailable. Built-in partner categories remain available.';
-        });
-      }
-    } finally {
-      if (mounted) setState(() => categoriesLoading = false);
-    }
-  }
-
-  Future<void> _loadPartnerStats(int generation) async {
-    if (mounted && generation == _loadGeneration) setState(() => statsReady = false);
-    try {
-      final page = await widget.api.get(_partnerStatsUri().toString());
-      if (!mounted || generation != _loadGeneration) return;
-      final counts = page['lifecycle_counts'];
-      setState(() {
-        total = (page['total'] as num?)?.toInt() ?? total;
-        referenceCount = (page['reference_count'] as num?)?.toInt() ?? 0;
-        lifecycleCounts = counts is Map
-            ? <String, int>{
-                for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
-              }
-            : <String, int>{};
-        statsReady = true;
-      });
-    } catch (_) {
-      // Exact counts are supplementary and must never block partner rows.
-    }
-  }
-
-  Future<void> _loadPortfolioStats(int generation) async {
-    try {
-      final page = await widget.api.get(_portfolioStatsUri().toString());
-      if (!mounted || generation != _loadGeneration) return;
-      final counts = page['lifecycle_counts'];
-      setState(() {
-        portfolioTotal = (page['total'] as num?)?.toInt() ?? portfolioTotal;
-        portfolioReferenceCount = (page['reference_count'] as num?)?.toInt() ?? portfolioReferenceCount;
-        portfolioLifecycleCounts = counts is Map
-            ? <String, int>{
-                for (final entry in counts.entries) '${entry.key}': (entry.value as num?)?.toInt() ?? 0,
-              }
-            : <String, int>{};
-        portfolioStatsReady = true;
-      });
-    } catch (_) {
-      // Global KPI counts are supplementary and must never block the partner list.
-    }
-  }
-
-  Future<void> _loadPortfolioEnrichment(int generation, List<Map<String, dynamic>> baseRows) async {
-    final ids = baseRows.map((p) => '${p['id'] ?? ''}').where((id) => id.isNotEmpty).toList();
-    if (ids.isEmpty) return;
-    try {
-      final uri = Uri(path: '/api/v1/partners/portfolio', queryParameters: {'ids': ids.join(',')});
-      final response = await widget.api.get(uri.toString());
-      if (!mounted || generation != _loadGeneration) return;
-      final byId = <String, Map<String, dynamic>>{
-        for (final row in items(response)) '${row['partner_id']}': row,
-      };
-      setState(() {
-        partners = partners.map((row) {
-          final extra = byId['${row['id']}'];
-          return extra == null ? row : <String, dynamic>{...row, ...extra};
-        }).toList();
-      });
-    } catch (_) {
-      // Enrichment is optional: never block core partner data.
-    }
-  }
-
   Future<void> load({bool reset = false, bool loadCategories = false}) async {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
-    if (mounted) setState(() { loading = true; error = null; statsReady = false; });
-    if (loadCategories || categoryRegistryWarning != null) unawaited(_loadCategories(force: loadCategories));
-
-    try {
-      final page = await widget.api.get(_partnerUri().toString());
-      if (!mounted || generation != _loadGeneration) return;
-      final coreRows = items(page);
+    if (mounted) {
       setState(() {
-        partners = coreRows;
-        if (offset == 0 &&
-            query.trim().isEmpty &&
-            categoryFilter == 'ALL' &&
-            lifecycleFilter == 'ALL' &&
-            healthFilter == 'ALL' &&
-            !referenceOnly) {
-          _portfolioSnapshot = List<Map<String, dynamic>>.from(coreRows);
-        }
-        hasMore = page['has_more'] == true;
-        loading = false;
+        loading = true;
+        error = null;
+        statsReady = false;
+        if (loadCategories) categoriesLoading = true;
       });
-      if (offset == 0) _prefetchPortfolioPresets();
-      unawaited(_loadPartnerStats(generation));
-      unawaited(_loadPortfolioStats(generation));
-      unawaited(_loadPortfolioEnrichment(generation, List<Map<String, dynamic>>.from(coreRows)));
+    }
+    try {
+      final model = await widget.api.get(
+        _centralPartnerUri().toString(),
+        force: loadCategories,
+        maxAge: const Duration(seconds: 5),
+      );
+      if (!mounted || generation != _loadGeneration) return;
+      final categoryRows = items(<String, dynamic>{'items': model['categories']});
+      final pagination = model['pagination'] is Map
+          ? Map<String, dynamic>.from(model['pagination'] as Map)
+          : <String, dynamic>{};
+      final kpis = model['kpis'] is Map
+          ? Map<String, dynamic>.from(model['kpis'] as Map)
+          : <String, dynamic>{};
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
+      final unavailable = meta['unavailable'] is List
+          ? (meta['unavailable'] as List).map((e) => '$e').toSet()
+          : <String>{};
+      setState(() {
+        partners = items(model);
+        categories = categoryRows;
+        partnerKpis = kpis;
+        total = (pagination['total'] as num?)?.toInt() ?? partners.length;
+        hasMore = pagination['has_more'] == true;
+        statsReady = true;
+        loading = false;
+        categoriesLoading = false;
+        categoryRegistryWarning = unavailable.contains('partner_categories')
+            ? 'The live category registry is temporarily unavailable. Built-in partner categories remain available.'
+            : null;
+      });
     } catch (e) {
       if (mounted && generation == _loadGeneration) {
-        setState(() { error = e.toString(); loading = false; });
+        setState(() {
+          error = e.toString();
+          loading = false;
+          categoriesLoading = false;
+        });
       }
     }
   }
@@ -3171,7 +2970,7 @@ class _PartnersPageState extends State<PartnersPage> {
   void updateSearch(String value) {
     query = value;
     _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
+    _searchDebounce = Timer(const Duration(milliseconds: 240), () {
       if (mounted) load(reset: true);
     });
   }
@@ -3179,11 +2978,6 @@ class _PartnersPageState extends State<PartnersPage> {
   void applyPortfolioPreset({String lifecycle = 'ALL', bool reference = false}) {
     _searchDebounce?.cancel();
     _searchController.clear();
-    final optimistic = central8PartnerPresetRows(
-      _portfolioSnapshot,
-      lifecycle: lifecycle,
-      reference: reference,
-    );
     setState(() {
       query = '';
       categoryFilter = 'ALL';
@@ -3191,8 +2985,6 @@ class _PartnersPageState extends State<PartnersPage> {
       healthFilter = 'ALL';
       referenceOnly = reference;
       offset = 0;
-      if (_portfolioSnapshot.isNotEmpty) partners = optimistic;
-      loading = true;
     });
     unawaited(load(reset: true));
   }
@@ -3200,24 +2992,30 @@ class _PartnersPageState extends State<PartnersPage> {
   void clearReferenceFilter() {
     if (!referenceOnly) return;
     setState(() => referenceOnly = false);
-    load(reset: true);
+    unawaited(load(reset: true));
   }
 
   void previousPage() {
     if (offset <= 0) return;
     offset = offset >= pageSize ? offset - pageSize : 0;
-    load();
+    unawaited(load());
   }
 
   void nextPage() {
     if (!hasMore) return;
     offset += pageSize;
-    load();
+    unawaited(load());
   }
 
   void success(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+    );
+  }
+
+  void failure(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
     );
   }
 
@@ -3247,15 +3045,12 @@ class _PartnersPageState extends State<PartnersPage> {
       ),
     );
     if (ok == true && nameEN.text.trim().isNotEmpty && nameHU.text.trim().isNotEmpty) {
-      final created = await widget.api.post('/api/v1/partner-categories', {
+      await widget.api.post('/api/v1/partner-categories', {
         'name_en': nameEN.text.trim(),
         'name_hu': nameHU.text.trim(),
       });
+      await load(loadCategories: true);
       if (mounted) {
-        setState(() {
-          categories = _mergePartnerCategories(<Map<String, dynamic>>[...categories, created]);
-          categoryRegistryWarning = null;
-        });
         success('Partner category created.');
       }
     }
@@ -3312,9 +3107,16 @@ class _PartnersPageState extends State<PartnersPage> {
       }
     }
 
-    var categoryOptions = _mergePartnerCategories(categories);
+    if (categories.isEmpty) {
+      await load(loadCategories: true);
+    }
+    var categoryOptions = List<Map<String, dynamic>>.from(categories);
+    if (categoryOptions.isEmpty) {
+      failure('Partner categories are temporarily unavailable.');
+      return;
+    }
     if (categoryRegistryWarning != null && !categoriesLoading) {
-      unawaited(_loadCategories(force: true));
+      unawaited(load(loadCategories: true));
     }
 
     final displayName = TextEditingController();
@@ -3432,22 +3234,31 @@ class _PartnersPageState extends State<PartnersPage> {
             categoryRefreshStarted = true;
             unawaited(() async {
               try {
-                final response = await widget.api.get('/api/v1/partner-categories', force: true);
-                final loaded = items(response);
-                final merged = _mergePartnerCategories(loaded);
-                final warning = loaded.isEmpty
-                    ? 'The live category registry returned no rows. Built-in partner categories are shown.'
+                final response = await widget.api.get(
+                  '/api/v1/central/partners?limit=1&offset=0',
+                  force: true,
+                  maxAge: const Duration(seconds: 5),
+                );
+                final loaded = items(<String, dynamic>{'items': response['categories']});
+                final meta = response['meta'] is Map
+                    ? Map<String, dynamic>.from(response['meta'] as Map)
+                    : <String, dynamic>{};
+                final unavailable = meta['unavailable'] is List
+                    ? (meta['unavailable'] as List).map((e) => '$e').toSet()
+                    : <String>{};
+                final warning = unavailable.contains('partner_categories')
+                    ? 'The live category registry is temporarily unavailable. Go fallback categories are shown.'
                     : null;
                 if (!dialogOpen) return;
                 if (mounted) {
                   setState(() {
-                    categories = merged;
+                    categories = loaded;
                     categoryRegistryWarning = warning;
                     categoriesLoading = false;
                   });
                 }
                 setLocal(() {
-                  categoryOptions = merged;
+                  categoryOptions = loaded;
                   modalCategoryWarning = warning;
                   if (!categoryOptions.any((item) => '${item['id']}' == category)) {
                     category = '${categoryOptions.first['id']}';
@@ -3455,18 +3266,15 @@ class _PartnersPageState extends State<PartnersPage> {
                 });
               } catch (_) {
                 if (!dialogOpen) return;
-                final fallback = _mergePartnerCategories(categoryOptions);
                 const warning =
-                    'The live category registry is temporarily unavailable. Built-in partner categories remain available.';
+                    'The category read model could not be refreshed. The already loaded Go category snapshot remains available.';
                 if (mounted) {
                   setState(() {
-                    categories = fallback;
                     categoryRegistryWarning = warning;
                     categoriesLoading = false;
                   });
                 }
                 setLocal(() {
-                  categoryOptions = fallback;
                   modalCategoryWarning = warning;
                 });
               }
@@ -3944,13 +3752,10 @@ class _PartnersPageState extends State<PartnersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final kpiCounts = portfolioStatsReady ? portfolioLifecycleCounts : lifecycleCounts;
-    final live = kpiCounts['LIVE'] ?? 0;
-    final prospects = kpiCounts['PROSPECT'] ?? 0;
-    final reference = portfolioStatsReady ? portfolioReferenceCount : referenceCount;
-    final allRecords = portfolioStatsReady
-        ? portfolioTotal
-        : lifecycleCounts.values.fold<int>(0, (sum, value) => sum + value);
+    final live = (partnerKpis['live_partners'] as num?)?.toInt() ?? 0;
+    final prospects = (partnerKpis['prospects'] as num?)?.toInt() ?? 0;
+    final reference = (partnerKpis['reference_partners'] as num?)?.toInt() ?? 0;
+    final allRecords = (partnerKpis['partner_records'] as num?)?.toInt() ?? 0;
 
     return Content(
       eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
@@ -4174,9 +3979,12 @@ class PartnerWorkspace extends StatefulWidget {
 class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   late Map<String, dynamic> partner;
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> visibleModules = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> moduleGroups = <Map<String, dynamic>>[];
+  Map<String, dynamic> moduleKpis = <String, dynamic>{};
+  List<String> activeModuleKeys = <String>[];
   List<Map<String, dynamic>> documents = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> subscriptions = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> provisioningJobs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
@@ -4190,12 +3998,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? commercialStatus;
   Map<String, dynamic>? paymentProfile;
   Map<String, dynamic>? websiteAdapter;
+  Map<String, dynamic>? productionEnvironment;
+  String preferredConnectorEnvironment = 'STAGING';
   bool loading = true;
   bool supplementalLoading = true;
   String? error;
   String? supplementalError;
   String moduleQuery = '';
   String moduleState = 'ALL';
+  Timer? _moduleSearchDebounce;
+  int _supplementalLoadGeneration = 0;
   final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _companyKey = GlobalKey();
   final GlobalKey _environmentKey = GlobalKey();
@@ -4206,7 +4018,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   final GlobalKey _usersKey = GlobalKey();
   final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
-  int _supplementalLoadGeneration = 0;
 
   static const workspaceCards = <_WorkspaceSpec>[
     _WorkspaceSpec('Overview', Icons.dashboard_customize_outlined, 'Partner health and commercial snapshot', true),
@@ -4230,86 +4041,156 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     load();
   }
 
-  Future<Map<String, dynamic>?> _safeWorkspaceGet(String path, List<String> errors) async {
-    try {
-      return await widget.api.get(path).timeout(const Duration(seconds: 8));
-    } on TimeoutException {
-      errors.add('$path: timed out after 8 seconds');
-      return null;
-    } catch (e) {
-      errors.add('$path: $e');
-      return null;
-    }
-  }
-
-  Future<void> _loadSupplementary() async {
-    final generation = ++_supplementalLoadGeneration;
-    final id = '${partner['id']}';
-    if (mounted) setState(() { supplementalLoading = true; supplementalError = null; });
-    final errors = <String>[];
-
-    Future<void> loadOne(
-      String path,
-      void Function(Map<String,dynamic> data) apply,
-    ) async {
-      final data = await _safeWorkspaceGet(path, errors);
-      if (!mounted || generation != _supplementalLoadGeneration || data == null) return;
-      setState(() => apply(data));
-    }
-
-    await Future.wait<void>([
-      loadOne('/api/v1/partners/$id/modules', (data) => modules = items(data)),
-      loadOne('/api/v1/billing/partners/$id/summary', (data) => billing = data),
-      loadOne('/api/v1/billing/partners/$id/terms', (data) => terms = data),
-      loadOne('/api/v1/billing/partners/$id/license', (data) => license = data),
-      loadOne('/api/v1/billing/partners/$id/documents', (data) => documents = items(data)),
-      loadOne('/api/v1/billing/partners/$id/invoices', (data) => invoices = items(data)),
-      loadOne('/api/v1/billing/partners/$id/subscriptions', (data) => subscriptions = items(data)),
-      loadOne('/api/v1/environments?partner_id=$id', (data) => environments = items(data)),
-      loadOne('/api/v1/provisioning/jobs?partner_id=$id', (data) => provisioningJobs = items(data)),
-      loadOne('/api/v1/impact/summary?partner_id=$id', (data) => impactSummary = items(data)),
-      loadOne('/api/v1/connectors/$id/credential', (data) => connectorCredentials = items(data)),
-      loadOne('/api/v1/partners/$id/portal-users', (data) => portalUsers = items(data)),
-      loadOne('/api/v1/billing/partners/$id/agreement', (data) => agreement = data),
-      loadOne('/api/v1/billing/partners/$id/commercial-status', (data) => commercialStatus = data),
-      loadOne('/api/v1/billing/partners/$id/events', (data) => billingEvents = items(data)),
-      loadOne('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', (data) => websiteAdapter = data),
-      loadOne('/api/v1/payments/partners/$id/profile', (data) => paymentProfile = data),
-    ]);
-
-    if (!mounted || generation != _supplementalLoadGeneration) return;
-    setState(() {
-      supplementalLoading = false;
-      supplementalError = errors.isEmpty
-          ? null
-          : 'Some secondary services are temporarily unavailable. Available sections were loaded independently; missing sections will show an empty or unavailable state instead of blocking the page.';
-    });
+  @override
+  void dispose() {
+    _moduleSearchDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> load() async {
-    final hasPrimary = '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
-    if (mounted) setState(() { loading = !hasPrimary; error = null; });
+    final generation = ++_supplementalLoadGeneration;
+    final hasPrimary =
+        '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
+    if (mounted) {
+      setState(() {
+        loading = !hasPrimary;
+        supplementalLoading = true;
+        error = null;
+        supplementalError = null;
+      });
+    }
+    if (hasPrimary) _scrollToInitialSection();
     final id = '${partner['id']}';
-    if (hasPrimary) {
-      _scrollToInitialSection();
-      unawaited(_loadSupplementary());
-    }
     try {
-      final core = await widget.api.get('/api/v1/partners/$id', maxAge: const Duration(seconds: 15));
-      if (!mounted) return;
-      setState(() { partner = core; loading = false; });
+      final model = await widget.api.get(
+        '/api/v1/central/partners/$id',
+        maxAge: const Duration(seconds: 5),
+      ).timeout(const Duration(seconds: 8));
+      if (!mounted || generation != _supplementalLoadGeneration) return;
+      final core = model['partner'] is Map
+          ? Map<String, dynamic>.from(model['partner'] as Map)
+          : partner;
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
+      final moduleView = model['module_view'] is Map
+          ? Map<String, dynamic>.from(model['module_view'] as Map)
+          : <String, dynamic>{};
+      final unavailable = meta['unavailable'] is List
+          ? (meta['unavailable'] as List).map((e) => '$e').toList()
+          : <String>[];
+      setState(() {
+        partner = core;
+        modules = items(<String, dynamic>{'items': model['modules']});
+        visibleModules = items(<String, dynamic>{'items': moduleView['filtered_items']});
+        moduleGroups = items(<String, dynamic>{'items': moduleView['groups']});
+        moduleKpis = moduleView['kpis'] is Map
+            ? Map<String, dynamic>.from(moduleView['kpis'] as Map)
+            : <String, dynamic>{};
+        activeModuleKeys = moduleView['active_module_keys'] is List
+            ? (moduleView['active_module_keys'] as List).map((e) => '$e').toList()
+            : <String>[];
+        documents = items(<String, dynamic>{'items': model['documents']});
+        invoices = items(<String, dynamic>{'items': model['invoices']});
+        environments = items(<String, dynamic>{'items': model['environments']});
+        provisioningJobs = items(<String, dynamic>{'items': model['provisioning_jobs']});
+        impactSummary = items(<String, dynamic>{'items': model['impact_summary']});
+        connectorCredentials = items(<String, dynamic>{'items': model['connector_credentials']});
+        portalUsers = items(<String, dynamic>{'items': model['portal_users']});
+        billingEvents = items(<String, dynamic>{'items': model['billing_events']});
+        billing = model['billing'] is Map ? Map<String, dynamic>.from(model['billing'] as Map) : null;
+        terms = model['terms'] is Map ? Map<String, dynamic>.from(model['terms'] as Map) : null;
+        license = model['license'] is Map ? Map<String, dynamic>.from(model['license'] as Map) : null;
+        agreement = model['agreement'] is Map ? Map<String, dynamic>.from(model['agreement'] as Map) : null;
+        commercialStatus = model['commercial_status'] is Map
+            ? Map<String, dynamic>.from(model['commercial_status'] as Map)
+            : null;
+        paymentProfile = model['payment_profile'] is Map
+            ? Map<String, dynamic>.from(model['payment_profile'] as Map)
+            : null;
+        websiteAdapter = model['website_adapter'] is Map
+            ? Map<String, dynamic>.from(model['website_adapter'] as Map)
+            : null;
+        productionEnvironment = model['production_environment'] is Map
+            ? Map<String, dynamic>.from(model['production_environment'] as Map)
+            : null;
+        preferredConnectorEnvironment = '${model['preferred_connector_environment'] ?? 'STAGING'}';
+        loading = false;
+        supplementalLoading = false;
+        supplementalError = unavailable.isEmpty
+            ? null
+            : 'Some secondary services are temporarily unavailable: ${unavailable.join(', ')}. Available sections remain usable.';
+      });
       _scrollToInitialSection();
-      if (!hasPrimary) unawaited(_loadSupplementary());
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          error = hasPrimary ? null : e.toString();
-          supplementalError ??= 'The latest partner master-data refresh failed. The already loaded partner record remains usable.';
-          loading = false;
-          if (!hasPrimary) supplementalLoading = false;
-        });
-      }
+      if (!mounted || generation != _supplementalLoadGeneration) return;
+      setState(() {
+        loading = false;
+        supplementalLoading = false;
+        if (hasPrimary) {
+          supplementalError = e is TimeoutException
+              ? 'The partner workspace timed out after 8 seconds. The already loaded partner record remains usable.'
+              : 'The latest Go partner read model could not be refreshed. The already loaded partner record remains usable.';
+        } else {
+          error = e is TimeoutException
+              ? 'The partner workspace timed out after 8 seconds.'
+              : e.toString();
+        }
+      });
     }
+  }
+
+  Future<void> _loadModuleView({bool force = false}) async {
+    final id = '${partner['id'] ?? ''}';
+    if (id.isEmpty) return;
+    final params = <String, String>{};
+    if (moduleQuery.trim().isNotEmpty) params['q'] = moduleQuery.trim();
+    if (moduleState != 'ALL') params['state'] = moduleState;
+    final path = Uri(
+      path: '/api/v1/central/partners/$id/modules',
+      queryParameters: params.isEmpty ? null : params,
+    ).toString();
+    try {
+      final view = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 3),
+      ).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw TimeoutException('Partner module view timed out after 5 seconds'),
+      );
+      if (!mounted) return;
+      setState(() {
+        modules = items(<String, dynamic>{'items': view['items']});
+        visibleModules = items(<String, dynamic>{'items': view['filtered_items']});
+        moduleGroups = items(<String, dynamic>{'items': view['groups']});
+        moduleKpis = view['kpis'] is Map
+            ? Map<String, dynamic>.from(view['kpis'] as Map)
+            : moduleKpis;
+        activeModuleKeys = view['active_module_keys'] is List
+            ? (view['active_module_keys'] as List).map((e) => '$e').toList()
+            : activeModuleKeys;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        supplementalError = 'Module view could not be refreshed: $e';
+      });
+    }
+  }
+
+  void updateModuleQuery(String value) {
+    moduleQuery = value;
+    _moduleSearchDebounce?.cancel();
+    _moduleSearchDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) unawaited(_loadModuleView());
+    });
+  }
+
+  void updateModuleState(String value) {
+    if (moduleState == value) return;
+    setState(() => moduleState = value);
+    unawaited(_loadModuleView());
   }
 
   void _scrollToInitialSection() {
@@ -4345,28 +4226,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? get provisioningJob =>
       provisioningJobs.isEmpty ? null : provisioningJobs.first;
 
-  String _partnerModuleSection(Map<String,dynamic> module) {
-    return switch ('${module['group_key'] ?? ''}') {
-      'finance_invoicing' => 'Finance & Invoicing',
-      'marketing' => 'Marketing',
-      'website_events' => 'Website & Events',
-      _ => 'Technical Operation',
-    };
-  }
-
-  Map<String,List<Map<String,dynamic>>> get groupedFilteredModules {
-    final grouped = <String,List<Map<String,dynamic>>>{
-      'Finance & Invoicing': <Map<String,dynamic>>[],
-      'Technical Operation': <Map<String,dynamic>>[],
-      'Marketing': <Map<String,dynamic>>[],
-      'Website & Events': <Map<String,dynamic>>[],
-    };
-    for (final module in filteredModules) {
-      grouped[_partnerModuleSection(module)]!.add(module);
-    }
-    return grouped;
-  }
-
   Future<void> startProvisioning() async {
     final lifecycle = '${partner['lifecycle'] ?? ''}';
     if (!const {'READY_TO_PROVISION', 'PROVISIONING', 'CONFIGURATION'}.contains(lifecycle)) {
@@ -4379,10 +4238,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       );
       return;
     }
-    final preset = [
-      for (final m in modules)
-        if (m['status'] == 'ACTIVE') '${m['key']}',
-    ];
+    final preset = List<String>.from(activeModuleKeys);
     try {
       await widget.api.post('/api/v1/provisioning/jobs', {
         'partner_id': '${partner['id']}',
@@ -4451,7 +4307,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           'password': password.text,
           'role': role,
         });
-        await _loadSupplementary();
+        await load();
         if (mounted) success('Partner Portal user created.');
       } catch (e) {
         if (mounted) {
@@ -4514,7 +4370,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           'role': role,
           'active': active,
         });
-        await _loadSupplementary();
+        await load();
         if (mounted) success('Partner Portal user updated.');
       } catch (e) {
         if (mounted) {
@@ -4528,7 +4384,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   }
 
   Future<void> rotateConnectorCredential() async {
-    String environment = environments.any((e) => e['kind'] == 'PRODUCTION') ? 'PRODUCTION' : 'STAGING';
+    String environment = preferredConnectorEnvironment;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -4677,9 +4533,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   }
 
   Future<void> createProductionEnvironment() async {
-    final existing = environments.where((e) => e['kind'] == 'PRODUCTION').toList();
-    if (existing.isNotEmpty) {
-      await editEnvironment(existing.first);
+    if (productionEnvironment != null) {
+      await editEnvironment(productionEnvironment!);
       return;
     }
     final hostname = TextEditingController(text: '${partner['primary_domain'] ?? ''}');
@@ -4895,7 +4750,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       });
       if (mounted) {
         setState(() => partner = updated);
-        await _loadSupplementary();
+        await load();
         if (mounted) {
           success(updated['test_partner'] == true
               ? 'Golden Test Partner active with full test entitlements.'
@@ -5302,19 +5157,14 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     }
   }
 
-  Map<String, dynamic>? subscriptionFor(String moduleKey) {
-    for (final item in subscriptions) {
-      if ('${item['module_key']}' == moduleKey) return item;
-    }
-    return null;
-  }
-
   Future<void> editModule(Map<String, dynamic> module) async {
     String state = '${module['status']}';
     bool visible = module['visible'] == true;
     bool included = module['included_in_base'] == true;
     final moduleKey = '${module['key']}';
-    var subscription = subscriptionFor(moduleKey);
+    Map<String, dynamic>? subscription = module['subscription'] is Map
+        ? Map<String, dynamic>.from(module['subscription'] as Map)
+        : null;
     bool cancelAtPeriodEnd = subscription?['cancel_at_period_end'] == true;
     final initialCancel = cancelAtPeriodEnd;
     final price = TextEditingController(text: number(module['partner_price']).toStringAsFixed(2));
@@ -5432,10 +5282,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
       if (state == 'ACTIVE' && cancelAtPeriodEnd != initialCancel) {
         if (subscription == null) {
+          // Billing summary is the existing synchronization boundary that creates
+          // the first 30-day subscription for a newly activated module.
           await widget.api.get('/api/v1/billing/partners/${partner['id']}/summary', force: true);
-          final refreshed = await widget.api.get('/api/v1/billing/partners/${partner['id']}/subscriptions', force: true);
-          subscriptions = items(refreshed);
-          subscription = subscriptionFor(moduleKey);
+          final refreshed = await widget.api.get(
+            Uri(
+              path: '/api/v1/central/partners/${partner['id']}/modules',
+              queryParameters: <String, String>{'q': moduleKey},
+            ).toString(),
+            force: true,
+            maxAge: Duration.zero,
+          );
+          final matches = items(<String, dynamic>{'items': refreshed['filtered_items']});
+          if (matches.isNotEmpty && matches.first['subscription'] is Map) {
+            subscription = Map<String, dynamic>.from(matches.first['subscription'] as Map);
+          }
         }
         if (subscription != null) {
           await widget.api.patch(
@@ -5458,23 +5319,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     reason.dispose();
   }
 
-  List<Map<String, dynamic>> get filteredModules {
-    final q = moduleQuery.trim().toLowerCase();
-    return modules.where((m) {
-      final matchText = q.isEmpty ||
-          '${m['label']}'.toLowerCase().contains(q) ||
-          '${m['key']}'.toLowerCase().contains(q) ||
-          '${m['group_label']}'.toLowerCase().contains(q);
-      final matchState = moduleState == 'ALL' || '${m['status']}' == moduleState;
-      return matchText && matchState;
-    }).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final active = modules.where((m) => m['status'] == 'ACTIVE').length;
-    final maintenance = modules.where((m) => m['status'] == 'MAINTENANCE').length;
-    final baseIncluded = modules.where((m) => m['included_in_base'] == true).length;
+    final active = (moduleKpis['active'] as num?)?.toInt() ?? 0;
+    final maintenance = (moduleKpis['maintenance'] as num?)?.toInt() ?? 0;
+    final baseIncluded = (moduleKpis['base_included'] as num?)?.toInt() ?? 0;
+    final moduleTotal = (moduleKpis['total'] as num?)?.toInt() ?? modules.length;
 
     return Scaffold(
       backgroundColor: brandIvory,
@@ -5545,7 +5395,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: ResponsiveKpiGrid(
                           children: [
                             Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
-                            Kpi(label: 'Active modules', value: '$active', note: '${modules.length} ${uiLiteral('module records')}', icon: Icons.grid_view_outlined, accent: brandNavy),
+                            Kpi(label: 'Active modules', value: '$active', note: '$moduleTotal ${uiLiteral('module records')}', icon: Icons.grid_view_outlined, accent: brandNavy),
                             Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
                             Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
                           ],
@@ -5608,7 +5458,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                               OutlinedButton.icon(
                                 onPressed: createProductionEnvironment,
                                 icon: const Icon(Icons.public_outlined),
-                                label: LText(environments.any((e) => e['kind'] == 'PRODUCTION') ? 'Production settings' : 'Add production'),
+                                label: LText(productionEnvironment != null ? 'Production settings' : 'Add production'),
                               ),
                               FilledButton.icon(
                                 onPressed: startProvisioning,
@@ -5681,7 +5531,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: _SectionHeader(
                           title: 'Partner Modules',
                           subtitle: 'Entitlement, visibility, base-package inclusion and partner-specific pricing.',
-                          trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                          trailing: _MiniCounter(label: '${visibleModules.length} shown'),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -5689,7 +5539,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: LayoutBuilder(
                           builder: (context, c) {
                             final search = TextField(
-                              onChanged: (v) => setState(() => moduleQuery = v),
+                              onChanged: updateModuleQuery,
                               decoration: InputDecoration(hintText: uiLiteral('Search modules...'), prefixIcon: Icon(Icons.search_rounded)),
                             );
                             final state = DropdownButtonFormField<String>(
@@ -5701,7 +5551,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                 DropdownMenuItem(value: 'NOT_LICENSED', child: LText('Not licensed')),
                                 DropdownMenuItem(value: 'MAINTENANCE', child: LText('Maintenance')),
                               ],
-                              onChanged: (v) => setState(() => moduleState = v ?? 'ALL'),
+                              onChanged: (v) => updateModuleState(v ?? 'ALL'),
                             );
                             if (c.maxWidth < 680) return Column(children: [search, const SizedBox(height: 10), state]);
                             return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: state)]);
@@ -5709,36 +5559,46 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      for (final entry in groupedFilteredModules.entries) ...[
-                        _SectionHeader(
-                          title: entry.key,
-                          subtitle: entry.value.isEmpty
-                              ? 'No modules in this category for this partner.'
-                              : '${entry.value.length} module${entry.value.length == 1 ? '' : 's'} in this partner category.',
-                          trailing: _MiniCounter(label: '${entry.value.length} MODULES'),
-                        ),
-                        const SizedBox(height: 10),
-                        if (entry.value.isEmpty)
-                          const _MessageCard(
-                            icon: Icons.inbox_outlined,
-                            title: 'No module entitlement',
-                            message: 'There is no module to load in this category. The page will not retry an empty dataset.',
-                          )
-                        else
-                          LayoutBuilder(
-                            builder: (context, c) {
-                              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                              return Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  for (final m in entry.value)
-                                    SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
-                                ],
-                              );
-                            },
-                          ),
-                        const SizedBox(height: 18),
+                      for (final group in moduleGroups) ...[
+                        Builder(builder: (context) {
+                          final groupItems = items(<String, dynamic>{'items': group['items']});
+                          final count = (group['count'] as num?)?.toInt() ?? groupItems.length;
+                          final label = '${group['label'] ?? group['key'] ?? ''}';
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _SectionHeader(
+                                title: label,
+                                subtitle: count == 0
+                                    ? 'No modules in this category for this partner.'
+                                    : '$count module${count == 1 ? '' : 's'} in this partner category.',
+                                trailing: _MiniCounter(label: '$count MODULES'),
+                              ),
+                              const SizedBox(height: 10),
+                              if (groupItems.isEmpty)
+                                const _MessageCard(
+                                  icon: Icons.inbox_outlined,
+                                  title: 'No module entitlement',
+                                  message: 'There is no module to load in this category. The page will not retry an empty dataset.',
+                                )
+                              else
+                                LayoutBuilder(
+                                  builder: (context, c) {
+                                    final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                                    return Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
+                                      children: [
+                                        for (final m in groupItems)
+                                          SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              const SizedBox(height: 18),
+                            ],
+                          );
+                        }),
                       ],
                       const SizedBox(height: 26),
                       KeyedSubtree(
@@ -5931,47 +5791,44 @@ class _PackagesPageState extends State<PackagesPage> {
   }
 
   Future<void> load() async {
-    if (mounted) setState(() { loading = true; error = null; });
-    try {
-      final result = await widget.api.get('/api/v1/billing/plans', maxAge: const Duration(seconds: 30));
-      if (!mounted) return;
-      final allPlans = items(result);
+    if (mounted) {
       setState(() {
-        plans = allPlans.where((p) => const {'STARTER', 'BUSINESS', 'FLEX'}.contains('${p['plan_key']}')).toList();
+        loading = true;
+        analyticsLoading = true;
+        error = null;
+        analyticsError = null;
+      });
+    }
+    try {
+      final model = await widget.api.get(
+        '/api/v1/central/packages',
+        maxAge: const Duration(seconds: 5),
+      );
+      if (!mounted) return;
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
+      final unavailable = meta['unavailable'] is List
+          ? (meta['unavailable'] as List).map((e) => '$e').toSet()
+          : <String>{};
+      setState(() {
+        plans = items(<String, dynamic>{'items': model['plans']});
+        modules = items(<String, dynamic>{'items': model['modules']});
+        analytics = model['analytics'] is Map
+            ? Map<String, dynamic>.from(model['analytics'] as Map)
+            : <String, dynamic>{};
         loading = false;
-      });
-      unawaited(_loadModules());
-      unawaited(_loadAnalytics());
-    } catch (e) {
-      if (!mounted) return;
-      setState(() { loading = false; error = e.toString(); });
-    }
-  }
-
-  Future<void> _loadModules() async {
-    try {
-      final result = await widget.api.get('/api/v1/modules');
-      if (!mounted) return;
-      setState(() => modules = items(result).where((m) => m['system'] == true).toList());
-    } catch (_) {
-      // Module definitions are needed only when package editing is opened.
-    }
-  }
-
-  Future<void> _loadAnalytics() async {
-    if (mounted) setState(() { analyticsLoading = true; analyticsError = null; });
-    try {
-      final result = await widget.api.get('/api/v1/billing/packages/analytics', maxAge: const Duration(seconds: 20));
-      if (!mounted) return;
-      setState(() {
-        analytics = result;
         analyticsLoading = false;
+        analyticsError = unavailable.contains('analytics')
+            ? 'Package analytics is temporarily unavailable. Package definitions remain usable.'
+            : null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        loading = false;
         analyticsLoading = false;
-        analyticsError = e.toString();
+        error = e.toString();
       });
     }
   }
@@ -5986,7 +5843,7 @@ class _PackagesPageState extends State<PackagesPage> {
   }
 
   String _packageEntitlement(Map<String,dynamic> plan) =>
-      '${central9CanonicalPackage('${plan['plan_key']}')['entitlement']}';
+      '${plan['entitlement'] ?? '—'}';
 
   String moduleLabel(Map<String, dynamic> module) =>
       '${module['label'] ?? module['label_en'] ?? module['key'] ?? ''}';
@@ -6199,8 +6056,8 @@ class _PackagesPageState extends State<PackagesPage> {
                     SizedBox(
                       width: width,
                       child: _PackageOverviewCard(
-                        name: '${central9CanonicalPackage('${plan['plan_key']}')['name']}',
-                        price: central9CanonicalPackagePrice('${plan['plan_key']}'),
+                        name: '${plan['display_name'] ?? plan['plan_key']}',
+                        price: '${plan['display_price'] ?? '—'}',
                         description: _packageDescription(plan),
                         entitlement: _packageEntitlement(plan),
                         active: plan['active'] == true,
@@ -6474,9 +6331,13 @@ class FinancePage extends StatefulWidget {
 
 class _FinancePageState extends State<FinancePage> {
   Map<String, dynamic>? profile;
-  Map<String, dynamic> overview = <String, dynamic>{};
+  Map<String, dynamic> financeKpis = <String, dynamic>{};
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> onboardingRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> chartRows = <Map<String, dynamic>>[];
+  String chartCurrency = 'USD';
+  double chartMaxPaid = 0;
   String invoiceFilter = 'ALL';
   String revenuePeriod = 'MONTHLY';
   String revenuePlan = 'ALL';
@@ -6490,34 +6351,52 @@ class _FinancePageState extends State<FinancePage> {
     load();
   }
 
-  Future<void> load() async {
-    if (mounted) setState(() {
-      loading = true;
-      error = null;
-    });
-    final failures = <String>[];
+  String _financePath() {
+    final params = <String, String>{
+      'invoice_status': invoiceFilter,
+      'revenue_period': revenuePeriod,
+      'revenue_plan': revenuePlan,
+    };
+    return Uri(path: '/api/v1/central/finance', queryParameters: params).toString();
+  }
 
-    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
-      try {
-        final data = await widget.api.get(path, maxAge: const Duration(seconds: 15));
-        if (!mounted) return;
-        setState(() => apply(data));
-      } catch (e) {
-        failures.add(e.toString());
-      }
-    }
-
-    await Future.wait<void>([
-      fetch('/api/v1/billing/profile', (data) => profile = data),
-      fetch('/api/v1/billing/finance/overview', (data) => overview = data),
-      fetch('/api/v1/billing/invoices', (data) => invoices = items(data)),
-      fetch('/api/v1/partners?limit=200&offset=0&include_archived=false&include_stats=false', (data) => partners = items(data)),
-    ]);
-
+  Future<void> load({bool force = false}) async {
     if (mounted) {
       setState(() {
+        loading = true;
+        error = null;
+      });
+    }
+    try {
+      final model = await widget.api.get(
+        _financePath(),
+        force: force,
+        maxAge: const Duration(seconds: 5),
+      );
+      if (!mounted) return;
+      final chart = model['chart'] is Map
+          ? Map<String, dynamic>.from(model['chart'] as Map)
+          : <String, dynamic>{};
+      setState(() {
+        profile = model['profile'] is Map
+            ? Map<String, dynamic>.from(model['profile'] as Map)
+            : null;
+        financeKpis = model['kpis'] is Map
+            ? Map<String, dynamic>.from(model['kpis'] as Map)
+            : <String, dynamic>{};
+        invoices = items(<String, dynamic>{'items': model['invoices']});
+        partners = items(<String, dynamic>{'items': model['partners']});
+        onboardingRows = items(<String, dynamic>{'items': model['onboarding']});
+        chartRows = items(<String, dynamic>{'items': chart['rows']});
+        chartCurrency = '${chart['currency'] ?? 'USD'}';
+        chartMaxPaid = number(chart['max_paid']);
         loading = false;
-        if (failures.length == 4) error = failures.first;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
       });
     }
   }
@@ -6534,77 +6413,35 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
-  List<Map<String, dynamic>> get currencyRows {
-    final raw = overview['currencies'];
-    if (raw is! List) return <Map<String, dynamic>>[];
-    return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-  }
-
-  List<Map<String, dynamic>> get onboardingRows {
-    final raw = overview['onboarding'];
-    if (raw is! Map || raw['items'] is! List) return <Map<String, dynamic>>[];
-    return (raw['items'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-  }
-
-  List<Map<String, dynamic>> get filteredInvoices => invoiceFilter == 'ALL'
-      ? invoices
-      : invoices.where((invoice) => '${invoice['workflow_status'] ?? invoice['status'] ?? ''}' == invoiceFilter).toList();
-
-  String partnerName(String id) {
-    for (final partner in partners) {
-      if ('${partner['id'] ?? ''}' == id) {
-        final display = '${partner['display_name'] ?? ''}'.trim();
-        if (display.isNotEmpty) return display;
-      }
-    }
-    return id;
-  }
-
-  int workflowCount(String key) => currencyRows.fold<int>(0, (sum, row) => sum + (row[key] is num ? (row[key] as num).toInt() : int.tryParse('${row[key]}') ?? 0));
-
-  String moneyAcrossCurrencies(String key) {
-    final nonZero = currencyRows.where((row) => number(row[key]) != 0).toList();
-    if (nonZero.isEmpty) return '\$0.00';
-    if (nonZero.length == 1) {
-      final row = nonZero.first;
-      return '${row['currency'] ?? 'USD'} ${number(row[key]).toStringAsFixed(2)}';
-    }
-    return '${nonZero.length} currencies';
-  }
-
-  String get chartCurrency => currencyRows.isEmpty ? 'USD' : '${currencyRows.first['currency'] ?? 'USD'}';
-
-  String get revenuePlanKey => switch (revenuePlan) {
-    'Starter' => 'STARTER',
-    'Business' => 'BUSINESS',
-    'Premium' => 'FLEX',
-    _ => 'ALL',
+  String get revenuePlanLabel => switch (revenuePlan) {
+    'STARTER' => 'Starter',
+    'BUSINESS' => 'Business',
+    'FLEX' => 'Premium',
+    _ => 'All revenue',
   };
 
-  List<Map<String, dynamic>> get chartRows {
-    final byPlan = revenuePlanKey != 'ALL';
-    final key = revenuePeriod == 'WEEKLY'
-        ? (byPlan ? 'weekly_paid_by_plan' : 'weekly_paid')
-        : (byPlan ? 'monthly_paid_by_plan' : 'monthly_paid');
-    final raw = overview[key];
-    if (raw is! List) return <Map<String, dynamic>>[];
-    return raw
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .where((row) =>
-            '${row['currency'] ?? ''}' == chartCurrency &&
-            (!byPlan || '${row['plan_key'] ?? ''}' == revenuePlanKey))
-        .map((row) => <String,dynamic>{
-              ...row,
-              'period': row['period'] ?? row['month'] ?? '',
-            })
-        .toList();
+  void applyInvoiceFilter(String status) {
+    if (invoiceFilter == status) return;
+    setState(() => invoiceFilter = status);
+    unawaited(load());
+  }
+
+  void applyRevenuePeriod(String period) {
+    if (revenuePeriod == period) return;
+    setState(() => revenuePeriod = period);
+    unawaited(load());
+  }
+
+  void applyRevenuePlan(String planKey) {
+    if (revenuePlan == planKey) return;
+    setState(() => revenuePlan = planKey);
+    unawaited(load());
   }
 
   String get financeExportPath {
     final params = <String,String>{};
     if (invoiceFilter != 'ALL') params['status'] = invoiceFilter;
-    if (revenuePlanKey != 'ALL') params['plan_key'] = revenuePlanKey;
+    if (revenuePlan != 'ALL') params['plan_key'] = revenuePlan;
     return Uri(path: '/api/v1/billing/finance/export.pdf', queryParameters: params.isEmpty ? null : params).toString();
   }
 
@@ -6711,7 +6548,7 @@ class _FinancePageState extends State<FinancePage> {
       context: context,
       builder: (dialogContext) => BrandDialog(
         title: label,
-        subtitle: '${invoice['id']} · ${partnerName('${invoice['partner_id']}')} · ${invoice['currency']} ${number(invoice['gross_total'] ?? invoice['total']).toStringAsFixed(2)}',
+        subtitle: '${invoice['id']} · ${invoice['partner_name'] ?? invoice['partner_id']} · ${invoice['currency']} ${number(invoice['gross_total'] ?? invoice['total']).toStringAsFixed(2)}',
         icon: action == 'cancel' ? Icons.cancel_outlined : Icons.receipt_long_outlined,
         width: 560,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -6879,7 +6716,7 @@ class _FinancePageState extends State<FinancePage> {
   Widget financeChart() {
     final rows = chartRows;
     final windowLabel = revenuePeriod == 'WEEKLY' ? 'last 4 weeks' : 'last 12 months';
-    final planLabel = revenuePlan == 'ALL' ? 'All revenue' : revenuePlan;
+    final planLabel = revenuePlanLabel;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -6900,7 +6737,7 @@ class _FinancePageState extends State<FinancePage> {
                       DropdownMenuItem(value: 'MONTHLY', child: LText('Monthly')),
                     ],
                     onChanged: (value) {
-                      if (value != null) setState(() => revenuePeriod = value);
+                      if (value != null) applyRevenuePeriod(value);
                     },
                   ),
                 ),
@@ -6912,12 +6749,12 @@ class _FinancePageState extends State<FinancePage> {
                     decoration: const InputDecoration(labelText: 'Package'),
                     items: const [
                       DropdownMenuItem(value: 'ALL', child: LText('All')),
-                      DropdownMenuItem(value: 'Starter', child: LText('Starter')),
-                      DropdownMenuItem(value: 'Business', child: LText('Business')),
-                      DropdownMenuItem(value: 'Premium', child: LText('Premium')),
+                      DropdownMenuItem(value: 'STARTER', child: LText('Starter')),
+                      DropdownMenuItem(value: 'BUSINESS', child: LText('Business')),
+                      DropdownMenuItem(value: 'FLEX', child: LText('Premium')),
                     ],
                     onChanged: (value) {
-                      if (value != null) setState(() => revenuePlan = value);
+                      if (value != null) applyRevenuePlan(value);
                     },
                   ),
                 ),
@@ -6948,7 +6785,7 @@ class _FinancePageState extends State<FinancePage> {
             SizedBox(
               height: 205,
               child: LayoutBuilder(builder: (context, constraints) {
-                final maxValue = rows.fold<double>(0, (max, row) => math.max(max, number(row['paid'])));
+                final maxValue = chartMaxPaid;
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -6966,7 +6803,7 @@ class _FinancePageState extends State<FinancePage> {
                               duration: const Duration(milliseconds: 180),
                               height: maxValue <= 0 ? 2 : math.max(2, 135 * number(row['paid']) / maxValue),
                               decoration: BoxDecoration(
-                                color: revenuePlanKey == 'ALL' ? brandGold.withOpacity(.78) : brandNavy.withOpacity(.78),
+                                color: revenuePlan == 'ALL' ? brandGold.withOpacity(.78) : brandNavy.withOpacity(.78),
                                 borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
                               ),
                             ),
@@ -7097,17 +6934,12 @@ class _FinancePageState extends State<FinancePage> {
 
   @override
   Widget build(BuildContext context) {
-    final onboarding = overview['onboarding'] is Map
-        ? Map<String, dynamic>.from(overview['onboarding'] as Map)
-        : <String, dynamic>{};
-    final draftCount = workflowCount('draft');
-    final sentCount = workflowCount('sent');
-    final approvedCount = workflowCount('approved');
-    final paidCount = workflowCount('paid');
-    final pendingOnboarding = onboarding['pending'] is num
-        ? (onboarding['pending'] as num).toInt()
-        : int.tryParse('${onboarding['pending'] ?? 0}') ?? 0;
-    final visibleInvoices = filteredInvoices;
+    final draftCount = (financeKpis['draft'] as num?)?.toInt() ?? 0;
+    final sentCount = (financeKpis['sent'] as num?)?.toInt() ?? 0;
+    final approvedCount = (financeKpis['approved'] as num?)?.toInt() ?? 0;
+    final paidCount = (financeKpis['paid'] as num?)?.toInt() ?? 0;
+    final pendingOnboarding = (financeKpis['pending_onboarding'] as num?)?.toInt() ?? 0;
+    final visibleInvoices = invoices;
 
     void scrollToOnboarding() {
       final target = onboardingKey.currentContext;
@@ -7151,23 +6983,23 @@ class _FinancePageState extends State<FinancePage> {
                       note: 'Awaiting Central approval',
                       icon: Icons.edit_note_outlined,
                       accent: brandSteel,
-                      onTap: () => setState(() => invoiceFilter = 'DRAFT'),
+                      onTap: () => applyInvoiceFilter('DRAFT'),
                     ),
                     Kpi(
                       label: 'Outstanding',
-                      value: moneyAcrossCurrencies('outstanding'),
-                      note: '${approvedCount + sentCount} approved / sent invoices',
+                      value: '${financeKpis['outstanding_label'] ?? r'$0.00'}',
+                      note: '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} approved / sent invoices',
                       icon: Icons.outbox_outlined,
                       accent: brandGold,
-                      onTap: () => setState(() => invoiceFilter = sentCount > 0 ? 'SENT' : 'APPROVED'),
+                      onTap: () => applyInvoiceFilter(sentCount > 0 ? 'SENT' : 'APPROVED'),
                     ),
                     Kpi(
                       label: 'Paid YTD',
-                      value: moneyAcrossCurrencies('paid_ytd'),
+                      value: '${financeKpis['paid_ytd_label'] ?? r'$0.00'}',
                       note: '$paidCount paid invoices',
                       icon: Icons.payments_outlined,
                       accent: brandSuccess,
-                      onTap: () => setState(() => invoiceFilter = 'PAID'),
+                      onTap: () => applyInvoiceFilter('PAID'),
                     ),
                     Kpi(
                       label: 'Pending onboarding',
@@ -7202,7 +7034,7 @@ class _FinancePageState extends State<FinancePage> {
                       FilterChip(
                         selected: invoiceFilter == status,
                         label: LText(status == 'ALL' ? 'All' : _humanize(status)),
-                        onSelected: (_) => setState(() => invoiceFilter = status),
+                        onSelected: (_) => applyInvoiceFilter(status),
                       ),
                   ],
                 ),
@@ -7246,7 +7078,7 @@ class _FinancePageState extends State<FinancePage> {
                                       ]),
                                       const SizedBox(height: 5),
                                       LText(
-                                        partnerName(partnerID),
+                                        '${invoice['partner_name'] ?? partnerID}',
                                         style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600),
                                       ),
                                       const SizedBox(height: 2),
@@ -7432,42 +7264,44 @@ class _ImpactPageState extends State<ImpactPage> {
 
   String evidencePath() {
     final query = <String, String>{
-      'limit': '$evidenceLimit',
-      'offset': '$evidenceOffset',
+      'evidence_limit': '$evidenceLimit',
+      'evidence_offset': '$evidenceOffset',
     };
-    if (evidenceQuery.trim().isNotEmpty) query['q'] = evidenceQuery.trim();
+    if (evidenceQuery.trim().isNotEmpty) query['evidence_query'] = evidenceQuery.trim();
     if (evidenceTypeFilter.isNotEmpty) query['evidence_type'] = evidenceTypeFilter;
-    if (evidenceStatusFilter.isNotEmpty) query['verification_status'] = evidenceStatusFilter;
-    if (evidencePeriodStart.trim().isNotEmpty) query['period_start'] = evidencePeriodStart.trim();
-    if (evidencePeriodEnd.trim().isNotEmpty) query['period_end'] = evidencePeriodEnd.trim();
-    return Uri(path: '/api/v1/evidence', queryParameters: query).toString();
+    if (evidenceStatusFilter.isNotEmpty) query['evidence_status'] = evidenceStatusFilter;
+    if (evidencePeriodStart.trim().isNotEmpty) query['evidence_period_start'] = evidencePeriodStart.trim();
+    if (evidencePeriodEnd.trim().isNotEmpty) query['evidence_period_end'] = evidencePeriodEnd.trim();
+    return Uri(path: '/api/v1/central/impact', queryParameters: query).toString();
   }
 
   Future<void> load() async {
-    if (mounted) setState(() => error = null);
-    final failures = <String>[];
-
-    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
-      try {
-        final data = await widget.api.get(path);
-        if (mounted) setState(() => apply(data));
-      } catch (e) {
-        failures.add(e.toString());
-      }
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = null;
+      });
     }
-
-    await Future.wait<void>([
-      fetch('/api/v1/impact/definitions', (data) => definitions = items(data)),
-      fetch('/api/v1/impact/summary', (data) => summary = items(data)),
-      fetch(evidencePath(), (data) {
-        evidence = items(data);
-        evidenceTotal = (data['total'] as num?)?.toInt() ?? evidence.length;
-      }),
-      fetch('/api/v1/reports', (data) => reports = items(data)),
-    ]);
-
-    if (mounted && failures.length == 4) {
-      setState(() => error = failures.first);
+    try {
+      final model = await widget.api.get(
+        evidencePath(),
+        maxAge: const Duration(seconds: 5),
+      );
+      if (!mounted) return;
+      setState(() {
+        definitions = items(<String, dynamic>{'items': model['definitions']});
+        summary = items(<String, dynamic>{'items': model['summary']});
+        evidence = items(<String, dynamic>{'items': model['evidence']});
+        reports = items(<String, dynamic>{'items': model['reports']});
+        evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
+      });
     }
   }
 
@@ -9446,7 +9280,7 @@ class _NewPartnerCardState extends State<NewPartnerCard> {
             duration: const Duration(milliseconds: 180),
             constraints: const BoxConstraints(minHeight: 224),
             decoration: BoxDecoration(
-              color: hover ? brandGold.withOpacity(.055) : brandWhite,
+              color: hover ? brandGold.withOpacity(.08) : brandSurfaceRaised,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: brandGold.withOpacity(hover ? .75 : .35), width: 1.1),
             ),

@@ -648,19 +648,21 @@ func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var ytd sql.NullFloat64
+	observationCount := 0
 	if err == nil {
 		err = a.db.QueryRow(`SELECT
 			CASE $3
 				WHEN 'LATEST' THEN (ARRAY_AGG(v.numeric_value ORDER BY v.period_end DESC,v.id DESC))[1]
 				WHEN 'AVERAGE' THEN AVG(v.numeric_value)
 				ELSE SUM(v.numeric_value)
-			END
+			END,
+			COUNT(v.numeric_value)
 		FROM impact.metric_values v
 		LEFT JOIN partners.partners p ON p.id=v.partner_id
 		WHERE v.metric_key=$1 AND v.numeric_value IS NOT NULL
 		  AND COALESCE(p.test_partner,FALSE)=FALSE
 		  AND v.period_end >= make_date($2,1,1)
-		  AND v.period_end < make_date($2+1,1,1)`, dashboardPeopleMetricKey, year, aggregation).Scan(&ytd)
+		  AND v.period_end < make_date($2+1,1,1)`, dashboardPeopleMetricKey, year, aggregation).Scan(&ytd,&observationCount)
 		if err != nil {
 			common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate People Reached")
 			return
@@ -764,6 +766,8 @@ func (a *app) dashboardImpact(w http.ResponseWriter, r *http.Request) {
 		"unit":unit,
 		"aggregation":aggregation,
 		"people_reached_ytd":value,
+		"observation_count":observationCount,
+		"has_data":observationCount>0,
 		"trend":trend,
 		"weekly_trend":weeklyTrend,
 		"source":"IMPACT_METRIC_VALUES",

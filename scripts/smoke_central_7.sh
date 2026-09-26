@@ -42,8 +42,12 @@ import json,sys
 d=json.load(sys.stdin)
 impact=d["impact"]; activity=d["activity"]
 assert impact["source"]=="IMPACT_METRIC_VALUES",impact
-assert len(impact["trend"])==12,len(impact["trend"])
-assert 52 <= len(impact["weekly_trend"]) <= 54,len(impact["weekly_trend"])
+if impact.get("has_data") is False:
+    assert impact["trend"]==[], impact["trend"]
+    assert impact["weekly_trend"]==[], impact["weekly_trend"]
+else:
+    assert len(impact["trend"])==12,len(impact["trend"])
+    assert len(impact["weekly_trend"])==4,len(impact["weekly_trend"])
 assert activity["source"]=="IDENTITY_APPEND_ONLY_AUDIT",activity
 assert activity["count"]==len(activity["items"]) and activity["count"]>=1,activity
 assert all(x.get("outcome")=="SUCCESS" for x in activity["items"]),activity

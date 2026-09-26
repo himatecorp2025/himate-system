@@ -151,7 +151,7 @@ require("Register commercial document metadata with a persistent storage URL" no
 # New Partner creation. Commercial documents remain file-backed, but they are
 # completed from Partner Workspace after the authoritative partner record exists.
 add_partner_start = frontend.index("  Future<void> addPartner() async {")
-add_partner_end = frontend.index("\n  List<Map<String, dynamic>> get filtered", add_partner_start)
+add_partner_end = frontend.index("\nclass PartnerWorkspace", add_partner_start)
 add_partner = frontend[add_partner_start:add_partner_end]
 for stale in (
     "activationInvoiceFile",
@@ -171,7 +171,7 @@ require(
 # START-23.11.3e generalized the document uploader, so verify the semantic
 # INVOICE -> Evidence INVOICE mapping rather than requiring a hard-coded payload.
 add_document_start = frontend.index("  Future<void> addDocument() async {")
-add_document_end = frontend.index("\n  Map<String, dynamic>? subscriptionFor", add_document_start)
+add_document_end = frontend.index("\n  Future<void> editModule", add_document_start)
 add_document = frontend[add_document_start:add_document_end]
 for token in (
     "final evidenceType = switch (kind)",

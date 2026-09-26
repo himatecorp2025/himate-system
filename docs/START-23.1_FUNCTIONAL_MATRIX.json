@@ -1961,17 +1961,17 @@
       "ui": "Read Partner × Module commercial matrix and exact next-period billing state",
       "kind": "read",
       "frontend_file": "frontend/lib/module_control_plane.dart",
-      "source_token": "'/api/v1/module-commercial-matrix?partner_ids=$encoded'",
+      "source_token": "'/api/v1/central/modules'",
       "method": "GET",
-      "api_pattern": "/api/v1/module-commercial-matrix + /api/v1/billing/subscription-matrix",
-      "backend_service": "catalog + billing",
+      "api_pattern": "/api/v1/central/modules",
+      "backend_service": "gateway Central-10 read model -> catalog + billing",
       "persistence": "catalog commercial configuration + billing immutable subscription snapshots",
       "audit": "read-only",
       "localization_state": "PARTIAL",
       "current_state": "MUTATION_PROVEN_PROD_UNVERIFIED",
       "target_phase": "23.2",
-      "e2e_proof": "scripts/smoke_start_23_2.sh: matrix and subscription quote readback",
-      "notes": "Billing obtains exact next-period price from Catalog using a batched point-in-time internal quote at the subscription boundary."
+      "e2e_proof": "scripts/smoke_start_23_2.sh + scripts/smoke_central_10.sh: authoritative matrix/subscription readback through Go Central read model",
+      "notes": "Central-10 supersedes the browser fan-out. Go Gateway batches Catalog/Billing sources, joins subscription state, filters/sorts and returns PARTNER/MODULE grouped presentation models."
     },
     {
       "id": "MODULE-COMMERCIAL-HISTORY",

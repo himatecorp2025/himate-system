@@ -15,6 +15,7 @@ def require(ok: bool, message: str) -> None:
 
 frontend = read("frontend/lib/main.dart")
 partners = read("services/cmd/partners/main.go")
+gateway_c10 = read("services/cmd/gateway/central10.go")
 localization = read("frontend/lib/localization.dart")
 
 for token in [
@@ -26,10 +27,17 @@ for token in [
     "onTap: () => applyPortfolioPreset(lifecycle: 'PROSPECT')",
     "onTap: () => applyPortfolioPreset(reference: true)",
     "Reference partners only",
-    "portfolioLifecycleCounts",
-    "_portfolioStatsUri()",
+    "partnerKpis",
+    "/api/v1/central/partners",
 ]:
     require(token in frontend, f"Partners KPI/filter contract missing: {token}")
+
+require('"lifecycle_counts": partners.LifecycleCounts' in gateway_c10,
+        "Central-10 Partners read model does not expose authoritative lifecycle KPI counts")
+require('"reference_partners": partners.ReferenceCount' in gateway_c10,
+        "Central-10 Partners read model does not expose authoritative reference KPI count")
+require('"kpis": map[string]any{' in gateway_c10,
+        "Central-10 Partners read model does not assemble backend KPIs")
 
 require('referenceOnly, _ := strconv.ParseBool(r.URL.Query().Get("reference"))' in partners,
         "Partners API does not parse reference filter")

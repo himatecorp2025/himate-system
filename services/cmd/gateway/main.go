@@ -947,6 +947,14 @@ func permissionResource(r *http.Request) string {
 	switch {
 	case path == "/api/v1/dashboard/summary", path == "/api/v1/search":
 		return "dashboard"
+	case path == "/api/v1/central/partners", strings.HasPrefix(path, "/api/v1/central/partners/"):
+		return "partners"
+	case path == "/api/v1/central/modules":
+		return "catalog"
+	case path == "/api/v1/central/packages", path == "/api/v1/central/finance":
+		return "billing"
+	case path == "/api/v1/central/impact":
+		return "impact"
 	case path == "/api/v1/audit/events":
 		return "audit"
 	case path == "/api/v1/notifications", strings.HasPrefix(path, "/api/v1/notifications/"):
@@ -1264,6 +1272,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			if status == 0 { status = http.StatusOK }
 			outcome := "SUCCESS"
 			if status >= 400 { outcome = "FAILED" }
+			if status < 400 { a.invalidateCentral10Caches() }
 			newState := decodeAuditState(recorder.body.Bytes())
 			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
 				newState = requestState
@@ -1314,6 +1323,10 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.auditEvents(w, r)
 	case r.URL.Path == "/api/v1/search" && r.Method == http.MethodGet:
 		a.globalSearch(w, r, u)
+	case r.URL.Path == "/api/v1/central/partners" || strings.HasPrefix(r.URL.Path, "/api/v1/central/partners/") ||
+		r.URL.Path == "/api/v1/central/modules" || r.URL.Path == "/api/v1/central/packages" ||
+		r.URL.Path == "/api/v1/central/finance" || r.URL.Path == "/api/v1/central/impact":
+		a.central10ReadModel(w, r, u)
 	case r.URL.Path == "/api/v1/notifications" || strings.HasPrefix(r.URL.Path, "/api/v1/notifications/"):
 		r.Header.Set("X-Himate-Permissions", strings.Join(a.permissionsForRoles(u.Roles), ","))
 		a.serveProxy(w, r, "notifications")
@@ -1939,20 +1952,19 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	if partnerErr!=nil||moduleErr!=nil||billingErr!=nil||impactErr!=nil||activityErr!=nil { status="degraded" }
 	if billingResponse==nil { billingResponse=map[string]any{"year":year,"items":[]any{},"count":0,"source":"BILLING_PAID_LEDGER","status":"degraded"} }
 	if impactResponse==nil {
-		trend:=make([]map[string]any,0,12)
-		labels:=[]string{"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}
-		for month:=1;month<=12;month++ { trend=append(trend,map[string]any{"month":month,"label":labels[month-1],"value":0}) }
-		yearStart:=time.Date(year,time.January,1,0,0,0,0,time.UTC)
-		yearEnd:=time.Date(year+1,time.January,1,0,0,0,0,time.UTC)
-		mondayOffset:=(int(yearStart.Weekday())+6)%7
-		firstWeek:=yearStart.AddDate(0,0,-mondayOffset)
-		weeklyTrend:=make([]map[string]any,0,54)
-		for cursor:=firstWeek;cursor.Before(yearEnd);cursor=cursor.AddDate(0,0,7) {
-			isoYear,isoWeek:=cursor.ISOWeek()
-			weeklyTrend=append(weeklyTrend,map[string]any{"iso_year":isoYear,"week":isoWeek,"week_start":cursor.Format("2006-01-02"),"label":fmt.Sprintf("W%02d",isoWeek),"value":0})
+		impactResponse=map[string]any{
+			"year":year,
+			"metric_key":"klavierhaus.events.attendance.attendee_count",
+			"people_reached_ytd":0,
+			"trend":[]any{},
+			"weekly_trend":[]any{},
+			"observation_count":0,
+			"has_data":false,
+			"source":"IMPACT_METRIC_VALUES",
+			"status":"degraded",
 		}
-		impactResponse=map[string]any{"year":year,"metric_key":"klavierhaus.events.attendance.attendee_count","people_reached_ytd":0,"trend":trend,"weekly_trend":weeklyTrend,"source":"IMPACT_METRIC_VALUES","status":"degraded"}
 	}
+	impactResponse=central10NormalizeDashboardImpact(impactResponse)
 	core:=map[string]any{
 		"year":year,
 		"partners":map[string]any{"total":partnerResponse.Total,"live":live,"lifecycle_counts":partnerResponse.LifecycleCounts},

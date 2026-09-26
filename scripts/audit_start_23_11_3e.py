@@ -6,6 +6,7 @@ root = Path(__file__).resolve().parents[1]
 frontend = (root / "frontend/lib/main.dart").read_text(encoding="utf-8")
 partners = (root / "services/cmd/partners/main.go").read_text(encoding="utf-8")
 gateway = (root / "services/cmd/gateway/main.go").read_text(encoding="utf-8")
+gateway_c10 = (root / "services/cmd/gateway/central10.go").read_text(encoding="utf-8")
 durability = (root / "services/cmd/gateway/phase2_durability.go").read_text(encoding="utf-8")
 branding = (root / "services/cmd/gateway/partner_branding.go").read_text(encoding="utf-8")
 cms_main = (root / "services/cmd/cms/main.go").read_text(encoding="utf-8")
@@ -39,7 +40,16 @@ checks = [
         "New Partner modal is not blocked by Module Catalog",
         "widget.api.get('/api/v1/modules'" not in add_partner,
     ),
-    ("New Partner keeps the complete built-in category catalog available", all(token in frontend for token in ["cat_001","cat_002","cat_003","cat_004","cat_005","cat_006"]) and "_mergePartnerCategories(categories)" in add_partner and "Category service is still loading" not in add_partner),
+    (
+        "New Partner keeps the complete built-in category catalog available",
+        all(token in gateway_c10 for token in ["cat_001","cat_002","cat_003","cat_004","cat_005","cat_006"])
+        and "central10PartnerCategories" in gateway_c10
+        and '"categories": mergedCategories' in gateway_c10
+        and "/api/v1/central/partners?limit=1&offset=0" in add_partner
+        and "response['categories']" in add_partner
+        and "categoryOptions = loaded" in add_partner
+        and "Category service is still loading" not in add_partner
+    ),
     ("company legal identity fields are collected", all(token in add_partner for token in [
         "registrationNumber", "taxId", "legalName", "brandName",
     ])),
