@@ -1921,13 +1921,9 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 
 	activity, activityErr := a.dashboardRecentActivity(actor, 6)
 	out := a.dashboardPayloadForActor(payload, actor)
-	out["activity"] = map[string]any{
-		"items": activity, "count": len(activity), "source": "IDENTITY_APPEND_ONLY_AUDIT",
-	}
+	out["activity"] = map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
 	if activityErr != nil {
-		out["activity"] = map[string]any{
-			"items": []any{}, "count": 0, "source": "IDENTITY_APPEND_ONLY_AUDIT", "status": "degraded",
-		}
+		out["activity"] = map[string]any{"items":[]any{},"count":0,"source":"IDENTITY_APPEND_ONLY_AUDIT","status":"degraded"}
 	}
 	if meta, ok := out["meta"].(map[string]any); ok {
 		meta = copyDashboardPayload(meta)
