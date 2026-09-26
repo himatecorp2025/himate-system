@@ -38,6 +38,7 @@ services:
       HIMATE_SERVICE_CALLER_ID: partners
       HIMATE_REQUIRE_SERVICE_SIGNATURE: "${HIMATE_REQUIRE_SERVICE_SIGNATURE:-false}"
       BILLING_HOSTPORT: billing:10000
+      STORAGE_HOSTPORT: storage:10000
     depends_on:
       postgres:
         condition: service_healthy
