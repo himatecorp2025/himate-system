@@ -628,7 +628,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           const SizedBox(height: 24),
           const _SectionHeader(
             title: 'Partner Operations',
-            subtitle: 'Operational partner integrations are partner-first. Vendors such as Klaviyo appear only inside a partner when a real integration exists.',
+            subtitle: 'Operational partner integrations are partner-first. Integration vendors appear only inside a partner when a real runtime record exists.',
           ),
           const SizedBox(height: 12),
           LayoutBuilder(
