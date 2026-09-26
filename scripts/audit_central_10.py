@@ -21,6 +21,8 @@ modules_ui = read("frontend/lib/module_control_plane.dart")
 gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
 step3_snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
+step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
+render = read("render.yaml")
 impact = read("services/cmd/impact/main.go")
 billing = read("services/cmd/billing/central8.go")
 openapi = read("docs/openapi.yaml")
@@ -206,6 +208,41 @@ check("String centralModulesInitialPath() => '/api/v1/central/modules';" in fron
 check("registry.get(\"modules\")" not in frontend,
       "Step 3 regression guard: unexpected registry transform moved into main Flutter shell")
 
+# CENTRAL-10.1 Step 4: Finance/Impact hot snapshots and dependency-aware readiness.
+finance_start = gateway.find("func (a *app) central10Finance(")
+impact_start = gateway.find("func (a *app) central10Impact(", finance_start)
+partner_module_start = gateway.find("func central10PartnerModuleSection(", impact_start)
+finance_handler = gateway[finance_start:impact_start]
+impact_handler = gateway[impact_start:partner_module_start]
+for forbidden in ["internalGET(", "central10AllPartners(", "sync.WaitGroup", "wg.Wait()", "context.WithTimeout(r.Context()"]:
+    check(forbidden not in finance_handler,
+          f"Step 4 Finance request path still performs live fan-out: {forbidden}")
+    check(forbidden not in impact_handler,
+          f"Step 4 Impact request path still performs live fan-out: {forbidden}")
+
+for token in [
+    "centralStep4FinanceKey",
+    "centralStep4ImpactKey",
+    "runCentralStep4Materializer",
+    "refreshCentralStep4Finance",
+    "refreshCentralStep4Impact",
+    "centralStep4AllEvidence",
+    '"delivery"] = "MATERIALIZED_HOT_SNAPSHOT"',
+]:
+    check(token in step4_snapshots, f"Step 4 hot-snapshot contract missing: {token}")
+
+check('r.URL.Path == "/api/v1/central/finance"' in gateway and
+      'r.URL.Path == "/api/v1/central/impact"' in gateway,
+      "Step 4 Finance/Impact hot routes missing")
+check("model['ready'] != true" in frontend,
+      "Step 4 Flutter does not preserve Loading != Zero while snapshots warm")
+check("healthCheckPath: /api/v1/health" in render,
+      "Step 4 Render still uses liveness instead of dependency readiness")
+check("healthCheckPath: /api/v1/live" not in render,
+      "Step 4 obsolete Render liveness check survived")
+check("http.StatusServiceUnavailable" in gateway_main and '"readiness": true' in gateway_main,
+      "Step 4 /api/v1/health does not fail closed when dependencies are degraded")
+
 # Truthful loading and empty-data behavior.
 for token in [
     "Loading authoritative value",
@@ -352,12 +389,12 @@ responsibilities = [
     ("commercial subscription join", 'row["subscription"] = sub' in gateway),
     ("package canonicalization", "central10CanonicalPlan" in gateway),
     ("package analytics materialization", '"/api/v1/billing/packages/analytics"' in step3_snapshots),
-    ("finance screen aggregation", "central10Finance" in gateway and '"kpis": kpis' in gateway),
+    ("finance screen aggregation", "central10Finance" in gateway and '"kpis": kpis' in gateway and "refreshCentralStep4Finance" in step4_snapshots),
     ("finance invoice filter/join", 'row["partner_name"] = name' in gateway and 'invoiceStatus :=' in gateway),
     ("finance revenue chart selection", "central10FinanceChart" in gateway),
     ("finance multi-currency ready labels", "central10MoneyLabel" in gateway),
-    ("impact screen aggregation", "central10Impact" in gateway),
-    ("impact evidence filtering", "evidenceQuery.Set" in gateway),
+    ("impact screen aggregation", "central10Impact" in gateway and "refreshCentralStep4Impact" in step4_snapshots),
+    ("impact evidence filtering", "central10Step4EvidenceMatches" in gateway),
     ("partner workspace aggregation", "central10PartnerWorkspace" in gateway),
     ("partner workspace module filter/group/KPIs", "central10PartnerModuleView" in gateway),
     ("partner workspace subscription join", 'row["subscription"] = subscription' in gateway),
