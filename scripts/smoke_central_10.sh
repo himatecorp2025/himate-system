@@ -95,6 +95,22 @@ for key in ("modules","documents","invoices","subscriptions","environments","pro
     assert isinstance(d.get(key),list), (key,type(d.get(key)))
 PY
 
+printf 'CENTRAL-10 Partner Workspace module presentation read model...\n'
+assert_fast_read_model "/api/v1/central/partners/$partner_id/modules?state=ALL" "Partner Workspace Modules"
+python3 - "$BODY" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+assert isinstance(d.get("items"),list)
+assert isinstance(d.get("filtered_items"),list)
+assert isinstance(d.get("groups"),list)
+assert isinstance(d.get("kpis"),dict)
+assert isinstance(d.get("active_module_keys"),list)
+assert d.get("state")=="ALL"
+for group in d["groups"]:
+    assert isinstance(group.get("items"),list)
+    assert isinstance(group.get("count"),int)
+PY
+
 printf 'CENTRAL-10 Modules + partner-grouped Commercial Matrix...\n'
 assert_fast_read_model "/api/v1/central/modules?perspective=PARTNER&commercial_status=ACTIVE&commercial_limit=120" "Modules / Partner Matrix"
 python3 - "$BODY" <<'PY'
@@ -140,14 +156,23 @@ assert plans["FLEX"]["display_price"]=="$2,490 + VAT"
 PY
 
 printf 'CENTRAL-10 Finance backend read model...\n'
-assert_fast_read_model "/api/v1/central/finance" "Finance"
+assert_fast_read_model "/api/v1/central/finance?invoice_status=PAID&revenue_period=WEEKLY&revenue_plan=ALL" "Finance"
 python3 - "$BODY" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
 assert isinstance(d.get("overview"),dict)
 assert isinstance(d.get("invoices"),list)
 assert isinstance(d.get("partners"),list)
+assert isinstance(d.get("onboarding"),list)
 assert isinstance(d.get("kpis"),dict)
+chart=d.get("chart") or {}
+assert chart.get("period")=="WEEKLY", chart
+assert chart.get("plan_key")=="ALL", chart
+assert isinstance(chart.get("rows"),list)
+assert "max_paid" in chart
+for invoice in d["invoices"]:
+    assert str(invoice.get("workflow_status") or invoice.get("status") or "").upper()=="PAID"
+    assert "partner_name" in invoice
 PY
 
 printf 'CENTRAL-10 Impact backend read model...\n'
