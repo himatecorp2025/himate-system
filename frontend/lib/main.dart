@@ -6118,34 +6118,29 @@ class _PackagesPageState extends State<PackagesPage> {
         child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Packages could not be loaded', message: error!),
       );
     }
+    final analyticsPackages = analytics['packages'] is List
+        ? (analytics['packages'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final analyticsPartners = analytics['partners'] is List
+        ? (analytics['partners'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final activityMeasured = analytics['portal_activity_measured'] == true;
+
     return Content(
       eyebrow: 'COMMERCIAL CONTROL PLANE',
       title: 'Packages',
-      subtitle: 'One authoritative package definition for every partner. Activation fees remain partner-specific.',
-      actions: [OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
+      subtitle: 'Starter, Business and Premium package control with usage and commercial analytics.',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () => openBrowserDownload('/api/v1/billing/packages/export.csv'),
+          icon: const Icon(Icons.download_outlined),
+          label: const LText('Export CSV'),
+        ),
+        OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
+      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ResponsiveKpiGrid(
-            children: [
-              for (final plan in plans)
-                Kpi(
-                  label: '${plan['display_name']}',
-                  value: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} net + ${plan['tax_label'] ?? 'VAT'}',
-                  note: plan['selection_mode'] == 'UNLIMITED'
-                      ? 'Unlimited modules · automatic'
-                      : '${plan['module_limit']} modules · HIMATE fixed',
-                  icon: Icons.inventory_2_outlined,
-                  accent: brandNavy,
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _SectionHeader(
-            title: 'Package definitions',
-            subtitle: 'Starter includes 10 fixed modules, Business includes 20 fixed modules, and Premium automatically includes every current and future eligible module.',
-          ),
-          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth < 720
@@ -6158,37 +6153,267 @@ class _PackagesPageState extends State<PackagesPage> {
                   for (final plan in plans)
                     SizedBox(
                       width: width,
-                      child: _InfoCard(
-                        title: '${plan['display_name']} · ${plan['plan_key']}',
-                        icon: Icons.sell_outlined,
-                        action: IconButton(
-                          tooltip: uiLiteral('Edit package'),
-                          onPressed: () => unawaited(editPackage(plan)),
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                        ),
-                        children: [
-                          _DefinitionRow(label: 'Monthly net price', value: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} + ${plan['tax_label'] ?? 'VAT'}', emphasis: true),
-                          _DefinitionRow(label: 'Current VAT rate', value: '${number(plan['vat_rate_percent']).toStringAsFixed(2)}%'),
-                          _DefinitionRow(label: 'Annual list', value: money(plan['annual_list_price'])),
-                          _DefinitionRow(label: 'Annual charged net', value: '${money(plan['annual_net_price'] ?? plan['annual_price'])} + ${plan['tax_label'] ?? 'VAT'}'),
-                          _DefinitionRow(label: 'Automatic increase', value: '${plan['annual_increase_percent'] ?? 5}% · January 1'),
-                          _DefinitionRow(label: 'Module limit', value: plan['selection_mode'] == 'UNLIMITED' ? 'Unlimited' : '${plan['module_limit']}'),
-                          _DefinitionRow(label: 'Selection', value: plan['selection_mode'] == 'UNLIMITED' ? 'Automatic Unlimited entitlement' : 'HIMATE fixed'),
-                          _DefinitionRow(
-                            label: 'Configured modules',
-                            value: plan['selection_mode'] == 'UNLIMITED'
-                                ? '${modules.where((m) => moduleReady(m) && m['availability'] == 'ACTIVE').length} available today + all future eligible modules'
-                                : '${(plan['fixed_module_keys'] as List?)?.length ?? 0} / ${plan['module_limit']}',
-                          ),
-                          _DefinitionRow(label: 'Status', value: plan['active'] == true ? 'ACTIVE' : 'INACTIVE'),
-                        ],
+                      child: _PackageOverviewCard(
+                        name: '${plan['display_name']}',
+                        price: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} / month + ${plan['tax_label'] ?? 'VAT'}',
+                        description: _packageDescription(plan),
+                        entitlement: _packageEntitlement(plan),
+                        active: plan['active'] == true,
+                        onTap: () => unawaited(editPackage(plan)),
+                        onEdit: () => unawaited(editPackage(plan)),
                       ),
                     ),
                 ],
               );
             },
           ),
+          const SizedBox(height: 24),
+          _SectionHeader(
+            title: 'Package Analytics',
+            subtitle: 'Partner distribution, package usage, Portal activity and current commercial context from authoritative runtime data.',
+            trailing: analyticsLoading ? const _MiniCounter(label: 'REFRESHING') : _MiniCounter(label: '${analyticsPartners.length} PARTNERS'),
+          ),
+          const SizedBox(height: 12),
+          if (analyticsError != null && analytics.isEmpty)
+            _MessageCard(
+              icon: Icons.query_stats_outlined,
+              title: 'Package analytics is temporarily unavailable',
+              message: analyticsError!,
+            )
+          else if (analyticsLoading && analytics.isEmpty)
+            const _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Loading package analytics',
+              message: 'Package cards remain usable while analytics loads independently.',
+            )
+          else if (analyticsPackages.isEmpty)
+            const _MessageCard(
+              icon: Icons.bar_chart_outlined,
+              title: 'No package analytics yet',
+              message: 'There is no package subscription data to chart. No retry loop is started for an empty dataset.',
+            )
+          else ...[
+            _PackageAnalyticsChart(packages: analyticsPackages),
+            const SizedBox(height: 14),
+            if (!activityMeasured)
+              const _MessageCard(
+                icon: Icons.schedule_outlined,
+                title: 'Portal active-time measurement has just been enabled',
+                message: 'No historical online-hours estimate is invented. Five-minute authenticated activity buckets will populate this metric from the CENTRAL-8 deployment forward.',
+              ),
+            if (!activityMeasured) const SizedBox(height: 14),
+            _InfoCard(
+              title: 'Partner package usage',
+              icon: Icons.groups_2_outlined,
+              children: analyticsPartners.isEmpty
+                  ? const [
+                      _EmptyInline(
+                        icon: Icons.inbox_outlined,
+                        title: 'No partner subscriptions recorded',
+                      ),
+                    ]
+                  : [
+                      for (final partner in analyticsPartners.take(50))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Expanded(
+                                  child: LText(
+                                    '${partner['display_name'] ?? partner['partner_id']}',
+                                    style: const TextStyle(color: brandNavy, fontSize: 13, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                                _StatusPill(label: '${partner['plan_name'] ?? partner['plan_key']}'),
+                              ]),
+                              const SizedBox(height: 5),
+                              Wrap(
+                                spacing: 7,
+                                runSpacing: 7,
+                                children: [
+                                  _MiniCounter(label: '${partner['billing_frequency'] ?? '—'}'),
+                                  _MiniCounter(label: '${partner['classification'] ?? '—'}'),
+                                  _MiniCounter(label: '${partner['onboarding_state'] ?? '—'}'),
+                                  _MiniCounter(label: '${partner['module_usage_events_30d'] ?? 0} MODULE USES / 30D'),
+                                  _MiniCounter(
+                                    label: partner['portal_activity_measured'] == true && number(partner['portal_active_hours_30d']) > 0
+                                        ? '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTAL HOURS / 30D'
+                                        : 'NO PORTAL ACTIVITY RECORDED',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 5),
+                              LText(
+                                [
+                                  if ('${partner['legal_name'] ?? ''}'.trim().isNotEmpty) '${partner['legal_name']}',
+                                  if ('${partner['country'] ?? ''}'.trim().isNotEmpty) '${partner['country']}',
+                                  if ('${partner['quote_reference'] ?? ''}'.trim().isNotEmpty) 'Quote: ${partner['quote_reference']}',
+                                ].join(' · '),
+                                style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                              ),
+                              const Divider(height: 18),
+                            ],
+                          ),
+                        ),
+                    ],
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _PackageOverviewCard extends StatefulWidget {
+  const _PackageOverviewCard({
+    required this.name,
+    required this.price,
+    required this.description,
+    required this.entitlement,
+    required this.active,
+    required this.onTap,
+    required this.onEdit,
+  });
+  final String name;
+  final String price;
+  final String description;
+  final String entitlement;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+
+  @override
+  State<_PackageOverviewCard> createState() => _PackageOverviewCardState();
+}
+
+class _PackageOverviewCardState extends State<_PackageOverviewCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => hover = true),
+    onExit: (_) => setState(() => hover = false),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: hover ? brandGold.withOpacity(.62) : brandNavy.withOpacity(.18), width: hover ? 1.5 : 1.2),
+        boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(11)),
+                    child: const Icon(Icons.inventory_2_outlined, color: brandNavy, size: 23),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: uiLiteral('Edit package'),
+                    onPressed: widget.onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 19),
+                  ),
+                ]),
+                const SizedBox(height: 18),
+                LText(widget.name, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 28, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                LText(widget.price, style: const TextStyle(color: brandTextSoft, fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 14),
+                LText(widget.description, style: const TextStyle(color: brandCharcoal, fontSize: 11.5, height: 1.45)),
+                const SizedBox(height: 14),
+                _RuleStrip(items: [
+                  _RuleItem(Icons.widgets_outlined, 'Included', widget.entitlement),
+                  _RuleItem(Icons.circle, 'Status', widget.active ? 'ACTIVE' : 'INACTIVE'),
+                ]),
+                const SizedBox(height: 18),
+                Row(children: [
+                  const LText('Package details', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                  const Spacer(),
+                  AnimatedSlide(
+                    offset: hover ? const Offset(.14, 0) : Offset.zero,
+                    duration: const Duration(milliseconds: 150),
+                    child: const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 20),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _PackageAnalyticsChart extends StatelessWidget {
+  const _PackageAnalyticsChart({required this.packages});
+  final List<Map<String,dynamic>> packages;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxPartners = packages.fold<double>(0, (m, p) => math.max(m, number(p['active_partner_count'])));
+    final maxUsage = packages.fold<double>(0, (m, p) => math.max(m, number(p['module_usage_events_30d'])));
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const LText('Package distribution & usage', style: TextStyle(color: brandNavy, fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            for (final package in packages) ...[
+              Row(children: [
+                SizedBox(
+                  width: 90,
+                  child: LText('${package['display_name']}', style: const TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w700)),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(
+                        value: maxPartners <= 0 ? 0 : number(package['active_partner_count']) / maxPartners,
+                        minHeight: 9,
+                        borderRadius: BorderRadius.circular(99),
+                        color: brandNavy,
+                        backgroundColor: brandMist,
+                      ),
+                      const SizedBox(height: 5),
+                      LText(
+                        '${package['active_partner_count'] ?? 0} active partners · ${package['module_usage_events_30d'] ?? 0} module uses / 30d · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} Portal hours / 30d',
+                        style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+                      ),
+                      if (maxUsage > 0) ...[
+                        const SizedBox(height: 5),
+                        LinearProgressIndicator(
+                          value: number(package['module_usage_events_30d']) / maxUsage,
+                          minHeight: 5,
+                          borderRadius: BorderRadius.circular(99),
+                          color: brandGold,
+                          backgroundColor: brandMist,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 16),
+            ],
+          ],
+        ),
       ),
     );
   }
