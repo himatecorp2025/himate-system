@@ -31,6 +31,9 @@ class _PartnerConnectionsPanelState extends State<PartnerConnectionsPanel> {
   }
 
   String path() {
+    if (search.text.trim().isEmpty && status == 'ALL') {
+      return centralConnectionsInitialPath();
+    }
     final params = <String, String>{'limit': '120', 'offset': '0'};
     if (search.text.trim().isNotEmpty) params['q'] = search.text.trim();
     if (status != 'ALL') params['status'] = status;
