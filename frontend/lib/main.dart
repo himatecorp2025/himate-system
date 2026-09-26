@@ -69,33 +69,6 @@ const success = brandSuccess;
 
 
 
-Map<String,dynamic> central9CanonicalPackage(String planKey) {
-  return switch (planKey.toUpperCase().trim()) {
-    'STARTER' => <String,dynamic>{'name':'Starter','price':990,'entitlement':'10 modules'},
-    'BUSINESS' => <String,dynamic>{'name':'Business','price':1490,'entitlement':'20 modules'},
-    'FLEX' => <String,dynamic>{'name':'Premium','price':2490,'entitlement':'Unlimited'},
-    _ => <String,dynamic>{'name':planKey,'price':0,'entitlement':'—'},
-  };
-}
-
-String central9CanonicalPackagePrice(String planKey) {
-  final package = central9CanonicalPackage(planKey);
-  final price = (package['price'] as num?)?.toInt() ?? 0;
-  return '\$' + intl.NumberFormat('#,##0', 'en_US').format(price) + ' + VAT';
-}
-
-List<Map<String,dynamic>> central8PartnerPresetRows(
-  List<Map<String,dynamic>> rows, {
-  String lifecycle = 'ALL',
-  bool reference = false,
-}) {
-  return rows.where((row) {
-    if (lifecycle != 'ALL' && '${row['lifecycle'] ?? ''}' != lifecycle) return false;
-    if (reference && row['reference_partner'] != true) return false;
-    return true;
-  }).toList();
-}
-
 Future<String?> promptMfaCode(BuildContext context, Map<String, dynamic> challenge) async {
   final code = TextEditingController();
   final setup = challenge['mfa_setup'] == true;
