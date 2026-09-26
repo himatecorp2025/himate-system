@@ -216,6 +216,7 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Partner-specific assignment, recurring price, activation fee and subscription state.': 'Partnerspecifikus hozzárendelés, ismétlődő díj, aktiválási díj és előfizetési állapot.',
     'Module snapshot is warming': 'A modul-pillanatkép előkészítés alatt áll',
     'The backend read model has no materialized module snapshot yet. This screen will never spin forever; refresh when the snapshot is ready.': 'A backend read model még nem rendelkezik materializált modul-pillanatképpel. A képernyő nem marad végtelen betöltésben; frissíts, amikor a pillanatkép elkészült.',
     'Modules overview, organized by topic.': 'Modulok áttekintése, témák szerint rendezve.',
