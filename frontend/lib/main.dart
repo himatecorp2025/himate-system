@@ -4005,6 +4005,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   String moduleQuery = '';
   String moduleState = 'ALL';
   Timer? _moduleSearchDebounce;
+  int _supplementalLoadGeneration = 0;
   final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _companyKey = GlobalKey();
   final GlobalKey _environmentKey = GlobalKey();
@@ -4045,6 +4046,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   }
 
   Future<void> load() async {
+    final generation = ++_supplementalLoadGeneration;
     final hasPrimary =
         '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
     if (mounted) {
@@ -4061,8 +4063,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       final model = await widget.api.get(
         '/api/v1/central/partners/$id',
         maxAge: const Duration(seconds: 5),
+      ).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => throw TimeoutException('Partner workspace timed out after 8 seconds'),
       );
-      if (!mounted) return;
+      if (!mounted || generation != _supplementalLoadGeneration) return;
       final core = model['partner'] is Map
           ? Map<String, dynamic>.from(model['partner'] as Map)
           : partner;
@@ -4119,7 +4124,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       });
       _scrollToInitialSection();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _supplementalLoadGeneration) return;
       setState(() {
         loading = false;
         supplementalLoading = false;
@@ -4148,6 +4153,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         path,
         force: force,
         maxAge: const Duration(seconds: 3),
+      ).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw TimeoutException('Partner module view timed out after 5 seconds'),
       );
       if (!mounted) return;
       setState(() {
