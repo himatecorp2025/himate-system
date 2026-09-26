@@ -212,6 +212,15 @@ jobs:
         run: python3 ../scripts/audit_start_23_12_phase5.py
       - name: Run START-23.12 Phase 1-5 Cross-Phase Closure audit
         run: python3 ../scripts/audit_start_23_12_closure.py
+      - name: Verify Flutter WASM compatibility
+        run: |
+          if grep -R "dart:html" -n lib; then
+            echo "Legacy dart:html import remains; WASM build is not allowed." >&2
+            exit 1
+          fi
+          grep -q '^  web: ' pubspec.yaml
+          grep -q '^  cupertino_icons: ' pubspec.yaml
+          flutter build web --wasm --release
       - run: flutter build web --release
       - name: Verify public frontend bundle
         run: |
