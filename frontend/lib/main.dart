@@ -8228,6 +8228,8 @@ class _ImpactPageState extends State<ImpactPage> {
   List<Map<String, dynamic>> summary = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> evidence = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> reports = <Map<String, dynamic>>[];
+  Map<String, dynamic> impactAnalytics = <String, dynamic>{};
+  Map<String, dynamic> impactKpis = <String, dynamic>{};
   int evidenceTotal = 0;
   int evidenceOffset = 0;
   static const int evidenceLimit = 12;
@@ -8280,11 +8282,8 @@ class _ImpactPageState extends State<ImpactPage> {
       if (!mounted || path != evidencePath()) return;
       if (model['ready'] != true) {
         setState(() {
-          loading = true;
+          loading = false;
           error = null;
-        });
-        Future<void>.delayed(const Duration(milliseconds: 400), () {
-          if (mounted && path == evidencePath()) unawaited(load());
         });
         return;
       }
@@ -8293,6 +8292,8 @@ class _ImpactPageState extends State<ImpactPage> {
         summary = items(<String, dynamic>{'items': model['summary']});
         evidence = items(<String, dynamic>{'items': model['evidence']});
         reports = items(<String, dynamic>{'items': model['reports']});
+        impactAnalytics = model['analytics'] is Map ? Map<String, dynamic>.from(model['analytics'] as Map) : <String, dynamic>{};
+        impactKpis = model['kpis'] is Map ? Map<String, dynamic>.from(model['kpis'] as Map) : <String, dynamic>{};
         evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
         loading = false;
       });
@@ -8838,21 +8839,79 @@ class _ImpactPageState extends State<ImpactPage> {
         child: _BrandLoading(),
       );
     }
+    if (!loading &&
+        error == null &&
+        definitions.isEmpty &&
+        summary.isEmpty &&
+        evidence.isEmpty &&
+        reports.isEmpty &&
+        impactKpis.isEmpty) {
+      return Content(
+        title: 'Impact & Reports',
+        subtitle: 'Real outcomes, transparent reports and evidence.',
+        actions: [
+          OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
+        ],
+        child: const _MessageCard(
+          icon: Icons.hourglass_empty_rounded,
+          title: 'Impact snapshot is warming',
+          message: 'No materialized Impact snapshot exists yet. The page is usable without an infinite loading loop; refresh when backend preparation completes.',
+        ),
+      );
+    }
     if (error != null) {
       return Content(
-        eyebrow: 'IMPACT CONTROL',
         title: 'Impact & Reports',
         subtitle: 'Metrics, Evidence and reproducible reports.',
         child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
       );
     }
+    final activeMetrics = (impactKpis['active_metrics'] as num?)?.toInt() ?? definitions.length;
+    final totalEvidence = (impactKpis['evidence_total'] as num?)?.toInt() ?? evidenceTotal;
+    final totalReports = (impactKpis['reports_total'] as num?)?.toInt() ?? reports.length;
+    final pendingEvidence = (impactKpis['pending_evidence'] as num?)?.toInt() ?? 0;
+    final monthlyTrend = items(<String,dynamic>{'items': impactAnalytics['trend']});
+    final weeklyTrend = items(<String,dynamic>{'items': impactAnalytics['weekly_trend']});
+    final impactHasData = impactAnalytics['has_data'] == true || monthlyTrend.isNotEmpty || weeklyTrend.isNotEmpty;
+
     return Content(
-      eyebrow: 'IMPACT CONTROL',
       title: 'Impact & Reports',
-      subtitle: 'Global and partner metrics, auditable Evidence and reproducible PDF reporting.',
+      subtitle: 'Real outcomes. Transparent reporting. Measurable impact.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ResponsiveKpiGrid(children: [
+            Kpi(label: 'Active metrics', value: '$activeMetrics', note: 'Configured impact definitions', icon: Icons.bar_chart_rounded, accent: brandSteel),
+            Kpi(label: 'Evidence', value: '$totalEvidence', note: 'Evidence records in the library', icon: Icons.description_outlined, accent: brandGold),
+            Kpi(label: 'Reports', value: '$totalReports', note: 'Generated report records', icon: Icons.pie_chart_outline_rounded, accent: brandSuccess),
+            Kpi(label: 'Pending review', value: '$pendingEvidence', note: 'Unverified evidence items', icon: Icons.shield_outlined, accent: brandSteel),
+          ]),
+          const SizedBox(height: 18),
+          _ImpactPanel(
+            monthlyTrend: monthlyTrend,
+            weeklyTrend: weeklyTrend,
+            year: DateTime.now().toUtc().year,
+            authorized: true,
+            hasData: impactHasData,
+            title: 'Impact trend',
+            subtitle: 'Verified social and environmental impact over time',
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 760 ? constraints.maxWidth : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(width: width, child: _CentralActionCard(title: 'Metrics', subtitle: 'Manage impact indicators, baselines and recorded results.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: addDefinition)),
+                  SizedBox(width: width, child: _CentralActionCard(title: 'Evidence', subtitle: 'Upload and verify documents, media and partner declarations.', icon: Icons.description_outlined, accent: brandGold, onTap: addEvidence)),
+                  SizedBox(width: width, child: _CentralActionCard(title: 'Report creation', subtitle: 'Generate reproducible partner and program reports.', icon: Icons.picture_as_pdf_outlined, accent: brandSuccess, onTap: generateReport)),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
           LayoutBuilder(
             builder: (context, constraints) {
               final actions = <Widget>[
