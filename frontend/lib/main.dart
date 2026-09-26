@@ -64,6 +64,33 @@ const canvas = brandIvory;
 const muted = brandTextSoft;
 const success = brandSuccess;
 
+List<Map<String,dynamic>> central8LatestWeeklyWindow(List<Map<String,dynamic>> rows) {
+  final source = rows.length <= 4 ? rows : rows.sublist(rows.length - 4);
+  return [
+    for (final row in source)
+      <String,dynamic>{
+        ...row,
+        'label': (() {
+          final parsed = DateTime.tryParse('${row['week_start'] ?? ''}');
+          if (parsed == null) return '${row['label'] ?? row['week'] ?? ''}';
+          return '${parsed.month}/${parsed.day}';
+        })(),
+      },
+  ];
+}
+
+List<Map<String,dynamic>> central8PartnerPresetRows(
+  List<Map<String,dynamic>> rows, {
+  String lifecycle = 'ALL',
+  bool reference = false,
+}) {
+  return rows.where((row) {
+    if (lifecycle != 'ALL' && '${row['lifecycle'] ?? ''}' != lifecycle) return false;
+    if (reference && row['reference_partner'] != true) return false;
+    return true;
+  }).toList();
+}
+
 Future<String?> promptMfaCode(BuildContext context, Map<String, dynamic> challenge) async {
   final code = TextEditingController();
   final setup = challenge['mfa_setup'] == true;
@@ -148,12 +175,13 @@ ThemeData buildBrandTheme() {
     ),
     cardTheme: CardThemeData(
       color: brandWhite,
-      elevation: 0,
+      elevation: 2,
       margin: EdgeInsets.zero,
-      shadowColor: brandNavy.withOpacity(.08),
+      shadowColor: brandNavy.withOpacity(.14),
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: brandMist),
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0x26071426), width: 1.2),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -796,6 +824,46 @@ class _HimateAppState extends State<HimateApp> {
             : user == null
                 ? loginPage()
                 : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 1),
+        '/app/modules': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 2),
+        '/app/packages': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 3),
+        '/app/finance': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 4),
+        '/app/impact': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 5),
+        '/app/website': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 6),
+        '/app/system': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 7),
+        '/app/admin': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 8),
+        '/app/archives': (_) => loading
+            ? loadingScreen()
+            : user == null
+                ? loginPage()
+                : Shell(api: api, user: user!, onUserChanged: updateSignedInUser, onLogout: logout, initialSelected: 9),
       },
       onGenerateRoute: (settings) {
         final name = settings.name ?? '';
@@ -1749,6 +1817,29 @@ class _ShellState extends State<Shell> {
     return values.contains('*') || values.contains(permission);
   }
 
+  String _routeForIndex(int index) => switch (index) {
+    0 => '/app',
+    1 => '/app/partners',
+    2 => '/app/modules',
+    3 => '/app/packages',
+    4 => '/app/finance',
+    5 => '/app/impact',
+    6 => '/app/website',
+    7 => '/app/system',
+    8 => '/app/admin',
+    9 => '/app/archives',
+    _ => '/app',
+  };
+
+  void _selectNav(int index) {
+    if (!visibleNavIndexes().contains(index) || selected == index) return;
+    setState(() => selected = index);
+    final route = _routeForIndex(index);
+    if (Uri.base.path != route) {
+      html.window.history.replaceState(null, '', route);
+    }
+  }
+
   List<int> visibleNavIndexes() {
     final indexes = <int>[];
     if (can('dashboard.read')) indexes.add(0);
@@ -1772,7 +1863,7 @@ class _ShellState extends State<Shell> {
         canNavigate: (index) => visibleNavIndexes().contains(index),
         onNavigate: (index) {
           if (!visibleNavIndexes().contains(index)) return;
-          setState(() => selected = index);
+          _selectNav(index);
         },
       );
       case 1: return PartnersPage(api: widget.api);
@@ -1843,7 +1934,7 @@ class _ShellState extends State<Shell> {
                   selected: visibleSelected,
                   collapsed: false,
                   user: widget.user,
-                  onSelect: (i) { setState(() => selected = visibleIndexes[i]); Navigator.pop(context); },
+                  onSelect: (i) { _selectNav(visibleIndexes[i]); Navigator.pop(context); },
                   onToggle: null,
                   onLogout: widget.onLogout,
                 ),
@@ -1869,7 +1960,7 @@ class _ShellState extends State<Shell> {
                     selected: visibleSelected,
                     collapsed: tablet || collapsed,
                     user: widget.user,
-                    onSelect: (i) => setState(() => selected = visibleIndexes[i]),
+                    onSelect: (i) => _selectNav(visibleIndexes[i]),
                     onToggle: tablet ? null : () => setState(() => collapsed = !collapsed),
                     onLogout: widget.onLogout,
                   ),
@@ -2517,7 +2608,9 @@ class _ImpactPanelState extends State<_ImpactPanel> {
 
   @override
   Widget build(BuildContext context){
-    final trend=weekly?widget.weeklyTrend:widget.monthlyTrend;
+    final trend=weekly
+        ? central8LatestWeeklyWindow(widget.weeklyTrend)
+        : widget.monthlyTrend;
     return SizedBox(
       height:330,
       child:Card(child:Padding(
@@ -2751,6 +2844,7 @@ class PartnersPage extends StatefulWidget {
 class _PartnersPageState extends State<PartnersPage> {
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _portfolioSnapshot = <Map<String, dynamic>>[];
   bool loading = false;
   bool categoriesLoading = true;
   String? categoryRegistryWarning;
@@ -2875,6 +2969,37 @@ class _PartnersPageState extends State<PartnersPage> {
     return Uri(path: '/api/v1/partners', queryParameters: params);
   }
 
+  Uri _partnerExportUri() {
+    final params = <String, String>{};
+    if (query.trim().isNotEmpty) params['q'] = query.trim();
+    if (categoryFilter != 'ALL') params['category'] = categoryFilter;
+    if (lifecycleFilter != 'ALL') params['lifecycle'] = lifecycleFilter;
+    if (healthFilter != 'ALL') params['health'] = healthFilter;
+    if (referenceOnly) params['reference'] = 'true';
+    return Uri(path: '/api/v1/partners/export.csv', queryParameters: params.isEmpty ? null : params);
+  }
+
+  String _presetPartnerPath({String lifecycle = 'ALL', bool reference = false}) {
+    final params = <String, String>{
+      'limit': '$pageSize',
+      'offset': '0',
+      'core_only': 'true',
+      'include_stats': 'false',
+      if (lifecycle != 'ALL') 'lifecycle': lifecycle,
+      if (reference) 'reference': 'true',
+    };
+    return Uri(path: '/api/v1/partners', queryParameters: params).toString();
+  }
+
+  void _prefetchPortfolioPresets() {
+    widget.api.prefetch([
+      _presetPartnerPath(),
+      _presetPartnerPath(lifecycle: 'LIVE'),
+      _presetPartnerPath(lifecycle: 'PROSPECT'),
+      _presetPartnerPath(reference: true),
+    ]);
+  }
+
   Uri _partnerStatsUri() {
     final params = _partnerQueryParameters()
       ..['core_only'] = 'true'
@@ -2983,7 +3108,7 @@ class _PartnersPageState extends State<PartnersPage> {
   Future<void> load({bool reset = false, bool loadCategories = false}) async {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
-    if (mounted) setState(() { error = null; statsReady = false; });
+    if (mounted) setState(() { loading = true; error = null; statsReady = false; });
     if (loadCategories || categoryRegistryWarning != null) unawaited(_loadCategories(force: loadCategories));
 
     try {
@@ -2992,9 +3117,18 @@ class _PartnersPageState extends State<PartnersPage> {
       final coreRows = items(page);
       setState(() {
         partners = coreRows;
+        if (offset == 0 &&
+            query.trim().isEmpty &&
+            categoryFilter == 'ALL' &&
+            lifecycleFilter == 'ALL' &&
+            healthFilter == 'ALL' &&
+            !referenceOnly) {
+          _portfolioSnapshot = List<Map<String, dynamic>>.from(coreRows);
+        }
         hasMore = page['has_more'] == true;
         loading = false;
       });
+      if (offset == 0) _prefetchPortfolioPresets();
       unawaited(_loadPartnerStats(generation));
       unawaited(_loadPortfolioStats(generation));
       unawaited(_loadPortfolioEnrichment(generation, List<Map<String, dynamic>>.from(coreRows)));
@@ -3016,6 +3150,11 @@ class _PartnersPageState extends State<PartnersPage> {
   void applyPortfolioPreset({String lifecycle = 'ALL', bool reference = false}) {
     _searchDebounce?.cancel();
     _searchController.clear();
+    final optimistic = central8PartnerPresetRows(
+      _portfolioSnapshot,
+      lifecycle: lifecycle,
+      reference: reference,
+    );
     setState(() {
       query = '';
       categoryFilter = 'ALL';
@@ -3023,8 +3162,10 @@ class _PartnersPageState extends State<PartnersPage> {
       healthFilter = 'ALL';
       referenceOnly = reference;
       offset = 0;
+      if (_portfolioSnapshot.isNotEmpty) partners = optimistic;
+      loading = true;
     });
-    load(reset: true);
+    unawaited(load(reset: true));
   }
 
   void clearReferenceFilter() {
@@ -3787,6 +3928,11 @@ class _PartnersPageState extends State<PartnersPage> {
       title: 'Partners',
       subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
       actions: [
+        OutlinedButton.icon(
+          onPressed: () => openBrowserDownload(_partnerExportUri().toString()),
+          icon: const Icon(Icons.download_outlined),
+          label: const LText('Export CSV'),
+        ),
         OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const LText('Add category')),
         FilledButton.icon(
           key: const Key('partners-new-partner-button'),
@@ -3894,7 +4040,11 @@ class _PartnersPageState extends State<PartnersPage> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
+                    if (loading) ...[
+                      const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+                      const SizedBox(height: 12),
+                    ],
                     Row(
                       children: [
                         LText('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
@@ -4068,62 +4218,68 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final id = '${partner['id']}';
     if (mounted) setState(() { supplementalLoading = true; supplementalError = null; });
     final errors = <String>[];
-    final r = await Future.wait<Map<String, dynamic>?>([
-      _safeWorkspaceGet('/api/v1/partners/$id/modules', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/summary', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/terms', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/license', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/documents', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/invoices', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/subscriptions', errors),
-      _safeWorkspaceGet('/api/v1/environments?partner_id=$id', errors),
-      _safeWorkspaceGet('/api/v1/provisioning/jobs?partner_id=$id', errors),
-      _safeWorkspaceGet('/api/v1/impact/summary?partner_id=$id', errors),
-      _safeWorkspaceGet('/api/v1/connectors/$id/credential', errors),
-      _safeWorkspaceGet('/api/v1/partners/$id/portal-users', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/agreement', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/commercial-status', errors),
-      _safeWorkspaceGet('/api/v1/billing/partners/$id/events', errors),
-      _safeWorkspaceGet('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', errors),
-      _safeWorkspaceGet('/api/v1/payments/partners/$id/profile', errors),
+
+    Future<void> loadOne(
+      String path,
+      void Function(Map<String,dynamic> data) apply,
+    ) async {
+      final data = await _safeWorkspaceGet(path, errors);
+      if (!mounted || generation != _supplementalLoadGeneration || data == null) return;
+      setState(() => apply(data));
+    }
+
+    await Future.wait<void>([
+      loadOne('/api/v1/partners/$id/modules', (data) => modules = items(data)),
+      loadOne('/api/v1/billing/partners/$id/summary', (data) => billing = data),
+      loadOne('/api/v1/billing/partners/$id/terms', (data) => terms = data),
+      loadOne('/api/v1/billing/partners/$id/license', (data) => license = data),
+      loadOne('/api/v1/billing/partners/$id/documents', (data) => documents = items(data)),
+      loadOne('/api/v1/billing/partners/$id/invoices', (data) => invoices = items(data)),
+      loadOne('/api/v1/billing/partners/$id/subscriptions', (data) => subscriptions = items(data)),
+      loadOne('/api/v1/environments?partner_id=$id', (data) => environments = items(data)),
+      loadOne('/api/v1/provisioning/jobs?partner_id=$id', (data) => provisioningJobs = items(data)),
+      loadOne('/api/v1/impact/summary?partner_id=$id', (data) => impactSummary = items(data)),
+      loadOne('/api/v1/connectors/$id/credential', (data) => connectorCredentials = items(data)),
+      loadOne('/api/v1/partners/$id/portal-users', (data) => portalUsers = items(data)),
+      loadOne('/api/v1/billing/partners/$id/agreement', (data) => agreement = data),
+      loadOne('/api/v1/billing/partners/$id/commercial-status', (data) => commercialStatus = data),
+      loadOne('/api/v1/billing/partners/$id/events', (data) => billingEvents = items(data)),
+      loadOne('/api/v1/connectors/$id/website-adapter?environment=PRODUCTION', (data) => websiteAdapter = data),
+      loadOne('/api/v1/payments/partners/$id/profile', (data) => paymentProfile = data),
     ]);
+
     if (!mounted || generation != _supplementalLoadGeneration) return;
     setState(() {
-      if (r[0] != null) modules = items(r[0]!);
-      if (r[1] != null) billing = r[1];
-      if (r[2] != null) terms = r[2];
-      if (r[3] != null) license = r[3];
-      if (r[4] != null) documents = items(r[4]!);
-      if (r[5] != null) invoices = items(r[5]!);
-      if (r[6] != null) subscriptions = items(r[6]!);
-      if (r[7] != null) environments = items(r[7]!);
-      if (r[8] != null) provisioningJobs = items(r[8]!);
-      if (r[9] != null) impactSummary = items(r[9]!);
-      if (r[10] != null) connectorCredentials = items(r[10]!);
-      if (r[11] != null) portalUsers = items(r[11]!);
-      if (r[12] != null) agreement = r[12];
-      if (r[13] != null) commercialStatus = r[13];
-      if (r[14] != null) billingEvents = items(r[14]!);
-      if (r[15] != null) websiteAdapter = r[15];
-      if (r[16] != null) paymentProfile = r[16];
       supplementalLoading = false;
       supplementalError = errors.isEmpty
           ? null
-          : 'Some secondary services timed out or are temporarily unavailable. Loaded data remains usable.';
+          : 'Some secondary services are temporarily unavailable. Available sections were loaded independently; missing sections will show an empty or unavailable state instead of blocking the page.';
     });
   }
 
   Future<void> load() async {
-    if (mounted) setState(() { loading = true; error = null; });
+    final hasPrimary = '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
+    if (mounted) setState(() { loading = !hasPrimary; error = null; });
     final id = '${partner['id']}';
+    if (hasPrimary) {
+      _scrollToInitialSection();
+      unawaited(_loadSupplementary());
+    }
     try {
-      final core = await widget.api.get('/api/v1/partners/$id', force: true);
+      final core = await widget.api.get('/api/v1/partners/$id', maxAge: const Duration(seconds: 15));
       if (!mounted) return;
       setState(() { partner = core; loading = false; });
       _scrollToInitialSection();
-      unawaited(_loadSupplementary());
+      if (!hasPrimary) unawaited(_loadSupplementary());
     } catch (e) {
-      if (mounted) setState(() { error = e.toString(); loading = false; supplementalLoading = false; });
+      if (mounted) {
+        setState(() {
+          error = hasPrimary ? null : e.toString();
+          supplementalError ??= 'The latest partner master-data refresh failed. The already loaded partner record remains usable.';
+          loading = false;
+          if (!hasPrimary) supplementalLoading = false;
+        });
+      }
     }
   }
 
@@ -4159,6 +4315,28 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
   Map<String, dynamic>? get provisioningJob =>
       provisioningJobs.isEmpty ? null : provisioningJobs.first;
+
+  String _partnerModuleSection(Map<String,dynamic> module) {
+    return switch ('${module['group_key'] ?? ''}') {
+      'finance_invoicing' => 'Finance & Invoicing',
+      'marketing' => 'Marketing',
+      'website_events' => 'Website & Events',
+      _ => 'Technical Operation',
+    };
+  }
+
+  Map<String,List<Map<String,dynamic>>> get groupedFilteredModules {
+    final grouped = <String,List<Map<String,dynamic>>>{
+      'Finance & Invoicing': <Map<String,dynamic>>[],
+      'Technical Operation': <Map<String,dynamic>>[],
+      'Marketing': <Map<String,dynamic>>[],
+      'Website & Events': <Map<String,dynamic>>[],
+    };
+    for (final module in filteredModules) {
+      grouped[_partnerModuleSection(module)]!.add(module);
+    }
+    return grouped;
+  }
 
   Future<void> startProvisioning() async {
     final lifecycle = '${partner['lifecycle'] ?? ''}';
@@ -5318,7 +5496,11 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (supplementalLoading) ...[
-                        const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+                        const _MessageCard(
+                          icon: Icons.sync_rounded,
+                          title: 'Secondary data is loading',
+                          message: 'The partner workspace is usable now. Billing, modules, impact and environment sections are loading independently.',
+                        ),
                         const SizedBox(height: 12),
                       ],
                       if (supplementalError != null) ...[
@@ -5498,19 +5680,37 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      LayoutBuilder(
-                        builder: (context, c) {
-                          final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                          return Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              for (final m in filteredModules)
-                                SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
-                            ],
-                          );
-                        },
-                      ),
+                      for (final entry in groupedFilteredModules.entries) ...[
+                        _SectionHeader(
+                          title: entry.key,
+                          subtitle: entry.value.isEmpty
+                              ? 'No modules in this category for this partner.'
+                              : '${entry.value.length} module${entry.value.length == 1 ? '' : 's'} in this partner category.',
+                          trailing: _MiniCounter(label: '${entry.value.length} MODULES'),
+                        ),
+                        const SizedBox(height: 10),
+                        if (entry.value.isEmpty)
+                          const _MessageCard(
+                            icon: Icons.inbox_outlined,
+                            title: 'No module entitlement',
+                            message: 'There is no module to load in this category. The page will not retry an empty dataset.',
+                          )
+                        else
+                          LayoutBuilder(
+                            builder: (context, c) {
+                              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                              return Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  for (final m in entry.value)
+                                    SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
+                                ],
+                              );
+                            },
+                          ),
+                        const SizedBox(height: 18),
+                      ],
                       const SizedBox(height: 26),
                       KeyedSubtree(
                         key: _financeKey,
@@ -5688,9 +5888,12 @@ class PackagesPage extends StatefulWidget {
 
 class _PackagesPageState extends State<PackagesPage> {
   bool loading = true;
+  bool analyticsLoading = true;
   String? error;
+  String? analyticsError;
   List<Map<String, dynamic>> plans = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+  Map<String,dynamic> analytics = <String,dynamic>{};
 
   @override
   void initState() {
@@ -5701,22 +5904,62 @@ class _PackagesPageState extends State<PackagesPage> {
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
     try {
-      final result = await Future.wait([
-        widget.api.get('/api/v1/billing/plans', force: true),
-        widget.api.get('/api/v1/modules', force: true),
-      ]);
+      final result = await widget.api.get('/api/v1/billing/plans', force: true);
       if (!mounted) return;
-      final allPlans = items(result[0]);
+      final allPlans = items(result);
       setState(() {
         plans = allPlans.where((p) => const {'STARTER', 'BUSINESS', 'FLEX'}.contains('${p['plan_key']}')).toList();
-        modules = items(result[1]).where((m) => m['system'] == true).toList();
         loading = false;
       });
+      unawaited(_loadModules());
+      unawaited(_loadAnalytics());
     } catch (e) {
       if (!mounted) return;
       setState(() { loading = false; error = e.toString(); });
     }
   }
+
+  Future<void> _loadModules() async {
+    try {
+      final result = await widget.api.get('/api/v1/modules');
+      if (!mounted) return;
+      setState(() => modules = items(result).where((m) => m['system'] == true).toList());
+    } catch (_) {
+      // Module definitions are needed only when package editing is opened.
+    }
+  }
+
+  Future<void> _loadAnalytics() async {
+    if (mounted) setState(() { analyticsLoading = true; analyticsError = null; });
+    try {
+      final result = await widget.api.get('/api/v1/billing/packages/analytics', force: true);
+      if (!mounted) return;
+      setState(() {
+        analytics = result;
+        analyticsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        analyticsLoading = false;
+        analyticsError = e.toString();
+      });
+    }
+  }
+
+  String _packageDescription(Map<String,dynamic> plan) {
+    return switch ('${plan['plan_key']}') {
+      'STARTER' => '10 HIMATE-defined modules for focused teams and first deployments.',
+      'BUSINESS' => '20 HIMATE-defined modules for broader operating workflows.',
+      'FLEX' => 'Unlimited access to every current and future eligible module.',
+      _ => '',
+    };
+  }
+
+  String _packageEntitlement(Map<String,dynamic> plan) =>
+      plan['selection_mode'] == 'UNLIMITED'
+          ? 'Unlimited modules'
+          : '${plan['module_limit'] ?? 0} included modules';
 
   String moduleLabel(Map<String, dynamic> module) =>
       '${module['label'] ?? module['label_en'] ?? module['key'] ?? ''}';
@@ -5893,34 +6136,29 @@ class _PackagesPageState extends State<PackagesPage> {
         child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Packages could not be loaded', message: error!),
       );
     }
+    final analyticsPackages = analytics['packages'] is List
+        ? (analytics['packages'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final analyticsPartners = analytics['partners'] is List
+        ? (analytics['partners'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final activityMeasured = analytics['portal_activity_measured'] == true;
+
     return Content(
       eyebrow: 'COMMERCIAL CONTROL PLANE',
       title: 'Packages',
-      subtitle: 'One authoritative package definition for every partner. Activation fees remain partner-specific.',
-      actions: [OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
+      subtitle: 'Starter, Business and Premium package control with usage and commercial analytics.',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () => openBrowserDownload('/api/v1/billing/packages/export.csv'),
+          icon: const Icon(Icons.download_outlined),
+          label: const LText('Export CSV'),
+        ),
+        OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
+      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ResponsiveKpiGrid(
-            children: [
-              for (final plan in plans)
-                Kpi(
-                  label: '${plan['display_name']}',
-                  value: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} net + ${plan['tax_label'] ?? 'VAT'}',
-                  note: plan['selection_mode'] == 'UNLIMITED'
-                      ? 'Unlimited modules · automatic'
-                      : '${plan['module_limit']} modules · HIMATE fixed',
-                  icon: Icons.inventory_2_outlined,
-                  accent: brandNavy,
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _SectionHeader(
-            title: 'Package definitions',
-            subtitle: 'Starter includes 10 fixed modules, Business includes 20 fixed modules, and Premium automatically includes every current and future eligible module.',
-          ),
-          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth < 720
@@ -5933,37 +6171,267 @@ class _PackagesPageState extends State<PackagesPage> {
                   for (final plan in plans)
                     SizedBox(
                       width: width,
-                      child: _InfoCard(
-                        title: '${plan['display_name']} · ${plan['plan_key']}',
-                        icon: Icons.sell_outlined,
-                        action: IconButton(
-                          tooltip: uiLiteral('Edit package'),
-                          onPressed: () => unawaited(editPackage(plan)),
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                        ),
-                        children: [
-                          _DefinitionRow(label: 'Monthly net price', value: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} + ${plan['tax_label'] ?? 'VAT'}', emphasis: true),
-                          _DefinitionRow(label: 'Current VAT rate', value: '${number(plan['vat_rate_percent']).toStringAsFixed(2)}%'),
-                          _DefinitionRow(label: 'Annual list', value: money(plan['annual_list_price'])),
-                          _DefinitionRow(label: 'Annual charged net', value: '${money(plan['annual_net_price'] ?? plan['annual_price'])} + ${plan['tax_label'] ?? 'VAT'}'),
-                          _DefinitionRow(label: 'Automatic increase', value: '${plan['annual_increase_percent'] ?? 5}% · January 1'),
-                          _DefinitionRow(label: 'Module limit', value: plan['selection_mode'] == 'UNLIMITED' ? 'Unlimited' : '${plan['module_limit']}'),
-                          _DefinitionRow(label: 'Selection', value: plan['selection_mode'] == 'UNLIMITED' ? 'Automatic Unlimited entitlement' : 'HIMATE fixed'),
-                          _DefinitionRow(
-                            label: 'Configured modules',
-                            value: plan['selection_mode'] == 'UNLIMITED'
-                                ? '${modules.where((m) => moduleReady(m) && m['availability'] == 'ACTIVE').length} available today + all future eligible modules'
-                                : '${(plan['fixed_module_keys'] as List?)?.length ?? 0} / ${plan['module_limit']}',
-                          ),
-                          _DefinitionRow(label: 'Status', value: plan['active'] == true ? 'ACTIVE' : 'INACTIVE'),
-                        ],
+                      child: _PackageOverviewCard(
+                        name: '${plan['display_name']}',
+                        price: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} / month + ${plan['tax_label'] ?? 'VAT'}',
+                        description: _packageDescription(plan),
+                        entitlement: _packageEntitlement(plan),
+                        active: plan['active'] == true,
+                        onTap: () => unawaited(editPackage(plan)),
+                        onEdit: () => unawaited(editPackage(plan)),
                       ),
                     ),
                 ],
               );
             },
           ),
+          const SizedBox(height: 24),
+          _SectionHeader(
+            title: 'Package Analytics',
+            subtitle: 'Partner distribution, package usage, Portal activity and current commercial context from authoritative runtime data.',
+            trailing: analyticsLoading ? const _MiniCounter(label: 'REFRESHING') : _MiniCounter(label: '${analyticsPartners.length} PARTNERS'),
+          ),
+          const SizedBox(height: 12),
+          if (analyticsError != null && analytics.isEmpty)
+            _MessageCard(
+              icon: Icons.query_stats_outlined,
+              title: 'Package analytics is temporarily unavailable',
+              message: analyticsError!,
+            )
+          else if (analyticsLoading && analytics.isEmpty)
+            const _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Loading package analytics',
+              message: 'Package cards remain usable while analytics loads independently.',
+            )
+          else if (analyticsPackages.isEmpty)
+            const _MessageCard(
+              icon: Icons.bar_chart_outlined,
+              title: 'No package analytics yet',
+              message: 'There is no package subscription data to chart. No retry loop is started for an empty dataset.',
+            )
+          else ...[
+            _PackageAnalyticsChart(packages: analyticsPackages),
+            const SizedBox(height: 14),
+            if (!activityMeasured)
+              const _MessageCard(
+                icon: Icons.schedule_outlined,
+                title: 'Portal active-time measurement has just been enabled',
+                message: 'No historical online-hours estimate is invented. Five-minute authenticated activity buckets will populate this metric from the CENTRAL-8 deployment forward.',
+              ),
+            if (!activityMeasured) const SizedBox(height: 14),
+            _InfoCard(
+              title: 'Partner package usage',
+              icon: Icons.groups_2_outlined,
+              children: analyticsPartners.isEmpty
+                  ? const [
+                      _EmptyInline(
+                        icon: Icons.inbox_outlined,
+                        title: 'No partner subscriptions recorded',
+                      ),
+                    ]
+                  : [
+                      for (final partner in analyticsPartners.take(50))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Expanded(
+                                  child: LText(
+                                    '${partner['display_name'] ?? partner['partner_id']}',
+                                    style: const TextStyle(color: brandNavy, fontSize: 13, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                                _StatusPill(label: '${partner['plan_name'] ?? partner['plan_key']}'),
+                              ]),
+                              const SizedBox(height: 5),
+                              Wrap(
+                                spacing: 7,
+                                runSpacing: 7,
+                                children: [
+                                  _MiniCounter(label: '${partner['billing_frequency'] ?? '—'}'),
+                                  _MiniCounter(label: '${partner['classification'] ?? '—'}'),
+                                  _MiniCounter(label: '${partner['onboarding_state'] ?? '—'}'),
+                                  _MiniCounter(label: '${partner['module_usage_events_30d'] ?? 0} MODULE USES / 30D'),
+                                  _MiniCounter(
+                                    label: partner['portal_activity_measured'] == true && number(partner['portal_active_hours_30d']) > 0
+                                        ? '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTAL HOURS / 30D'
+                                        : 'NO PORTAL ACTIVITY RECORDED',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 5),
+                              LText(
+                                [
+                                  if ('${partner['legal_name'] ?? ''}'.trim().isNotEmpty) '${partner['legal_name']}',
+                                  if ('${partner['country'] ?? ''}'.trim().isNotEmpty) '${partner['country']}',
+                                  if ('${partner['quote_reference'] ?? ''}'.trim().isNotEmpty) 'Quote: ${partner['quote_reference']}',
+                                ].join(' · '),
+                                style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                              ),
+                              const Divider(height: 18),
+                            ],
+                          ),
+                        ),
+                    ],
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _PackageOverviewCard extends StatefulWidget {
+  const _PackageOverviewCard({
+    required this.name,
+    required this.price,
+    required this.description,
+    required this.entitlement,
+    required this.active,
+    required this.onTap,
+    required this.onEdit,
+  });
+  final String name;
+  final String price;
+  final String description;
+  final String entitlement;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+
+  @override
+  State<_PackageOverviewCard> createState() => _PackageOverviewCardState();
+}
+
+class _PackageOverviewCardState extends State<_PackageOverviewCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => hover = true),
+    onExit: (_) => setState(() => hover = false),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: hover ? brandGold.withOpacity(.62) : brandNavy.withOpacity(.18), width: hover ? 1.5 : 1.2),
+        boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(11)),
+                    child: const Icon(Icons.inventory_2_outlined, color: brandNavy, size: 23),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: uiLiteral('Edit package'),
+                    onPressed: widget.onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 19),
+                  ),
+                ]),
+                const SizedBox(height: 18),
+                LText(widget.name, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 28, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                LText(widget.price, style: const TextStyle(color: brandTextSoft, fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 14),
+                LText(widget.description, style: const TextStyle(color: brandCharcoal, fontSize: 11.5, height: 1.45)),
+                const SizedBox(height: 14),
+                _RuleStrip(items: [
+                  _RuleItem(Icons.widgets_outlined, 'Included', widget.entitlement),
+                  _RuleItem(Icons.circle, 'Status', widget.active ? 'ACTIVE' : 'INACTIVE'),
+                ]),
+                const SizedBox(height: 18),
+                Row(children: [
+                  const LText('Package details', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                  const Spacer(),
+                  AnimatedSlide(
+                    offset: hover ? const Offset(.14, 0) : Offset.zero,
+                    duration: const Duration(milliseconds: 150),
+                    child: const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 20),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _PackageAnalyticsChart extends StatelessWidget {
+  const _PackageAnalyticsChart({required this.packages});
+  final List<Map<String,dynamic>> packages;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxPartners = packages.fold<double>(0, (m, p) => math.max(m, number(p['active_partner_count'])));
+    final maxUsage = packages.fold<double>(0, (m, p) => math.max(m, number(p['module_usage_events_30d'])));
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const LText('Package distribution & usage', style: TextStyle(color: brandNavy, fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            for (final package in packages) ...[
+              Row(children: [
+                SizedBox(
+                  width: 90,
+                  child: LText('${package['display_name']}', style: const TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w700)),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(
+                        value: maxPartners <= 0 ? 0 : number(package['active_partner_count']) / maxPartners,
+                        minHeight: 9,
+                        borderRadius: BorderRadius.circular(99),
+                        color: brandNavy,
+                        backgroundColor: brandMist,
+                      ),
+                      const SizedBox(height: 5),
+                      LText(
+                        '${package['active_partner_count'] ?? 0} active partners · ${package['module_usage_events_30d'] ?? 0} module uses / 30d · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} Portal hours / 30d',
+                        style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+                      ),
+                      if (maxUsage > 0) ...[
+                        const SizedBox(height: 5),
+                        LinearProgressIndicator(
+                          value: number(package['module_usage_events_30d']) / maxUsage,
+                          minHeight: 5,
+                          borderRadius: BorderRadius.circular(99),
+                          color: brandGold,
+                          backgroundColor: brandMist,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 16),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -5983,6 +6451,8 @@ class _FinancePageState extends State<FinancePage> {
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   String invoiceFilter = 'ALL';
+  String revenuePeriod = 'MONTHLY';
+  String revenuePlan = 'ALL';
   final GlobalKey onboardingKey = GlobalKey();
   bool loading = false;
   String? error;
@@ -6003,7 +6473,8 @@ class _FinancePageState extends State<FinancePage> {
     Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
       try {
         final data = await widget.api.get(path, force: true);
-        apply(data);
+        if (!mounted) return;
+        setState(() => apply(data));
       } catch (e) {
         failures.add(e.toString());
       }
@@ -6076,14 +6547,38 @@ class _FinancePageState extends State<FinancePage> {
 
   String get chartCurrency => currencyRows.isEmpty ? 'USD' : '${currencyRows.first['currency'] ?? 'USD'}';
 
+  String get revenuePlanKey => switch (revenuePlan) {
+    'Starter' => 'STARTER',
+    'Business' => 'BUSINESS',
+    'Premium' => 'FLEX',
+    _ => 'ALL',
+  };
+
   List<Map<String, dynamic>> get chartRows {
-    final raw = overview['monthly_paid'];
+    final byPlan = revenuePlanKey != 'ALL';
+    final key = revenuePeriod == 'WEEKLY'
+        ? (byPlan ? 'weekly_paid_by_plan' : 'weekly_paid')
+        : (byPlan ? 'monthly_paid_by_plan' : 'monthly_paid');
+    final raw = overview[key];
     if (raw is! List) return <Map<String, dynamic>>[];
     return raw
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
-        .where((row) => '${row['currency'] ?? ''}' == chartCurrency)
+        .where((row) =>
+            '${row['currency'] ?? ''}' == chartCurrency &&
+            (!byPlan || '${row['plan_key'] ?? ''}' == revenuePlanKey))
+        .map((row) => <String,dynamic>{
+              ...row,
+              'period': row['period'] ?? row['month'] ?? '',
+            })
         .toList();
+  }
+
+  String get financeExportPath {
+    final params = <String,String>{};
+    if (invoiceFilter != 'ALL') params['status'] = invoiceFilter;
+    if (revenuePlanKey != 'ALL') params['plan_key'] = revenuePlanKey;
+    return Uri(path: '/api/v1/billing/finance/export.csv', queryParameters: params.isEmpty ? null : params).toString();
   }
 
   Future<void> createManualInvoice({String? partnerID}) async {
@@ -6356,57 +6851,112 @@ class _FinancePageState extends State<FinancePage> {
 
   Widget financeChart() {
     final rows = chartRows;
-    if (rows.isEmpty) {
-      return const _MessageCard(
-        icon: Icons.bar_chart_outlined,
-        title: 'No paid revenue yet',
-        message: 'Paid invoices will populate the 12-month finance chart.',
-      );
-    }
-    final maxValue = rows.fold<double>(0, (max, row) => math.max(max, number(row['paid'])));
+    final windowLabel = revenuePeriod == 'WEEKLY' ? 'last 4 weeks' : 'last 12 months';
+    final planLabel = revenuePlan == 'ALL' ? 'All revenue' : revenuePlan;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Expanded(child: LText('Paid revenue · last 12 months', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
-            _MiniCounter(label: chartCurrency),
-          ]),
-          const SizedBox(height: 18),
-          SizedBox(
-            height: 190,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+          LayoutBuilder(builder: (context, constraints) {
+            final controls = Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                for (final row in rows)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                        LText(
-                          number(row['paid']) == 0 ? '—' : number(row['paid']).toStringAsFixed(0),
-                          style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
-                        ),
-                        const SizedBox(height: 4),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          height: maxValue <= 0 ? 2 : math.max(2, 125 * number(row['paid']) / maxValue),
-                          decoration: BoxDecoration(
-                            color: brandGold.withOpacity(.72),
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        LText(
-                          '${row['month'] ?? ''}'.split('-').last,
-                          style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
-                        ),
-                      ]),
-                    ),
+                SizedBox(
+                  width: 132,
+                  child: DropdownButtonFormField<String>(
+                    value: revenuePeriod,
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Period'),
+                    items: const [
+                      DropdownMenuItem(value: 'WEEKLY', child: LText('Weekly')),
+                      DropdownMenuItem(value: 'MONTHLY', child: LText('Monthly')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => revenuePeriod = value);
+                    },
                   ),
+                ),
+                SizedBox(
+                  width: 150,
+                  child: DropdownButtonFormField<String>(
+                    value: revenuePlan,
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Package'),
+                    items: const [
+                      DropdownMenuItem(value: 'ALL', child: LText('All')),
+                      DropdownMenuItem(value: 'Starter', child: LText('Starter')),
+                      DropdownMenuItem(value: 'Business', child: LText('Business')),
+                      DropdownMenuItem(value: 'Premium', child: LText('Premium')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => revenuePlan = value);
+                    },
+                  ),
+                ),
               ],
+            );
+            if (constraints.maxWidth < 720) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                LText('Paid revenue · $windowLabel · $planLabel', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14)),
+                const SizedBox(height: 12),
+                controls,
+              ]);
+            }
+            return Row(children: [
+              Expanded(child: LText('Paid revenue · $windowLabel · $planLabel', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
+              controls,
+              const SizedBox(width: 8),
+              _MiniCounter(label: chartCurrency),
+            ]);
+          }),
+          const SizedBox(height: 18),
+          if (rows.isEmpty)
+            const _MessageCard(
+              icon: Icons.bar_chart_outlined,
+              title: 'No paid revenue in this view',
+              message: 'There is no ledger data for the selected period/package. The chart stays empty instead of retrying indefinitely.',
+            )
+          else
+            SizedBox(
+              height: 205,
+              child: LayoutBuilder(builder: (context, constraints) {
+                final maxValue = rows.fold<double>(0, (max, row) => math.max(max, number(row['paid'])));
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (final row in rows)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                            LText(
+                              number(row['paid']) == 0 ? '—' : number(row['paid']).toStringAsFixed(0),
+                              style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
+                            ),
+                            const SizedBox(height: 4),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              height: maxValue <= 0 ? 2 : math.max(2, 135 * number(row['paid']) / maxValue),
+                              decoration: BoxDecoration(
+                                color: revenuePlanKey == 'ALL' ? brandGold.withOpacity(.78) : brandNavy.withOpacity(.78),
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            LText(
+                              '${row['period'] ?? ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.fade,
+                              style: const TextStyle(color: brandTextSoft, fontSize: 8.2),
+                            ),
+                          ]),
+                        ),
+                      ),
+                  ],
+                );
+              }),
             ),
-          ),
         ]),
       ),
     );
@@ -6544,6 +7094,11 @@ class _FinancePageState extends State<FinancePage> {
       title: 'Licensing & Finance',
       subtitle: 'Partner onboarding, invoice approval, payment status and auditable finance controls. A partner reaches Portal access only after final HIMATE approval.',
       actions: [
+        OutlinedButton.icon(
+          onPressed: () => openBrowserDownload(financeExportPath),
+          icon: const Icon(Icons.download_outlined),
+          label: const LText('Export CSV'),
+        ),
         OutlinedButton.icon(
           onPressed: editProfile,
           icon: const Icon(Icons.account_balance_outlined),
@@ -7419,6 +7974,11 @@ class _ImpactPageState extends State<ImpactPage> {
           LayoutBuilder(
             builder: (context, constraints) {
               final actions = <Widget>[
+                OutlinedButton.icon(
+                  onPressed: () => openBrowserDownload('/api/v1/impact/export.csv'),
+                  icon: const Icon(Icons.download_outlined),
+                  label: const LText('Export CSV'),
+                ),
                 OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
                 OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
                 OutlinedButton.icon(onPressed: addEvidence, icon: const Icon(Icons.verified_outlined), label: const LText('Upload Evidence')),
@@ -8620,7 +9180,8 @@ class _FilterSurface extends StatelessWidget {
       decoration: BoxDecoration(
         color: brandWhite,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: brandMist),
+        border: Border.all(color: brandNavy.withOpacity(.14), width: 1.15),
+        boxShadow: [BoxShadow(color: brandNavy.withOpacity(.055), blurRadius: 14, offset: const Offset(0, 5))],
       ),
       child: child,
     );
@@ -8697,8 +9258,8 @@ class _PartnerCardState extends State<PartnerCard> {
         decoration: BoxDecoration(
           color: brandWhite,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: hover ? brandGold.withOpacity(.42) : brandMist),
-          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .08 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
+          border: Border.all(color: hover ? brandGold.withOpacity(.58) : brandNavy.withOpacity(.16), width: hover ? 1.5 : 1.2),
+          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
         ),
         child: Material(
           color: Colors.transparent,

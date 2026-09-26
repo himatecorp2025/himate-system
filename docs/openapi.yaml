@@ -1031,6 +1031,23 @@ paths:
         "400": {description: Invalid JSON payload or partner validation error}
         "409": {description: Primary domain is already assigned to another partner}
         "503": {description: Partner onboarding is blocked because one or more required microservices are unavailable, unversioned, or running a different release}
+  /api/v1/partners/export.csv:
+    get:
+      tags: [Partners]
+      summary: Export the filtered Central partner portfolio as CSV
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: lifecycle, in: query, schema: {type: string}}
+        - {name: health, in: query, schema: {type: string}}
+        - {name: reference, in: query, schema: {type: boolean}}
+        - {name: include_archived, in: query, schema: {type: boolean}}
+      responses:
+        "200":
+          description: CSV export of matching partner master-data records
+          content:
+            text/csv:
+              schema: {type: string}
   /api/v1/partners/{partnerId}/logo:
     parameters:
       - {$ref: "#/components/parameters/PartnerId"}
@@ -1260,9 +1277,22 @@ paths:
     get:
       tags: [Billing]
       summary: Central-6 finance dashboard
-      description: Returns currency-safe invoice KPIs, a 12-month paid-revenue series and the pending commercial-onboarding queue.
+      description: Returns currency-safe invoice KPIs, 12-month and latest-four-week paid-revenue series, package-specific paid-revenue series, and the pending commercial-onboarding queue.
       responses:
-        "200": {description: Finance KPIs, monthly paid revenue by currency and onboarding queue}
+        "200": {description: Finance KPIs, monthly/weekly paid revenue by currency and package, plus onboarding queue}
+  /api/v1/billing/finance/export.csv:
+    get:
+      tags: [Billing]
+      summary: Export Central invoice-ledger data as CSV
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [ALL, DRAFT, APPROVED, SENT, PAID, CANCELLED]}}
+        - {name: plan_key, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: CSV export of the immutable invoice ledger and payment state
+          content:
+            text/csv:
+              schema: {type: string}
   /api/v1/billing/invoices:
     get:
       tags: [Billing]
@@ -1341,6 +1371,26 @@ paths:
       responses:
         "200": {description: application/pdf invoice rendering}
         "409": {description: Invoice is still DRAFT}
+  /api/v1/billing/packages/analytics:
+    get:
+      tags: [Billing]
+      summary: CENTRAL-8 package usage and commercial analytics
+      description: >
+        Resolves partner subscriptions from Billing, module usage from the Catalog usage-event
+        ledger, and Partner Portal active-time buckets from Identity. Portal active time is a
+        five-minute-bucket estimate and is never backfilled with fabricated history.
+      responses:
+        "200": {description: Package aggregates and partner-level subscription, usage and Portal activity metrics}
+  /api/v1/billing/packages/export.csv:
+    get:
+      tags: [Billing]
+      summary: Export package analytics as CSV
+      responses:
+        "200":
+          description: CSV export of partner package/subscription analytics
+          content:
+            text/csv:
+              schema: {type: string}
   /api/v1/billing/plans:
     get:
       tags: [Billing]
@@ -2369,6 +2419,19 @@ paths:
         - {name: period_end, in: query, schema: {type: string, format: date}}
       responses:
         "200": {description: Aggregated impact metrics for the optional overlap period}
+  /api/v1/impact/export.csv:
+    get:
+      tags: [Impact]
+      summary: Export recorded impact observations as CSV
+      parameters:
+        - {name: partner_id, in: query, schema: {type: string}}
+        - {name: metric_key, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: CSV export of impact metric observations and provenance
+          content:
+            text/csv:
+              schema: {type: string}
   /api/v1/evidence:
     get:
       tags: [Evidence]

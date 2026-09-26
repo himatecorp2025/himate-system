@@ -113,6 +113,9 @@ func main() {
 	})
 	mux.HandleFunc("/api/v1/billing/profile", a.profile)
 	mux.HandleFunc("/api/v1/billing/finance/overview", a.financeOverview)
+	mux.HandleFunc("/api/v1/billing/finance/export.csv", a.financeExportCSV)
+	mux.HandleFunc("/api/v1/billing/packages/analytics", a.packageAnalytics)
+	mux.HandleFunc("/api/v1/billing/packages/export.csv", a.packageExportCSV)
 	mux.HandleFunc("/api/v1/billing/invoices", a.invoiceCollection)
 	mux.HandleFunc("/api/v1/billing/invoices/", a.invoiceByID)
 	mux.HandleFunc("/api/v1/billing/plans", a.plans)
@@ -230,6 +233,7 @@ func (a *app) migrate(ctx context.Context) error {
 		start23113kCommercialModeMigration(),
 		central5BillingMigration(),
 		central6BillingMigration(),
+		central8BillingMigration(),
 	}); err != nil {
 		return err
 	}

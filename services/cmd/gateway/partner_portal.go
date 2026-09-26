@@ -230,6 +230,7 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	if err:=a.partnerAccessAllowed(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
 	if a.beginMFAFlow(w,r,"PARTNER",u.ID,in.Remember,partnerMFARequired(u.Role)){return}
 	a.clearLoginFailures(key)
+	go a.recordPartnerPortalActivity(u)
 	ttl:=a.ttl;if in.Remember{ttl=a.rememberTTL}
 	token,_:=a.issuePartnerSession(u,ttl)
 	cookie:=&http.Cookie{Name:partnerSessionCookie,Value:token,Path:"/partner",HttpOnly:true,Secure:a.secureCookie,SameSite:http.SameSiteStrictMode}
@@ -331,6 +332,7 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	accessErr:=a.partnerAccessAllowed(accessCtx,u.PartnerID)
 	cancel()
 	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
+	go a.recordPartnerPortalActivity(u)
 	mutating:=r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions
 	if mutating{
 		started:=time.Now()

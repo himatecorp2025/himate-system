@@ -896,6 +896,8 @@ func (a *app) financeOverview(w http.ResponseWriter,r *http.Request) {
 	defer monthRows.Close()
 	monthly:=[]map[string]any{}
 	for monthRows.Next(){var month,currency string;var amount float64;if monthRows.Scan(&month,&currency,&amount)==nil{monthly=append(monthly,map[string]any{"month":month,"currency":currency,"paid":math.Round(amount*100)/100})}}
+	weekly,monthlyByPlan,weeklyByPlan,err:=a.central8RevenueTrends(r.Context())
+	if err!=nil{common.APIError(w,500,"DB","Could not calculate weekly/package revenue trends");return}
 	var pendingOnboarding,activeOnboarding,waived int
 	_ = a.db.QueryRowContext(r.Context(),`SELECT
 		COUNT(*) FILTER (WHERE state<>'ACTIVE'),COUNT(*) FILTER (WHERE state='ACTIVE'),
@@ -911,8 +913,13 @@ func (a *app) financeOverview(w http.ResponseWriter,r *http.Request) {
 		onboarding=append(onboarding,map[string]any{"partner_id":id,"display_name":name,"state":state,"classification":classification,"portal_enabled":portal,"updated_at":updated})
 	}}
 	common.JSON(w,200,map[string]any{
-		"currencies":currencies,"monthly_paid":monthly,
+		"currencies":currencies,
+		"monthly_paid":monthly,
+		"weekly_paid":weekly,
+		"monthly_paid_by_plan":monthlyByPlan,
+		"weekly_paid_by_plan":weeklyByPlan,
 		"onboarding":map[string]any{"pending":pendingOnboarding,"active":activeOnboarding,"zero_dollar_supported":waived,"items":onboarding},
 		"source":"CENTRAL_6_FINANCE_LEDGER",
+		"analytics_source":"CENTRAL_8_INVOICE_LEDGER_TRENDS",
 	})
 }
