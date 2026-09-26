@@ -17,7 +17,7 @@ class _PartnerPortalAppState extends State<PartnerPortalApp> {
   @override
   void initState() {
     super.initState();
-    final stored = html.window.localStorage['himate_partner_locale'];
+    final stored = browserStorageGet('himate_partner_locale');
     if (stored == 'hu_HU' || stored == 'en_US') localeCode = stored!;
     if (Uri.base.path == '/partner/app' || Uri.base.path.startsWith('/partner/app/')) {
       restore();
@@ -54,7 +54,7 @@ class _PartnerPortalAppState extends State<PartnerPortalApp> {
 
   void setLocale(String value) {
     final normalized = value == 'hu_HU' ? 'hu_HU' : 'en_US';
-    html.window.localStorage['himate_partner_locale'] = normalized;
+    browserStorageSet('himate_partner_locale', normalized);
     setState(() => localeCode = normalized);
   }
 
@@ -438,7 +438,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
     if (index < 0 || index >= items.length) return;
     setState(() => selected = index);
     final slug = portalNavSlug(items[index].label);
-    html.window.history.replaceState(null, 'HIMATE', '/partner/app/' + slug);
+    replaceBrowserHistory('HIMATE', '/partner/app/' + slug);
   }
 
   @override
@@ -1858,7 +1858,7 @@ class _PartnerPortalShellState extends State<PartnerPortalShell> {
                         const SizedBox(width: 8),
                         IconButton(
                           tooltip: uiLiteral('Open PDF'),
-                          onPressed: id.isEmpty ? null : () => html.window.open('/partner/api/v1/billing/invoices/$id/pdf', '_blank'),
+                          onPressed: id.isEmpty ? null : () => openBrowserDownload('/partner/api/v1/billing/invoices/$id/pdf'),
                           icon: const Icon(Icons.picture_as_pdf_outlined, color: brandGold, size: 19),
                         ),
                       ]);
