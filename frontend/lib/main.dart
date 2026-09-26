@@ -5952,7 +5952,7 @@ class _PackagesPageState extends State<PackagesPage> {
   }
 
   Future<void> loadSupplementary() async {
-    const path = '/api/v1/central/packages/supplementary';
+    final path = centralPackagesSupplementaryInitialPath();
     if (mounted) {
       setState(() {
         analyticsLoading = true;
