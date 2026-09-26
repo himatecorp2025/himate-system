@@ -1845,42 +1845,53 @@ func mathRound2(v float64) float64 {
 	return float64(int64(v*100-0.5)) / 100
 }
 
-func (a *app) dashboardRecentActivity(actor user, limit int) ([]map[string]any, error) {
+func dashboardActivityPermissionResource(resource string) string {
+	switch resource {
+	case "modules", "module-groups", "module-commercial-matrix":
+		return "catalog"
+	case "payments":
+		return "billing"
+	case "partner-categories":
+		return "partners"
+	case "admin":
+		return "administration"
+	default:
+		return resource
+	}
+}
+
+func dashboardActivityItems(raw any) []map[string]any {
+	switch rows := raw.(type) {
+	case []map[string]any:
+		return rows
+	case []any:
+		items := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
+			if item, ok := row.(map[string]any); ok {
+				items = append(items, item)
+			}
+		}
+		return items
+	default:
+		return nil
+	}
+}
+
+func (a *app) dashboardActivityForActor(raw any, actor user, limit int) []map[string]any {
 	if limit < 1 { limit = 1 }
 	if limit > 12 { limit = 12 }
-	rows, err := a.db.Query(`SELECT id,actor_name,action,resource,partner_id,outcome,created_at
-		FROM identity.audit_events
-		WHERE outcome='SUCCESS'
-		ORDER BY created_at DESC,id DESC
-		LIMIT 120`)
-	if err != nil { return nil, err }
-	defer rows.Close()
-	items := make([]map[string]any,0,limit)
-	for rows.Next() {
-		var id int64
-		var actorName,action,resource,partnerID,outcome string
-		var created time.Time
-		if err := rows.Scan(&id,&actorName,&action,&resource,&partnerID,&outcome,&created); err != nil { return nil, err }
-		permissionResource := resource
-		switch resource {
-		case "modules","module-groups","module-commercial-matrix":
-			permissionResource = "catalog"
-		case "payments":
-			permissionResource = "billing"
-		case "partner-categories":
-			permissionResource = "partners"
-		case "admin":
-			permissionResource = "administration"
+	rows := dashboardActivityItems(raw)
+	items := make([]map[string]any, 0, limit)
+	for _, row := range rows {
+		resource := strings.TrimSpace(fmt.Sprint(row["resource"]))
+		permissionResource := dashboardActivityPermissionResource(resource)
+		if permissionResource == "" || !a.hasPermission(actor, permissionResource+".read") {
+			continue
 		}
-		if permissionResource == "" || !a.hasPermission(actor, permissionResource+".read") { continue }
-		items = append(items,map[string]any{
-			"id":id,"actor_name":actorName,"action":action,"resource":resource,
-			"partner_id":partnerID,"outcome":outcome,"created_at":created.UTC(),
-		})
+		items = append(items, copyDashboardPayload(row))
 		if len(items) >= limit { break }
 	}
-	if err := rows.Err(); err != nil { return nil, err }
-	return items,nil
+	return items
 }
 
 func dashboardYear(r *http.Request) (int,error) {
@@ -1922,6 +1933,22 @@ func (a *app) dashboardPayloadForActor(source map[string]any, actor user) map[st
 			"authorized":false,"people_reached_ytd":nil,"trend":[]any{},"status":"restricted",
 		}
 	}
+
+	activityStatus := "healthy"
+	var activityRaw any
+	if raw, ok := source["activity"].(map[string]any); ok {
+		activityRaw = raw["items"]
+		if status, ok := raw["status"].(string); ok && status != "" {
+			activityStatus = status
+		}
+	}
+	activity := a.dashboardActivityForActor(activityRaw, actor, 6)
+	out["activity"] = map[string]any{
+		"items": activity,
+		"count": len(activity),
+		"source": "IDENTITY_APPEND_ONLY_AUDIT",
+		"status": activityStatus,
+	}
 	return out
 }
 
@@ -1946,12 +1973,7 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 		}
 	}
 
-	activity, activityErr := a.dashboardRecentActivity(actor, 6)
 	out := a.dashboardPayloadForActor(payload, actor)
-	out["activity"] = map[string]any{"items":activity,"count":len(activity),"source":"IDENTITY_APPEND_ONLY_AUDIT"}
-	if activityErr != nil {
-		out["activity"] = map[string]any{"items":[]any{},"count":0,"source":"IDENTITY_APPEND_ONLY_AUDIT","status":"degraded"}
-	}
 	if meta, ok := out["meta"].(map[string]any); ok {
 		meta = copyDashboardPayload(meta)
 		if !updatedAt.IsZero() {
