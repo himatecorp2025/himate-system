@@ -90,6 +90,21 @@ List<Map<String,dynamic>> central8LatestWeeklyWindow(List<Map<String,dynamic>> r
   ];
 }
 
+Map<String,dynamic> central9CanonicalPackage(String planKey) {
+  return switch (planKey.toUpperCase().trim()) {
+    'STARTER' => <String,dynamic>{'name':'Starter','price':990,'entitlement':'10 modules'},
+    'BUSINESS' => <String,dynamic>{'name':'Business','price':1490,'entitlement':'20 modules'},
+    'FLEX' => <String,dynamic>{'name':'Premium','price':2490,'entitlement':'Unlimited'},
+    _ => <String,dynamic>{'name':planKey,'price':0,'entitlement':'—'},
+  };
+}
+
+String central9CanonicalPackagePrice(String planKey) {
+  final package = central9CanonicalPackage(planKey);
+  final price = (package['price'] as num?)?.toInt() ?? 0;
+  return '\$' + intl.NumberFormat('#,##0', 'en_US').format(price) + ' + VAT';
+}
+
 List<Map<String,dynamic>> central8PartnerPresetRows(
   List<Map<String,dynamic>> rows, {
   String lifecycle = 'ALL',
@@ -5971,9 +5986,7 @@ class _PackagesPageState extends State<PackagesPage> {
   }
 
   String _packageEntitlement(Map<String,dynamic> plan) =>
-      plan['selection_mode'] == 'UNLIMITED'
-          ? 'Unlimited modules'
-          : '${plan['module_limit'] ?? 0} included modules';
+      '${central9CanonicalPackage('${plan['plan_key']}')['entitlement']}';
 
   String moduleLabel(Map<String, dynamic> module) =>
       '${module['label'] ?? module['label_en'] ?? module['key'] ?? ''}';
@@ -6186,8 +6199,8 @@ class _PackagesPageState extends State<PackagesPage> {
                     SizedBox(
                       width: width,
                       child: _PackageOverviewCard(
-                        name: '${plan['display_name']}',
-                        price: '${money(plan['monthly_net_price'] ?? plan['monthly_price'])} / month + ${plan['tax_label'] ?? 'VAT'}',
+                        name: '${central9CanonicalPackage('${plan['plan_key']}')['name']}',
+                        price: central9CanonicalPackagePrice('${plan['plan_key']}'),
                         description: _packageDescription(plan),
                         entitlement: _packageEntitlement(plan),
                         active: plan['active'] == true,
