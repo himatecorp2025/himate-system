@@ -254,6 +254,7 @@ func main() {
 	a.bootstrapCentralStep3Snapshots()
 	go a.runDashboardMaterializer()
 	go a.runCentralStep3Materializer()
+	go a.runCentralStep4Materializer()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
@@ -1656,12 +1657,17 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 			resp.Body.Close()
 		}
 	}
-	common.JSON(w, 200, map[string]any{
+	statusCode := http.StatusOK
+	if overall != "ok" {
+		statusCode = http.StatusServiceUnavailable
+	}
+	common.JSON(w, statusCode, map[string]any{
 		"status": overall,
 		"service": "himate-gateway",
 		"environment": a.env,
 		"version": a.version,
 		"architecture": "containerized-microservices-start-23.11.3k",
+		"readiness": true,
 		"checked_at": checkedAt,
 		"services": services,
 		"service_versions": serviceVersions,
