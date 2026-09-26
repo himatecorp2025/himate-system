@@ -1428,7 +1428,6 @@ class HimateI18n {
     'Edit draft': 'Vázlat szerkesztése',
     'Preview': 'Előnézet',
     'Publish': 'Publikálás',
-    'Versions': 'Verziók',
     'Audit': 'Audit',
     'Noindex': 'Noindex',
     'Published content stays available but is marked not to be indexed.': 'A publikált tartalom elérhető marad, de keresőmotoros indexelésre tiltottként lesz megjelölve.',
