@@ -1,9 +1,7 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material show Text;
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -14,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart' as intl;
 import 'package:intl/date_symbol_data_local.dart' show initializeDateFormatting;
 import 'package:google_fonts/google_fonts.dart';
+import 'browser_platform.dart';
 
 part 'cms_page.dart';
 part 'contact_leads.dart';
@@ -524,29 +523,6 @@ class Api {
   }
 }
 
-Future<html.File?> pickBrowserFile(String accept) async {
-  final input = html.FileUploadInputElement()..accept = accept;
-  input.click();
-  await input.onChange.first;
-  final files = input.files;
-  if (files == null || files.isEmpty) return null;
-  return files.first;
-}
-
-Future<Uint8List> readBrowserFile(html.File file) async {
-  final reader = html.FileReader();
-  reader.readAsArrayBuffer(file);
-  await reader.onLoad.first;
-  final result = reader.result;
-  if (result is ByteBuffer) return result.asUint8List();
-  if (result is Uint8List) return result;
-  throw StateError('Could not read selected file.');
-}
-
-void openBrowserDownload(String path) {
-  html.window.open(path, '_blank');
-}
-
 List<Map<String, dynamic>> items(Map<String, dynamic> json) {
   final raw = json['items'];
   if (raw is! List) return <Map<String, dynamic>>[];
@@ -578,7 +554,7 @@ class _HimateAppState extends State<HimateApp> {
   void initState() {
     super.initState();
     unawaited(_loadPublishedBrandAssets());
-    final storedLocale = html.window.localStorage['himate_locale'];
+    final storedLocale = browserStorageGet('himate_locale');
     if (storedLocale == 'hu_HU' || storedLocale == 'en_US') {
       anonymousLocale = storedLocale!;
     }
@@ -723,7 +699,7 @@ class _HimateAppState extends State<HimateApp> {
 
   void setAnonymousLocale(String value) {
     final normalized = value == 'hu_HU' ? 'hu_HU' : 'en_US';
-    html.window.localStorage['himate_locale'] = normalized;
+    browserStorageSet('himate_locale', normalized);
     HimateI18n.activeLocale = normalized;
     api.clearCache();
     if (mounted) setState(() => anonymousLocale = normalized);
@@ -735,7 +711,7 @@ class _HimateAppState extends State<HimateApp> {
     if (preferred == 'hu_HU' || preferred == 'en_US') {
       anonymousLocale = preferred!;
       HimateI18n.activeLocale = preferred;
-      html.window.localStorage['himate_locale'] = preferred;
+      browserStorageSet('himate_locale', preferred);
     }
     api.clearCache();
     if (mounted) setState(() {});
@@ -769,7 +745,7 @@ class _HimateAppState extends State<HimateApp> {
     final preferred = user?['preferred_locale']?.toString();
     if (preferred == 'hu_HU' || preferred == 'en_US') {
       anonymousLocale = preferred!;
-      html.window.localStorage['himate_locale'] = preferred;
+      browserStorageSet('himate_locale', preferred);
     }
     if (!mounted) return;
     setState(() {});
@@ -1163,7 +1139,7 @@ class _LoginPageState extends State<LoginPage> {
     try {
       await widget.onConfirmPasswordReset(token, values[0]);
       if (!mounted) return;
-      html.window.history.replaceState(null, 'HIMATE', '/login');
+      replaceBrowserHistory('HIMATE', '/login');
       password.clear();
       info(tr(context, 'resetDone'));
     } catch (e) {
@@ -1874,7 +1850,7 @@ class _ShellState extends State<Shell> {
     setState(() => selected = index);
     final route = _routeForIndex(index);
     if (Uri.base.path != route) {
-      html.window.history.replaceState(null, '', route);
+      replaceBrowserHistory('', route);
     }
   }
 
@@ -3173,14 +3149,14 @@ class _PartnersPageState extends State<PartnersPage> {
     // services are degraded. Partner master data is the primary record; modules,
     // licensing and provisioning are configured from the workspace afterwards.
     const pendingOnboardingKey = 'himate_pending_partner_onboarding';
-    final pendingRequestId = (html.window.localStorage[pendingOnboardingKey] ?? '').trim();
+    final pendingRequestId = (browserStorageGet(pendingOnboardingKey) ?? '').trim();
     if (pendingRequestId.isNotEmpty) {
       try {
         final resumed = await widget.api.post('/api/v1/partner-onboarding/$pendingRequestId/resume', const <String, dynamic>{});
         final resumedPartner = resumed['partner'];
         if ('${resumed['status'] ?? ''}' == 'COMPLETE' && resumedPartner is Map) {
           final partner = Map<String, dynamic>.from(resumedPartner);
-          html.window.localStorage.remove(pendingOnboardingKey);
+          browserStorageRemove(pendingOnboardingKey);
           if (!mounted) return;
           unawaited(load(reset: true));
           success('Interrupted partner onboarding was resumed and completed.');
@@ -3260,7 +3236,7 @@ class _PartnersPageState extends State<PartnersPage> {
     final onboardingRequestId = 'onb_${DateTime.now().microsecondsSinceEpoch}';
     final onboardingDate = DateTime.now().toUtc().toIso8601String().substring(0, 10);
 
-    html.File? partnerLogoFile;
+    BrowserFile? partnerLogoFile;
     String category = '${categoryOptions.first['id']}';
     String currency = 'USD';
     bool portalPasswordObscure = true;
@@ -3738,7 +3714,7 @@ class _PartnersPageState extends State<PartnersPage> {
             });
 
             try {
-              html.window.localStorage[pendingOnboardingKey] = onboardingRequestId;
+              browserStorageSet(pendingOnboardingKey, onboardingRequestId);
               final onboarding = await widget.api.post('/api/v1/partner-onboarding', {
                 'request_id': onboardingRequestId,
                 'partner': partnerPayload(),
@@ -3786,7 +3762,7 @@ class _PartnersPageState extends State<PartnersPage> {
                 logoUploaded = true;
               }
 
-              html.window.localStorage.remove(pendingOnboardingKey);
+              browserStorageRemove(pendingOnboardingKey);
               if (dialogContext.mounted) {
                 setLocal(() {
                   submitting = false;
@@ -5160,7 +5136,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     final name = TextEditingController();
     final note = TextEditingController();
     String kind = 'CONTRACT';
-    html.File? selectedFile;
+    BrowserFile? selectedFile;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -7782,7 +7758,7 @@ class _ImpactPageState extends State<ImpactPage> {
     final declaration = TextEditingController();
     String evidenceType = 'PDF';
     String metricKey = '';
-    html.File? selectedFile;
+    BrowserFile? selectedFile;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -8286,7 +8262,7 @@ class _ImpactPageState extends State<ImpactPage> {
                                       ),
                                     if ('${item['source_url'] ?? ''}'.isNotEmpty)
                                       OutlinedButton.icon(
-                                        onPressed: () => html.window.open('${item['source_url']}', '_blank'),
+                                        onPressed: () => openBrowserDownload('${item['source_url']}'),
                                         icon: const Icon(Icons.open_in_new_rounded),
                                         label: const LText('Open URL'),
                                       ),

@@ -11,6 +11,7 @@ provisioning = (ROOT / "services/cmd/provisioning/main.go").read_text()
 runtime = (ROOT / "services/cmd/runtime/main.go").read_text()
 frontend = (ROOT / "frontend/lib/main.dart").read_text()
 portal_frontend = (ROOT / "frontend/lib/partner_portal.dart").read_text()
+browser_platform = (ROOT / "frontend/lib/browser_platform.dart").read_text()
 openapi = (ROOT / "docs/openapi.yaml").read_text()
 acceptance = (ROOT / "docs/START-23.12_PHASE2_ACCEPTANCE.md").read_text()
 ci = (ROOT / ".github/workflows/ci.yml").read_text()
@@ -100,7 +101,9 @@ require("DEPLOYMENT_RECONCILIATION_REQUIRED" in runtime or "RECONCILIATION_REQUI
 # Reload/deep links.
 require(portal_frontend.count("Widget usersPage()") == 1 and portal_frontend.count("Widget pageFor(_PortalNavSpec item)") == 1,
         "Partner Portal source contains duplicated navigation/page blocks")
-require("portalNavSlug" in portal_frontend and "history.replaceState" in portal_frontend,
+require("portalNavSlug" in portal_frontend
+        and "replaceBrowserHistory('HIMATE', '/partner/app/' + slug)" in portal_frontend
+        and "web.window.history.replaceState(null, title, path)" in browser_platform,
         "Partner Portal tab state is not deep-link persisted")
 require("startsWith('/partner/app/')" in portal_frontend,
         "Partner Portal does not reconstruct tab state after reload")
