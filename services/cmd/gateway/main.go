@@ -1915,7 +1915,7 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	a.dashboardMu.RUnlock()
 
 	started:=time.Now()
-	ctx,cancel:=context.WithTimeout(r.Context(),3*time.Second)
+	ctx,cancel:=context.WithTimeout(r.Context(),central10ReadBudget)
 	defer cancel()
 
 	var partnerResponse struct {
