@@ -521,7 +521,6 @@ class HimateI18n {
     'All lifecycle states': 'Minden életciklus-állapot',
     'All health states': 'Minden egészségi állapot',
     'Reference partner': 'Referenciapartner',
-    'Reference partners': 'Referenciapartnerek',
     'Live partners': 'Élő partnerek',
     'Prospects': 'Érdeklődők',
     'Partner could not be opened': 'A partner nem nyitható meg',
