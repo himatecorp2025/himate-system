@@ -139,7 +139,7 @@ check("onRefresh: applyModel" in modules_ui,
 
 for token in [
     "Loading the latest partner portfolio snapshot.",
-    "Loading the latest materialized finance snapshot.",
+    "Loading the latest finance snapshot.",
     "Loading the latest impact and evidence snapshot.",
 ]:
     check(token in frontend, f"Central-10.1 Loading != Zero guard missing: {token}")
