@@ -356,7 +356,6 @@ func central10PartnerCategories(locale string, remote []map[string]any) []map[st
 	}
 	hu := strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "hu")
 	byID := make(map[string]map[string]any, len(seeds)+len(remote))
-	order := make(map[string]int, len(seeds))
 	for i, seed := range seeds {
 		name := seed.en
 		if hu { name = seed.hu }
@@ -364,7 +363,7 @@ func central10PartnerCategories(locale string, remote []map[string]any) []map[st
 			"id": seed.id, "name": name, "name_en": seed.en, "name_hu": seed.hu,
 			"slug": seed.slug, "system": true,
 		}
-		order[seed.id] = i
+		_ = i
 	}
 	for _, raw := range remote {
 		id := central10String(raw["id"])
