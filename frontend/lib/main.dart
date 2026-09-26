@@ -1813,6 +1813,26 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     selected = widget.initialSelected.clamp(0, navCount - 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_prebuildPriorityPages());
+    });
+  }
+
+  Future<void> _prebuildPriorityPages() async {
+    // API warmup makes the data hot; prebuilding the most frequently switched
+    // workspaces removes the remaining first-widget-mount penalty. Stagger the
+    // work so login/first paint stays responsive.
+    for (final index in const [1, 4, 5, 6, 7]) {
+      if (!mounted) return;
+      if (index == selected || !visibleNavIndexes().contains(index) || _pageCache.containsKey(index)) {
+        continue;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 90));
+      if (!mounted) return;
+      setState(() {
+        _pageCache.putIfAbsent(index, () => _pageForIndex(index));
+      });
+    }
   }
 
   static const int navCount = 10;
@@ -8454,24 +8474,43 @@ class _ImpactPageState extends State<ImpactPage> {
   }
 }
 
-class SystemPage extends StatelessWidget {
+class SystemPage extends StatefulWidget {
   const SystemPage({required this.api, super.key});
   final Api api;
 
-  Future<List<Map<String, dynamic>>> _load() async {
+  @override
+  State<SystemPage> createState() => _SystemPageState();
+}
+
+class _SystemPageState extends State<SystemPage> {
+  late Future<List<Map<String, dynamic>>> _future;
+
+  Api get api => widget.api;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<Map<String, dynamic>>> _load({bool force = false}) async {
     final r = await Future.wait([
-      api.get('/api/v1/system-health/snapshot'),
-      api.get('/api/v1/provisioning/jobs'),
-      api.get('/api/v1/environments'),
-      api.get('/api/v1/backups/summary'),
+      api.get('/api/v1/system-health/snapshot', force: force, maxAge: const Duration(seconds: 15)),
+      api.get('/api/v1/provisioning/jobs', force: force, maxAge: const Duration(seconds: 15)),
+      api.get('/api/v1/environments', force: force, maxAge: const Duration(seconds: 15)),
+      api.get('/api/v1/backups/summary', force: force, maxAge: const Duration(seconds: 15)),
     ]);
     return r;
+  }
+
+  void _refresh() {
+    setState(() => _future = _load(force: true));
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _load(),
+      future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
           return const Content(
@@ -8521,6 +8560,13 @@ class SystemPage extends StatelessWidget {
           eyebrow: 'PLATFORM OPERATIONS',
           title: 'System & Operations',
           subtitle: 'Provisioning, partner environments, connectors, backups and central health across the containerized HIMATE control plane.',
+          actions: [
+            OutlinedButton.icon(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const LText('Refresh diagnostics'),
+            ),
+          ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
