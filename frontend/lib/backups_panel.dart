@@ -277,6 +277,123 @@ class _BackupsPanelState extends State<BackupsPanel> {
     _notify('Restore verification is still running. Refresh the panel to see the latest state.');
   }
 
+  Future<void> _restoreProduction(String partnerId) async {
+    if (partnerId == '_platform') {
+      _notify('Platform production recovery is maintenance-only and cannot be executed from the live control plane.', failure: true);
+      return;
+    }
+    final summary = _summaryFor(partnerId);
+    final pointId = _value(summary['latest_restore_point_id'], fallback: '');
+    final recoverability = _value(summary['recoverability_status'], fallback: 'UNVERIFIED');
+    if (pointId.isEmpty || recoverability != 'VERIFIED') {
+      _notify('A VERIFIED restore point is required before production recovery.', failure: true);
+      return;
+    }
+    if (widget.productionRestoreEligible[partnerId] != true) {
+      _notify('Suspend the partner before production recovery. Test Partners are exempt from the suspension gate.', failure: true);
+      return;
+    }
+    final reason = TextEditingController();
+    final confirmation = TextEditingController();
+    String? dialogError;
+    final payload = await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => BrandDialog(
+          title: 'Restore verified partner backup',
+          subtitle: 'This is a production recovery operation. A fresh safety backup is created automatically before the verified restore point replaces the partner database, media and captured configuration.',
+          icon: Icons.restore_rounded,
+          primaryLabel: 'Start production restore',
+          onPrimary: () {
+            if (reason.text.trim().length < 5) {
+              setDialogState(() => dialogError = 'Enter a recovery reason of at least 5 characters.');
+              return;
+            }
+            final required = 'RESTORE $partnerId';
+            if (confirmation.text.trim() != required) {
+              setDialogState(() => dialogError = 'Type $required exactly to confirm.');
+              return;
+            }
+            Navigator.pop(dialogContext, <String, dynamic>{
+              'reason': reason.text.trim(),
+              'confirmation': confirmation.text.trim(),
+            });
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _DefinitionRow(label: 'Restore point', value: pointId),
+              _DefinitionRow(label: 'Recoverability', value: recoverability),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reason,
+                minLines: 2,
+                maxLines: 4,
+                decoration: InputDecoration(labelText: uiLiteral('Recovery reason')),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmation,
+                decoration: InputDecoration(
+                  labelText: uiLiteral('Confirmation'),
+                  hintText: 'RESTORE $partnerId',
+                ),
+              ),
+              const SizedBox(height: 10),
+              const LText(
+                'The restore job is audit-visible and component status is persisted for database, media and configuration recovery.',
+                style: TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                LText(dialogError!, style: const TextStyle(color: brandDanger, fontWeight: FontWeight.w600)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    reason.dispose();
+    confirmation.dispose();
+    if (payload == null || busy.contains(partnerId)) return;
+
+    setState(() => busy.add(partnerId));
+    try {
+      final job = await widget.api.post('/api/v1/backups/restore-points/$pointId/restore', payload);
+      final jobId = _value(job['id'], fallback: '');
+      if (jobId.isEmpty) throw StateError('Backup service did not return a restore-job identifier.');
+      _notify('Production restore $jobId queued. A safety backup will be created first.');
+      await _pollProductionRestore(partnerId, jobId);
+    } catch (e) {
+      _notify(e.toString(), failure: true);
+    } finally {
+      if (mounted) setState(() => busy.remove(partnerId));
+    }
+  }
+
+  Future<void> _pollProductionRestore(String partnerId, String jobId) async {
+    for (var attempt = 0; attempt < 120; attempt++) {
+      if (!mounted) return;
+      await Future<void>.delayed(const Duration(seconds: 2));
+      try {
+        final job = await widget.api.get('/api/v1/backups/restores/$jobId', force: true);
+        final status = _value(job['status'], fallback: 'UNKNOWN');
+        if (status == 'FAILED') {
+          await _refresh(quiet: true);
+          _notify('Production restore failed: ' + _value(job['error'], fallback: 'Open audit logs for diagnostics.'), failure: true);
+          return;
+        }
+        if (status == 'COMPLETED') {
+          await _refresh(quiet: true);
+          _notify('Production restore completed. Database, media and configuration recovery passed.');
+          return;
+        }
+      } catch (_) {}
+    }
+    await _refresh(quiet: true);
+    _notify('Production restore is still running. Refresh the recovery panel for the latest state.');
+  }
+
   Future<void> _editPolicy(String partnerId) async {
     final current = _summaryFor(partnerId);
     final retention = TextEditingController(text: '${current['retention_days'] ?? 30}');
