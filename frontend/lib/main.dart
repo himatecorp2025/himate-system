@@ -4212,28 +4212,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? get provisioningJob =>
       provisioningJobs.isEmpty ? null : provisioningJobs.first;
 
-  String _partnerModuleSection(Map<String,dynamic> module) {
-    return switch ('${module['group_key'] ?? ''}') {
-      'finance_invoicing' => 'Finance & Invoicing',
-      'marketing' => 'Marketing',
-      'website_events' => 'Website & Events',
-      _ => 'Technical Operation',
-    };
-  }
-
-  Map<String,List<Map<String,dynamic>>> get groupedFilteredModules {
-    final grouped = <String,List<Map<String,dynamic>>>{
-      'Finance & Invoicing': <Map<String,dynamic>>[],
-      'Technical Operation': <Map<String,dynamic>>[],
-      'Marketing': <Map<String,dynamic>>[],
-      'Website & Events': <Map<String,dynamic>>[],
-    };
-    for (final module in filteredModules) {
-      grouped[_partnerModuleSection(module)]!.add(module);
-    }
-    return grouped;
-  }
-
   Future<void> startProvisioning() async {
     final lifecycle = '${partner['lifecycle'] ?? ''}';
     if (!const {'READY_TO_PROVISION', 'PROVISIONING', 'CONFIGURATION'}.contains(lifecycle)) {
@@ -4246,10 +4224,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       );
       return;
     }
-    final preset = [
-      for (final m in modules)
-        if (m['status'] == 'ACTIVE') '${m['key']}',
-    ];
+    final preset = List<String>.from(activeModuleKeys);
     try {
       await widget.api.post('/api/v1/provisioning/jobs', {
         'partner_id': '${partner['id']}',
@@ -4395,7 +4370,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   }
 
   Future<void> rotateConnectorCredential() async {
-    String environment = environments.any((e) => e['kind'] == 'PRODUCTION') ? 'PRODUCTION' : 'STAGING';
+    String environment = preferredConnectorEnvironment;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -4544,9 +4519,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   }
 
   Future<void> createProductionEnvironment() async {
-    final existing = environments.where((e) => e['kind'] == 'PRODUCTION').toList();
-    if (existing.isNotEmpty) {
-      await editEnvironment(existing.first);
+    if (productionEnvironment != null) {
+      await editEnvironment(productionEnvironment!);
       return;
     }
     final hostname = TextEditingController(text: '${partner['primary_domain'] ?? ''}');
@@ -5325,23 +5299,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     reason.dispose();
   }
 
-  List<Map<String, dynamic>> get filteredModules {
-    final q = moduleQuery.trim().toLowerCase();
-    return modules.where((m) {
-      final matchText = q.isEmpty ||
-          '${m['label']}'.toLowerCase().contains(q) ||
-          '${m['key']}'.toLowerCase().contains(q) ||
-          '${m['group_label']}'.toLowerCase().contains(q);
-      final matchState = moduleState == 'ALL' || '${m['status']}' == moduleState;
-      return matchText && matchState;
-    }).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final active = modules.where((m) => m['status'] == 'ACTIVE').length;
-    final maintenance = modules.where((m) => m['status'] == 'MAINTENANCE').length;
-    final baseIncluded = modules.where((m) => m['included_in_base'] == true).length;
+    final active = (moduleKpis['active'] as num?)?.toInt() ?? 0;
+    final maintenance = (moduleKpis['maintenance'] as num?)?.toInt() ?? 0;
+    final baseIncluded = (moduleKpis['base_included'] as num?)?.toInt() ?? 0;
+    final moduleTotal = (moduleKpis['total'] as num?)?.toInt() ?? modules.length;
 
     return Scaffold(
       backgroundColor: brandIvory,
@@ -5412,7 +5375,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: ResponsiveKpiGrid(
                           children: [
                             Kpi(label: 'Current recurring', value: money(billing?['current_total']), note: 'Base + active extra modules', icon: Icons.account_balance_wallet_outlined, accent: brandGold),
-                            Kpi(label: 'Active modules', value: '$active', note: '${modules.length} ${uiLiteral('module records')}', icon: Icons.grid_view_outlined, accent: brandNavy),
+                            Kpi(label: 'Active modules', value: '$active', note: '$moduleTotal ${uiLiteral('module records')}', icon: Icons.grid_view_outlined, accent: brandNavy),
                             Kpi(label: 'Base package', value: '$baseIncluded', note: 'Included module entitlements', icon: Icons.inventory_2_outlined, accent: brandSteel),
                             Kpi(label: 'Maintenance', value: '$maintenance', note: 'Temporarily restricted modules', icon: Icons.build_outlined, accent: brandWarning),
                           ],
@@ -5475,7 +5438,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                               OutlinedButton.icon(
                                 onPressed: createProductionEnvironment,
                                 icon: const Icon(Icons.public_outlined),
-                                label: LText(environments.any((e) => e['kind'] == 'PRODUCTION') ? 'Production settings' : 'Add production'),
+                                label: LText(productionEnvironment != null ? 'Production settings' : 'Add production'),
                               ),
                               FilledButton.icon(
                                 onPressed: startProvisioning,
