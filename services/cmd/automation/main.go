@@ -120,6 +120,16 @@ func (a *app)migrate(ctx context.Context)error{
 			`DROP TRIGGER IF EXISTS automation_events_no_update ON automation.events`,
 			`CREATE TRIGGER automation_events_no_update BEFORE UPDATE OR DELETE ON automation.events FOR EACH ROW EXECUTE FUNCTION automation.reject_event_mutation()`,
 		}},
+		{Version:2,Name:"central-11-golden-test-partner-purge-guard",Statements:[]string{
+			`CREATE OR REPLACE FUNCTION automation.reject_event_mutation() RETURNS trigger AS $
+			BEGIN
+				IF TG_OP='DELETE' AND current_setting('himate.test_partner_purge', TRUE)=OLD.partner_id THEN
+					RETURN OLD;
+				END IF;
+				RAISE EXCEPTION 'automation events are immutable';
+			END;
+			$ LANGUAGE plpgsql`,
+		}},
 	})
 }
 
