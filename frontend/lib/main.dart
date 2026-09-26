@@ -374,7 +374,7 @@ class Api {
       add('/api/v1/central/modules');
       add('/api/v1/central/modules/commercial');
       add('/api/v1/central/packages/supplementary');
-      add('/api/v1/central/partners/');
+      add('/api/v1/central/partners');
       addDashboard();
     } else if (path.startsWith('/api/v1/billing')) {
       add('/api/v1/billing');
@@ -382,7 +382,7 @@ class Api {
       add('/api/v1/central/packages/supplementary');
       add('/api/v1/central/finance');
       add('/api/v1/central/modules/commercial');
-      add('/api/v1/central/partners/');
+      add('/api/v1/central/partners');
       addDashboard();
     } else if (path.startsWith('/api/v1/impact') ||
         path.startsWith('/api/v1/evidence') ||
