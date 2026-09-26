@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:himate_frontend/main.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('Central-9 premium dark visual contract remains active', () {
     expect(brandNavyDeep, const Color(0xFF020914));
     expect(brandSurface, const Color(0xFF07182A));
