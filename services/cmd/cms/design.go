@@ -21,6 +21,13 @@ var designFonts = map[string]bool{
 	"Inter":              true,
 	"Georgia":            true,
 	"Arial":              true,
+	"Palatino":           true,
+	"Garamond":           true,
+	"Times New Roman":    true,
+	"Helvetica":          true,
+	"Verdana":            true,
+	"Trebuchet MS":       true,
+	"Courier New":        true,
 }
 
 var designLayouts = map[string]bool{
