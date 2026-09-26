@@ -979,6 +979,22 @@ paths:
       responses:
         "200": {description: Complete or explicitly partial Partner Workspace presentation model}
         "502": {description: Primary partner record unavailable and no stale snapshot exists}
+  /api/v1/central/partners/{partnerId}/modules:
+    parameters:
+      - {$ref: "#/components/parameters/PartnerId"}
+    get:
+      tags: [Modules]
+      summary: Central-10 Partner Workspace module presentation read model
+      description: >
+        Returns partner modules with Billing subscription state already joined, authoritative
+        module KPI counts, active module keys and backend-filtered presentation groups.
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: state, in: query, schema: {type: string, enum: [ALL, ACTIVE, NOT_LICENSED, MAINTENANCE], default: ALL}}
+      responses:
+        "200": {description: Ready-to-render partner module groups, KPI model and enriched module rows}
+        "403": {description: Catalog read permission required}
+        "502": {description: Partner module source unavailable and no stale snapshot exists}
   /api/v1/central/modules:
     get:
       tags: [Modules]
@@ -1012,10 +1028,15 @@ paths:
       tags: [Billing]
       summary: Central-10 Finance presentation read model
       description: >
-        Aggregates the billing profile, ledger overview, invoices, partner labels and
-        finance KPIs in Go for one-screen Flutter rendering.
+        Aggregates the billing profile, ledger overview, invoices, partner labels, workflow
+        KPIs and the selected paid-revenue series in Go for one-screen Flutter rendering.
+      parameters:
+        - {name: invoice_status, in: query, schema: {type: string, enum: [ALL, DRAFT, APPROVED, SENT, PAID, CANCELLED], default: ALL}}
+        - {name: revenue_period, in: query, schema: {type: string, enum: [WEEKLY, MONTHLY], default: MONTHLY}}
+        - {name: revenue_plan, in: query, schema: {type: string, enum: [ALL, STARTER, BUSINESS, FLEX], default: ALL}}
+        - {name: currency, in: query, schema: {type: string}, description: Optional currency to select for the revenue series}
       responses:
-        "200": {description: Complete or explicitly partial Finance read model}
+        "200": {description: Complete or explicitly partial Finance read model with ready-to-render KPI and chart models}
         "502": {description: Core Finance sources unavailable and no stale snapshot exists}
   /api/v1/central/impact:
     get:
