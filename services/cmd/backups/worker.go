@@ -25,6 +25,13 @@ func (a *app) worker(index int) {
 		}
 		cancel()
 
+		ctx,cancel=context.WithTimeout(context.Background(),60*time.Minute)
+		if job,ok:=a.claimRestoreJob(ctx);ok{
+			worked=true
+			a.processProductionRestore(ctx,job)
+		}
+		cancel()
+
 		if worked{continue}
 		select{case<-a.wake:case<-ticker.C:}
 	}
