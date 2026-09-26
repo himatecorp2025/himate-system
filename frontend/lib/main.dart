@@ -473,7 +473,9 @@ class Api {
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;
     final uri = Uri.parse(path);
-    final timeout = const Duration(seconds: 4);
+    final timeout = (path.startsWith('/api/v1/central/') || path.startsWith('/api/v1/dashboard/'))
+        ? const Duration(milliseconds: 950)
+        : const Duration(seconds: 4);
     if (method == 'POST') {
       response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(timeout);
     } else if (method == 'PUT') {
@@ -598,56 +600,31 @@ class _HimateAppState extends State<HimateApp> {
 
   void _warmControlPlane() {
     if (user == null) return;
-    final paths = <String>[];
-    if (_can('dashboard.read')) {
-      paths.add('/api/v1/dashboard/summary');
+    final path = Uri.base.path;
+    String? target;
+    if (path == '/app' || path == '/app/') {
+      if (_can('dashboard.read')) target = '/api/v1/dashboard/summary';
+    } else if (path == '/app/partners') {
+      if (_can('partners.read')) target = '/api/v1/central/partners?limit=24&offset=0';
+    } else if (path.startsWith('/app/partners/')) {
+      if (_can('partners.read')) {
+        final id = path.substring('/app/partners/'.length).split('/').first;
+        if (id.isNotEmpty) target = '/api/v1/central/partners/$id';
+      }
+    } else if (path == '/app/modules') {
+      if (_can('catalog.read')) target = '/api/v1/central/modules';
+    } else if (path == '/app/packages') {
+      if (_can('billing.read')) target = '/api/v1/central/packages';
+    } else if (path == '/app/finance') {
+      if (_can('billing.read')) target = '/api/v1/central/finance';
+    } else if (path == '/app/impact') {
+      if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
+        target = '/api/v1/central/impact';
+      }
     }
-    if (_can('partners.read')) {
-      paths.add('/api/v1/partner-categories');
-      paths.add(Uri(path: '/api/v1/partners', queryParameters: const {
-        'limit': '24',
-        'offset': '0',
-        'core_only': 'true',
-        'include_stats': 'false',
-      }).toString());
+    if (target != null) {
+      api.prefetch([target], maxAge: const Duration(seconds: 5));
     }
-    if (_can('billing.read') || _can('catalog.read')) {
-      paths.add('/api/v1/modules');
-      paths.add('/api/v1/module-groups');
-    }
-    if (_can('billing.read')) {
-      paths.add('/api/v1/billing/profile');
-      paths.add('/api/v1/billing/plans');
-      paths.add('/api/v1/billing/packages/analytics');
-      paths.add('/api/v1/billing/finance/overview');
-      paths.add('/api/v1/billing/invoices');
-    }
-    if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
-      paths.add('/api/v1/impact/definitions');
-      paths.add('/api/v1/impact/summary');
-      paths.add(Uri(path: '/api/v1/evidence', queryParameters: const {'limit': '12', 'offset': '0'}).toString());
-      paths.add('/api/v1/reports');
-    }
-    if (_can('cms.read')) {
-      paths.add('/api/v1/cms/pages');
-      paths.add('/api/v1/cms/media');
-    }
-    if (_can('contact.read')) {
-      paths.add(Uri(path: '/api/v1/contact/inquiries', queryParameters: const {'limit': '25', 'offset': '0'}).toString());
-    }
-    if (_can('health.read') || _can('provisioning.read') || _can('environments.read')) {
-      if (_can('health.read')) paths.add('/api/v1/system-health/snapshot');
-      if (_can('provisioning.read')) paths.add('/api/v1/provisioning/jobs');
-      if (_can('environments.read')) paths.add('/api/v1/environments');
-    }
-    if (_can('administration.read') || _can('audit.read')) {
-      paths.add(Uri(path: '/api/v1/audit/events', queryParameters: const {'limit': '50', 'offset': '0'}).toString());
-    }
-    if (_can('administration.read')) {
-      paths.add('/api/v1/admin/roles');
-      paths.add('/api/v1/admin/users');
-    }
-    api.prefetch(paths);
   }
 
   Future<void> _loadPublishedBrandAssets() async {
@@ -1782,6 +1759,7 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   late int selected;
   bool collapsed = false;
+  final Map<int, Widget> _pageCache = <int, Widget>{};
 
   @override
   void initState() {
@@ -1910,12 +1888,15 @@ class _ShellState extends State<Shell> {
 
   Widget pageStack() {
     final visible = visibleNavIndexes().toSet();
+    Widget cachedPage(int index) => _pageCache.putIfAbsent(index, () => _pageForIndex(index));
     return IndexedStack(
       index: selected,
       sizing: StackFit.expand,
       children: [
         for (var index = 0; index < navCount; index++)
-          visible.contains(index) ? _pageForIndex(index) : const SizedBox.shrink(),
+          visible.contains(index) && (index == selected || _pageCache.containsKey(index))
+              ? cachedPage(index)
+              : const SizedBox.shrink(),
       ],
     );
   }
@@ -9446,7 +9427,7 @@ class _NewPartnerCardState extends State<NewPartnerCard> {
             duration: const Duration(milliseconds: 180),
             constraints: const BoxConstraints(minHeight: 224),
             decoration: BoxDecoration(
-              color: hover ? brandGold.withOpacity(.055) : brandWhite,
+              color: hover ? brandGold.withOpacity(.08) : brandSurfaceRaised,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: brandGold.withOpacity(hover ? .75 : .35), width: 1.1),
             ),
