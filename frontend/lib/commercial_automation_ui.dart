@@ -88,7 +88,7 @@ extension Start223CommercialAutomationUI on _PartnerWorkspaceState {
           'agreement_reference': reference.text.trim(),
           'note': note.text.trim(),
         });
-        await _loadSupplementary();
+        await load();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: LText('Commercial agreement updated.'), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
@@ -242,7 +242,7 @@ extension Start223CommercialAutomationUI on _PartnerWorkspaceState {
             'reconciliation': '/connector/v1/reconcile',
           },
         });
-        await _loadSupplementary();
+        await load();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: LText('Partner Website Adapter updated.'), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
