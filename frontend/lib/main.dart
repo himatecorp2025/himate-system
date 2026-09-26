@@ -3980,7 +3980,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<String> activeModuleKeys = <String>[];
   List<Map<String, dynamic>> documents = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> subscriptions = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> provisioningJobs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
@@ -4083,7 +4082,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             : <String>[];
         documents = items(<String, dynamic>{'items': model['documents']});
         invoices = items(<String, dynamic>{'items': model['invoices']});
-        subscriptions = items(<String, dynamic>{'items': model['subscriptions']});
         environments = items(<String, dynamic>{'items': model['environments']});
         provisioningJobs = items(<String, dynamic>{'items': model['provisioning_jobs']});
         impactSummary = items(<String, dynamic>{'items': model['impact_summary']});
@@ -5143,19 +5141,14 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     }
   }
 
-  Map<String, dynamic>? subscriptionFor(String moduleKey) {
-    for (final item in subscriptions) {
-      if ('${item['module_key']}' == moduleKey) return item;
-    }
-    return null;
-  }
-
   Future<void> editModule(Map<String, dynamic> module) async {
     String state = '${module['status']}';
     bool visible = module['visible'] == true;
     bool included = module['included_in_base'] == true;
     final moduleKey = '${module['key']}';
-    var subscription = subscriptionFor(moduleKey);
+    Map<String, dynamic>? subscription = module['subscription'] is Map
+        ? Map<String, dynamic>.from(module['subscription'] as Map)
+        : null;
     bool cancelAtPeriodEnd = subscription?['cancel_at_period_end'] == true;
     final initialCancel = cancelAtPeriodEnd;
     final price = TextEditingController(text: number(module['partner_price']).toStringAsFixed(2));
@@ -5273,10 +5266,21 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
 
       if (state == 'ACTIVE' && cancelAtPeriodEnd != initialCancel) {
         if (subscription == null) {
+          // Billing summary is the existing synchronization boundary that creates
+          // the first 30-day subscription for a newly activated module.
           await widget.api.get('/api/v1/billing/partners/${partner['id']}/summary', force: true);
-          final refreshed = await widget.api.get('/api/v1/billing/partners/${partner['id']}/subscriptions', force: true);
-          subscriptions = items(refreshed);
-          subscription = subscriptionFor(moduleKey);
+          final refreshed = await widget.api.get(
+            Uri(
+              path: '/api/v1/central/partners/${partner['id']}/modules',
+              queryParameters: <String, String>{'q': moduleKey},
+            ).toString(),
+            force: true,
+            maxAge: Duration.zero,
+          );
+          final matches = items(<String, dynamic>{'items': refreshed['filtered_items']});
+          if (matches.isNotEmpty && matches.first['subscription'] is Map) {
+            subscription = Map<String, dynamic>.from(matches.first['subscription'] as Map);
+          }
         }
         if (subscription != null) {
           await widget.api.patch(
@@ -5511,7 +5515,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: _SectionHeader(
                           title: 'Partner Modules',
                           subtitle: 'Entitlement, visibility, base-package inclusion and partner-specific pricing.',
-                          trailing: _MiniCounter(label: '${filteredModules.length} shown'),
+                          trailing: _MiniCounter(label: '${visibleModules.length} shown'),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -5519,7 +5523,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         child: LayoutBuilder(
                           builder: (context, c) {
                             final search = TextField(
-                              onChanged: (v) => setState(() => moduleQuery = v),
+                              onChanged: updateModuleQuery,
                               decoration: InputDecoration(hintText: uiLiteral('Search modules...'), prefixIcon: Icon(Icons.search_rounded)),
                             );
                             final state = DropdownButtonFormField<String>(
@@ -5531,7 +5535,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                 DropdownMenuItem(value: 'NOT_LICENSED', child: LText('Not licensed')),
                                 DropdownMenuItem(value: 'MAINTENANCE', child: LText('Maintenance')),
                               ],
-                              onChanged: (v) => setState(() => moduleState = v ?? 'ALL'),
+                              onChanged: (v) => updateModuleState(v ?? 'ALL'),
                             );
                             if (c.maxWidth < 680) return Column(children: [search, const SizedBox(height: 10), state]);
                             return Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: state)]);
@@ -5539,36 +5543,46 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      for (final entry in groupedFilteredModules.entries) ...[
-                        _SectionHeader(
-                          title: entry.key,
-                          subtitle: entry.value.isEmpty
-                              ? 'No modules in this category for this partner.'
-                              : '${entry.value.length} module${entry.value.length == 1 ? '' : 's'} in this partner category.',
-                          trailing: _MiniCounter(label: '${entry.value.length} MODULES'),
-                        ),
-                        const SizedBox(height: 10),
-                        if (entry.value.isEmpty)
-                          const _MessageCard(
-                            icon: Icons.inbox_outlined,
-                            title: 'No module entitlement',
-                            message: 'There is no module to load in this category. The page will not retry an empty dataset.',
-                          )
-                        else
-                          LayoutBuilder(
-                            builder: (context, c) {
-                              final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                              return Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  for (final m in entry.value)
-                                    SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
-                                ],
-                              );
-                            },
-                          ),
-                        const SizedBox(height: 18),
+                      for (final group in moduleGroups) ...[
+                        Builder(builder: (context) {
+                          final groupItems = items(<String, dynamic>{'items': group['items']});
+                          final count = (group['count'] as num?)?.toInt() ?? groupItems.length;
+                          final label = '${group['label'] ?? group['key'] ?? ''}';
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _SectionHeader(
+                                title: label,
+                                subtitle: count == 0
+                                    ? 'No modules in this category for this partner.'
+                                    : '$count module${count == 1 ? '' : 's'} in this partner category.',
+                                trailing: _MiniCounter(label: '$count MODULES'),
+                              ),
+                              const SizedBox(height: 10),
+                              if (groupItems.isEmpty)
+                                const _MessageCard(
+                                  icon: Icons.inbox_outlined,
+                                  title: 'No module entitlement',
+                                  message: 'There is no module to load in this category. The page will not retry an empty dataset.',
+                                )
+                              else
+                                LayoutBuilder(
+                                  builder: (context, c) {
+                                    final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1020 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
+                                    return Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
+                                      children: [
+                                        for (final m in groupItems)
+                                          SizedBox(width: width, child: PartnerModuleCard(module: m, onTap: () => editModule(m))),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              const SizedBox(height: 18),
+                            ],
+                          );
+                        }),
                       ],
                       const SizedBox(height: 26),
                       KeyedSubtree(
