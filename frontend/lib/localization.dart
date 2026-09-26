@@ -216,6 +216,8 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Partner management, relationships and collaboration at a glance.': 'Partnereink kezelése, kapcsolatok és együttműködések áttekintése.',
+    'Reference partners': 'Referencia partnerek',
     'Administration Center': 'Adminisztrációs központ',
     'HIMATE Administration Center': 'HIMATE adminisztrációs központ',
     'Partner Administration Center': 'Partner adminisztrációs központ',
