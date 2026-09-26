@@ -2695,109 +2695,454 @@ class DashboardPage extends StatelessWidget {
     return ValueListenableBuilder<int>(
       valueListenable: api.cacheSignal(path),
       builder: (context, _, __) => FutureBuilder<Map<String, dynamic>>(
-      future: api.get(path),
-      initialData: api.peek(path),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+        future: api.get(path),
+        initialData: api.peek(path),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+            return Content(
+              title: uiLiteral('Dashboard'),
+              subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
+              child: ResponsiveKpiGrid(children: [
+                Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: brandSteel),
+                Kpi(label: uiLiteral('Active Modules'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.inventory_2_outlined, accent: brandGold),
+                Kpi(label: uiLiteral('Settled Revenue'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.paid_outlined, accent: brandSuccess),
+                Kpi(label: uiLiteral('Impact'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.eco_outlined, accent: brandSteel),
+              ]),
+            );
+          }
+          if (snapshot.hasError && snapshot.data == null) {
+            return Content(
+              title: uiLiteral('Dashboard'),
+              subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
+              child: _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Dashboard data is temporarily unavailable'), message: '${snapshot.error}'),
+            );
+          }
+
+          final d = snapshot.data ?? <String, dynamic>{};
+          final p = Map<String, dynamic>.from(d['partners'] ?? <String, dynamic>{});
+          final m = Map<String, dynamic>.from(d['modules'] ?? <String, dynamic>{});
+          final billing = Map<String, dynamic>.from(d['billing'] ?? <String, dynamic>{});
+          final impact = Map<String, dynamic>.from(d['impact'] ?? <String, dynamic>{});
+          final activity = Map<String, dynamic>.from(d['activity'] ?? <String, dynamic>{});
+          final geo = Map<String, dynamic>.from(d['partner_geo'] ?? <String, dynamic>{});
+
+          final partnersAvailable = p['available'] != false;
+          final modulesAvailable = m['available'] != false;
+          final billingAvailable = billing['available'] != false;
+          final impactAvailable = impact['available'] != false;
+          final billingAuthorized = billing['authorized'] != false;
+          final impactAuthorized = impact['authorized'] != false;
+          final impactHasData = impact['has_data'] == true;
+          final revenueRows = items(billing);
+
+          String revenueValue = !billingAvailable ? '—' : billingAuthorized ? '0' : uiLiteral('Restricted');
+          String revenueNote = !billingAvailable
+              ? uiLiteral('Loading authoritative value')
+              : billingAuthorized
+                  ? uiLiteral('No paid revenue recorded this year')
+                  : uiLiteral('Billing permission required');
+          if (billingAuthorized && revenueRows.length == 1) {
+            final row = revenueRows.first;
+            revenueValue = _dashboardMoney('${row['currency'] ?? ''}', row['revenue_ytd']);
+            revenueNote = uiLiteral('Paid activation + recurring revenue');
+          } else if (billingAuthorized && revenueRows.length > 1) {
+            revenueValue = uiLiteral('Mixed');
+            revenueNote = revenueRows.map((row) => _dashboardMoney('${row['currency'] ?? ''}', row['revenue_ytd'])).join(' · ');
+          }
+
+          final people = impact['people_reached_ytd'];
+          final peopleValue = !impactAvailable
+              ? '—'
+              : impactAuthorized
+                  ? _dashboardCompact(people ?? 0)
+                  : uiLiteral('Restricted');
+          final peopleNote = !impactAvailable
+              ? uiLiteral('Loading authoritative value')
+              : impactAuthorized
+                  ? uiLiteral('Verified people reached · YTD')
+                  : uiLiteral('Impact permission required');
+
+          final monthlyTrend = items(<String, dynamic>{'items': impact['trend']});
+          final weeklyTrend = items(<String, dynamic>{'items': impact['weekly_trend']});
+          final activities = items(activity);
+          final geoStates = items(<String, dynamic>{'items': geo['states']});
+          final geoPartners = items(<String, dynamic>{'items': geo['partners']});
+
           return Content(
-            eyebrow: uiLiteral('Loading live control-plane data'),
-            title: uiLiteral('Welcome to HIMATE System'),
-            subtitle: uiLiteral('The Go read model is assembling the first usable dashboard payload.'),
-            child: ResponsiveKpiGrid(children: [
-              Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: const Color(0xFF0B5DA8), onTap: canNavigate(1) ? () => onNavigate(1) : null),
-              Kpi(label: uiLiteral('Active Programs'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.description_outlined, accent: brandNavy, onTap: canNavigate(2) ? () => onNavigate(2) : null),
-              Kpi(label: uiLiteral('Revenue (YTD)'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.bar_chart_rounded, accent: brandGold, onTap: canNavigate(4) ? () => onNavigate(4) : null),
-              Kpi(label: uiLiteral('People Reached'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_rounded, accent: brandNavy, onTap: canNavigate(5) ? () => onNavigate(5) : null),
-            ]),
+            title: uiLiteral('Dashboard'),
+            subtitle: uiLiteral('Partners, modules and impact in one executive overview.'),
+            actions: [
+              OutlinedButton.icon(
+                onPressed: () => openPdfExportIfAvailable(context, api, '/api/v1/partners/export.pdf'),
+                icon: const Icon(Icons.download_outlined),
+                label: LText(uiLiteral('PDF export')),
+              ),
+            ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ResponsiveKpiGrid(children: [
+                  Kpi(
+                    label: uiLiteral('Active Partners'),
+                    value: partnersAvailable ? '${p['live'] ?? 0}' : '—',
+                    note: partnersAvailable ? uiLiteral('${p['total'] ?? 0} partner records') : uiLiteral('Loading authoritative value'),
+                    icon: Icons.groups_2_outlined,
+                    accent: brandSteel,
+                    onTap: canNavigate(1) ? () => onNavigate(1) : null,
+                  ),
+                  Kpi(
+                    label: uiLiteral('Active Modules'),
+                    value: modulesAvailable ? '${m['catalog_total'] ?? 0}' : '—',
+                    note: modulesAvailable ? uiLiteral('Available module portfolio') : uiLiteral('Loading authoritative value'),
+                    icon: Icons.inventory_2_outlined,
+                    accent: brandGold,
+                    onTap: canNavigate(2) ? () => onNavigate(2) : null,
+                  ),
+                  Kpi(
+                    label: uiLiteral('Settled Revenue'),
+                    value: revenueValue,
+                    note: revenueNote,
+                    icon: Icons.paid_outlined,
+                    accent: brandSuccess,
+                    onTap: canNavigate(4) ? () => onNavigate(4) : null,
+                  ),
+                  Kpi(
+                    label: uiLiteral('Impact'),
+                    value: peopleValue,
+                    note: peopleNote,
+                    icon: Icons.eco_outlined,
+                    accent: brandSteel,
+                    onTap: canNavigate(5) ? () => onNavigate(5) : null,
+                  ),
+                ]),
+                const SizedBox(height: 18),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final trend = _ImpactPanel(
+                      monthlyTrend: monthlyTrend,
+                      weeklyTrend: weeklyTrend,
+                      year: year,
+                      authorized: impactAuthorized,
+                      hasData: impactHasData,
+                      title: uiLiteral('12 month trend'),
+                      subtitle: uiLiteral('Verified impact trend from the authoritative read model'),
+                    );
+                    final map = _DashboardUsMapCard(
+                      states: geoStates,
+                      activeStates: (geo['active_states'] as num?)?.toInt() ?? 0,
+                      activePartners: (geo['active_partners'] as num?)?.toInt() ?? 0,
+                      available: geo['available'] != false,
+                    );
+                    if (constraints.maxWidth < 980) {
+                      return Column(children: [trend, const SizedBox(height: 16), map]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 7, child: trend),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 5, child: map),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final activityPanel = _ActivityPanel(items: activities);
+                    final report = _DashboardPartnerReportPreview(
+                      partners: geoPartners,
+                      onOpenPartners: canNavigate(1) ? () => onNavigate(1) : null,
+                    );
+                    if (constraints.maxWidth < 980) {
+                      return Column(children: [activityPanel, const SizedBox(height: 16), report]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 5, child: activityPanel),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 7, child: report),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
           );
-        }
-        if (snapshot.hasError && snapshot.data == null) {
-          return Content(
-            title: uiLiteral('Welcome to HIMATE System'),
-            subtitle: uiLiteral('Manage partners, programs and cultural impact — all in one place.'),
-            child: _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Dashboard data is temporarily unavailable'), message: '${snapshot.error}'),
-          );
-        }
-        final d=snapshot.data??<String,dynamic>{};
-        final p=Map<String,dynamic>.from(d['partners']??<String,dynamic>{});
-        final m=Map<String,dynamic>.from(d['modules']??<String,dynamic>{});
-        final billing=Map<String,dynamic>.from(d['billing']??<String,dynamic>{});
-        final impact=Map<String,dynamic>.from(d['impact']??<String,dynamic>{});
-        final activity=Map<String,dynamic>.from(d['activity']??<String,dynamic>{});
-        final partnersAvailable=p['available']!=false;
-        final modulesAvailable=m['available']!=false;
-        final billingAvailable=billing['available']!=false;
-        final impactAvailable=impact['available']!=false;
-        final billingAuthorized=billing['authorized']!=false;
-        final impactAuthorized=impact['authorized']!=false;
-        final impactHasData=impact['has_data']==true;
-        final revenueRows=items(billing);
-        String revenueValue=!billingAvailable?'—':billingAuthorized?'0':uiLiteral('Restricted');
-        String revenueNote=!billingAvailable
-            ?uiLiteral('Loading authoritative value')
-            :billingAuthorized
-                ?uiLiteral('No paid revenue recorded this year')
-                :uiLiteral('Billing permission required');
-        if(billingAuthorized&&revenueRows.length==1){
-          final row=revenueRows.first;
-          final currency='${row['currency']??''}';
-          revenueValue=_dashboardMoney(currency,row['revenue_ytd']);
-          revenueNote=uiLiteral('Paid activation + recurring revenue');
-        }else if(billingAuthorized&&revenueRows.length>1){
-          revenueValue=uiLiteral('Mixed');
-          revenueNote=revenueRows
-              .map((row)=>_dashboardMoney('${row['currency']??''}',row['revenue_ytd']))
-              .join(' · ');
-        }
-        final people=impact['people_reached_ytd'];
-        final peopleValue=!impactAvailable
-            ?'—'
-            :impactAuthorized
-                ?_dashboardCompact(people??0)
-                :uiLiteral('Restricted');
-        final peopleNote=!impactAvailable
-            ?uiLiteral('Loading authoritative value')
-            :impactAuthorized
-                ?uiLiteral('Verified attendance metric · YTD')
-                :uiLiteral('Impact permission required');
-        final hour=DateTime.now().hour;
-        final greeting=hour<12?uiLiteral('Good morning,'):hour<18?uiLiteral('Good afternoon,'):uiLiteral('Good evening,');
-        return Content(
-          eyebrow:greeting,
-          title:uiLiteral('Welcome to HIMATE System'),
-          subtitle:uiLiteral('Manage partners, programs, and cultural impact — all in one place.'),
-          child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            LayoutBuilder(builder:(context,c){
-              final gap=14.0;
-              final cols=c.maxWidth<620?2:4;
-              final w=(c.maxWidth-gap*(cols-1))/cols;
-              return Wrap(spacing:gap,runSpacing:gap,children:[
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Partners'),value:partnersAvailable?'${p['live']??0}':'—',note:partnersAvailable?uiLiteral('${p['total']??0} partner records'):uiLiteral('Loading authoritative value'),icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8),onTap:canNavigate(1)?()=>onNavigate(1):null)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Programs'),value:modulesAvailable?'${m['catalog_total']??0}':'—',note:modulesAvailable?uiLiteral('Available program modules'):uiLiteral('Loading authoritative value'),icon:Icons.description_outlined,accent:brandNavy,onTap:canNavigate(2)?()=>onNavigate(2):null)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Revenue (YTD)'),value:revenueValue,note:revenueNote,icon:Icons.bar_chart_rounded,accent:brandGold,onTap:canNavigate(4)?()=>onNavigate(4):null)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('People Reached'),value:peopleValue,note:peopleNote,icon:Icons.groups_rounded,accent:brandNavy,onTap:canNavigate(5)?()=>onNavigate(5):null)),
-              ]);
-            }),
-            const SizedBox(height:18),
-            LayoutBuilder(builder:(context,c){
-              final monthlyTrend=items(<String,dynamic>{'items':impact['trend']});
-              final weeklyTrend=items(<String,dynamic>{'items':impact['weekly_trend']});
-              final activities=items(activity);
-              if(c.maxWidth<900)return Column(children:[
-                _ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized,hasData:impactHasData),
-                const SizedBox(height:16),
-                _ActivityPanel(items:activities),
-              ]);
-              return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Expanded(flex:7,child:_ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized,hasData:impactHasData)),
-                const SizedBox(width:16),
-                Expanded(flex:4,child:_ActivityPanel(items:activities)),
-              ]);
-            }),
-          ]),
-        );
-      },
-    ),
+        },
+      ),
+    );
+  }
+}
+
+class _DashboardUsMapCard extends StatelessWidget {
+  const _DashboardUsMapCard({
+    required this.states,
+    required this.activeStates,
+    required this.activePartners,
+    required this.available,
+  });
+  final List<Map<String, dynamic>> states;
+  final int activeStates;
+  final int activePartners;
+  final bool available;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 330,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(color: brandSteel.withOpacity(.08), borderRadius: BorderRadius.circular(11)),
+                    child: const Icon(Icons.location_on_outlined, color: brandSteel, size: 21),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        LText(uiLiteral('Partners in the United States'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                        LText(uiLiteral('Active partner distribution by state'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: !available
+                    ? Center(child: LText(uiLiteral('Partner geography is temporarily unavailable'), style: const TextStyle(color: brandTextSoft)))
+                    : Row(
+                        children: [
+                          Expanded(child: _DashboardUsMap(states: states)),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 92,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _DashboardMapStat(value: '$activeStates', label: uiLiteral('active states'), accent: brandGold),
+                                const SizedBox(height: 10),
+                                _DashboardMapStat(value: '$activePartners', label: uiLiteral('US partners'), accent: brandSteel),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Container(width: 9, height: 9, decoration: BoxDecoration(color: brandNavy, borderRadius: BorderRadius.circular(3))),
+                  const SizedBox(width: 6),
+                  LText(uiLiteral('Active state'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const SizedBox(width: 14),
+                  Container(width: 9, height: 9, decoration: BoxDecoration(color: const Color(0xFFD8DEE7), borderRadius: BorderRadius.circular(3))),
+                  const SizedBox(width: 6),
+                  LText(uiLiteral('Other state'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardMapStat extends StatelessWidget {
+  const _DashboardMapStat({required this.value, required this.label, required this.accent});
+  final String value, label;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            LText(value, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 26, fontWeight: FontWeight.w700, height: 1)),
+            const SizedBox(height: 4),
+            LText(label, textAlign: TextAlign.center, style: const TextStyle(color: brandTextSoft, fontSize: 9)),
+          ],
+        ),
+      );
+}
+
+class _DashboardUsMap extends StatelessWidget {
+  const _DashboardUsMap({required this.states});
+  final List<Map<String, dynamic>> states;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _DashboardUsMapPainter(states),
+        child: const SizedBox.expand(),
+      );
+}
+
+class _DashboardUsMapPainter extends CustomPainter {
+  _DashboardUsMapPainter(this.states);
+  final List<Map<String, dynamic>> states;
+
+  static const positions = <String, Offset>{
+    'Washington': Offset(.11,.16),'Oregon':Offset(.09,.28),'California':Offset(.10,.52),'Nevada':Offset(.18,.43),
+    'Idaho':Offset(.20,.25),'Montana':Offset(.29,.18),'Wyoming':Offset(.31,.32),'Utah':Offset(.25,.43),
+    'Arizona':Offset(.24,.59),'New Mexico':Offset(.34,.58),'Colorado':Offset(.37,.43),'North Dakota':Offset(.43,.20),
+    'South Dakota':Offset(.44,.31),'Nebraska':Offset(.46,.41),'Kansas':Offset(.47,.50),'Oklahoma':Offset(.49,.60),
+    'Texas':Offset(.46,.74),'Minnesota':Offset(.54,.23),'Iowa':Offset(.54,.39),'Missouri':Offset(.56,.50),
+    'Arkansas':Offset(.57,.61),'Louisiana':Offset(.59,.72),'Wisconsin':Offset(.62,.29),'Illinois':Offset(.63,.44),
+    'Michigan':Offset(.69,.29),'Indiana':Offset(.68,.45),'Ohio':Offset(.73,.43),'Kentucky':Offset(.70,.53),
+    'Tennessee':Offset(.69,.60),'Mississippi':Offset(.63,.69),'Alabama':Offset(.68,.70),'Georgia':Offset(.73,.68),
+    'Florida':Offset(.79,.82),'South Carolina':Offset(.77,.62),'North Carolina':Offset(.79,.56),'Virginia':Offset(.81,.49),
+    'West Virginia':Offset(.76,.49),'Pennsylvania':Offset(.81,.39),'New York':Offset(.86,.30),'Vermont':Offset(.88,.20),
+    'New Hampshire':Offset(.91,.21),'Maine':Offset(.95,.16),'Massachusetts':Offset(.92,.28),'Connecticut':Offset(.90,.32),
+    'Rhode Island':Offset(.93,.32),'New Jersey':Offset(.86,.39),'Delaware':Offset(.86,.45),'Maryland':Offset(.83,.46),
+    'District of Columbia':Offset(.82,.49),
+  };
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final mapRect = Rect.fromLTWH(5, 7, size.width - 10, size.height - 14);
+    final outline = Path()
+      ..moveTo(mapRect.left + mapRect.width*.04, mapRect.top + mapRect.height*.22)
+      ..lineTo(mapRect.left + mapRect.width*.18, mapRect.top + mapRect.height*.10)
+      ..lineTo(mapRect.left + mapRect.width*.34, mapRect.top + mapRect.height*.13)
+      ..lineTo(mapRect.left + mapRect.width*.48, mapRect.top + mapRect.height*.18)
+      ..lineTo(mapRect.left + mapRect.width*.61, mapRect.top + mapRect.height*.15)
+      ..lineTo(mapRect.left + mapRect.width*.75, mapRect.top + mapRect.height*.22)
+      ..lineTo(mapRect.left + mapRect.width*.88, mapRect.top + mapRect.height*.16)
+      ..lineTo(mapRect.left + mapRect.width*.96, mapRect.top + mapRect.height*.24)
+      ..lineTo(mapRect.left + mapRect.width*.90, mapRect.top + mapRect.height*.38)
+      ..lineTo(mapRect.left + mapRect.width*.84, mapRect.top + mapRect.height*.48)
+      ..lineTo(mapRect.left + mapRect.width*.82, mapRect.top + mapRect.height*.61)
+      ..lineTo(mapRect.left + mapRect.width*.88, mapRect.top + mapRect.height*.82)
+      ..lineTo(mapRect.left + mapRect.width*.80, mapRect.top + mapRect.height*.89)
+      ..lineTo(mapRect.left + mapRect.width*.72, mapRect.top + mapRect.height*.73)
+      ..lineTo(mapRect.left + mapRect.width*.63, mapRect.top + mapRect.height*.72)
+      ..lineTo(mapRect.left + mapRect.width*.53, mapRect.top + mapRect.height*.85)
+      ..lineTo(mapRect.left + mapRect.width*.43, mapRect.top + mapRect.height*.79)
+      ..lineTo(mapRect.left + mapRect.width*.34, mapRect.top + mapRect.height*.72)
+      ..lineTo(mapRect.left + mapRect.width*.23, mapRect.top + mapRect.height*.69)
+      ..lineTo(mapRect.left + mapRect.width*.16, mapRect.top + mapRect.height*.58)
+      ..lineTo(mapRect.left + mapRect.width*.08, mapRect.top + mapRect.height*.48)
+      ..close();
+    canvas.drawPath(outline, Paint()..color = const Color(0xFFE0E5EC));
+    canvas.drawPath(outline, Paint()..color = const Color(0xFFCAD2DD)..style = PaintingStyle.stroke..strokeWidth = 1);
+
+    final counts = <String,int>{};
+    for (final row in states) {
+      counts['${row['state'] ?? ''}'] = (row['count'] as num?)?.toInt() ?? 0;
+    }
+    final ranked = counts.entries.toList()..sort((a,b)=>b.value.compareTo(a.value));
+    final labelled = ranked.take(6).map((e)=>e.key).toSet();
+    for (final entry in counts.entries) {
+      final pos = positions[entry.key];
+      if (pos == null || entry.value <= 0) continue;
+      final point = Offset(mapRect.left + mapRect.width*pos.dx, mapRect.top + mapRect.height*pos.dy);
+      canvas.drawCircle(point, labelled.contains(entry.key) ? 5.2 : 4.1, Paint()..color = brandGold);
+      canvas.drawCircle(point, labelled.contains(entry.key) ? 3.0 : 2.2, Paint()..color = brandNavy);
+      if (labelled.contains(entry.key)) {
+        final tp = TextPainter(
+          text: TextSpan(text:'${entry.value}',style:GoogleFonts.inter(fontSize:8.5,fontWeight:FontWeight.w700,color:brandNavy)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset(point.dx + 6, point.dy - tp.height/2));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashboardUsMapPainter oldDelegate) => oldDelegate.states.toString() != states.toString();
+}
+
+class _DashboardPartnerReportPreview extends StatelessWidget {
+  const _DashboardPartnerReportPreview({required this.partners, this.onOpenPartners});
+  final List<Map<String, dynamic>> partners;
+  final VoidCallback? onOpenPartners;
+
+  String _shortDate(dynamic raw) {
+    final parsed = DateTime.tryParse('${raw ?? ''}');
+    if (parsed == null) return '—';
+    return '${parsed.year}.${parsed.month.toString().padLeft(2,'0')}.${parsed.day.toString().padLeft(2,'0')}.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = partners.take(5).toList();
+    return SizedBox(
+      height: 285,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.description_outlined, color: brandSteel, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(child: LText(uiLiteral('Partner reporting'), style: GoogleFonts.cormorantGaramond(color: brandNavy,fontSize:19,fontWeight:FontWeight.w700))),
+                  if (onOpenPartners != null)
+                    TextButton(onPressed: onOpenPartners, child: LText(uiLiteral('All partners'))),
+                ],
+              ),
+              LText(uiLiteral('Join date, state, active modules and lifecycle status from the Central read model.'), style: const TextStyle(color:brandTextSoft,fontSize:9.5)),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(color: const Color(0xFFF3F5F8), borderRadius: BorderRadius.circular(7)),
+                child: const Row(children:[
+                  Expanded(flex:3,child:LText('Partner',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                  Expanded(flex:2,child:LText('Joined',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                  Expanded(flex:2,child:LText('State',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                  Expanded(child:LText('Modules',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                  Expanded(child:LText('Status',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                ]),
+              ),
+              if (rows.isEmpty)
+                Expanded(child: Center(child:LText(uiLiteral('No US partner records yet.'),style:const TextStyle(color:brandTextSoft,fontSize:10.5))))
+              else
+                Expanded(
+                  child: ListView.separated(
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context,index) {
+                      final row=rows[index];
+                      final lifecycle='${row['lifecycle'] ?? '—'}';
+                      final live=lifecycle=='LIVE';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal:10,vertical:7),
+                        child: Row(children:[
+                          Expanded(flex:3,child:LText('${row['name'] ?? row['id'] ?? '—'}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:brandNavy,fontSize:9.5,fontWeight:FontWeight.w600))),
+                          Expanded(flex:2,child:LText(_shortDate(row['joined_at']),style:const TextStyle(color:brandTextSoft,fontSize:9))),
+                          Expanded(flex:2,child:LText('${row['state'] ?? '—'}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:brandTextSoft,fontSize:9))),
+                          Expanded(child:LText('${row['active_modules'] ?? 0}',style:const TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                          Expanded(child:Container(
+                            padding:const EdgeInsets.symmetric(horizontal:6,vertical:4),
+                            decoration:BoxDecoration(color:(live?brandSuccess:brandWarning).withOpacity(.10),borderRadius:BorderRadius.circular(99)),
+                            child:LText(live?uiLiteral('Active'):lifecycle,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(color:live?brandSuccess:brandWarning,fontSize:8,fontWeight:FontWeight.w700)),
+                          )),
+                        ]),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2809,12 +3154,15 @@ class _ImpactPanel extends StatefulWidget {
     required this.year,
     required this.authorized,
     required this.hasData,
+    this.title = 'Program Impact',
+    this.subtitle = '',
   });
   final List<Map<String,dynamic>> monthlyTrend;
   final List<Map<String,dynamic>> weeklyTrend;
   final int year;
   final bool authorized;
   final bool hasData;
+  final String title, subtitle;
 
   @override
   State<_ImpactPanel> createState()=>_ImpactPanelState();
@@ -2832,7 +3180,16 @@ class _ImpactPanelState extends State<_ImpactPanel> {
         padding:const EdgeInsets.fromLTRB(22,20,22,16),
         child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           Row(children:[
-            Expanded(child:LText(uiLiteral('Program Impact'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LText(widget.title, style: GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20)),
+                  if (widget.subtitle.isNotEmpty)
+                    LText(widget.subtitle, style: const TextStyle(color:brandTextSoft,fontSize:9.5)),
+                ],
+              ),
+            ),
             if(widget.authorized)
               Container(
                 height:34,
