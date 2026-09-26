@@ -91,9 +91,9 @@ legacy_prefetch = all(token in frontend for token in [
 ])
 backend_first_prefetch = all(token in frontend for token in [
     "final Map<int, Widget> _pageCache",
-    "target = '/api/v1/central/packages'",
-    "target = '/api/v1/central/finance'",
-    "target = '/api/v1/central/impact'",
+    "target = centralPackagesInitialPath()",
+    "target = centralFinanceInitialPath()",
+    "target = centralImpactInitialPath()",
 ])
 check(legacy_prefetch or backend_first_prefetch,
       "Central-9/10 performance contract missing")

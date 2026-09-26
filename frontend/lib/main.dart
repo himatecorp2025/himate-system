@@ -249,6 +249,43 @@ class _ApiCacheEntry {
   final DateTime expiresAt;
 }
 
+String centralDashboardInitialPath() => Uri(
+      path: '/api/v1/dashboard/summary',
+      queryParameters: <String, String>{'year': '${DateTime.now().toUtc().year}'},
+    ).toString();
+
+String centralPartnersInitialPath() => Uri(
+      path: '/api/v1/central/partners',
+      queryParameters: const <String, String>{'limit': '24', 'offset': '0'},
+    ).toString();
+
+String centralModulesInitialPath() => Uri(
+      path: '/api/v1/central/modules',
+      queryParameters: const <String, String>{
+        'perspective': 'PARTNER',
+        'commercial_limit': '120',
+      },
+    ).toString();
+
+String centralPackagesInitialPath() => '/api/v1/central/packages';
+
+String centralFinanceInitialPath() => Uri(
+      path: '/api/v1/central/finance',
+      queryParameters: const <String, String>{
+        'invoice_status': 'ALL',
+        'revenue_period': 'MONTHLY',
+        'revenue_plan': 'ALL',
+      },
+    ).toString();
+
+String centralImpactInitialPath() => Uri(
+      path: '/api/v1/central/impact',
+      queryParameters: const <String, String>{
+        'evidence_limit': '12',
+        'evidence_offset': '0',
+      },
+    ).toString();
+
 class Api {
   Api() : client = BrowserClient()..withCredentials = true;
   final BrowserClient client;
@@ -270,6 +307,7 @@ class Api {
     String path, {
     Duration maxAge = const Duration(seconds: 30),
     bool force = false,
+    void Function(Map<String, dynamic> freshData)? onRefresh,
   }) {
     if (force) {
       return request('GET', path).then((data) {
@@ -280,8 +318,14 @@ class Api {
 
     final cached = _cache[path];
     if (cached != null) {
-      if (DateTime.now().isAfter(cached.expiresAt) && !_inflight.containsKey(path)) {
-        unawaited(_fetchGet(path, maxAge).catchError((_) => cached.data));
+      if (DateTime.now().isAfter(cached.expiresAt)) {
+        final refresh = _inflight[path] ?? _fetchGet(path, maxAge);
+        unawaited(
+          refresh.then((freshData) {
+            if (onRefresh != null) onRefresh(freshData);
+            return freshData;
+          }).catchError((_) => cached.data),
+        );
       }
       return Future<Map<String, dynamic>>.value(cached.data);
     }
@@ -430,7 +474,7 @@ class Api {
     late http.Response response;
     final uri = Uri.parse(path);
     final timeout = (path.startsWith('/api/v1/central/') || path.startsWith('/api/v1/dashboard/'))
-        ? const Duration(milliseconds: 950)
+        ? const Duration(milliseconds: 800)
         : const Duration(seconds: 4);
     if (method == 'POST') {
       response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(timeout);
@@ -559,23 +603,23 @@ class _HimateAppState extends State<HimateApp> {
     final path = Uri.base.path;
     String? target;
     if (path == '/app' || path == '/app/') {
-      if (_can('dashboard.read')) target = '/api/v1/dashboard/summary';
+      if (_can('dashboard.read')) target = centralDashboardInitialPath();
     } else if (path == '/app/partners') {
-      if (_can('partners.read')) target = '/api/v1/central/partners?limit=24&offset=0';
+      if (_can('partners.read')) target = centralPartnersInitialPath();
     } else if (path.startsWith('/app/partners/')) {
       if (_can('partners.read')) {
         final id = path.substring('/app/partners/'.length).split('/').first;
         if (id.isNotEmpty) target = '/api/v1/central/partners/$id';
       }
     } else if (path == '/app/modules') {
-      if (_can('catalog.read')) target = '/api/v1/central/modules';
+      if (_can('catalog.read')) target = centralModulesInitialPath();
     } else if (path == '/app/packages') {
-      if (_can('billing.read')) target = '/api/v1/central/packages';
+      if (_can('billing.read')) target = centralPackagesInitialPath();
     } else if (path == '/app/finance') {
-      if (_can('billing.read')) target = '/api/v1/central/finance';
+      if (_can('billing.read')) target = centralFinanceInitialPath();
     } else if (path == '/app/impact') {
       if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
-        target = '/api/v1/central/impact';
+        target = centralImpactInitialPath();
       }
     }
     if (target != null) {
@@ -2473,9 +2517,15 @@ class DashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final year = DateTime.now().toUtc().year;
-    final path = Uri(path: '/api/v1/dashboard/summary', queryParameters: {'year': '$year'}).toString();
-    return FutureBuilder<Map<String, dynamic>>(
-      future: api.get(path),
+    final path = centralDashboardInitialPath();
+    return StatefulBuilder(
+      builder: (context, refresh) => FutureBuilder<Map<String, dynamic>>(
+      future: api.get(
+        path,
+        onRefresh: (_) {
+          if (context.mounted) refresh(() {});
+        },
+      ),
       initialData: api.peek(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
@@ -2565,6 +2615,7 @@ class DashboardPage extends StatelessWidget {
           ]),
         );
       },
+    ),
     );
   }
 }
@@ -2899,8 +2950,15 @@ class _PartnersPageState extends State<PartnersPage> {
     return params;
   }
 
-  Uri _centralPartnerUri() =>
-      Uri(path: '/api/v1/central/partners', queryParameters: _partnerQueryParameters());
+  Uri _centralPartnerUri() {
+    final params = _partnerQueryParameters();
+    if (params.length == 2 &&
+        params['limit'] == '$pageSize' &&
+        params['offset'] == '0') {
+      return Uri.parse(centralPartnersInitialPath());
+    }
+    return Uri(path: '/api/v1/central/partners', queryParameters: params);
+  }
 
   Uri _partnerExportUri() {
     final params = <String, String>{};
@@ -2912,9 +2970,14 @@ class _PartnersPageState extends State<PartnersPage> {
     return Uri(path: '/api/v1/partners/export.pdf', queryParameters: params.isEmpty ? null : params);
   }
 
-  Future<void> load({bool reset = false, bool loadCategories = false}) async {
+  Future<void> load({
+    bool reset = false,
+    bool loadCategories = false,
+    bool force = false,
+  }) async {
     if (reset) offset = 0;
     final generation = ++_loadGeneration;
+    final path = _centralPartnerUri().toString();
     if (mounted) {
       setState(() {
         loading = true;
@@ -2923,13 +2986,9 @@ class _PartnersPageState extends State<PartnersPage> {
         if (loadCategories) categoriesLoading = true;
       });
     }
-    try {
-      final model = await widget.api.get(
-        _centralPartnerUri().toString(),
-        force: loadCategories,
-        maxAge: const Duration(seconds: 5),
-      );
-      if (!mounted || generation != _loadGeneration) return;
+
+    void applyModel(Map<String, dynamic> model) {
+      if (!mounted || generation != _loadGeneration || path != _centralPartnerUri().toString()) return;
       final categoryRows = items(<String, dynamic>{'items': model['categories']});
       final pagination = model['pagination'] is Map
           ? Map<String, dynamic>.from(model['pagination'] as Map)
@@ -2956,12 +3015,22 @@ class _PartnersPageState extends State<PartnersPage> {
             ? 'The live category registry is temporarily unavailable. Built-in partner categories remain available.'
             : null;
       });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
+      applyModel(model);
     } catch (e) {
       if (mounted && generation == _loadGeneration) {
         setState(() {
-          error = e.toString();
           loading = false;
           categoriesLoading = false;
+          error = e.toString();
         });
       }
     }
@@ -3752,6 +3821,14 @@ class _PartnersPageState extends State<PartnersPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (loading && !statsReady && partners.isEmpty && partnerKpis.isEmpty) {
+      return const Content(
+        eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
+        title: 'Partners',
+        subtitle: 'Loading the latest partner portfolio snapshot.',
+        child: _BrandLoading(),
+      );
+    }
     final live = (partnerKpis['live_partners'] as num?)?.toInt() ?? 0;
     final prospects = (partnerKpis['prospects'] as num?)?.toInt() ?? 0;
     final reference = (partnerKpis['reference_partners'] as num?)?.toInt() ?? 0;
@@ -5799,11 +5876,9 @@ class _PackagesPageState extends State<PackagesPage> {
         analyticsError = null;
       });
     }
-    try {
-      final model = await widget.api.get(
-        '/api/v1/central/packages',
-        maxAge: const Duration(seconds: 5),
-      );
+    final path = centralPackagesInitialPath();
+
+    void applyModel(Map<String, dynamic> model) {
       if (!mounted) return;
       final meta = model['meta'] is Map
           ? Map<String, dynamic>.from(model['meta'] as Map)
@@ -5823,6 +5898,15 @@ class _PackagesPageState extends State<PackagesPage> {
             ? 'Package analytics is temporarily unavailable. Package definitions remain usable.'
             : null;
       });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
+      applyModel(model);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -6352,6 +6436,9 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   String _financePath() {
+    if (invoiceFilter == 'ALL' && revenuePeriod == 'MONTHLY' && revenuePlan == 'ALL') {
+      return centralFinanceInitialPath();
+    }
     final params = <String, String>{
       'invoice_status': invoiceFilter,
       'revenue_period': revenuePeriod,
@@ -6361,19 +6448,16 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   Future<void> load({bool force = false}) async {
+    final path = _financePath();
     if (mounted) {
       setState(() {
         loading = true;
         error = null;
       });
     }
-    try {
-      final model = await widget.api.get(
-        _financePath(),
-        force: force,
-        maxAge: const Duration(seconds: 5),
-      );
-      if (!mounted) return;
+
+    void applyModel(Map<String, dynamic> model) {
+      if (!mounted || path != _financePath()) return;
       final chart = model['chart'] is Map
           ? Map<String, dynamic>.from(model['chart'] as Map)
           : <String, dynamic>{};
@@ -6392,6 +6476,16 @@ class _FinancePageState extends State<FinancePage> {
         chartMaxPaid = number(chart['max_paid']);
         loading = false;
       });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
+      applyModel(model);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -6934,6 +7028,20 @@ class _FinancePageState extends State<FinancePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (loading &&
+        profile == null &&
+        financeKpis.isEmpty &&
+        invoices.isEmpty &&
+        partners.isEmpty &&
+        onboardingRows.isEmpty &&
+        chartRows.isEmpty) {
+      return const Content(
+        eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
+        title: 'Licensing & Finance',
+        subtitle: 'Loading the latest finance snapshot.',
+        child: _BrandLoading(),
+      );
+    }
     final draftCount = (financeKpis['draft'] as num?)?.toInt() ?? 0;
     final sentCount = (financeKpis['sent'] as num?)?.toInt() ?? 0;
     final approvedCount = (financeKpis['approved'] as num?)?.toInt() ?? 0;
@@ -7272,22 +7380,29 @@ class _ImpactPageState extends State<ImpactPage> {
     if (evidenceStatusFilter.isNotEmpty) query['evidence_status'] = evidenceStatusFilter;
     if (evidencePeriodStart.trim().isNotEmpty) query['evidence_period_start'] = evidencePeriodStart.trim();
     if (evidencePeriodEnd.trim().isNotEmpty) query['evidence_period_end'] = evidencePeriodEnd.trim();
+    if (evidenceQuery.trim().isEmpty &&
+        evidenceTypeFilter.isEmpty &&
+        evidenceStatusFilter.isEmpty &&
+        evidencePeriodStart.trim().isEmpty &&
+        evidencePeriodEnd.trim().isEmpty &&
+        evidenceOffset == 0 &&
+        evidenceLimit == 12) {
+      return centralImpactInitialPath();
+    }
     return Uri(path: '/api/v1/central/impact', queryParameters: query).toString();
   }
 
   Future<void> load() async {
+    final path = evidencePath();
     if (mounted) {
       setState(() {
         loading = true;
         error = null;
       });
     }
-    try {
-      final model = await widget.api.get(
-        evidencePath(),
-        maxAge: const Duration(seconds: 5),
-      );
-      if (!mounted) return;
+
+    void applyModel(Map<String, dynamic> model) {
+      if (!mounted || path != evidencePath()) return;
       setState(() {
         definitions = items(<String, dynamic>{'items': model['definitions']});
         summary = items(<String, dynamic>{'items': model['summary']});
@@ -7296,6 +7411,15 @@ class _ImpactPageState extends State<ImpactPage> {
         evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
         loading = false;
       });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
+      applyModel(model);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -7817,6 +7941,18 @@ class _ImpactPageState extends State<ImpactPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (loading &&
+        definitions.isEmpty &&
+        summary.isEmpty &&
+        evidence.isEmpty &&
+        reports.isEmpty) {
+      return const Content(
+        eyebrow: 'IMPACT CONTROL',
+        title: 'Impact & Reports',
+        subtitle: 'Loading the latest impact and evidence snapshot.',
+        child: _BrandLoading(),
+      );
+    }
     if (error != null) {
       return Content(
         eyebrow: 'IMPACT CONTROL',
