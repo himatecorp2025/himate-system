@@ -6544,6 +6544,7 @@ class PackagesPage extends StatefulWidget {
 
 class _PackagesPageState extends State<PackagesPage> {
   bool loading = true;
+  bool packageReady = false;
   bool analyticsLoading = true;
   bool modulesLoading = true;
   String? error;
@@ -6571,14 +6572,15 @@ class _PackagesPageState extends State<PackagesPage> {
     void applyPrimary(Map<String, dynamic> model) {
       if (!mounted) return;
       if (model['ready'] != true) {
-        setState(() { loading = true; });
-        Future<void>.delayed(const Duration(milliseconds: 350), () {
-          if (mounted) unawaited(load());
+        setState(() {
+          loading = false;
+          packageReady = false;
         });
         return;
       }
       setState(() {
         plans = items(<String, dynamic>{'items': model['plans']});
+        packageReady = true;
         loading = false;
       });
     }
@@ -6615,11 +6617,10 @@ class _PackagesPageState extends State<PackagesPage> {
       if (!mounted) return;
       if (model['ready'] != true) {
         setState(() {
-          analyticsLoading = true;
-          modulesLoading = true;
-        });
-        Future<void>.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) unawaited(loadSupplementary());
+          analyticsLoading = false;
+          modulesLoading = false;
+          analyticsError = 'Package analytics snapshot is warming. Refresh when ready.';
+          modulesError = 'Module catalog snapshot is warming. Refresh when ready.';
         });
         return;
       }
@@ -6860,6 +6861,18 @@ class _PackagesPageState extends State<PackagesPage> {
         subtitle: 'Central subscription packages, prices and module entitlements.',
         actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Retry'))],
         child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Packages could not be loaded', message: error!),
+      );
+    }
+    if (!loading && !packageReady && plans.isEmpty) {
+      return Content(
+        title: 'Packages',
+        subtitle: 'Subscription packages, module entitlements and configuration.',
+        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
+        child: const _MessageCard(
+          icon: Icons.hourglass_empty_rounded,
+          title: 'Package snapshot is warming',
+          message: 'No materialized package snapshot exists yet. This page does not start an infinite polling loop; refresh when backend preparation completes.',
+        ),
       );
     }
     final analyticsPackages = analytics['packages'] is List
