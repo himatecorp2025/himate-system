@@ -66,8 +66,9 @@ for token in [
 
 # System & Operations caches its Future and exposes real diagnostics.
 system_start = frontend.find("class SystemPage extends StatefulWidget")
-system_end = frontend.find("\nclass ", system_start + 1)
-system = frontend[system_start:system_end] if system_start >= 0 and system_end > system_start else ""
+system_state = frontend.find("class _SystemPageState", system_start)
+system_end = frontend.find("\nclass ", system_state + 1)
+system = frontend[system_start:system_end] if system_start >= 0 and system_state > system_start and system_end > system_state else ""
 for token in [
     "late Future<List<Map<String, dynamic>>> _future;",
     "_future = _load();",
@@ -143,7 +144,14 @@ for token in [
 partners_render = render[render.find("name: himate-partners"):render.find("\n  - type:", render.find("name: himate-partners") + 1)]
 check("key: STORAGE_HOSTPORT" in partners_render and "name: himate-storage" in partners_render,
       "Render Partners->Storage binding missing")
-partners_compose = compose[compose.find("  partners:"):compose.find("\n  ", compose.find("  partners:") + 3)]
+compose_lines = compose.splitlines()
+partners_start = next((i for i, line in enumerate(compose_lines) if line == "  partners:"), -1)
+partners_end = next(
+    (i for i in range(partners_start + 1, len(compose_lines))
+     if compose_lines[i].startswith("  ") and not compose_lines[i].startswith("    ") and compose_lines[i].endswith(":")),
+    len(compose_lines),
+)
+partners_compose = "\n".join(compose_lines[partners_start:partners_end]) if partners_start >= 0 else ""
 check("STORAGE_HOSTPORT: storage:10000" in partners_compose,
       "Compose Partners->Storage binding missing")
 
