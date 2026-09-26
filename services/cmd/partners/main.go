@@ -86,7 +86,7 @@ func main() {
 		common.JSON(w, 200, map[string]any{"status": "ok", "service": "partners", "time": time.Now().UTC()})
 	})
 	mux.HandleFunc("/api/v1/partner-categories", a.categories)
-	mux.HandleFunc("/api/v1/partners/export.csv", a.exportPartnersCSV)
+	mux.HandleFunc("/api/v1/partners/export.pdf", a.exportPartnersPDF)
 	mux.HandleFunc("/api/v1/partners", a.partners)
 	mux.HandleFunc("/api/v1/partners/", a.partnerByID)
 	mux.HandleFunc("/internal/v1/archives", a.archives)
