@@ -20,7 +20,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   bool showSubscriptionPlans = false;
   bool showCommercialMatrix = false;
   bool loading = false;
+  bool commercialLoading = true;
+  bool commercialReady = false;
   String? error;
+  String? commercialError;
   String query = '';
   String? selectedGroupKey;
   String registryPreset = 'TOPICS';
@@ -64,25 +67,16 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     super.dispose();
   }
 
-  String _centralModulesPath() {
+  String _centralRegistryPath() {
     final defaultView =
-        commercialPerspective == 'PARTNER' &&
-        commercialShown == 120 &&
         query.trim().isEmpty &&
         selectedGroupKey == null &&
         groupFilter == 'ALL' &&
         typeFilter == 'ALL' &&
-        registryPreset == 'TOPICS' &&
-        commercialQuery.trim().isEmpty &&
-        commercialPartnerFilter == 'ALL' &&
-        commercialModuleFilter == 'ALL' &&
-        commercialStatusFilter == 'ALL';
+        registryPreset == 'TOPICS';
     if (defaultView) return centralModulesInitialPath();
 
-    final params = <String, String>{
-      'perspective': commercialPerspective,
-      'commercial_limit': '$commercialShown',
-    };
+    final params = <String, String>{};
     if (query.trim().isNotEmpty) params['registry_q'] = query.trim();
     final effectiveGroup = selectedGroupKey ?? (groupFilter == 'ALL' ? null : groupFilter);
     if (effectiveGroup != null && effectiveGroup.isNotEmpty) params['registry_group'] = effectiveGroup;
@@ -90,24 +84,41 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     if (registryPreset != 'TOPICS' && registryPreset != 'ALL') {
       params['registry_preset'] = registryPreset;
     }
+    return Uri(path: '/api/v1/central/modules', queryParameters: params).toString();
+  }
+
+  String _centralCommercialPath() {
+    final params = <String, String>{
+      'perspective': commercialPerspective,
+      'commercial_limit': '$commercialShown',
+    };
     if (commercialQuery.trim().isNotEmpty) params['commercial_q'] = commercialQuery.trim();
     if (commercialPartnerFilter != 'ALL') params['commercial_partner'] = commercialPartnerFilter;
     if (commercialModuleFilter != 'ALL') params['commercial_module'] = commercialModuleFilter;
     if (commercialStatusFilter != 'ALL') params['commercial_status'] = commercialStatusFilter;
-    return Uri(path: '/api/v1/central/modules', queryParameters: params).toString();
+    return Uri(path: '/api/v1/central/modules/commercial', queryParameters: params).toString();
   }
 
   Future<void> load() async {
-    final path = _centralModulesPath();
+    await loadRegistry();
+    unawaited(loadCommercial());
+  }
+
+  Future<void> loadRegistry() async {
+    final path = _centralRegistryPath();
     if (mounted) setState(() { loading = true; error = null; });
 
     void applyModel(Map<String, dynamic> model) {
-      if (!mounted || path != _centralModulesPath()) return;
+      if (!mounted || path != _centralRegistryPath()) return;
+      if (model['ready'] != true) {
+        setState(() { loading = true; });
+        Future<void>.delayed(const Duration(milliseconds: 350), () {
+          if (mounted && path == _centralRegistryPath()) unawaited(loadRegistry());
+        });
+        return;
+      }
       final registry = model['registry'] is Map
           ? Map<String, dynamic>.from(model['registry'] as Map)
-          : <String, dynamic>{};
-      final commercial = model['commercial'] is Map
-          ? Map<String, dynamic>.from(model['commercial'] as Map)
           : <String, dynamic>{};
       setState(() {
         modules = items(<String, dynamic>{'items': model['module_options']});
@@ -117,11 +128,6 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         registryKpis = registry['kpis'] is Map
             ? Map<String, dynamic>.from(registry['kpis'] as Map)
             : <String, dynamic>{};
-        partners = items(<String, dynamic>{'items': model['partners']});
-        commercialGroups = items(<String, dynamic>{'items': commercial['groups']});
-        commercialGroupCount = (commercial['group_count'] as num?)?.toInt() ?? commercialGroups.length;
-        commercialAssignmentCount = (commercial['assignment_count'] as num?)?.toInt() ?? 0;
-        subscriptionPlans = items(<String, dynamic>{'items': model['plans']});
         loading = false;
       });
     }
@@ -138,17 +144,69 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
   }
 
+  Future<void> loadCommercial() async {
+    final path = _centralCommercialPath();
+    if (mounted) {
+      setState(() {
+        commercialLoading = true;
+        commercialError = null;
+      });
+    }
+
+    void applyModel(Map<String, dynamic> model) {
+      if (!mounted || path != _centralCommercialPath()) return;
+      if (model['ready'] != true) {
+        setState(() {
+          commercialLoading = true;
+          commercialReady = false;
+        });
+        Future<void>.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && path == _centralCommercialPath()) unawaited(loadCommercial());
+        });
+        return;
+      }
+      final commercial = model['commercial'] is Map
+          ? Map<String, dynamic>.from(model['commercial'] as Map)
+          : <String, dynamic>{};
+      setState(() {
+        partners = items(<String, dynamic>{'items': model['partners']});
+        commercialGroups = items(<String, dynamic>{'items': commercial['groups']});
+        commercialGroupCount = (commercial['group_count'] as num?)?.toInt() ?? commercialGroups.length;
+        commercialAssignmentCount = (commercial['assignment_count'] as num?)?.toInt() ?? 0;
+        subscriptionPlans = items(<String, dynamic>{'items': model['plans']});
+        commercialLoading = false;
+        commercialReady = true;
+      });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
+      applyModel(model);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          commercialError = e.toString();
+          commercialLoading = false;
+        });
+      }
+    }
+  }
+
   void _scheduleRegistryReload() {
     _registryDebounce?.cancel();
     _registryDebounce = Timer(const Duration(milliseconds: 220), () {
-      if (mounted) unawaited(load());
+      if (mounted) unawaited(loadRegistry());
     });
   }
 
   void _scheduleCommercialReload() {
     _commercialDebounce?.cancel();
     _commercialDebounce = Timer(const Duration(milliseconds: 220), () {
-      if (mounted) unawaited(load());
+      if (mounted) unawaited(loadCommercial());
     });
   }
 
@@ -209,7 +267,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       typeFilter = 'ALL';
       query = '';
     });
-    unawaited(load());
+    unawaited(loadRegistry());
   }
 
   void applyRegistryPreset(String preset) {
@@ -220,7 +278,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       typeFilter = 'ALL';
       query = '';
     });
-    unawaited(load());
+    unawaited(loadRegistry());
   }
 
   void openTopic(String groupKey) {
@@ -231,7 +289,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       typeFilter = 'ALL';
       query = '';
     });
-    unawaited(load());
+    unawaited(loadRegistry());
   }
 
   Future<void> moveModuleToGroup(Map<String, dynamic> module, String targetGroupKey) async {
@@ -1533,6 +1591,14 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   }
 
   Widget subscriptionPlansPage() {
+    if (commercialLoading && subscriptionPlans.isEmpty) {
+      return const Content(
+        eyebrow: 'CENTRAL-5 · COMMERCIAL PACKAGING',
+        title: 'Packages',
+        subtitle: 'Loading package definitions from the hot commercial snapshot.',
+        child: _BrandLoading(),
+      );
+    }
     final visible = subscriptionPlans.where((p) => s(p['plan_key']) != 'CUSTOM').toList();
     return Content(
       eyebrow: 'CENTRAL-5 · COMMERCIAL PACKAGING',
@@ -1630,7 +1696,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           label: LText(uiLiteral('Packages')),
         ),
         OutlinedButton.icon(
-          onPressed: () => setState(() => showCommercialMatrix = !showCommercialMatrix),
+          onPressed: () {
+            final opening = !showCommercialMatrix;
+            setState(() => showCommercialMatrix = opening);
+            if (opening && !commercialReady) unawaited(loadCommercial());
+          },
           icon: Icon(showCommercialMatrix ? Icons.expand_less_rounded : Icons.price_change_outlined),
           label: LText(uiLiteral(showCommercialMatrix ? 'Hide Commercial Matrix' : 'Commercial Matrix')),
         ),
@@ -1744,7 +1814,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                       ],
                       onChanged: (value) {
                         setState(() => typeFilter = value ?? 'ALL');
-                        unawaited(load());
+                        unawaited(loadRegistry());
                       },
                     );
                     if (constraints.maxWidth < 760) {
@@ -1802,7 +1872,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 title: uiLiteral('Partner × Module Commercial Matrix'),
                 subtitle: uiLiteral('Partner-specific assignment, recurring price, activation fee and subscription state remain available without dominating the registry view.'),
                 trailing: OutlinedButton.icon(
-                  onPressed: () => setState(() => showCommercialMatrix = !showCommercialMatrix),
+                  onPressed: () {
+            final opening = !showCommercialMatrix;
+            setState(() => showCommercialMatrix = opening);
+            if (opening && !commercialReady) unawaited(loadCommercial());
+          },
                   icon: Icon(showCommercialMatrix ? Icons.expand_less_rounded : Icons.expand_more_rounded),
                   label: LText(uiLiteral(showCommercialMatrix ? 'Hide matrix' : 'Open matrix')),
                 ),
@@ -1828,7 +1902,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                       ],
                       onChanged: (value) {
                         setState(() { commercialPartnerFilter = value ?? 'ALL'; commercialShown = 120; });
-                        unawaited(load());
+                        unawaited(loadCommercial());
                       },
                     );
                     final module = DropdownButtonFormField<String>(
@@ -1841,7 +1915,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                       ],
                       onChanged: (value) {
                         setState(() { commercialModuleFilter = value ?? 'ALL'; commercialShown = 120; });
-                        unawaited(load());
+                        unawaited(loadCommercial());
                       },
                     );
                     final status = DropdownButtonFormField<String>(
@@ -1855,7 +1929,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                       ],
                       onChanged: (value) {
                         setState(() { commercialStatusFilter = value ?? 'ALL'; commercialShown = 120; });
-                        unawaited(load());
+                        unawaited(loadCommercial());
                       },
                     );
                     final perspective = Wrap(
@@ -1867,7 +1941,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                           label: LText(uiLiteral('View by partner')),
                           onSelected: (_) {
                             setState(() { commercialPerspective = 'PARTNER'; commercialShown = 120; });
-                            unawaited(load());
+                            unawaited(loadCommercial());
                           },
                         ),
                         ChoiceChip(
@@ -1875,7 +1949,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                           label: LText(uiLiteral('View by module')),
                           onSelected: (_) {
                             setState(() { commercialPerspective = 'MODULE'; commercialShown = 120; });
-                            unawaited(load());
+                            unawaited(loadCommercial());
                           },
                         ),
                       ],
@@ -1904,6 +1978,20 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 ),
                 const SizedBox(height: 12),
                 Builder(builder: (context) {
+                  if (commercialLoading && !commercialReady) {
+                    return const _MessageCard(
+                      icon: Icons.sync_rounded,
+                      title: 'Loading Commercial Matrix',
+                      message: 'The module registry is already usable. Partner and billing data are loading independently.',
+                    );
+                  }
+                  if (commercialError != null && !commercialReady) {
+                    return _MessageCard(
+                      icon: Icons.cloud_off_outlined,
+                      title: uiLiteral('Commercial Matrix unavailable'),
+                      message: commercialError!,
+                    );
+                  }
                   if (commercialGroups.isEmpty) {
                     return _MessageCard(
                       icon: Icons.price_change_outlined,
@@ -1946,7 +2034,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         OutlinedButton.icon(
                           onPressed: () {
                             setState(() => commercialShown += 120);
-                            unawaited(load());
+                            unawaited(loadCommercial());
                           },
                           icon: const Icon(Icons.expand_more_rounded),
                           label: LText(
@@ -1959,6 +2047,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 }),
               ],
               if (loading) ...[
+                const SizedBox(height: 12),
+                const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+              ] else if (showCommercialMatrix && commercialLoading) ...[
                 const SizedBox(height: 12),
                 const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
               ],
