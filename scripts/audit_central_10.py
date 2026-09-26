@@ -34,8 +34,8 @@ check(bool(acceptance.strip()), "Central-10 acceptance document is missing or em
 # Performance envelope and backend read-model contract.
 for token in [
     "central10ReadBudget = 650 * time.Millisecond",
-    "central10FreshTTL   = 5 * time.Second",
-    "central10StaleTTL   = 45 * time.Second",
+    "central10FreshTTL   = 30 * time.Second",
+    "central10StaleTTL   = 10 * time.Minute",
     '"architecture": "GO_BACKEND_READ_MODEL"',
     '"frontend_role": "PRESENTATION_ONLY"',
     '"target_first_usable_data_ms": 800',
@@ -137,6 +137,10 @@ check("dashboardSnapshotForRead" in dashboard_body,
       "Central-10.1 Dashboard does not serve the materialized hot snapshot")
 check("force: loadCategories" not in frontend,
       "Central-10.1 Partners first mount still bypasses warm cache/inflight data")
+check("central10ReadCache.items = map[string]central10CacheEntry{}" not in gateway,
+      "Central-10.1 still globally flushes every Central read cache on mutation")
+check("invalidateCentral10Caches(r.URL.Path)" in gateway_main,
+      "Central-10.1 mutation invalidation is not route-targeted")
 check("onRefresh: applyModel" in frontend,
       "Central-10.1 stateful Central pages do not consume SWR refresh callbacks")
 check("onRefresh: applyModel" in modules_ui,
