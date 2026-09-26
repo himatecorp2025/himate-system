@@ -64,6 +64,33 @@ const canvas = brandIvory;
 const muted = brandTextSoft;
 const success = brandSuccess;
 
+List<Map<String,dynamic>> central8LatestWeeklyWindow(List<Map<String,dynamic>> rows) {
+  final source = rows.length <= 4 ? rows : rows.sublist(rows.length - 4);
+  return [
+    for (final row in source)
+      <String,dynamic>{
+        ...row,
+        'label': (() {
+          final parsed = DateTime.tryParse('${row['week_start'] ?? ''}');
+          if (parsed == null) return '${row['label'] ?? row['week'] ?? ''}';
+          return '${parsed.month}/${parsed.day}';
+        })(),
+      },
+  ];
+}
+
+List<Map<String,dynamic>> central8PartnerPresetRows(
+  List<Map<String,dynamic>> rows, {
+  String lifecycle = 'ALL',
+  bool reference = false,
+}) {
+  return rows.where((row) {
+    if (lifecycle != 'ALL' && '${row['lifecycle'] ?? ''}' != lifecycle) return false;
+    if (reference && row['reference_partner'] != true) return false;
+    return true;
+  }).toList();
+}
+
 Future<String?> promptMfaCode(BuildContext context, Map<String, dynamic> challenge) async {
   final code = TextEditingController();
   final setup = challenge['mfa_setup'] == true;
@@ -2579,19 +2606,10 @@ class _ImpactPanel extends StatefulWidget {
 class _ImpactPanelState extends State<_ImpactPanel> {
   bool weekly=false;
 
-  String _weeklyLabel(Map<String,dynamic> row) {
-    final parsed = DateTime.tryParse('${row['week_start'] ?? ''}');
-    if (parsed == null) return '${row['label'] ?? row['week'] ?? ''}';
-    return '${parsed.month}/${parsed.day}';
-  }
-
   @override
   Widget build(BuildContext context){
-    final weeklyWindow = widget.weeklyTrend.length <= 4
-        ? widget.weeklyTrend
-        : widget.weeklyTrend.sublist(widget.weeklyTrend.length - 4);
     final trend=weekly
-        ? [for (final row in weeklyWindow) <String,dynamic>{...row,'label':_weeklyLabel(row)}]
+        ? central8LatestWeeklyWindow(widget.weeklyTrend)
         : widget.monthlyTrend;
     return SizedBox(
       height:330,
@@ -3132,11 +3150,11 @@ class _PartnersPageState extends State<PartnersPage> {
   void applyPortfolioPreset({String lifecycle = 'ALL', bool reference = false}) {
     _searchDebounce?.cancel();
     _searchController.clear();
-    final optimistic = _portfolioSnapshot.where((row) {
-      if (lifecycle != 'ALL' && '${row['lifecycle'] ?? ''}' != lifecycle) return false;
-      if (reference && row['reference_partner'] != true) return false;
-      return true;
-    }).toList();
+    final optimistic = central8PartnerPresetRows(
+      _portfolioSnapshot,
+      lifecycle: lifecycle,
+      reference: reference,
+    );
     setState(() {
       query = '';
       categoryFilter = 'ALL';
