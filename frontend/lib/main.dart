@@ -9409,11 +9409,19 @@ class _SystemPageState extends State<SystemPage> {
               '${b['partner_id']}',
         }.toList()..sort();
         final overall = '${health['status'] ?? 'UNKNOWN'}';
+        bool isHealthyStatus(dynamic value) {
+          final status = '${value ?? 'UNKNOWN'}'.toUpperCase();
+          return const {'OK', 'HEALTHY', 'LIVE', 'READY', 'ACTIVE', 'DEPLOYED'}.contains(status);
+        }
+        final degradedServices = services.where((service) => !isHealthyStatus(service['status'])).length;
+        final degradedPartners = partners.where((partner) => !isHealthyStatus(partner['overall_status'])).length;
+        final issueCount = degradedServices + degradedPartners;
+        final deployedEnvironments = environments.where((environment) => '${environment['deployment_status'] ?? ''}'.toUpperCase() == 'DEPLOYED').length;
+        final healthyServices = services.where((service) => isHealthyStatus(service['status'])).length;
 
         return Content(
-          eyebrow: 'PLATFORM OPERATIONS',
           title: 'System & Operations',
-          subtitle: 'Provisioning, partner environments, connectors, backups and central health across the containerized HIMATE control plane.',
+          subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
           actions: [
             OutlinedButton.icon(
               onPressed: _openDeveloperDiagnostics,
@@ -9429,8 +9437,85 @@ class _SystemPageState extends State<SystemPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _OperationsHero(status: overall, environment: 'control plane', version: 'START-09–22'),
-              const SizedBox(height: 22),
+              ResponsiveKpiGrid(children: [
+                Kpi(
+                  label: 'System status',
+                  value: overall,
+                  note: '$healthyServices / ${services.length} services healthy',
+                  icon: Icons.dns_outlined,
+                  accent: issueCount == 0 ? brandSuccess : brandWarning,
+                ),
+                Kpi(
+                  label: 'Partner systems',
+                  value: '${partners.length}',
+                  note: 'Partner health aggregates',
+                  icon: Icons.hub_outlined,
+                  accent: brandSteel,
+                ),
+                Kpi(
+                  label: 'Deployments',
+                  value: '$deployedEnvironments',
+                  note: '${environments.length} managed environments',
+                  icon: Icons.inventory_2_outlined,
+                  accent: brandSuccess,
+                ),
+                Kpi(
+                  label: 'Issues',
+                  value: '$issueCount',
+                  note: '$degradedServices services · $degradedPartners partners',
+                  icon: Icons.warning_amber_rounded,
+                  accent: issueCount == 0 ? brandSuccess : brandDanger,
+                ),
+              ]),
+              const SizedBox(height: 18),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final healthCard = _SystemCurrentHealthCard(services: services, overall: overall);
+                  final infrastructure = _SystemInfrastructureSummary(
+                    environments: environments,
+                    backups: backupSummary,
+                    partnerCount: partners.length,
+                  );
+                  if (constraints.maxWidth < 940) {
+                    return Column(children: [healthCard, const SizedBox(height: 14), infrastructure]);
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 7, child: healthCard),
+                      const SizedBox(width: 14),
+                      Expanded(flex: 4, child: infrastructure),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 18),
+              _SectionHeader(
+                title: 'Main service status',
+                subtitle: 'Current authoritative status of critical microservices.',
+                trailing: OutlinedButton.icon(
+                  onPressed: _openDeveloperDiagnostics,
+                  icon: const Icon(Icons.code_rounded, size: 17),
+                  label: const LText('Developer diagnostics'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (services.isEmpty)
+                const _MessageCard(
+                  icon: Icons.dns_outlined,
+                  title: 'No service health data',
+                  message: 'No service-health snapshot is available yet.',
+                )
+              else
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final s in services.take(8))
+                      ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
+                  ],
+                ),
+              const SizedBox(height: 24),
               _SectionHeader(
                 title: 'Service Health',
                 subtitle: 'Readiness and liveness are monitored independently for each microservice.',
@@ -9563,6 +9648,107 @@ class _SystemPageState extends State<SystemPage> {
 }
 
 
+
+class _SystemCurrentHealthCard extends StatelessWidget {
+  const _SystemCurrentHealthCard({required this.services, required this.overall});
+  final List<Map<String, dynamic>> services;
+  final String overall;
+
+  bool healthy(dynamic raw) {
+    final status = '${raw ?? ''}'.toUpperCase();
+    return const {'OK','HEALTHY','LIVE','READY','ACTIVE','DEPLOYED'}.contains(status);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final good = services.where((service) => healthy(service['status'])).length;
+    final ratio = services.isEmpty ? 0.0 : good / services.length;
+    return SizedBox(
+      height: 255,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children:[
+                const Icon(Icons.bar_chart_rounded,color:brandSteel,size:21),
+                const SizedBox(width:9),
+                Expanded(child:LText('System health overview',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
+                _StatusPill(label: overall),
+              ]),
+              const SizedBox(height:5),
+              const LText('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.',style:TextStyle(color:brandTextSoft,fontSize:9.5)),
+              const Spacer(),
+              LinearProgressIndicator(
+                value: ratio,
+                minHeight: 12,
+                borderRadius: BorderRadius.circular(99),
+                color: ratio == 1 ? brandSuccess : brandWarning,
+                backgroundColor: brandMist,
+              ),
+              const SizedBox(height:10),
+              LText('$good / ${services.length} services healthy',style:const TextStyle(color:brandNavy,fontSize:11,fontWeight:FontWeight.w700)),
+              const SizedBox(height:14),
+              Wrap(
+                spacing:7,
+                runSpacing:7,
+                children:[
+                  for(final service in services.take(10))
+                    Container(
+                      padding:const EdgeInsets.symmetric(horizontal:9,vertical:6),
+                      decoration:BoxDecoration(color:(healthy(service['status'])?brandSuccess:brandWarning).withOpacity(.08),borderRadius:BorderRadius.circular(99)),
+                      child:Row(mainAxisSize:MainAxisSize.min,children:[
+                        Container(width:7,height:7,decoration:BoxDecoration(color:healthy(service['status'])?brandSuccess:brandWarning,shape:BoxShape.circle)),
+                        const SizedBox(width:6),
+                        LText(_humanize('${service['name'] ?? 'service'}'),style:const TextStyle(color:brandNavy,fontSize:8.5,fontWeight:FontWeight.w600)),
+                      ]),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SystemInfrastructureSummary extends StatelessWidget {
+  const _SystemInfrastructureSummary({required this.environments,required this.backups,required this.partnerCount});
+  final List<Map<String,dynamic>> environments;
+  final List<Map<String,dynamic>> backups;
+  final int partnerCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final production = environments.where((e)=>'${e['kind']}'=='PRODUCTION').length;
+    final live = environments.where((e)=>'${e['environment_status']}'=='LIVE').length;
+    return SizedBox(
+      height:255,
+      child:Card(
+        child:Padding(
+          padding:const EdgeInsets.all(18),
+          child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            LText('Infrastructure status',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+            const SizedBox(height:12),
+            _DefinitionRow(label:'Managed environments',value:'${environments.length}'),
+            _DefinitionRow(label:'Production environments',value:'$production'),
+            _DefinitionRow(label:'Live environments',value:'$live'),
+            _DefinitionRow(label:'Partner systems',value:'$partnerCount'),
+            _DefinitionRow(label:'Backup scopes',value:'${backups.length}'),
+            const Spacer(),
+            const Row(children:[
+              Icon(Icons.verified_outlined,color:brandSuccess,size:17),
+              SizedBox(width:7),
+              Expanded(child:LText('All values come from live operations endpoints.',style:TextStyle(color:brandTextSoft,fontSize:9.5))),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
 
 class AdministrationPage extends StatefulWidget {
   const AdministrationPage({required this.api, required this.user, this.onBack, super.key});
