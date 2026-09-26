@@ -547,6 +547,15 @@ func (a *app) purgeTestPartner(w http.ResponseWriter, r *http.Request, id string
 	}
 	defer tx.Rollback()
 
+	// Transaction-local capability consumed only by immutable-ledger triggers.
+	// The endpoint has already proven that this exact partner is a Golden Test
+	// Partner and that no Compliance Archive blocks deletion.
+	if _, err := tx.ExecContext(r.Context(),
+		`SELECT set_config('himate.test_partner_purge',$1,TRUE)`, id); err != nil {
+		common.APIError(w, 500, "DB", "Could not enable transaction-scoped Test Partner purge")
+		return
+	}
+
 	deleted, err := deleteTestPartnerData(r.Context(), tx, id)
 	if err != nil {
 		common.APIError(w, 500, "TEST_PURGE", err.Error())
