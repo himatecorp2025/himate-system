@@ -154,7 +154,8 @@ for route in [
     "/api/v1/central/modules/commercial",
     "/api/v1/central/packages/supplementary",
 ]:
-    check(route in gateway, f"Central-10.1 Step 3 route missing in Gateway: {route}")
+    check(route in gateway, f"Central-10.1 Step 3 route missing in Gateway read model: {route}")
+    check(route in gateway_main, f"Central-10.1 Step 3 route missing in top-level API dispatcher: {route}")
     check(f"  {route}:" in openapi, f"Central-10.1 Step 3 OpenAPI path missing: {route}")
 
 modules_start = gateway.find("func (a *app) central10Modules(")
