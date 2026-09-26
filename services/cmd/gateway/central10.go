@@ -16,8 +16,8 @@ import (
 
 const (
 	central10ReadBudget = 650 * time.Millisecond
-	central10FreshTTL   = 5 * time.Second
-	central10StaleTTL   = 45 * time.Second
+	central10FreshTTL   = 30 * time.Second
+	central10StaleTTL   = 10 * time.Minute
 )
 
 type central10CacheEntry struct {
@@ -31,15 +31,49 @@ var central10ReadCache = struct {
 	items map[string]central10CacheEntry
 }{items: map[string]central10CacheEntry{}}
 
-func (a *app) invalidateCentral10Caches() {
+func (a *app) invalidateCentral10Caches(path string) {
+	path = strings.ToLower(strings.TrimSpace(path))
+	invalidatePartners := strings.Contains(path, "partner")
+	invalidateWorkspaceModules := invalidatePartners ||
+		strings.Contains(path, "module") ||
+		strings.Contains(path, "billing") ||
+		strings.Contains(path, "subscription")
+
 	central10ReadCache.Lock()
-	central10ReadCache.items = map[string]central10CacheEntry{}
+	for key := range central10ReadCache.items {
+		lowerKey := strings.ToLower(key)
+		remove := false
+		if invalidatePartners && strings.Contains(lowerKey, "/api/v1/central/partners?") {
+			remove = true
+		}
+		if invalidateWorkspaceModules &&
+			strings.Contains(lowerKey, "/api/v1/central/partners/") {
+			remove = true
+		}
+		if remove {
+			delete(central10ReadCache.items, key)
+		}
+	}
 	central10ReadCache.Unlock()
-	// Materialized screen snapshots remain readable while mutations queue
-	// background refreshes. Mutations must never blank a Central screen.
-	a.requestDashboardRefresh()
-	a.requestCentralStep3Refresh()
-	a.requestCentralStep4Refresh()
+
+	// Materialized screen snapshots are never destructively flushed. Relevant
+	// mutations only queue recomputation while last-known-good data remains hot.
+	switch {
+	case strings.Contains(path, "partner"):
+		a.requestDashboardRefresh()
+		a.requestCentralStep3Refresh()
+		a.requestCentralStep4Refresh()
+	case strings.Contains(path, "module"), strings.Contains(path, "catalog"):
+		a.requestDashboardRefresh()
+		a.requestCentralStep3Refresh()
+	case strings.Contains(path, "billing"), strings.Contains(path, "invoice"), strings.Contains(path, "subscription"):
+		a.requestDashboardRefresh()
+		a.requestCentralStep3Refresh()
+		a.requestCentralStep4Refresh()
+	case strings.Contains(path, "impact"), strings.Contains(path, "evidence"), strings.Contains(path, "report"):
+		a.requestDashboardRefresh()
+		a.requestCentralStep4Refresh()
+	}
 }
 
 func central10CacheKey(actor user, r *http.Request) string {
