@@ -504,6 +504,19 @@ func (a *app) purgeTestPartner(w http.ResponseWriter, r *http.Request, id string
 		common.APIError(w, http.StatusLocked, "COMPLIANCE_RETENTION", "Test Partner hard purge is blocked because a legal Compliance Archive exists")
 		return
 	}
+	var reportBusy bool
+	reportArray := fmt.Sprintf(`["%s"]`, id)
+	if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(
+		SELECT 1 FROM reports.jobs
+		WHERE partner_ids @> $1::jsonb AND status IN ('QUEUED','RUNNING')
+	)`, reportArray).Scan(&reportBusy); err != nil {
+		common.APIError(w, 500, "DB", "Could not verify Test Partner report processing")
+		return
+	}
+	if reportBusy {
+		common.APIError(w, http.StatusConflict, "TEST_REPORT_IN_PROGRESS", "Wait for the Test Partner report worker to finish before factory reset")
+		return
+	}
 
 	// Files live on the storage service's persistent disk and must be removed
 	// before the relational identity disappears. Reports use the shared _reports
