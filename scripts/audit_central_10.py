@@ -114,7 +114,7 @@ for token in [
     '"partner_name"',
     '"modules": rows',
     '"partners": rows',
-    '"subscription" = sub',
+    'row["subscription"] = sub',
 ]:
     check(token in gateway, f"Backend Commercial Matrix contract missing: {token}")
 for token in [
