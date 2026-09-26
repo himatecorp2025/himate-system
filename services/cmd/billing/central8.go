@@ -322,6 +322,10 @@ func (a *app) packageExportPDF(w http.ResponseWriter, r *http.Request) {
 			row.NextBillingAt.Format("2006-01-02"),
 		})
 	}
+	if r.URL.Query().Get("availability") == "1" {
+		common.JSON(w, http.StatusOK, map[string]any{"has_data": len(tableRows) > 0, "count": len(tableRows)})
+		return
+	}
 	common.WriteBrandedTablePDF(
 		w,
 		"himate-package-analytics.pdf",
@@ -379,6 +383,10 @@ func (a *app) financeExportPDF(w http.ResponseWriter, r *http.Request) {
 			chargeType, workflow, currency + " " + fmt.Sprintf("%.2f", net),
 			fmt.Sprintf("%.2f%%", taxRate), currency + " " + fmt.Sprintf("%.2f", gross), paid,
 		})
+	}
+	if r.URL.Query().Get("availability") == "1" {
+		common.JSON(w, http.StatusOK, map[string]any{"has_data": len(tableRows) > 0, "count": len(tableRows)})
+		return
 	}
 	common.WriteBrandedTablePDF(
 		w,
