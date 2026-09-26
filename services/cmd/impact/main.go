@@ -69,6 +69,7 @@ func main() {
 	mux.HandleFunc("/api/v1/impact/definitions", a.definitions)
 	mux.HandleFunc("/api/v1/impact/values", a.values)
 	mux.HandleFunc("/api/v1/impact/baselines", a.baselines)
+	mux.HandleFunc("/api/v1/impact/export.csv", a.exportImpactCSV)
 	mux.HandleFunc("/api/v1/impact/summary", a.summary)
 	mux.HandleFunc("/internal/v1/impact/definitions/ensure", a.ensureSystemDefinition)
 	mux.HandleFunc("/internal/v1/impact/retention", a.connectorRetention)
