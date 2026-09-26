@@ -80,7 +80,7 @@ for token in [
 for token in [
     "Reference partners",
     "PDF export",
-    "New partner",
+    "New Partner",
 ]:
     check(token in frontend, f"CENTRAL-16 Partners contract missing: {token}")
 
