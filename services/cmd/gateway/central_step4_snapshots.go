@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
+	centralStep4PartnersKey       = "partners_screen"
 	centralStep4FinanceKey        = "finance_screen"
 	centralStep4ImpactKey         = "impact_screen"
 	centralStep4RefreshInterval   = 10 * time.Second
@@ -46,6 +49,7 @@ func (a *app) refreshCentralStep4Snapshots() {
 		key string
 		fn  func()
 	}{
+		{centralStep4PartnersKey, a.refreshCentralStep4Partners},
 		{centralStep4FinanceKey, a.refreshCentralStep4Finance},
 		{centralStep4ImpactKey, a.refreshCentralStep4Impact},
 	}
@@ -77,6 +81,154 @@ func step4Unavailable(previous map[string]any, key string) any {
 		return nil
 	}
 	return previous[key]
+}
+
+// refreshCentralStep4Partners materializes the default Partners screen outside
+// the request path. The first Central click can therefore serve a persistent,
+// last-known-good read model instead of waiting for two sequential service
+// fan-out waves (Partners -> Catalog/Billing/Health).
+func (a *app) refreshCentralStep4Partners() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+
+	type partnerPage struct {
+		Items           []map[string]any `json:"items"`
+		Count           int              `json:"count"`
+		Total           int              `json:"total"`
+		Limit           int              `json:"limit"`
+		Offset          int              `json:"offset"`
+		HasMore         bool             `json:"has_more"`
+		LifecycleCounts map[string]int   `json:"lifecycle_counts"`
+		ReferenceCount  int              `json:"reference_count"`
+	}
+
+	var partners partnerPage
+	var categories, catalogPortfolio, billingPortfolio, healthPortfolio central10ItemsPage
+	var partnerErr, categoriesErr, catalogErr, billingErr, healthErr error
+
+	var first sync.WaitGroup
+	first.Add(2)
+	go func() {
+		defer first.Done()
+		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners?include_stats=true&limit=24&offset=0", &partners)
+	}()
+	go func() {
+		defer first.Done()
+		categoriesErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partner-categories", &categories)
+	}()
+	first.Wait()
+
+	// Never replace a last-known-good snapshot when the authoritative partner
+	// list itself is unavailable.
+	if partnerErr != nil {
+		return
+	}
+
+	ids := make([]string, 0, len(partners.Items))
+	for _, item := range partners.Items {
+		if id := central10String(item["id"]); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) > 0 {
+		filter := url.QueryEscape(strings.Join(ids, ","))
+		var enrich sync.WaitGroup
+		enrich.Add(3)
+		go func() {
+			defer enrich.Done()
+			catalogErr = a.internalGET(ctx, a.hosts["catalog"], "/internal/v1/portfolio?ids="+filter, &catalogPortfolio)
+		}()
+		go func() {
+			defer enrich.Done()
+			billingErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/portfolio?ids="+filter, &billingPortfolio)
+		}()
+		go func() {
+			defer enrich.Done()
+			healthErr = a.internalGET(ctx, a.hosts["health"], "/internal/v1/system-health/partner-snapshots?ids="+filter, &healthPortfolio)
+		}()
+		enrich.Wait()
+	}
+
+	catalogByID := map[string]map[string]any{}
+	for _, item := range catalogPortfolio.Items {
+		catalogByID[central10String(item["partner_id"])] = item
+	}
+	billingByID := map[string]map[string]any{}
+	for _, item := range billingPortfolio.Items {
+		billingByID[central10String(item["partner_id"])] = item
+	}
+	healthByID := map[string]map[string]any{}
+	for _, item := range healthPortfolio.Items {
+		healthByID[central10String(item["partner_id"])] = item
+	}
+
+	for _, partner := range partners.Items {
+		id := central10String(partner["id"])
+		if cat := catalogByID[id]; cat != nil {
+			partner["active_modules"] = central10Int(cat["active_modules"])
+			partner["extra_module_fee"] = central10Float(cat["extra_module_fee"])
+		}
+		if bill := billingByID[id]; bill != nil {
+			base := central10Float(bill["effective_base_fee"])
+			extra := central10Float(partner["extra_module_fee"])
+			partner["base_service_fee"] = base
+			partner["service_value_30d"] = mathRound2(base + extra)
+			if currency := central10String(bill["currency"]); currency != "" {
+				partner["currency"] = currency
+			}
+		}
+		if health := healthByID[id]; health != nil {
+			if value := central10String(health["overall_status"]); value != "" {
+				partner["system_health"] = value
+			}
+			if value := central10String(health["platform_version"]); value != "" {
+				partner["platform_version"] = value
+			}
+			partner["connector_health"] = health["connector_health"]
+			partner["environment_status"] = health["environment_status"]
+			partner["provisioning_status"] = health["provisioning_status"]
+		}
+	}
+
+	unavailable := []string{}
+	if categoriesErr != nil { unavailable = append(unavailable, "partner_categories") }
+	if catalogErr != nil { unavailable = append(unavailable, "catalog_portfolio") }
+	if billingErr != nil { unavailable = append(unavailable, "billing_portfolio") }
+	if healthErr != nil { unavailable = append(unavailable, "health_portfolio") }
+	status := "healthy"
+	if len(unavailable) > 0 {
+		status = "partial"
+	}
+
+	recordTotal := 0
+	for _, value := range partners.LifecycleCounts {
+		recordTotal += value
+	}
+	if recordTotal == 0 && partners.Total > 0 {
+		recordTotal = partners.Total
+	}
+
+	payload := map[string]any{
+		"items":          partners.Items,
+		"categories_raw": categories.Items,
+		"pagination": map[string]any{
+			"count": partners.Count, "total": partners.Total, "limit": partners.Limit,
+			"offset": partners.Offset, "has_more": partners.HasMore,
+		},
+		"kpis": map[string]any{
+			"partner_records":    recordTotal,
+			"live_partners":      partners.LifecycleCounts["LIVE"],
+			"prospects":          partners.LifecycleCounts["PROSPECT"],
+			"reference_partners": partners.ReferenceCount,
+			"lifecycle_counts":   partners.LifecycleCounts,
+		},
+		"status":      status,
+		"unavailable": unavailable,
+	}
+
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4PartnersKey, payload)
 }
 
 func (a *app) refreshCentralStep4Finance() {

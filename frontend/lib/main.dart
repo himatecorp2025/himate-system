@@ -555,6 +555,59 @@ class Api {
   }
 }
 
+Future<void> openPdfExportIfAvailable(
+  BuildContext context,
+  Api api,
+  String path,
+) async {
+  try {
+    final uri = Uri.parse(path);
+    final probeParams = <String, String>{
+      ...uri.queryParameters,
+      'availability': '1',
+    };
+    final probePath = uri.replace(queryParameters: probeParams).toString();
+    final probe = await api.get(
+      probePath,
+      force: true,
+      maxAge: Duration.zero,
+    );
+    if (!context.mounted) return;
+    if (probe['has_data'] != true) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(uiLiteral('No exportable data')),
+          content: Text(uiLiteral('There is no data to export for the current selection.')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(uiLiteral('OK')),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    openBrowserDownload(path);
+  } catch (_) {
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(uiLiteral('PDF export failed')),
+        content: Text(uiLiteral('The PDF export could not be prepared. Please try again.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(uiLiteral('OK')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 List<Map<String, dynamic>> items(Map<String, dynamic> json) {
   final raw = json['items'];
   if (raw is! List) return <Map<String, dynamic>>[];
@@ -631,52 +684,56 @@ class _HimateAppState extends State<HimateApp> {
   void _warmControlPlane() {
     if (user == null) return;
 
-    // Warm every permission-visible Central screen before the first menu
-    // click. Widgets can stay lazily mounted because their read models are hot.
-    final targets = <String>{};
+    // Keep login/navigation responsive by warming only the first screen keys
+    // immediately. Preset/status variants are useful, but firing all of them
+    // at once competes with the user's first real navigation request.
+    final primaryTargets = <String>{};
+    final deferredTargets = <String>{};
     if (_can('dashboard.read')) {
-      targets.add(centralDashboardInitialPath());
+      primaryTargets.add(centralDashboardInitialPath());
     }
     if (_can('partners.read')) {
-      targets.add(centralPartnersInitialPath());
-      // The portfolio KPI cards are common first interactions. Warm their
-      // exact server-side filter keys so the first click is cache-backed too.
-      targets.add(centralPartnersPresetPath(lifecycle: 'LIVE'));
-      targets.add(centralPartnersPresetPath(lifecycle: 'PROSPECT'));
-      targets.add(centralPartnersPresetPath(reference: true));
+      primaryTargets.add(centralPartnersInitialPath());
+      deferredTargets.add(centralPartnersPresetPath(lifecycle: 'LIVE'));
+      deferredTargets.add(centralPartnersPresetPath(lifecycle: 'PROSPECT'));
+      deferredTargets.add(centralPartnersPresetPath(reference: true));
     }
     if (_can('catalog.read')) {
-      targets.add(centralModulesInitialPath());
-      targets.add(centralModulesCommercialInitialPath());
+      primaryTargets.add(centralModulesInitialPath());
+      deferredTargets.add(centralModulesCommercialInitialPath());
     }
     if (_can('billing.read')) {
-      targets.add(centralPackagesInitialPath());
-      targets.add(centralPackagesSupplementaryInitialPath());
-      targets.add(centralFinanceInitialPath());
-      // Finance KPI/status cards use distinct cache keys. Prewarm the common
-      // first-click views against the same hot snapshot read model.
+      primaryTargets.add(centralPackagesInitialPath());
+      deferredTargets.add(centralPackagesSupplementaryInitialPath());
+      primaryTargets.add(centralFinanceInitialPath());
       for (final status in const ['DRAFT', 'APPROVED', 'SENT', 'PAID']) {
-        targets.add(centralFinancePath(invoiceStatus: status));
+        deferredTargets.add(centralFinancePath(invoiceStatus: status));
       }
     }
     if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
-      targets.add(centralImpactInitialPath());
+      deferredTargets.add(centralImpactInitialPath());
     }
     if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
-      targets.add('/api/v1/system-health/snapshot');
-      targets.add('/api/v1/provisioning/jobs');
-      targets.add('/api/v1/environments');
-      targets.add('/api/v1/backups/summary');
+      deferredTargets.add('/api/v1/system-health/snapshot');
+      deferredTargets.add('/api/v1/provisioning/jobs');
+      deferredTargets.add('/api/v1/environments');
+      deferredTargets.add('/api/v1/backups/summary');
     }
 
     final path = Uri.base.path;
     if (_can('partners.read') && path.startsWith('/app/partners/')) {
       final id = path.substring('/app/partners/'.length).split('/').first;
-      if (id.isNotEmpty) targets.add('/api/v1/central/partners/$id');
+      if (id.isNotEmpty) primaryTargets.add('/api/v1/central/partners/$id');
     }
 
-    if (targets.isNotEmpty) {
-      api.prefetch(targets, maxAge: const Duration(seconds: 30));
+    if (primaryTargets.isNotEmpty) {
+      api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30));
+    }
+    if (deferredTargets.isNotEmpty) {
+      Timer(const Duration(milliseconds: 1500), () {
+        if (!mounted || user == null) return;
+        api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30));
+      });
     }
   }
 
@@ -3933,7 +3990,7 @@ class _PartnersPageState extends State<PartnersPage> {
       subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => openBrowserDownload(_partnerExportUri().toString()),
+          onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
           icon: const Icon(Icons.download_outlined),
           label: const LText('Export PDF'),
         ),
@@ -6389,7 +6446,7 @@ class _PackagesPageState extends State<PackagesPage> {
       subtitle: 'Starter, Business and Premium package control with usage and commercial analytics.',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => openBrowserDownload('/api/v1/billing/packages/export.pdf'),
+          onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/billing/packages/export.pdf'),
           icon: const Icon(Icons.download_outlined),
           label: const LText('Export PDF'),
         ),
@@ -6709,12 +6766,21 @@ class _FinancePageState extends State<FinancePage> {
   String revenuePlan = 'ALL';
   final GlobalKey onboardingKey = GlobalKey();
   bool loading = true;
+  bool warming = false;
+  int _warmRetryCount = 0;
+  Timer? _warmRetry;
   String? error;
 
   @override
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void dispose() {
+    _warmRetry?.cancel();
+    super.dispose();
   }
 
   String _financePath() {
@@ -6742,17 +6808,34 @@ class _FinancePageState extends State<FinancePage> {
       if (model['ready'] != true) {
         setState(() {
           loading = true;
+          warming = true;
           error = null;
         });
-        Future<void>.delayed(const Duration(milliseconds: 400), () {
-          if (mounted && path == _financePath()) unawaited(load());
-        });
+        // Snapshot production is asynchronous. Hammering the Gateway every
+        // 400 ms cannot make the materializer finish faster and can compete
+        // with the very service calls needed to build the snapshot. Retry a
+        // bounded number of times, then leave an explicit warming state that
+        // the user can refresh manually.
+        _warmRetry?.cancel();
+        if (_warmRetryCount < 2) {
+          _warmRetryCount += 1;
+          _warmRetry = Timer(Duration(milliseconds: 900 * _warmRetryCount), () {
+            if (mounted && path == _financePath()) {
+              unawaited(load(force: true));
+            }
+          });
+        } else {
+          setState(() => loading = false);
+        }
         return;
       }
       final chart = model['chart'] is Map
           ? Map<String, dynamic>.from(model['chart'] as Map)
           : <String, dynamic>{};
+      _warmRetry?.cancel();
+      _warmRetryCount = 0;
       setState(() {
+        warming = false;
         profile = model['profile'] is Map
             ? Map<String, dynamic>.from(model['profile'] as Map)
             : null;
@@ -7326,11 +7409,13 @@ class _FinancePageState extends State<FinancePage> {
         partners.isEmpty &&
         onboardingRows.isEmpty &&
         chartRows.isEmpty) {
-      return const Content(
+      return Content(
         eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
         title: 'Licensing & Finance',
-        subtitle: 'Loading the latest finance snapshot.',
-        child: _BrandLoading(),
+        subtitle: warming
+            ? 'Preparing the finance snapshot. The page will update automatically without continuous polling.'
+            : 'Loading the latest finance snapshot.',
+        child: const _BrandLoading(),
       );
     }
     final draftCount = (financeKpis['draft'] as num?)?.toInt() ?? 0;
@@ -7353,7 +7438,7 @@ class _FinancePageState extends State<FinancePage> {
       subtitle: 'Partner onboarding, invoice approval, payment status and auditable finance controls. A partner reaches Portal access only after final HIMATE approval.',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => openBrowserDownload(financeExportPath),
+          onPressed: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
           icon: const Icon(Icons.download_outlined),
           label: const LText('Export PDF'),
         ),
@@ -7373,6 +7458,14 @@ class _FinancePageState extends State<FinancePage> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (warming) ...[
+                  const _MessageCard(
+                    icon: Icons.sync_rounded,
+                    title: 'Finance snapshot is warming',
+                    message: 'The latest persisted finance view is being prepared. Continuous polling is disabled; use Refresh if the snapshot is still unavailable.',
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 if (loading) const LinearProgressIndicator(minHeight: 2),
                 ResponsiveKpiGrid(
                   children: [
@@ -8273,7 +8366,7 @@ class _ImpactPageState extends State<ImpactPage> {
             builder: (context, constraints) {
               final actions = <Widget>[
                 OutlinedButton.icon(
-                  onPressed: () => openBrowserDownload('/api/v1/impact/export.pdf'),
+                  onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/impact/export.pdf'),
                   icon: const Icon(Icons.download_outlined),
                   label: const LText('Export PDF'),
                 ),

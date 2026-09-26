@@ -64,16 +64,18 @@ check("/api/v1/central/partners/{partnerId}/modules" in openapi,
 for token in [
     "final Map<int, Widget> _pageCache",
     "_pageCache.putIfAbsent",
-    "final targets = <String>{};",
-    "targets.add(centralDashboardInitialPath())",
-    "targets.add(centralPartnersInitialPath())",
-    "targets.add(centralModulesInitialPath())",
-    "targets.add(centralModulesCommercialInitialPath())",
-    "targets.add(centralPackagesInitialPath())",
-    "targets.add(centralPackagesSupplementaryInitialPath())",
-    "targets.add(centralFinanceInitialPath())",
-    "targets.add(centralImpactInitialPath())",
-    "api.prefetch(targets, maxAge: const Duration(seconds: 30))",
+    "final primaryTargets = <String>{};",
+    "final deferredTargets = <String>{};",
+    "primaryTargets.add(centralDashboardInitialPath())",
+    "primaryTargets.add(centralPartnersInitialPath())",
+    "primaryTargets.add(centralModulesInitialPath())",
+    "deferredTargets.add(centralModulesCommercialInitialPath())",
+    "primaryTargets.add(centralPackagesInitialPath())",
+    "deferredTargets.add(centralPackagesSupplementaryInitialPath())",
+    "primaryTargets.add(centralFinanceInitialPath())",
+    "deferredTargets.add(centralImpactInitialPath())",
+    "api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30))",
+    "api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30))",
 ]:
     check(token in frontend, f"Central-10.1 Step 5 pre-click warmup contract missing: {token}")
 
@@ -158,12 +160,12 @@ for exact_prefetch in [
           f"Central-10.1 exact warmup/mount cache key missing: {exact_prefetch}")
 
 for shared_path_contract in [
-    "targets.add(centralDashboardInitialPath())",
+    "primaryTargets.add(centralDashboardInitialPath())",
     "final path = centralDashboardInitialPath()",
-    "targets.add(centralModulesCommercialInitialPath())",
-    "targets.add(centralFinanceInitialPath())",
+    "deferredTargets.add(centralModulesCommercialInitialPath())",
+    "primaryTargets.add(centralFinanceInitialPath())",
     "return centralFinanceInitialPath();",
-    "targets.add(centralImpactInitialPath())",
+    "deferredTargets.add(centralImpactInitialPath())",
     "return centralImpactInitialPath();",
     "valueListenable: api.cacheSignal(path)",
 ]:

@@ -216,6 +216,13 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'No exportable data': 'Nincs exportálható adat',
+    'There is no data to export for the current selection.': 'A jelenlegi kiválasztáshoz nincs exportálható adat.',
+    'PDF export failed': 'A PDF exportálása nem sikerült',
+    'The PDF export could not be prepared. Please try again.': 'A PDF-export nem készíthető elő. Próbáld újra.',
+    'Preparing the finance snapshot. The page will update automatically without continuous polling.': 'A pénzügyi pillanatkép előkészítése folyamatban van. Az oldal folyamatos lekérdezés nélkül automatikusan frissül.',
+    'Finance snapshot is warming': 'A pénzügyi pillanatkép előkészítése folyamatban van',
+    'The latest persisted finance view is being prepared. Continuous polling is disabled; use Refresh if the snapshot is still unavailable.': 'A legutóbbi tartósan mentett pénzügyi nézet előkészítése folyamatban van. A folyamatos lekérdezés ki van kapcsolva; használd a Frissítés gombot, ha a pillanatkép továbbra sem érhető el.',
     'Commercial Matrix unavailable': 'A kereskedelmi mátrix nem érhető el',
     'Loading Commercial Matrix': 'Kereskedelmi mátrix betöltése',
     'Loading package definitions from the hot commercial snapshot.': 'Csomagdefiníciók betöltése a gyors kereskedelmi pillanatképből.',
