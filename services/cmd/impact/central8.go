@@ -40,6 +40,10 @@ func (a *app) exportImpactPDF(w http.ResponseWriter, r *http.Request) {
 		if numeric.Valid { value=fmt.Sprintf("%.2f",numeric.Float64) }
 		tableRows=append(tableRows,[]string{partner,label,key,value,unit,aggregation,start.Format("2006-01-02"),end.Format("2006-01-02"),provenance})
 	}
+	if r.URL.Query().Get("availability") == "1" {
+		common.JSON(w, http.StatusOK, map[string]any{"has_data": len(tableRows) > 0, "count": len(tableRows)})
+		return
+	}
 	common.WriteBrandedTablePDF(w,"himate-impact.pdf","HiMate Central - Impact","Auditable metric value export",
 		[]string{"Partner","Metric","Key","Value","Unit","Aggregation","From","To","Provenance"},tableRows)
 }
