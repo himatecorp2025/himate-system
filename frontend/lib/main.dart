@@ -2871,63 +2871,9 @@ class _PartnersPageState extends State<PartnersPage> {
     'ARCHIVED',
   ];
 
-  List<Map<String, dynamic>> _builtInPartnerCategories() {
-    final hu = HimateI18n.activeLocale == 'hu_HU';
-    const rows = <List<String>>[
-      <String>['cat_001', 'Classical Music', 'Klasszikus zene', 'classical-music'],
-      <String>['cat_002', 'Fine Art', 'Képzőművészet', 'fine-art'],
-      <String>['cat_003', 'Gallery', 'Galéria', 'gallery'],
-      <String>['cat_004', 'Theatre', 'Színház', 'theatre'],
-      <String>['cat_005', 'Cultural Organization', 'Kulturális szervezet', 'cultural-organization'],
-      <String>['cat_006', 'Other', 'Egyéb', 'other'],
-    ];
-    return rows
-        .map((row) => <String, dynamic>{
-              'id': row[0],
-              'name': hu ? row[2] : row[1],
-              'name_en': row[1],
-              'name_hu': row[2],
-              'slug': row[3],
-              'system': true,
-            })
-        .toList();
-  }
-
-  List<Map<String, dynamic>> _mergePartnerCategories(Iterable<Map<String, dynamic>> remote) {
-    final byID = <String, Map<String, dynamic>>{
-      for (final item in _builtInPartnerCategories()) '${item['id']}': item,
-    };
-    for (final item in remote) {
-      final id = '${item['id'] ?? ''}'.trim();
-      if (id.isEmpty) continue;
-      byID[id] = Map<String, dynamic>.from(item);
-    }
-    final systemOrder = <String, int>{
-      'cat_001': 1,
-      'cat_002': 2,
-      'cat_003': 3,
-      'cat_004': 4,
-      'cat_005': 5,
-      'cat_006': 6,
-    };
-    final result = byID.values.toList()
-      ..sort((a, b) {
-        final aid = '${a['id']}';
-        final bid = '${b['id']}';
-        final ao = systemOrder[aid];
-        final bo = systemOrder[bid];
-        if (ao != null && bo != null) return ao.compareTo(bo);
-        if (ao != null) return -1;
-        if (bo != null) return 1;
-        return '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase());
-      });
-    return result;
-  }
-
   @override
   void initState() {
     super.initState();
-    categories = _builtInPartnerCategories();
     load(loadCategories: true);
   }
 
@@ -2997,7 +2943,7 @@ class _PartnersPageState extends State<PartnersPage> {
           : <String>{};
       setState(() {
         partners = items(model);
-        categories = _mergePartnerCategories(categoryRows);
+        categories = categoryRows;
         partnerKpis = kpis;
         total = (pagination['total'] as num?)?.toInt() ?? partners.length;
         hasMore = pagination['has_more'] == true;
@@ -3095,11 +3041,8 @@ class _PartnersPageState extends State<PartnersPage> {
         'name_en': nameEN.text.trim(),
         'name_hu': nameHU.text.trim(),
       });
+      await load(loadCategories: true);
       if (mounted) {
-        setState(() {
-          categories = _mergePartnerCategories(<Map<String, dynamic>>[...categories, created]);
-          categoryRegistryWarning = null;
-        });
         success('Partner category created.');
       }
     }
@@ -3156,7 +3099,14 @@ class _PartnersPageState extends State<PartnersPage> {
       }
     }
 
-    var categoryOptions = _mergePartnerCategories(categories);
+    if (categories.isEmpty) {
+      await load(loadCategories: true);
+    }
+    var categoryOptions = List<Map<String, dynamic>>.from(categories);
+    if (categoryOptions.isEmpty) {
+      failure('Partner categories are temporarily unavailable.');
+      return;
+    }
     if (categoryRegistryWarning != null && !categoriesLoading) {
       unawaited(load(loadCategories: true));
     }
@@ -3282,20 +3232,25 @@ class _PartnersPageState extends State<PartnersPage> {
                   maxAge: const Duration(seconds: 5),
                 );
                 final loaded = items(<String, dynamic>{'items': response['categories']});
-                final merged = _mergePartnerCategories(loaded);
-                final warning = loaded.isEmpty
-                    ? 'The live category registry returned no rows. Built-in partner categories are shown.'
+                final meta = response['meta'] is Map
+                    ? Map<String, dynamic>.from(response['meta'] as Map)
+                    : <String, dynamic>{};
+                final unavailable = meta['unavailable'] is List
+                    ? (meta['unavailable'] as List).map((e) => '$e').toSet()
+                    : <String>{};
+                final warning = unavailable.contains('partner_categories')
+                    ? 'The live category registry is temporarily unavailable. Go fallback categories are shown.'
                     : null;
                 if (!dialogOpen) return;
                 if (mounted) {
                   setState(() {
-                    categories = merged;
+                    categories = loaded;
                     categoryRegistryWarning = warning;
                     categoriesLoading = false;
                   });
                 }
                 setLocal(() {
-                  categoryOptions = merged;
+                  categoryOptions = loaded;
                   modalCategoryWarning = warning;
                   if (!categoryOptions.any((item) => '${item['id']}' == category)) {
                     category = '${categoryOptions.first['id']}';
@@ -3303,18 +3258,15 @@ class _PartnersPageState extends State<PartnersPage> {
                 });
               } catch (_) {
                 if (!dialogOpen) return;
-                final fallback = _mergePartnerCategories(categoryOptions);
                 const warning =
-                    'The live category registry is temporarily unavailable. Built-in partner categories remain available.';
+                    'The category read model could not be refreshed. The already loaded Go category snapshot remains available.';
                 if (mounted) {
                   setState(() {
-                    categories = fallback;
                     categoryRegistryWarning = warning;
                     categoriesLoading = false;
                   });
                 }
                 setLocal(() {
-                  categoryOptions = fallback;
                   modalCategoryWarning = warning;
                 });
               }
