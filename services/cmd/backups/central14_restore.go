@@ -331,28 +331,70 @@ func (a *app) restoreConfig(ctx context.Context,partnerID,configPath,actor,reaso
 	return nil
 }
 
+func (a *app) rollbackToSafetyRestorePoint(safety restorePoint,job restoreJob) error {
+	ctx,cancel:=context.WithTimeout(context.Background(),60*time.Minute)
+	defer cancel()
+	if err:=a.suspendPartnerEnvironments(ctx,job.PartnerID);err!=nil{
+		return fmt.Errorf("suspend partner environments for rollback: %w",err)
+	}
+	work,err:=a.unpackRestorePoint(ctx,safety,"rollback-"+job.ID)
+	if err!=nil{return fmt.Errorf("unpack safety restore point: %w",err)}
+	defer os.RemoveAll(work)
+	extracted:=filepath.Join(work,"components")
+	rollbackID:=newID("rjob")
+	if err:=a.restoreLiveDatabase(ctx,filepath.Join(extracted,"database.dump"),job.PartnerID,rollbackID);err!=nil{
+		return fmt.Errorf("rollback database: %w",err)
+	}
+	if err:=a.restoreMedia(ctx,job.PartnerID,filepath.Join(extracted,"media.tar.gz"));err!=nil{
+		return fmt.Errorf("rollback media: %w",err)
+	}
+	if err:=a.restoreConfig(ctx,job.PartnerID,filepath.Join(extracted,"config.json"),job.CreatedBy,
+		"automatic safety rollback after failed restore "+job.ID);err!=nil{
+		return fmt.Errorf("rollback configuration: %w",err)
+	}
+	return nil
+}
+
 func (a *app) processProductionRestore(ctx context.Context,job restoreJob) {
 	started:=time.Now()
 	fail:=func(err error){
-		_,_=a.db.Exec(`UPDATE backups.restore_jobs SET status='FAILED',error=$2,completed_at=NOW(),duration_ms=$3 WHERE id=$1`,job.ID,safeError(err),time.Since(started).Milliseconds())
+		_,_=a.db.Exec(`UPDATE backups.restore_jobs SET status='FAILED',error=$2,completed_at=NOW(),duration_ms=$3 WHERE id=$1`,
+			job.ID,safeError(err),time.Since(started).Milliseconds())
 	}
 	if err:=a.partnerRestoreAllowed(ctx,job.PartnerID);err!=nil{fail(err);return}
 	point,err:=a.getRestorePoint(job.RestorePointID);if err!=nil{fail(err);return}
 	if err:=a.verifiedRestorePoint(point);err!=nil{fail(err);return}
-	safety,err:=a.createSafetyRestorePoint(ctx,job.PartnerID,job.CreatedBy);if err!=nil{fail(fmt.Errorf("pre-restore safety backup: %w",err));return}
+	safety,err:=a.createSafetyRestorePoint(ctx,job.PartnerID,job.CreatedBy)
+	if err!=nil{fail(fmt.Errorf("pre-restore safety backup: %w",err));return}
 	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET safety_restore_point_id=$2 WHERE id=$1`,job.ID,safety.ID)
-	if err:=a.suspendPartnerEnvironments(ctx,job.PartnerID);err!=nil{fail(err);return}
 
+	failAfterMutation:=func(cause error){
+		rollbackErr:=a.rollbackToSafetyRestorePoint(safety,job)
+		message:=fmt.Errorf("%w; automatic safety rollback PASSED",cause)
+		if rollbackErr!=nil{
+			message=fmt.Errorf("%w; automatic safety rollback FAILED: %v",cause,rollbackErr)
+		}
+		fail(message)
+	}
+
+	if err:=a.suspendPartnerEnvironments(ctx,job.PartnerID);err!=nil{fail(err);return}
 	work,err:=a.unpackRestorePoint(ctx,point,"production-"+job.ID)
 	if err!=nil{fail(err);return}
 	defer os.RemoveAll(work)
 	extracted:=filepath.Join(work,"components")
-	if err:=a.restoreLiveDatabase(ctx,filepath.Join(extracted,"database.dump"),job.PartnerID,job.ID);err!=nil{fail(fmt.Errorf("database restore: %w",err));return}
+	if err:=a.restoreLiveDatabase(ctx,filepath.Join(extracted,"database.dump"),job.PartnerID,job.ID);err!=nil{
+		failAfterMutation(fmt.Errorf("database restore: %w",err));return
+	}
 	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET database_ok=TRUE WHERE id=$1`,job.ID)
-	if err:=a.restoreMedia(ctx,job.PartnerID,filepath.Join(extracted,"media.tar.gz"));err!=nil{fail(fmt.Errorf("media restore: %w",err));return}
+	if err:=a.restoreMedia(ctx,job.PartnerID,filepath.Join(extracted,"media.tar.gz"));err!=nil{
+		failAfterMutation(fmt.Errorf("media restore: %w",err));return
+	}
 	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET media_ok=TRUE WHERE id=$1`,job.ID)
-	if err:=a.restoreConfig(ctx,job.PartnerID,filepath.Join(extracted,"config.json"),job.CreatedBy,job.Reason);err!=nil{fail(fmt.Errorf("configuration restore: %w",err));return}
-	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET config_ok=TRUE,status='COMPLETED',error='',completed_at=NOW(),duration_ms=$2 WHERE id=$1`,job.ID,time.Since(started).Milliseconds())
+	if err:=a.restoreConfig(ctx,job.PartnerID,filepath.Join(extracted,"config.json"),job.CreatedBy,job.Reason);err!=nil{
+		failAfterMutation(fmt.Errorf("configuration restore: %w",err));return
+	}
+	_,_=a.db.Exec(`UPDATE backups.restore_jobs SET config_ok=TRUE,status='COMPLETED',error='',completed_at=NOW(),duration_ms=$2 WHERE id=$1`,
+		job.ID,time.Since(started).Milliseconds())
 }
 
 func (a *app) productionRestoreRoute(w http.ResponseWriter,r *http.Request,pointID string){
