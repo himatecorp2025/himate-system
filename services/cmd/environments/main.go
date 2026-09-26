@@ -247,7 +247,13 @@ func (a *app) environmentByID(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w,404,"NOT_FOUND","Environment action not found"); return
 	}
 
-	if r.Method!=http.MethodPatch { common.APIError(w,405,"METHOD","Use PATCH"); return }
+	if r.Method==http.MethodGet {
+		e,err:=a.get(id)
+		if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found"); return }
+		common.JSON(w,http.StatusOK,mapEnvironment(e))
+		return
+	}
+	if r.Method!=http.MethodPatch { common.APIError(w,405,"METHOD","Use GET or PATCH"); return }
 	e, err:=a.get(id)
 	if err!=nil { common.APIError(w,404,"NOT_FOUND","Environment not found"); return }
 	var in struct {
