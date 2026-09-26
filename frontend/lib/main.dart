@@ -4063,10 +4063,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       final model = await widget.api.get(
         '/api/v1/central/partners/$id',
         maxAge: const Duration(seconds: 5),
-      ).timeout(
-        const Duration(seconds: 8),
-        onTimeout: () => throw TimeoutException('Partner workspace timed out after 8 seconds'),
-      );
+      ).timeout(const Duration(seconds: 8));
       if (!mounted || generation != _supplementalLoadGeneration) return;
       final core = model['partner'] is Map
           ? Map<String, dynamic>.from(model['partner'] as Map)
@@ -4129,10 +4126,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         loading = false;
         supplementalLoading = false;
         if (hasPrimary) {
-          supplementalError =
-              'The latest Go partner read model could not be refreshed. The already loaded partner record remains usable.';
+          supplementalError = e is TimeoutException
+              ? 'The partner workspace timed out after 8 seconds. The already loaded partner record remains usable.'
+              : 'The latest Go partner read model could not be refreshed. The already loaded partner record remains usable.';
         } else {
-          error = e.toString();
+          error = e is TimeoutException
+              ? 'The partner workspace timed out after 8 seconds.'
+              : e.toString();
         }
       });
     }
