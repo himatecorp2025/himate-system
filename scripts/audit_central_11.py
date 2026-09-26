@@ -20,6 +20,9 @@ fixture = read("services/cmd/partners/test_fixture.go")
 storage = read("services/cmd/storage/main.go")
 billing6 = read("services/cmd/billing/central6.go")
 billing8 = read("services/cmd/billing/central8.go")
+billing11 = read("services/cmd/billing/central11.go")
+automation_service = read("services/cmd/automation/main.go")
+tenant_finance = read("services/cmd/tenantfinance/storage.go")
 impact = read("services/cmd/impact/main.go")
 render = read("render.yaml")
 compose = read("docker-compose.yml")
@@ -109,6 +112,7 @@ for token in [
     "testFixtureMarker = \"HIMATE_GOLDEN_TEST_FIXTURE\"",
     "seedTestPartnerFixture",
     "purgeTestPartner",
+    "set_config('himate.test_partner_purge',$1,TRUE)",
     "if !p.TestPartner",
     "confirm_partner_id",
     "COMPLIANCE_RETENTION",
@@ -164,6 +168,23 @@ check("tp.test_partner=TRUE" in billing8,
       "Finance revenue trends do not exclude Test Partner")
 check("COALESCE(p.test_partner,FALSE)=FALSE" in impact,
       "Impact global aggregate does not exclude Test Partner")
+
+# Immutable production ledgers may be deleted only inside the transaction-scoped
+# Golden Test Partner purge capability.
+for token in [
+    "central11BillingTestPurgeMigration",
+    "Version: 20",
+    "current_setting('himate.test_partner_purge', TRUE)=OLD.partner_id",
+]:
+    check(token in billing11, f"Billing Test Partner purge guard missing: {token}")
+check('Version:2,Name:"central-11-golden-test-partner-purge-guard"' in automation_service,
+      "Automation Test Partner purge migration missing")
+check("current_setting('himate.test_partner_purge', TRUE)=OLD.partner_id" in automation_service,
+      "Automation immutable event purge is not target-scoped")
+check('Version: 3, Name: "central-11-golden-test-partner-purge-guard"' in tenant_finance,
+      "Tenant Finance Test Partner purge migration missing")
+check("current_setting('himate.test_partner_purge', TRUE)=OLD.partner_id" in tenant_finance,
+      "Tenant Finance append-only purge is not target-scoped")
 
 # Existing Administration audit stream and separate Compliance Archives remain intact.
 check("Administrative Event Stream" in frontend, "Administration audit event stream disappeared")
