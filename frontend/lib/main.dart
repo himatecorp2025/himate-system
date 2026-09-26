@@ -4386,9 +4386,8 @@ class _PartnersPageState extends State<PartnersPage> {
     final allRecords = (partnerKpis['partner_records'] as num?)?.toInt() ?? 0;
 
     return Content(
-      eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
       title: 'Partners',
-      subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
+      subtitle: 'Partner management, relationships and collaboration at a glance.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
@@ -4477,6 +4476,16 @@ class _PartnersPageState extends State<PartnersPage> {
                               lifecycle,
                               const SizedBox(height: 10),
                               health,
+                              const SizedBox(height: 4),
+                              SwitchListTile.adaptive(
+                                contentPadding: EdgeInsets.zero,
+                                value: referenceOnly,
+                                title: const LText('Reference partners'),
+                                onChanged: (value) {
+                                  setState(() => referenceOnly = value);
+                                  load(reset: true);
+                                },
+                              ),
                             ]);
                           }
                           return Row(children: [
@@ -4487,6 +4496,20 @@ class _PartnersPageState extends State<PartnersPage> {
                             Expanded(child: lifecycle),
                             const SizedBox(width: 10),
                             Expanded(child: health),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 190,
+                              child: SwitchListTile.adaptive(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                value: referenceOnly,
+                                title: const LText('Reference partners', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                onChanged: (value) {
+                                  setState(() => referenceOnly = value);
+                                  load(reset: true);
+                                },
+                              ),
+                            ),
                           ]);
                         },
                       ),
@@ -4521,7 +4544,13 @@ class _PartnersPageState extends State<PartnersPage> {
                     const SizedBox(height: 12),
                     LayoutBuilder(
                       builder: (context, c) {
-                        final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1040 ? (c.maxWidth - 14) / 2 : (c.maxWidth - 28) / 3;
+                        final width = c.maxWidth < 620
+                            ? c.maxWidth
+                            : c.maxWidth < 980
+                                ? (c.maxWidth - 14) / 2
+                                : c.maxWidth < 1320
+                                    ? (c.maxWidth - 28) / 3
+                                    : (c.maxWidth - 42) / 4;
                         final cards = <Widget>[
                           if (filtered.isEmpty)
                             SizedBox(
