@@ -332,7 +332,7 @@ jobs:
       - name: Validate Render Blueprint bindings
         run: |
           python3 scripts/audit_render_bindings.py
-          grep -q 'healthCheckPath: /api/v1/live' render.yaml
+          grep -q 'healthCheckPath: /api/v1/health' render.yaml
           for key in PARTNERS_HOSTPORT CATALOG_HOSTPORT BILLING_HOSTPORT TENANT_FINANCE_HOSTPORT PAYMENTS_HOSTPORT CONTACT_HOSTPORT PROVISIONING_HOSTPORT ENVIRONMENTS_HOSTPORT CONNECTOR_HOSTPORT HEALTH_HOSTPORT IMPACT_HOSTPORT EVIDENCE_HOSTPORT REPORTS_HOSTPORT CMS_HOSTPORT STORAGE_HOSTPORT BACKUPS_HOSTPORT PARTNER_RUNTIME_HOSTPORT NOTIFICATIONS_HOSTPORT; do
             grep -q "key: $key" render.yaml || { echo "Missing Render binding: $key"; exit 1; }
           done
