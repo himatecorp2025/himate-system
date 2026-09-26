@@ -20,6 +20,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   bool showSubscriptionPlans = false;
   bool showCommercialMatrix = false;
   bool loading = true;
+  bool registryReady = false;
   bool commercialLoading = true;
   bool commercialReady = false;
   String? error;
@@ -124,9 +125,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     void applyModel(Map<String, dynamic> model) {
       if (!mounted || path != _centralRegistryPath()) return;
       if (model['ready'] != true) {
-        setState(() { loading = true; });
-        Future<void>.delayed(const Duration(milliseconds: 350), () {
-          if (mounted && path == _centralRegistryPath()) unawaited(loadRegistry());
+        setState(() {
+          loading = false;
+          registryReady = false;
         });
         return;
       }
@@ -141,6 +142,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         registryKpis = registry['kpis'] is Map
             ? Map<String, dynamic>.from(registry['kpis'] as Map)
             : <String, dynamic>{};
+        registryReady = true;
         loading = false;
       });
     }
@@ -170,11 +172,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       if (!mounted || path != _centralCommercialPath()) return;
       if (model['ready'] != true) {
         setState(() {
-          commercialLoading = true;
+          commercialLoading = false;
           commercialReady = false;
-        });
-        Future<void>.delayed(const Duration(milliseconds: 500), () {
-          if (mounted && path == _centralCommercialPath()) unawaited(loadCommercial());
         });
         return;
       }
@@ -1696,6 +1695,31 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       );
     }
 
+    if (!registryReady &&
+        error == null &&
+        registryKpis.isEmpty &&
+        modules.isEmpty &&
+        registryModules.isEmpty &&
+        groups.isEmpty &&
+        topicRows.isEmpty) {
+      return Content(
+        title: uiLiteral('Modules'),
+        subtitle: uiLiteral('Modules overview, organized by topic.'),
+        actions: [
+          OutlinedButton.icon(
+            onPressed: loadRegistry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: LText(uiLiteral('Refresh')),
+          ),
+        ],
+        child: const _MessageCard(
+          icon: Icons.hourglass_empty_rounded,
+          title: 'Module snapshot is warming',
+          message: 'The backend read model has no materialized module snapshot yet. This screen will never spin forever; refresh when the snapshot is ready.',
+        ),
+      );
+    }
+
     final registryTotal = (registryKpis['module_registry'] as num?)?.toInt() ?? modules.length;
     final liveReady = (registryKpis['active_modules'] as num?)?.toInt() ?? 0;
     final linked = (registryKpis['source_linked'] as num?)?.toInt() ?? 0;
@@ -1721,9 +1745,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     return Content(
-      eyebrow: uiLiteral('MODULE CONTROL PLANE'),
       title: uiLiteral('Modules'),
-      subtitle: uiLiteral('Topic-driven module registry, partner usage and commercial control in one authoritative workspace.'),
+      subtitle: uiLiteral('Modules overview, organized by topic.'),
       actions: [
         OutlinedButton.icon(
           onPressed: () => setState(() => showSubscriptionPlans = true),
