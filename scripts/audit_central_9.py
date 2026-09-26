@@ -91,12 +91,14 @@ legacy_prefetch = all(token in frontend for token in [
 ])
 backend_first_prefetch = all(token in frontend for token in [
     "final Map<int, Widget> _pageCache",
-    "final targets = <String>{};",
-    "targets.add(centralModulesInitialPath())",
-    "targets.add(centralPackagesInitialPath())",
-    "targets.add(centralFinanceInitialPath())",
-    "targets.add(centralImpactInitialPath())",
-    "api.prefetch(targets, maxAge: const Duration(seconds: 30))",
+    "final primaryTargets = <String>{};",
+    "final deferredTargets = <String>{};",
+    "primaryTargets.add(centralModulesInitialPath())",
+    "primaryTargets.add(centralPackagesInitialPath())",
+    "primaryTargets.add(centralFinanceInitialPath())",
+    "deferredTargets.add(centralImpactInitialPath())",
+    "api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30))",
+    "api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30))",
 ])
 check(legacy_prefetch or backend_first_prefetch,
       "Central-9/10 performance contract missing")
