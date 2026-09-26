@@ -123,9 +123,12 @@ for token in [
 
 check("Duration(milliseconds: 950)" not in frontend,
       "Central-10.1 still uses the obsolete 950ms browser timeout")
-check("ctx,cancel:=context.WithTimeout(r.Context(),3*time.Second)" not in gateway_main,
+dashboard_start = gateway_main.find("func (a *app) dashboard(")
+dashboard_end = gateway_main.find("\nfunc ", dashboard_start + 1)
+dashboard_body = gateway_main[dashboard_start:dashboard_end] if dashboard_start >= 0 and dashboard_end > dashboard_start else ""
+check("3*time.Second" not in dashboard_body,
       "Central-10.1 Dashboard still allows a 3-second live read")
-check("ctx,cancel:=context.WithTimeout(r.Context(),central10ReadBudget)" in gateway_main,
+check("context.WithTimeout(r.Context(),central10ReadBudget)" in dashboard_body,
       "Central-10.1 Dashboard is not aligned to the Central backend read budget")
 check("force: loadCategories" not in frontend,
       "Central-10.1 Partners first mount still bypasses warm cache/inflight data")
@@ -198,8 +201,10 @@ for token in [
 ]:
     check(token in frontend, f"Partner Workspace presentation binding missing: {token}")
 
-check("widget.api.get(\n        _financePath()," in frontend,
-      "Finance does not load through its parameterized Go read model")
+check(
+    "final path = _financePath();" in frontend and "widget.api.get(\n        path," in frontend,
+    "Finance does not load through its parameterized Go read model",
+)
 
 for token in [
     "void applyInvoiceFilter(String status)",
