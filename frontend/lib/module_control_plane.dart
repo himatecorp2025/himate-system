@@ -10,11 +10,13 @@ class ModuleControlPlanePage extends StatefulWidget {
 
 class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> registryModules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> groups = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> topicRows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> commercialRows = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> subscriptionRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> commercialGroups = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptionPlans = <Map<String, dynamic>>[];
+  Map<String, dynamic> registryKpis = <String, dynamic>{};
   bool showSubscriptionPlans = false;
   bool showCommercialMatrix = false;
   bool loading = false;
@@ -30,6 +32,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   String commercialStatusFilter = 'ALL';
   String commercialPerspective = 'PARTNER';
   int commercialShown = 120;
+  int commercialGroupCount = 0;
+  int commercialAssignmentCount = 0;
+  Timer? _registryDebounce;
+  Timer? _commercialDebounce;
 
   static const moduleTypes = <String>[
     'CORE','FEATURE','INTEGRATION','REPORTING','WEBSITE','FINANCE','INFRASTRUCTURE',
@@ -51,42 +57,78 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     load();
   }
 
+  @override
+  void dispose() {
+    _registryDebounce?.cancel();
+    _commercialDebounce?.cancel();
+    super.dispose();
+  }
+
+  String _centralModulesPath() {
+    final params = <String, String>{
+      'perspective': commercialPerspective,
+      'commercial_limit': '$commercialShown',
+    };
+    if (query.trim().isNotEmpty) params['registry_q'] = query.trim();
+    final effectiveGroup = selectedGroupKey ?? (groupFilter == 'ALL' ? null : groupFilter);
+    if (effectiveGroup != null && effectiveGroup.isNotEmpty) params['registry_group'] = effectiveGroup;
+    if (typeFilter != 'ALL') params['registry_type'] = typeFilter;
+    if (registryPreset != 'TOPICS' && registryPreset != 'ALL') {
+      params['registry_preset'] = registryPreset;
+    }
+    if (commercialQuery.trim().isNotEmpty) params['commercial_q'] = commercialQuery.trim();
+    if (commercialPartnerFilter != 'ALL') params['commercial_partner'] = commercialPartnerFilter;
+    if (commercialModuleFilter != 'ALL') params['commercial_module'] = commercialModuleFilter;
+    if (commercialStatusFilter != 'ALL') params['commercial_status'] = commercialStatusFilter;
+    return Uri(path: '/api/v1/central/modules', queryParameters: params).toString();
+  }
+
   Future<void> load() async {
     if (mounted) setState(() { loading = true; error = null; });
     try {
-      final responses = await Future.wait([
-        widget.api.get('/api/v1/modules', force: true),
-        widget.api.get('/api/v1/module-groups', force: true),
-        widget.api.get('/api/v1/partners?limit=200&offset=0&core_only=true', force: true),
-        widget.api.get('/api/v1/billing/plans', force: true),
-      ]);
-      final partnerItems = items(responses[2]);
-      final partnerIDs = partnerItems.map((p) => s(p['id'])).where((id) => id.isNotEmpty).toList();
-      Map<String, dynamic> matrix = <String, dynamic>{'items': <Map<String, dynamic>>[]};
-      Map<String, dynamic> subscriptions = <String, dynamic>{'items': <Map<String, dynamic>>[]};
-      if (partnerIDs.isNotEmpty) {
-        final encoded = Uri.encodeQueryComponent(partnerIDs.join(','));
-        final commercial = await Future.wait([
-          widget.api.get('/api/v1/module-commercial-matrix?partner_ids=$encoded', force: true),
-          widget.api.get('/api/v1/billing/subscription-matrix?partner_ids=$encoded', force: true),
-        ]);
-        matrix = commercial[0];
-        subscriptions = commercial[1];
-      }
+      final model = await widget.api.get(
+        _centralModulesPath(),
+        maxAge: const Duration(seconds: 5),
+      );
       if (!mounted) return;
+      final registry = model['registry'] is Map
+          ? Map<String, dynamic>.from(model['registry'] as Map)
+          : <String, dynamic>{};
+      final commercial = model['commercial'] is Map
+          ? Map<String, dynamic>.from(model['commercial'] as Map)
+          : <String, dynamic>{};
       setState(() {
-        modules = items(responses[0]);
-        groups = items(responses[1]);
-        partners = partnerItems;
-        commercialRows = items(matrix);
-        subscriptionRows = items(subscriptions);
-        subscriptionPlans = items(responses[3]);
-        commercialShown = 120;
+        modules = items(<String, dynamic>{'items': model['module_options']});
+        registryModules = items(<String, dynamic>{'items': registry['modules']});
+        groups = items(<String, dynamic>{'items': registry['groups']});
+        topicRows = items(<String, dynamic>{'items': registry['topics']});
+        registryKpis = registry['kpis'] is Map
+            ? Map<String, dynamic>.from(registry['kpis'] as Map)
+            : <String, dynamic>{};
+        partners = items(<String, dynamic>{'items': model['partners']});
+        commercialGroups = items(<String, dynamic>{'items': commercial['groups']});
+        commercialGroupCount = (commercial['group_count'] as num?)?.toInt() ?? commercialGroups.length;
+        commercialAssignmentCount = (commercial['assignment_count'] as num?)?.toInt() ?? 0;
+        subscriptionPlans = items(<String, dynamic>{'items': model['plans']});
         loading = false;
       });
     } catch (e) {
       if (mounted) setState(() { error = e.toString(); loading = false; });
     }
+  }
+
+  void _scheduleRegistryReload() {
+    _registryDebounce?.cancel();
+    _registryDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) unawaited(load());
+    });
+  }
+
+  void _scheduleCommercialReload() {
+    _commercialDebounce?.cancel();
+    _commercialDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) unawaited(load());
+    });
   }
 
   void notify(String message, {bool failure = false}) {
@@ -97,29 +139,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     ));
   }
 
-  List<Map<String, dynamic>> get filtered {
-    final q = query.trim().toLowerCase();
-    return modules.where((module) {
-      final text = [
-        s(module['label']), s(module['label_en']), s(module['label_hu']), s(module['key']),
-        s(module['group_label']), s(module['source_repository']), s(module['source_path']), s(module['owner_team']),
-      ].join(' ').toLowerCase();
-      final selectedGroupMatches = selectedGroupKey == null || s(module['group_key']) == selectedGroupKey;
-      final presetMatches = switch (registryPreset) {
-        'ACTIVE' => s(module['availability']) == 'ACTIVE' &&
-            s(module['publication_status']) == 'PUBLISHED' &&
-            s(module['implementation_state']) == 'READY',
-        'SOURCE_LINKED' => s(module['source_repository']).trim().isNotEmpty,
-        'RELATIONSHIPS' => ((module['relationship_count'] as num?)?.toInt() ?? 0) > 0,
-        _ => true,
-      };
-      return (q.isEmpty || text.contains(q)) &&
-          selectedGroupMatches &&
-          presetMatches &&
-          (groupFilter == 'ALL' || s(module['group_key']) == groupFilter) &&
-          (typeFilter == 'ALL' || s(module['module_type']) == typeFilter);
-    }).toList();
-  }
+  List<Map<String, dynamic>> get filtered => registryModules;
 
   String groupLabel(Map<String, dynamic> group) {
     final key = HimateI18n.activeLocale == 'hu_HU' ? 'label_hu' : 'label_en';
@@ -133,9 +153,6 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     return localized.isEmpty ? s(module['label']) : localized;
   }
 
-  List<Map<String, dynamic>> modulesForGroup(String groupKey) =>
-      modules.where((module) => s(module['group_key']) == groupKey).toList();
-
   List<Map<String, dynamic>> get primaryGroups =>
       groups.where((group) => group['is_primary_navigation'] == true).toList();
 
@@ -146,6 +163,23 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     return null;
   }
 
+  Map<String, dynamic>? topicByKey(String key) {
+    for (final topic in topicRows) {
+      if (s(topic['group_key']) == key) return topic;
+    }
+    return null;
+  }
+
+  String partnerName(String partnerID) {
+    for (final partner in partners) {
+      if (s(partner['id']) == partnerID) {
+        final display = s(partner['display_name']).trim();
+        return display.isEmpty ? partnerID : display;
+      }
+    }
+    return partnerID;
+  }
+
   void showTopicOverview() {
     setState(() {
       selectedGroupKey = null;
@@ -154,6 +188,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       typeFilter = 'ALL';
       query = '';
     });
+    unawaited(load());
   }
 
   void applyRegistryPreset(String preset) {
@@ -164,6 +199,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       typeFilter = 'ALL';
       query = '';
     });
+    unawaited(load());
   }
 
   void openTopic(String groupKey) {
@@ -174,6 +210,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       typeFilter = 'ALL';
       query = '';
     });
+    unawaited(load());
   }
 
   Future<void> moveModuleToGroup(Map<String, dynamic> module, String targetGroupKey) async {
