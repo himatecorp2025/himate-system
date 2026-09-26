@@ -164,6 +164,27 @@ for token in [
 check("widget.api.get(\n        _financePath()," in frontend,
       "Finance does not load through its parameterized Go read model")
 
+for token in [
+    "void applyInvoiceFilter(String status)",
+    "void applyRevenuePeriod(String period)",
+    "void applyRevenuePlan(String planKey)",
+    "onSelected: (_) => applyInvoiceFilter(status)",
+    "applyRevenuePeriod(value)",
+    "applyRevenuePlan(value)",
+]:
+    check(token in frontend, f"Finance backend filter interaction is not wired end-to-end: {token}")
+
+for marker in [
+    "void applyInvoiceFilter(String status)",
+    "void applyRevenuePeriod(String period)",
+    "void applyRevenuePlan(String planKey)",
+]:
+    start = frontend.find(marker)
+    end = frontend.find("\n  }", start)
+    body = frontend[start:end] if start >= 0 and end > start else ""
+    check("unawaited(load())" in body,
+          f"Finance filter handler changes UI state without reloading the Go read model: {marker}")
+
 # Canonical package authority is backend-only and exact.
 for token in [
     'out["monthly_price"] = 990',
