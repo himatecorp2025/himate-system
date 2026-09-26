@@ -14,6 +14,7 @@ Acceptance targets:
 - First usable HTTP data must be returned in less than 800 ms in runtime acceptance.
 - Empty data is a finite empty state, never an endless spinner or fabricated zero datapoint.
 - No hard-coded card/module count is introduced.
+- Partner/module scale is dynamic N: the Gateway paginates partner reads and chunks Matrix source calls; per-request presentation batch sizes never cap the total dataset.
 
 ## Architecture
 
