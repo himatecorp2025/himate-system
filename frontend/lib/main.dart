@@ -67,28 +67,7 @@ const canvas = brandIvory;
 const muted = brandTextSoft;
 const success = brandSuccess;
 
-List<Map<String,dynamic>> central8LatestWeeklyWindow(List<Map<String,dynamic>> rows) {
-  final now = DateTime.now().toUtc();
-  final startOfCurrentWeek = DateTime.utc(now.year, now.month, now.day)
-      .subtract(Duration(days: now.weekday - DateTime.monday));
-  final elapsed = rows.where((row) {
-    final parsed = DateTime.tryParse('${row['week_start'] ?? ''}')?.toUtc();
-    return parsed != null && !parsed.isAfter(startOfCurrentWeek);
-  }).toList()
-    ..sort((a, b) => '${a['week_start'] ?? ''}'.compareTo('${b['week_start'] ?? ''}'));
-  final source = elapsed.length <= 4 ? elapsed : elapsed.sublist(elapsed.length - 4);
-  return [
-    for (final row in source)
-      <String,dynamic>{
-        ...row,
-        'label': (() {
-          final parsed = DateTime.tryParse('${row['week_start'] ?? ''}');
-          if (parsed == null) return '${row['label'] ?? row['week'] ?? ''}';
-          return '${parsed.month}/${parsed.day}';
-        })(),
-      },
-  ];
-}
+
 
 Map<String,dynamic> central9CanonicalPackage(String planKey) {
   return switch (planKey.toUpperCase().trim()) {
@@ -2520,6 +2499,19 @@ class DashboardPage extends StatelessWidget {
       future: api.get(path),
       initialData: api.peek(path),
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+          return Content(
+            eyebrow: uiLiteral('Loading live control-plane data'),
+            title: uiLiteral('Welcome to HIMATE System'),
+            subtitle: uiLiteral('The Go read model is assembling the first usable dashboard payload.'),
+            child: ResponsiveKpiGrid(children: [
+              Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: const Color(0xFF0B5DA8)),
+              Kpi(label: uiLiteral('Active Programs'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.description_outlined, accent: brandNavy),
+              Kpi(label: uiLiteral('Revenue (YTD)'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.bar_chart_rounded, accent: brandGold),
+              Kpi(label: uiLiteral('People Reached'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_rounded, accent: brandNavy),
+            ]),
+          );
+        }
         if (snapshot.hasError && snapshot.data == null) {
           return Content(
             title: uiLiteral('Welcome to HIMATE System'),
@@ -2535,6 +2527,7 @@ class DashboardPage extends StatelessWidget {
         final activity=Map<String,dynamic>.from(d['activity']??<String,dynamic>{});
         final billingAuthorized=billing['authorized']!=false;
         final impactAuthorized=impact['authorized']!=false;
+        final impactHasData=impact['has_data']==true;
         final revenueRows=items(billing);
         String revenueValue=billingAuthorized?'0':uiLiteral('Restricted');
         String revenueNote=billingAuthorized
@@ -2580,12 +2573,12 @@ class DashboardPage extends StatelessWidget {
               final weeklyTrend=items(<String,dynamic>{'items':impact['weekly_trend']});
               final activities=items(activity);
               if(c.maxWidth<900)return Column(children:[
-                _ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized),
+                _ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized,hasData:impactHasData),
                 const SizedBox(height:16),
                 _ActivityPanel(items:activities),
               ]);
               return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Expanded(flex:7,child:_ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized)),
+                Expanded(flex:7,child:_ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized,hasData:impactHasData)),
                 const SizedBox(width:16),
                 Expanded(flex:4,child:_ActivityPanel(items:activities)),
               ]);
@@ -2603,11 +2596,13 @@ class _ImpactPanel extends StatefulWidget {
     required this.weeklyTrend,
     required this.year,
     required this.authorized,
+    required this.hasData,
   });
   final List<Map<String,dynamic>> monthlyTrend;
   final List<Map<String,dynamic>> weeklyTrend;
   final int year;
   final bool authorized;
+  final bool hasData;
 
   @override
   State<_ImpactPanel> createState()=>_ImpactPanelState();
@@ -2618,9 +2613,7 @@ class _ImpactPanelState extends State<_ImpactPanel> {
 
   @override
   Widget build(BuildContext context){
-    final trend=weekly
-        ? central8LatestWeeklyWindow(widget.weeklyTrend)
-        : widget.monthlyTrend;
+    final trend=weekly ? widget.weeklyTrend : widget.monthlyTrend;
     return SizedBox(
       height:330,
       child:Card(child:Padding(
@@ -2656,14 +2649,28 @@ class _ImpactPanelState extends State<_ImpactPanel> {
           ]),
           const SizedBox(height:12),
           Expanded(
-            child:widget.authorized
-                ?_ImpactChart(trend:trend)
-                :Center(
+            child:!widget.authorized
+                ? Center(
                     child:LText(
                       uiLiteral('Impact permission required'),
                       style:GoogleFonts.inter(color:brandTextSoft,fontSize:11.5),
                     ),
-                  ),
+                  )
+                : !widget.hasData || trend.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.insights_outlined, color: brandSteel, size: 26),
+                            const SizedBox(height: 8),
+                            LText(
+                              uiLiteral(weekly ? 'No weekly impact data recorded yet.' : 'No monthly impact data recorded yet.'),
+                              style: GoogleFonts.inter(color: brandTextSoft, fontSize: 11.5),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _ImpactChart(trend:trend),
           ),
         ]),
       )),
@@ -2697,7 +2704,8 @@ class _ImpactChartPainter extends CustomPainter {
     final grid=Paint()..color=brandMist.withOpacity(.82)..strokeWidth=.8;
     for(var i=0;i<=4;i++){final y=chart.top+chart.height*i/4;canvas.drawLine(Offset(chart.left,y),Offset(chart.right,y),grid);}
 
-    final vals=values.isEmpty?<double>[0]:values;
+    if (values.isEmpty) return;
+    final vals=values;
     final names=labels.length==vals.length?labels:List<String>.generate(vals.length,(i)=>'${i+1}');
     final divisor=vals.length>1?vals.length-1:1;
     final labelStep=names.length<=12?1:((names.length-1)/11).ceil();
