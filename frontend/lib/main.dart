@@ -6308,10 +6308,13 @@ class FinancePage extends StatefulWidget {
 
 class _FinancePageState extends State<FinancePage> {
   Map<String, dynamic>? profile;
-  Map<String, dynamic> overview = <String, dynamic>{};
   Map<String, dynamic> financeKpis = <String, dynamic>{};
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> onboardingRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> chartRows = <Map<String, dynamic>>[];
+  String chartCurrency = 'USD';
+  double chartMaxPaid = 0;
   String invoiceFilter = 'ALL';
   String revenuePeriod = 'MONTHLY';
   String revenuePlan = 'ALL';
@@ -6325,7 +6328,16 @@ class _FinancePageState extends State<FinancePage> {
     load();
   }
 
-  Future<void> load() async {
+  String _financePath() {
+    final params = <String, String>{
+      'invoice_status': invoiceFilter,
+      'revenue_period': revenuePeriod,
+      'revenue_plan': revenuePlan,
+    };
+    return Uri(path: '/api/v1/central/finance', queryParameters: params).toString();
+  }
+
+  Future<void> load({bool force = false}) async {
     if (mounted) {
       setState(() {
         loading = true;
@@ -6334,22 +6346,27 @@ class _FinancePageState extends State<FinancePage> {
     }
     try {
       final model = await widget.api.get(
-        '/api/v1/central/finance',
+        _financePath(),
+        force: force,
         maxAge: const Duration(seconds: 5),
       );
       if (!mounted) return;
+      final chart = model['chart'] is Map
+          ? Map<String, dynamic>.from(model['chart'] as Map)
+          : <String, dynamic>{};
       setState(() {
         profile = model['profile'] is Map
             ? Map<String, dynamic>.from(model['profile'] as Map)
             : null;
-        overview = model['overview'] is Map
-            ? Map<String, dynamic>.from(model['overview'] as Map)
-            : <String, dynamic>{};
         financeKpis = model['kpis'] is Map
             ? Map<String, dynamic>.from(model['kpis'] as Map)
             : <String, dynamic>{};
         invoices = items(<String, dynamic>{'items': model['invoices']});
         partners = items(<String, dynamic>{'items': model['partners']});
+        onboardingRows = items(<String, dynamic>{'items': model['onboarding']});
+        chartRows = items(<String, dynamic>{'items': chart['rows']});
+        chartCurrency = '${chart['currency'] ?? 'USD'}';
+        chartMaxPaid = number(chart['max_paid']);
         loading = false;
       });
     } catch (e) {
@@ -6373,77 +6390,35 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
-  List<Map<String, dynamic>> get currencyRows {
-    final raw = overview['currencies'];
-    if (raw is! List) return <Map<String, dynamic>>[];
-    return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-  }
-
-  List<Map<String, dynamic>> get onboardingRows {
-    final raw = overview['onboarding'];
-    if (raw is! Map || raw['items'] is! List) return <Map<String, dynamic>>[];
-    return (raw['items'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-  }
-
-  List<Map<String, dynamic>> get filteredInvoices => invoiceFilter == 'ALL'
-      ? invoices
-      : invoices.where((invoice) => '${invoice['workflow_status'] ?? invoice['status'] ?? ''}' == invoiceFilter).toList();
-
-  String partnerName(String id) {
-    for (final partner in partners) {
-      if ('${partner['id'] ?? ''}' == id) {
-        final display = '${partner['display_name'] ?? ''}'.trim();
-        if (display.isNotEmpty) return display;
-      }
-    }
-    return id;
-  }
-
-  int workflowCount(String key) => currencyRows.fold<int>(0, (sum, row) => sum + (row[key] is num ? (row[key] as num).toInt() : int.tryParse('${row[key]}') ?? 0));
-
-  String moneyAcrossCurrencies(String key) {
-    final nonZero = currencyRows.where((row) => number(row[key]) != 0).toList();
-    if (nonZero.isEmpty) return '\$0.00';
-    if (nonZero.length == 1) {
-      final row = nonZero.first;
-      return '${row['currency'] ?? 'USD'} ${number(row[key]).toStringAsFixed(2)}';
-    }
-    return '${nonZero.length} currencies';
-  }
-
-  String get chartCurrency => currencyRows.isEmpty ? 'USD' : '${currencyRows.first['currency'] ?? 'USD'}';
-
-  String get revenuePlanKey => switch (revenuePlan) {
-    'Starter' => 'STARTER',
-    'Business' => 'BUSINESS',
-    'Premium' => 'FLEX',
-    _ => 'ALL',
+  String get revenuePlanLabel => switch (revenuePlan) {
+    'STARTER' => 'Starter',
+    'BUSINESS' => 'Business',
+    'FLEX' => 'Premium',
+    _ => 'All revenue',
   };
 
-  List<Map<String, dynamic>> get chartRows {
-    final byPlan = revenuePlanKey != 'ALL';
-    final key = revenuePeriod == 'WEEKLY'
-        ? (byPlan ? 'weekly_paid_by_plan' : 'weekly_paid')
-        : (byPlan ? 'monthly_paid_by_plan' : 'monthly_paid');
-    final raw = overview[key];
-    if (raw is! List) return <Map<String, dynamic>>[];
-    return raw
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .where((row) =>
-            '${row['currency'] ?? ''}' == chartCurrency &&
-            (!byPlan || '${row['plan_key'] ?? ''}' == revenuePlanKey))
-        .map((row) => <String,dynamic>{
-              ...row,
-              'period': row['period'] ?? row['month'] ?? '',
-            })
-        .toList();
+  void applyInvoiceFilter(String status) {
+    if (invoiceFilter == status) return;
+    setState(() => invoiceFilter = status);
+    unawaited(load());
+  }
+
+  void applyRevenuePeriod(String period) {
+    if (revenuePeriod == period) return;
+    setState(() => revenuePeriod = period);
+    unawaited(load());
+  }
+
+  void applyRevenuePlan(String planKey) {
+    if (revenuePlan == planKey) return;
+    setState(() => revenuePlan = planKey);
+    unawaited(load());
   }
 
   String get financeExportPath {
     final params = <String,String>{};
     if (invoiceFilter != 'ALL') params['status'] = invoiceFilter;
-    if (revenuePlanKey != 'ALL') params['plan_key'] = revenuePlanKey;
+    if (revenuePlan != 'ALL') params['plan_key'] = revenuePlan;
     return Uri(path: '/api/v1/billing/finance/export.pdf', queryParameters: params.isEmpty ? null : params).toString();
   }
 
