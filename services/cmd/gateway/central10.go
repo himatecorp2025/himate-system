@@ -35,10 +35,9 @@ func (a *app) invalidateCentral10Caches() {
 	central10ReadCache.Lock()
 	central10ReadCache.items = map[string]central10CacheEntry{}
 	central10ReadCache.Unlock()
-	a.dashboardMu.Lock()
-	a.dashboardPayload = nil
-	a.dashboardExpires = time.Time{}
-	a.dashboardMu.Unlock()
+	// Dashboard keeps the last-known-good materialized snapshot hot while a
+	// background refresh is queued. Mutations must never blank the screen.
+	a.requestDashboardRefresh()
 }
 
 func central10CacheKey(actor user, r *http.Request) string {
