@@ -6340,6 +6340,7 @@ class FinancePage extends StatefulWidget {
 class _FinancePageState extends State<FinancePage> {
   Map<String, dynamic>? profile;
   Map<String, dynamic> overview = <String, dynamic>{};
+  Map<String, dynamic> financeKpis = <String, dynamic>{};
   List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   String invoiceFilter = 'ALL';
@@ -6356,33 +6357,37 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   Future<void> load() async {
-    if (mounted) setState(() {
-      loading = true;
-      error = null;
-    });
-    final failures = <String>[];
-
-    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
-      try {
-        final data = await widget.api.get(path, maxAge: const Duration(seconds: 15));
-        if (!mounted) return;
-        setState(() => apply(data));
-      } catch (e) {
-        failures.add(e.toString());
-      }
-    }
-
-    await Future.wait<void>([
-      fetch('/api/v1/billing/profile', (data) => profile = data),
-      fetch('/api/v1/billing/finance/overview', (data) => overview = data),
-      fetch('/api/v1/billing/invoices', (data) => invoices = items(data)),
-      fetch('/api/v1/partners?limit=200&offset=0&include_archived=false&include_stats=false', (data) => partners = items(data)),
-    ]);
-
     if (mounted) {
       setState(() {
+        loading = true;
+        error = null;
+      });
+    }
+    try {
+      final model = await widget.api.get(
+        '/api/v1/central/finance',
+        maxAge: const Duration(seconds: 5),
+      );
+      if (!mounted) return;
+      setState(() {
+        profile = model['profile'] is Map
+            ? Map<String, dynamic>.from(model['profile'] as Map)
+            : null;
+        overview = model['overview'] is Map
+            ? Map<String, dynamic>.from(model['overview'] as Map)
+            : <String, dynamic>{};
+        financeKpis = model['kpis'] is Map
+            ? Map<String, dynamic>.from(model['kpis'] as Map)
+            : <String, dynamic>{};
+        invoices = items(<String, dynamic>{'items': model['invoices']});
+        partners = items(<String, dynamic>{'items': model['partners']});
         loading = false;
-        if (failures.length == 4) error = failures.first;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
       });
     }
   }
