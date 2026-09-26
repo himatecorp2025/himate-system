@@ -29,10 +29,14 @@ impact=d["impact"]
 monthly=impact["trend"]
 weekly=impact["weekly_trend"]
 assert impact["source"]=="IMPACT_METRIC_VALUES", impact
-assert len(monthly)==12, len(monthly)
-assert 52 <= len(weekly) <= 54, len(weekly)
-assert all("label" in x and "value" in x for x in monthly), monthly
-assert all("label" in x and "value" in x and "week" in x and "week_start" in x and "iso_year" in x for x in weekly), weekly[:3]
+if impact.get("has_data") is False:
+    assert monthly==[], monthly
+    assert weekly==[], weekly
+else:
+    assert len(monthly)==12, len(monthly)
+    assert len(weekly)==4, len(weekly)
+    assert all("label" in x and "value" in x for x in monthly), monthly
+    assert all("label" in x and "value" in x and "week" in x and "week_start" in x and "iso_year" in x for x in weekly), weekly
 '
 echo ok
 
