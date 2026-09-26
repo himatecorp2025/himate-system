@@ -8507,6 +8507,95 @@ class _SystemPageState extends State<SystemPage> {
     setState(() => _future = _load(force: true));
   }
 
+  Future<void> _openDeveloperDiagnostics() async {
+    try {
+      final responses = await Future.wait([
+        api.get('/api/v1/system-health/snapshot', force: true, maxAge: const Duration(seconds: 5)),
+        api.get('/api/v1/audit/events?outcome=FAILED&limit=20&offset=0', force: true, maxAge: const Duration(seconds: 5)),
+      ]);
+      if (!mounted) return;
+      final health = responses[0];
+      final failures = items(responses[1]);
+      final services = items(<String, dynamic>{'items': health['services']});
+      final unhealthy = services.where((service) {
+        final status = '${service['status'] ?? 'UNKNOWN'}'.toUpperCase();
+        return status != 'OK' && status != 'HEALTHY' && status != 'LIVE' && status != 'READY';
+      }).toList();
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => BrandDialog(
+          title: 'Developer diagnostics',
+          subtitle: 'Current degraded services and the latest failed protected operations.',
+          icon: Icons.bug_report_outlined,
+          width: 820,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _RuleStrip(items: [
+                _RuleItem(Icons.monitor_heart_outlined, 'Control plane', '${health['status'] ?? 'UNKNOWN'}'),
+                _RuleItem(Icons.warning_amber_rounded, 'Degraded services', '${unhealthy.length}'),
+                _RuleItem(Icons.error_outline_rounded, 'Recent failed operations', '${failures.length}'),
+              ]),
+              const SizedBox(height: 16),
+              const _DialogSectionLabel('DEGRADED SERVICES'),
+              const SizedBox(height: 8),
+              if (unhealthy.isEmpty)
+                const LText('No degraded service is present in the current health snapshot.')
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final service in unhealthy)
+                      Chip(
+                        avatar: const Icon(Icons.warning_amber_rounded, size: 16),
+                        label: LText('${_humanize('${service['name'] ?? 'service'}')} · ${service['status'] ?? 'UNKNOWN'}'),
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('LATEST FAILED OPERATIONS'),
+              const SizedBox(height: 8),
+              if (failures.isEmpty)
+                const LText('No failed protected operation was recorded in the latest audit window.')
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: failures.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final event = failures[index];
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.error_outline_rounded, color: brandDanger),
+                        title: LText('${event['action'] ?? event['method'] ?? 'FAILED'} · HTTP ${event['status'] ?? '—'}'),
+                        subtitle: LText(
+                          '${event['path'] ?? '—'} · correlation ${event['correlation_id'] ?? event['request_id'] ?? '—'}',
+                          style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+          primaryLabel: 'Close',
+          onPrimary: () => Navigator.pop(dialogContext),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: LText('Developer diagnostics unavailable: $e'), backgroundColor: brandDanger),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Map<String, dynamic>>>(
@@ -8561,6 +8650,11 @@ class _SystemPageState extends State<SystemPage> {
           title: 'System & Operations',
           subtitle: 'Provisioning, partner environments, connectors, backups and central health across the containerized HIMATE control plane.',
           actions: [
+            OutlinedButton.icon(
+              onPressed: _openDeveloperDiagnostics,
+              icon: const Icon(Icons.bug_report_outlined),
+              label: const LText('Developer diagnostics'),
+            ),
             OutlinedButton.icon(
               onPressed: _refresh,
               icon: const Icon(Icons.refresh_rounded),
