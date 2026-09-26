@@ -130,7 +130,17 @@ import json,sys
 print(json.dumps({"confirm_partner_id":sys.argv[1]}))
 PY
 )"
-PURGE="$(curl -fsS -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d "$PURGE_PAYLOAD" "$BASE_URL/api/v1/partners/$PARTNER_ID/purge-test-fixture")"
+PURGE_FILE="$TMP_ROOT/central11-purge.json"
+PURGE_STATUS="$(curl -sS -o "$PURGE_FILE" -w '%{http_code}' -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d "$PURGE_PAYLOAD" "$BASE_URL/api/v1/partners/$PARTNER_ID/purge-test-fixture")"
+if [ "$PURGE_STATUS" != "200" ]; then
+  echo
+  echo "CENTRAL-11 factory reset failed with HTTP $PURGE_STATUS" >&2
+  cat "$PURGE_FILE" >&2
+  echo >&2
+  exit 1
+fi
+PURGE="$(cat "$PURGE_FILE")"
+rm -f "$PURGE_FILE"
 printf '%s' "$PURGE" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["hard_purged"] is True,d; assert d["compliance_archive_created"] is False,d; assert d["audit_receipt_preserved"] is True,d'
 echo ok
 
