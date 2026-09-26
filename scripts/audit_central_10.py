@@ -28,6 +28,7 @@ billing = read("services/cmd/billing/central8.go")
 openapi = read("docs/openapi.yaml")
 ci = read(".github/workflows/ci.yml")
 acceptance = read("docs/CENTRAL-10_ACCEPTANCE.md")
+smoke = read("scripts/smoke_central_10.sh")
 
 check(bool(acceptance.strip()), "Central-10 acceptance document is missing or empty")
 
@@ -57,25 +58,33 @@ check("/api/v1/central/partners/{partnerId}" in openapi,
 check("/api/v1/central/partners/{partnerId}/modules" in openapi,
       "Central-10 Partner Workspace module read-model OpenAPI path missing")
 
-# Flutter must lazy-mount pages and prefetch only the current route read model.
+# Flutter widgets may remain lazily mounted, but every permission-visible Central
+# read model must be warm before the first menu click.
 for token in [
     "final Map<int, Widget> _pageCache",
     "_pageCache.putIfAbsent",
-    "target = centralPackagesInitialPath()",
-    "target = centralFinanceInitialPath()",
-    "target = centralImpactInitialPath()",
-    "target = centralModulesInitialPath()",
-    "add('/api/v1/central')",
+    "final targets = <String>{};",
+    "targets.add(centralDashboardInitialPath())",
+    "targets.add(centralPartnersInitialPath())",
+    "targets.add(centralModulesInitialPath())",
+    "targets.add(centralModulesCommercialInitialPath())",
+    "targets.add(centralPackagesInitialPath())",
+    "targets.add(centralPackagesSupplementaryInitialPath())",
+    "targets.add(centralFinanceInitialPath())",
+    "targets.add(centralImpactInitialPath())",
+    "api.prefetch(targets, maxAge: const Duration(seconds: 30))",
 ]:
-    check(token in frontend, f"Central-10 Flutter presentation/cache contract missing: {token}")
+    check(token in frontend, f"Central-10.1 Step 5 pre-click warmup contract missing: {token}")
 
 warm_start = frontend.find("void _warmControlPlane()")
 warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
 warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
 check("paths.add('/api/v1/billing/plans')" not in warm,
-      "Central-10 still contains the old eager multi-endpoint prefetch storm")
+      "Central-10 still contains the old eager raw Billing prefetch storm")
 check("paths.add('/api/v1/modules')" not in warm,
       "Central-10 still eagerly prefetches raw module endpoints")
+check("String? target;" not in warm,
+      "Central-10.1 Step 5 still warms only the current route")
 
 # Browser-side fan-out and obsolete read transforms are forbidden on the core paths.
 for token, message in [
@@ -141,6 +150,22 @@ check("central10ReadCache.items = map[string]central10CacheEntry{}" not in gatew
       "Central-10.1 still globally flushes every Central read cache on mutation")
 check("invalidateCentral10Caches(r.URL.Path)" in gateway_main,
       "Central-10.1 mutation invalidation is not route-targeted")
+
+invalidate_start = frontend.find("void _invalidateMutation(String path)")
+invalidate_end = frontend.find("Future<Map<String, dynamic>> post(", invalidate_start)
+invalidate_body = frontend[invalidate_start:invalidate_end] if invalidate_start >= 0 and invalidate_end > invalidate_start else ""
+check("add('/api/v1/central');" not in invalidate_body,
+      "Central-10.1 Step 5 still globally clears the browser Central namespace")
+for token in [
+    "add('/api/v1/central/partners')",
+    "add('/api/v1/central/modules')",
+    "add('/api/v1/central/modules/commercial')",
+    "add('/api/v1/central/packages')",
+    "add('/api/v1/central/packages/supplementary')",
+    "add('/api/v1/central/finance')",
+    "add('/api/v1/central/impact')",
+]:
+    check(token in invalidate_body, f"Step 5 selective browser invalidation missing: {token}")
 check("onRefresh: applyModel" in frontend,
       "Central-10.1 stateful Central pages do not consume SWR refresh callbacks")
 check("onRefresh: applyModel" in modules_ui,
@@ -412,6 +437,23 @@ check(backend_share >= 95.0,
       f"Central-10 backend read-model responsibility is only {backend_share:.1f}% ({backend_units}/{len(responsibilities)})")
 for name, ok in responsibilities:
     check(ok, f"Backend responsibility checkpoint failed: {name}")
+
+# CENTRAL-10.1 Step 5: exact frontend URL runtime proof.
+for token in [
+    'assert_fast_json "/api/v1/dashboard/summary?year=$YEAR" "Dashboard"',
+    'assert_fast_read_model "/api/v1/central/partners?limit=24&offset=0" "Partners"',
+    'assert_fast_read_model "/api/v1/central/modules" "Modules Registry"',
+    'assert_fast_read_model "/api/v1/central/modules/commercial?perspective=PARTNER&commercial_limit=120" "Modules Commercial / Partner"',
+    'assert_fast_read_model "/api/v1/central/packages" "Packages / Plans"',
+    'assert_fast_read_model "/api/v1/central/packages/supplementary" "Packages / Supplementary"',
+    'assert_fast_read_model "/api/v1/central/finance?invoice_status=ALL&revenue_period=MONTHLY&revenue_plan=ALL" "Finance"',
+    'assert_fast_read_model "/api/v1/central/impact?evidence_limit=12&evidence_offset=0" "Impact"',
+]:
+    check(token in smoke, f"Step 5 exact Flutter runtime URL missing from smoke gate: {token}")
+check("invoice_status=PAID&revenue_period=WEEKLY&revenue_plan=ALL" not in smoke,
+      "Step 5 smoke still benchmarks a non-initial Finance URL")
+check('assert_fast_json "/api/v1/dashboard/summary" "Dashboard"' not in smoke,
+      "Step 5 smoke still benchmarks Dashboard without the Flutter year cache key")
 
 # CI must enforce Central-10 after Central-9.
 check("python3 scripts/audit_central_10.py" in ci, "Central-10 static gate missing from CI")

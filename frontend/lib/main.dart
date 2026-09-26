@@ -261,7 +261,18 @@ String centralPartnersInitialPath() => Uri(
 
 String centralModulesInitialPath() => '/api/v1/central/modules';
 
+String centralModulesCommercialInitialPath() => Uri(
+      path: '/api/v1/central/modules/commercial',
+      queryParameters: const <String, String>{
+        'perspective': 'PARTNER',
+        'commercial_limit': '120',
+      },
+    ).toString();
+
 String centralPackagesInitialPath() => '/api/v1/central/packages';
+
+String centralPackagesSupplementaryInitialPath() =>
+    '/api/v1/central/packages/supplementary';
 
 String centralFinanceInitialPath() => Uri(
       path: '/api/v1/central/finance',
@@ -340,31 +351,47 @@ class Api {
   void _invalidateMutation(String path) {
     final prefixes = <String>{};
     void add(String prefix) => prefixes.add(prefix);
+    void addDashboard() => add('/api/v1/dashboard');
 
-    // Every successful mutation can affect one or more Central backend read
-    // models. Never let the browser keep a pre-mutation screen snapshot.
-    add('/api/v1/central');
-
+    // Browser invalidation mirrors actual domain dependencies. Never flush
+    // the complete Central namespace for an unrelated mutation.
     if (path.startsWith('/partner/api/v1')) {
       add('/partner/api/v1');
-    } else if (path.startsWith('/api/v1/partners') || path.startsWith('/api/v1/partner-categories')) {
+      add('/api/v1/central/partners');
+      add('/api/v1/central/modules/commercial');
+      addDashboard();
+    } else if (path.startsWith('/api/v1/partners') ||
+        path.startsWith('/api/v1/partner-categories')) {
       add('/api/v1/partners');
       add('/api/v1/partner-categories');
-      add('/api/v1/dashboard');
-    } else if (path.startsWith('/api/v1/modules') || path.startsWith('/api/v1/module-groups')) {
+      add('/api/v1/central/partners');
+      add('/api/v1/central/modules/commercial');
+      addDashboard();
+    } else if (path.startsWith('/api/v1/modules') ||
+        path.startsWith('/api/v1/module-groups')) {
       add('/api/v1/modules');
       add('/api/v1/module-groups');
-      add('/api/v1/partners');
-      add('/api/v1/dashboard');
+      add('/api/v1/central/modules');
+      add('/api/v1/central/modules/commercial');
+      add('/api/v1/central/packages/supplementary');
+      add('/api/v1/central/partners');
+      addDashboard();
     } else if (path.startsWith('/api/v1/billing')) {
       add('/api/v1/billing');
-      add('/api/v1/partners');
-      add('/api/v1/dashboard');
-    } else if (path.startsWith('/api/v1/impact') || path.startsWith('/api/v1/evidence') || path.startsWith('/api/v1/reports')) {
+      add('/api/v1/central/packages');
+      add('/api/v1/central/packages/supplementary');
+      add('/api/v1/central/finance');
+      add('/api/v1/central/modules/commercial');
+      add('/api/v1/central/partners');
+      addDashboard();
+    } else if (path.startsWith('/api/v1/impact') ||
+        path.startsWith('/api/v1/evidence') ||
+        path.startsWith('/api/v1/reports')) {
       add('/api/v1/impact');
       add('/api/v1/evidence');
       add('/api/v1/reports');
-      add('/api/v1/dashboard');
+      add('/api/v1/central/impact');
+      addDashboard();
     } else if (path.startsWith('/api/v1/cms')) {
       add('/api/v1/cms');
     } else if (path.startsWith('/api/v1/contact/inquiries')) {
@@ -372,13 +399,13 @@ class Api {
     } else if (path.startsWith('/api/v1/backups')) {
       add('/api/v1/backups');
       add('/api/v1/system-health');
-      add('/api/v1/dashboard');
-    } else if (path.startsWith('/api/v1/provisioning') || path.startsWith('/api/v1/environments') || path.startsWith('/api/v1/connectors')) {
+    } else if (path.startsWith('/api/v1/provisioning') ||
+        path.startsWith('/api/v1/environments') ||
+        path.startsWith('/api/v1/connectors')) {
       add('/api/v1/provisioning');
       add('/api/v1/environments');
       add('/api/v1/connectors');
       add('/api/v1/system-health');
-      add('/api/v1/dashboard');
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
       add('/api/v1/audit');
@@ -391,7 +418,8 @@ class Api {
       }
       add('/api/v1/auth');
     } else {
-      add('/api/v1/dashboard');
+      final cleanPath = path.split('?').first;
+      if (cleanPath.isNotEmpty) add(cleanPath);
     }
 
     for (final prefix in prefixes) {
@@ -594,30 +622,37 @@ class _HimateAppState extends State<HimateApp> {
 
   void _warmControlPlane() {
     if (user == null) return;
-    final path = Uri.base.path;
-    String? target;
-    if (path == '/app' || path == '/app/') {
-      if (_can('dashboard.read')) target = centralDashboardInitialPath();
-    } else if (path == '/app/partners') {
-      if (_can('partners.read')) target = centralPartnersInitialPath();
-    } else if (path.startsWith('/app/partners/')) {
-      if (_can('partners.read')) {
-        final id = path.substring('/app/partners/'.length).split('/').first;
-        if (id.isNotEmpty) target = '/api/v1/central/partners/$id';
-      }
-    } else if (path == '/app/modules') {
-      if (_can('catalog.read')) target = centralModulesInitialPath();
-    } else if (path == '/app/packages') {
-      if (_can('billing.read')) target = centralPackagesInitialPath();
-    } else if (path == '/app/finance') {
-      if (_can('billing.read')) target = centralFinanceInitialPath();
-    } else if (path == '/app/impact') {
-      if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
-        target = centralImpactInitialPath();
-      }
+
+    // Warm every permission-visible Central screen before the first menu
+    // click. Widgets can stay lazily mounted because their read models are hot.
+    final targets = <String>{};
+    if (_can('dashboard.read')) {
+      targets.add(centralDashboardInitialPath());
     }
-    if (target != null) {
-      api.prefetch([target], maxAge: const Duration(seconds: 5));
+    if (_can('partners.read')) {
+      targets.add(centralPartnersInitialPath());
+    }
+    if (_can('catalog.read')) {
+      targets.add(centralModulesInitialPath());
+      targets.add(centralModulesCommercialInitialPath());
+    }
+    if (_can('billing.read')) {
+      targets.add(centralPackagesInitialPath());
+      targets.add(centralPackagesSupplementaryInitialPath());
+      targets.add(centralFinanceInitialPath());
+    }
+    if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
+      targets.add(centralImpactInitialPath());
+    }
+
+    final path = Uri.base.path;
+    if (_can('partners.read') && path.startsWith('/app/partners/')) {
+      final id = path.substring('/app/partners/'.length).split('/').first;
+      if (id.isNotEmpty) targets.add('/api/v1/central/partners/$id');
+    }
+
+    if (targets.isNotEmpty) {
+      api.prefetch(targets, maxAge: const Duration(seconds: 30));
     }
   }
 
@@ -5917,7 +5952,7 @@ class _PackagesPageState extends State<PackagesPage> {
   }
 
   Future<void> loadSupplementary() async {
-    const path = '/api/v1/central/packages/supplementary';
+    final path = centralPackagesSupplementaryInitialPath();
     if (mounted) {
       setState(() {
         analyticsLoading = true;

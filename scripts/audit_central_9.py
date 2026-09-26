@@ -81,8 +81,8 @@ backend_weekly = all(token in gateway_c10 for token in [
 check(legacy_weekly or backend_weekly,
       "Central-9 four-week elapsed-window contract missing")
 
-# Central-10 supersedes eager multi-endpoint prefetch with route-specific,
-# lazy-mounted backend read models.
+# Central-10.1 keeps widgets lazily mounted while prewarming every permission-
+# visible materialized screen read model before the first menu click.
 legacy_prefetch = all(token in frontend for token in [
     "final Map<String, _ApiCacheEntry> _cache",
     "final Map<String, Future<Map<String, dynamic>>> _inflight",
@@ -91,9 +91,12 @@ legacy_prefetch = all(token in frontend for token in [
 ])
 backend_first_prefetch = all(token in frontend for token in [
     "final Map<int, Widget> _pageCache",
-    "target = centralPackagesInitialPath()",
-    "target = centralFinanceInitialPath()",
-    "target = centralImpactInitialPath()",
+    "final targets = <String>{};",
+    "targets.add(centralModulesInitialPath())",
+    "targets.add(centralPackagesInitialPath())",
+    "targets.add(centralFinanceInitialPath())",
+    "targets.add(centralImpactInitialPath())",
+    "api.prefetch(targets, maxAge: const Duration(seconds: 30))",
 ])
 check(legacy_prefetch or backend_first_prefetch,
       "Central-9/10 performance contract missing")

@@ -38,26 +38,31 @@ across domain services for a screen.
 - `GET /api/v1/central/partners/{partnerId}`
   - full Partner Workspace read model assembled in Go.
 - `GET /api/v1/central/modules`
-  - module registry, topics, KPI counts, backend search/filtering and grouped Partner × Module Commercial Matrix.
+  - materialized module registry, topics and KPI counts.
+- `GET /api/v1/central/modules/commercial`
+  - independently materialized Partner × Module Commercial Matrix.
 - `GET /api/v1/central/packages`
-  - canonical package definitions, eligible modules and package analytics.
+  - materialized canonical package definitions.
+- `GET /api/v1/central/packages/supplementary`
+  - independently materialized eligible modules and package analytics.
 - `GET /api/v1/central/finance`
-  - billing profile, ledger overview, invoices, partner labels and finance KPI model.
+  - materialized billing profile, ledger overview, invoices, partner labels and finance KPI model.
 - `GET /api/v1/central/impact`
-  - metric definitions, summary, filtered evidence and reports.
+  - materialized metric definitions, summary, evidence and reports; filtering/pagination runs in Go against the snapshot.
 
 Dashboard remains `GET /api/v1/dashboard/summary`, with truthful `has_data` semantics
 and Go-owned four-week elapsed Impact selection.
 
 ## Performance and resilience
 
-- Central read models use a 650 ms request context.
-- Fresh read-model cache TTL: 5 seconds.
-- Stale fallback window: 45 seconds.
-- Successful mutations invalidate both Gateway and browser Central read-model caches.
-- Unvisited Flutter Central pages are not mounted.
-- Login/session restoration prefetches only the current route's read model.
-- Central browser request timeout is bounded near the 800 ms UX target.
+- Live fallback aggregation is bounded by a 650 ms backend budget; primary Central screen reads use materialized hot snapshots.
+- Fresh read-model cache TTL: 30 seconds.
+- Stale fallback window: 10 minutes.
+- Successful mutations use route-targeted Gateway and browser invalidation; unrelated Central screens are never globally flushed.
+- Flutter widgets may remain lazily mounted, but every permission-visible Central screen read model is prefetched before the first menu click.
+- Modules Commercial and Packages Supplementary snapshots are also prefetched so secondary data is warm before interaction.
+- Central browser request timeout is 800 ms.
+- Render readiness uses dependency-aware `/api/v1/health`; degraded dependencies fail closed with HTTP 503.
 
 ## Commercial Matrix
 
@@ -93,5 +98,8 @@ Static:
 Runtime:
 `sh scripts/smoke_central_10.sh http://127.0.0.1:8080`
 
-The runtime gate measures the first request for Dashboard, Partners, Partner Workspace,
-Modules/Matrix, Packages, Finance and Impact and rejects responses at or above 800 ms.
+The runtime gate measures the exact Flutter first-render URLs for Dashboard, Partners,
+Modules/Commercial, Packages/Supplementary, Finance and Impact and rejects responses at
+or above 800 ms. It restarts the Gateway and repeats the permission-visible Central screen
+URLs from persisted materialized snapshots to prove process-cold recovery without fabricated
+zero values or empty module/topic lists.
