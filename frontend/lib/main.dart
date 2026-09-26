@@ -4311,7 +4311,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           'password': password.text,
           'role': role,
         });
-        await _loadSupplementary();
+        await load();
         if (mounted) success('Partner Portal user created.');
       } catch (e) {
         if (mounted) {
@@ -4374,7 +4374,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
           'role': role,
           'active': active,
         });
-        await _loadSupplementary();
+        await load();
         if (mounted) success('Partner Portal user updated.');
       } catch (e) {
         if (mounted) {
@@ -4755,7 +4755,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       });
       if (mounted) {
         setState(() => partner = updated);
-        await _loadSupplementary();
+        await load();
         if (mounted) {
           success(updated['test_partner'] == true
               ? 'Golden Test Partner active with full test entitlements.'
