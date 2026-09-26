@@ -62,11 +62,23 @@ for token in [
 ]:
     check(token in design_ui, f"Design workflow UI missing: {token}")
 
-# Website/Marketing is a focused card hub, not one giant stacked screen.
+# CENTRAL-16 supersedes the old three-group Website hub with the approved
+# six-card control center while preserving the same real underlying workspaces.
 for token in [
-    "Widget hubOverview()", "'Website & Brand'", "'Marketing'", "'Partner Operations'",
-    "key: 'design'", "key: 'pages'", "key: 'media'", "key: 'seo'",
-    "key: 'leads'", "key: 'connections'", "label: const LText('Back')",
+    "Widget hubOverview()",
+    "title: 'Design Guide'",
+    "title: 'CMS'",
+    "title: 'SEO'",
+    "title: 'Domain & Deployment'",
+    "title: 'Analytics'",
+    "title: 'Partner Connections'",
+    "setState(() => section = 'design')",
+    "setState(() => section = 'pages')",
+    "setState(() => section = 'seo')",
+    "setState(() => section = 'domains')",
+    "setState(() => section = 'analytics')",
+    "setState(() => section = 'connections')",
+    "label: const LText('Back')",
 ]:
     check(token in cms_ui, f"Website/Marketing hub contract missing: {token}")
 
