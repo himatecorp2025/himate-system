@@ -104,6 +104,35 @@ func dashboardIsUnitedStates(raw string) bool {
 	}
 }
 
+func dashboardPartnerTrend(partners []map[string]any, year int) []map[string]any {
+	counts := make([]int, 12)
+	for _, partner := range partners {
+		if strings.ToUpper(central10String(partner["lifecycle"])) != "LIVE" {
+			continue
+		}
+		createdRaw := central10String(partner["created_at"])
+		created, err := time.Parse(time.RFC3339, createdRaw)
+		if err != nil {
+			if parsed, parseErr := time.Parse("2006-01-02", createdRaw); parseErr == nil {
+				created = parsed
+			} else {
+				continue
+			}
+		}
+		for month := 1; month <= 12; month++ {
+			monthEnd := time.Date(year, time.Month(month)+1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
+			if !created.After(monthEnd) {
+				counts[month-1]++
+			}
+		}
+	}
+	rows := make([]map[string]any, 0, 12)
+	for month, count := range counts {
+		rows = append(rows, map[string]any{"month": month + 1, "value": count})
+	}
+	return rows
+}
+
 func dashboardPartnerGeo(partners []map[string]any) map[string]any {
 	stateCounts := map[string]int{}
 	rows := make([]map[string]any, 0, len(partners))
@@ -368,6 +397,9 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 			"live":             partners.LifecycleCounts["LIVE"],
 			"lifecycle_counts": partners.LifecycleCounts,
 		})
+		if geoErr == nil {
+			partnerBlock["trend"] = dashboardPartnerTrend(geoPartners, year)
+		}
 	} else {
 		unavailable = append(unavailable, "partners")
 	}
