@@ -4859,7 +4859,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     super.dispose();
   }
 
-  Future<void> load() async {
+  Future<void> load({bool force = false}) async {
     final generation = ++_supplementalLoadGeneration;
     final hasPrimary =
         '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
@@ -6743,6 +6743,7 @@ class _PackagesPageState extends State<PackagesPage> {
     try {
       final model = await widget.api.get(
         path,
+        force: force,
         maxAge: const Duration(seconds: 5),
         onRefresh: applyPrimary,
       );
@@ -6755,6 +6756,40 @@ class _PackagesPageState extends State<PackagesPage> {
         error = e.toString();
       });
     }
+  }
+
+  bool _packageMutationVisible(Map<String,dynamic> updated) {
+    final key = '${updated['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
+        ? 'FLEX'
+        : '${updated['plan_key'] ?? ''}'.toUpperCase();
+    Map<String,dynamic>? current;
+    for (final plan in plans) {
+      final currentKey = '${plan['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
+          ? 'FLEX'
+          : '${plan['plan_key'] ?? ''}'.toUpperCase();
+      if (currentKey == key) {
+        current = plan;
+        break;
+      }
+    }
+    if (current == null) return false;
+    if (number(current['monthly_price']) != number(updated['monthly_price'])) return false;
+    final expected = <String>{
+      for (final value in (updated['fixed_module_keys'] is List ? updated['fixed_module_keys'] as List : const []))
+        '$value',
+    };
+    final actual = <String>{
+      for (final value in (current['fixed_module_keys'] is List ? current['fixed_module_keys'] as List : const []))
+        '$value',
+    };
+    return expected.length == actual.length && expected.containsAll(actual);
+  }
+
+  Future<void> _syncPackageMutation(Map<String,dynamic> updated) async {
+    await load(force: true);
+    if (!mounted || _packageMutationVisible(updated)) return;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (mounted) await load(force: true);
   }
 
   Future<void> loadSupplementary() async {
@@ -7060,8 +7095,8 @@ class _PackagesPageState extends State<PackagesPage> {
           if (effective.text.trim().isNotEmpty) 'effective_at': effective.text.trim(),
           if (fixed) 'fixed_module_keys': selected.toList()..sort(),
         };
-        await widget.api.patch('/api/v1/billing/plans/$key', payload);
-        await load();
+        final updated = await widget.api.patch('/api/v1/billing/plans/$key', payload);
+        await _syncPackageMutation(updated);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: LText('$key package updated.'), behavior: SnackBarBehavior.floating),
