@@ -126,6 +126,12 @@ check("_applyPackageMutationImmediately(updated)" in frontend,
       "package mutation is not applied immediately on the frontend")
 check("_packageMutationMatches(refreshed, updated)" in frontend,
       "package mutation reconciliation contract missing")
+check("final moduleSetChanged = fixed &&" in frontend,
+      "package pricing is not decoupled from fixed module-set mutation")
+check("if (moduleSetChanged) 'fixed_module_keys'" in frontend,
+      "package save still risks submitting an unchanged legacy module set")
+check("if (fixed) 'fixed_module_keys'" not in frontend,
+      "legacy package save still submits fixed_module_keys on every price edit")
 check("isExpanded: true" in frontend, "partner filter dropdown overflow guard missing")
 
 for token in [
