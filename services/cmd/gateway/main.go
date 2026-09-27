@@ -314,6 +314,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
+	mux.Handle("/internal/v1/read-model/write-through", common.InternalAuth(a.internalToken, http.HandlerFunc(a.internalReadModelWriteThrough)))
 	mux.HandleFunc("/api/v1/auth/login", a.login)
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
