@@ -7863,13 +7863,21 @@ class _PackageComparisonTable extends StatelessWidget {
       (uiLiteral('Entitlement'), (plan) => '${plan['entitlement'] ?? '—'}'),
       (uiLiteral('Selection mode'), _mode),
       (
+        uiLiteral('Module capacity'),
+        (plan) {
+          final unlimited = '${plan['selection_mode'] ?? ''}'.toUpperCase() == 'UNLIMITED';
+          if (unlimited) return uiLiteral('Unlimited');
+          final limit = (plan['module_limit'] as num?)?.toInt() ?? 0;
+          return '$limit';
+        },
+      ),
+      (
         uiLiteral('Configured modules'),
         (plan) {
           final unlimited = '${plan['selection_mode'] ?? ''}'.toUpperCase() == 'UNLIMITED';
           if (unlimited) return uiLiteral('Automatic');
           final included = plan['included_modules'] is List ? (plan['included_modules'] as List).length : 0;
-          final limit = (plan['module_limit'] as num?)?.toInt();
-          return limit == null ? '$included' : '$included / $limit';
+          return '$included';
         },
       ),
       (uiLiteral('Status'), (plan) => uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
