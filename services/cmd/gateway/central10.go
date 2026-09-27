@@ -1422,8 +1422,11 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 		"ready": true,
 		"access": map[string]any{
 			"impact": a.hasPermission(actor, "impact.read"),
+			"impact_write": a.hasPermission(actor, "impact.write"),
 			"evidence": a.hasPermission(actor, "evidence.read"),
+			"evidence_write": a.hasPermission(actor, "evidence.write"),
 			"reports": a.hasPermission(actor, "reports.read"),
+			"reports_write": a.hasPermission(actor, "reports.write"),
 		},
 		"definitions": definitions,
 		"summary": summary,
