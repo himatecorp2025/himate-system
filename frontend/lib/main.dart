@@ -10453,29 +10453,6 @@ class _SystemPageState extends State<SystemPage> {
                         ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
                     ],
                   ),
-                const SizedBox(height: 24),
-                _SectionHeader(
-                  title: 'Service Health',
-                  subtitle: 'Readiness and liveness are monitored independently for each microservice.',
-                  trailing: _MiniCounter(label: uiBilingual('${services.length} services', '${services.length} szolgáltatás')),
-                ),
-                const SizedBox(height: 12),
-                if (services.isEmpty)
-                  const _MessageCard(
-                    icon: Icons.dns_outlined,
-                    title: 'No service health data',
-                    message: 'No service-health snapshot is available yet.',
-                  )
-                else
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (final s in services)
-                        ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
-                    ],
-                  ),
-                const SizedBox(height: 24),
                 _SectionHeader(
                   title: 'Partner Health',
                   subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
