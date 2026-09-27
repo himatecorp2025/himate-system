@@ -285,10 +285,9 @@ for forbidden in ["PACKAGES_UNAVAILABLE", "http.StatusBadGateway", "http.StatusS
     check(forbidden not in packages_primary,
           f"Central-10.1 Packages primary path can still fail as a blocking availability error: {forbidden}")
 for required in [
-    "centralStep3SnapshotGet(centralStep3PlansKey)",
+    "a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)",
     "a.requestCentralStep3Refresh()",
     "common.JSON(w, http.StatusOK, payload)",
-    '"X-Himate-Cache", "warming"',
     '"X-Himate-Cache", "hot-snapshot"',
 ]:
     check(required in packages_primary,
@@ -296,8 +295,8 @@ for required in [
 
 packages_supplementary = gateway[packages_supp_start:money_start]
 for required in [
-    "centralStep3SnapshotGet(centralStep3RegistryKey)",
-    "centralStep3SnapshotGet(centralStep3AnalyticsKey)",
+    "a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)",
+    "a.centralSnapshotForRead(r.Context(), centralStep3AnalyticsKey)",
     '"modules_ready"',
     '"analytics_ready"',
 ]:
@@ -535,7 +534,7 @@ responsibilities = [
     ("impact screen aggregation", "central10Impact" in gateway and "refreshCentralStep4Impact" in step4_snapshots),
     ("impact evidence filtering", "central10Step4EvidenceMatches" in gateway),
     ("partner workspace materialization", "materializeCentralPartnerWorkspace" in partner_snapshots),
-    ("partner workspace snapshot-only request", "centralStep3SnapshotGet(key)" in gateway),
+    ("partner workspace snapshot-only request", "a.partnerWorkspaceForRead(r.Context(), partnerID)" in gateway),
     ("partner workspace subscription join", 'row["subscription"] = subscription' in gateway),
     ("partner workspace environment selection", "central10ProductionEnvironment" in gateway),
     ("weekly window selection", "central10NormalizeDashboardImpact" in gateway),
