@@ -827,7 +827,7 @@ class _AdministrationCenterHeroCardState extends State<_AdministrationCenterHero
                               children:[
                                 LText(
                                   widget.title,
-                                  style:GoogleFonts.cormorantGaramond(
+                                  style:GoogleFonts.lora(
                                     color:brandNavy,
                                     fontSize:26,
                                     fontWeight:FontWeight.w700,
