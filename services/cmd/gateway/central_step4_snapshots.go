@@ -109,8 +109,32 @@ func (a *app) refreshCentralStep4Partners() {
 	first.Wait()
 
 	// Never replace a last-known-good snapshot when the authoritative partner
-	// list itself is unavailable.
+	// list itself is unavailable. On a true first run, however, persist an
+	// explicit unavailable model so the Partners route can render immediately
+	// instead of remaining in a permanent warming state.
 	if partnerErr != nil {
+		if _, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
+			return
+		}
+		payload := map[string]any{
+			"items": []map[string]any{},
+			"categories_raw": categories.Items,
+			"pagination": map[string]any{
+				"count": 0, "total": 0, "limit": 24, "offset": 0, "has_more": false,
+			},
+			"kpis": map[string]any{
+				"partner_records": 0,
+				"live_partners": 0,
+				"prospects": 0,
+				"reference_partners": 0,
+				"lifecycle_counts": map[string]int{},
+			},
+			"status": "unavailable",
+			"unavailable": []string{"partners"},
+		}
+		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer persistCancel()
+		a.centralStep3Store(persistCtx, centralStep4PartnersKey, payload)
 		return
 	}
 
