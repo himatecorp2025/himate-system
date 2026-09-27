@@ -313,22 +313,162 @@ func (a *app) bootstrapPartnerWorkspaceSnapshots() {
 	}
 }
 
-func (a *app) enqueueReadModelRefresh(ctx context.Context, reason, partnerID string) {
+func (a *app) persistReadModelRefreshEvent(ctx context.Context, reason, partnerID string) (int64, error) {
 	partnerID = strings.TrimSpace(partnerID)
-	if _, err := a.db.ExecContext(ctx,
+	var id int64
+	err := a.db.QueryRowContext(ctx,
 		`INSERT INTO identity.read_model_refresh_queue(scope,partner_id,reason)
-		 VALUES('all',$1,$2)`,
+		 VALUES('all',$1,$2)
+		 RETURNING id`,
 		partnerID, strings.TrimSpace(reason),
-	); err != nil {
-		if a.log != nil {
-			a.log.Error("read-model refresh event persistence failed", "partner_id", partnerID, "reason", reason, "error", err)
-		}
-		return
-	}
+	).Scan(&id)
+	return id, err
+}
+
+func wakeReadModelRefreshWorker() {
 	select {
 	case readModelRefreshWake <- struct{}{}:
 	default:
 	}
+}
+
+func (a *app) enqueueReadModelRefresh(ctx context.Context, reason, partnerID string) {
+	id, err := a.persistReadModelRefreshEvent(ctx, reason, partnerID)
+	if err != nil {
+		if a.log != nil {
+			a.log.Error("read-model refresh event persistence failed", "partner_id", strings.TrimSpace(partnerID), "reason", reason, "error", err)
+		}
+		return
+	}
+	if a.log != nil {
+		a.log.Debug("read-model refresh event persisted", "event_id", id, "partner_id", strings.TrimSpace(partnerID), "reason", reason)
+	}
+	wakeReadModelRefreshWorker()
+}
+
+func readModelVerificationKeys(reason string) []string {
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	keys := map[string]bool{}
+	add := func(key string) { keys[key] = true }
+	if strings.Contains(reason, "partner") {
+		for _, key := range []string{centralStep4PartnersKey, centralStep4FinanceKey, centralStep4AdministrationKey, centralStep4ConnectionsKey, centralStep4ComplianceKey} {
+			add(key)
+		}
+	}
+	if strings.Contains(reason, "module") || strings.Contains(reason, "catalog") {
+		add(centralStep3RegistryKey); add(centralStep3CommercialKey); add(centralStep4PartnersKey)
+	}
+	if strings.Contains(reason, "billing") || strings.Contains(reason, "invoice") ||
+		strings.Contains(reason, "subscription") || strings.Contains(reason, "plan") ||
+		strings.Contains(reason, "license") || strings.Contains(reason, "payment") {
+		for _, key := range []string{centralStep3PlansKey, centralStep3AnalyticsKey, centralStep3CommercialKey, centralStep4FinanceKey, centralStep4PartnersKey, centralStep4AdministrationKey} {
+			add(key)
+		}
+	}
+	if strings.Contains(reason, "impact") || strings.Contains(reason, "evidence") || strings.Contains(reason, "report") {
+		add(centralStep4ImpactKey)
+	}
+	if strings.Contains(reason, "cms") || strings.Contains(reason, "seo") || strings.Contains(reason, "contact") || strings.Contains(reason, "domain") {
+		add(centralStep4WebsiteKey)
+	}
+	if strings.Contains(reason, "environment") || strings.Contains(reason, "provision") ||
+		strings.Contains(reason, "health") || strings.Contains(reason, "backup") || strings.Contains(reason, "connector") {
+		add(centralStep4SystemKey)
+	}
+	if strings.Contains(reason, "admin") || strings.Contains(reason, "audit") ||
+		strings.Contains(reason, "role") || strings.Contains(reason, "secret") {
+		add(centralStep4AdministrationKey)
+	}
+	out := make([]string, 0, len(keys))
+	for key := range keys { out = append(out, key) }
+	sort.Strings(out)
+	return out
+}
+
+func (a *app) internalReadModelWriteThrough(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use POST")
+		return
+	}
+	var in struct {
+		Reason     string   `json:"reason"`
+		PartnerIDs []string `json:"partner_ids"`
+	}
+	if common.Decode(r, &in) != nil {
+		common.APIError(w, http.StatusBadRequest, "JSON", "Invalid read-model event")
+		return
+	}
+	in.Reason = strings.TrimSpace(in.Reason)
+	if in.Reason == "" {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", "reason is required")
+		return
+	}
+	partnerSet := map[string]bool{}
+	for _, id := range in.PartnerIDs {
+		if id = strings.TrimSpace(id); id != "" { partnerSet[id] = true }
+	}
+	partnerIDs := make([]string, 0, len(partnerSet))
+	for id := range partnerSet { partnerIDs = append(partnerIDs, id) }
+	sort.Strings(partnerIDs)
+
+	started := time.Now().UTC()
+	eventIDs := []int64{}
+	persist := func(partnerID string) bool {
+		ctx, cancel := context.WithTimeout(r.Context(), readModelPersistBudget)
+		defer cancel()
+		id, err := a.persistReadModelRefreshEvent(ctx, in.Reason, partnerID)
+		if err != nil {
+			if a.log != nil { a.log.Error("internal read-model event persistence failed", "reason", in.Reason, "partner_id", partnerID, "error", err) }
+			return false
+		}
+		eventIDs = append(eventIDs, id)
+		return true
+	}
+	if len(partnerIDs) == 0 {
+		if !persist("") { common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_EVENT", "Could not persist read-model event"); return }
+	} else {
+		for _, partnerID := range partnerIDs {
+			if !persist(partnerID) { common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_EVENT", "Could not persist read-model event"); return }
+		}
+	}
+
+	// Central projection refresh once, then only the affected tenant rows.
+	a.writeThroughReadModels("", in.Reason)
+	for _, partnerID := range partnerIDs {
+		a.writeThroughCentralPartnerWorkspace(partnerID)
+	}
+
+	verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer verifyCancel()
+	ok := true
+	for _, key := range readModelVerificationKeys(in.Reason) {
+		_, updated, err := a.loadCentralSnapshotDB(verifyCtx, key)
+		if err != nil || updated.Before(started) {
+			ok = false
+			if a.log != nil { a.log.Error("internal write-through verification failed", "snapshot_key", key, "reason", in.Reason, "error", err) }
+		}
+	}
+	for _, partnerID := range partnerIDs {
+		_, updated, err := a.loadPartnerWorkspaceDB(verifyCtx, partnerID)
+		if err != nil || updated.Before(started) {
+			ok = false
+			if a.log != nil { a.log.Error("tenant write-through verification failed", "partner_id", partnerID, "reason", in.Reason, "error", err) }
+		}
+	}
+	if !ok {
+		wakeReadModelRefreshWorker()
+		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_SYNC", "Materialized read-model refresh is pending")
+		return
+	}
+	for _, eventID := range eventIDs {
+		if _, err := a.db.ExecContext(verifyCtx, `UPDATE identity.read_model_refresh_queue SET processed_at=NOW() WHERE id=$1`, eventID); err != nil && a.log != nil {
+			a.log.Warn("internal read-model event acknowledgement deferred", "event_id", eventID, "error", err)
+		}
+	}
+	common.JSON(w, http.StatusOK, map[string]any{
+		"status": "synchronized", "reason": in.Reason,
+		"partner_ids": partnerIDs, "projection_keys": readModelVerificationKeys(in.Reason),
+	})
 }
 
 func readModelReasonRefreshesAllTenants(reason string) bool {
