@@ -57,7 +57,7 @@ for token in [
     'a.hasPermission(actor, "billing.read")',
     'a.hasPermission(actor, "backups.read")',
     'a.hasPermission(actor, "audit.read")',
-    "centralStep3SnapshotGet(centralStep4AdministrationKey)",
+    "centralSnapshotForRead(r.Context(), centralStep4AdministrationKey)",
     'centralStep4Meta(started, centralStep4AdministrationKey, updatedAt, "healthy", []string{})',
 ]:
     check(token in gateway14, f"Administration authoritative read-model/RBAC contract missing: {token}")
