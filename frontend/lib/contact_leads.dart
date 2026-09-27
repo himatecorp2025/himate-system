@@ -1,8 +1,9 @@
 part of 'main.dart';
 
 class ContactLeadsPanel extends StatefulWidget {
-  const ContactLeadsPanel({required this.api, super.key});
+  const ContactLeadsPanel({required this.api, this.canWrite = true, super.key});
   final Api api;
+  final bool canWrite;
 
   @override
   State<ContactLeadsPanel> createState() => _ContactLeadsPanelState();
@@ -72,6 +73,7 @@ class _ContactLeadsPanelState extends State<ContactLeadsPanel> {
   }
 
   Future<void> editLead(Map<String, dynamic> lead) async {
+    if (!widget.canWrite) return;
     var nextStatus = (lead['lead_status'] ?? 'NEW').toString();
     final assignedTo = TextEditingController(text: (lead['assigned_to'] ?? '').toString());
     final note = TextEditingController(text: (lead['admin_note'] ?? '').toString());
