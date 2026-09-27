@@ -13,13 +13,32 @@ import (
 )
 
 const (
-	readModelTargetLatency      = 15 * time.Millisecond
-	readModelRefreshPoll        = 2 * time.Second
-	readModelRefreshBatch       = 100
-	readModelPersistBudget      = 2 * time.Second
+	readModelTargetLatency        = 15 * time.Millisecond
+	readModelRefreshPoll          = 2 * time.Second
+	readModelRefreshBatch         = 100
+	readModelPersistBudget        = 2 * time.Second
+	readModelRefreshConcurrency   = 3
+	readModelRefreshAcquireBudget = 45 * time.Second
 )
 
-var readModelRefreshWake = make(chan struct{}, 1)
+var (
+	readModelRefreshWake  = make(chan struct{}, 1)
+	readModelRefreshSlots = make(chan struct{}, readModelRefreshConcurrency)
+)
+
+func (a *app) withReadModelRefreshSlot(ctx context.Context, label string, fn func()) bool {
+	select {
+	case readModelRefreshSlots <- struct{}{}:
+		defer func() { <-readModelRefreshSlots }()
+		fn()
+		return true
+	case <-ctx.Done():
+		if a.log != nil {
+			a.log.Warn("read-model refresh slot wait cancelled", "projection", label, "error", ctx.Err())
+		}
+		return false
+	}
+}
 
 func materializedReadModelMigration() common.Migration {
 	return common.Migration{
@@ -321,7 +340,7 @@ func readModelReasonRefreshesAllTenants(reason string) bool {
 }
 
 func (a *app) refreshCentralProjectionSerialized(key string, refresh func()) bool {
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*centralPartnerWorkspaceMaterializeBudget)
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), readModelRefreshAcquireBudget)
 	defer waitCancel()
 	if !centralStep3WaitBeginRefresh(waitCtx, key) {
 		if a.log != nil {
@@ -330,8 +349,7 @@ func (a *app) refreshCentralProjectionSerialized(key string, refresh func()) boo
 		return false
 	}
 	defer centralStep3EndRefresh(key)
-	refresh()
-	return true
+	return a.withReadModelRefreshSlot(waitCtx, key, refresh)
 }
 
 func (a *app) refreshHealthSourceWriteThrough() bool {
