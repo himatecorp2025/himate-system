@@ -457,6 +457,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 		"portal_charity":                  portalCharity,
 		"portal_charity_modules":          portalCharityModules,
 		"portal_design_media":             portalDesignMedia,
+		"portal_billing_subscriptions":    subscriptions,
 		"portal_user_module_policies":     userPolicies,
 		"portal_notifications":            portalNotifications,
 		"portal_billing_invoices":         portalInvoices,
