@@ -246,14 +246,7 @@ func (a *app) central14Administration(w http.ResponseWriter, r *http.Request, ac
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4AdministrationKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
-		common.JSON(w, http.StatusOK, map[string]any{
-			"ready":      false,
-			"company":    map[string]any{},
-			"items":      []map[string]any{},
-			"pagination": map[string]any{"count": 0, "total": 0, "limit": 0, "offset": 0, "has_more": false},
-			"kpis":       map[string]any{},
-			"meta":       centralStep4Meta(started, centralStep4AdministrationKey, time.Time{}, "warming", []string{}),
-		})
+		a.readModelInvariantFailure(w, centralStep4AdministrationKey)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
