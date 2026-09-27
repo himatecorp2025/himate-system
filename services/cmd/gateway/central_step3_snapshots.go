@@ -132,6 +132,11 @@ func (a *app) bootstrapCentralStep3Snapshots() {
 		if err := rows.Scan(&key, &raw, &updated); err != nil {
 			continue
 		}
+		if strings.HasPrefix(key, centralPartnerWorkspacePrefix) {
+			// CENTRAL-21 migrates tenant workspaces to the dedicated
+			// identity.partner_workspace_snapshots table.
+			continue
+		}
 		var payload map[string]any
 		if json.Unmarshal(raw, &payload) != nil {
 			continue
@@ -229,6 +234,10 @@ func (a *app) warmMissingCentralSnapshots() {
 }
 
 func (a *app) centralStep3Store(ctx context.Context, key string, payload map[string]any) {
+	if strings.HasPrefix(key, centralPartnerWorkspacePrefix) {
+		a.persistPartnerWorkspaceSnapshot(ctx, centralPartnerWorkspaceID(key), payload)
+		return
+	}
 	if !centralSnapshotValid(key, payload) {
 		if a.log != nil {
 			a.log.Warn(
@@ -240,26 +249,38 @@ func (a *app) centralStep3Store(ctx context.Context, key string, payload map[str
 		}
 		return
 	}
-	now := time.Now().UTC()
 	copyPayload := centralStep3CopyMap(payload)
+	raw, err := json.Marshal(copyPayload)
+	if err != nil {
+		if a.log != nil {
+			a.log.Error("central read-model marshal failed", "snapshot_key", key, "error", err)
+		}
+		return
+	}
+	now := time.Now().UTC()
+	if _, err := a.db.ExecContext(
+		ctx,
+		`INSERT INTO identity.central_screen_snapshots(snapshot_key,payload,updated_at)
+		 VALUES($1,$2::jsonb,$3)
+		 ON CONFLICT(snapshot_key) DO UPDATE
+		 SET payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at`,
+		key,
+		string(raw),
+		now,
+	); err != nil {
+		if a.log != nil {
+			a.log.Error("central read-model persistence failed; retaining prior LKG", "snapshot_key", key, "error", err)
+		}
+		return
+	}
+
+	// Memory is a resilience mirror only. PostgreSQL is authoritative and must
+	// commit first, otherwise a restart could regress to an older model.
 	centralStep3Snapshots.Lock()
 	centralStep3Snapshots.items[key] = centralStep3SnapshotEntry{
 		payload: copyPayload, updatedAt: now,
 	}
 	centralStep3Snapshots.Unlock()
-
-	raw, err := json.Marshal(copyPayload)
-	if err != nil {
-		return
-	}
-	_, _ = a.db.ExecContext(
-		ctx,
-		`INSERT INTO identity.central_screen_snapshots(snapshot_key,payload,updated_at)
-		 VALUES($1,$2::jsonb,NOW())
-		 ON CONFLICT(snapshot_key) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()`,
-		key,
-		string(raw),
-	)
 }
 
 func (a *app) logCentralRefreshFailure(key string, unavailable []string) {
