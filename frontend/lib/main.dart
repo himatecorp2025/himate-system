@@ -4417,20 +4417,7 @@ class _PartnersPageState extends State<PartnersPage> {
     return Content(
       title: 'Partners',
       subtitle: 'Partner management, relationships and collaboration at a glance.',
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
-          icon: const Icon(Icons.download_outlined),
-          label: const LText('Export PDF'),
-        ),
-        OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const LText('Add category')),
-        FilledButton.icon(
-          key: const Key('partners-new-partner-button'),
-          onPressed: addPartner,
-          icon: const Icon(Icons.add_business_outlined),
-          label: const LText('New Partner'),
-        ),
-      ],
+      actions: const [],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
           : Column(
@@ -4543,12 +4530,37 @@ class _PartnersPageState extends State<PartnersPage> {
                         },
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
+                          icon: const Icon(Icons.download_outlined, size: 17),
+                          label: LText(uiLiteral('Export PDF')),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: addCategory,
+                          icon: const Icon(Icons.create_new_folder_outlined, size: 17),
+                          label: LText(uiLiteral('Add category')),
+                        ),
+                        FilledButton.icon(
+                          key: const Key('partners-new-partner-button'),
+                          onPressed: addPartner,
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: LText(uiLiteral('New Partner')),
+                          style: FilledButton.styleFrom(backgroundColor: brandGold, foregroundColor: brandNavy),
+                        ),
+                      ],
+                    ),
                     if (referenceOnly) ...[
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: InputChip(
-                          label: const LText('Reference partners only'),
+                          label: LText(uiLiteral('Reference partners only')),
                           avatar: const Icon(Icons.workspace_premium_outlined, size: 16),
                           onDeleted: clearReferenceFilter,
                         ),
@@ -4561,25 +4573,44 @@ class _PartnersPageState extends State<PartnersPage> {
                     ],
                     Row(
                       children: [
-                        LText('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
-                        const SizedBox(width: 10),
-                        _MiniCounter(
-                          label: statsReady
-                              ? '${partners.length} ${uiLiteral('shown')} · $total ${uiLiteral('matched')}'
-                              : '${partners.length} ${uiLiteral('shown')}',
+                        Expanded(
+                          child: LText(
+                            '${uiLiteral('Partners')} ($total)',
+                            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 24, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 132,
+                          child: DropdownButtonFormField<String>(
+                            value: partnerSort,
+                            isDense: true,
+                            decoration: const InputDecoration(prefixIcon: Icon(Icons.swap_vert_rounded, size: 17)),
+                            items: [
+                              DropdownMenuItem(value: 'AZ', child: LText(uiLiteral('Name (A–Z)'))),
+                              DropdownMenuItem(value: 'ZA', child: LText(uiLiteral('Name (Z–A)'))),
+                            ],
+                            onChanged: (value) => setState(() => partnerSort = value ?? 'AZ'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _PartnerViewToggle(
+                          gridMode: gridMode,
+                          onChanged: (value) => setState(() => gridMode = value),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     LayoutBuilder(
                       builder: (context, c) {
-                        final width = c.maxWidth < 620
+                        final width = !gridMode
                             ? c.maxWidth
-                            : c.maxWidth < 980
-                                ? (c.maxWidth - 14) / 2
-                                : c.maxWidth < 1320
-                                    ? (c.maxWidth - 28) / 3
-                                    : (c.maxWidth - 42) / 4;
+                            : c.maxWidth < 620
+                                ? c.maxWidth
+                                : c.maxWidth < 980
+                                    ? (c.maxWidth - 14) / 2
+                                    : c.maxWidth < 1320
+                                        ? (c.maxWidth - 28) / 3
+                                        : (c.maxWidth - 42) / 4;
                         final cards = <Widget>[
                           if (filtered.isEmpty)
                             SizedBox(
