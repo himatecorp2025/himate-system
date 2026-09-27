@@ -216,6 +216,19 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    '12 month trend': '12 havi trend',
+    'Partner count and settled amounts': 'Partnerek száma és rendezett összegek',
+    'Settled amount': 'Rendezett összeg',
+    'active partner': 'aktív partner',
+    'Active state': 'Aktív állam',
+    'Other state': 'Egyéb állam',
+    'Partners in the United States': 'Partnereink az Egyesült Államokban',
+    'Active partner distribution by state': 'Aktív partnereink államonkénti megoszlása',
+    'active states': 'aktív állam',
+    'US partners': 'partner az USA-ban',
+    'Full view': 'Teljes nézet',
+    'Greater impact.\nStronger communities.\nA sustainable future.': 'Nagyobb hatás.\nErősebb közösségek.\nFenntartható jövő.',
+    'Details': 'Részletek',
     'Partner-specific assignment, recurring price, activation fee and subscription state.': 'Partnerspecifikus hozzárendelés, ismétlődő díj, aktiválási díj és előfizetési állapot.',
     'Module snapshot is warming': 'A modul-pillanatkép előkészítés alatt áll',
     'The backend read model has no materialized module snapshot yet. This screen will never spin forever; refresh when the snapshot is ready.': 'A backend read model még nem rendelkezik materializált modul-pillanatképpel. A képernyő nem marad végtelen betöltésben; frissíts, amikor a pillanatkép elkészült.',
