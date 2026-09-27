@@ -84,8 +84,9 @@ for token in [
     check(token in frontend, f"partner refresh/workspace contract missing: {token}")
 check("_WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', true)" in frontend,
       "Partner Evidence workspace is not active")
-check('runPage("evidence", "evidence"' in partner_snapshots,
-      "partner Evidence is not backed by the background Evidence materializer")
+check('runMap("evidence", "evidence"' in partner_snapshots and
+      '"evidence_api":                    evidenceItems' in partner_snapshots,
+      "partner Evidence is not backed by the background persistent Evidence projection")
 
 for token in [
     "Future<void> activateModule(",
