@@ -16,6 +16,7 @@ design = read("frontend/lib/design_guide.dart")
 localization = read("frontend/lib/localization.dart")
 gateway = read("services/cmd/gateway/main.go")
 gateway_c10 = read("services/cmd/gateway/central10.go")
+central_reads = read("services/cmd/gateway/central_materialized_reads.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 partners = read("services/cmd/partners/main.go")
 fixture = read("services/cmd/partners/test_fixture.go")
@@ -48,8 +49,9 @@ check("api.prefetch(" not in warm and "primaryTargets" not in warm and "deferred
       "Central browser prewarm tiers survived")
 check("_prebuildPriorityPages" not in frontend,
       "hidden workspace pre-mount still recreates a hard-refresh request wave")
-check("centralStep3SnapshotGet(centralStep4PartnersKey)" in gateway_c10,
-      "Partners presets are not served from the authoritative Partners snapshot")
+check("centralSnapshotForRead(r.Context(), centralStep4PartnersKey)" in central_reads and
+      "materializedPartnerList(r)" in central_reads,
+      "Partners presets are not served from the authoritative persistent Partners snapshot")
 check("refreshCentralStep4Partners" in step4,
       "Partners authoritative background materializer missing")
 
