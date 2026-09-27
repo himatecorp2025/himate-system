@@ -553,6 +553,17 @@ func (a *app) dashboardSnapshotForReadContext(ctx context.Context, year int) (ma
 }
 
 func (a *app) dashboardSnapshotForRead(year int) (map[string]any, time.Time, bool) {
+	if a.db == nil && year == time.Now().UTC().Year() {
+		a.dashboardMu.RLock()
+		payload := copyDashboardPayload(a.dashboardPayload)
+		updated := a.dashboardUpdatedAt
+		expires := a.dashboardExpires
+		a.dashboardMu.RUnlock()
+		if len(payload) == 0 {
+			return nil, time.Time{}, true
+		}
+		return payload, updated, time.Now().After(expires)
+	}
 	return a.dashboardSnapshotForReadContext(context.Background(), year)
 }
 
