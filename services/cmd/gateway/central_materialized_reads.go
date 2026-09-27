@@ -172,6 +172,9 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 	if r.Method != http.MethodGet {
 		return false
 	}
+	if a.serveComplianceMaterializedGET(w, r) {
+		return true
+	}
 	path := r.URL.Path
 
 	switch {
