@@ -219,6 +219,9 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Your current role can view the Design Guide but cannot modify it.': 'A jelenlegi szerepköröd megtekintheti az Arculati útmutatót, de nem módosíthatja.',
+    'Your current role can view SEO settings but cannot modify them.': 'A jelenlegi szerepköröd megtekintheti a SEO-beállításokat, de nem módosíthatja.',
+    'Redeploy': 'Újratelepítés',
     'Central management of HIMATE, partner administration, documents, access and recovery.': 'A HIMATE, a partneradminisztráció, a dokumentumok, a hozzáférés és a helyreállítás központi kezelése.',
     'System health, partner runtime state, deployments and technical diagnostics.': 'Rendszerállapot, partner futtatási állapot, telepítések és technikai diagnosztika.',
     'Service responding normally': 'A szolgáltatás normálisan válaszol',
