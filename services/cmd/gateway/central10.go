@@ -105,6 +105,18 @@ func (a *app) invalidateCentral10Caches(path string) {
 		a.requestDashboardRefresh()
 		a.requestCentralStep4Refresh()
 	}
+
+	if invalidateWorkspaceModules ||
+		strings.Contains(path, "environment") ||
+		strings.Contains(path, "provision") ||
+		strings.Contains(path, "connector") ||
+		strings.Contains(path, "impact") ||
+		strings.Contains(path, "evidence") ||
+		strings.Contains(path, "report") ||
+		strings.Contains(path, "cms") ||
+		strings.Contains(path, "payment") {
+		a.requestAllCentralPartnerWorkspaceRefreshes()
+	}
 }
 
 func central10MergeModuleSnapshot(snapshot, state map[string]any) (map[string]any, bool) {
