@@ -36,7 +36,7 @@ acceptance = read("docs/CENTRAL-11_ACCEPTANCE.md")
 # snapshot, while the Gateway owns all data warming.
 for token in [
     "String centralPartnersPresetPath(",
-    "centralFinancePath(invoiceStatus: status)",
+    "String centralFinancePath({",
     "void _warmControlPlane()",
     "Gateway owns authoritative read-model warming",
 ]:
