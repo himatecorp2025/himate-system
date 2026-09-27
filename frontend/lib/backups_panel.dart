@@ -150,7 +150,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
           title: uiLiteral('Create restore point'),
           subtitle: uiLiteral('Database, media and configuration are captured, encrypted and copied to the configured durable backup storage.'),
           icon: Icons.backup_outlined,
-          primaryLabel: 'Start backup',
+          primaryLabel: uiLiteral('Start backup'),
           onPrimary: () => Navigator.pop(dialogContext, selected),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,7 +319,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
           title: uiLiteral('Restore verified partner backup'),
           subtitle: uiLiteral('This is a production recovery operation. A fresh safety backup is created automatically before the verified restore point replaces the partner database, media and captured configuration.'),
           icon: Icons.restore_rounded,
-          primaryLabel: 'Start production restore',
+          primaryLabel: uiLiteral('Start production restore'),
           onPrimary: () {
             if (reason.text.trim().length < 5) {
               setDialogState(() => dialogError = 'Enter a recovery reason of at least 5 characters.');
@@ -425,7 +425,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
           title: uiLiteral('Backup policy'),
           subtitle: uiLiteral('Retention and scheduling are partner-scoped. Expired restore points are removed from durable backup storage.'),
           icon: Icons.policy_outlined,
-          primaryLabel: 'Save policy',
+          primaryLabel: uiLiteral('Save policy'),
           onPrimary: () {
             final retentionDays = int.tryParse(retention.text.trim());
             final restorePoints = int.tryParse(maxPoints.text.trim());
