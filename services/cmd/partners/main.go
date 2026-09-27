@@ -803,6 +803,20 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, 500, "DB", "Could not commit partner update")
 			return
 		}
+		if goldenActivation && strings.EqualFold(strings.TrimSpace(p.DisplayName), "Test Partner") {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+				defer cancel()
+				seeded, reconcileErr := a.reconcileGoldenTestFixtures(ctx)
+				if reconcileErr != nil {
+					common.Logger().Warn("golden test fixture activation reconcile", "partner_id", id, "error", reconcileErr)
+					return
+				}
+				if seeded > 0 {
+					common.Logger().Info("golden test fixture activated", "partner_id", id, "seeded_partners", seeded)
+				}
+			}()
+		}
 		p, _ = a.get(id)
 		common.JSON(w, 200, partnerMap(p))
 	default:
