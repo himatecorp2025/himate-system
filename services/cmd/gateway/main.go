@@ -1359,18 +1359,6 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 				finalPartnerID = auditPartnerIDFromState(newState)
 				if finalPartnerID == "" { finalPartnerID = auditPartnerIDFromState(requestState) }
 			}
-			if status < 400 {
-				a.invalidateCentral10Caches(r.URL.Path)
-				if state, ok := newState.(map[string]any); ok {
-					a.applyCentralModuleMutationSnapshot(r.URL.Path, state)
-				}
-				refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
-				a.enqueueReadModelRefresh(refreshCtx, r.URL.Path, finalPartnerID)
-				refreshCancel()
-				// Write-through projection refresh runs before the buffered mutation
-				// response is released, closing the mutation -> immediate F5 window.
-				a.writeThroughReadModels(finalPartnerID, r.URL.Path)
-			}
 			event := baseEvent
 			event.PartnerID = finalPartnerID
 			event.Status = status
@@ -1380,6 +1368,24 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			finalizeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			finalizeErr := a.finalizeAuditIntent(finalizeCtx, intentID, event)
 			cancel()
+			if status < 400 {
+				a.invalidateCentral10Caches(r.URL.Path)
+				if state, ok := newState.(map[string]any); ok {
+					a.applyCentralModuleMutationSnapshot(r.URL.Path, state)
+				}
+				refreshReason := r.URL.Path
+				if finalizeErr == nil {
+					// The durable audit row is now committed. Include Administration/Audit
+					// in the same synchronous projection refresh before the ACK is released.
+					refreshReason += "/audit"
+				}
+				refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
+				a.enqueueReadModelRefresh(refreshCtx, refreshReason, finalPartnerID)
+				refreshCancel()
+				// Write-through projection refresh runs before the buffered mutation
+				// response is released, closing mutation -> immediate F5/read windows.
+				a.writeThroughReadModels(finalPartnerID, refreshReason)
+			}
 			if finalizeErr == nil && resource != "notifications" { go a.emitNotification(event) }
 		}()
 	}
