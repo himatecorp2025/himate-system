@@ -2311,7 +2311,7 @@ class _SidebarContent extends StatelessWidget {
                   children: [
                     const Divider(color: Color(0x22FFFFFF), height: 1),
                     const SizedBox(height: 18),
-                    LText('Nagyobb hatás.\nErősebb közösségek.\nFenntartható jövő.',
+                    LText('Greater impact.\nStronger communities.\nA sustainable future.',
                         style: GoogleFonts.cormorantGaramond(
                           color: const Color(0xFFD9E2EC),
                           fontSize: 16,
