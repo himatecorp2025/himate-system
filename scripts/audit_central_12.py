@@ -50,25 +50,26 @@ check("a.requestCentralStep4Refresh()" in catalog_case,
 finance_start = frontend.find("class _FinancePageState")
 finance_end = frontend.find("\nclass ", finance_start + 1)
 finance = frontend[finance_start:finance_end]
-for token in [
-    "int _warmRetryCount = 0;",
-    "Timer? _warmRetry;",
-    "if (_warmRetryCount < 2)",
-    "Duration(milliseconds: 900 * _warmRetryCount)",
+check("Loading the authoritative finance snapshot." in finance,
+      "Finance authoritative loading guard missing")
+for forbidden in [
+    "_warmRetryCount",
+    "Timer? _warmRetry",
     "Finance snapshot is warming",
+    "Duration(milliseconds: 400)",
+    "Duration(milliseconds: 900",
 ]:
-    check(token in finance, f"bounded Finance warming contract missing: {token}")
-check("Duration(milliseconds: 400)" not in finance,
-      "legacy unbounded 400 ms Finance polling remains")
+    check(forbidden not in finance, f"legacy Finance warming/retry contract survived: {forbidden}")
 
-for token in [
-    "final primaryTargets = <String>{};",
-    "final deferredTargets = <String>{};",
-    "Duration(milliseconds: 1500)",
-    "api.prefetch(primaryTargets",
-    "api.prefetch(deferredTargets",
-]:
-    check(token in frontend, f"staged prewarm contract missing: {token}")
+warm_start = frontend.find("void _warmControlPlane()")
+warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
+warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
+check("api.prefetch(" not in warm and "primaryTargets" not in warm and "deferredTargets" not in warm,
+      "browser staged prewarm survived CENTRAL-21")
+check("_prebuildPriorityPages" not in frontend,
+      "hidden page prebuild still causes first-load request fan-out")
+check("centralStep3SnapshotGet(centralStep4FinanceKey)" in gateway,
+      "Finance request path is not bound to the authoritative hot snapshot")
 
 for source, name in [
     (partners8, "Partners"),
