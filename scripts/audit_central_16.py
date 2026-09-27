@@ -17,6 +17,7 @@ def check(condition: bool, message: str) -> None:
         errors.append(message)
 
 frontend = read("frontend/lib/main.dart")
+round1_ui = read("frontend/lib/central17_round1.dart")
 dashboard = read("services/cmd/gateway/dashboard_snapshot.go")
 central10 = read("services/cmd/gateway/central10.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
@@ -55,10 +56,11 @@ for token in [
     "class _DashboardUsMapPainter",
     "class _DashboardPartnerReportPreview",
     "Partners in the United States",
-    "12 month trend",
     "PDF export",
 ]:
     check(token in frontend, f"CENTRAL-16 Dashboard contract missing: {token}")
+check("12 month trend" in frontend or "12 month trend" in round1_ui,
+      "CENTRAL-16 Dashboard contract missing: 12 month trend")
 
 for token in [
     "func dashboardPartnerGeo(",
