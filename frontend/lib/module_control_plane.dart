@@ -1231,10 +1231,10 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     ? _MessageCard(icon: Icons.error_outline_rounded, title: 'Module detail unavailable', message: detailError!)
                     : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         _RuleStrip(items: [
-                          _RuleItem(Icons.account_tree_outlined, 'Relationships', relationships.length.toString()),
-                          _RuleItem(Icons.analytics_outlined, 'Impact metrics', metrics.length.toString()),
-                          _RuleItem(Icons.business_outlined, 'Partner records', usage.length.toString()),
-                          _RuleItem(Icons.code_outlined, 'Source', s(module['source_repository']).isEmpty ? 'Not linked' : s(module['source_repository'])),
+                          _RuleItem(Icons.account_tree_outlined, uiLiteral('Relationships'), relationships.length.toString()),
+                          _RuleItem(Icons.analytics_outlined, uiLiteral('Impact metrics'), metrics.length.toString()),
+                          _RuleItem(Icons.business_outlined, uiLiteral('Partner records'), usage.length.toString()),
+                          _RuleItem(Icons.code_outlined, uiLiteral('Source'), s(module['source_repository']).isEmpty ? uiLiteral('Not linked') : s(module['source_repository'])),
                         ]),
                         const SizedBox(height: 16),
                         _SectionHeader(
@@ -1258,13 +1258,21 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                         ),
                         const SizedBox(height: 18),
                         _SectionHeader(
-                          title: 'Relationship Graph',
-                          subtitle: 'The selected module is the source node; each card shows a directed relation.',
-                          trailing: FilledButton.icon(onPressed: addRelationship, icon: const Icon(Icons.add_link_rounded), label: const LText('Add relation')),
+                          title: uiLiteral('Relationship Graph'),
+                          subtitle: uiLiteral('Shows module dependencies, integrations, conflicts, extensions and replacement relations. The selected module is the source node.'),
+                          trailing: FilledButton.icon(
+                            onPressed: addRelationship,
+                            icon: const Icon(Icons.add_link_rounded),
+                            label: LText(uiLiteral('Add relation')),
+                          ),
                         ),
                         const SizedBox(height: 10),
                         if (relationships.isEmpty)
-                          const _MessageCard(icon: Icons.account_tree_outlined, title: 'No relationships yet', message: 'Add dependency, integration, extension, conflict or replacement relations.')
+                          _MessageCard(
+                            icon: Icons.account_tree_outlined,
+                            title: uiLiteral('No relationships yet'),
+                            message: uiLiteral('Add dependency, integration, extension, conflict or replacement relations.'),
+                          )
                         else
                           Wrap(spacing: 10, runSpacing: 10, children: [
                             for (final relation in relationships)
@@ -1292,7 +1300,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                           ]),
                         const SizedBox(height: 20),
                         _SectionHeader(
-                          title: 'Impact Mapping',
+                          title: uiLiteral('Impact Mapping'),
                           subtitle: 'Metric keys attached here will power partner-facing module results.',
                           trailing: OutlinedButton.icon(onPressed: editMetrics, icon: const Icon(Icons.edit_outlined), label: const LText('Edit metrics')),
                         ),
