@@ -310,6 +310,10 @@ String centralImpactInitialPath() => Uri(
       },
     ).toString();
 
+String centralWebsiteInitialPath() => '/api/v1/central/website';
+
+String centralSystemInitialPath() => '/api/v1/central/system';
+
 String centralConnectionsInitialPath() => Uri(
       path: '/api/v1/central/connections',
       queryParameters: const <String, String>{'limit': '120', 'offset': '0'},
@@ -437,11 +441,14 @@ class Api {
       addDashboard();
     } else if (path.startsWith('/api/v1/cms')) {
       add('/api/v1/cms');
+      add('/api/v1/central/website');
     } else if (path.startsWith('/api/v1/contact/inquiries')) {
       add('/api/v1/contact/inquiries');
+      add('/api/v1/central/website');
     } else if (path.startsWith('/api/v1/backups')) {
       add('/api/v1/backups');
       add('/api/v1/central/administration');
+      add('/api/v1/central/system');
       add('/api/v1/system-health');
     } else if (path.startsWith('/api/v1/provisioning') ||
         path.startsWith('/api/v1/environments') ||
@@ -450,6 +457,10 @@ class Api {
       add('/api/v1/environments');
       add('/api/v1/connectors');
       add('/api/v1/central/connections');
+      add('/api/v1/central/system');
+      if (path.startsWith('/api/v1/environments') || path.startsWith('/api/v1/connectors')) {
+        add('/api/v1/central/website');
+      }
       add('/api/v1/system-health');
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
@@ -2040,8 +2051,17 @@ class _ShellState extends State<Shell> {
         canCms: can('cms.read'),
         canContact: can('contact.read'),
         canConnections: can('connectors.read'),
+        canEnvironments: can('environments.read'),
       );
-      case 7: return SystemPage(api: widget.api);
+      case 7: return SystemPage(
+        api: widget.api,
+        canHealth: can('health.read'),
+        canProvisioning: can('provisioning.read'),
+        canEnvironments: can('environments.read'),
+        canConnections: can('connectors.read'),
+        canBackups: can('backups.read'),
+        canAudit: can('audit.read'),
+      );
       case 8:
         return can('administration.read')
             ? AdministrationCenterPage(
@@ -2086,7 +2106,7 @@ class _ShellState extends State<Shell> {
         final allNav = navFor(context);
         final visibleNav = <NavSpec>[for (final index in visibleIndexes) allNav[index]];
         final visibleSelected = visibleIndexes.indexOf(selected).clamp(0, visibleIndexes.length - 1);
-        final referenceHeader = selected >= 0 && selected <= 5;
+        final referenceHeader = selected >= 0 && selected <= 8;
         final referenceTitle = switch (selected) {
           0 => uiLiteral('Dashboard'),
           1 => uiLiteral('Partners'),
@@ -2094,6 +2114,9 @@ class _ShellState extends State<Shell> {
           3 => uiLiteral('Packages'),
           4 => uiLiteral('Licensing & Finance'),
           5 => uiLiteral('Impact & Reports'),
+          6 => uiLiteral('Website & Marketing'),
+          7 => uiLiteral('System & Operations'),
+          8 => uiLiteral('Administration'),
           _ => '',
         };
         final referenceSubtitle = switch (selected) {
@@ -2103,6 +2126,9 @@ class _ShellState extends State<Shell> {
           3 => uiLiteral('Subscription packages, module entitlements and configuration.'),
           4 => uiLiteral('Invoicing, receivables, licenses and partner onboarding overview.'),
           5 => uiLiteral('Real outcomes. Transparent reporting. Measurable impact.'),
+          6 => uiLiteral('Content, brand, discovery, domains and marketing operations in one place.'),
+          7 => uiLiteral('Platform health, infrastructure, deployments and technical diagnostics.'),
+          8 => uiLiteral('Corporate governance, partner administration, access and recovery.'),
           _ => '',
         };
         if (mobile) {
