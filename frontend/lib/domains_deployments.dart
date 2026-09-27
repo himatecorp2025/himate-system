@@ -135,8 +135,8 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
-          title: 'Create production environment',
-          subtitle: 'Production requires an explicit public hostname. DNS and TLS must verify before launch.',
+          title: uiLiteral('Create production environment'),
+          subtitle: uiLiteral('Production requires an explicit public hostname. DNS and TLS must verify before launch.'),
           icon: Icons.public_rounded,
           primaryLabel: 'Create production',
           onPrimary: () {
@@ -226,8 +226,8 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
-          title: 'Environment configuration',
-          subtitle: 'Changing the production hostname resets DNS/TLS verification and launch readiness.',
+          title: uiLiteral('Environment configuration'),
+          subtitle: uiLiteral('Changing the production hostname resets DNS/TLS verification and launch readiness.'),
           icon: Icons.tune_rounded,
           primaryLabel: 'Save configuration',
           onPrimary: () {
@@ -372,10 +372,10 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
             _DefinitionRow(label: 'Platform version', value: _value(e['platform_version'])),
             if (production) ...[
               const SizedBox(height: 5),
-              _DefinitionRow(label: 'DNS', value: _value(e['dns_status'], fallback: 'UNKNOWN')),
-              _DefinitionRow(label: 'TLS', value: _value(e['tls_status'], fallback: 'UNKNOWN')),
-              _DefinitionRow(label: 'Domain', value: _value(e['domain_status'], fallback: 'UNVERIFIED')),
-              _DefinitionRow(label: 'Domain checked', value: _date(e['last_domain_check'])),
+              _DefinitionRow(label: uiLiteral('DNS'), value: uiLiteral(_humanize(_value(e['dns_status'], fallback: 'UNKNOWN')))),
+              _DefinitionRow(label: uiLiteral('TLS'), value: uiLiteral(_humanize(_value(e['tls_status'], fallback: 'UNKNOWN')))),
+              _DefinitionRow(label: uiLiteral('Domain'), value: uiLiteral(_humanize(_value(e['domain_status'], fallback: 'UNVERIFIED')))),
+              _DefinitionRow(label: uiLiteral('Domain checked'), value: _date(e['last_domain_check'])),
               if (_value(e['domain_error'], fallback: '').isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 5),
@@ -401,8 +401,8 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
                 ),
               ],
               if (isLive) ...[
-                _DefinitionRow(label: 'Launched by', value: _value(e['launch_actor'])),
-                _DefinitionRow(label: 'Launched at', value: _date(e['launched_at'])),
+                _DefinitionRow(label: uiLiteral('Launched by'), value: _value(e['launch_actor'])),
+                _DefinitionRow(label: uiLiteral('Launched at'), value: _date(e['launched_at'])),
               ],
             ],
             const SizedBox(height: 12),
@@ -414,13 +414,13 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
                   OutlinedButton.icon(
                     onPressed: isBusy ? null : () => _editEnvironment(e),
                     icon: const Icon(Icons.tune_rounded, size: 17),
-                    label: const LText('Configure'),
+                    label: LText(uiLiteral('Configure')),
                   ),
                 if (production && widget.canWrite)
                   OutlinedButton.icon(
                     onPressed: isBusy ? null : () => _action(e, 'verify-domain', 'Domain verification completed.'),
                     icon: const Icon(Icons.verified_outlined, size: 17),
-                    label: const LText('Verify DNS/TLS'),
+                    label: LText(uiLiteral('Verify DNS/TLS')),
                   ),
                 if (widget.canApprove)
                   FilledButton.icon(
@@ -432,10 +432,10 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
                   FilledButton.icon(
                     onPressed: isBusy || !launchReady ? null : () => _launch(e),
                     icon: const Icon(Icons.rocket_launch_outlined, size: 17),
-                    label: const LText('Go LIVE'),
+                    label: LText(uiLiteral('Go LIVE')),
                   ),
                 if (!widget.canWrite && !widget.canApprove)
-                  const _MiniCounter(label: 'READ ONLY'),
+                  _MiniCounter(label: uiLiteral('READ ONLY')),
               ],
             ),
             if (isBusy) ...[
@@ -458,29 +458,29 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeader(
-          title: 'Domains & Deployments',
-          subtitle: 'Staging and production release state, DNS/TLS verification and controlled READY FOR LAUNCH → LIVE transition.',
+          title: uiLiteral('Domains & Deployments'),
+          subtitle: uiLiteral('Staging and production release state, DNS/TLS verification and controlled READY FOR LAUNCH → LIVE transition.'),
           trailing: widget.canWrite
               ? FilledButton.icon(
                   onPressed: _createProduction,
                   icon: const Icon(Icons.add_rounded),
-                  label: const LText('Add production'),
+                  label: LText(uiLiteral('Add production')),
                 )
               : _MiniCounter(label: uiLiteral('Read only')),
         ),
         const SizedBox(height: 12),
         _RuleStrip(items: [
-          _RuleItem(Icons.layers_outlined, 'Environments', '${environments.length} total'),
-          _RuleItem(Icons.public_outlined, 'Production', '$production configured'),
-          _RuleItem(Icons.rocket_launch_outlined, 'Launch ready', '$ready ready'),
-          _RuleItem(Icons.language_outlined, 'Live', '$live live'),
+          _RuleItem(Icons.layers_outlined, uiLiteral('Environments'), uiBilingual('${environments.length} total', '${environments.length} összesen')),
+          _RuleItem(Icons.public_outlined, uiLiteral('Production'), uiBilingual('$production configured', '$production beállítva')),
+          _RuleItem(Icons.rocket_launch_outlined, uiLiteral('Launch ready'), uiBilingual('$ready ready', '$ready indításra kész')),
+          _RuleItem(Icons.language_outlined, uiLiteral('Live'), uiBilingual('$live live', '$live éles')),
         ]),
         const SizedBox(height: 14),
         if (environments.isEmpty)
           const _MessageCard(
             icon: Icons.dns_outlined,
-            title: 'No partner environments',
-            message: 'Provision a staging environment first. Production can then be configured here with an explicit public hostname.',
+            title: uiLiteral('No partner environments'),
+            message: uiLiteral('Provision a staging environment first. Production can then be configured here with an explicit public hostname.'),
           )
         else
           LayoutBuilder(
