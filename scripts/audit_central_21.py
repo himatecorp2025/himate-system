@@ -211,6 +211,22 @@ for token in [
 ]:
     check(token in partner_reads, f"Partner operational sub-screen is not materialized: {token}")
 
+for token in [
+    '"backup_restore_points"', '"backup_restore_tests_api"', '"backup_restore_jobs_api"',
+]:
+    check(token in read("services/cmd/gateway/central17_round3.go"),
+          f"System recovery projection missing block: {token}")
+    check(token in snapshots, f"System LKG validator missing recovery block: {token}")
+
+for token in [
+    'path == "/api/v1/backups/restore-tests"',
+    'strings.HasPrefix(path, "/api/v1/backups/restore-tests/")',
+    'path == "/api/v1/backups/restores"',
+    'strings.HasPrefix(path, "/api/v1/backups/restores/")',
+    'strings.HasPrefix(path, "/api/v1/backups/restore-points/")',
+]:
+    check(token in central_reads, f"Backup recovery browser GET is not materialized: {token}")
+
 # Writes are durable + write-through before buffered response release.
 check("identity.read_model_refresh_queue" in models and "enqueueReadModelRefresh" in models,
       "Durable asynchronous refresh queue missing")
