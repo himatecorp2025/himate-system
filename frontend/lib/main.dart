@@ -12716,16 +12716,16 @@ class _ArchitectureCard extends StatelessWidget {
   const _ArchitectureCard();
 
   @override
-  Widget build(BuildContext context) => const _InfoCard(
-    title: 'Architecture',
+  Widget build(BuildContext context) => _InfoCard(
+    title: uiLiteral('Architecture'),
     icon: Icons.account_tree_outlined,
     children: [
-      _DefinitionRow(label: 'Public ingress', value: 'HIMATE API Gateway'),
-      _DefinitionRow(label: 'Identity boundary', value: 'Gateway session service'),
-      _DefinitionRow(label: 'Partner domain', value: 'Independent Go service'),
-      _DefinitionRow(label: 'Catalog domain', value: 'Independent Go service'),
-      _DefinitionRow(label: 'Billing domain', value: 'Independent Go service'),
-      _DefinitionRow(label: 'Persistence', value: 'PostgreSQL · service-owned schemas'),
+      _DefinitionRow(label: uiLiteral('Public ingress'), value: 'HIMATE API Gateway'),
+      _DefinitionRow(label: uiLiteral('Identity boundary'), value: uiLiteral('Gateway session service')),
+      _DefinitionRow(label: uiLiteral('Partner domain'), value: uiLiteral('Independent Go service')),
+      _DefinitionRow(label: uiLiteral('Catalog domain'), value: uiLiteral('Independent Go service')),
+      _DefinitionRow(label: uiLiteral('Billing domain'), value: uiLiteral('Independent Go service')),
+      _DefinitionRow(label: uiLiteral('Persistence'), value: uiLiteral('PostgreSQL · service-owned schemas')),
     ],
   );
 }
@@ -12734,16 +12734,16 @@ class _OperationsControlsCard extends StatelessWidget {
   const _OperationsControlsCard();
 
   @override
-  Widget build(BuildContext context) => const _InfoCard(
-    title: 'Operational Controls',
+  Widget build(BuildContext context) => _InfoCard(
+    title: uiLiteral('Operational Controls'),
     icon: Icons.shield_outlined,
     children: [
-      _DefinitionRow(label: 'Containerization', value: 'Enabled'),
-      _DefinitionRow(label: 'Horizontal scaling', value: 'Stateless service design'),
-      _DefinitionRow(label: 'Private services', value: 'Internal network only'),
-      _DefinitionRow(label: 'Partner databases', value: 'Separate from HIMATE control plane'),
-      _DefinitionRow(label: 'Connector model', value: 'Pre-defined API exchange'),
-      _DefinitionRow(label: 'Backups / restore', value: 'Encrypted · restore verified'),
+      _DefinitionRow(label: uiLiteral('Containerization'), value: uiLiteral('Enabled')),
+      _DefinitionRow(label: uiLiteral('Horizontal scaling'), value: uiLiteral('Stateless service design')),
+      _DefinitionRow(label: uiLiteral('Private services'), value: uiLiteral('Internal network only')),
+      _DefinitionRow(label: uiLiteral('Partner databases'), value: uiLiteral('Separate from HIMATE control plane')),
+      _DefinitionRow(label: uiLiteral('Connector model'), value: uiLiteral('Pre-defined API exchange')),
+      _DefinitionRow(label: uiLiteral('Backups / restore'), value: uiLiteral('Encrypted · restore verified')),
     ],
   );
 }
