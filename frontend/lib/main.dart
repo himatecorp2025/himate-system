@@ -2778,6 +2778,11 @@ class DashboardPage extends StatelessWidget {
 
           final monthlyTrend = items(<String, dynamic>{'items': impact['trend']});
           final weeklyTrend = items(<String, dynamic>{'items': impact['weekly_trend']});
+          final partnerTrend = items(<String, dynamic>{'items': p['trend']});
+          final billingMonthly = items(<String, dynamic>{'items': billing['monthly']});
+          final billingCurrencies = billingMonthly.map((row) => '${row['currency'] ?? ''}').where((value) => value.isNotEmpty).toSet();
+          final dashboardCurrency = billingCurrencies.length == 1 ? billingCurrencies.first : '';
+          final dashboardRevenueTrend = dashboardCurrency.isEmpty ? <Map<String, dynamic>>[] : billingMonthly;
           final activities = items(activity);
           final geoStates = items(<String, dynamic>{'items': geo['states']});
           final geoPartners = items(<String, dynamic>{'items': geo['partners']});
@@ -2832,14 +2837,11 @@ class DashboardPage extends StatelessWidget {
                 const SizedBox(height: 18),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final trend = _ImpactPanel(
-                      monthlyTrend: monthlyTrend,
-                      weeklyTrend: weeklyTrend,
+                    final trend = _Central17TrendCard(
+                      partnerTrend: partnerTrend,
+                      revenueTrend: dashboardRevenueTrend,
+                      currency: dashboardCurrency,
                       year: year,
-                      authorized: impactAuthorized,
-                      hasData: impactHasData,
-                      title: uiLiteral('12 month trend'),
-                      subtitle: uiLiteral('Verified impact trend from the authoritative read model'),
                     );
                     final map = _DashboardUsMapCard(
                       states: geoStates,
