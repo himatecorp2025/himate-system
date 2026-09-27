@@ -166,3 +166,23 @@ func TestMaterializedEvidenceListPreservesFiltersAndPagination(t *testing.T) {
 		t.Fatalf("report-filter total = %d, want 1", total)
 	}
 }
+
+
+func TestCentralBrowserMaterializedReadSeparatesBrowserAndLegacyClients(t *testing.T) {
+	browser := httptest.NewRequest("GET", "/api/v1/environments", nil)
+	browser.Header.Set("X-Himate-Locale", "en")
+	if !centralBrowserMaterializedRead(browser) {
+		t.Fatal("browser Central GET with X-Himate-Locale must use materialized CQRS read path")
+	}
+
+	legacy := httptest.NewRequest("GET", "/api/v1/environments", nil)
+	if centralBrowserMaterializedRead(legacy) {
+		t.Fatal("legacy/smoke GET without browser discriminator must reach authoritative compatibility API")
+	}
+
+	write := httptest.NewRequest("POST", "/api/v1/environments", nil)
+	write.Header.Set("X-Himate-Locale", "en")
+	if centralBrowserMaterializedRead(write) {
+		t.Fatal("mutations must never be intercepted by materialized read path")
+	}
+}
