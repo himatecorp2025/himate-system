@@ -51,8 +51,10 @@ func (a *app) materializeCentralAdministration(ctx context.Context) map[string]a
 	var partners []map[string]any
 	var billing central14BillingAdministrationSummary
 	var backups central14BackupSummary
-	var profile map[string]any
+	var profile, companyDocuments, invoiceRegister, backupAPI map[string]any
+	var rolesModel, usersModel, secretsModel, auditModel map[string]any
 	var partnerErr, billingErr, backupErr, profileErr error
+	var companyDocumentsErr, invoiceRegisterErr, backupAPIErr error
 
 	if snapshot, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
 		partners = step4Items(snapshot["items"])
@@ -66,7 +68,7 @@ func (a *app) materializeCentralAdministration(ctx context.Context) map[string]a
 			partners, partnerErr = a.central13AllPartners(ctx)
 		}()
 	}
-	wg.Add(3)
+	wg.Add(6)
 	go func() {
 		defer wg.Done()
 		billingErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/administration/summary", &billing)
@@ -79,7 +81,24 @@ func (a *app) materializeCentralAdministration(ctx context.Context) map[string]a
 		defer wg.Done()
 		backupErr = a.internalGET(ctx, a.hosts["backups"], "/internal/v1/backups/summary", &backups)
 	}()
+	go func() {
+		defer wg.Done()
+		companyDocumentsErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/company/documents?limit=200&offset=0", &companyDocuments)
+	}()
+	go func() {
+		defer wg.Done()
+		invoiceRegisterErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/invoices?limit=200&offset=0", &invoiceRegister)
+	}()
+	go func() {
+		defer wg.Done()
+		backupAPIErr = a.internalGET(ctx, a.hosts["backups"], "/api/v1/backups/summary", &backupAPI)
+	}()
 	wg.Wait()
+
+	rolesModel, rolesErr := a.materializeAdministrationRoles(ctx)
+	usersModel, usersErr := a.materializeAdministrationUsers(ctx)
+	secretsModel, secretsErr := a.materializeAdministrationSecrets(ctx)
+	auditModel, auditModelErr := a.materializeAdministrationAudit(ctx)
 
 	unavailable := []string{}
 	if partnerErr != nil {
@@ -94,6 +113,13 @@ func (a *app) materializeCentralAdministration(ctx context.Context) map[string]a
 	if backupErr != nil {
 		unavailable = append(unavailable, "backups")
 	}
+	if companyDocumentsErr != nil { unavailable = append(unavailable, "company_documents") }
+	if invoiceRegisterErr != nil { unavailable = append(unavailable, "invoice_register") }
+	if backupAPIErr != nil { unavailable = append(unavailable, "backup_api") }
+	if rolesErr != nil { unavailable = append(unavailable, "admin_roles") }
+	if usersErr != nil { unavailable = append(unavailable, "admin_users") }
+	if secretsErr != nil { unavailable = append(unavailable, "admin_secrets") }
+	if auditModelErr != nil { unavailable = append(unavailable, "audit_model") }
 
 	billingByPartner := mapByPartner(billing.Items)
 	backupByPartner := mapByPartner(backups.Items)
@@ -194,6 +220,13 @@ func (a *app) materializeCentralAdministration(ctx context.Context) map[string]a
 			"backup_provider":         backups.Provider,
 		},
 		"items": rowsOut,
+		"admin_roles": rolesModel,
+		"admin_users": usersModel,
+		"admin_secrets": secretsModel,
+		"audit_events": auditModel,
+		"company_documents": companyDocuments,
+		"invoice_register": invoiceRegister,
+		"backup_api": backupAPI,
 		"kpis": map[string]any{
 			"partners":                    len(partners),
 			"verified_recovery":           central14CountStatus(rowsOut, "recoverability_status", "VERIFIED"),
