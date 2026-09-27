@@ -77,7 +77,8 @@ for token in [
 for token in [
     "central10PlanDisplayPrice(",
     'central10Float(plan["monthly_price"])',
-    'central10Int(plan["module_limit"])',
+    'out["module_limit"] = 10',
+    'out["module_limit"] = 20',
     'out["entitlement"] = "Unlimited"',
 ]:
     check(token in central10, f"CENTRAL-16 canonical package contract missing: {token}")
