@@ -222,13 +222,18 @@ func (a *app) migrate(ctx context.Context) error {
 		}
 	}
 	_, err := a.db.ExecContext(ctx,
-		`INSERT INTO partners.partners(
+		`INSERT INTO partners.partners AS p(
 			id,slug,display_name,legal_name,brand_name,category_id,lifecycle,existing_partner,reference_partner,
-			primary_domain,country,platform_version,system_health,notes
+			primary_domain,country,state_region,city,platform_version,system_health,notes
 		)
 		VALUES('ptr_000001','klavierhaus','Klavierhaus','Klavierhaus','Klavierhaus','cat_001','LIVE',TRUE,TRUE,
-			'klavierhaus.com','United States','reference','UNKNOWN','Reference partner; activation fee not applicable.')
-		ON CONFLICT(id) DO UPDATE SET reference_partner=TRUE,existing_partner=TRUE`)
+			'klavierhaus.com','United States','NY','New York','reference','UNKNOWN','Reference partner; activation fee not applicable.')
+		ON CONFLICT(id) DO UPDATE SET
+			reference_partner=TRUE,
+			existing_partner=TRUE,
+			country=CASE WHEN trim(COALESCE(p.country,''))='' THEN EXCLUDED.country ELSE p.country END,
+			state_region=CASE WHEN trim(COALESCE(p.state_region,''))='' THEN EXCLUDED.state_region ELSE p.state_region END,
+			city=CASE WHEN trim(COALESCE(p.city,''))='' THEN EXCLUDED.city ELSE p.city END`)
 	return err
 }
 
