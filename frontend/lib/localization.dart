@@ -216,6 +216,8 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Open': 'Megnyitás',
+    'active': 'aktív',
     'Module usage growth': 'Modulhasználat növekedése',
     'Active module count by month': 'Aktív modulok száma havi bontásban',
     'No module usage history is available yet.': 'Még nem érhető el modulhasználati előzmény.',
