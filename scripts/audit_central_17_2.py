@@ -31,6 +31,7 @@ for token in [
     "showPackageDetails(plan)",
     "editPackage(plan)",
     "analyticsByPlan",
+    "_syncPackageMutation",
     "central10PlanDisplayPrice(",
     'central10Float(plan["monthly_price"])',
     'central10Int(plan["module_limit"])',
@@ -55,6 +56,9 @@ for token in [
     "scrollToInvoices",
     "invoiceKey",
     "financeChart()",
+    "_syncFinanceMutation",
+    "_invoiceMutationVisible",
+    "_onboardingMutationVisible",
     "Recent invoice activity",
 ]:
     check(token in frontend, f"CENTRAL-17.2 Finance contract missing: {token}")
@@ -63,6 +67,7 @@ for token in [
 for token in [
     "impactSnapshotWarming",
     "_impactWarmRetryCount < 2",
+    "_syncImpactMutation",
     "impactStatus == 'unavailable'",
     "impactStatus == 'partial'",
     "Some Impact sections are restricted",
@@ -108,6 +113,7 @@ for token in [
     "'Subscription packages, module entitlements and configuration.':",
     "'Invoicing, receivables, licenses and partner onboarding overview.':",
     "'Real outcomes. Transparent reporting. Measurable impact.':",
+    "String uiBilingual(String en, String hu)",
 ]:
     check(token in localization, f"CENTRAL-17.2 localization contract missing: {token}")
 
