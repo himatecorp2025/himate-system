@@ -2027,7 +2027,7 @@ class _ShellState extends State<Shell> {
     // addressable by deep-link and from Administration, but are no longer a
     // competing top-level workspace.
     if (can('administration.read') || can('audit.read')) indexes.add(8);
-    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('backups.read')) indexes.add(7);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
   }
@@ -2051,7 +2051,6 @@ class _ShellState extends State<Shell> {
         api: widget.api,
         canCms: can('cms.read'),
         canContact: can('contact.read'),
-        canConnections: can('connectors.read'),
         canEnvironments: can('environments.read'),
       );
       case 7: return SystemPage(
@@ -10108,7 +10107,6 @@ class SystemPage extends StatefulWidget {
     required this.canHealth,
     required this.canProvisioning,
     required this.canEnvironments,
-    required this.canConnections,
     required this.canBackups,
     required this.canAudit,
     super.key,
@@ -10117,7 +10115,6 @@ class SystemPage extends StatefulWidget {
   final bool canHealth;
   final bool canProvisioning;
   final bool canEnvironments;
-  final bool canConnections;
   final bool canBackups;
   final bool canAudit;
 
