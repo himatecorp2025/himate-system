@@ -142,7 +142,7 @@ func partnerWorkspaceSnapshotValid(payload map[string]any) bool {
 	}
 	required := []string{
 		"partner", "modules", "module_view", "production_environment",
-		"preferred_connector_environment", "billing", "terms", "license",
+		"preferred_connector_environment", "billing", "company_profile", "terms", "license",
 		"documents", "invoices", "subscriptions", "environments",
 		"provisioning_jobs", "impact_summary", "evidence",
 		"connector_credentials", "portal_users", "agreement",
