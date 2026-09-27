@@ -184,6 +184,12 @@ for token in [
     check(token in partner_fixture, f"automatic Golden Test Partner fixture contract missing: {token}")
 check("go a.runGoldenTestFixtureReconciler()" in partners_main,
       "Golden Test Partner fixture reconciler is not started by the Partners service")
+for token in [
+    'goldenActivation && strings.EqualFold(strings.TrimSpace(p.DisplayName), "Test Partner")',
+    "a.reconcileGoldenTestFixtures(ctx)",
+    'common.Logger().Info("golden test fixture activated"',
+]:
+    check(token in partners_main, f"immediate Test Partner fixture trigger missing: {token}")
 
 if failures:
     print(f"CENTRAL-18 FAIL: {len(failures)} issue(s)")
