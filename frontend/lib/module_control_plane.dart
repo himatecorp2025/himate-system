@@ -1841,6 +1841,13 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final partnerUsage = (registryKpis['active_partner_assignments'] as num?)?.toInt() ?? 0;
     final currentGroup = selectedGroupKey == null ? null : groupByKey(selectedGroupKey!);
     final topicOverview = selectedGroupKey == null && registryPreset == 'TOPICS';
+    final visibleTopics = query.trim().isEmpty
+        ? topicRows
+        : topicRows.where((topic) {
+            final needle = query.trim().toLowerCase();
+            return groupLabel(topic).toLowerCase().contains(needle) ||
+                s(topic['group_key']).toLowerCase().contains(needle);
+          }).toList();
 
     String registryTitle = uiLiteral('Module Topics');
     String registrySubtitle = uiLiteral('Open a topic to see its modules. Module cards can be moved to another topic from their action menu.');
@@ -1931,6 +1938,59 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               _ModuleWorkspaceTabs(
                 selected: workspaceView,
                 onSelect: selectWorkspaceView,
+                trailing: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: ValueKey('module-workspace-search-$workspaceView'),
+                        onChanged: (value) {
+                          if (workspaceView == 'PARTNERS') {
+                            setState(() {
+                              commercialQuery = value;
+                              commercialShown = 120;
+                            });
+                            _scheduleCommercialReload();
+                            return;
+                          }
+                          setState(() => query = value);
+                          if (workspaceView != 'TOPICS') _scheduleRegistryReload();
+                        },
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: uiLiteral(
+                            workspaceView == 'TOPICS'
+                                ? 'Search topics...'
+                                : workspaceView == 'PARTNERS'
+                                    ? 'Search partners or modules...'
+                                    : workspaceView == 'CONNECTIONS'
+                                        ? 'Search connections...'
+                                        : 'Search modules...',
+                          ),
+                          prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    PopupMenuButton<String>(
+                      tooltip: uiLiteral('Module actions'),
+                      icon: const Icon(Icons.more_horiz_rounded, color: brandNavy),
+                      onSelected: (value) {
+                        if (value == 'packages') {
+                          setState(() => showSubscriptionPlans = true);
+                        } else if (value == 'group') {
+                          unawaited(addGroup());
+                        } else if (value == 'module') {
+                          unawaited(addModule());
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: 'packages', child: Row(children: [const Icon(Icons.workspace_premium_outlined, size: 17), const SizedBox(width: 8), LText(uiLiteral('Packages'))])),
+                        PopupMenuItem(value: 'group', enabled: !loading, child: Row(children: [const Icon(Icons.category_outlined, size: 17), const SizedBox(width: 8), LText(uiLiteral('Add group'))])),
+                        PopupMenuItem(value: 'module', enabled: !loading && groups.isNotEmpty, child: Row(children: [const Icon(Icons.add_box_outlined, size: 17), const SizedBox(width: 8), LText(uiLiteral('Add module'))])),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 18),
               if (!showCommercialMatrix) ...[
@@ -1967,7 +2027,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final group in topicRows)
+                      for (final group in visibleTopics)
                         SizedBox(width: width, child: topicGroupCard(group)),
                     ],
                   );
