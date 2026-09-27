@@ -1,0 +1,145 @@
+package main
+
+import (
+	"context"
+	"testing"
+	"time"
+)
+
+func validRegistrySnapshot(label string) map[string]any {
+	return map[string]any{
+		"status":      "healthy",
+		"unavailable": []string{},
+		"modules":     []map[string]any{{"key": "test.module", "label": label}},
+		"groups":      []map[string]any{},
+		"trend":       []map[string]any{},
+	}
+}
+
+func validAdministrationSnapshot() map[string]any {
+	return map[string]any{
+		"status":      "healthy",
+		"unavailable": []string{},
+		"company":     map[string]any{},
+		"items":       []map[string]any{},
+		"kpis":        map[string]any{},
+	}
+}
+
+func validSystemSnapshot() map[string]any {
+	return map[string]any{
+		"status":      "healthy",
+		"unavailable": []string{},
+		"health":      map[string]any{},
+		"provisioning": []map[string]any{},
+		"environments": []map[string]any{},
+		"events":       []map[string]any{},
+		"backups":      map[string]any{},
+		"kpis":         map[string]any{},
+	}
+}
+
+func validPartnerWorkspaceSnapshot() map[string]any {
+	return map[string]any{
+		"status":                          "healthy",
+		"unavailable":                     []string{},
+		"partner":                         map[string]any{"id": "partner_1"},
+		"modules":                         []map[string]any{},
+		"module_view":                     map[string]any{},
+		"production_environment":          nil,
+		"preferred_connector_environment": "STAGING",
+		"billing":                         map[string]any{},
+		"terms":                           map[string]any{},
+		"license":                         map[string]any{},
+		"documents":                       []map[string]any{},
+		"invoices":                        []map[string]any{},
+		"subscriptions":                   []map[string]any{},
+		"environments":                    []map[string]any{},
+		"provisioning_jobs":               []map[string]any{},
+		"impact_summary":                  []map[string]any{},
+		"evidence":                        []map[string]any{},
+		"connector_credentials":           []map[string]any{},
+		"portal_users":                    []map[string]any{},
+		"agreement":                       map[string]any{},
+		"commercial_status":               map[string]any{},
+		"billing_events":                  []map[string]any{},
+		"website_adapter":                 map[string]any{},
+		"partner_design":                  map[string]any{},
+		"payment_profile":                 map[string]any{},
+	}
+}
+
+func TestCentralSnapshotValidRejectsDegraded(t *testing.T) {
+	for _, status := range []string{"partial", "unavailable", "warming", "stale", ""} {
+		payload := validRegistrySnapshot("LKG")
+		payload["status"] = status
+		if centralSnapshotValid(centralStep3RegistryKey, payload) {
+			t.Fatalf("status %q was accepted as Last-Known-Good", status)
+		}
+	}
+}
+
+func TestCentralSnapshotValidRejectsMissingRequiredField(t *testing.T) {
+	payload := validRegistrySnapshot("LKG")
+	delete(payload, "modules")
+	if centralSnapshotValid(centralStep3RegistryKey, payload) {
+		t.Fatal("registry without modules was accepted as Last-Known-Good")
+	}
+}
+
+func TestCentralSnapshotValidAcceptsAuthoritativeScreens(t *testing.T) {
+	cases := []struct {
+		key     string
+		payload map[string]any
+	}{
+		{centralStep3RegistryKey, validRegistrySnapshot("Registry")},
+		{centralStep4AdministrationKey, validAdministrationSnapshot()},
+		{centralStep4SystemKey, validSystemSnapshot()},
+		{centralPartnerWorkspaceKey("partner_1"), validPartnerWorkspaceSnapshot()},
+	}
+	for _, tc := range cases {
+		if !centralSnapshotValid(tc.key, tc.payload) {
+			t.Fatalf("healthy authoritative snapshot %q was rejected: %#v", tc.key, tc.payload)
+		}
+	}
+}
+
+func TestCentralStep3StoreRetainsLastKnownGood(t *testing.T) {
+	centralStep3Snapshots.Lock()
+	originalItems := centralStep3Snapshots.items
+	centralStep3Snapshots.items = map[string]centralStep3SnapshotEntry{}
+	centralStep3Snapshots.Unlock()
+	defer func() {
+		centralStep3Snapshots.Lock()
+		centralStep3Snapshots.items = originalItems
+		centralStep3Snapshots.Unlock()
+	}()
+
+	lkg := validRegistrySnapshot("Last Known Good")
+	centralStep3Snapshots.Lock()
+	centralStep3Snapshots.items[centralStep3RegistryKey] = centralStep3SnapshotEntry{
+		payload:   centralStep3CopyMap(lkg),
+		updatedAt: time.Now().UTC(),
+	}
+	centralStep3Snapshots.Unlock()
+
+	degraded := validRegistrySnapshot("Broken refresh")
+	degraded["status"] = "partial"
+	degraded["unavailable"] = []string{"catalog"}
+	degraded["modules"] = []map[string]any{}
+
+	a := &app{}
+	a.centralStep3Store(context.Background(), centralStep3RegistryKey, degraded)
+
+	got, _, ok := centralStep3SnapshotGet(centralStep3RegistryKey)
+	if !ok {
+		t.Fatal("Last-Known-Good snapshot disappeared after degraded refresh")
+	}
+	modules := anyItems(got["modules"])
+	if len(modules) != 1 || central10String(modules[0]["label"]) != "Last Known Good" {
+		t.Fatalf("degraded refresh replaced Last-Known-Good snapshot: %#v", got)
+	}
+	if central10String(got["status"]) != "healthy" {
+		t.Fatalf("retained snapshot status = %q, want healthy", central10String(got["status"]))
+	}
+}
