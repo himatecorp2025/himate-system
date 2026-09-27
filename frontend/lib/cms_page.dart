@@ -825,7 +825,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 }
 
-class _WebsiteHubCard extends StatelessWidget {
+class _WebsiteHubCard extends StatefulWidget {
   const _WebsiteHubCard({
     required this.title,
     required this.subtitle,
@@ -839,42 +839,97 @@ class _WebsiteHubCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(14)),
-                    child: Icon(icon, color: accent, size: 27),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(child: LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 21, fontWeight: FontWeight.w700))),
-                ]),
-                const SizedBox(height: 14),
-                LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45)),
-                const SizedBox(height: 18),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(10), border: Border.all(color: brandMist)),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      LText(uiLiteral('Open'), style: const TextStyle(color: brandSteel, fontSize: 10.5, fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward_rounded, color: brandSteel, size: 17),
-                    ],
-                  ),
+  State<_WebsiteHubCard> createState() => _WebsiteHubCardState();
+}
+
+class _WebsiteHubCardState extends State<_WebsiteHubCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        onEnter: (_) => setState(() => hover = true),
+        onExit: (_) => setState(() => hover = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 170),
+          transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+          decoration: BoxDecoration(
+            color: brandWhite,
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(color: hover ? brandGold.withOpacity(.72) : brandMist, width: hover ? 1.3 : 1),
+            boxShadow: [
+              BoxShadow(
+                color: brandNavy.withOpacity(hover ? .09 : .045),
+                blurRadius: hover ? 22 : 12,
+                offset: Offset(0, hover ? 8 : 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(17),
+              onTap: widget.onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(color: widget.accent.withOpacity(.09), borderRadius: BorderRadius.circular(14)),
+                        child: Icon(widget.icon, color: widget.accent, size: 27),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: LText(
+                          widget.title,
+                          style: GoogleFonts.cormorantGaramond(
+                            color: brandNavy,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            height: 1.05,
+                          ),
+                        ),
+                      ),
+                      AnimatedRotation(
+                        turns: hover ? 0 : -.02,
+                        duration: const Duration(milliseconds: 170),
+                        child: Icon(Icons.arrow_forward_rounded, color: hover ? brandGold : brandSteel, size: 19),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    LText(widget.subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45)),
+                    const SizedBox(height: 18),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 170),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: hover ? brandGold.withOpacity(.09) : const Color(0xFFF4F7FB),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: hover ? brandGold.withOpacity(.45) : brandMist),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          LText(
+                            uiLiteral('Open workspace'),
+                            style: TextStyle(
+                              color: hover ? const Color(0xFF8B6508) : brandSteel,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(Icons.arrow_forward_rounded, color: hover ? brandGold : brandSteel, size: 17),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
