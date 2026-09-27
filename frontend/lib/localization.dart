@@ -216,6 +216,10 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Some Impact sections are restricted': 'A Hatás és jelentések egyes részei korlátozottak',
+    'Metrics': 'Mérőszámok',
+    'Evidence': 'Bizonyítékok',
+    'Reports': 'Jelentések',
     'Impact services are temporarily unavailable': 'A hatáskezelési szolgáltatások átmenetileg nem érhetők el',
     'Impact, Evidence and Reports could not be refreshed. No infinite loading state is used; retry when the services recover.': 'A Hatás, Bizonyítékok és Jelentések adatai nem frissíthetők. A rendszer nem használ végtelen betöltési állapotot; próbáld újra, amikor a szolgáltatások helyreálltak.',
     'Unavailable services': 'Nem elérhető szolgáltatások',
