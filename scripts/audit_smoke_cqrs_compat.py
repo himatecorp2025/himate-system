@@ -93,7 +93,13 @@ check('strings.Contains(reason, "environment") || strings.Contains(reason, "prov
       "Provisioning write-through no longer refreshes environment-bearing browser projections")
 check('refreshReason += "/audit"' in main,
       "Mutation write-through no longer includes the newly committed audit event")
-check(main.find("finalizeAuditIntent") < main.find("writeThroughReadModels"),
+api_start = main.find("func (a *app) api")
+api_end = main.find("\nfunc ", api_start + 1)
+api_block = main[api_start:api_end if api_end > api_start else len(main)]
+check(api_start >= 0 and
+      api_block.find("finalizeAuditIntent") >= 0 and
+      api_block.find("writeThroughReadModels") >= 0 and
+      api_block.find("finalizeAuditIntent") < api_block.find("writeThroughReadModels"),
       "Audit durability finalization occurs after materialized write-through")
 
 if failures:
