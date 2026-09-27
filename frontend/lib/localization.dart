@@ -216,6 +216,9 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Subscription packages, module entitlements and configuration.': 'Előfizetési csomagok, moduljogosultságok és konfiguráció.',
+    'Invoicing, receivables, licenses and partner onboarding overview.': 'Számlázás, követelések, licencek és partner-onboarding áttekintése.',
+    'Real outcomes. Transparent reporting. Measurable impact.': 'Valós eredmények. Átlátható jelentések. Mérhető hatás.',
     'Recent invoice activity': 'Legutóbbi számlatevékenység',
     'No invoices yet': 'Még nincs számla',
     'Most popular': 'Legnépszerűbb',
