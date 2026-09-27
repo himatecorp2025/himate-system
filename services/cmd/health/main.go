@@ -58,10 +58,11 @@ func main(){
 	if err:=a.migrate(ctx);err!=nil{log.Error("migration","error",err);os.Exit(1)}
 	mux:=http.NewServeMux()
 	mux.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){common.JSON(w,200,map[string]any{"status":"ok","service":"health","time":time.Now().UTC()})})
-	mux.HandleFunc("/api/v1/system-health",a.systemHealth)
+	mux.HandleFunc("/api/v1/system-health",a.systemHealthSnapshot)
 	mux.HandleFunc("/api/v1/system-health/snapshot",a.systemHealthSnapshot)
-	mux.HandleFunc("/internal/v1/system-health/summary",a.systemHealth)
+	mux.HandleFunc("/internal/v1/system-health/summary",a.systemHealthSnapshot)
 	mux.HandleFunc("/internal/v1/system-health/partner-snapshots",a.partnerSnapshots)
+	mux.HandleFunc("/internal/v1/system-health/refresh",a.systemHealthRefresh)
 	go a.monitorLoop()
 	common.Run(log,"health",common.Env("PORT","10000"),common.InternalAuth(a.token,mux))
 }
@@ -254,8 +255,7 @@ func (a *app)monitorLoop(){
 	run:=func(){
 		ctx,cancel:=context.WithTimeout(context.Background(),12*time.Second)
 		defer cancel()
-		_ = a.checkServices(ctx)
-		_ = a.partnerHealth(ctx)
+		a.refreshSystemHealthSnapshots(ctx)
 	}
 	run()
 	for range ticker.C{run()}
@@ -334,35 +334,21 @@ func (a *app)partnerSnapshotRows()([]map[string]any,error){
 	return items,rows.Err()
 }
 
-func (a *app)systemHealth(w http.ResponseWriter,r *http.Request){
-	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
-	started:=time.Now()
-	ctx,cancel:=context.WithTimeout(r.Context(),6*time.Second)
+func (a *app)refreshSystemHealthSnapshots(ctx context.Context){
+	_ = a.checkServices(ctx)
+	_ = a.partnerHealth(ctx)
+}
+
+func (a *app)systemHealthRefresh(w http.ResponseWriter,r *http.Request){
+	if r.Method!=http.MethodPost{common.APIError(w,405,"METHOD","Use POST");return}
+	ctx,cancel:=context.WithTimeout(r.Context(),8*time.Second)
 	defer cancel()
-	services:=a.checkServices(ctx)
-	partners:=a.partnerHealth(ctx)
-	overall:="OK"
-	for _,s:=range services{
-		if s.Status!="OK"{overall="DEGRADED";break}
+	a.refreshSystemHealthSnapshots(ctx)
+	if ctx.Err()!=nil{
+		common.APIError(w,503,"HEALTH_REFRESH_TIMEOUT","System health materialization did not finish before the refresh deadline")
+		return
 	}
-	errorPartners:=0
-	degradedPartners:=0
-	for _,p:=range partners{
-		switch stringValue(p["overall_status"]){
-		case"ERROR":
-			errorPartners++
-			overall="DEGRADED"
-		case"DEGRADED":
-			degradedPartners++
-			if overall=="OK"{overall="DEGRADED"}
-		}
-	}
-	w.Header().Set("X-Himate-Health-Source","live")
-	w.Header().Set("Server-Timing",fmt.Sprintf("health-live;dur=%d",time.Since(started).Milliseconds()))
-	common.JSON(w,200,map[string]any{
-		"status":overall,"checked_at":time.Now().UTC(),"services":services,"partners":partners,
-		"summary":map[string]any{"services":len(services),"partners":len(partners),"partner_errors":errorPartners,"partner_degraded":degradedPartners},
-	})
+	common.JSON(w,200,map[string]any{"status":"refreshed","refreshed_at":time.Now().UTC()})
 }
 
 func (a *app)systemHealthSnapshot(w http.ResponseWriter,r *http.Request){
@@ -374,17 +360,6 @@ func (a *app)systemHealthSnapshot(w http.ResponseWriter,r *http.Request){
 		common.APIError(w,500,"DB","Could not load system health snapshots")
 		return
 	}
-	// On a cold process the HTTP server and monitor goroutine start together.
-	// Do not expose a misleading postgres-only "OK" snapshot during that race:
-	// the first reader self-heals the snapshot once, with a bounded budget.
-	if len(services)<=1 {
-		ctx,cancel:=context.WithTimeout(r.Context(),4*time.Second)
-		services=a.checkServices(ctx)
-		_ = a.partnerHealth(ctx)
-		cancel()
-		if refreshed,err:=a.partnerSnapshotRows();err==nil { partners=refreshed }
-	}
-
 	overall:="OK"
 	for _,s:=range services{
 		if s.Status!="OK"{overall="DEGRADED";break}
