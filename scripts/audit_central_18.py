@@ -121,12 +121,18 @@ check(".timeout(const Duration(seconds: 6))" not in admin_ui,
 check("centralSnapshotForRead(r.Context(), centralStep4AdministrationKey)" in admin,
       "Administration request path is not persistent-snapshot-only")
 
-for token in [
-    "if len(services)<=1",
-    "services=a.checkServices(ctx)",
-    "a.partnerHealth(ctx)",
-]:
-    check(token in health, f"cold health snapshot self-heal missing: {token}")
+check('mux.HandleFunc("/api/v1/system-health",a.systemHealthSnapshot)' in health,
+      "system-health compatibility GET is not snapshot-only")
+check('mux.HandleFunc("/internal/v1/system-health/refresh",a.systemHealthRefresh)' in health,
+      "system-health background/write-through refresh endpoint missing")
+snapshot_start = health.find("func (a *app)systemHealthSnapshot")
+snapshot_end = health.find("\nfunc ", snapshot_start + 1)
+health_snapshot = health[snapshot_start:snapshot_end if snapshot_end >= 0 else len(health)]
+for forbidden in ["checkServices(", "partnerHealth(", "http.NewRequest", "a.client.Do("]:
+    check(forbidden not in health_snapshot,
+          f"system-health snapshot GET regressed to synchronous self-heal fan-out: {forbidden}")
+check("refreshSystemHealthSnapshots(ctx)" in health,
+      "health background refresh no longer materializes service + partner health snapshots")
 
 check("_applyPackageMutationImmediately(updated)" in frontend,
       "package mutation is not applied immediately on the frontend")
