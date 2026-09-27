@@ -19,6 +19,7 @@ const (
 	centralStep4WebsiteKey        = "website_screen"
 	centralStep4ConnectionsKey    = "connections_screen"
 	centralStep4ComplianceKey     = "compliance_screen"
+	centralStep4GlobalSearchKey   = "global_search"
 	centralStep4RefreshInterval   = 10 * time.Second
 	centralStep4MaterializeBudget = 6 * time.Second
 )
@@ -63,6 +64,7 @@ func (a *app) refreshCentralStep4Snapshots() {
 		{centralStep4WebsiteKey, a.refreshCentralStep4Website},
 		{centralStep4ConnectionsKey, a.refreshCentralStep4Connections},
 		{centralStep4ComplianceKey, a.refreshCentralStep4Compliance},
+		{centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch},
 	}
 	for _, refresh := range refreshes {
 		refresh := refresh
