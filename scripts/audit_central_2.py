@@ -58,7 +58,10 @@ dashboard_handler = gateway[dashboard_start:dashboard_end]
 require("internalGET(" not in dashboard_handler, "Dashboard request path still performs live service fan-out")
 require("sync.WaitGroup" not in dashboard_handler, "Dashboard request path still blocks on live aggregation")
 require("dashboardSnapshotForRead" in dashboard_handler, "Dashboard does not read the materialized hot snapshot")
-require("requestDashboardRefresh" in dashboard_handler, "Dashboard stale/refresh state does not queue background refresh")
+require("requestDashboardRefresh" not in dashboard_handler,
+        "Dashboard browser GET must not trigger background refresh; freshness belongs to workers/write-through")
+require("runDashboardMaterializer" in gateway,
+        "Dashboard periodic materializer is missing after read-trigger removal")
 
 for token in [
     "identity.dashboard_snapshots",
