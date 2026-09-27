@@ -423,6 +423,29 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	if len(unavailable) > 0 {
 		status = "partial"
 	}
+	contacts := []map[string]any{}
+	if partner != nil {
+		primary := map[string]any{
+			"kind": "PRIMARY",
+			"name": central10String(partner["contact_name"]),
+			"email": central10String(partner["contact_email"]),
+			"phone": central10String(partner["contact_phone"]),
+		}
+		if primary["name"] != "" || primary["email"] != "" || primary["phone"] != "" {
+			contacts = append(contacts, primary)
+		}
+	}
+	for _, portalUser := range portalUsers {
+		contacts = append(contacts, map[string]any{
+			"kind": "PORTAL_USER",
+			"user_id": portalUser["id"],
+			"name": portalUser["name"],
+			"email": portalUser["email"],
+			"role": portalUser["role"],
+			"active": portalUser["active"],
+		})
+	}
+
 	return map[string]any{
 		"status":                          status,
 		"unavailable":                     unavailable,
@@ -478,6 +501,15 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 			"invoices": tenantFinanceInvoices,
 		},
 		"partner_audit_events": partnerAuditEvents,
+		"partner_contacts": contacts,
+		"partner_domains_deployments": map[string]any{
+			"items": anyItems(environments["items"]),
+			"count": len(anyItems(environments["items"])),
+		},
+		"partner_permissions": map[string]any{
+			"users": portalUsers,
+			"module_policies": userPolicies,
+		},
 	}
 }
 
