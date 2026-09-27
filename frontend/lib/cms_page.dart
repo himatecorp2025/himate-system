@@ -749,7 +749,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       case 'domains':
         return WebsiteDomainsPanel(api: widget.api, initialEnvironments: environments);
       case 'analytics':
-        return WebsiteAnalyticsPanel(pages: pages, media: media);
+        return WebsiteAnalyticsPanel(pages: pages, media: media, kpis: websiteKpis);
       default:
         return hubOverview();
     }
@@ -953,23 +953,28 @@ class WebsiteDomainsPanel extends StatelessWidget {
 }
 
 class WebsiteAnalyticsPanel extends StatelessWidget {
-  const WebsiteAnalyticsPanel({required this.pages, required this.media, super.key});
+  const WebsiteAnalyticsPanel({
+    required this.pages,
+    required this.media,
+    required this.kpis,
+    super.key,
+  });
   final List<Map<String, dynamic>> pages;
   final List<Map<String, dynamic>> media;
+  final Map<String,dynamic> kpis;
 
   @override
   Widget build(BuildContext context) {
-    final published = pages.where((page) {
-      final status = (page['status'] ?? page['publication_status'] ?? '').toString().toUpperCase();
-      return status == 'PUBLISHED' || status == 'ACTIVE' || page['published_version_id'] != null;
-    }).length;
+    final pageCount = (kpis['pages'] as num?)?.toInt() ?? pages.length;
+    final published = (kpis['published_pages'] as num?)?.toInt() ?? 0;
+    final mediaCount = (kpis['media_assets'] as num?)?.toInt() ?? media.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ResponsiveKpiGrid(children: [
-          Kpi(label: 'CMS pages', value: '${pages.length}', note: 'Tracked content records', icon: Icons.description_outlined, accent: brandSteel),
+          Kpi(label: 'CMS pages', value: '$pageCount', note: 'Tracked content records', icon: Icons.description_outlined, accent: brandSteel),
           Kpi(label: 'Published', value: '$published', note: 'Published or active pages', icon: Icons.public_outlined, accent: brandSuccess),
-          Kpi(label: 'Media assets', value: '${media.length}', note: 'CMS media records', icon: Icons.perm_media_outlined, accent: brandGold),
+          Kpi(label: 'Media assets', value: '$mediaCount', note: 'CMS media records', icon: Icons.perm_media_outlined, accent: brandGold),
           const Kpi(label: 'Traffic analytics', value: '—', note: 'No authoritative traffic dataset connected', icon: Icons.query_stats_outlined, accent: Color(0xFF6C63D9)),
         ]),
         const SizedBox(height: 16),
