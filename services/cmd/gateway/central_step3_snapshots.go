@@ -202,14 +202,15 @@ func (a *app) warmMissingCentralSnapshots() {
 	}) {
 		var wg sync.WaitGroup
 		for _, job := range jobs {
+			job := job
 			if _, _, ok := centralStep3SnapshotGet(job.key); ok {
 				continue
 			}
 			wg.Add(1)
-			go func(fn func()) {
+			go func() {
 				defer wg.Done()
-				fn()
-			}(job.fn)
+				a.refreshCentralProjectionSerialized(job.key, job.fn)
+			}()
 		}
 		wg.Wait()
 	}
