@@ -2023,28 +2023,24 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               ),
               const SizedBox(height: 18),
               if (!showCommercialMatrix) ...[
-              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                if (!topicOverview) ...[
+              if (!topicOverview) ...[
+                Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                   IconButton(
                     tooltip: uiLiteral('Back to module topics'),
                     onPressed: showTopicOverview,
                     icon: const Icon(Icons.arrow_back_rounded),
                   ),
                   const SizedBox(width: 4),
-                ],
-                Expanded(
-                  child: _SectionHeader(
-                    title: registryTitle,
-                    subtitle: registrySubtitle,
-                    trailing: _MiniCounter(
-                      label: topicOverview
-                          ? '${visibleTopics.length} ${uiLiteral('topics')} · $registryTotal ${uiLiteral('modules')}'
-                          : '${filtered.length} ${uiLiteral('modules')}',
+                  Expanded(
+                    child: _SectionHeader(
+                      title: registryTitle,
+                      subtitle: registrySubtitle,
+                      trailing: _MiniCounter(label: '${filtered.length} ${uiLiteral('modules')}'),
                     ),
                   ),
-                ),
-              ]),
-              const SizedBox(height: 12),
+                ]),
+                const SizedBox(height: 12),
+              ],
               if (topicOverview)
                 LayoutBuilder(builder: (context, constraints) {
                   final width = constraints.maxWidth < 720
