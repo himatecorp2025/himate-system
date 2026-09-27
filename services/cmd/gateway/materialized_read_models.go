@@ -499,7 +499,7 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	}
 	if systemMutation {
 		add(centralStep4SystemKey, a.refreshCentralStep4System)
-		if strings.Contains(reason, "environment") {
+		if strings.Contains(reason, "environment") || strings.Contains(reason, "provision") {
 			add(centralStep4WebsiteKey, a.refreshCentralStep4Website)
 		}
 		if strings.Contains(reason, "connector") {
