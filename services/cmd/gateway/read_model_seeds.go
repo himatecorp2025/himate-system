@@ -261,6 +261,7 @@ func partnerWorkspaceBaseline(partner map[string]any) map[string]any {
 		"environments_api": emptyPage(100),
 		"provisioning_api": emptyPage(100),
 		"impact_api": emptyPage(100),
+		"impact_values_api": emptyPage(500),
 		"evidence_api": emptyPage(100),
 		"connector_credentials_api": emptyPage(100),
 		"portal_users_api": emptyPage(100),
