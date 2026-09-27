@@ -113,11 +113,78 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             : <String,dynamic>{};
         loading = false;
       });
-    } catch (e) {
+    } catch (centralError) {
+      // CENTRAL-17.4: keep Website & Marketing operational when the aggregate
+      // read model is unavailable. The pre-17.3 direct reads are retained as
+      // a bounded, permission-scoped fallback so one gateway aggregator cannot
+      // blank the whole workspace.
+      final failures = <String>[];
+      Future<Map<String, dynamic>> fallbackGet(bool allowed, String name, String path) async {
+        if (!allowed) return <String, dynamic>{};
+        try {
+          return await widget.api.get(path, force: force, maxAge: const Duration(seconds: 15));
+        } catch (_) {
+          failures.add(name);
+          return <String, dynamic>{};
+        }
+      }
+
+      final fallback = await Future.wait<Map<String, dynamic>>([
+        fallbackGet(widget.canCms, 'cms_pages', '/api/v1/cms/pages'),
+        fallbackGet(widget.canCms, 'cms_media', '/api/v1/cms/media'),
+        fallbackGet(widget.canEnvironments, 'environments', '/api/v1/environments'),
+      ]);
       if (!mounted) return;
+
+      final fallbackPages = items(fallback[0]);
+      final fallbackMedia = items(fallback[1]);
+      final fallbackEnvironments = items(fallback[2]);
+      final publishedPages = fallbackPages.where((page) {
+        final status = '${page['status'] ?? page['publication_status'] ?? ''}'.toUpperCase();
+        return status == 'PUBLISHED' || status == 'ACTIVE' || page['published_version_id'] != null;
+      }).length;
+      final imageAssets = fallbackMedia.where((asset) =>
+        '${asset['mime_type'] ?? ''}'.toLowerCase().startsWith('image/'),
+      ).length;
+      final liveEnvironments = fallbackEnvironments.where((environment) {
+        final status = '${environment['environment_status'] ?? environment['status'] ?? ''}'.toUpperCase();
+        return status == 'LIVE' || status == 'READY' || status == 'DEPLOYED';
+      }).length;
+      final attempted = (widget.canCms ? 2 : 0) + (widget.canEnvironments ? 1 : 0);
+      final directSuccesses = attempted - failures.length;
+
       setState(() {
+        pages = fallbackPages;
+        media = fallbackMedia;
+        environments = fallbackEnvironments;
+        websiteKpis = <String, dynamic>{
+          'pages': fallbackPages.length,
+          'published_pages': publishedPages,
+          'media_assets': fallbackMedia.length,
+          'image_assets': imageAssets,
+          'environments': fallbackEnvironments.length,
+          'live_environments': liveEnvironments,
+        };
+        websiteMeta = <String, dynamic>{
+          'status': directSuccesses == 0 ? 'unavailable' : 'partial',
+          'unavailable': failures,
+          'delivery': 'DIRECT_FALLBACK',
+        };
+        websiteAccess = <String, dynamic>{
+          'cms': widget.canCms,
+          'contact': widget.canContact,
+          'connections': widget.canConnections,
+          'environments': widget.canEnvironments,
+          // Mutation rights are deliberately fail-closed when the authoritative
+          // aggregate access model is unavailable.
+          'cms_write': false,
+          'cms_approve': false,
+          'contact_write': false,
+          'environments_write': false,
+          'environments_approve': false,
+        };
         loading = false;
-        error = e.toString();
+        error = directSuccesses == 0 ? centralError.toString() : null;
       });
     }
   }
