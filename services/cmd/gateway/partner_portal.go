@@ -416,8 +416,9 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 		}
 		intentID,intentErr:=a.createAuditIntent(r.Context(),baseEvent,requestState)
 		if intentErr!=nil{common.APIError(w,http.StatusServiceUnavailable,"AUDIT_DURABILITY","Mutation blocked because the durable audit intent could not be recorded");return}
-		rec:=&auditResponseWriter{ResponseWriter:w};w=rec
+		rec:=&auditResponseWriter{ResponseWriter:w,deferred:true};w=rec
 		defer func(){
+			defer rec.flushDeferred()
 			status:=rec.status;if status==0{status=200};outcome:="SUCCESS";if status>=400{outcome="FAILED"}
 			newState:=decodeAuditState(rec.body.Bytes());if state,ok:=newState.(map[string]any);ok&&len(state)==0{newState=requestState}
 			if status < http.StatusBadRequest {
@@ -426,7 +427,7 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 				refreshCtx,refreshCancel:=context.WithTimeout(context.Background(),time.Second)
 				a.enqueueReadModelRefresh(refreshCtx,r.URL.Path,u.PartnerID)
 				refreshCancel()
-				a.requestCentralPartnerWorkspaceRefresh(u.PartnerID)
+				a.writeThroughReadModels(u.PartnerID,r.URL.Path)
 			}
 			event:=baseEvent
 			event.Status=status;event.Outcome=outcome;event.NewState=newState;event.DurationMS=time.Since(started).Milliseconds()
