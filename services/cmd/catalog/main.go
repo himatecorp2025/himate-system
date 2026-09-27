@@ -168,8 +168,255 @@ func main() {
 	mux.HandleFunc("/internal/v1/partner-portal/", a.partnerPortal)
 	mux.HandleFunc("/internal/v1/module-usage-events", a.moduleUsageEvents)
 	mux.HandleFunc("/internal/v1/module-usage-trend", a.moduleUsageTrend)
+	mux.HandleFunc("/internal/v1/read-model/module-details", a.internalModuleDetailsProjection)
+	mux.HandleFunc("/internal/v1/read-model/partner-module-history/", a.internalPartnerModuleHistoryProjection)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	common.Run(log, "catalog", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
+}
+
+func (a *app) internalModuleDetailsProjection(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
+		return
+	}
+
+	details := map[string]any{}
+	moduleRows, err := a.db.Query(`SELECT module_key FROM catalog.modules ORDER BY module_key`)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load module detail projection")
+		return
+	}
+	for moduleRows.Next() {
+		var key string
+		if moduleRows.Scan(&key) == nil {
+			details[key] = map[string]any{
+				"relationships": map[string]any{"items": []map[string]any{}, "count": 0},
+				"impact_metrics": map[string]any{"items": []map[string]any{}, "count": 0},
+				"usage": map[string]any{
+					"items": []map[string]any{}, "count": 0, "status_counts": map[string]int{},
+					"usage_summary": map[string]any{
+						"active_partners": 0, "partners_with_usage": 0,
+						"events_7d": 0, "events_30d": 0, "events_total": 0,
+						"last_used_at": nil, "source": "CATALOG_RUNTIME_USAGE_EVENTS",
+					},
+				},
+			}
+		}
+	}
+	if err := moduleRows.Err(); err != nil {
+		moduleRows.Close()
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load complete module detail projection")
+		return
+	}
+	moduleRows.Close()
+
+	relRows, err := a.db.Query(`SELECT r.module_key,r.target_module_key,m.label,r.relation_type,r.note,r.updated_at
+		FROM catalog.module_relationships r
+		JOIN catalog.modules m ON m.module_key=r.target_module_key
+		ORDER BY r.module_key,r.relation_type,m.label`)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load module relationships projection")
+		return
+	}
+	for relRows.Next() {
+		var key, target, label, relation, note string
+		var updated time.Time
+		if relRows.Scan(&key, &target, &label, &relation, &note, &updated) != nil { continue }
+		root, _ := details[key].(map[string]any)
+		if root == nil { continue }
+		rels, _ := root["relationships"].(map[string]any)
+		items, _ := rels["items"].([]map[string]any)
+		items = append(items, map[string]any{
+			"target_module_key": target, "target_label": label,
+			"relation_type": relation, "note": note, "updated_at": updated.UTC(),
+		})
+		rels["items"] = items
+		rels["count"] = len(items)
+	}
+	if err := relRows.Err(); err != nil {
+		relRows.Close()
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load complete module relationships projection")
+		return
+	}
+	relRows.Close()
+
+	metricRows, err := a.db.Query(`SELECT module_key,metric_key,label
+		FROM catalog.module_impact_metrics ORDER BY module_key,metric_key`)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load module impact projection")
+		return
+	}
+	for metricRows.Next() {
+		var key, metric, label string
+		if metricRows.Scan(&key, &metric, &label) != nil { continue }
+		root, _ := details[key].(map[string]any)
+		if root == nil { continue }
+		metrics, _ := root["impact_metrics"].(map[string]any)
+		items, _ := metrics["items"].([]map[string]any)
+		items = append(items, map[string]any{"metric_key": metric, "label": label})
+		metrics["items"] = items
+		metrics["count"] = len(items)
+	}
+	if err := metricRows.Err(); err != nil {
+		metricRows.Close()
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load complete module impact projection")
+		return
+	}
+	metricRows.Close()
+
+	usageRows, err := a.db.Query(partnerModuleSelect + ` ORDER BY pm.module_key,pm.partner_id`)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load module usage projection")
+		return
+	}
+	byModulePartner := map[string]map[string]map[string]any{}
+	for usageRows.Next() {
+		item, scanErr := scanPartnerModule(usageRows, "en_US")
+		if scanErr != nil { continue }
+		key := fmt.Sprint(item["key"])
+		partnerID := fmt.Sprint(item["partner_id"])
+		item["usage_events_7d"] = 0
+		item["usage_events_30d"] = 0
+		item["usage_events_total"] = 0
+		item["last_used_at"] = nil
+		root, _ := details[key].(map[string]any)
+		if root == nil { continue }
+		usage, _ := root["usage"].(map[string]any)
+		items, _ := usage["items"].([]map[string]any)
+		items = append(items, item)
+		usage["items"] = items
+		usage["count"] = len(items)
+		counts, _ := usage["status_counts"].(map[string]int)
+		if counts == nil { counts = map[string]int{} }
+		status := fmt.Sprint(item["status"])
+		counts[status]++
+		usage["status_counts"] = counts
+		if byModulePartner[key] == nil { byModulePartner[key] = map[string]map[string]any{} }
+		byModulePartner[key][partnerID] = item
+	}
+	if err := usageRows.Err(); err != nil {
+		usageRows.Close()
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load complete module usage projection")
+		return
+	}
+	usageRows.Close()
+
+	eventRows, err := a.db.Query(`SELECT module_key,partner_id,
+		COUNT(*) FILTER (WHERE occurred_at>=NOW()-INTERVAL '7 days'),
+		COUNT(*) FILTER (WHERE occurred_at>=NOW()-INTERVAL '30 days'),
+		COUNT(*),MAX(occurred_at)
+		FROM catalog.module_usage_events
+		GROUP BY module_key,partner_id
+		ORDER BY module_key,partner_id`)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load module usage telemetry projection")
+		return
+	}
+	type aggregate struct {
+		activePartners, partnersWithUsage, events7, events30, eventsTotal int
+		lastUsed sql.NullTime
+	}
+	aggregates := map[string]*aggregate{}
+	for key, raw := range details {
+		root, _ := raw.(map[string]any)
+		usage, _ := root["usage"].(map[string]any)
+		items, _ := usage["items"].([]map[string]any)
+		agg := &aggregate{}
+		for _, item := range items {
+			if fmt.Sprint(item["status"]) == "ACTIVE" { agg.activePartners++ }
+		}
+		aggregates[key] = agg
+	}
+	for eventRows.Next() {
+		var key, partnerID string
+		var e7, e30, total int
+		var last sql.NullTime
+		if eventRows.Scan(&key, &partnerID, &e7, &e30, &total, &last) != nil { continue }
+		agg := aggregates[key]
+		if agg == nil { continue }
+		agg.events7 += e7
+		agg.events30 += e30
+		agg.eventsTotal += total
+		if total > 0 { agg.partnersWithUsage++ }
+		if last.Valid && (!agg.lastUsed.Valid || last.Time.After(agg.lastUsed.Time)) { agg.lastUsed = last }
+		if item := byModulePartner[key][partnerID]; item != nil {
+			item["usage_events_7d"] = e7
+			item["usage_events_30d"] = e30
+			item["usage_events_total"] = total
+			if last.Valid { item["last_used_at"] = last.Time.UTC() }
+		}
+	}
+	if err := eventRows.Err(); err != nil {
+		eventRows.Close()
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load complete module usage telemetry projection")
+		return
+	}
+	eventRows.Close()
+
+	for key, agg := range aggregates {
+		root, _ := details[key].(map[string]any)
+		usage, _ := root["usage"].(map[string]any)
+		var last any
+		if agg.lastUsed.Valid { last = agg.lastUsed.Time.UTC() }
+		usage["usage_summary"] = map[string]any{
+			"active_partners": agg.activePartners,
+			"partners_with_usage": agg.partnersWithUsage,
+			"events_7d": agg.events7,
+			"events_30d": agg.events30,
+			"events_total": agg.eventsTotal,
+			"last_used_at": last,
+			"source": "CATALOG_RUNTIME_USAGE_EVENTS",
+		}
+	}
+	common.JSON(w, http.StatusOK, map[string]any{"items": details, "count": len(details)})
+}
+
+func (a *app) internalPartnerModuleHistoryProjection(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
+		return
+	}
+	partnerID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/internal/v1/read-model/partner-module-history/"), "/")
+	if partnerID == "" || strings.Contains(partnerID, "/") {
+		common.APIError(w, http.StatusBadRequest, "VALIDATION", "partner_id is required")
+		return
+	}
+	rows, err := a.db.Query(`SELECT module_key,field_name,old_value,new_value,effective_at,actor,reason
+		FROM catalog.partner_module_history
+		WHERE partner_id=$1
+		ORDER BY module_key,effective_at DESC,id DESC`, partnerID)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load partner-module history projection")
+		return
+	}
+	defer rows.Close()
+	history := map[string]any{}
+	for rows.Next() {
+		var key, field, actor, reason string
+		var oldValue, newValue sql.NullString
+		var effectiveAt time.Time
+		if rows.Scan(&key, &field, &oldValue, &newValue, &effectiveAt, &actor, &reason) != nil { continue }
+		root, _ := history[key].(map[string]any)
+		if root == nil {
+			root = map[string]any{"partner_id": partnerID, "module_key": key, "items": []map[string]any{}, "count": 0}
+			history[key] = root
+		}
+		items, _ := root["items"].([]map[string]any)
+		var oldOut, newOut any
+		if oldValue.Valid { oldOut = oldValue.String }
+		if newValue.Valid { newOut = newValue.String }
+		items = append(items, map[string]any{
+			"field": field, "old_value": oldOut, "new_value": newOut,
+			"effective_at": effectiveAt.UTC(), "actor": actor, "reason": reason,
+		})
+		root["items"] = items
+		root["count"] = len(items)
+	}
+	if err := rows.Err(); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not load complete partner-module history projection")
+		return
+	}
+	common.JSON(w, http.StatusOK, map[string]any{"partner_id": partnerID, "items": history, "count": len(history)})
 }
 
 func (a *app) moduleUsageTrend(w http.ResponseWriter, r *http.Request) {
