@@ -200,9 +200,16 @@ check("materializeCentralPartnerWorkspace" in tenant_snapshots and
 for token in [
     '"catalog_modules_api"', '"provisioning_api"', '"impact_api"',
     '"evidence_api"', '"connector_credentials_api"', '"portal_gate"',
-    '"tenant_finance"', '"partner_audit_events"',
+    '"tenant_finance"', '"partner_audit_events"', '"partner_contacts"',
+    '"partner_domains_deployments"', '"partner_permissions"',
 ]:
     check(token in tenant_snapshots, f"Tenant persistent projection missing block: {token}")
+
+for token in [
+    'path == "/contacts"', 'path == "/domains"', 'path == "/deployments"',
+    'path == "/audit"', 'path == "/permissions"',
+]:
+    check(token in partner_reads, f"Partner operational sub-screen is not materialized: {token}")
 
 # Writes are durable + write-through before buffered response release.
 check("identity.read_model_refresh_queue" in models and "enqueueReadModelRefresh" in models,
