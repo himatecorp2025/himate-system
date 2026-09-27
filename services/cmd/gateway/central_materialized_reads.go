@@ -247,6 +247,75 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		return true
 	}
 
+	if strings.HasPrefix(path, "/api/v1/billing/partners/") {
+		raw := strings.Trim(strings.TrimPrefix(path, "/api/v1/billing/partners/"), "/")
+		parts := strings.Split(raw, "/")
+		if len(parts) >= 2 {
+			partnerID := parts[0]
+			tenant, _, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
+			if ok {
+				w.Header().Set("X-Himate-Cache", "persistent-tenant-read-model")
+				suffix := strings.Join(parts[1:], "/")
+				switch suffix {
+				case "summary":
+					common.JSON(w, http.StatusOK, partnerWorkspaceMap(tenant, "billing")); return true
+				case "terms":
+					common.JSON(w, http.StatusOK, partnerWorkspaceMap(tenant, "terms")); return true
+				case "license":
+					common.JSON(w, http.StatusOK, partnerWorkspaceMap(tenant, "license")); return true
+				case "documents":
+					items := filterMaterializedDocuments(partnerWorkspaceItems(tenant, "documents"), r.URL.Query().Get("q"))
+					common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)}); return true
+				case "invoices":
+					items := partnerWorkspaceItems(tenant, "invoices")
+					common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)}); return true
+				case "subscriptions":
+					common.JSON(w, http.StatusOK, partnerWorkspaceMap(tenant, "portal_billing_subscriptions")); return true
+				case "agreement":
+					common.JSON(w, http.StatusOK, partnerWorkspaceMap(tenant, "agreement")); return true
+				case "commercial-status":
+					common.JSON(w, http.StatusOK, partnerWorkspaceMap(tenant, "commercial_status")); return true
+				case "events":
+					items := partnerWorkspaceItems(tenant, "billing_events")
+					common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)}); return true
+				}
+			}
+		}
+	}
+
+	if path == "/api/v1/system-health/snapshot" {
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
+		if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","System read model is not ready"); return true }
+		w.Header().Set("X-Himate-Cache","persistent-read-model")
+		common.JSON(w,http.StatusOK,partnerWorkspaceMap(snapshot,"health"))
+		return true
+	}
+
+	if strings.HasPrefix(path, "/api/v1/reports/") && !strings.Contains(strings.TrimPrefix(path, "/api/v1/reports/"), "/") {
+		id := strings.Trim(strings.TrimPrefix(path, "/api/v1/reports/"), "/")
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
+		if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","Impact read model is not ready"); return true }
+		for _, item := range step4Items(snapshot["reports"]) {
+			if central10String(item["id"]) == id {
+				w.Header().Set("X-Himate-Cache","persistent-read-model")
+				common.JSON(w,http.StatusOK,item); return true
+			}
+		}
+		common.APIError(w,http.StatusNotFound,"NOT_FOUND","Report not found"); return true
+	}
+
+	if strings.HasPrefix(path, "/api/v1/evidence/") && strings.HasSuffix(path, "/integrity") {
+		id := strings.Trim(strings.TrimSuffix(strings.TrimPrefix(path, "/api/v1/evidence/"), "/integrity"), "/")
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
+		if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","Impact read model is not ready"); return true }
+		integrity := partnerWorkspaceMap(snapshot, "evidence_integrity")
+		if item, exists := integrity[id]; exists {
+			w.Header().Set("X-Himate-Cache","persistent-read-model")
+			common.JSON(w,http.StatusOK,item); return true
+		}
+		common.APIError(w,http.StatusNotFound,"NOT_FOUND","Evidence integrity projection not found"); return true
+	}
+
 	administrationNeeded := path == "/api/v1/admin/roles" ||
 		path == "/api/v1/admin/users" ||
 		path == "/api/v1/admin/secrets" ||
