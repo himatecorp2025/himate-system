@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	centralPartnerWorkspacePrefix              = "partner_workspace:"
-	centralPartnerWorkspaceRefreshInterval     = 30 * time.Second
-	centralPartnerWorkspaceMaterializeBudget   = 6 * time.Second
-	centralPartnerWorkspaceStartupBudget       = 12 * time.Second
-	centralPartnerWorkspaceMaterializeWorkers  = 6
+	centralPartnerWorkspacePrefix             = "partner_workspace:"
+	centralPartnerWorkspaceRefreshInterval    = 30 * time.Second
+	centralPartnerWorkspaceMaterializeBudget  = 6 * time.Second
+	centralPartnerWorkspaceStartupBudget      = 12 * time.Second
+	centralPartnerWorkspaceMaterializeWorkers = 2
+	centralPartnerWorkspaceSourceConcurrency  = 4
 )
 
 func centralPartnerWorkspaceKey(partnerID string) string {
@@ -359,18 +360,32 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	}
 
 	var wg sync.WaitGroup
+	sourceSlots := make(chan struct{}, centralPartnerWorkspaceSourceConcurrency)
+	withSourceSlot := func(name string, fn func() error) {
+		select {
+		case sourceSlots <- struct{}{}:
+			defer func() { <-sourceSlots }()
+			mark(name, fn())
+		case <-ctx.Done():
+			mark(name, ctx.Err())
+		}
+	}
 	runMap := func(name, service, path string, dst *map[string]any) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			mark(name, a.internalGET(ctx, a.hosts[service], path, dst))
+			withSourceSlot(name, func() error {
+				return a.internalGET(ctx, a.hosts[service], path, dst)
+			})
 		}()
 	}
 	runTenantMap := func(name, service, path string, headers map[string]string, dst *map[string]any) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			mark(name, a.internalGETWithHeaders(ctx, a.hosts[service], path, headers, dst))
+			withSourceSlot(name, func() error {
+				return a.internalGETWithHeaders(ctx, a.hosts[service], path, headers, dst)
+			})
 		}()
 	}
 
@@ -404,12 +419,14 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		out, err := a.materializePartnerEvidence(ctx, partnerID)
-		if err != nil {
-			mark("evidence", err)
-			return
-		}
-		evidenceItems = out
+		withSourceSlot("evidence", func() error {
+			out, err := a.materializePartnerEvidence(ctx, partnerID)
+			if err != nil {
+				return err
+			}
+			evidenceItems = out
+			return nil
+		})
 	}()
 	runMap("connector_credentials", "connector", "/api/v1/connectors/"+escapedID+"/credential", &connectorCredentials)
 	runMap("website_adapter", "connector", "/api/v1/connectors/"+escapedID+"/website-adapter?environment=PRODUCTION", &websiteAdapter)
@@ -735,7 +752,9 @@ func (a *app) refreshCentralPartnerWorkspaceSnapshots(ctx context.Context, missi
 					return
 				}
 				partnerCtx, cancel := context.WithTimeout(ctx, centralPartnerWorkspaceMaterializeBudget)
-				a.refreshCentralPartnerWorkspace(partnerCtx, partnerID)
+				a.withReadModelRefreshSlot(partnerCtx, centralPartnerWorkspaceKey(partnerID), func() {
+					a.refreshCentralPartnerWorkspace(partnerCtx, partnerID)
+				})
 				cancel()
 			}
 		}()
