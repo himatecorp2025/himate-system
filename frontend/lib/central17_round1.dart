@@ -87,9 +87,7 @@ class _Central17UsMapState extends State<_Central17UsMap> {
   }
 
   List<Map<String, dynamic>> _partnersFor(String state) => widget.partners
-      .where((p) =>
-          '${p['state'] ?? ''}' == state &&
-          '${p['lifecycle'] ?? ''}'.toUpperCase() == 'LIVE')
+      .where((p) => '${p['state'] ?? ''}' == state)
       .map((p) => Map<String, dynamic>.from(p))
       .toList();
 
@@ -113,6 +111,7 @@ class _Central17UsMapState extends State<_Central17UsMap> {
 
   void _openState(String state) {
     final partners = _partnersFor(state);
+    final activeCount = partners.where((p) => '${p['lifecycle'] ?? ''}'.toUpperCase() == 'LIVE').length;
     showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog(
@@ -138,10 +137,10 @@ class _Central17UsMapState extends State<_Central17UsMap> {
                 if (partners.isEmpty)
                   _MessageCard(
                     icon: Icons.location_off_outlined,
-                    title: uiLiteral('No active partners in this state'),
+                    title: uiLiteral('No partner records in this state'),
                     message: uiBilingual(
-                      'There are currently 0 active HIMATE partners in $state.',
-                      'Jelenleg 0 aktív HIMATE partner van ebben az államban: $state.',
+                      'There are currently no HIMATE partner records in $state.',
+                      'Jelenleg nincs HIMATE partnerrekord ebben az államban: $state.',
                     ),
                   )
                 else
