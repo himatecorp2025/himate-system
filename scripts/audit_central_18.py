@@ -132,6 +132,8 @@ check("if (moduleSetChanged) 'fixed_module_keys'" in frontend,
       "package save still risks submitting an unchanged legacy module set")
 check("if (fixed) 'fixed_module_keys'" not in frontend,
       "legacy package save still submits fixed_module_keys on every price edit")
+check("canonicalPlansWithAnalytics" in frontend and "plans: canonicalPlansWithAnalytics" in frontend,
+      "package comparison is not using the same active-partner analytics as package cards")
 check("isExpanded: true" in frontend, "partner filter dropdown overflow guard missing")
 partners_start = frontend.find("class _PartnersPageState")
 partners_end = frontend.find("\nclass PartnerWorkspace", partners_start)
