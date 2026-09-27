@@ -429,6 +429,7 @@ jobs:
           python3 scripts/audit_central_19.py
           python3 scripts/audit_central_20.py
           python3 scripts/audit_central_21.py
+          python3 scripts/audit_smoke_cqrs_compat.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
