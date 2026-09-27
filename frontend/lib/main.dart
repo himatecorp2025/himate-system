@@ -4940,15 +4940,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       final core = model['partner'] is Map
           ? Map<String, dynamic>.from(model['partner'] as Map)
           : partner;
-      final meta = model['meta'] is Map
-          ? Map<String, dynamic>.from(model['meta'] as Map)
-          : <String, dynamic>{};
       final moduleView = model['module_view'] is Map
           ? Map<String, dynamic>.from(model['module_view'] as Map)
           : <String, dynamic>{};
-      final unavailable = meta['unavailable'] is List
-          ? (meta['unavailable'] as List).map((e) => '$e').toList()
-          : <String>[];
       setState(() {
         partner = core;
         modules = items(<String, dynamic>{'items': model['modules']});
@@ -4990,26 +4984,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             : null;
         preferredConnectorEnvironment = '${model['preferred_connector_environment'] ?? 'STAGING'}';
         loading = false;
-        supplementalLoading = false;
-        supplementalError = unavailable.isEmpty
-            ? null
-            : 'Some secondary services are temporarily unavailable: ${unavailable.join(', ')}. Available sections remain usable.';
+        supplementalLoading = model['ready'] != true;
+        supplementalError = null;
       });
       _scrollToInitialSection();
-    } catch (e) {
+    } catch (_) {
       if (!mounted || generation != _supplementalLoadGeneration) return;
       setState(() {
-        loading = false;
+        loading = !hasPrimary;
         supplementalLoading = false;
-        if (hasPrimary) {
-          supplementalError = e is TimeoutException
-              ? 'The partner workspace timed out after 8 seconds. The already loaded partner record remains usable.'
-              : 'The latest Go partner read model could not be refreshed. The already loaded partner record remains usable.';
-        } else {
-          error = e is TimeoutException
-              ? 'The partner workspace timed out after 8 seconds.'
-              : e.toString();
-        }
+        supplementalError = null;
       });
     }
   }
@@ -5140,11 +5124,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             ? (view['active_module_keys'] as List).map((e) => '$e').toList()
             : activeModuleKeys;
       });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        supplementalError = 'Module view could not be refreshed: $e';
-      });
+    } catch (_) {
+      // Keep the current authoritative workspace snapshot visible. Background
+      // materialization refreshes the partner read model independently.
     }
   }
 
@@ -6333,12 +6315,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       ),
       body: loading
           ? const _BrandLoading()
-          : error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partner workspace unavailable', message: error!),
-                )
-              : Content(
+          : Content(
                   eyebrow: 'PARTNER WORKSPACE  |  ${partner['id']}',
                   title: '${partner['display_name']}',
                   subtitle: [
@@ -6370,20 +6347,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (supplementalLoading) ...[
-                        const _MessageCard(
-                          icon: Icons.sync_rounded,
-                          title: 'Secondary data is loading',
-                          message: 'The partner workspace is usable now. Billing, modules, impact and environment sections are loading independently.',
+                        const LinearProgressIndicator(
+                          minHeight: 2,
+                          color: brandGold,
+                          backgroundColor: brandMist,
                         ),
                         const SizedBox(height: 12),
-                      ],
-                      if (supplementalError != null) ...[
-                        _MessageCard(
-                          icon: Icons.sync_problem_outlined,
-                          title: 'Secondary data is loading independently',
-                          message: supplementalError!,
-                        ),
-                        const SizedBox(height: 16),
                       ],
                       KeyedSubtree(
                         key: _overviewKey,
