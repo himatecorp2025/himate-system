@@ -94,12 +94,14 @@ for token in [
 ]:
     check(token in connector, f"Connector runtime aggregate missing: {token}")
 for token in [
-    "func (a *app) central13Connections(", "central13AllPartners",
+    "func (a *app) materializeCentralConnections(", "central13AllPartners",
     '"/internal/v1/partner-connections"', '"partner_name"',
     "central13ConnectionStatusForPartner", '"DELETED"',
-    '"source": "PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS"',
+    "func (a *app) central13Connections(",
+    "centralSnapshotForRead(r.Context(), centralStep4ConnectionsKey)",
+    '"source": "PERSISTED_CONNECTIONS_SCREEN"',
 ]:
-    check(token in gateway13, f"Gateway Connections read model missing: {token}")
+    check(token in gateway13, f"Gateway Connections CQRS read model missing: {token}")
 for token in [
     'path == "/api/v1/central/connections"', 'return "connectors"',
     'a.central13Connections(w, r, u)',
