@@ -334,7 +334,15 @@ class Api {
   ValueListenable<int> cacheSignal(String path) =>
       _cacheSignals.putIfAbsent(path, () => ValueNotifier<int>(0));
 
+  bool _cacheableGetResponse(String path, Map<String, dynamic> data) {
+    if (path.startsWith('/api/v1/central/') && data['ready'] == false) {
+      return false;
+    }
+    return true;
+  }
+
   void _storeCache(String path, Map<String, dynamic> data, Duration maxAge) {
+    if (!_cacheableGetResponse(path, data)) return;
     _cache[path] = _ApiCacheEntry(data, DateTime.now().add(maxAge));
     final signal = _cacheSignals[path];
     if (signal != null) signal.value = signal.value + 1;
@@ -370,7 +378,9 @@ class Api {
         final refresh = _inflight[path] ?? _fetchGet(path, maxAge);
         unawaited(
           refresh.then((freshData) {
-            if (onRefresh != null) onRefresh(freshData);
+            if (onRefresh != null && _cacheableGetResponse(path, freshData)) {
+              onRefresh(freshData);
+            }
             return freshData;
           }).catchError((_) => cached.data),
         );
@@ -8340,11 +8350,11 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
-  Future<void> load({bool force = false}) async {
+  Future<void> load({bool force = false, bool quiet = false}) async {
     final path = _financePath();
     if (mounted) {
       setState(() {
-        loading = true;
+        if (!quiet) loading = true;
         error = null;
       });
     }
@@ -8353,7 +8363,7 @@ class _FinancePageState extends State<FinancePage> {
       if (!mounted || path != _financePath()) return;
       if (model['ready'] != true) {
         setState(() {
-          loading = true;
+          loading = false;
           warming = true;
           error = null;
         });
@@ -8367,7 +8377,7 @@ class _FinancePageState extends State<FinancePage> {
           _warmRetryCount += 1;
           _warmRetry = Timer(Duration(milliseconds: 900 * _warmRetryCount), () {
             if (mounted && path == _financePath()) {
-              unawaited(load(force: true));
+              unawaited(load(force: true, quiet: true));
             }
           });
         } else {
