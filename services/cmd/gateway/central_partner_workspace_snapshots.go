@@ -297,6 +297,42 @@ func (a *app) materializePartnerUserPolicies(ctx context.Context, partnerID stri
 	return serialized, runtime, nil
 }
 
+func (a *app) materializePartnerEvidence(ctx context.Context, partnerID string) (map[string]any, error) {
+	const pageSize = 100
+	items := []map[string]any{}
+	total := 0
+	for offset := 0; ; offset += pageSize {
+		var page map[string]any
+		path := fmt.Sprintf(
+			"/api/v1/evidence?partner_id=%s&limit=%d&offset=%d",
+			url.QueryEscape(partnerID), pageSize, offset,
+		)
+		if err := a.internalGET(ctx, a.hosts["evidence"], path, &page); err != nil {
+			return nil, err
+		}
+		pageItems := anyItems(page["items"])
+		items = append(items, pageItems...)
+		if pageTotal := central10Int(page["total"]); pageTotal > total {
+			total = pageTotal
+		}
+		hasMore, _ := page["has_more"].(bool)
+		if !hasMore || len(pageItems) == 0 {
+			break
+		}
+	}
+	if total < len(items) {
+		total = len(items)
+	}
+	return map[string]any{
+		"items": items,
+		"count": len(items),
+		"total": total,
+		"limit": pageSize,
+		"offset": 0,
+		"has_more": false,
+	}, nil
+}
+
 func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID string) map[string]any {
 	partner := a.partnerWorkspaceBasePartner(partnerID)
 	var livePartner, billing, terms, license, agreement, commercialStatus map[string]any
@@ -365,7 +401,16 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	runMap("provisioning", "provisioning", "/api/v1/provisioning/jobs?partner_id="+url.QueryEscape(partnerID), &provisioningJobs)
 	runMap("impact", "impact", "/api/v1/impact/summary?partner_id="+url.QueryEscape(partnerID), &impactSummary)
 	runMap("impact_values", "impact", "/api/v1/impact/values?partner_id="+url.QueryEscape(partnerID)+"&limit=500", &impactValues)
-	runMap("evidence", "evidence", "/api/v1/evidence?partner_id="+url.QueryEscape(partnerID)+"&limit=200&offset=0", &evidenceItems)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		out, err := a.materializePartnerEvidence(ctx, partnerID)
+		if err != nil {
+			mark("evidence", err)
+			return
+		}
+		evidenceItems = out
+	}()
 	runMap("connector_credentials", "connector", "/api/v1/connectors/"+escapedID+"/credential", &connectorCredentials)
 	runMap("website_adapter", "connector", "/api/v1/connectors/"+escapedID+"/website-adapter?environment=PRODUCTION", &websiteAdapter)
 	runMap("start22_summary", "connector", "/api/v1/connectors/start22/summary?partner_id="+url.QueryEscape(partnerID), &start22SummaryAll)
