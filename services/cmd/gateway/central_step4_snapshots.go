@@ -64,17 +64,27 @@ func (a *app) refreshCentralStep4Snapshots() {
 		{centralStep4WebsiteKey, a.refreshCentralStep4Website},
 		{centralStep4ConnectionsKey, a.refreshCentralStep4Connections},
 		{centralStep4ComplianceKey, a.refreshCentralStep4Compliance},
-		{centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch},
 	}
+	var wg sync.WaitGroup
 	for _, refresh := range refreshes {
 		refresh := refresh
 		if !centralStep3BeginRefresh(refresh.key) {
 			continue
 		}
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			defer centralStep3EndRefresh(refresh.key)
 			refresh.fn()
 		}()
+	}
+	wg.Wait()
+
+	// Global search is a derived projection over Partners, Registry, Website and
+	// Administration. Build it only after its source LKG projections settle.
+	if centralStep3BeginRefresh(centralStep4GlobalSearchKey) {
+		a.refreshCentralStep4GlobalSearch()
+		centralStep3EndRefresh(centralStep4GlobalSearchKey)
 	}
 }
 
