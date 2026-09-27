@@ -693,17 +693,6 @@ class _HimateAppState extends State<HimateApp> {
     }
   }
 
-  bool _can(String permission) {
-    final current = user;
-    if (current == null) return false;
-    final roles = current['roles'];
-    if (roles is List && roles.map((e) => e.toString()).contains('platform_admin')) return true;
-    final permissions = current['permissions'];
-    if (permissions is! List) return false;
-    final values = permissions.map((e) => e.toString()).toSet();
-    return values.contains('*') || values.contains(permission);
-  }
-
   void _warmControlPlane() {
     // CENTRAL-21: the Gateway owns authoritative read-model warming. The
     // browser must not issue a parallel prefetch storm after auth/session
@@ -10582,10 +10571,6 @@ class _SystemPageState extends State<SystemPage> {
         final canBackupsWrite = access['backups_write'] == true;
         final canBackupsApprove = access['backups_approve'] == true;
         final canAudit = access['audit'] == true;
-        final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
-        final unavailable = meta['unavailable'] is List
-            ? (meta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
-            : <String>[];
         final backupPartnerIds = <String>{
           if (canBackups) '_platform',
           for (final p in partners)
