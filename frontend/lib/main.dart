@@ -6817,16 +6817,16 @@ class _PackagesPageState extends State<PackagesPage> {
     }
   }
 
-  bool _packageMutationVisible(Map<String,dynamic> updated) {
-    final key = '${updated['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
-        ? 'FLEX'
-        : '${updated['plan_key'] ?? ''}'.toUpperCase();
+  String _normalizedPackageKey(dynamic raw) {
+    final key = '$raw'.toUpperCase();
+    return key == 'PREMIUM' ? 'FLEX' : key;
+  }
+
+  bool _packageMutationMatches(List<Map<String,dynamic>> source, Map<String,dynamic> updated) {
+    final key = _normalizedPackageKey(updated['plan_key'] ?? '');
     Map<String,dynamic>? current;
-    for (final plan in plans) {
-      final currentKey = '${plan['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
-          ? 'FLEX'
-          : '${plan['plan_key'] ?? ''}'.toUpperCase();
-      if (currentKey == key) {
+    for (final plan in source) {
+      if (_normalizedPackageKey(plan['plan_key'] ?? '') == key) {
         current = plan;
         break;
       }
@@ -6844,11 +6844,6174 @@ class _PackagesPageState extends State<PackagesPage> {
     return expected.length == actual.length && expected.containsAll(actual);
   }
 
-  Future<void> _syncPackageMutation(Map<String,dynamic> updated) async {
+  bool _packageMutationVisible(Map<String,dynamic> updated) =>
+      _packageMutationMatches(plans, updated);
+
+  String _packageDisplayPrice(Map<String,dynamic> plan) {
+    final currency = '${plan['currency'] ?? 'USD'}'.toUpperCase();
+    final amount = number(plan['monthly_price']);
+    final formatted = intl.NumberFormat('#,##0.##').format(amount);
+    final prefix = switch (currency) {
+      'USD' => r'
+
+  Future<void> loadSupplementary() async {
+    final path = centralPackagesSupplementaryInitialPath();
+    if (mounted) {
+      setState(() {
+        analyticsLoading = true;
+        modulesLoading = true;
+        analyticsError = null;
+        modulesError = null;
+      });
+    }
+
+    void applySupplementary(Map<String, dynamic> model) {
+      if (!mounted) return;
+      if (model['ready'] != true) {
+        setState(() {
+          analyticsLoading = false;
+          modulesLoading = false;
+          analyticsError = 'Package analytics snapshot is warming. Refresh when ready.';
+          modulesError = 'Module catalog snapshot is warming. Refresh when ready.';
+        });
+        return;
+      }
+      final modulesReady = model['modules_ready'] == true;
+      final analyticsReady = model['analytics_ready'] == true;
+      setState(() {
+        if (modulesReady) {
+          modules = items(<String, dynamic>{'items': model['modules']});
+          modulesError = null;
+        } else {
+          modulesError = 'Module catalog is temporarily unavailable. Package cards remain usable.';
+        }
+        if (analyticsReady) {
+          analytics = model['analytics'] is Map
+              ? Map<String, dynamic>.from(model['analytics'] as Map)
+              : <String, dynamic>{};
+          analyticsError = null;
+        } else {
+          analyticsError = 'Package analytics is temporarily unavailable. Package definitions remain usable.';
+        }
+        modulesLoading = false;
+        analyticsLoading = false;
+      });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applySupplementary,
+      );
+      applySupplementary(model);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        modulesLoading = false;
+        analyticsLoading = false;
+        modulesError = e.toString();
+        analyticsError = e.toString();
+      });
+    }
+  }
+
+  String _packageDescription(Map<String,dynamic> plan) {
+    return switch ('${plan['plan_key']}') {
+      'STARTER' => uiLiteral('A HIMATE-defined module set for focused teams and first deployments.'),
+      'BUSINESS' => uiLiteral('A broader HIMATE-defined module set for operating workflows.'),
+      'FLEX' || 'PREMIUM' => uiLiteral('Unlimited access to every current and future eligible module.'),
+      _ => '',
+    };
+  }
+
+  String _packageEntitlement(Map<String,dynamic> plan) =>
+      '${plan['entitlement'] ?? '—'}';
+
+  String moduleLabel(Map<String, dynamic> module) =>
+      '${module['label'] ?? module['label_en'] ?? module['key'] ?? ''}';
+
+  bool moduleReady(Map<String, dynamic> module) =>
+      '${module['publication_status'] ?? ''}' == 'PUBLISHED' &&
+      '${module['implementation_state'] ?? ''}' == 'READY';
+
+  Future<void> showPackageDetails(Map<String, dynamic> plan) async {
+    final included = plan['included_modules'] is List
+        ? (plan['included_modules'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final unlimited = '${plan['plan_key'] ?? ''}'.toUpperCase() == 'FLEX' ||
+        '${plan['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: '${plan['display_name'] ?? plan['plan_key']}',
+        subtitle: _packageDescription(plan),
+        icon: unlimited ? Icons.workspace_premium_outlined : Icons.inventory_2_outlined,
+        width: 760,
+        primaryLabel: uiLiteral('Close'),
+        onPrimary: () => Navigator.pop(dialogContext),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ResponsiveFieldPair(
+              first: _InfoCard(
+                title: uiLiteral('Commercial'),
+                icon: Icons.payments_outlined,
+                children: [
+                  _DefinitionRow(label: uiLiteral('Monthly package price'), value: '${plan['display_price'] ?? '—'}'),
+                  _DefinitionRow(label: uiLiteral('Entitlement'), value: _packageEntitlement(plan)),
+                  _DefinitionRow(label: uiLiteral('Status'), value: uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
+                ],
+              ),
+              second: _InfoCard(
+                title: uiLiteral('Module entitlement'),
+                icon: Icons.widgets_outlined,
+                children: [
+                  _DefinitionRow(label: uiLiteral('Module limit'), value: unlimited ? uiLiteral('Unlimited') : '${plan['module_limit'] ?? '—'}'),
+                  _DefinitionRow(label: uiLiteral('Configured modules'), value: unlimited ? uiLiteral('Automatic') : '${included.length}'),
+                  _DefinitionRow(label: uiLiteral('Selection mode'), value: '${plan['selection_mode'] ?? '—'}'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _SectionHeader(
+              title: uiLiteral('Included modules'),
+              subtitle: unlimited
+                  ? uiLiteral('Every current and future eligible module is included automatically.')
+                  : uiLiteral('Authoritative modules included in this package.'),
+              trailing: _MiniCounter(label: unlimited ? uiLiteral('Unlimited') : '${included.length}'),
+            ),
+            const SizedBox(height: 10),
+            if (unlimited)
+              const _MessageCard(
+                icon: Icons.all_inclusive_rounded,
+                title: 'Automatic Unlimited entitlement',
+                message: 'Premium includes all current and future eligible modules automatically.',
+              )
+            else if (included.isEmpty)
+              _MessageCard(
+                icon: Icons.inventory_2_outlined,
+                title: uiLiteral('No configured modules'),
+                message: uiLiteral('This package does not have a configured module set yet.'),
+              )
+            else
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  for (final module in included)
+                    Chip(label: LText('${module['label'] ?? module['key'] ?? '—'}')),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> editPackage(Map<String, dynamic> plan) async {
+    final key = '${plan['plan_key']}';
+    final limit = (plan['module_limit'] as num?)?.toInt() ?? 0;
+    final mode = '${plan['selection_mode']}';
+    final fixed = mode == 'FIXED';
+    final unlimited = mode == 'UNLIMITED';
+    if (fixed && modulesLoading && modules.isEmpty) {
+      unawaited(loadSupplementary());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: LText('Module catalog is still loading. Package pricing is already available.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+    final price = TextEditingController(text: number(plan['monthly_price']).toStringAsFixed(2));
+    final effective = TextEditingController();
+    final reason = TextEditingController();
+    final selected = <String>{
+      for (final value in (plan['fixed_module_keys'] is List ? plan['fixed_module_keys'] as List : const []))
+        '$value',
+    };
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: uiBilingual('${plan['display_name']} package', '${plan['display_name']} csomag'),
+          subtitle: fixed
+              ? uiLiteral('HIMATE controls the included module set. Price changes apply to active customers from the effective date.')
+              : unlimited
+                  ? uiLiteral('Premium is Unlimited: every current and future eligible module is included automatically. Price changes apply from the effective date.')
+                  : uiLiteral('Partner-selectable package. Price changes apply from the effective date.'),
+          icon: Icons.inventory_2_outlined,
+          width: 820,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: price,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: uiLiteral('Monthly package price')),
+                ),
+                second: TextField(
+                  controller: effective,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Price effective date'),
+                    hintText: uiLiteral('YYYY-MM-DD · blank = today'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _RuleStrip(items: [
+                _RuleItem(Icons.trending_up_rounded, uiLiteral('Annual uplift'), '${plan['annual_increase_percent'] ?? 0}% · Jan 1'),
+                _RuleItem(Icons.history_rounded, uiLiteral('Pricing'), uiLiteral('Effective-dated · audited')),
+                _RuleItem(Icons.receipt_long_outlined, uiLiteral('Existing invoices'), uiLiteral('Never rewritten')),
+              ]),
+              const SizedBox(height: 12),
+              _DefinitionRow(label: uiLiteral('Module limit'), value: unlimited ? uiLiteral('Unlimited') : '$limit'),
+              _DefinitionRow(label: uiLiteral('Selection mode'), value: fixed ? uiLiteral('HIMATE fixed package') : unlimited ? uiLiteral('Automatic Unlimited entitlement') : uiLiteral('Partner selectable')),
+              _DefinitionRow(
+                label: uiLiteral('Annual uplift'),
+                value: uiBilingual(
+                  '${plan['annual_increase_percent'] ?? 0}% · Jan 1',
+                  '${plan['annual_increase_percent'] ?? 0}% · jan. 1.',
+                ),
+              ),
+              if (fixed) ...[
+                const SizedBox(height: 16),
+                _SectionHeader(
+                  title: uiLiteral('Included modules'),
+                  subtitle: uiLiteral('Select the required number of published and implementation-ready modules.'),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _MiniCounter(label: uiBilingual('${selected.length} / $limit SELECTED', '${selected.length} / $limit KIVÁLASZTVA')),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 280,
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final module in modules)
+                          FilterChip(
+                            selected: selected.contains('${module['key']}'),
+                            onSelected: moduleReady(module)
+                                ? (value) => setLocal(() {
+                                      final moduleKey = '${module['key']}';
+                                      if (value) {
+                                        if (selected.length < limit) selected.add(moduleKey);
+                                      } else {
+                                        selected.remove(moduleKey);
+                                      }
+                                    })
+                                : null,
+                            label: LText(
+                              moduleLabel(module),
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            tooltip: moduleReady(module)
+                                ? '${module['key']}'
+                                : 'Not yet PUBLISHED + READY',
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              TextField(
+                controller: reason,
+                decoration: InputDecoration(
+                  labelText: uiLiteral('Change reason'),
+                  hintText: uiLiteral('Required for commercial audit trail'),
+                ),
+              ),
+            ],
+          ),
+          primaryLabel: 'Save package',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      final monthly = double.tryParse(price.text.trim());
+      if (monthly == null || monthly < 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: LText('Package price must be zero or greater.'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      } else if (fixed && selected.length != limit) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: LText('Select exactly $limit modules for $key.'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      } else {
+        final payload = <String, dynamic>{
+          'monthly_price': monthly,
+          'reason': reason.text.trim().isEmpty ? 'HIMATE administrator package update' : reason.text.trim(),
+          if (effective.text.trim().isNotEmpty) 'effective_at': effective.text.trim(),
+          if (fixed) 'fixed_module_keys': selected.toList()..sort(),
+        };
+        final updated = await widget.api.patch('/api/v1/billing/plans/$key', payload);
+        await _syncPackageMutation(updated);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: LText('$key package updated.'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      }
+    }
+    price.dispose();
+    effective.dispose();
+    reason.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && plans.isEmpty) {
+      return const Content(
+        showHeader: false,
+        eyebrow: 'COMMERCIAL CONTROL PLANE',
+        title: 'Packages',
+        subtitle: 'Central subscription packages, prices and module entitlements.',
+        child: _BrandLoading(),
+      );
+    }
+    if (error != null && plans.isEmpty) {
+      return Content(
+        showHeader: false,
+        eyebrow: 'COMMERCIAL CONTROL PLANE',
+        title: 'Packages',
+        subtitle: 'Central subscription packages, prices and module entitlements.',
+        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Retry'))],
+        child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Packages could not be loaded', message: error!),
+      );
+    }
+    if (!loading && !packageReady && plans.isEmpty) {
+      return Content(
+        showHeader: false,
+        title: 'Packages',
+        subtitle: 'Subscription packages, module entitlements and configuration.',
+        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
+        child: const _MessageCard(
+          icon: Icons.hourglass_empty_rounded,
+          title: 'Package snapshot is warming',
+          message: 'No materialized package snapshot exists yet. This page does not start an infinite polling loop; refresh when backend preparation completes.',
+        ),
+      );
+    }
+    final analyticsPackages = analytics['packages'] is List
+        ? (analytics['packages'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final analyticsPartners = analytics['partners'] is List
+        ? (analytics['partners'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final analyticsByPlan = <String,Map<String,dynamic>>{
+      for (final row in analyticsPackages)
+        '${row['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
+            ? 'FLEX'
+            : '${row['plan_key'] ?? ''}'.toUpperCase(): row,
+    };
+    final activityMeasured = analytics['portal_activity_measured'] == true;
+
+    final activeSubscriptions = analyticsPackages.fold<int>(
+      0,
+      (sum, row) => sum + ((row['active_partner_count'] as num?)?.toInt() ?? 0),
+    );
+    final canonicalPlans = plans.where((plan) {
+      final key = '${plan['plan_key'] ?? ''}'.toUpperCase();
+      return key == 'STARTER' || key == 'BUSINESS' || key == 'FLEX' || key == 'PREMIUM';
+    }).toList()
+      ..sort((a, b) {
+        const order = <String,int>{'STARTER': 0, 'BUSINESS': 1, 'FLEX': 2, 'PREMIUM': 2};
+        return (order['${a['plan_key'] ?? ''}'.toUpperCase()] ?? 99)
+            .compareTo(order['${b['plan_key'] ?? ''}'.toUpperCase()] ?? 99);
+      });
+    final customPackages = plans.length - canonicalPlans.length;
+
+    return Content(
+      showHeader: false,
+      title: 'Packages',
+      subtitle: 'Subscription packages, module entitlements and configuration.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ResponsiveKpiGrid(children: [
+            Kpi(label: 'All packages', value: '${plans.length}', note: 'Configured package definitions', icon: Icons.inventory_2_outlined, accent: brandSteel),
+            Kpi(label: 'Active subscriptions', value: '$activeSubscriptions', note: 'Partners with active package subscriptions', icon: Icons.groups_2_outlined, accent: brandSuccess),
+            Kpi(label: 'Module registry', value: '${modules.length}', note: 'Modules available for package entitlement', icon: Icons.widgets_outlined, accent: brandGold),
+            Kpi(label: 'Custom packages', value: '$customPackages', note: 'Non-canonical package definitions', icon: Icons.sell_outlined, accent: const Color(0xFF6C63D9)),
+          ]),
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 720
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final plan in canonicalPlans)
+                    SizedBox(
+                      width: width,
+                      child: _PackageOverviewCard(
+                        planKey: '${plan['plan_key'] ?? ''}',
+                        name: '${plan['display_name'] ?? plan['plan_key']}',
+                        price: '${plan['display_price'] ?? '—'}',
+                        description: _packageDescription(plan),
+                        entitlement: _packageEntitlement(plan),
+                        active: plan['active'] == true,
+                        moduleLimit: (plan['module_limit'] as num?)?.toInt(),
+                        includedModuleCount: (plan['included_modules'] is List) ? (plan['included_modules'] as List).length : 0,
+                        activePartnerCount: (analyticsByPlan['${plan['plan_key'] ?? ''}'.toUpperCase()]?['active_partner_count'] as num?)?.toInt()
+                            ?? (plan['active_partner_count'] as num?)?.toInt()
+                            ?? 0,
+                        onTap: () => unawaited(showPackageDetails(plan)),
+                        onEdit: () => unawaited(editPackage(plan)),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          if (modulesLoading) ...[
+            const SizedBox(height: 10),
+            const LinearProgressIndicator(minHeight: 2),
+          ] else if (modulesError != null && modules.isEmpty) ...[
+            const SizedBox(height: 10),
+            _MessageCard(
+              icon: Icons.widgets_outlined,
+              title: 'Module catalog is temporarily unavailable',
+              message: modulesError!,
+            ),
+          ],
+          const SizedBox(height: 18),
+          _PackageComparisonTable(
+            plans: canonicalPlans,
+            onExport: () => openPdfExportIfAvailable(
+              context,
+              widget.api,
+              '/api/v1/billing/packages/export.pdf',
+            ),
+          ),
+          const SizedBox(height: 24),
+          _SectionHeader(
+            title: 'Package Analytics',
+            subtitle: 'Partner distribution, package usage, Portal activity and current commercial context from authoritative runtime data.',
+            trailing: analyticsLoading
+                ? _MiniCounter(label: uiBilingual('REFRESHING', 'FRISSÍTÉS'))
+                : _MiniCounter(label: uiBilingual('${analyticsPartners.length} PARTNERS', '${analyticsPartners.length} PARTNER')),
+          ),
+          const SizedBox(height: 12),
+          if (analyticsError != null && analytics.isEmpty)
+            _MessageCard(
+              icon: Icons.query_stats_outlined,
+              title: 'Package analytics is temporarily unavailable',
+              message: analyticsError!,
+            )
+          else if (analyticsLoading && analytics.isEmpty)
+            const _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Loading package analytics',
+              message: 'Package cards remain usable while analytics loads independently.',
+            )
+          else if (analyticsPackages.isEmpty)
+            const _MessageCard(
+              icon: Icons.bar_chart_outlined,
+              title: 'No package analytics yet',
+              message: 'There is no package subscription data to chart. No retry loop is started for an empty dataset.',
+            )
+          else ...[
+            _PackageAnalyticsChart(packages: analyticsPackages),
+            const SizedBox(height: 14),
+            if (!activityMeasured)
+              const _MessageCard(
+                icon: Icons.schedule_outlined,
+                title: 'Portal active-time measurement has just been enabled',
+                message: 'No historical online-hours estimate is invented. Five-minute authenticated activity buckets will populate this metric from the CENTRAL-8 deployment forward.',
+              ),
+            if (!activityMeasured) const SizedBox(height: 14),
+            _InfoCard(
+              title: 'Partner package usage',
+              icon: Icons.groups_2_outlined,
+              children: analyticsPartners.isEmpty
+                  ? const [
+                      _EmptyInline(
+                        icon: Icons.inbox_outlined,
+                        title: 'No partner subscriptions recorded',
+                      ),
+                    ]
+                  : [
+                      for (final partner in analyticsPartners.take(50))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Expanded(
+                                  child: LText(
+                                    '${partner['display_name'] ?? partner['partner_id']}',
+                                    style: const TextStyle(color: brandNavy, fontSize: 13, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                                _StatusPill(label: '${partner['plan_name'] ?? partner['plan_key']}'),
+                              ]),
+                              const SizedBox(height: 5),
+                              Wrap(
+                                spacing: 7,
+                                runSpacing: 7,
+                                children: [
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['billing_frequency'] ?? '—'}'))),
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['classification'] ?? '—'}'))),
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['onboarding_state'] ?? '—'}'))),
+                                  _MiniCounter(label: uiBilingual(
+                                    '${partner['module_usage_events_30d'] ?? 0} MODULE USES / 30D',
+                                    '${partner['module_usage_events_30d'] ?? 0} MODULHASZNÁLAT / 30 NAP',
+                                  )),
+                                  _MiniCounter(
+                                    label: partner['portal_activity_measured'] == true && number(partner['portal_active_hours_30d']) > 0
+                                        ? uiBilingual(
+                                            '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTAL HOURS / 30D',
+                                            '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTÁLÓRA / 30 NAP',
+                                          )
+                                        : uiBilingual('NO PORTAL ACTIVITY RECORDED', 'NINCS RÖGZÍTETT PORTÁLAKTIVITÁS'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 5),
+                              LText(
+                                [
+                                  if ('${partner['legal_name'] ?? ''}'.trim().isNotEmpty) '${partner['legal_name']}',
+                                  if ('${partner['country'] ?? ''}'.trim().isNotEmpty) '${partner['country']}',
+                                  if ('${partner['quote_reference'] ?? ''}'.trim().isNotEmpty) 'Quote: ${partner['quote_reference']}',
+                                ].join(' · '),
+                                style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                              ),
+                              const Divider(height: 18),
+                            ],
+                          ),
+                        ),
+                    ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PackageOverviewCard extends StatefulWidget {
+  const _PackageOverviewCard({
+    required this.planKey,
+    required this.name,
+    required this.price,
+    required this.description,
+    required this.entitlement,
+    required this.active,
+    required this.moduleLimit,
+    required this.includedModuleCount,
+    required this.activePartnerCount,
+    required this.onTap,
+    required this.onEdit,
+  });
+  final String planKey;
+  final String name;
+  final String price;
+  final String description;
+  final String entitlement;
+  final bool active;
+  final int? moduleLimit;
+  final int includedModuleCount;
+  final int activePartnerCount;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+
+  @override
+  State<_PackageOverviewCard> createState() => _PackageOverviewCardState();
+}
+
+class _PackageOverviewCardState extends State<_PackageOverviewCard> {
+  bool hover = false;
+
+  bool get highlighted => widget.planKey.toUpperCase() == 'BUSINESS';
+
+  IconData get packageIcon => switch (widget.planKey.toUpperCase()) {
+    'STARTER' => Icons.rocket_launch_outlined,
+    'BUSINESS' => Icons.business_center_outlined,
+    'FLEX' || 'PREMIUM' => Icons.workspace_premium_outlined,
+    _ => Icons.inventory_2_outlined,
+  };
+
+  Color get packageAccent => switch (widget.planKey.toUpperCase()) {
+    'BUSINESS' => brandGold,
+    'FLEX' || 'PREMIUM' => const Color(0xFF6C63D9),
+    _ => brandSteel,
+  };
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => hover = true),
+    onExit: (_) => setState(() => hover = false),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 170),
+      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      constraints: const BoxConstraints(minHeight: 420),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: highlighted
+              ? brandGold
+              : hover
+                  ? packageAccent.withOpacity(.55)
+                  : brandMist,
+          width: highlighted ? 1.4 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: brandNavy.withOpacity(hover ? .075 : .035),
+            blurRadius: hover ? 20 : 12,
+            offset: Offset(0, hover ? 7 : 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: packageAccent.withOpacity(.10),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(packageIcon, color: packageAccent, size: 25),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LText(
+                        widget.name,
+                        style: GoogleFonts.lora(
+                          color: brandNavy,
+                          fontSize: 27,
+                          fontWeight: FontWeight.w600,
+                          height: 1.05,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      LText(
+                        widget.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: brandTextSoft, fontSize: 10.2, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+                if (highlighted)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    decoration: BoxDecoration(color: brandGold.withOpacity(.14), borderRadius: BorderRadius.circular(99)),
+                    child: LText(
+                      uiLiteral('Most popular'),
+                      style: const TextStyle(color: Color(0xFF8B6508), fontSize: 8.7, fontWeight: FontWeight.w700),
+                    ),
+                  )
+                else
+                  _StatusPill(label: uiLiteral(widget.active ? 'Active' : 'Inactive')),
+              ],
+            ),
+            const SizedBox(height: 18),
+            LText(
+              widget.price,
+              style: GoogleFonts.lora(
+                color: brandNavy,
+                fontSize: 31,
+                fontWeight: FontWeight.w600,
+                height: 1,
+              ),
+            ),
+            const SizedBox(height: 6),
+            LText(
+              uiLiteral(widget.moduleLimit == null ? 'Unlimited module access' : 'Authoritative monthly package price'),
+              style: const TextStyle(color: brandTextSoft, fontSize: 10),
+            ),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _PackageFeatureSummary(
+                    icon: Icons.widgets_outlined,
+                    accent: packageAccent,
+                    value: widget.moduleLimit == null ? uiLiteral('All modules') : '${widget.moduleLimit}',
+                    label: uiLiteral(widget.moduleLimit == null ? 'unlimited access' : 'modules in package'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _PackageFeatureSummary(
+                    icon: Icons.groups_2_outlined,
+                    accent: packageAccent,
+                    value: '${widget.activePartnerCount}',
+                    label: uiLiteral('active partners'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _PackageBenefitLine(
+              accent: packageAccent,
+              label: widget.moduleLimit == null
+                  ? uiLiteral('Every eligible current and future module')
+                  : uiLiteral('${widget.includedModuleCount} configured modules'),
+            ),
+            const SizedBox(height: 9),
+            _PackageBenefitLine(
+              accent: packageAccent,
+              label: uiLiteral(widget.active ? 'Package is active and assignable' : 'Package is currently inactive'),
+            ),
+            const SizedBox(height: 9),
+            _PackageBenefitLine(
+              accent: packageAccent,
+              label: widget.moduleLimit == null
+                  ? uiLiteral('Automatic entitlement')
+                  : uiLiteral('Controlled module entitlement'),
+            ),
+            const SizedBox(height: 9),
+            _PackageBenefitLine(
+              accent: packageAccent,
+              label: uiLiteral(widget.entitlement.isEmpty ? 'Package entitlement configured' : widget.entitlement),
+            ),
+            const Spacer(),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: widget.onTap,
+                    style: FilledButton.styleFrom(backgroundColor: brandNavy),
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                    label: LText(uiLiteral('Details')),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: widget.onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: LText(uiLiteral('Edit')),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _PackageFeatureSummary extends StatelessWidget {
+  const _PackageFeatureSummary({
+    required this.icon,
+    required this.accent,
+    required this.value,
+    required this.label,
+  });
+  final IconData icon;
+  final Color accent;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(9)),
+        child: Icon(icon, color: accent, size: 18),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            LText(value, style: const TextStyle(color: brandNavy, fontSize: 10.8, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 8.8, height: 1.25)),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+class _PackageBenefitLine extends StatelessWidget {
+  const _PackageBenefitLine({required this.accent, required this.label});
+  final Color accent;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(color: accent.withOpacity(.10), shape: BoxShape.circle),
+        child: Icon(Icons.check_rounded, color: accent, size: 13),
+      ),
+      const SizedBox(width: 9),
+      Expanded(child: LText(label, style: const TextStyle(color: brandCharcoal, fontSize: 9.8))),
+    ],
+  );
+}
+class _PackageComparisonTable extends StatelessWidget {
+  const _PackageComparisonTable({required this.plans, required this.onExport});
+  final List<Map<String,dynamic>> plans;
+  final VoidCallback onExport;
+
+  String _mode(Map<String,dynamic> plan) {
+    final value = '${plan['selection_mode'] ?? ''}'.toUpperCase();
+    return switch (value) {
+      'FIXED' => uiLiteral('HIMATE fixed package'),
+      'UNLIMITED' => uiLiteral('Unlimited'),
+      _ => value.isEmpty ? '—' : value,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <(String, String Function(Map<String,dynamic>))>[
+      (uiLiteral('Monthly net price'), (plan) => '${plan['display_price'] ?? '—'}'),
+      (uiLiteral('Entitlement'), (plan) => '${plan['entitlement'] ?? '—'}'),
+      (uiLiteral('Selection mode'), _mode),
+      (
+        uiLiteral('Configured modules'),
+        (plan) {
+          final unlimited = '${plan['selection_mode'] ?? ''}'.toUpperCase() == 'UNLIMITED';
+          if (unlimited) return uiLiteral('Automatic');
+          final included = plan['included_modules'] is List ? (plan['included_modules'] as List).length : 0;
+          final limit = (plan['module_limit'] as num?)?.toInt();
+          return limit == null ? '$included' : '$included / $limit';
+        },
+      ),
+      (uiLiteral('Status'), (plan) => uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LText(
+                        uiLiteral('Package comparison'),
+                        style: GoogleFonts.lora(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      LText(
+                        uiLiteral('Compare the current authoritative Billing plan values.'),
+                        style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onExport,
+                  icon: const Icon(Icons.download_outlined, size: 16),
+                  label: LText(uiLiteral('Export PDF')),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 720),
+                child: Table(
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                  columnWidths: {
+                    0: const FixedColumnWidth(180),
+                    for (var index = 0; index < plans.length; index++)
+                      index + 1: const FixedColumnWidth(180),
+                  },
+                  border: const TableBorder(
+                    horizontalInside: BorderSide(color: brandMist),
+                  ),
+                  children: [
+                    TableRow(
+                      children: [
+                        const SizedBox(height: 44),
+                        for (final plan in plans)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            child: LText(
+                              '${plan['display_name'] ?? plan['plan_key'] ?? '—'}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 11),
+                            ),
+                          ),
+                      ],
+                    ),
+                    for (final row in rows)
+                      TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                            child: LText(row.$1, style: const TextStyle(color: brandTextSoft, fontSize: 10, fontWeight: FontWeight.w600)),
+                          ),
+                          for (final plan in plans)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              child: LText(
+                                row.$2(plan),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PackageAnalyticsChart extends StatelessWidget {
+  const _PackageAnalyticsChart({required this.packages});
+  final List<Map<String,dynamic>> packages;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxPartners = packages.fold<double>(0, (m, p) => math.max(m, number(p['active_partner_count'])));
+    final maxUsage = packages.fold<double>(0, (m, p) => math.max(m, number(p['module_usage_events_30d'])));
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const LText('Package distribution & usage', style: TextStyle(color: brandNavy, fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            for (final package in packages) ...[
+              Row(children: [
+                SizedBox(
+                  width: 90,
+                  child: LText('${package['display_name']}', style: const TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w700)),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(
+                        value: maxPartners <= 0 ? 0 : number(package['active_partner_count']) / maxPartners,
+                        minHeight: 9,
+                        borderRadius: BorderRadius.circular(99),
+                        color: brandNavy,
+                        backgroundColor: brandMist,
+                      ),
+                      const SizedBox(height: 5),
+                      LText(
+                        uiBilingual(
+                          '${package['active_partner_count'] ?? 0} active partners · ${package['module_usage_events_30d'] ?? 0} module uses / 30d · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} Portal hours / 30d',
+                          '${package['active_partner_count'] ?? 0} aktív partner · ${package['module_usage_events_30d'] ?? 0} modulhasználat / 30 nap · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} portálóra / 30 nap',
+                        ),
+                        style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
+                      ),
+                      if (maxUsage > 0) ...[
+                        const SizedBox(height: 5),
+                        LinearProgressIndicator(
+                          value: number(package['module_usage_events_30d']) / maxUsage,
+                          minHeight: 5,
+                          borderRadius: BorderRadius.circular(99),
+                          color: brandGold,
+                          backgroundColor: brandMist,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 16),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FinanceInvoicePreview extends StatelessWidget {
+  const _FinanceInvoicePreview({required this.invoices, required this.onViewAll, required this.onExport});
+  final List<Map<String,dynamic>> invoices;
+  final VoidCallback onViewAll;
+  final VoidCallback onExport;
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = invoices.take(4).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 17, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.receipt_long_outlined, color: brandGold, size: 19),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  LText(uiLiteral('Invoices'), style: GoogleFonts.lora(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                  LText(uiLiteral('Recent invoice activity'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                ]),
+              ),
+              TextButton.icon(
+                onPressed: onExport,
+                icon: const Icon(Icons.download_outlined, size: 15),
+                label: LText(uiLiteral('Export PDF')),
+              ),
+              const SizedBox(width: 4),
+              TextButton(onPressed: onViewAll, child: LText(uiLiteral('View all'))),
+            ]),
+            const SizedBox(height: 12),
+            if (recent.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 36),
+                child: Center(
+                  child: LText(uiLiteral('No invoices yet'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                ),
+              )
+            else
+              for (var i=0;i<recent.length;i++) ...[
+                Builder(builder: (context) {
+                  final invoice=recent[i];
+                  final status='${invoice['workflow_status'] ?? invoice['status'] ?? 'DRAFT'}';
+                  final currency='${invoice['currency'] ?? 'USD'}';
+                  final amount=number(invoice['gross_total'] ?? invoice['total']);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(9)),
+                        child: const Icon(Icons.description_outlined, color: brandSteel, size: 17),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          LText(
+                            '${invoice['partner_name'] ?? invoice['partner_id'] ?? '—'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 2),
+                          LText(
+                            '$currency ${amount.toStringAsFixed(2)}',
+                            style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                          ),
+                        ]),
+                      ),
+                      const SizedBox(width: 7),
+                      _StatusPill(label: uiLiteral(_humanize(status))),
+                    ]),
+                  );
+                }),
+                if (i != recent.length-1) const Divider(height: 1),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FinancePage extends StatefulWidget {
+  const FinancePage({required this.api, super.key});
+  final Api api;
+
+  @override
+  State<FinancePage> createState() => _FinancePageState();
+}
+
+class _FinancePageState extends State<FinancePage> {
+  Map<String, dynamic>? profile;
+  Map<String, dynamic> financeKpis = <String, dynamic>{};
+  List<Map<String, dynamic>> invoices = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> onboardingRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> chartRows = <Map<String, dynamic>>[];
+  String chartCurrency = 'USD';
+  double chartMaxPaid = 0;
+  String invoiceFilter = 'ALL';
+  String revenuePeriod = 'MONTHLY';
+  String revenuePlan = 'ALL';
+  final GlobalKey onboardingKey = GlobalKey();
+  final GlobalKey invoiceKey = GlobalKey();
+  bool loading = true;
+  bool warming = false;
+  int _warmRetryCount = 0;
+  Timer? _warmRetry;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  @override
+  void dispose() {
+    _warmRetry?.cancel();
+    super.dispose();
+  }
+
+  String _financePath() {
+    if (invoiceFilter == 'ALL' && revenuePeriod == 'MONTHLY' && revenuePlan == 'ALL') {
+      return centralFinanceInitialPath();
+    }
+    return centralFinancePath(
+      invoiceStatus: invoiceFilter,
+      revenuePeriod: revenuePeriod,
+      revenuePlan: revenuePlan,
+    );
+  }
+
+  Future<void> load({bool force = false}) async {
+    final path = _financePath();
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = null;
+      });
+    }
+
+    void applyModel(Map<String, dynamic> model) {
+      if (!mounted || path != _financePath()) return;
+      if (model['ready'] != true) {
+        setState(() {
+          loading = true;
+          warming = true;
+          error = null;
+        });
+        // Snapshot production is asynchronous. Hammering the Gateway every
+        // 400 ms cannot make the materializer finish faster and can compete
+        // with the very service calls needed to build the snapshot. Retry a
+        // bounded number of times, then leave an explicit warming state that
+        // the user can refresh manually.
+        _warmRetry?.cancel();
+        if (_warmRetryCount < 2) {
+          _warmRetryCount += 1;
+          _warmRetry = Timer(Duration(milliseconds: 900 * _warmRetryCount), () {
+            if (mounted && path == _financePath()) {
+              unawaited(load(force: true));
+            }
+          });
+        } else {
+          setState(() => loading = false);
+        }
+        return;
+      }
+      final chart = model['chart'] is Map
+          ? Map<String, dynamic>.from(model['chart'] as Map)
+          : <String, dynamic>{};
+      _warmRetry?.cancel();
+      _warmRetryCount = 0;
+      setState(() {
+        warming = false;
+        profile = model['profile'] is Map
+            ? Map<String, dynamic>.from(model['profile'] as Map)
+            : null;
+        financeKpis = model['kpis'] is Map
+            ? Map<String, dynamic>.from(model['kpis'] as Map)
+            : <String, dynamic>{};
+        invoices = items(<String, dynamic>{'items': model['invoices']});
+        partners = items(<String, dynamic>{'items': model['partners']});
+        onboardingRows = items(<String, dynamic>{'items': model['onboarding']});
+        chartRows = items(<String, dynamic>{'items': chart['rows']});
+        chartCurrency = '${chart['currency'] ?? 'USD'}';
+        chartMaxPaid = number(chart['max_paid']);
+        loading = false;
+      });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
+      applyModel(model);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
+      });
+    }
+  }
+
+  bool _invoiceMutationVisible(Map<String,dynamic> updated) {
+    final id = '${updated['id'] ?? ''}';
+    if (id.isEmpty) return false;
+    final expected = '${updated['workflow_status'] ?? updated['status'] ?? ''}'.toUpperCase();
+    Map<String,dynamic>? current;
+    for (final invoice in invoices) {
+      if ('${invoice['id'] ?? ''}' == id) {
+        current = invoice;
+        break;
+      }
+    }
+    if (invoiceFilter != 'ALL' && expected.isNotEmpty && invoiceFilter != expected) {
+      return current == null;
+    }
+    if (current == null) return false;
+    final actual = '${current['workflow_status'] ?? current['status'] ?? ''}'.toUpperCase();
+    return expected.isEmpty || actual == expected;
+  }
+
+  bool _onboardingMutationVisible(String partnerID, String expectedState) {
+    Map<String,dynamic>? current;
+    for (final row in onboardingRows) {
+      if ('${row['partner_id'] ?? ''}' == partnerID) {
+        current = row;
+        break;
+      }
+    }
+    if (expectedState == 'ACTIVE') return current == null;
+    return current != null && '${current['state'] ?? ''}'.toUpperCase() == expectedState;
+  }
+
+  Future<void> _syncFinanceMutation(bool Function() isVisible) async {
     await load(force: true);
-    if (!mounted || _packageMutationVisible(updated)) return;
+    if (!mounted || isVisible()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    await load(force: true);
+    if (isVisible()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (mounted) await load(force: true);
+  }
+
+  void success(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
+    );
+  }
+
+  void failure(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+    );
+  }
+
+  String get revenuePlanLabel => switch (revenuePlan) {
+    'STARTER' => uiLiteral('Starter'),
+    'BUSINESS' => uiLiteral('Business'),
+    'FLEX' => uiLiteral('Premium'),
+    _ => uiLiteral('All revenue'),
+  };
+
+  void applyInvoiceFilter(String status) {
+    if (invoiceFilter == status) return;
+    setState(() => invoiceFilter = status);
+    unawaited(load());
+  }
+
+  void applyRevenuePeriod(String period) {
+    if (revenuePeriod == period) return;
+    setState(() => revenuePeriod = period);
+    unawaited(load());
+  }
+
+  void applyRevenuePlan(String planKey) {
+    if (revenuePlan == planKey) return;
+    setState(() => revenuePlan = planKey);
+    unawaited(load());
+  }
+
+  String get financeExportPath {
+    final params = <String,String>{};
+    if (invoiceFilter != 'ALL') params['status'] = invoiceFilter;
+    if (revenuePlan != 'ALL') params['plan_key'] = revenuePlan;
+    return Uri(path: '/api/v1/billing/finance/export.pdf', queryParameters: params.isEmpty ? null : params).toString();
+  }
+
+  Future<void> createManualInvoice({String? partnerID}) async {
+    String selectedPartner = partnerID ?? (partners.isNotEmpty ? '${partners.first['id'] ?? ''}' : '');
+    final description = TextEditingController(text: 'HIMATE service');
+    final net = TextEditingController();
+    final currency = TextEditingController(text: 'USD');
+    final start = TextEditingController();
+    final end = TextEditingController();
+    final due = TextEditingController();
+    final notes = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) => BrandDialog(
+          title: 'Create invoice draft',
+          subtitle: 'Manual invoices are always created as DRAFT. Approval is required before sending or collecting payment.',
+          icon: Icons.receipt_long_outlined,
+          width: 720,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              value: selectedPartner.isEmpty ? null : selectedPartner,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: uiLiteral('Partner')),
+              items: [
+                for (final p in partners)
+                  DropdownMenuItem(
+                    value: '${p['id']}',
+                    child: LText('${p['display_name'] ?? p['id']}'),
+                  ),
+              ],
+              onChanged: (value) => setLocal(() => selectedPartner = value ?? ''),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: description, decoration: InputDecoration(labelText: uiLiteral('Description'))),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(
+                controller: net,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: uiLiteral('Net amount')),
+              ),
+              second: TextField(controller: currency, decoration: InputDecoration(labelText: uiLiteral('Currency'))),
+            ),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Service period start'), hintText: 'YYYY-MM-DD')),
+              second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Service period end'), hintText: 'YYYY-MM-DD')),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: due, decoration: InputDecoration(labelText: uiLiteral('Due date'), hintText: 'YYYY-MM-DD')),
+            const SizedBox(height: 12),
+            TextField(controller: notes, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Notes'))),
+          ]),
+          primaryLabel: 'Create draft',
+          onPrimary: () => Navigator.pop(dialogContext, true),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      final amount = double.tryParse(net.text.trim().replaceAll(',', '.'));
+      if (selectedPartner.isEmpty || amount == null || amount <= 0 || description.text.trim().isEmpty) {
+        failure('Partner, description and a positive net amount are required.');
+      } else {
+        try {
+          final created = await widget.api.post('/api/v1/billing/invoices', {
+            'partner_id': selectedPartner,
+            'currency': currency.text.trim().toUpperCase(),
+            'description': description.text.trim(),
+            'net_amount': amount,
+            'service_period_start': start.text.trim(),
+            'service_period_end_exclusive': end.text.trim(),
+            'due_date': due.text.trim(),
+            'notes': notes.text.trim(),
+          });
+          invoiceFilter = 'DRAFT';
+          await _syncFinanceMutation(() => _invoiceMutationVisible(created));
+          if (mounted) success('Invoice draft created.');
+        } catch (e) {
+          if (mounted) failure(e.toString());
+        }
+      }
+    }
+
+    for (final controller in [description, net, currency, start, end, due, notes]) {
+      controller.dispose();
+    }
+  }
+
+  Future<void> invoiceAction(Map<String, dynamic> invoice, String action) async {
+    final reason = TextEditingController();
+    final paymentReference = TextEditingController();
+    final label = switch (action) {
+      'approve' => 'Approve invoice',
+      'send' => 'Send invoice',
+      'mark-paid' => 'Mark paid',
+      'cancel' => 'Cancel invoice',
+      _ => 'Update invoice',
+    };
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: label,
+        subtitle: '${invoice['id']} · ${invoice['partner_name'] ?? invoice['partner_id']} · ${invoice['currency']} ${number(invoice['gross_total'] ?? invoice['total']).toStringAsFixed(2)}',
+        icon: action == 'cancel' ? Icons.cancel_outlined : Icons.receipt_long_outlined,
+        width: 560,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Reason / note'))),
+          if (action == 'mark-paid') ...[
+            const SizedBox(height: 12),
+            TextField(controller: paymentReference, decoration: InputDecoration(labelText: uiLiteral('Payment reference'))),
+          ],
+        ]),
+        primaryLabel: label,
+        onPrimary: () => Navigator.pop(dialogContext, true),
+      ),
+    );
+    if (ok == true) {
+      try {
+        final updated = await widget.api.post('/api/v1/billing/invoices/${invoice['id']}/$action', {
+          'reason': reason.text.trim(),
+          'payment_reference': paymentReference.text.trim(),
+        });
+        await _syncFinanceMutation(() => _invoiceMutationVisible(updated));
+        if (mounted) success('$label completed.');
+      } catch (e) {
+        if (mounted) failure(e.toString());
+      }
+    }
+    reason.dispose();
+    paymentReference.dispose();
+  }
+
+  Future<void> onboardingTransition(Map<String, dynamic> row, String nextState, {String? reason}) async {
+    try {
+      await widget.api.patch('/api/v1/billing/partners/${row['partner_id']}/onboarding', {
+        'state': nextState,
+        'classification': '${row['classification'] ?? 'UNCLASSIFIED'}',
+        'reason': reason ?? 'Central-6 administrator onboarding workflow',
+      });
+      await _syncFinanceMutation(
+        () => _onboardingMutationVisible('${row['partner_id']}', nextState),
+      );
+      if (mounted) success('Onboarding moved to ${_humanize(nextState)}.');
+    } catch (e) {
+      if (mounted) failure(e.toString());
+    }
+  }
+
+  Future<void> classifyOnboarding(Map<String, dynamic> row) async {
+    String classification = 'PAID';
+    final reason = TextEditingController();
+    final nominal = TextEditingController();
+    final evidence = TextEditingController();
+    final currency = TextEditingController(text: 'USD');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) => BrandDialog(
+          title: 'Classify partner',
+          subtitle: 'Paid partners continue through invoice and payment. Charity, Sponsored and Complimentary partners use documented zero-dollar support instead of an invoice.',
+          icon: Icons.rule_folder_outlined,
+          width: 680,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              value: classification,
+              decoration: InputDecoration(labelText: uiLiteral('Commercial classification')),
+              items: const [
+                DropdownMenuItem(value: 'PAID', child: LText('Paid')),
+                DropdownMenuItem(value: 'CHARITY', child: LText('Charity')),
+                DropdownMenuItem(value: 'SPONSORED', child: LText('Sponsored')),
+                DropdownMenuItem(value: 'COMPLIMENTARY', child: LText('Complimentary')),
+              ],
+              onChanged: (value) => setLocal(() => classification = value ?? 'PAID'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reason,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: uiLiteral(classification == 'PAID' ? 'Classification note' : 'Support / waiver reason'),
+              ),
+            ),
+            if (classification != 'PAID') ...[
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(
+                  controller: nominal,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: uiLiteral('Nominal supported value')),
+                ),
+                second: TextField(controller: currency, decoration: InputDecoration(labelText: uiLiteral('Currency'))),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: evidence, decoration: InputDecoration(labelText: uiLiteral('Evidence reference'))),
+            ],
+          ]),
+          primaryLabel: 'Save classification',
+          onPrimary: () => Navigator.pop(dialogContext, true),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      if (classification != 'PAID' && reason.text.trim().isEmpty) {
+        failure('A documented support / waiver reason is required.');
+      } else {
+        try {
+          await widget.api.patch('/api/v1/billing/partners/${row['partner_id']}/onboarding', {
+            'state': 'CLASSIFIED',
+            'classification': classification,
+            'reason': reason.text.trim(),
+            'nominal_value': double.tryParse(nominal.text.trim().replaceAll(',', '.')) ?? 0,
+            'currency': currency.text.trim().toUpperCase(),
+            'evidence_reference': evidence.text.trim(),
+          });
+          await _syncFinanceMutation(
+            () => _onboardingMutationVisible('${row['partner_id']}', 'CLASSIFIED'),
+          );
+          if (mounted) success('Partner classification saved.');
+        } catch (e) {
+          if (mounted) failure(e.toString());
+        }
+      }
+    }
+
+    for (final controller in [reason, nominal, evidence, currency]) {
+      controller.dispose();
+    }
+  }
+
+  Widget onboardingAction(Map<String, dynamic> row) {
+    final state = '${row['state'] ?? ''}';
+    final classification = '${row['classification'] ?? 'UNCLASSIFIED'}';
+    switch (state) {
+      case 'REGISTERED':
+        return FilledButton.icon(
+          onPressed: () => onboardingTransition(row, 'PENDING_REVIEW'),
+          icon: const Icon(Icons.fact_check_outlined),
+          label: const LText('Start review'),
+        );
+      case 'PENDING_REVIEW':
+        return FilledButton.icon(
+          onPressed: () => classifyOnboarding(row),
+          icon: const Icon(Icons.rule_folder_outlined),
+          label: const LText('Classify'),
+        );
+      case 'CLASSIFIED':
+        if (classification == 'PAID') {
+          return FilledButton.icon(
+            onPressed: () => createManualInvoice(partnerID: '${row['partner_id']}'),
+            icon: const Icon(Icons.receipt_long_outlined),
+            label: const LText('Create invoice'),
+          );
+        }
+        return FilledButton.icon(
+          onPressed: () => onboardingTransition(row, 'ADMIN_APPROVAL', reason: 'Zero-dollar support documentation verified'),
+          icon: const Icon(Icons.verified_outlined),
+          label: const LText('Send to approval'),
+        );
+      case 'ADMIN_APPROVAL':
+        return FilledButton.icon(
+          onPressed: () => onboardingTransition(row, 'ACTIVE', reason: 'Final HIMATE administrator approval'),
+          icon: const Icon(Icons.check_circle_outline_rounded),
+          label: const LText('Activate partner'),
+        );
+      default:
+        return _StatusPill(label: _humanize(state).toUpperCase());
+    }
+  }
+
+  Widget financeChart() {
+    final rows = chartRows;
+    final windowLabel = revenuePeriod == 'WEEKLY'
+        ? uiBilingual('last 4 weeks', 'elmúlt 4 hét')
+        : uiBilingual('last 12 months', 'elmúlt 12 hónap');
+    final planLabel = revenuePlanLabel;
+    final revenueTitle = uiBilingual(
+      'Paid revenue · $windowLabel · $planLabel',
+      'Fizetett bevétel · $windowLabel · $planLabel',
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          LayoutBuilder(builder: (context, constraints) {
+            final controls = Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SizedBox(
+                  width: 132,
+                  child: DropdownButtonFormField<String>(
+                    value: revenuePeriod,
+                    isDense: true,
+                    decoration: InputDecoration(labelText: uiLiteral('Period')),
+                    items: const [
+                      DropdownMenuItem(value: 'WEEKLY', child: LText('Weekly')),
+                      DropdownMenuItem(value: 'MONTHLY', child: LText('Monthly')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) applyRevenuePeriod(value);
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 150,
+                  child: DropdownButtonFormField<String>(
+                    value: revenuePlan,
+                    isDense: true,
+                    decoration: InputDecoration(labelText: uiLiteral('Package')),
+                    items: const [
+                      DropdownMenuItem(value: 'ALL', child: LText('All')),
+                      DropdownMenuItem(value: 'STARTER', child: LText('Starter')),
+                      DropdownMenuItem(value: 'BUSINESS', child: LText('Business')),
+                      DropdownMenuItem(value: 'FLEX', child: LText('Premium')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) applyRevenuePlan(value);
+                    },
+                  ),
+                ),
+              ],
+            );
+            if (constraints.maxWidth < 720) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                LText(revenueTitle, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14)),
+                const SizedBox(height: 12),
+                controls,
+              ]);
+            }
+            return Row(children: [
+              Expanded(child: LText(revenueTitle, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
+              controls,
+              const SizedBox(width: 8),
+              _MiniCounter(label: chartCurrency),
+            ]);
+          }),
+          const SizedBox(height: 18),
+          if (rows.isEmpty)
+            SizedBox(
+              height: 205,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          for (var i = 0; i < 5; i++)
+                            const Divider(height: 1, color: Color(0xFFE5EAF1)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 2,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        for (final label in revenuePeriod == 'WEEKLY'
+                            ? const ['W1', 'W2', 'W3', 'W4']
+                            : const ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'])
+                          LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 8.2)),
+                      ],
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: brandWhite.withOpacity(.90),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: brandMist),
+                      ),
+                      child: LText(
+                        uiLiteral('No paid revenue in this view'),
+                        style: const TextStyle(color: brandTextSoft, fontSize: 9.5, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              height: 205,
+              child: LayoutBuilder(builder: (context, constraints) {
+                final maxValue = chartMaxPaid;
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (final row in rows)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                            LText(
+                              number(row['paid']) == 0 ? '—' : number(row['paid']).toStringAsFixed(0),
+                              style: const TextStyle(color: brandTextSoft, fontSize: 8.5),
+                            ),
+                            const SizedBox(height: 4),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              height: maxValue <= 0 ? 2 : math.max(2, 135 * number(row['paid']) / maxValue),
+                              decoration: BoxDecoration(
+                                color: revenuePlan == 'ALL' ? brandGold.withOpacity(.78) : brandNavy.withOpacity(.78),
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            LText(
+                              '${row['period'] ?? ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.fade,
+                              style: const TextStyle(color: brandTextSoft, fontSize: 8.2),
+                            ),
+                          ]),
+                        ),
+                      ),
+                  ],
+                );
+              }),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> editProfile() async {
+    final legal = TextEditingController(text: '${profile?['legal_name'] ?? ''}');
+    final registration = TextEditingController(text: '${profile?['registration_number'] ?? ''}');
+    final address = TextEditingController(text: '${profile?['address'] ?? ''}');
+    final tax = TextEditingController(text: '${profile?['tax_id'] ?? ''}');
+    final contactName = TextEditingController(text: '${profile?['contact_name'] ?? ''}');
+    final email = TextEditingController(text: '${profile?['email'] ?? ''}');
+    final phone = TextEditingController(text: '${profile?['phone'] ?? ''}');
+    final bank = TextEditingController(text: '${profile?['bank_name'] ?? ''}');
+    final bankAddress = TextEditingController(text: '${profile?['bank_address'] ?? ''}');
+    final account = TextEditingController(text: '${profile?['account_number'] ?? ''}');
+    final iban = TextEditingController(text: '${profile?['iban'] ?? ''}');
+    final swift = TextEditingController(text: '${profile?['swift'] ?? ''}');
+    final vatRate = TextEditingController(text: '${profile?['vat_rate_percent'] ?? 0}');
+    final vatJurisdiction = TextEditingController(text: '${profile?['vat_jurisdiction'] ?? 'GB'}');
+    final taxLabel = TextEditingController(text: '${profile?['tax_label'] ?? 'VAT'}');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => BrandDialog(
+        title: 'HIMATE billing profile',
+        subtitle: 'Issuer and international banking data used as the foundation for future invoice-provider integration.',
+        icon: Icons.account_balance_outlined,
+        width: 760,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ResponsiveFieldPair(
+              first: TextField(controller: legal, decoration: InputDecoration(labelText: uiLiteral('Legal name'))),
+              second: TextField(controller: registration, decoration: InputDecoration(labelText: uiLiteral('Registration number'))),
+            ),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: tax, decoration: InputDecoration(labelText: uiLiteral('Tax ID'))),
+              second: TextField(controller: contactName, decoration: InputDecoration(labelText: uiLiteral('Billing contact'))),
+            ),
+            const SizedBox(height: 18),
+            const _DialogSectionLabel('VAT & TAX POLICY'),
+            const SizedBox(height: 10),
+            ResponsiveFieldPair(
+              first: TextField(
+                controller: vatRate,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: uiLiteral('VAT rate %')),
+              ),
+              second: TextField(controller: vatJurisdiction, decoration: InputDecoration(labelText: uiLiteral('VAT jurisdiction'))),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: taxLabel, decoration: InputDecoration(labelText: uiLiteral('Tax label'))),
+            const SizedBox(height: 6),
+            const LText('Set VAT rate to 0 while HIMATE is outside the applicable VAT charging regime. Package prices remain net and checkout adds the configured tax rate.', style: TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.4)),
+            const SizedBox(height: 18),
+            TextField(controller: address, decoration: InputDecoration(labelText: uiLiteral('Company address'))),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: uiLiteral('Billing email'))),
+              second: TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: uiLiteral('Billing phone'))),
+            ),
+            const SizedBox(height: 18),
+            const _DialogSectionLabel('BANKING DETAILS'),
+            const SizedBox(height: 10),
+            ResponsiveFieldPair(
+              first: TextField(controller: bank, decoration: InputDecoration(labelText: uiLiteral('Bank name'))),
+              second: TextField(controller: bankAddress, decoration: InputDecoration(labelText: uiLiteral('Bank address'))),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: account, decoration: InputDecoration(labelText: uiLiteral('Account number'))),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: iban, decoration: InputDecoration(labelText: uiLiteral('IBAN'))),
+              second: TextField(controller: swift, decoration: InputDecoration(labelText: uiLiteral('SWIFT / BIC'))),
+            ),
+          ],
+        ),
+        primaryLabel: 'Save billing profile',
+        onPrimary: () => Navigator.pop(context, true),
+      ),
+    );
+
+    if (ok == true) {
+      final expectedLegalName = legal.text.trim();
+      final expectedRegistration = registration.text.trim();
+      await widget.api.put('/api/v1/billing/profile', {
+        'legal_name': expectedLegalName,
+        'registration_number': registration.text.trim(),
+        'address': address.text.trim(),
+        'tax_id': tax.text.trim(),
+        'contact_name': contactName.text.trim(),
+        'email': email.text.trim(),
+        'phone': phone.text.trim(),
+        'bank_name': bank.text.trim(),
+        'bank_address': bankAddress.text.trim(),
+        'account_number': account.text.trim(),
+        'iban': iban.text.trim(),
+        'swift': swift.text.trim(),
+        'vat_rate_percent': double.tryParse(vatRate.text.trim().replaceAll(',', '.')) ?? 0,
+        'vat_jurisdiction': vatJurisdiction.text.trim(),
+        'tax_label': taxLabel.text.trim(),
+      });
+      await _syncFinanceMutation(
+        () => '${profile?['legal_name'] ?? ''}' == expectedLegalName &&
+            '${profile?['registration_number'] ?? ''}' == expectedRegistration,
+      );
+      if (mounted) success('Billing profile updated.');
+    }
+
+    for (final c in [legal, registration, address, tax, contactName, email, phone, bank, bankAddress, account, iban, swift, vatRate, vatJurisdiction, taxLabel]) {
+      c.dispose();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading &&
+        profile == null &&
+        financeKpis.isEmpty &&
+        invoices.isEmpty &&
+        partners.isEmpty &&
+        onboardingRows.isEmpty &&
+        chartRows.isEmpty) {
+      return Content(
+        showHeader: false,
+        eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
+        title: 'Licensing & Finance',
+        subtitle: warming
+            ? 'Preparing the finance snapshot. The page will update automatically without continuous polling.'
+            : 'Loading the latest finance snapshot.',
+        child: const _BrandLoading(),
+      );
+    }
+    final draftCount = (financeKpis['draft'] as num?)?.toInt() ?? 0;
+    final sentCount = (financeKpis['sent'] as num?)?.toInt() ?? 0;
+    final approvedCount = (financeKpis['approved'] as num?)?.toInt() ?? 0;
+    final paidCount = (financeKpis['paid'] as num?)?.toInt() ?? 0;
+    final pendingOnboarding = (financeKpis['pending_onboarding'] as num?)?.toInt() ?? 0;
+    final visibleInvoices = invoices;
+
+    void scrollToOnboarding() {
+      final target = onboardingKey.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
+      }
+    }
+
+    void scrollToInvoices() {
+      final target = invoiceKey.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
+      }
+    }
+
+    return Content(
+      showHeader: false,
+      title: 'Licensing & Finance',
+      subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
+      child: error != null
+          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (warming) ...[
+                  const _MessageCard(
+                    icon: Icons.sync_rounded,
+                    title: 'Finance snapshot is warming',
+                    message: 'The latest persisted finance view is being prepared. Continuous polling is disabled; use Refresh if the snapshot is still unavailable.',
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                if (loading) const LinearProgressIndicator(minHeight: 2),
+                ResponsiveKpiGrid(
+                  children: [
+                    Kpi(
+                      label: 'Invoices',
+                      value: '${invoices.length}',
+                      note: uiBilingual('$draftCount draft · $approvedCount approved', '$draftCount piszkozat · $approvedCount jóváhagyva'),
+                      icon: Icons.receipt_long_outlined,
+                      accent: brandSteel,
+                      onTap: () => applyInvoiceFilter('ALL'),
+                    ),
+                    Kpi(
+                      label: 'Outstanding',
+                      value: '${financeKpis['outstanding_label'] ?? r'$0.00'}',
+                      note: uiBilingual(
+                        '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} approved / sent invoices',
+                        '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} jóváhagyott / elküldött számla',
+                      ),
+                      icon: Icons.outbox_outlined,
+                      accent: brandGold,
+                      onTap: () => applyInvoiceFilter(sentCount > 0 ? 'SENT' : 'APPROVED'),
+                    ),
+                    Kpi(
+                      label: 'Settled',
+                      value: '${financeKpis['paid_ytd_label'] ?? r'$0.00'}',
+                      note: uiBilingual('$paidCount paid invoices', '$paidCount fizetett számla'),
+                      icon: Icons.payments_outlined,
+                      accent: brandSuccess,
+                      onTap: () => applyInvoiceFilter('PAID'),
+                    ),
+                    Kpi(
+                      label: 'Pending onboarding',
+                      value: '$pendingOnboarding',
+                      note: 'Registration → review → approval',
+                      icon: Icons.fact_check_outlined,
+                      accent: brandNavy,
+                      onTap: scrollToOnboarding,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final invoicePreview = _FinanceInvoicePreview(
+                      invoices: visibleInvoices,
+                      onViewAll: scrollToInvoices,
+                      onExport: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
+                    );
+                    if (constraints.maxWidth < 980) {
+                      return Column(
+                        children: [
+                          financeChart(),
+                          const SizedBox(height: 12),
+                          invoicePreview,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 3, child: financeChart()),
+                        const SizedBox(width: 12),
+                        Expanded(flex: 2, child: invoicePreview),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardWidth = constraints.maxWidth < 760
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 24) / 3;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'Invoice approval queue',
+                            subtitle: 'Review and approve generated invoice drafts before they can be sent.',
+                            footer: uiBilingual('$draftCount awaiting approval', '$draftCount jóváhagyásra vár'),
+                            icon: Icons.fact_check_outlined,
+                            accent: brandSteel,
+                            onTap: () => applyInvoiceFilter('DRAFT'),
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'Partner onboarding',
+                            subtitle: 'Registration, commercial approval, license activation and Portal access.',
+                            footer: uiBilingual('$pendingOnboarding active onboarding processes', '$pendingOnboarding aktív onboarding folyamat'),
+                            icon: Icons.group_add_outlined,
+                            accent: brandGold,
+                            onTap: scrollToOnboarding,
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'New invoice',
+                            subtitle: 'Create a draft invoice from an approved partner and commercial context.',
+                            footer: 'Create invoice',
+                            icon: Icons.add_card_outlined,
+                            accent: brandSuccess,
+                            onTap: partners.isEmpty ? null : () => createManualInvoice(),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                Container(
+                  key: invoiceKey,
+                  child: Row(
+                  children: [
+                    const Expanded(
+                      child: _SectionHeader(
+                        title: 'Invoice approval queue',
+                        subtitle: 'Draft → Approved → Sent → Paid / Cancelled. Collection is blocked until the invoice is Sent.',
+                      ),
+                    ),
+                    _MiniCounter(label: uiBilingual('${visibleInvoices.length} shown', '${visibleInvoices.length} megjelenítve')),
+                  ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    for (final status in const ['ALL', 'DRAFT', 'APPROVED', 'SENT', 'PAID', 'CANCELLED'])
+                      FilterChip(
+                        selected: invoiceFilter == status,
+                        label: LText(status == 'ALL' ? 'All' : _humanize(status)),
+                        onSelected: (_) => applyInvoiceFilter(status),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (visibleInvoices.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'No invoices in this state',
+                    message: 'Create a manual draft or wait for the recurring billing cycle to generate a new draft.',
+                  )
+                else
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < visibleInvoices.length; i++) ...[
+                            Builder(builder: (context) {
+                              final invoice = visibleInvoices[i];
+                              final workflow = '${invoice['workflow_status'] ?? invoice['status'] ?? 'DRAFT'}'.toUpperCase();
+                              final id = '${invoice['id'] ?? ''}';
+                              final partnerID = '${invoice['partner_id'] ?? ''}';
+                              final gross = number(invoice['gross_total'] ?? invoice['total']);
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: LayoutBuilder(builder: (context, constraints) {
+                                  final details = Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(children: [
+                                        const Icon(Icons.receipt_long_outlined, size: 18, color: brandGold),
+                                        const SizedBox(width: 9),
+                                        Expanded(
+                                          child: LText(
+                                            id,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 11.5),
+                                          ),
+                                        ),
+                                      ]),
+                                      const SizedBox(height: 5),
+                                      LText(
+                                        '${invoice['partner_name'] ?? partnerID}',
+                                        style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      LText(
+                                        '${invoice['service_period_start'] ?? ''} — ${invoice['service_period_end_exclusive'] ?? ''}',
+                                        style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      LText(
+                                        '${invoice['currency'] ?? 'USD'} ${gross.toStringAsFixed(2)} gross · net ${number(invoice['net_total']).toStringAsFixed(2)} · tax ${number(invoice['tax_amount']).toStringAsFixed(2)}',
+                                        style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                                      ),
+                                    ],
+                                  );
+                                  final actions = Wrap(
+                                    spacing: 7,
+                                    runSpacing: 7,
+                                    alignment: WrapAlignment.end,
+                                    children: [
+                                      _StatusPill(label: uiLiteral(_humanize(workflow))),
+                                      if (workflow == 'DRAFT')
+                                        FilledButton.tonalIcon(
+                                          onPressed: () => invoiceAction(invoice, 'approve'),
+                                          icon: const Icon(Icons.verified_outlined, size: 16),
+                                          label: const LText('Approve'),
+                                        ),
+                                      if (workflow == 'APPROVED')
+                                        FilledButton.icon(
+                                          onPressed: () => invoiceAction(invoice, 'send'),
+                                          icon: const Icon(Icons.send_outlined, size: 16),
+                                          label: const LText('Send'),
+                                        ),
+                                      if (workflow == 'SENT')
+                                        FilledButton.tonalIcon(
+                                          onPressed: () => invoiceAction(invoice, 'mark-paid'),
+                                          icon: const Icon(Icons.payments_outlined, size: 16),
+                                          label: const LText('Mark paid'),
+                                        ),
+                                      if (workflow != 'DRAFT')
+                                        OutlinedButton.icon(
+                                          onPressed: () => openBrowserDownload('/api/v1/billing/invoices/$id/pdf'),
+                                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                                          label: const LText('PDF'),
+                                        ),
+                                      if (workflow != 'PAID' && workflow != 'CANCELLED')
+                                        TextButton.icon(
+                                          onPressed: () => invoiceAction(invoice, 'cancel'),
+                                          icon: const Icon(Icons.cancel_outlined, size: 16),
+                                          label: const LText('Cancel invoice'),
+                                        ),
+                                    ],
+                                  );
+                                  if (constraints.maxWidth < 820) {
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [details, const SizedBox(height: 12), actions],
+                                    );
+                                  }
+                                  return Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(child: details),
+                                      const SizedBox(width: 18),
+                                      Flexible(child: actions),
+                                    ],
+                                  );
+                                }),
+                              );
+                            }),
+                            if (i < visibleInvoices.length - 1) const Divider(height: 1),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 28),
+                Container(
+                  key: onboardingKey,
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: _SectionHeader(
+                          title: 'Partner onboarding',
+                          subtitle: 'Registered → Pending Review → Classified → invoice/payment or documented support → Admin Approval → Active.',
+                        ),
+                      ),
+                      _MiniCounter(label: uiBilingual('$pendingOnboarding pending', '$pendingOnboarding függőben')),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (onboardingRows.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.check_circle_outline_rounded,
+                    title: 'No pending onboarding',
+                    message: 'All current partner registrations have completed the Central-6 commercial approval lifecycle.',
+                  )
+                else
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final row in onboardingRows)
+                        SizedBox(
+                          width: MediaQuery.sizeOf(context).width < 760 ? double.infinity : 360,
+                          child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Row(children: [
+                                  Expanded(
+                                    child: LText(
+                                      '${row['display_name'] ?? row['partner_id']}',
+                                      style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13),
+                                    ),
+                                  ),
+                                  _StatusPill(label: uiLiteral(_humanize('${row['state'] ?? 'REGISTERED'}'))),
+                                ]),
+                                const SizedBox(height: 10),
+                                _DefinitionRow(label: 'Classification', value: uiLiteral(_humanize('${row['classification'] ?? 'UNCLASSIFIED'}'))),
+                                _DefinitionRow(label: 'Portal access', value: row['portal_enabled'] == true ? 'Enabled' : 'Blocked until Active'),
+                                _DefinitionRow(label: 'Partner ID', value: '${row['partner_id'] ?? ''}'),
+                                const SizedBox(height: 12),
+                                onboardingAction(row),
+                              ]),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                const SizedBox(height: 28),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final issuer = _IssuerProfileCard(profile: profile ?? {}, onEdit: editProfile);
+                    const rules = _BillingRulesCard();
+                    if (constraints.maxWidth < 920) {
+                      return Column(children: [issuer, const SizedBox(height: 14), rules]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: issuer),
+                        const SizedBox(width: 14),
+                        const Expanded(child: rules),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+    );
+  }
+}
+class ImpactPage extends StatefulWidget {
+  const ImpactPage({required this.api, super.key});
+  final Api api;
+
+  @override
+  State<ImpactPage> createState() => _ImpactPageState();
+}
+
+class _ImpactPageState extends State<ImpactPage> {
+  List<Map<String, dynamic>> definitions = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> summary = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> evidence = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> reports = <Map<String, dynamic>>[];
+  Map<String, dynamic> impactAnalytics = <String, dynamic>{};
+  Map<String, dynamic> impactKpis = <String, dynamic>{};
+  Map<String, dynamic> impactMeta = <String, dynamic>{};
+  Map<String, dynamic> impactAccess = <String, dynamic>{};
+  bool impactSnapshotWarming = false;
+  int _impactWarmRetryCount = 0;
+  Timer? _impactWarmRetry;
+  int evidenceTotal = 0;
+  int evidenceOffset = 0;
+  static const int evidenceLimit = 12;
+  String evidenceQuery = '';
+  String evidenceTypeFilter = '';
+  String evidenceStatusFilter = '';
+  String evidencePeriodStart = '';
+  String evidencePeriodEnd = '';
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  @override
+  void dispose() {
+    _impactWarmRetry?.cancel();
+    super.dispose();
+  }
+
+  String evidencePath() {
+    final query = <String, String>{
+      'evidence_limit': '$evidenceLimit',
+      'evidence_offset': '$evidenceOffset',
+    };
+    if (evidenceQuery.trim().isNotEmpty) query['evidence_query'] = evidenceQuery.trim();
+    if (evidenceTypeFilter.isNotEmpty) query['evidence_type'] = evidenceTypeFilter;
+    if (evidenceStatusFilter.isNotEmpty) query['evidence_status'] = evidenceStatusFilter;
+    if (evidencePeriodStart.trim().isNotEmpty) query['evidence_period_start'] = evidencePeriodStart.trim();
+    if (evidencePeriodEnd.trim().isNotEmpty) query['evidence_period_end'] = evidencePeriodEnd.trim();
+    if (evidenceQuery.trim().isEmpty &&
+        evidenceTypeFilter.isEmpty &&
+        evidenceStatusFilter.isEmpty &&
+        evidencePeriodStart.trim().isEmpty &&
+        evidencePeriodEnd.trim().isEmpty &&
+        evidenceOffset == 0 &&
+        evidenceLimit == 12) {
+      return centralImpactInitialPath();
+    }
+    return Uri(path: '/api/v1/central/impact', queryParameters: query).toString();
+  }
+
+  Future<void> load({bool force = false}) async {
+    final path = evidencePath();
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = null;
+      });
+    }
+
+    void applyModel(Map<String, dynamic> model) {
+      if (!mounted || path != evidencePath()) return;
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
+      if (model['ready'] != true) {
+        setState(() {
+          loading = false;
+          error = null;
+          impactSnapshotWarming = true;
+          impactMeta = meta;
+        });
+        _impactWarmRetry?.cancel();
+        if (_impactWarmRetryCount < 2) {
+          _impactWarmRetryCount += 1;
+          _impactWarmRetry = Timer(Duration(milliseconds: 900 * _impactWarmRetryCount), () {
+            if (mounted && path == evidencePath()) {
+              unawaited(load(force: true));
+            }
+          });
+        }
+        return;
+      }
+      _impactWarmRetry?.cancel();
+      _impactWarmRetryCount = 0;
+      setState(() {
+        definitions = items(<String, dynamic>{'items': model['definitions']});
+        summary = items(<String, dynamic>{'items': model['summary']});
+        evidence = items(<String, dynamic>{'items': model['evidence']});
+        reports = items(<String, dynamic>{'items': model['reports']});
+        impactAnalytics = model['analytics'] is Map ? Map<String, dynamic>.from(model['analytics'] as Map) : <String, dynamic>{};
+        impactKpis = model['kpis'] is Map ? Map<String, dynamic>.from(model['kpis'] as Map) : <String, dynamic>{};
+        impactMeta = meta;
+        impactAccess = model['access'] is Map ? Map<String, dynamic>.from(model['access'] as Map) : <String, dynamic>{};
+        impactSnapshotWarming = false;
+        evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
+        loading = false;
+      });
+    }
+
+    try {
+      final model = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
+      applyModel(model);
+    } catch (e) {
+      _impactWarmRetry?.cancel();
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _syncImpactMutation() async {
+    await load(force: true);
+    if (!mounted) return;
     await Future<void>.delayed(const Duration(milliseconds: 800));
     if (mounted) await load(force: true);
+  }
+
+  Future<void> addDefinition() async {
+    final key = TextEditingController();
+    final labelEN = TextEditingController();
+    final labelHU = TextEditingController();
+    final descriptionEN = TextEditingController();
+    final descriptionHU = TextEditingController();
+    final unit = TextEditingController(text: 'count');
+    String aggregation = 'SUM';
+    String scope = 'PARTNER';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'New metric definition',
+          subtitle: 'Dynamic business metrics store English and Hungarian labels and descriptions independently.',
+          icon: Icons.add_chart_outlined,
+          width: 760,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: key, decoration: InputDecoration(labelText: uiLiteral('Metric key'), hintText: uiLiteral('culture.events'))),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: labelEN, decoration: InputDecoration(labelText: uiLiteral('English display label *'))),
+                second: TextField(controller: labelHU, decoration: InputDecoration(labelText: uiLiteral('Hungarian display label *'))),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: unit, decoration: InputDecoration(labelText: uiLiteral('Unit'))),
+                second: DropdownButtonFormField<String>(
+                  value: aggregation,
+                  decoration: InputDecoration(labelText: uiLiteral('Aggregation')),
+                  items: const [
+                    DropdownMenuItem(value: 'SUM', child: LText('SUM')),
+                    DropdownMenuItem(value: 'LATEST', child: LText('LATEST')),
+                    DropdownMenuItem(value: 'AVERAGE', child: LText('AVERAGE')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => aggregation = v); },
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: scope,
+                decoration: InputDecoration(labelText: uiLiteral('Scope')),
+                items: const [
+                  DropdownMenuItem(value: 'PARTNER', child: LText('PARTNER')),
+                  DropdownMenuItem(value: 'GLOBAL', child: LText('GLOBAL')),
+                  DropdownMenuItem(value: 'BOTH', child: LText('BOTH')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => scope = v); },
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: descriptionEN, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('English description'))),
+                second: TextField(controller: descriptionHU, maxLines: 3, decoration: InputDecoration(labelText: uiLiteral('Hungarian description'))),
+              ),
+            ],
+          ),
+          primaryLabel: 'Create metric',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true && labelEN.text.trim().isNotEmpty && labelHU.text.trim().isNotEmpty) {
+      await widget.api.post('/api/v1/impact/definitions', {
+        'metric_key': key.text.trim(),
+        'label_en': labelEN.text.trim(),
+        'label_hu': labelHU.text.trim(),
+        'description_en': descriptionEN.text.trim(),
+        'description_hu': descriptionHU.text.trim(),
+        'unit': unit.text.trim(),
+        'aggregation': aggregation,
+        'scope': scope,
+      });
+      await _syncImpactMutation();
+    }
+    for (final controller in [key, labelEN, labelHU, descriptionEN, descriptionHU, unit]) { controller.dispose(); }
+  }
+
+  Future<void> addValue() async {
+    if (definitions.isEmpty) return;
+    String metricKey = '${definitions.first['metric_key']}';
+    final partner = TextEditingController();
+    final start = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final numeric = TextEditingController();
+    final source = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Record impact value',
+          subtitle: 'Manual values remain distinct from connector and verified-document provenance.',
+          icon: Icons.insights_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: metricKey,
+                decoration: InputDecoration(labelText: uiLiteral('Metric')),
+                items: [
+                  for (final d in definitions)
+                    DropdownMenuItem(value: '${d['metric_key']}', child: LText('${d['label']} · ${d['metric_key']}')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: partner, decoration: InputDecoration(labelText: uiLiteral('Partner ID'), hintText: uiLiteral('Leave empty for global metric'))),
+                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Numeric value'))),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Period start'), hintText: uiLiteral('YYYY-MM-DD'))),
+                second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Period end'), hintText: uiLiteral('YYYY-MM-DD'))),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: source, decoration: InputDecoration(labelText: uiLiteral('Source reference'))),
+            ],
+          ),
+          primaryLabel: 'Record value',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/impact/values', {
+        'partner_id': partner.text.trim(),
+        'metric_key': metricKey,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+        'numeric_value': double.tryParse(numeric.text),
+        'provenance': 'MANUAL',
+        'source_ref': source.text.trim(),
+      });
+      await _syncImpactMutation();
+    }
+    for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
+  }
+
+  Future<void> addBaseline() async {
+    if (definitions.isEmpty) return;
+    String metricKey = '${definitions.first['metric_key']}';
+    final partner = TextEditingController();
+    final start = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final numeric = TextEditingController();
+    final source = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Set metric baseline',
+          subtitle: 'Store an explicit baseline period and value for reproducible comparison.',
+          icon: Icons.flag_outlined,
+          width: 700,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: metricKey,
+                decoration: InputDecoration(labelText: uiLiteral('Metric')),
+                items: [
+                  for (final d in definitions)
+                    DropdownMenuItem(value: '${d['metric_key']}', child: LText('${d['label']} · ${d['metric_key']}')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: partner, decoration: InputDecoration(labelText: uiLiteral('Partner ID'), hintText: uiLiteral('Leave empty for global baseline'))),
+                second: TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Baseline value'))),
+              ),
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Baseline period start'), hintText: uiLiteral('YYYY-MM-DD'))),
+                second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Baseline period end'), hintText: uiLiteral('YYYY-MM-DD'))),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: source, decoration: InputDecoration(labelText: uiLiteral('Source reference'))),
+            ],
+          ),
+          primaryLabel: 'Save baseline',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.put('/api/v1/impact/baselines', {
+        'partner_id': partner.text.trim(),
+        'metric_key': metricKey,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+        'numeric_value': double.tryParse(numeric.text),
+        'provenance': 'MANUAL',
+        'source_ref': source.text.trim(),
+      });
+      await _syncImpactMutation();
+    }
+    for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
+  }
+
+  Future<void> addEvidence() async {
+    final partner = TextEditingController();
+    final title = TextEditingController();
+    final description = TextEditingController();
+    final start = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final sourceUrl = TextEditingController();
+    final declaration = TextEditingController();
+    String evidenceType = 'PDF';
+    String metricKey = '';
+    BrowserFile? selectedFile;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) {
+          final fileBacked = evidenceType != 'URL' && evidenceType != 'PARTNER_DECLARATION';
+          return BrandDialog(
+            title: 'Upload Evidence',
+            subtitle: 'Evidence is partner-scoped, checksum-backed and explicitly verified before it can support VERIFIED_DOCUMENT provenance.',
+            icon: Icons.verified_outlined,
+            width: 760,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ResponsiveFieldPair(
+                  first: TextField(controller: partner, decoration: InputDecoration(labelText: uiLiteral('Partner ID *'))),
+                  second: DropdownButtonFormField<String>(
+                    value: evidenceType,
+                    decoration: InputDecoration(labelText: uiLiteral('Evidence type')),
+                    items: const [
+                      DropdownMenuItem(value: 'PDF', child: LText('PDF')),
+                      DropdownMenuItem(value: 'IMAGE', child: LText('Image')),
+                      DropdownMenuItem(value: 'INVOICE', child: LText('Invoice')),
+                      DropdownMenuItem(value: 'CONTRACT', child: LText('Contract')),
+                      DropdownMenuItem(value: 'SCREENSHOT', child: LText('Screenshot')),
+                      DropdownMenuItem(value: 'REPORT', child: LText('External report')),
+                      DropdownMenuItem(value: 'URL', child: LText('URL reference')),
+                      DropdownMenuItem(value: 'PARTNER_DECLARATION', child: LText('Partner declaration')),
+                      DropdownMenuItem(value: 'OTHER', child: LText('Other')),
+                    ],
+                    onChanged: (v) { if (v != null) setLocal(() { evidenceType = v; selectedFile = null; }); },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: metricKey,
+                  decoration: InputDecoration(labelText: uiLiteral('Linked metric')),
+                  items: [
+                    const DropdownMenuItem(value: '', child: LText('No metric link')),
+                    for (final d in definitions)
+                      DropdownMenuItem(value: '${d['metric_key']}', child: LText('${d['label']} · ${d['metric_key']}')),
+                  ],
+                  onChanged: (v) { if (v != null) setLocal(() => metricKey = v); },
+                ),
+                const SizedBox(height: 12),
+                TextField(controller: title, decoration: InputDecoration(labelText: uiLiteral('Evidence title *'))),
+                const SizedBox(height: 12),
+                TextField(controller: description, maxLines: 2, decoration: InputDecoration(labelText: uiLiteral('Description'))),
+                const SizedBox(height: 12),
+                ResponsiveFieldPair(
+                  first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Period start'))),
+                  second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Period end'))),
+                ),
+                const SizedBox(height: 12),
+                if (fileBacked)
+                  Row(
+                    children: [
+                      Expanded(child: LText(selectedFile?.name ?? 'No file selected', style: const TextStyle(color: brandTextSoft))),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final file = await pickBrowserFile('application/pdf,image/png,image/jpeg,image/webp,text/plain');
+                          if (file != null) setLocal(() => selectedFile = file);
+                        },
+                        icon: const Icon(Icons.upload_file_outlined),
+                        label: const LText('Choose file'),
+                      ),
+                    ],
+                  ),
+                if (evidenceType == 'URL')
+                  TextField(controller: sourceUrl, decoration: InputDecoration(labelText: uiLiteral('HTTP(S) source URL *'))),
+                if (evidenceType == 'PARTNER_DECLARATION')
+                  TextField(controller: declaration, maxLines: 4, decoration: InputDecoration(labelText: uiLiteral('Partner declaration *'))),
+                const SizedBox(height: 12),
+                const _RuleStrip(items: [
+                  _RuleItem(Icons.security_outlined, 'Validation', 'Content-sniffed · max 20 MiB · SHA-256'),
+                  _RuleItem(Icons.link_off_outlined, 'URL safety', 'URL evidence is referenced, never fetched'),
+                ]),
+              ],
+            ),
+            primaryLabel: 'Create evidence',
+            onPrimary: () {
+              final fileBackedNow = evidenceType != 'URL' && evidenceType != 'PARTNER_DECLARATION';
+              if (partner.text.trim().isEmpty || title.text.trim().isEmpty ||
+                  (fileBackedNow && selectedFile == null) ||
+                  (evidenceType == 'URL' && sourceUrl.text.trim().isEmpty) ||
+                  (evidenceType == 'PARTNER_DECLARATION' && declaration.text.trim().isEmpty)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: LText('Complete the required Evidence fields.'), behavior: SnackBarBehavior.floating),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+          );
+        },
+      ),
+    );
+
+    if (ok == true) {
+      if (evidenceType == 'URL' || evidenceType == 'PARTNER_DECLARATION') {
+        await widget.api.post('/api/v1/evidence', {
+          'partner_id': partner.text.trim(),
+          'metric_key': metricKey,
+          'evidence_type': evidenceType,
+          'title': title.text.trim(),
+          'description': description.text.trim(),
+          'period_start': start.text.trim(),
+          'period_end': end.text.trim(),
+          'source_url': sourceUrl.text.trim(),
+          'declaration_text': declaration.text.trim(),
+        });
+      } else {
+        final file = selectedFile!;
+        final bytes = await readBrowserFile(file);
+        await widget.api.multipart('/api/v1/evidence', {
+          'partner_id': partner.text.trim(),
+          'metric_key': metricKey,
+          'evidence_type': evidenceType,
+          'title': title.text.trim(),
+          'description': description.text.trim(),
+          'period_start': start.text.trim(),
+          'period_end': end.text.trim(),
+        }, bytes, file.name);
+      }
+      await _syncImpactMutation();
+    }
+    for (final controller in [partner, title, description, start, end, sourceUrl, declaration]) { controller.dispose(); }
+  }
+
+  Future<void> verifyEvidence(Map<String, dynamic> item) async {
+    await widget.api.patch('/api/v1/evidence/${item['id']}', {'verification_status': 'VERIFIED'});
+    await _syncImpactMutation();
+  }
+
+  Future<void> recordVerifiedValue(Map<String, dynamic> item) async {
+    final metricKey = '${item['metric_key'] ?? ''}';
+    if (metricKey.isEmpty || item['verification_status'] != 'VERIFIED') return;
+    final numeric = TextEditingController();
+    final start = TextEditingController(text: '${item['period_start'] ?? DateTime.now().toIso8601String().substring(0, 10)}');
+    final end = TextEditingController(text: '${item['period_end'] ?? DateTime.now().toIso8601String().substring(0, 10)}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => BrandDialog(
+        title: 'Record verified metric',
+        subtitle: 'This observation will use VERIFIED_DOCUMENT provenance and is cryptographically tied to the selected Evidence record.',
+        icon: Icons.fact_check_outlined,
+        width: 620,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(enabled: false, decoration: InputDecoration(labelText: uiLiteral('Evidence'), hintText: '${item['id']} · ${item['title']}')),
+            const SizedBox(height: 12),
+            TextField(enabled: false, decoration: InputDecoration(labelText: uiLiteral('Metric'), hintText: metricKey)),
+            const SizedBox(height: 12),
+            TextField(controller: numeric, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: uiLiteral('Verified numeric value'))),
+            const SizedBox(height: 12),
+            ResponsiveFieldPair(
+              first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Period start'))),
+              second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Period end'))),
+            ),
+          ],
+        ),
+        primaryLabel: 'Record verified value',
+        onPrimary: () => Navigator.pop(context, true),
+      ),
+    );
+    if (ok == true) {
+      await widget.api.post('/api/v1/impact/values', {
+        'partner_id': '${item['partner_id']}',
+        'metric_key': metricKey,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+        'numeric_value': double.tryParse(numeric.text),
+        'provenance': 'VERIFIED_DOCUMENT',
+        'evidence_id': '${item['id']}',
+      });
+      await _syncImpactMutation();
+    }
+    numeric.dispose(); start.dispose(); end.dispose();
+  }
+
+  Future<void> generateReport() async {
+    String reportType = 'PARTNER_IMPACT';
+    final title = TextEditingController();
+    final partnerIds = TextEditingController();
+    final now = DateTime.now();
+    final start = TextEditingController(text: DateTime(now.year, now.month - 1, now.day).toIso8601String().substring(0, 10));
+    final end = TextEditingController(text: now.toIso8601String().substring(0, 10));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => BrandDialog(
+          title: 'Generate PDF report',
+          subtitle: 'The report freezes metrics, sources and Evidence references into a reproducible snapshot before PDF rendering.',
+          icon: Icons.picture_as_pdf_outlined,
+          width: 720,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: reportType,
+                decoration: InputDecoration(labelText: uiLiteral('Report type')),
+                items: const [
+                  DropdownMenuItem(value: 'PARTNER_IMPACT', child: LText('Partner Impact Report')),
+                  DropdownMenuItem(value: 'MULTI_PARTNER', child: LText('Multi-Partner Report')),
+                  DropdownMenuItem(value: 'HIMATE_GLOBAL', child: LText('HIMATE Global Impact Report')),
+                ],
+                onChanged: (v) { if (v != null) setLocal(() => reportType = v); },
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: title, decoration: InputDecoration(labelText: uiLiteral('Report title'), hintText: uiLiteral('Optional · default title follows report type'))),
+              if (reportType != 'HIMATE_GLOBAL') ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: partnerIds,
+                  decoration: InputDecoration(
+                    labelText: reportType == 'PARTNER_IMPACT' ? uiLiteral('Partner ID *') : uiLiteral('Partner IDs *'),
+                    hintText: reportType == 'MULTI_PARTNER' ? 'ptr_000001, ptr_000002' : 'ptr_000001',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              ResponsiveFieldPair(
+                first: TextField(controller: start, decoration: InputDecoration(labelText: uiLiteral('Period start'))),
+                second: TextField(controller: end, decoration: InputDecoration(labelText: uiLiteral('Period end'))),
+              ),
+              const SizedBox(height: 12),
+              const _RuleStrip(items: [
+                _RuleItem(Icons.inventory_2_outlined, 'Snapshot', 'Frozen before PDF generation'),
+                _RuleItem(Icons.replay_outlined, 'Reproducible', 'Regeneration never rereads live metrics'),
+              ]),
+            ],
+          ),
+          primaryLabel: 'Queue report',
+          onPrimary: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (ok == true) {
+      final ids = partnerIds.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      final created = await widget.api.post('/api/v1/reports', {
+        'report_type': reportType,
+        'title': title.text.trim(),
+        'partner_ids': reportType == 'HIMATE_GLOBAL' ? <String>[] : ids,
+        'period_start': start.text.trim(),
+        'period_end': end.text.trim(),
+      });
+      await _waitReport('${created['id']}');
+      await _syncImpactMutation();
+    }
+    title.dispose(); partnerIds.dispose(); start.dispose(); end.dispose();
+  }
+
+  Future<void> _waitReport(String id) async {
+    for (var i = 0; i < 15; i++) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      final item = await widget.api.get('/api/v1/reports/$id', force: true);
+      final status = '${item['status']}';
+      if (status == 'READY' || status == 'FAILED') return;
+    }
+  }
+
+  Future<void> regenerateReport(Map<String, dynamic> item) async {
+    await widget.api.post('/api/v1/reports/${item['id']}/regenerate');
+    await _syncImpactMutation();
+  }
+
+  Future<void> checkEvidenceIntegrity(Map<String, dynamic> item) async {
+    try {
+      final result = await widget.api.get('/api/v1/evidence/${item['id']}/integrity', force: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: LText('Evidence integrity: ${result['status']} · ${shortHash(result['sha256'])}'), behavior: SnackBarBehavior.floating),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: LText('Evidence integrity check failed: $e'), behavior: SnackBarBehavior.floating, backgroundColor: brandDanger),
+        );
+      }
+    }
+  }
+
+  Future<void> applyEvidenceFilters() async {
+    evidenceOffset = 0;
+    await load();
+  }
+
+  String shortHash(dynamic value) {
+    final raw = '${value ?? ''}';
+    return raw.length > 14 ? '${raw.substring(0, 14)}…' : raw;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canReadImpact = impactAccess['impact'] != false;
+    final canWriteImpact = impactAccess['impact_write'] == true;
+    final canReadEvidence = impactAccess['evidence'] != false;
+    final canWriteEvidence = impactAccess['evidence_write'] == true;
+    final canReadReports = impactAccess['reports'] != false;
+    final canWriteReports = impactAccess['reports_write'] == true;
+    final impactStatus = '${impactMeta['status'] ?? ''}'.toLowerCase();
+    final impactUnavailable = impactMeta['unavailable'] is List
+        ? (impactMeta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
+        : <String>[];
+    final activeMetrics = (impactKpis['active_metrics'] as num?)?.toInt() ?? definitions.length;
+    final totalEvidence = (impactKpis['evidence_total'] as num?)?.toInt() ?? evidenceTotal;
+    final totalReports = (impactKpis['reports_total'] as num?)?.toInt() ?? reports.length;
+    final pendingEvidence = (impactKpis['pending_evidence'] as num?)?.toInt() ?? 0;
+    final monthlyTrend = items(<String,dynamic>{'items': impactAnalytics['trend']});
+    final weeklyTrend = items(<String,dynamic>{'items': impactAnalytics['weekly_trend']});
+    final impactHasData = impactAnalytics['has_data'] == true || monthlyTrend.isNotEmpty || weeklyTrend.isNotEmpty;
+
+    return Content(
+      showHeader: false,
+      title: 'Impact & Reports',
+      subtitle: 'Real outcomes. Transparent reporting. Measurable impact.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (loading) ...[
+            const _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Impact data is loading',
+              message: 'The workspace remains available while the latest metrics, evidence and reports are refreshed.',
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (impactSnapshotWarming) ...[
+            _MessageCard(
+              icon: Icons.hourglass_empty_rounded,
+              title: uiLiteral('Impact snapshot is warming'),
+              message: uiLiteral('No materialized snapshot is ready yet. Empty states stay visible and the backend continues preparation without blocking this workspace.'),
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (error != null) ...[
+            _MessageCard(
+              icon: Icons.warning_amber_rounded,
+              title: uiLiteral('Impact data is partially unavailable'),
+              message: error!,
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (!canReadImpact || !canReadEvidence || !canReadReports) ...[
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Some Impact sections are restricted'),
+              message: [
+                if (!canReadImpact) uiLiteral('Metrics'),
+                if (!canReadEvidence) uiLiteral('Evidence'),
+                if (!canReadReports) uiLiteral('Reports'),
+              ].join(' · '),
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (impactStatus == 'unavailable') ...[
+            _MessageCard(
+              icon: Icons.cloud_off_outlined,
+              title: uiLiteral('Impact services are temporarily unavailable'),
+              message: impactUnavailable.isEmpty
+                  ? uiLiteral('Impact, Evidence and Reports could not be refreshed. No infinite loading state is used; retry when the services recover.')
+                  : '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ] else if (impactStatus == 'partial' && impactUnavailable.isNotEmpty) ...[
+            _MessageCard(
+              icon: Icons.warning_amber_rounded,
+              title: uiLiteral('Impact data is partially available'),
+              message: '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ],
+          ResponsiveKpiGrid(children: [
+            Kpi(label: 'Active metrics', value: '$activeMetrics', note: 'Configured impact definitions', icon: Icons.bar_chart_rounded, accent: brandSteel),
+            Kpi(label: 'Evidence', value: '$totalEvidence', note: 'Evidence records in the library', icon: Icons.description_outlined, accent: brandGold),
+            Kpi(label: 'Reports', value: '$totalReports', note: 'Generated report records', icon: Icons.pie_chart_outline_rounded, accent: brandSuccess),
+            Kpi(label: 'Pending review', value: '$pendingEvidence', note: 'Unverified evidence items', icon: Icons.shield_outlined, accent: brandSteel),
+          ]),
+          const SizedBox(height: 18),
+          _ImpactPanel(
+            monthlyTrend: monthlyTrend,
+            weeklyTrend: weeklyTrend,
+            year: DateTime.now().toUtc().year,
+            authorized: true,
+            hasData: impactHasData,
+            title: 'Impact trend',
+            subtitle: 'Verified social and environmental impact over time',
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 760 ? constraints.maxWidth : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Metrics',
+                    subtitle: 'Manage impact indicators, baselines and recorded results.',
+                    footer: canWriteImpact ? null : uiLiteral('Read only'),
+                    icon: Icons.bar_chart_rounded,
+                    accent: brandSteel,
+                    onTap: canWriteImpact ? addDefinition : null,
+                  )),
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Evidence',
+                    subtitle: 'Upload and verify documents, media and partner declarations.',
+                    footer: canWriteEvidence ? null : uiLiteral('Read only'),
+                    icon: Icons.description_outlined,
+                    accent: brandGold,
+                    onTap: canWriteEvidence ? addEvidence : null,
+                  )),
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Report creation',
+                    subtitle: 'Generate reproducible partner and program reports.',
+                    footer: canWriteReports ? null : uiLiteral('Read only'),
+                    icon: Icons.picture_as_pdf_outlined,
+                    accent: brandSuccess,
+                    onTap: canWriteReports ? generateReport : null,
+                  )),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = <Widget>[
+                OutlinedButton.icon(
+                  onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/impact/export.pdf'),
+                  icon: const Icon(Icons.download_outlined),
+                  label: const LText('Export PDF'),
+                ),
+                OutlinedButton.icon(onPressed: canWriteImpact ? addDefinition : null, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
+                OutlinedButton.icon(onPressed: canWriteImpact && definitions.isNotEmpty ? addBaseline : null, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
+                OutlinedButton.icon(onPressed: canWriteEvidence ? addEvidence : null, icon: const Icon(Icons.verified_outlined), label: const LText('Upload Evidence')),
+                OutlinedButton.icon(onPressed: canWriteReports ? generateReport : null, icon: const Icon(Icons.picture_as_pdf_outlined), label: const LText('Generate Report')),
+                FilledButton.icon(onPressed: canWriteImpact && definitions.isNotEmpty ? addValue : null, icon: const Icon(Icons.add_rounded), label: const LText('Record value')),
+              ];
+              return Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 10,
+                runSpacing: 8,
+                children: actions,
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: uiBilingual('${summary.length} metrics', '${summary.length} mérőszám'))),
+          const SizedBox(height: 12),
+          if (summary.isEmpty)
+            const _MessageCard(
+              icon: Icons.insights_outlined,
+              title: 'No impact data',
+              message: 'No impact observations have been recorded yet.',
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 620 ? constraints.maxWidth : constraints.maxWidth < 1000 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+                return Wrap(
+                  spacing: 12, runSpacing: 12,
+                  children: [
+                    for (final m in summary)
+                      SizedBox(
+                      width: width,
+                      child: _InfoCard(
+                        title: '${m['label'] ?? m['metric_key']}',
+                        icon: Icons.insights_outlined,
+                        children: [
+                          _DefinitionRow(label: 'Value', value: '${m['numeric_value'] ?? '—'} ${m['unit'] ?? ''}'),
+                          _DefinitionRow(label: 'Baseline', value: '${m['baseline_numeric_value'] ?? '—'} ${m['unit'] ?? ''}'),
+                          _DefinitionRow(label: 'Delta', value: '${m['delta_from_baseline'] ?? '—'} ${m['unit'] ?? ''}'),
+                          _DefinitionRow(label: 'Aggregation', value: '${m['aggregation'] ?? ''}'),
+                          _DefinitionRow(label: 'Latest period', value: '${m['latest_period_end'] ?? '—'}'),
+                          _DefinitionRow(label: 'Observations', value: '${m['observations'] ?? 0}'),
+                        ],
+                      ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          const SizedBox(height: 24),
+          _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: uiBilingual('$evidenceTotal records', '$evidenceTotal rekord'))),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final fieldWidth = constraints.maxWidth < 700 ? constraints.maxWidth : 210.0;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: constraints.maxWidth < 700 ? constraints.maxWidth : 280,
+                    child: TextField(
+                      onChanged: (value) => evidenceQuery = value,
+                      onSubmitted: (_) => applyEvidenceFilters(),
+                      decoration: InputDecoration(labelText: uiLiteral('Search Evidence'), hintText: uiLiteral('Title, file, partner, metric, URL…'), prefixIcon: Icon(Icons.search_rounded)),
+                    ),
+                  ),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<String>(
+                      value: evidenceTypeFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('Type')),
+                      items: const [
+                        DropdownMenuItem(value: '', child: LText('All types')),
+                        DropdownMenuItem(value: 'PDF', child: LText('PDF')),
+                        DropdownMenuItem(value: 'IMAGE', child: LText('Image')),
+                        DropdownMenuItem(value: 'INVOICE', child: LText('Invoice')),
+                        DropdownMenuItem(value: 'CONTRACT', child: LText('Contract')),
+                        DropdownMenuItem(value: 'SCREENSHOT', child: LText('Screenshot')),
+                        DropdownMenuItem(value: 'REPORT', child: LText('Report')),
+                        DropdownMenuItem(value: 'URL', child: LText('URL')),
+                        DropdownMenuItem(value: 'PARTNER_DECLARATION', child: LText('Partner declaration')),
+                        DropdownMenuItem(value: 'OTHER', child: LText('Other')),
+                      ],
+                      onChanged: (v) { if (v != null) setState(() => evidenceTypeFilter = v); },
+                    ),
+                  ),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<String>(
+                      value: evidenceStatusFilter,
+                      decoration: InputDecoration(labelText: uiLiteral('Verification')),
+                      items: const [
+                        DropdownMenuItem(value: '', child: LText('All statuses')),
+                        DropdownMenuItem(value: 'UNVERIFIED', child: LText('Unverified')),
+                        DropdownMenuItem(value: 'VERIFIED', child: LText('Verified')),
+                        DropdownMenuItem(value: 'REJECTED', child: LText('Rejected')),
+                      ],
+                      onChanged: (v) { if (v != null) setState(() => evidenceStatusFilter = v); },
+                    ),
+                  ),
+                  SizedBox(width: fieldWidth, child: TextField(onChanged: (v) => evidencePeriodStart = v, decoration: InputDecoration(labelText: uiLiteral('Period from'), hintText: uiLiteral('YYYY-MM-DD')))),
+                  SizedBox(width: fieldWidth, child: TextField(onChanged: (v) => evidencePeriodEnd = v, decoration: InputDecoration(labelText: uiLiteral('Period to'), hintText: uiLiteral('YYYY-MM-DD')))),
+                  FilledButton.icon(onPressed: applyEvidenceFilters, icon: const Icon(Icons.filter_alt_outlined), label: const LText('Apply')),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          if (!canReadEvidence)
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Evidence access restricted'),
+              message: uiLiteral('Your current role does not include Evidence read access.'),
+            )
+          else if (evidence.isEmpty)
+            const _MessageCard(icon: Icons.verified_outlined, title: 'No Evidence yet', message: 'Upload a PDF, image, invoice, contract, screenshot, URL or partner declaration.')
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 700 ? constraints.maxWidth : constraints.maxWidth < 1100 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final item in evidence)
+                      SizedBox(
+                        width: width,
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  const Icon(Icons.verified_outlined, color: brandGold),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: LText('${item['title']}', style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy))),
+                                ]),
+                                const SizedBox(height: 14),
+                                _DefinitionRow(label: 'Partner', value: '${item['partner_id']}'),
+                                _DefinitionRow(label: 'Type', value: '${item['evidence_type']}'),
+                                _DefinitionRow(label: 'Metric', value: '${item['metric_key'] == '' ? '—' : item['metric_key']}'),
+                                _DefinitionRow(label: 'Period', value: '${item['period_start'] ?? '—'} → ${item['period_end'] ?? '—'}'),
+                                _DefinitionRow(label: 'Verification', value: uiLiteral(_humanize('${item['verification_status']}'))),
+                                _DefinitionRow(label: 'Uploaded by', value: '${item['uploaded_by'] == '' ? '—' : item['uploaded_by']}'),
+                                _DefinitionRow(label: 'Uploaded', value: '${item['created_at'] ?? '—'}'),
+                                _DefinitionRow(label: 'Reports', value: (item['report_ids'] is List && (item['report_ids'] as List).isNotEmpty) ? (item['report_ids'] as List).join(', ') : '—'),
+                                _DefinitionRow(label: 'SHA-256', value: shortHash(item['sha256'])),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    if (item['has_file'] == true)
+                                      OutlinedButton.icon(
+                                        onPressed: () => openBrowserDownload('/api/v1/evidence/${item['id']}/preview'),
+                                        icon: const Icon(Icons.visibility_outlined),
+                                        label: const LText('Preview'),
+                                      ),
+                                    if (item['has_file'] == true)
+                                      OutlinedButton.icon(
+                                        onPressed: () => openBrowserDownload('/api/v1/evidence/${item['id']}/download'),
+                                        icon: const Icon(Icons.download_outlined),
+                                        label: const LText('Download'),
+                                      ),
+                                    if (item['has_file'] == true)
+                                      OutlinedButton.icon(
+                                        onPressed: () => checkEvidenceIntegrity(item),
+                                        icon: const Icon(Icons.security_outlined),
+                                        label: const LText('Integrity'),
+                                      ),
+                                    if ('${item['source_url'] ?? ''}'.isNotEmpty)
+                                      OutlinedButton.icon(
+                                        onPressed: () => openBrowserDownload('${item['source_url']}'),
+                                        icon: const Icon(Icons.open_in_new_rounded),
+                                        label: const LText('Open URL'),
+                                      ),
+                                    if (canWriteEvidence && item['verification_status'] != 'VERIFIED')
+                                      FilledButton.icon(
+                                        onPressed: () => verifyEvidence(item),
+                                        icon: const Icon(Icons.fact_check_outlined),
+                                        label: const LText('Verify'),
+                                      ),
+                                    if (canWriteImpact && item['verification_status'] == 'VERIFIED' && '${item['metric_key'] ?? ''}'.isNotEmpty)
+                                      FilledButton.icon(
+                                        onPressed: () => recordVerifiedValue(item),
+                                        icon: const Icon(Icons.add_chart_rounded),
+                                        label: const LText('Verified metric'),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          if (evidenceTotal > 0) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: LText(
+                    uiBilingual(
+                      'Showing ${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} of $evidenceTotal',
+                      '${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} / $evidenceTotal megjelenítve',
+                    ),
+                    style: const TextStyle(color: brandTextSoft, fontSize: 11.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                OutlinedButton(
+                  onPressed: evidenceOffset > 0 ? () async { evidenceOffset = (evidenceOffset - evidenceLimit).clamp(0, evidenceTotal).toInt(); await load(); } : null,
+                  child: const LText('Previous'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: evidenceOffset + evidence.length < evidenceTotal ? () async { evidenceOffset += evidenceLimit; await load(); } : null,
+                  child: const LText('Next'),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 24),
+          _SectionHeader(title: 'Reports', subtitle: 'Partner, multi-partner and HIMATE Global PDFs generated from frozen, auditable snapshots.', trailing: _MiniCounter(label: uiBilingual('${reports.length} reports', '${reports.length} jelentés'))),
+          const SizedBox(height: 12),
+          if (!canReadReports)
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Report access restricted'),
+              message: uiLiteral('Your current role does not include Reports read access.'),
+            )
+          else if (reports.isEmpty)
+            const _MessageCard(icon: Icons.picture_as_pdf_outlined, title: 'No reports yet', message: 'Generate a report to freeze impact metrics, data sources and Evidence references into a reproducible snapshot.')
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 700 ? constraints.maxWidth : constraints.maxWidth < 1100 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final item in reports)
+                      SizedBox(
+                        width: width,
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  const Icon(Icons.picture_as_pdf_outlined, color: brandGold),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: LText('${item['title']}', style: const TextStyle(fontWeight: FontWeight.w700, color: brandNavy))),
+                                ]),
+                                const SizedBox(height: 14),
+                                _DefinitionRow(label: 'Report ID', value: '${item['id']}'),
+                                _DefinitionRow(label: 'Type', value: '${item['report_type']}'),
+                                _DefinitionRow(label: 'Period', value: '${item['period_start']} → ${item['period_end']}'),
+                                _DefinitionRow(label: 'Status', value: uiLiteral(_humanize('${item['status']}'))),
+                                _DefinitionRow(label: 'Template', value: '${item['template_version'] ?? '—'}'),
+                                _DefinitionRow(label: 'Snapshot', value: shortHash(item['snapshot_sha256'])),
+                                _DefinitionRow(
+                                  label: 'Evidence',
+                                  value: uiBilingual(
+                                    '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} linked',
+                                    '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} kapcsolva',
+                                  ),
+                                ),
+                                _DefinitionRow(label: 'PDF SHA-256', value: shortHash(item['pdf_sha256'])),
+                                if ('${item['last_error'] ?? ''}'.isNotEmpty)
+                                  _DefinitionRow(label: 'Error', value: '${item['last_error']}'),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    if (item['download_ready'] == true)
+                                      FilledButton.icon(
+                                        onPressed: () => openBrowserDownload('/api/v1/reports/${item['id']}/download'),
+                                        icon: const Icon(Icons.download_outlined),
+                                        label: const LText('Download PDF'),
+                                      ),
+                                    if (canWriteReports && item['download_ready'] == true)
+                                      OutlinedButton.icon(
+                                        onPressed: () => regenerateReport(item),
+                                        icon: const Icon(Icons.replay_outlined),
+                                        label: const LText('Regenerate snapshot'),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          const SizedBox(height: 24),
+          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions reused by manual entry, connectors and verified-document workflows.', trailing: _MiniCounter(label: uiBilingual('${definitions.length} definitions', '${definitions.length} definíció'))),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 620 ? constraints.maxWidth : constraints.maxWidth < 1000 ? (constraints.maxWidth - 12) / 2 : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12, runSpacing: 12,
+                children: [
+                  for (final d in definitions)
+                    SizedBox(
+                      width: width,
+                      child: _InfoCard(
+                        title: '${d['label']}',
+                        icon: Icons.stacked_line_chart_rounded,
+                        children: [
+                          _DefinitionRow(label: 'Key', value: '${d['metric_key']}'),
+                          _DefinitionRow(label: 'Unit', value: '${d['unit']}'),
+                          _DefinitionRow(label: 'Aggregation', value: '${d['aggregation']}'),
+                          _DefinitionRow(label: 'Scope', value: '${d['scope']}'),
+                          _DefinitionRow(label: 'Status', value: uiLiteral(d['active'] == true ? 'Active' : 'Inactive')),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SystemPage extends StatefulWidget {
+  const SystemPage({required this.api, super.key});
+  final Api api;
+
+  @override
+  State<SystemPage> createState() => _SystemPageState();
+}
+
+class _SystemPageState extends State<SystemPage> {
+  late Future<Map<String, dynamic>> _future;
+
+  Api get api => widget.api;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<Map<String, dynamic>> _load({bool force = false}) =>
+      api.get(
+        centralSystemInitialPath(),
+        force: force,
+        maxAge: const Duration(seconds: 15),
+      );
+
+  Future<void> _openDeveloperDiagnostics() async {
+    try {
+      final responses = await Future.wait([
+        api.get('/api/v1/system-health/snapshot', force: true, maxAge: const Duration(seconds: 5)),
+        api.get('/api/v1/audit/events?outcome=FAILED&limit=20&offset=0', force: true, maxAge: const Duration(seconds: 5)),
+      ]);
+      if (!mounted) return;
+      final health = responses[0];
+      final failures = items(responses[1]);
+      final services = items(<String, dynamic>{'items': health['services']});
+      final unhealthy = services.where((service) {
+        final status = '${service['status'] ?? 'UNKNOWN'}'.toUpperCase();
+        return status != 'OK' && status != 'HEALTHY' && status != 'LIVE' && status != 'READY';
+      }).toList();
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => BrandDialog(
+          title: 'Developer diagnostics',
+          subtitle: 'Current degraded services and the latest failed protected operations.',
+          icon: Icons.bug_report_outlined,
+          width: 820,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _RuleStrip(items: [
+                _RuleItem(Icons.monitor_heart_outlined, 'Control plane', '${health['status'] ?? 'UNKNOWN'}'),
+                _RuleItem(Icons.warning_amber_rounded, 'Degraded services', '${unhealthy.length}'),
+                _RuleItem(Icons.error_outline_rounded, 'Recent failed operations', '${failures.length}'),
+              ]),
+              const SizedBox(height: 16),
+              const _DialogSectionLabel('DEGRADED SERVICES'),
+              const SizedBox(height: 8),
+              if (unhealthy.isEmpty)
+                const LText('No degraded service is present in the current health snapshot.')
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final service in unhealthy)
+                      Chip(
+                        avatar: const Icon(Icons.warning_amber_rounded, size: 16),
+                        label: LText('${_humanize('${service['name'] ?? 'service'}')} · ${service['status'] ?? 'UNKNOWN'}'),
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 18),
+              const _DialogSectionLabel('LATEST FAILED OPERATIONS'),
+              const SizedBox(height: 8),
+              if (failures.isEmpty)
+                const LText('No failed protected operation was recorded in the latest audit window.')
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: failures.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final event = failures[index];
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.error_outline_rounded, color: brandDanger),
+                        title: LText('${event['action'] ?? event['method'] ?? 'FAILED'} · HTTP ${event['status'] ?? '—'}'),
+                        subtitle: LText(
+                          '${event['path'] ?? '—'} · correlation ${event['correlation_id'] ?? event['request_id'] ?? '—'}',
+                          style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+          primaryLabel: 'Close',
+          onPrimary: () => Navigator.pop(dialogContext),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: LText(uiBilingual('Developer diagnostics unavailable: $e', 'Fejlesztői diagnosztika nem érhető el: $e')),
+          backgroundColor: brandDanger,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _future,
+      builder: (context, snapshot) {
+        final provisional = snapshot.data == null;
+        final model = snapshot.data ?? <String, dynamic>{};
+        final access = model['access'] is Map
+            ? Map<String,dynamic>.from(model['access'] as Map)
+            : <String,dynamic>{};
+        final meta = model['meta'] is Map
+            ? Map<String,dynamic>.from(model['meta'] as Map)
+            : <String,dynamic>{};
+        final kpis = model['kpis'] is Map
+            ? Map<String,dynamic>.from(model['kpis'] as Map)
+            : <String,dynamic>{};
+        final health = model['health'] is Map
+            ? Map<String,dynamic>.from(model['health'] as Map)
+            : <String,dynamic>{};
+        final provisioning = items(<String,dynamic>{'items': model['provisioning']});
+        final environments = items(<String,dynamic>{'items': model['environments']});
+        final recentEvents = items(<String,dynamic>{'items': model['events']});
+        final backupResponse = model['backups'] is Map
+            ? Map<String,dynamic>.from(model['backups'] as Map)
+            : <String,dynamic>{};
+        final backupSummary = items(backupResponse);
+        final backupProvider = '${backupResponse['provider'] ?? 'unknown'}';
+        final services = items(<String,dynamic>{'items': health['services']});
+        final partners = items(<String,dynamic>{'items': health['partners']});
+        final canHealth = provisional || access['health'] == true;
+        final canProvisioning = provisional || access['provisioning'] == true;
+        final canEnvironments = provisional || access['environments'] == true;
+        final canEnvironmentsWrite = access['environments_write'] == true;
+        final canEnvironmentsApprove = access['environments_approve'] == true;
+        final canBackups = provisional || access['backups'] == true;
+        final canBackupsApprove = access['backups_approve'] == true;
+        final canAudit = access['audit'] == true;
+        final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
+        final unavailable = meta['unavailable'] is List
+            ? (meta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
+            : <String>[];
+        final backupPartnerIds = <String>{
+          for (final p in partners)
+            if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty &&
+                '${p['database_health'] ?? ''}' == 'OK' &&
+                ('${p['storage_health'] ?? ''}' == 'READY' || '${p['storage_health'] ?? ''}' == 'OK'))
+              '${p['partner_id']}',
+          for (final e in environments)
+            if ('${e['partner_id'] ?? ''}'.trim().isNotEmpty)
+              '${e['partner_id']}',
+          for (final b in backupSummary)
+            if ('${b['partner_id'] ?? ''}'.trim().isNotEmpty)
+              '${b['partner_id']}',
+        }.toList()..sort();
+        final overall = '${health['status'] ?? 'UNKNOWN'}';
+        bool isHealthyStatus(dynamic value) {
+          final status = '${value ?? 'UNKNOWN'}'.toUpperCase();
+          return const {'OK', 'HEALTHY', 'LIVE', 'READY', 'ACTIVE', 'DEPLOYED'}.contains(status);
+        }
+        final healthyServices = (kpis['healthy_services'] as num?)?.toInt() ??
+            services.where((service) => isHealthyStatus(service['status'])).length;
+        final serviceCount = (kpis['service_count'] as num?)?.toInt() ?? services.length;
+        final degradedServices = serviceCount - healthyServices;
+        final degradedPartners = (kpis['degraded_partners'] as num?)?.toInt() ??
+            partners.where((partner) => !isHealthyStatus(partner['overall_status'])).length;
+        final issueCount = (kpis['issues'] as num?)?.toInt() ?? (degradedServices + degradedPartners);
+        final deployedEnvironments = (kpis['deployed_environments'] as num?)?.toInt() ?? 0;
+        final environmentCount = (kpis['environment_count'] as num?)?.toInt() ?? environments.length;
+        final partnerSystems = (kpis['partner_systems'] as num?)?.toInt() ?? partners.length;
+
+        return Content(
+          showHeader: false,
+          title: 'System & Operations',
+          subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (provisional) ...[
+                _MessageCard(
+                  icon: snapshot.hasError ? Icons.cloud_off_outlined : Icons.sync_rounded,
+                  title: uiLiteral(snapshot.hasError ? 'Operations data is temporarily unavailable' : 'Operations data is loading'),
+                  message: snapshot.hasError
+                      ? '${snapshot.error}'
+                      : uiLiteral('The complete System & Operations layout remains visible while the latest health snapshot is prepared.'),
+                ),
+                const SizedBox(height: 14),
+              ],
+              if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
+                _MessageCard(
+                  icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
+                  title: uiLiteral(status == 'stale' ? 'Operations data is temporarily stale' : 'Operations data is partially available'),
+                  message: '${uiLiteral('Unavailable services')}: ${unavailable.join(', ')}',
+                ),
+                const SizedBox(height: 14),
+              ],
+              ResponsiveKpiGrid(children: [
+                Kpi(
+                  label: 'System status',
+                  value: canHealth ? overall : '—',
+                  note: canHealth
+                      ? uiBilingual('$healthyServices / $serviceCount services healthy', '$healthyServices / $serviceCount szolgáltatás egészséges')
+                      : uiLiteral('Permission required'),
+                  icon: Icons.dns_outlined,
+                  accent: issueCount == 0 ? brandSuccess : brandWarning,
+                ),
+                Kpi(
+                  label: 'Partner systems',
+                  value: canHealth ? '$partnerSystems' : '—',
+                  note: canHealth ? 'Partner health aggregates' : uiLiteral('Permission required'),
+                  icon: Icons.hub_outlined,
+                  accent: brandSteel,
+                ),
+                Kpi(
+                  label: 'Deployments',
+                  value: canEnvironments ? '$deployedEnvironments' : '—',
+                  note: canEnvironments
+                      ? uiBilingual('$environmentCount managed environments', '$environmentCount kezelt környezet')
+                      : uiLiteral('Permission required'),
+                  icon: Icons.inventory_2_outlined,
+                  accent: brandSuccess,
+                ),
+                Kpi(
+                  label: 'Issues',
+                  value: canHealth ? '$issueCount' : '—',
+                  note: canHealth
+                      ? uiBilingual('$degradedServices services · $degradedPartners partners', '$degradedServices szolgáltatás · $degradedPartners partner')
+                      : uiLiteral('Permission required'),
+                  icon: Icons.warning_amber_rounded,
+                  accent: issueCount == 0 ? brandSuccess : brandDanger,
+                ),
+              ]),
+              const SizedBox(height: 18),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final children = <Widget>[
+                    if (canHealth)
+                      _SystemCurrentHealthCard(services: services, overall: overall),
+                    _SystemInfrastructureSummary(
+                      environments: environments,
+                      backups: backupSummary,
+                      partnerCount: partners.length,
+                      canEnvironments: canEnvironments,
+                      canBackups: canBackups,
+                      canHealth: canHealth,
+                    ),
+                  ];
+                  if (constraints.maxWidth < 940 || children.length == 1) {
+                    return Column(
+                      children: [
+                        for (var index = 0; index < children.length; index++) ...[
+                          children[index],
+                          if (index < children.length - 1) const SizedBox(height: 14),
+                        ],
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 7, child: children[0]),
+                      const SizedBox(width: 14),
+                      Expanded(flex: 4, child: children[1]),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 18),
+              if (canHealth) ...[
+                _SectionHeader(
+                  title: 'Main service status',
+                  subtitle: 'Current authoritative status of critical microservices.',
+                  trailing: canAudit
+                      ? OutlinedButton.icon(
+                          onPressed: _openDeveloperDiagnostics,
+                          icon: const Icon(Icons.code_rounded, size: 17),
+                          label: const LText('Developer diagnostics'),
+                        )
+                      : _MiniCounter(label: uiBilingual('$serviceCount services', '$serviceCount szolgáltatás')),
+                ),
+                const SizedBox(height: 12),
+                if (services.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.dns_outlined,
+                    title: 'No service health data',
+                    message: 'No service-health snapshot is available yet.',
+                  )
+                else
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final s in services)
+                        ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
+                    ],
+                  ),
+                _SectionHeader(
+                  title: 'Partner Health',
+                  subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
+                  trailing: _MiniCounter(label: uiBilingual('${partners.length} partners', '${partners.length} partner')),
+                ),
+                const SizedBox(height: 12),
+                if (partners.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.monitor_heart_outlined,
+                    title: 'No partner health data',
+                    message: 'No partner health aggregate is available in the current snapshot.',
+                  )
+                else
+                  LayoutBuilder(
+                    builder: (context, c) {
+                      final width = c.maxWidth < 620
+                          ? c.maxWidth
+                          : c.maxWidth < 1000
+                              ? (c.maxWidth - 12) / 2
+                              : (c.maxWidth - 24) / 3;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final p in partners)
+                            SizedBox(
+                              width: width,
+                              child: _InfoCard(
+                                title: '${p['partner_id']}',
+                                icon: Icons.monitor_heart_outlined,
+                                children: [
+                                  _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Partner DB', value: '${p['database_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Storage', value: '${p['storage_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Hostname / runtime', value: '${p['hostname_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Data sync', value: '${p['sync_status'] ?? 'NEVER'}'),
+                                  _DefinitionRow(label: 'Last sync', value: '${p['last_sync_at'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                const SizedBox(height: 24),
+              ],
+              if (canProvisioning) ...[
+                _SectionHeader(
+                  title: 'Provisioning Engine',
+                  subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
+                  trailing: _MiniCounter(label: uiBilingual('${provisioning.length} jobs', '${provisioning.length} feladat')),
+                ),
+                const SizedBox(height: 12),
+                if (provisioning.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.precision_manufacturing_outlined,
+                    title: 'No provisioning jobs',
+                    message: 'No provisioning job is present in the current operations snapshot.',
+                  )
+                else
+                  LayoutBuilder(
+                    builder: (context, c) {
+                      final width = c.maxWidth < 620
+                          ? c.maxWidth
+                          : c.maxWidth < 1000
+                              ? (c.maxWidth - 12) / 2
+                              : (c.maxWidth - 24) / 3;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final j in provisioning)
+                            SizedBox(
+                              width: width,
+                              child: _InfoCard(
+                                title: '${j['partner_id']}',
+                                icon: Icons.precision_manufacturing_outlined,
+                                children: [
+                                  _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
+                                  _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                const SizedBox(height: 24),
+              ],
+              if (canEnvironments) ...[
+                DomainsDeploymentsPanel(
+                  api: api,
+                  initialEnvironments: environments,
+                  canWrite: canEnvironmentsWrite,
+                  canApprove: canEnvironmentsApprove,
+                ),
+                const SizedBox(height: 24),
+              ],
+              if (canBackups) ...[
+                BackupsPanel(
+                  api: api,
+                  initialSummary: backupSummary,
+                  partnerIds: backupPartnerIds,
+                  initialProvider: backupProvider,
+                  canMutate: canBackupsApprove,
+                ),
+                const SizedBox(height: 24),
+              ],
+              if (canAudit) ...[
+                _SectionHeader(
+                  title: 'Recent protected events',
+                  subtitle: 'Latest authenticated operations from the immutable central audit trail.',
+                  trailing: _MiniCounter(label: uiBilingual('${recentEvents.length} events', '${recentEvents.length} esemény')),
+                ),
+                const SizedBox(height: 12),
+                if (recentEvents.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.event_note_outlined,
+                    title: 'No recent protected events',
+                    message: 'The current audit window does not contain protected operations.',
+                  )
+                else
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Column(
+                        children: [
+                          for (var index = 0; index < recentEvents.length; index++) ...[
+                            Builder(
+                              builder: (context) {
+                                final event = recentEvents[index];
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 34,
+                                        height: 34,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF4F7FB),
+                                          borderRadius: BorderRadius.circular(9),
+                                        ),
+                                        child: Icon(
+                                          '${event['outcome'] ?? ''}'.toUpperCase() == 'SUCCESS'
+                                              ? Icons.check_circle_outline_rounded
+                                              : Icons.shield_outlined,
+                                          color: '${event['outcome'] ?? ''}'.toUpperCase() == 'SUCCESS'
+                                              ? brandSuccess
+                                              : brandSteel,
+                                          size: 17,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            LText(
+                                              '${event['action'] ?? event['method'] ?? 'EVENT'}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            LText(
+                                              '${event['method'] ?? '—'} · ${event['path'] ?? '—'}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _StatusPill(label: '${event['outcome'] ?? event['status'] ?? 'UNKNOWN'}'),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            if (index < recentEvents.length - 1) const Divider(height: 1),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 24),
+              ],
+              LayoutBuilder(
+                builder: (context, c) {
+                  const architecture = _ArchitectureCard();
+                  const controls = _OperationsControlsCard();
+                  if (c.maxWidth < 900) {
+                    return const Column(children: [architecture, SizedBox(height: 14), controls]);
+                  }
+                  return const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: architecture),
+                      SizedBox(width: 14),
+                      Expanded(child: controls),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+
+
+class _SystemCurrentHealthCard extends StatelessWidget {
+  const _SystemCurrentHealthCard({required this.services, required this.overall});
+  final List<Map<String, dynamic>> services;
+  final String overall;
+
+  bool healthy(dynamic raw) {
+    final status = '${raw ?? ''}'.toUpperCase();
+    return const {'OK','HEALTHY','LIVE','READY','ACTIVE','DEPLOYED'}.contains(status);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final good = services.where((service) => healthy(service['status'])).length;
+    final ratio = services.isEmpty ? 0.0 : good / services.length;
+    return SizedBox(
+      height: 255,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children:[
+                const Icon(Icons.bar_chart_rounded,color:brandSteel,size:21),
+                const SizedBox(width:9),
+                Expanded(child:LText('System health overview',style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
+                _StatusPill(label: overall),
+              ]),
+              const SizedBox(height:5),
+              const LText('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.',style:TextStyle(color:brandTextSoft,fontSize:9.5)),
+              const Spacer(),
+              LinearProgressIndicator(
+                value: ratio,
+                minHeight: 12,
+                borderRadius: BorderRadius.circular(99),
+                color: ratio == 1 ? brandSuccess : brandWarning,
+                backgroundColor: brandMist,
+              ),
+              const SizedBox(height:10),
+              LText(
+                uiBilingual(
+                  '$good / ${services.length} services healthy',
+                  '$good / ${services.length} szolgáltatás egészséges',
+                ),
+                style:const TextStyle(color:brandNavy,fontSize:11,fontWeight:FontWeight.w700),
+              ),
+              const SizedBox(height:14),
+              Wrap(
+                spacing:7,
+                runSpacing:7,
+                children:[
+                  for(final service in services.take(10))
+                    Container(
+                      padding:const EdgeInsets.symmetric(horizontal:9,vertical:6),
+                      decoration:BoxDecoration(color:(healthy(service['status'])?brandSuccess:brandWarning).withOpacity(.08),borderRadius:BorderRadius.circular(99)),
+                      child:Row(mainAxisSize:MainAxisSize.min,children:[
+                        Container(width:7,height:7,decoration:BoxDecoration(color:healthy(service['status'])?brandSuccess:brandWarning,shape:BoxShape.circle)),
+                        const SizedBox(width:6),
+                        LText(_humanize('${service['name'] ?? 'service'}'),style:const TextStyle(color:brandNavy,fontSize:8.5,fontWeight:FontWeight.w600)),
+                      ]),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SystemInfrastructureSummary extends StatelessWidget {
+  const _SystemInfrastructureSummary({
+    required this.environments,
+    required this.backups,
+    required this.partnerCount,
+    required this.canEnvironments,
+    required this.canBackups,
+    required this.canHealth,
+  });
+  final List<Map<String,dynamic>> environments;
+  final List<Map<String,dynamic>> backups;
+  final int partnerCount;
+  final bool canEnvironments;
+  final bool canBackups;
+  final bool canHealth;
+
+  @override
+  Widget build(BuildContext context) {
+    final production = environments.where((e)=>'${e['kind']}'=='PRODUCTION').length;
+    final live = environments.where((e)=>'${e['environment_status']}'=='LIVE').length;
+    return SizedBox(
+      height:255,
+      child:Card(
+        child:Padding(
+          padding:const EdgeInsets.all(18),
+          child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            LText('Infrastructure status',style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+            const SizedBox(height:12),
+            _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
+            _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
+            _DefinitionRow(label:'Live environments',value:canEnvironments?'$live':'—'),
+            _DefinitionRow(label:'Partner systems',value:canHealth?'$partnerCount':'—'),
+            _DefinitionRow(label:'Backup scopes',value:canBackups?'${backups.length}':'—'),
+            const Spacer(),
+            Row(children:[
+              Icon(
+                canEnvironments || canBackups || canHealth ? Icons.verified_outlined : Icons.lock_outline_rounded,
+                color: canEnvironments || canBackups || canHealth ? brandSuccess : brandTextSoft,
+                size:17,
+              ),
+              const SizedBox(width:7),
+              Expanded(
+                child:LText(
+                  canEnvironments || canBackups || canHealth
+                      ? uiLiteral('All visible values come from authoritative operations endpoints.')
+                      : uiLiteral('Permission required'),
+                  style:const TextStyle(color:brandTextSoft,fontSize:9.5),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class AdministrationPage extends StatefulWidget {
+  const AdministrationPage({required this.api, required this.user, this.onBack, super.key});
+  final Api api;
+  final Map<String, dynamic> user;
+  final VoidCallback? onBack;
+
+  @override
+  State<AdministrationPage> createState() => _AdministrationPageState();
+}
+
+class _AdministrationPageState extends State<AdministrationPage> {
+  final searchController = TextEditingController();
+  Timer? _searchTimer;
+  List<Map<String, dynamic>> events = <Map<String, dynamic>>[];
+  bool loading = false;
+  String? error;
+  String resource = 'ALL';
+  String method = 'ALL';
+  String outcome = 'ALL';
+  int total = 0;
+  int offset = 0;
+  final int pageSize = 50;
+  int _generation = 0;
+
+  static const resources = <String>[
+    'ALL',
+    'backups',
+    'partners',
+    'billing',
+    'catalog',
+    'provisioning',
+    'environments',
+    'connectors',
+    'impact',
+    'evidence',
+    'reports',
+    'cms',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    load(reset: true);
+  }
+
+  @override
+  void dispose() {
+    _searchTimer?.cancel();
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Uri _uri() {
+    final params = <String, String>{
+      'limit': '$pageSize',
+      'offset': '$offset',
+    };
+    final q = searchController.text.trim();
+    if (q.isNotEmpty) params['q'] = q;
+    if (resource != 'ALL') params['resource'] = resource;
+    if (method != 'ALL') params['method'] = method;
+    if (outcome != 'ALL') params['outcome'] = outcome;
+    return Uri(path: '/api/v1/audit/events', queryParameters: params);
+  }
+
+  Future<void> load({bool reset = false}) async {
+    if (reset) offset = 0;
+    final generation = ++_generation;
+    if (mounted) setState(() => error = null);
+    try {
+      final response = await widget.api.get(_uri().toString());
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        events = items(response);
+        total = (response['total'] as num?)?.toInt() ?? events.length;
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        error = e.toString();
+        loading = false;
+      });
+    }
+  }
+
+  void searchChanged(String _) {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 280), () => load(reset: true));
+  }
+
+  void setFilter(VoidCallback update) {
+    setState(update);
+    load(reset: true);
+  }
+
+  String _timestamp(dynamic value) {
+    final raw = value?.toString() ?? '';
+    final parsed = DateTime.tryParse(raw)?.toLocal();
+    if (parsed == null) return raw.isEmpty ? '—' : raw;
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${parsed.year}-${two(parsed.month)}-${two(parsed.day)} ${two(parsed.hour)}:${two(parsed.minute)}:${two(parsed.second)}';
+  }
+
+  Color _outcomeColor(String value) {
+    switch (value.toUpperCase()) {
+      case 'SUCCESS':
+        return brandSuccess;
+      case 'FAILED':
+        return brandDanger;
+      default:
+        return brandSteel;
+    }
+  }
+
+  Widget _auditEventCard(Map<String, dynamic> event) {
+    final eventOutcome = '${event['outcome'] ?? 'UNKNOWN'}';
+    final tone = _outcomeColor(eventOutcome);
+    final actorName = '${event['actor_name'] ?? ''}'.trim();
+    final actorId = '${event['actor_id'] ?? ''}'.trim();
+    final partnerId = '${event['partner_id'] ?? ''}'.trim();
+    final requestId = '${event['request_id'] ?? ''}'.trim();
+    final path = '${event['path'] ?? ''}'.trim();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(17),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(color: tone.withOpacity(.09), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(eventOutcome == 'SUCCESS' ? Icons.check_circle_outline_rounded : Icons.error_outline_rounded, color: tone, size: 20),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 7,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _StatusPill(label: '${event['method'] ?? 'UNKNOWN'}'),
+                          _StatusPill(label: eventOutcome),
+                          LText(
+                            _humanize('${event['resource'] ?? 'api'}'),
+                            style: const TextStyle(color: brandNavy, fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      SelectableText(
+                        path.isEmpty ? '—' : path,
+                        style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                LText(_timestamp(event['created_at']), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 7),
+            _DefinitionRow(label: 'Actor', value: actorName.isNotEmpty ? '$actorName · $actorId' : (actorId.isEmpty ? '—' : actorId)),
+            if (partnerId.isNotEmpty) _DefinitionRow(label: 'Partner', value: partnerId),
+            _DefinitionRow(label: 'HTTP status', value: '${event['status'] ?? '—'}'),
+            _DefinitionRow(label: 'Duration', value: '${event['duration_ms'] ?? 0} ms'),
+            if (requestId.isNotEmpty) _DefinitionRow(label: 'Request ID', value: requestId),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentPage = offset ~/ pageSize + 1;
+    final pageCount = total == 0 ? 1 : (total + pageSize - 1) ~/ pageSize;
+    final roles = widget.user['roles'] is List
+        ? (widget.user['roles'] as List).map((e) => e.toString()).join(', ')
+        : '${widget.user['roles'] ?? 'platform_admin'}';
+
+    return Content(
+      eyebrow: 'ADMINISTRATION',
+      title: 'Administration',
+      subtitle: 'Central audit history, administrator lifecycle, roles and backend-enforced permissions across the HIMATE control plane.',
+      actions: [
+        if (widget.onBack != null)
+          OutlinedButton.icon(
+            onPressed: widget.onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const LText('Back'),
+          ),
+        OutlinedButton.icon(
+          onPressed: loading ? null : () => load(),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const LText('Refresh'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _RuleStrip(items: [
+            const _RuleItem(Icons.lock_clock_outlined, 'Capture', 'Mutating admin API calls'),
+            const _RuleItem(Icons.speed_outlined, 'Write path', 'Asynchronous queue'),
+            _RuleItem(Icons.person_outline_rounded, 'Current actor', '${widget.user['name'] ?? 'Administrator'}'),
+            _RuleItem(Icons.admin_panel_settings_outlined, 'Role', roles),
+          ]),
+          const SizedBox(height: 22),
+          _SectionHeader(
+            title: 'Administrative Event Stream',
+            subtitle: 'Search by actor, path, request ID, resource or partner. Filters are server-side and pagination keeps the audit page fast as history grows.',
+            trailing: _MiniCounter(label: '$total matched'),
+          ),
+          const SizedBox(height: 12),
+          _FilterSurface(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final search = TextField(
+                  controller: searchController,
+                  onChanged: searchChanged,
+                  decoration: InputDecoration(
+                    labelText: uiLiteral('Search audit history'),
+                    hintText: uiLiteral('Actor, request ID, resource, path or partner'),
+                    prefixIcon: Icon(Icons.search_rounded),
+                  ),
+                );
+                final resourceFilter = DropdownButtonFormField<String>(
+                  value: resource,
+                  decoration: InputDecoration(labelText: uiLiteral('Resource')),
+                  items: [
+                    for (final value in resources)
+                      DropdownMenuItem(value: value, child: LText(value == 'ALL' ? 'All resources' : _humanize(value))),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setFilter(() => resource = value);
+                  },
+                );
+                final methodFilter = DropdownButtonFormField<String>(
+                  value: method,
+                  decoration: InputDecoration(labelText: uiLiteral('Method')),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: LText('All methods')),
+                    DropdownMenuItem(value: 'POST', child: LText('POST')),
+                    DropdownMenuItem(value: 'PATCH', child: LText('PATCH')),
+                    DropdownMenuItem(value: 'PUT', child: LText('PUT')),
+                    DropdownMenuItem(value: 'DELETE', child: LText('DELETE')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setFilter(() => method = value);
+                  },
+                );
+                final outcomeFilter = DropdownButtonFormField<String>(
+                  value: outcome,
+                  decoration: InputDecoration(labelText: uiLiteral('Outcome')),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: LText('All outcomes')),
+                    DropdownMenuItem(value: 'SUCCESS', child: LText('Success')),
+                    DropdownMenuItem(value: 'FAILED', child: LText('Failed')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setFilter(() => outcome = value);
+                  },
+                );
+
+                if (constraints.maxWidth < 720) {
+                  return Column(
+                    children: [
+                      search,
+                      const SizedBox(height: 10),
+                      resourceFilter,
+                      const SizedBox(height: 10),
+                      ResponsiveFieldPair(first: methodFilter, second: outcomeFilter),
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    Row(children: [Expanded(flex: 2, child: search), const SizedBox(width: 10), Expanded(child: resourceFilter)]),
+                    const SizedBox(height: 10),
+                    Row(children: [Expanded(child: methodFilter), const SizedBox(width: 10), Expanded(child: outcomeFilter)]),
+                  ],
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (error != null)
+            _MessageCard(
+              icon: Icons.error_outline_rounded,
+              title: 'Audit history could not be loaded',
+              message: error!,
+            )
+          else if (events.isEmpty)
+            const _MessageCard(
+              icon: Icons.history_toggle_off_rounded,
+              title: 'No matching audit events',
+              message: 'Mutating administration actions will appear here automatically. Adjust the filters if you are looking for earlier activity.',
+            )
+          else ...[
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth < 780
+                    ? constraints.maxWidth
+                    : constraints.maxWidth < 1240
+                        ? (constraints.maxWidth - 12) / 2
+                        : (constraints.maxWidth - 24) / 3;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final event in events)
+                      SizedBox(width: width, child: _auditEventCard(event)),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            _FilterSurface(
+              child: Row(
+                children: [
+                  _MiniCounter(label: 'Page $currentPage of $pageCount'),
+                  const Spacer(),
+                  OutlinedButton.icon(
+                    onPressed: offset > 0 && !loading
+                        ? () {
+                            offset = (offset - pageSize).clamp(0, total);
+                            load();
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    label: const LText('Previous'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: offset + events.length < total && !loading
+                        ? () {
+                            offset += pageSize;
+                            load();
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    label: const LText('Next'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (loading && events.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(minHeight: 2, color: brandGold, backgroundColor: brandMist),
+          ],
+          const SizedBox(height: 28),
+          PlatformSecretsPanel(api: widget.api, currentUser: widget.user),
+          const SizedBox(height: 28),
+          CompanySettingsPanel(api: widget.api, currentUser: widget.user),
+          const SizedBox(height: 28),
+          AccessControlPanel(api: widget.api, currentUser: widget.user),
+        ],
+      ),
+    );
+  }
+}
+
+String _humanize(String value) {
+  return value
+      .toLowerCase()
+      .split('_')
+      .where((e) => e.isNotEmpty)
+      .map((e) => e[0].toUpperCase() + e.substring(1))
+      .join(' ');
+}
+
+String _localizedPartnerCategory(Map<String, dynamic> partner) {
+  final key = HimateI18n.activeLocale == 'hu_HU' ? 'category_name_hu' : 'category_name_en';
+  final localized = '${partner[key] ?? ''}'.trim();
+  if (localized.isNotEmpty) return localized;
+  return '${partner['category_name'] ?? ''}'.trim();
+}
+
+class ResponsiveFieldPair extends StatelessWidget {
+  const ResponsiveFieldPair({
+    required this.first,
+    required this.second,
+    this.breakpoint = 620,
+    this.gap = 12,
+    super.key,
+  });
+
+  final Widget first;
+  final Widget second;
+  final double breakpoint;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            children: [
+              SizedBox(width: double.infinity, child: first),
+              SizedBox(height: gap),
+              SizedBox(width: double.infinity, child: second),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: first),
+            SizedBox(width: gap),
+            Expanded(child: second),
+          ],
+        );
+      },
+    );
+  }
+}
+
+
+class ResponsiveActionBar extends StatelessWidget {
+  const ResponsiveActionBar({
+    required this.actions,
+    this.leading,
+    this.breakpoint = 620,
+    this.gap = 10,
+    super.key,
+  });
+
+  final Widget? leading;
+  final List<Widget> actions;
+  final double breakpoint;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (leading != null) ...[
+                leading!,
+                SizedBox(height: gap),
+              ],
+              for (var i = 0; i < actions.length; i++) ...[
+                SizedBox(width: double.infinity, child: actions[i]),
+                if (i < actions.length - 1) SizedBox(height: gap),
+              ],
+            ],
+          );
+        }
+        return Row(
+          children: [
+            if (leading != null) Expanded(child: leading!),
+            if (leading != null && actions.isNotEmpty) SizedBox(width: gap),
+            if (actions.isNotEmpty)
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: actions,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+
+class BrandDialog extends StatelessWidget {
+  const BrandDialog({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.child,
+    required this.primaryLabel,
+    required this.onPrimary,
+    this.width = 620,
+    this.dismissEnabled = true,
+    this.onDismiss,
+    super.key,
+  });
+
+  final String title, subtitle, primaryLabel;
+  final IconData icon;
+  final Widget child;
+  final VoidCallback onPrimary;
+  final double width;
+  final bool dismissEnabled;
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final mediaPhone = viewport.width < 520;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: mediaPhone ? 10 : 20,
+        vertical: mediaPhone ? 12 : 24,
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: width,
+          maxHeight: viewport.height * (mediaPhone ? .94 : .88),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 520;
+
+            final header = Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                compact ? 16 : 22,
+                compact ? 14 : 20,
+                compact ? 10 : 18,
+                compact ? 12 : 18,
+              ),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: brandMist)),
+              ),
+              child: compact
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: brandGold.withOpacity(.12),
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              child: Icon(icon, color: brandGold, size: 19),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              onPressed: dismissEnabled ? (onDismiss ?? () => Navigator.pop(context, false)) : null,
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        LText(title, style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        LText(
+                          subtitle,
+                          style: const TextStyle(
+                            color: brandTextSoft,
+                            fontSize: 11,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: brandGold.withOpacity(.12),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(icon, color: brandGold, size: 21),
+                        ),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              LText(title, style: Theme.of(context).textTheme.titleLarge),
+                              const SizedBox(height: 4),
+                              LText(
+                                subtitle,
+                                style: const TextStyle(
+                                  color: brandTextSoft,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                    onPressed: dismissEnabled ? (onDismiss ?? () => Navigator.pop(context, false)) : null,
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+            );
+
+            final footer = Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                compact ? 14 : 20,
+                compact ? 10 : 14,
+                compact ? 14 : 20,
+                compact ? 12 : 18,
+              ),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: brandMist)),
+              ),
+              child: ResponsiveActionBar(
+                breakpoint: 480,
+                actions: [
+                  TextButton(
+                    onPressed: dismissEnabled ? (onDismiss ?? () => Navigator.pop(context, false)) : null,
+                    child: const LText('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: onPrimary,
+                    child: LText(primaryLabel),
+                  ),
+                ],
+              ),
+            );
+
+            return Container(
+              decoration: BoxDecoration(
+                color: brandSurfaceRaised,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: brandIonBlue.withOpacity(.24)),
+                boxShadow: [
+                  BoxShadow(
+                    color: brandNavy.withOpacity(.16),
+                    blurRadius: 44,
+                    offset: const Offset(0, 20),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  header,
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(compact ? 16 : 22),
+                      child: child,
+                    ),
+                  ),
+                  footer,
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterSurface extends StatelessWidget {
+  const _FilterSurface({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: brandSurfaceRaised,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: brandIonBlue.withOpacity(.24), width: 1.15),
+        boxShadow: [BoxShadow(color: brandNavy.withOpacity(.055), blurRadius: 14, offset: const Offset(0, 5))],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _MiniCounter extends StatelessWidget {
+  const _MiniCounter({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: brandNavy.withOpacity(.055),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: brandNavy.withOpacity(.07)),
+        ),
+        child: LText(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = label.toUpperCase();
+    final tone = value == 'LIVE' || value == 'ACTIVE' || value == 'OK' || value == 'HEALTHY'
+        ? brandSuccess
+        : value.contains('MAINTENANCE') || value.contains('PROVISION')
+            ? brandWarning
+            : value.contains('SUSPENDED') || value.contains('ARCHIVED')
+                ? brandDanger
+                : brandSteel;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99), border: Border.all(color: tone.withOpacity(.15))),
+        child: LText(_humanize(label), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .25)),
+      ),
+    );
+  }
+}
+
+class _PartnerViewToggle extends StatelessWidget {
+  const _PartnerViewToggle({required this.gridMode, required this.onChanged});
+  final bool gridMode;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 42,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(color: brandWhite, borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          _PartnerViewButton(icon: Icons.grid_view_rounded, selected: gridMode, onTap: () => onChanged(true)),
+          const SizedBox(width: 2),
+          _PartnerViewButton(icon: Icons.view_list_rounded, selected: !gridMode, onTap: () => onChanged(false)),
+        ]),
+      );
+}
+
+class _PartnerViewButton extends StatelessWidget {
+  const _PartnerViewButton({required this.icon, required this.selected, required this.onTap});
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: selected ? brandNavy : Colors.transparent,
+        borderRadius: BorderRadius.circular(7),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(7),
+          child: SizedBox(width: 34, height: 34, child: Icon(icon, size: 17, color: selected ? brandWhite : brandTextSoft)),
+        ),
+      );
+}
+
+class PartnerCard extends StatefulWidget {
+  const PartnerCard({required this.partner, required this.onTap, super.key});
+  final Map<String, dynamic> partner;
+  final VoidCallback onTap;
+
+  @override
+  State<PartnerCard> createState() => _PartnerCardState();
+}
+
+class _PartnerCardState extends State<PartnerCard> {
+  bool hover = false;
+
+  IconData _categoryIcon(String category) {
+    final value = category.toLowerCase();
+    if (value.contains('health') || value.contains('egész')) return Icons.favorite_border_rounded;
+    if (value.contains('education') || value.contains('oktat')) return Icons.groups_2_outlined;
+    if (value.contains('environment') || value.contains('környe')) return Icons.eco_outlined;
+    if (value.contains('community') || value.contains('közöss')) return Icons.diversity_3_outlined;
+    if (value.contains('nonprofit') || value.contains('alapít')) return Icons.volunteer_activism_outlined;
+    return Icons.apartment_rounded;
+  }
+
+  Color _categoryTone(String category) {
+    final value = category.toLowerCase();
+    if (value.contains('health') || value.contains('egész')) return brandDanger;
+    if (value.contains('environment') || value.contains('környe')) return brandSuccess;
+    if (value.contains('education') || value.contains('oktat')) return const Color(0xFF7C4DDA);
+    return brandSteel;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.partner;
+    final category = _localizedPartnerCategory(p);
+    final tone = _categoryTone(category);
+    final planName = '${p['plan_name'] ?? ''}'.trim();
+    final planKey = '${p['plan_key'] ?? ''}'.trim();
+    final packageLabel = planName.isNotEmpty ? planName : (planKey.isNotEmpty ? _humanize(planKey) : uiLiteral('No package'));
+    final currency = '${p['currency'] ?? 'USD'}'.trim().isEmpty ? 'USD' : '${p['currency']}';
+    final amount = number(p['service_value_30d']);
+    final amountLabel = intl.NumberFormat.currency(
+      locale: HimateI18n.activeLocale == 'hu_HU' ? 'hu_HU' : 'en_US',
+      symbol: currency == 'USD' ? r'$' : '$currency ',
+      decimalDigits: amount % 1 == 0 ? 0 : 2,
+    ).format(amount);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => hover = true),
+      onExit: (_) => setState(() => hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 170),
+        transform: Matrix4.translationValues(0, hover ? -2 : 0, 0),
+        constraints: const BoxConstraints(minHeight: 162),
+        decoration: BoxDecoration(
+          color: brandWhite,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: hover ? brandGold.withOpacity(.45) : brandMist),
+          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .075 : .035), blurRadius: hover ? 20 : 12, offset: const Offset(0, 5))],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(13),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      width: 43,
+                      height: 43,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: tone.withOpacity(.09), shape: BoxShape.circle),
+                      child: Icon(_categoryIcon(category), color: tone, size: 22),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        LText('${p['display_name'] ?? '—'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 12, fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 3),
+                        if (p['reference_partner'] == true)
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.star_rounded, color: brandGold, size: 13),
+                            const SizedBox(width: 3),
+                            LText(uiLiteral('Reference partner'), style: const TextStyle(color: Color(0xFF9A6D00), fontSize: 8.8, fontWeight: FontWeight.w700)),
+                          ])
+                        else
+                          LText(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+                      ]),
+                    ),
+                    const SizedBox(width: 6),
+                    if (p['test_partner'] == true) ...[
+                      const _StatusPill(label: 'TEST'),
+                      const SizedBox(width: 5),
+                    ],
+                    _StatusPill(label: '${p['lifecycle'] ?? 'UNKNOWN'}'),
+                  ]),
+                  if (p['reference_partner'] == true) ...[
+                    const SizedBox(height: 5),
+                    LText(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+                  ],
+                  const Spacer(),
+                  const Divider(height: 1),
+                  const SizedBox(height: 9),
+                  Row(children: [
+                    const Icon(Icons.inventory_2_outlined, color: Color(0xFF58708A), size: 15),
+                    const SizedBox(width: 5),
+                    Expanded(child: LText(packageLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.4))),
+                    const Icon(Icons.grid_view_rounded, color: brandSteel, size: 14),
+                    const SizedBox(width: 5),
+                    LText('${p['active_modules'] ?? 0} ${uiLiteral('modules')}', style: const TextStyle(color: brandTextSoft, fontSize: 9.4)),
+                  ]),
+                  const SizedBox(height: 9),
+                  Row(children: [
+                    const Icon(Icons.autorenew_rounded, color: brandSteel, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(children: [
+                          TextSpan(text: amountLabel, style: GoogleFonts.lora(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w700)),
+                          TextSpan(text: ' / ${uiLiteral('month')}', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 8.8)),
+                        ]),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      decoration: BoxDecoration(color: const Color(0xFFF1F6FC), borderRadius: BorderRadius.circular(8)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        LText(uiLiteral('Details'), style: const TextStyle(color: brandNavy, fontSize: 9.3, fontWeight: FontWeight.w700)),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_rounded, color: brandSteel, size: 14),
+                      ]),
+                    ),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _PartnerLogo extends StatelessWidget {
+  const _PartnerLogo({required this.url});
+  final String url;
+
+  bool get _safeToLoad {
+    final value = url.trim();
+    if (value.isEmpty) return false;
+    if (value.startsWith('/')) return true;
+    final parsed = Uri.tryParse(value);
+    if (parsed == null) return false;
+    if (!parsed.hasScheme) return true;
+    return parsed.scheme == Uri.base.scheme && parsed.host == Uri.base.host && parsed.port == Uri.base.port;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(11)),
+      child: const Icon(Icons.apartment_rounded, color: brandNavy, size: 21),
+    );
+    if (!_safeToLoad) return fallback;
+    return Container(
+      width: 42,
+      height: 42,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: brandMist),
+      ),
+      child: Image.network(
+        url.trim(),
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => fallback,
+        semanticLabel: 'Partner logo',
+      ),
+    );
+  }
+}
+
+
+// ignore: unused_element
+class _PartnerMetric extends StatelessWidget {
+  const _PartnerMetric({required this.label, required this.value});
+  final String label, value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+        decoration: BoxDecoration(
+          color: brandNavy.withOpacity(.035),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: brandMist),
+        ),
+        child: LText(
+          '$label  $value',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: brandTextSoft, fontSize: 8.3, fontWeight: FontWeight.w600),
+        ),
+      );
+}
+
+
+class NewPartnerCard extends StatefulWidget {
+  const NewPartnerCard({required this.onTap, super.key});
+  final VoidCallback onTap;
+
+  @override
+  State<NewPartnerCard> createState() => _NewPartnerCardState();
+}
+
+class _NewPartnerCardState extends State<NewPartnerCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => hover = true),
+      onExit: (_) => setState(() => hover = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            constraints: const BoxConstraints(minHeight: 224),
+            decoration: BoxDecoration(
+              color: hover ? brandGold.withOpacity(.08) : brandSurfaceRaised,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: brandGold.withOpacity(hover ? .75 : .35), width: 1.1),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 46, height: 46, decoration: BoxDecoration(color: brandGold.withOpacity(.12), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, color: brandGold, size: 26)),
+                  const SizedBox(height: 11),
+                  const LText('NEW PARTNER', style: TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.3)),
+                  const SizedBox(height: 5),
+                  const LText('Create a new partner workspace', style: TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkspaceSpec {
+  const _WorkspaceSpec(this.title, this.icon, this.subtitle, this.active);
+  final String title, subtitle;
+  final IconData icon;
+  final bool active;
+}
+
+class WorkspaceCard extends StatelessWidget {
+  const WorkspaceCard({required this.spec, this.onTap, super.key});
+  final _WorkspaceSpec spec;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final card = Container(
+      constraints: const BoxConstraints(minHeight: 112),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: brandSurfaceRaised,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: brandIonBlue.withOpacity(.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(width: 34, height: 34, decoration: BoxDecoration(color: (spec.active ? brandGold : brandSteel).withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(spec.icon, color: spec.active ? brandGold : brandSteel, size: 18)),
+            const Spacer(),
+            _MiniCounter(label: spec.active ? 'AVAILABLE' : 'PLANNED'),
+          ]),
+          const SizedBox(height: 11),
+          LText(spec.title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12.5)),
+          const SizedBox(height: 3),
+          LText(spec.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.6, height: 1.35)),
+        ],
+      ),
+    );
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: card,
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, required this.subtitle, this.trailing});
+  final String title, subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LText(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 4),
+        LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 11.5, height: 1.4)),
+      ],
+    );
+    if (trailing == null) return copy;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 760) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              copy,
+              const SizedBox(height: 10),
+              SizedBox(width: double.infinity, child: trailing!),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(child: copy),
+            const SizedBox(width: 12),
+            Flexible(child: Align(alignment: Alignment.centerRight, child: trailing!)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class PartnerModuleCard extends StatefulWidget {
+  const PartnerModuleCard({required this.module, required this.onTap, super.key});
+  final Map<String, dynamic> module;
+  final VoidCallback onTap;
+
+  @override
+  State<PartnerModuleCard> createState() => _PartnerModuleCardState();
+}
+
+class _PartnerModuleCardState extends State<PartnerModuleCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.module;
+    final included = m['included_in_base'] == true;
+    final visible = m['visible'] == true;
+    return MouseRegion(
+      onEnter: (_) => setState(() => hover = true),
+      onExit: (_) => setState(() => hover = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 170),
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: brandSurfaceRaised,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: hover ? brandGold.withOpacity(.72) : brandIonBlue.withOpacity(.22)),
+              boxShadow: hover ? [BoxShadow(color: brandNavy.withOpacity(.06), blurRadius: 18, offset: const Offset(0, 7))] : const [],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(child: LText('${m['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13))),
+                  const SizedBox(width: 8),
+                  _StatusPill(label: '${m['status']}'),
+                ]),
+                const SizedBox(height: 5),
+                LText('${m['group_label']} · ${m['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                const SizedBox(height: 13),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    _TinyFlag(icon: visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, label: visible ? 'VISIBLE' : 'HIDDEN', active: visible),
+                    _TinyFlag(icon: included ? Icons.inventory_2_outlined : Icons.add_card_outlined, label: included ? 'BASE' : 'EXTRA', active: included),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(children: [
+                  const LText('Activation fee', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const Spacer(),
+                  LText(money(m['partner_activation_fee']), style: const TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w700)),
+                ]),
+                const SizedBox(height: 9),
+                Row(children: [
+                  const LText('30-day price', style: TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const Spacer(),
+                  LText(included ? 'Included' : money(m['partner_price']), style: const TextStyle(color: brandNavy, fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 7),
+                  const Icon(Icons.edit_outlined, color: brandGold, size: 16),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TinyFlag extends StatelessWidget {
+  const _TinyFlag({required this.icon, required this.label, required this.active});
+  final IconData icon;
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+    decoration: BoxDecoration(color: (active ? brandSuccess : brandSteel).withOpacity(.07), borderRadius: BorderRadius.circular(7)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: active ? brandSuccess : brandSteel),
+      const SizedBox(width: 4),
+      LText(label, style: TextStyle(fontSize: 8.5, color: active ? brandSuccess : brandSteel, fontWeight: FontWeight.w700)),
+    ]),
+  );
+}
+
+class _PartnerDetailsCard extends StatelessWidget {
+  const _PartnerDetailsCard({required this.partner});
+  final Map<String, dynamic> partner;
+
+  String value(dynamic input) => '${input ?? ''}'.trim().isEmpty ? '—' : '${input ?? ''}';
+
+  @override
+  Widget build(BuildContext context) => _InfoCard(
+    title: 'Company Data',
+    icon: Icons.apartment_outlined,
+    children: [
+      _DefinitionRow(label: 'Legal name', value: value(partner['legal_name'])),
+      _DefinitionRow(label: 'Brand / DBA', value: value(partner['brand_name'])),
+      _DefinitionRow(label: 'Category', value: _localizedPartnerCategory(partner)),
+      _DefinitionRow(label: 'Registration', value: value(partner['registration_number'])),
+      _DefinitionRow(label: 'Tax ID', value: value(partner['tax_id'])),
+      _DefinitionRow(label: 'Primary contact', value: value(partner['contact_name'])),
+      _DefinitionRow(label: 'Contact email', value: value(partner['contact_email'])),
+      _DefinitionRow(label: 'Primary domain', value: value(partner['primary_domain'])),
+      _DefinitionRow(label: 'Staging domain', value: value(partner['staging_domain'])),
+      _DefinitionRow(label: 'Website', value: value(partner['website'])),
+    ],
+  );
+}
+
+class _CommercialSummaryCard extends StatelessWidget {
+  const _CommercialSummaryCard({required this.terms, required this.billing, required this.license, required this.onEdit});
+  final Map<String, dynamic> terms, billing, license;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) => _InfoCard(
+    title: 'Pricing & Subscription',
+    icon: Icons.payments_outlined,
+    action: IconButton(onPressed: onEdit, tooltip: uiLiteral('Edit commercial terms'), icon: const Icon(Icons.edit_outlined, size: 18)),
+    children: [
+      _DefinitionRow(label: 'Billing mode', value: _humanize('${terms['billing_mode'] ?? 'PAID'}'), emphasis: true),
+      _DefinitionRow(label: 'Charity status', value: _humanize('${terms['charity_status'] ?? 'NOT_REQUESTED'}')),
+      _DefinitionRow(label: 'Activation fee', value: terms['activation_fee_waived'] == true ? 'Waived' : money(terms['activation_fee'])),
+      _DefinitionRow(label: 'License status', value: _humanize('${license['status'] ?? 'NOT_PAID'}')),
+      _DefinitionRow(label: 'License paid', value: '${money(license['paid_amount'])} / ${money(license['required_amount'])}'),
+      _DefinitionRow(label: 'Individual base fee', value: money(billing['effective_base_fee'])),
+      _DefinitionRow(label: 'Minimum monthly commitment', value: money(terms['minimum_monthly_commitment'])),
+      _DefinitionRow(label: 'Quote / offer', value: '${terms['quote_reference'] ?? '—'}'),
+      _DefinitionRow(label: 'Terms version', value: '${terms['terms_version'] ?? 1}'),
+      _DefinitionRow(label: 'Extra modules', value: money(billing['extra_module_fee'])),
+      _DefinitionRow(label: 'Current total', value: money(billing['current_total']), emphasis: true),
+      _DefinitionRow(label: 'Annual increase', value: '${terms['annual_increase_percent'] ?? 5}% · January 1'),
+      _DefinitionRow(label: 'Next cycle', value: '${billing['next_billing_date'] ?? '—'}'),
+      const _DefinitionRow(label: 'Billing rule', value: 'Activation-date anchored · 30 days'),
+    ],
+  );
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.title, required this.icon, required this.children, this.action});
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final titleBlock = Row(
+                children: [
+                  Container(width: 36, height: 36, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(9)), child: Icon(icon, color: brandGold, size: 19)),
+                  const SizedBox(width: 10),
+                  Expanded(child: LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+                ],
+              );
+              if (action == null) return titleBlock;
+              if (constraints.maxWidth < 460) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    titleBlock,
+                    const SizedBox(height: 10),
+                    Align(alignment: Alignment.centerLeft, child: action!),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: titleBlock),
+                  const SizedBox(width: 10),
+                  Flexible(child: Align(alignment: Alignment.centerRight, child: action!)),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          ...children,
+        ],
+      ),
+    ),
+  );
+}
+
+class _DefinitionRow extends StatelessWidget {
+  const _DefinitionRow({required this.label, required this.value, this.emphasis = false});
+  final String label, value;
+  final bool emphasis;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final valueStyle = TextStyle(
+          color: brandNavy,
+          fontSize: emphasis ? 13 : 11,
+          fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600,
+        );
+        if (constraints.maxWidth < 360) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+              const SizedBox(height: 3),
+              LText(value, maxLines: 4, overflow: TextOverflow.ellipsis, style: valueStyle),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 10.5))),
+            const SizedBox(width: 12),
+            Flexible(child: LText(value, textAlign: TextAlign.right, maxLines: 3, overflow: TextOverflow.ellipsis, style: valueStyle)),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+class _RuleItem {
+  const _RuleItem(this.icon, this.label, this.value);
+  final IconData icon;
+  final String label, value;
+}
+
+class _RuleStrip extends StatelessWidget {
+  const _RuleStrip({required this.items});
+  final List<_RuleItem> items;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final narrow = constraints.maxWidth < 520;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final item in items)
+            SizedBox(
+              width: narrow ? constraints.maxWidth : null,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                decoration: BoxDecoration(color: brandNavy.withOpacity(.04), borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
+                child: Row(
+                  mainAxisSize: narrow ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    Icon(item.icon, color: brandGold, size: 15),
+                    const SizedBox(width: 7),
+                    if (narrow)
+                      Expanded(
+                        child: Wrap(
+                          children: [
+                            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 300),
+                        child: Wrap(
+                          children: [
+                            LText('${item.label}: ', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                            LText(item.value, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
+    },
+  );
+}
+
+class _DocumentPanel extends StatelessWidget {
+  const _DocumentPanel({required this.documents, required this.onAdd});
+  final List<Map<String, dynamic>> documents;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: LText('Documents', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+          _MiniCounter(label: '${documents.length} RECORDS'),
+        ]),
+        const SizedBox(height: 12),
+        if (documents.isEmpty)
+          _EmptyInline(icon: Icons.folder_open_outlined, title: 'No documents registered', actionLabel: 'Register document', onTap: onAdd)
+        else
+          for (var i = 0; i < documents.length && i < 5; i++) ...[
+            _DocumentRow(document: documents[i]),
+            if (i < documents.length - 1 && i < 4) const Divider(height: 1),
+          ],
+      ]),
+    ),
+  );
+}
+
+class _DocumentRow extends StatelessWidget {
+  const _DocumentRow({required this.document});
+  final Map<String, dynamic> document;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Row(children: [
+      Container(width: 34, height: 34, decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.description_outlined, color: brandGold, size: 17)),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        LText('${document['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        LText(_humanize('${document['kind']}'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+      ])),
+      if ('${document['storage_url'] ?? ''}'.isNotEmpty) const Icon(Icons.link_rounded, color: brandSteel, size: 16),
+    ]),
+  );
+}
+
+class _InvoicePanel extends StatelessWidget {
+  const _InvoicePanel({required this.invoices});
+  final List<Map<String, dynamic>> invoices;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: LText('Invoices', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14))),
+          _MiniCounter(label: '${invoices.length} RECORDS'),
+        ]),
+        const SizedBox(height: 12),
+        if (invoices.isEmpty)
+          const _EmptyInline(icon: Icons.receipt_long_outlined, title: 'No invoice records yet')
+        else
+          for (var i = 0; i < invoices.length && i < 5; i++) ...[
+            _InvoiceRow(invoice: invoices[i]),
+            if (i < invoices.length - 1 && i < 4) const Divider(height: 1),
+          ],
+      ]),
+    ),
+  );
+}
+
+class _InvoiceRow extends StatelessWidget {
+  const _InvoiceRow({required this.invoice});
+  final Map<String, dynamic> invoice;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Row(children: [
+      Container(width: 34, height: 34, decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.receipt_long_outlined, color: brandNavy, size: 17)),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        LText('${invoice['id']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        LText('${invoice['invoice_date'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+      ])),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        LText(money(invoice['total']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 14)),
+        const SizedBox(height: 2),
+        _StatusPill(label: '${invoice['status'] ?? 'DRAFT'}'),
+      ]),
+    ]),
+  );
+}
+
+class _EmptyInline extends StatelessWidget {
+  const _EmptyInline({required this.icon, required this.title, this.actionLabel, this.onTap});
+  final IconData icon;
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 14),
+    decoration: BoxDecoration(color: brandIvory, borderRadius: BorderRadius.circular(10), border: Border.all(color: brandMist)),
+    child: Column(children: [
+      Icon(icon, color: brandSteel, size: 24),
+      const SizedBox(height: 8),
+      LText(title, style: const TextStyle(color: brandNavy, fontSize: 11.5, fontWeight: FontWeight.w600)),
+      if (actionLabel != null && onTap != null) ...[
+        const SizedBox(height: 8),
+        TextButton(onPressed: onTap, child: LText(actionLabel!)),
+      ],
+    ]),
+  );
+}
+
+class _DialogSectionLabel extends StatelessWidget {
+  const _DialogSectionLabel(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: LText(label, style: const TextStyle(color: brandNavy, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+  );
+}
+
+class _IssuerProfileCard extends StatelessWidget {
+  const _IssuerProfileCard({required this.profile, required this.onEdit});
+  final Map<String, dynamic> profile;
+  final VoidCallback onEdit;
+
+  String clean(dynamic value) => '${value ?? ''}'.trim().isEmpty ? 'Not configured' : '${value ?? ''}';
+
+  @override
+  Widget build(BuildContext context) => _InfoCard(
+    title: 'HIMATE Issuer Profile',
+    icon: Icons.account_balance_outlined,
+    action: IconButton(onPressed: onEdit, tooltip: uiLiteral('Edit billing profile'), icon: const Icon(Icons.edit_outlined, size: 18)),
+    children: [
+      _DefinitionRow(label: 'Legal name', value: clean(profile['legal_name'])),
+      _DefinitionRow(label: 'Billing email', value: clean(profile['email'])),
+      _DefinitionRow(label: 'Tax ID', value: clean(profile['tax_id'])),
+      _DefinitionRow(label: 'VAT rate', value: '${profile['vat_rate_percent'] ?? 0}%'),
+      _DefinitionRow(label: 'VAT jurisdiction', value: clean(profile['vat_jurisdiction'])),
+      _DefinitionRow(label: 'Bank', value: clean(profile['bank_name'])),
+      _DefinitionRow(label: 'IBAN', value: clean(profile['iban'])),
+      _DefinitionRow(label: 'SWIFT / BIC', value: clean(profile['swift'])),
+    ],
+  );
+}
+
+class _BillingRulesCard extends StatelessWidget {
+  const _BillingRulesCard();
+
+  @override
+  Widget build(BuildContext context) => const _InfoCard(
+    title: 'Central-6 Finance Rules',
+    icon: Icons.rule_folder_outlined,
+    children: [
+      _DefinitionRow(label: 'Partner activation', value: 'Final HIMATE approval required'),
+      _DefinitionRow(label: 'Invoice lifecycle', value: 'Draft → Approved → Sent → Paid / Cancelled'),
+      _DefinitionRow(label: 'Payment collection', value: 'Blocked until Sent'),
+      _DefinitionRow(label: 'Partner visibility', value: 'Sent / Paid / Cancelled only'),
+      _DefinitionRow(label: 'Zero-dollar support', value: 'Documented waiver · no invoice'),
+      _DefinitionRow(label: 'Package price basis', value: 'Net + configured VAT'),
+      _DefinitionRow(label: 'VAT authority', value: 'Admin billing profile'),
+      _DefinitionRow(label: 'PDF delivery', value: 'Generated from approved ledger'),
+      _DefinitionRow(label: 'Email delivery', value: 'Queued in delivery outbox'),
+    ],
+  );
+}
+
+class CatalogModuleCard extends StatelessWidget {
+  const CatalogModuleCard({required this.module, required this.onTap, super.key});
+  final Map<String, dynamic> module;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final system = module['system'] == true;
+    final availability = '${module['availability'] ?? 'ACTIVE'}';
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 36, height: 36, decoration: BoxDecoration(color: (system ? brandNavy : brandGold).withOpacity(.08), borderRadius: BorderRadius.circular(9)), child: Icon(system ? Icons.verified_outlined : Icons.extension_outlined, color: system ? brandNavy : brandGold, size: 18)),
+              const Spacer(),
+              _StatusPill(label: availability),
+            ]),
+            const SizedBox(height: 12),
+            LText('${module['label']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 4),
+            LText('${module['group_label']}', style: const TextStyle(color: brandSteel, fontSize: 10, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 3),
+            LText('${module['key']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+            const SizedBox(height: 12),
+            Row(children: [
+              LText('v${module['version'] ?? '1.0.0'} → ${module['latest_version'] ?? '1.0.0'}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+              const Spacer(),
+              LText(money(module['default_monthly_price']), style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w600, fontSize: 16)),
+              const SizedBox(width: 7),
+              const Icon(Icons.edit_outlined, color: brandGold, size: 15),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArchitectureCard extends StatelessWidget {
+  const _ArchitectureCard();
+
+  @override
+  Widget build(BuildContext context) => const _InfoCard(
+    title: 'Architecture',
+    icon: Icons.account_tree_outlined,
+    children: [
+      _DefinitionRow(label: 'Public ingress', value: 'HIMATE API Gateway'),
+      _DefinitionRow(label: 'Identity boundary', value: 'Gateway session service'),
+      _DefinitionRow(label: 'Partner domain', value: 'Independent Go service'),
+      _DefinitionRow(label: 'Catalog domain', value: 'Independent Go service'),
+      _DefinitionRow(label: 'Billing domain', value: 'Independent Go service'),
+      _DefinitionRow(label: 'Persistence', value: 'PostgreSQL · service-owned schemas'),
+    ],
+  );
+}
+
+class _OperationsControlsCard extends StatelessWidget {
+  const _OperationsControlsCard();
+
+  @override
+  Widget build(BuildContext context) => const _InfoCard(
+    title: 'Operational Controls',
+    icon: Icons.shield_outlined,
+    children: [
+      _DefinitionRow(label: 'Containerization', value: 'Enabled'),
+      _DefinitionRow(label: 'Horizontal scaling', value: 'Stateless service design'),
+      _DefinitionRow(label: 'Private services', value: 'Internal network only'),
+      _DefinitionRow(label: 'Partner databases', value: 'Separate from HIMATE control plane'),
+      _DefinitionRow(label: 'Connector model', value: 'Pre-defined API exchange'),
+      _DefinitionRow(label: 'Backups / restore', value: 'Encrypted · restore verified'),
+    ],
+  );
+}
+
+class Content extends StatelessWidget {
+  const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, this.showHeader = true, super.key});
+  final String title, subtitle;
+  final String? eyebrow;
+  final Widget child;
+  final List<Widget> actions;
+  final bool showHeader;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 760;
+        final stackActions = shouldStackContentActions(constraints.maxWidth, actions.length);
+        final padding = constraints.maxWidth < 520 ? 16.0 : constraints.maxWidth < 1050 ? 22.0 : 28.0;
+        final header = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (eyebrow != null) ...[
+              LText(eyebrow!, style: GoogleFonts.lora(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+            ],
+            LText(title, style: GoogleFonts.lora(color: brandNavy, fontSize: narrow ? 36 : 42, fontWeight: FontWeight.w600, height: .98)),
+            const SizedBox(height: 6),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12.5, height: 1.45))),
+          ],
+        );
+
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, animatedChild) => Opacity(
+            opacity: value,
+            child: Transform.translate(offset: Offset(0, 14 * (1 - value)), child: animatedChild),
+          ),
+          child: Scrollbar(
+            child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(padding, 24, padding, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (showHeader)
+                  if (narrow || stackActions)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        header,
+                        if (actions.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Wrap(spacing: 9, runSpacing: 9, children: actions),
+                        ],
+                      ],
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: header),
+                        if (actions.isNotEmpty) ...[
+                          const SizedBox(width: 20),
+                          Flexible(
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: Wrap(alignment: WrapAlignment.end, spacing: 9, runSpacing: 9, children: actions),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                if (showHeader) const SizedBox(height: 22),
+                if (!showHeader && actions.isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 9,
+                      runSpacing: 9,
+                      children: actions,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                child,
+              ],
+            ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class ResponsiveKpiGrid extends StatelessWidget {
+  const ResponsiveKpiGrid({required this.children, this.gap = 12, super.key});
+  final List<Widget> children;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = responsiveGridColumnsForWidth(constraints.maxWidth);
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [for (final child in children) SizedBox(width: width, child: child)],
+        );
+      },
+    );
+  }
+}
+
+class Kpi extends StatefulWidget {
+  const Kpi({
+    required this.label,
+    required this.value,
+    required this.note,
+    this.icon = Icons.auto_graph_outlined,
+    this.accent = brandNavy,
+    this.onTap,
+    super.key,
+  });
+  final String label, value, note;
+  final IconData icon;
+  final Color accent;
+  final VoidCallback? onTap;
+  @override
+  State<Kpi> createState() => _KpiState();
+}
+
+class _KpiState extends State<Kpi> {
+  bool hover = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: widget.onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+    onEnter: (_) => setState(() => hover = true),
+    onExit: (_) => setState(() => hover = false),
+    child: Semantics(
+      button: widget.onTap != null,
+      label: widget.label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          width: double.infinity,
+          height: 126,
+          transform: Matrix4.translationValues(0, hover ? -2 : 0, 0),
+          decoration: BoxDecoration(
+            color: brandWhite,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: hover ? widget.accent.withOpacity(.34) : brandMist),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF102642).withOpacity(hover ? .075 : .035),
+                blurRadius: hover ? 24 : 15,
+                offset: Offset(0, hover ? 8 : 5),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: widget.accent.withOpacity(.095),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(widget.icon, color: widget.accent, size: 22),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: LText(widget.label, style: const TextStyle(color: brandNavy, fontSize: 11.2, fontWeight: FontWeight.w700))),
+                          if (widget.onTap != null) Icon(Icons.arrow_forward_rounded, color: widget.accent, size: 15),
+                        ],
+                      ),
+                      const Spacer(),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: LText(widget.value, style: GoogleFonts.lora(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                      ),
+                      const SizedBox(height: 4),
+                      LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _CentralActionCard extends StatelessWidget {
+  const _CentralActionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    this.footer,
+    this.onTap,
+  });
+  final String title, subtitle;
+  final IconData icon;
+  final Color accent;
+  final String? footer;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(13)),
+                    child: Icon(icon, color: accent, size: 23),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: LText(title, style: GoogleFonts.lora(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w700))),
+                  Icon(Icons.arrow_forward_rounded, color: accent, size: 19),
+                ]),
+                const SizedBox(height: 9),
+                LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.4)),
+                if (footer != null) ...[
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 10),
+                  LText(footer!, style: TextStyle(color: accent, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class ServiceCard extends StatelessWidget {
+  const ServiceCard({required this.name, required this.status, super.key});
+  final String name, status;
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = status.toLowerCase() == 'ok';
+    final tone = ok ? brandSuccess : brandWarning;
+    return SizedBox(
+      width: 290,
+      height: 118,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 36, height: 36, decoration: BoxDecoration(color: brandNavy.withOpacity(.055), borderRadius: BorderRadius.circular(9)), child: const Icon(Icons.dns_outlined, color: brandNavy, size: 19)),
+              const Spacer(),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), decoration: BoxDecoration(color: tone.withOpacity(.08), borderRadius: BorderRadius.circular(99)), child: LText(status.toUpperCase(), style: TextStyle(color: tone, fontSize: 9, fontWeight: FontWeight.w700))),
+            ]),
+            const Spacer(),
+            LText(name, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14)),
+            const SizedBox(height: 3),
+            LText(ok ? 'Service responding normally' : 'Awaiting healthy response', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrandLoading extends StatelessWidget {
+  const _BrandLoading();
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      BrandMark(size: 42),
+      SizedBox(height: 16),
+      SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 2.1, color: brandGold)),
+    ]),
+  );
+}
+
+class _MessageCard extends StatelessWidget {
+  const _MessageCard({required this.icon, required this.title, required this.message});
+  final IconData icon;
+  final String title, message;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final copy = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LText(title, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 6),
+              LText(message, style: const TextStyle(color: brandTextSoft, height: 1.45)),
+            ],
+          );
+          final mark = Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(color: brandGold.withOpacity(.10), borderRadius: BorderRadius.circular(11)),
+            child: Icon(icon, color: brandGold, size: 22),
+          );
+          if (constraints.maxWidth < 360) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [mark, const SizedBox(height: 12), copy],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [mark, const SizedBox(width: 15), Expanded(child: copy)],
+          );
+        },
+      ),
+    ),
+  );
+},
+      'EUR' => '€',
+      'GBP' => '£',
+      _ => '$currency ',
+    };
+    return '$prefix$formatted + VAT';
+  }
+
+  void _applyPackageMutationImmediately(Map<String,dynamic> updated) {
+    if (!mounted) return;
+    final key = _normalizedPackageKey(updated['plan_key'] ?? '');
+    final index = plans.indexWhere((plan) => _normalizedPackageKey(plan['plan_key'] ?? '') == key);
+    if (index < 0) return;
+
+    final merged = <String,dynamic>{...plans[index], ...updated};
+    if (key == 'FLEX') {
+      merged['plan_key'] = 'FLEX';
+      merged['display_name'] = 'Premium';
+      merged['module_limit'] = null;
+      merged['entitlement'] = 'Unlimited';
+    } else {
+      final limit = (merged['module_limit'] as num?)?.toInt() ?? 0;
+      merged['entitlement'] = '$limit modules';
+    }
+    merged['display_price'] = _packageDisplayPrice(merged);
+
+    final fixedKeys = merged['fixed_module_keys'] is List
+        ? (merged['fixed_module_keys'] as List).map((e) => '$e').toList()
+        : <String>[];
+    merged['included_modules'] = [
+      for (final moduleKey in fixedKeys)
+        () {
+          Map<String,dynamic>? match;
+          for (final module in modules) {
+            if ('${module['key'] ?? ''}' == moduleKey) {
+              match = module;
+              break;
+            }
+          }
+          return <String,dynamic>{
+            'key': moduleKey,
+            'label': match == null ? moduleKey : moduleLabel(match),
+            if (match != null) 'group_key': match['group_key'],
+            if (match != null) 'group_label': match['group_label'],
+          };
+        }(),
+    ];
+
+    setState(() => plans[index] = merged);
+  }
+
+  Future<void> _syncPackageMutation(Map<String,dynamic> updated) async {
+    // The mutation response is authoritative. Apply it immediately instead of
+    // waiting for the 10-second materialized screen refresh.
+    _applyPackageMutationImmediately(updated);
+    unawaited(loadSupplementary());
+
+    // Reconcile only when the hot snapshot has caught up. A stale snapshot is
+    // deliberately not painted over the just-saved authoritative response.
+    for (var attempt = 0; attempt < 6 && mounted; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      try {
+        final model = await widget.api.get(
+          centralPackagesInitialPath(),
+          force: true,
+          maxAge: Duration.zero,
+        );
+        if (!mounted || model['ready'] != true) continue;
+        final refreshed = items(<String,dynamic>{'items': model['plans']});
+        if (_packageMutationMatches(refreshed, updated)) {
+          setState(() {
+            plans = refreshed;
+            packageReady = true;
+            loading = false;
+          });
+          return;
+        }
+      } catch (_) {
+        // The already-applied mutation remains visible; the next materialized
+        // refresh will reconcile it without regressing the UI.
+      }
+    }
   }
 
   Future<void> loadSupplementary() async {
