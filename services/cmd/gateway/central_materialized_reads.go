@@ -500,11 +500,12 @@ func centralBrowserMaterializedRead(r *http.Request) bool {
 	if r == nil || r.Method != http.MethodGet {
 		return false
 	}
-	// The shipped Central Flutter/web API client already sends X-Himate-Locale
-	// on every screen-data request. Historical curl/smoke clients do not.
-	// This preserves the existing URL/JSON contract while cleanly separating:
-	//   browser read path -> local persistent CQRS projection
-	//   legacy compatibility path -> authoritative owner API/local DB
+	// Locale is not a browser discriminator: historical localized START smokes
+	// intentionally send X-Himate-Locale. Only the shipped browser client and the
+	// CENTRAL-21 browser acceptance smoke send the explicit CQRS discriminator.
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Himate-Read-Model")), "browser") {
+		return false
+	}
 	return strings.TrimSpace(r.Header.Get("X-Himate-Locale")) != ""
 }
 

@@ -46,6 +46,34 @@ func centralNotificationSnapshotValid(payload map[string]any) bool {
 	return true
 }
 
+func centralNotificationReadModelBaseline() map[string]any {
+	return map[string]any{
+		"delivery_scope": "PLATFORM",
+		"items":          []map[string]any{},
+		"unread_count":   0,
+		"status":         "healthy",
+		"unavailable":    []string{},
+		"seeded":         true,
+		"seed_version":   readModelSeedVersion,
+	}
+}
+
+func (a *app) seedCentralUserNotificationReadModelBaselines(ctx context.Context) error {
+	raw, err := json.Marshal(centralNotificationReadModelBaseline())
+	if err != nil {
+		return err
+	}
+	_, err = a.db.ExecContext(ctx,
+		`INSERT INTO identity.central_user_read_models(user_id,notifications,updated_at)
+		 SELECT id,$1::jsonb,NOW()
+		 FROM identity.users
+		 WHERE active=TRUE
+		 ON CONFLICT(user_id) DO NOTHING`,
+		string(raw),
+	)
+	return err
+}
+
 func (a *app) materializeCentralUserNotifications(ctx context.Context, userID string, roles []string) (map[string]any, error) {
 	var feed map[string]any
 	headers := map[string]string{
@@ -203,15 +231,23 @@ func (a *app) ensureCentralUserNotificationReadModelsReady(ctx context.Context) 
 	}
 	missing := []string{}
 	for _, u := range users {
-		if _, _, err := a.loadCentralUserNotifications(ctx, u.ID); err == nil {
+		feed, _, loadErr := a.loadCentralUserNotifications(ctx, u.ID)
+		if loadErr == nil && !readModelSeeded(feed) {
 			continue
 		}
 		refreshCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		ok := a.refreshCentralUserNotifications(refreshCtx, u.ID, u.Roles)
 		cancel()
-		if !ok {
-			missing = append(missing, u.ID)
+		if ok {
+			continue
 		}
+		// A structurally valid deterministic baseline is sufficient for cold-start
+		// readiness if Notifications is temporarily unavailable. The background
+		// materializer replaces it as soon as the dependency recovers.
+		if loadErr == nil && centralNotificationSnapshotValid(feed) {
+			continue
+		}
+		missing = append(missing, u.ID)
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("Central user notification projections not ready: %s", strings.Join(missing, ","))

@@ -558,6 +558,7 @@ class Api {
     final headers = <String, String>{
       'Accept': 'application/json',
       'X-Himate-Locale': HimateI18n.activeLocale,
+      'X-Himate-Read-Model': 'browser',
     };
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;

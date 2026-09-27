@@ -171,8 +171,15 @@ func TestMaterializedEvidenceListPreservesFiltersAndPagination(t *testing.T) {
 func TestCentralBrowserMaterializedReadSeparatesBrowserAndLegacyClients(t *testing.T) {
 	browser := httptest.NewRequest("GET", "/api/v1/environments", nil)
 	browser.Header.Set("X-Himate-Locale", "en")
+	browser.Header.Set("X-Himate-Read-Model", "browser")
 	if !centralBrowserMaterializedRead(browser) {
-		t.Fatal("browser Central GET with X-Himate-Locale must use materialized CQRS read path")
+		t.Fatal("browser Central GET with the explicit read-model discriminator must use materialized CQRS")
+	}
+
+	localizedLegacy := httptest.NewRequest("GET", "/api/v1/environments", nil)
+	localizedLegacy.Header.Set("X-Himate-Locale", "en")
+	if centralBrowserMaterializedRead(localizedLegacy) {
+		t.Fatal("localized legacy/smoke GET must not be mistaken for browser CQRS")
 	}
 
 	legacy := httptest.NewRequest("GET", "/api/v1/environments", nil)
@@ -182,6 +189,7 @@ func TestCentralBrowserMaterializedReadSeparatesBrowserAndLegacyClients(t *testi
 
 	write := httptest.NewRequest("POST", "/api/v1/environments", nil)
 	write.Header.Set("X-Himate-Locale", "en")
+	write.Header.Set("X-Himate-Read-Model", "browser")
 	if centralBrowserMaterializedRead(write) {
 		t.Fatal("mutations must never be intercepted by materialized read path")
 	}

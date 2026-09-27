@@ -395,7 +395,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	runMap("module_commercial_history", "catalog", "/internal/v1/read-model/partner-module-history/"+escapedID, &moduleCommercialHistory)
 
 	base := "/api/v1/billing/partners/" + escapedID
-	runMap("billing_summary", "billing", base+"/summary", &billing)
+	runMap("billing_summary", "billing", base+"/summary?read_model_source=1", &billing)
 	runMap("company_profile", "billing", "/api/v1/billing/profile", &companyProfile)
 	runMap("billing_terms", "billing", base+"/terms", &terms)
 	runMap("license", "billing", base+"/license", &license)

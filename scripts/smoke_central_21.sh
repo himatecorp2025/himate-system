@@ -71,12 +71,14 @@ SELECT
    )),
   (SELECT COUNT(*) FROM identity.central_screen_snapshots WHERE COALESCE(payload->>'seeded','false')='true'),
   (SELECT COUNT(*) FROM identity.partner_workspace_snapshots WHERE COALESCE(payload->>'seeded','false')='true'),
-  (SELECT COUNT(*) FROM identity.dashboard_snapshots WHERE COALESCE(payload->>'seeded','false')='true');
+  (SELECT COUNT(*) FROM identity.dashboard_snapshots WHERE COALESCE(payload->>'seeded','false')='true'),
+  (SELECT COUNT(*) FROM identity.central_user_read_models),
+  (SELECT COUNT(*) FROM identity.central_user_read_models WHERE COALESCE(notifications->>'seeded','false')='true');
 SQL
 )"
 printf '%s' "$STATE" | python3 -c '
 import sys
-healthy_c,bad_c,healthy_t,bad_t,partners,incomplete_t,seeded_c,seeded_t,seeded_d=map(int,sys.stdin.read().strip().split("|"))
+healthy_c,bad_c,healthy_t,bad_t,partners,incomplete_t,seeded_c,seeded_t,seeded_d,user_models,seeded_u=map(int,sys.stdin.read().strip().split("|"))
 assert healthy_c >= 12,(healthy_c,bad_c)
 assert bad_c == 0,(healthy_c,bad_c)
 assert bad_t == 0,(healthy_t,bad_t)
@@ -85,6 +87,8 @@ assert incomplete_t == 0,incomplete_t
 assert seeded_c == 0,("Central baseline was not replaced",seeded_c)
 assert seeded_t == 0,("Tenant baseline was not replaced",seeded_t)
 assert seeded_d == 0,("Dashboard baseline was not replaced",seeded_d)
+assert user_models >= 1,("Central user read-model baseline missing",user_models)
+assert seeded_u == 0,("Central user notification baseline was not replaced",seeded_u)
 '
 echo ok
 
@@ -92,7 +96,7 @@ check_read() {
   path="$1"
   expected_cache="$2"
   enforce_slo="${3:-false}"
-  TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$COOKIE" -H 'X-Himate-Locale: en' "$BASE_URL$path")"
+  TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$COOKIE" -H 'X-Himate-Locale: en' -H 'X-Himate-Read-Model: browser' "$BASE_URL$path")"
   grep -Eiq "^X-Himate-Cache: ($expected_cache)\r?$" "$HEADERS" || {
     echo "Unexpected read-model cache header for $path"
     cat "$HEADERS"
