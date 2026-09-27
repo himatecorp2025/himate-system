@@ -44,6 +44,7 @@ central13 = read("services/cmd/gateway/central13.go")
 central14 = read("services/cmd/gateway/central14.go")
 central17 = read("services/cmd/gateway/central17_round3.go")
 readiness = read("services/cmd/gateway/read_model_readiness.go")
+seeds = read("services/cmd/gateway/read_model_seeds.go")
 health_service = read("services/cmd/health/main.go")
 
 # Persistent, indexed Central + tenant projections.
@@ -91,6 +92,33 @@ check(main.find("a.processReadModelRefreshQueue()") <
       "Durable projection events are not replayed before the startup readiness gate")
 check("ensurePartnerReadModelsReady" in readiness and "loadPartnerWorkspaceDB" in readiness,
       "Startup gate does not validate every tenant workspace")
+
+# Cold start always has a DB-backed healthy structural baseline, while startup
+# still attempts to replace seeded rows with real projections before bind.
+check("seedCentralReadModelBaselines" in seeds,
+      "Cold-start Central/Dashboard baseline seeder missing")
+check("seedPartnerWorkspaceBaseline" in seeds,
+      "Cold-start tenant workspace baseline seeder missing")
+check("ON CONFLICT(snapshot_key) DO NOTHING" in seeds and
+      "ON CONFLICT(partner_id) DO NOTHING" in seeds,
+      "Baseline seeding can overwrite an existing Last-Known-Good projection")
+check("a.seedCentralReadModelBaselines(ctx)" in main and
+      main.find("a.seedCentralReadModelBaselines(ctx)") < main.find("a.bootstrapCentralStep3Snapshots()"),
+      "Cold-start baseline seeding does not happen before snapshot bootstrap")
+for token in [
+    "centralStep3RegistryKey", "centralStep3PlansKey", "centralStep3AnalyticsKey",
+    "centralStep3CommercialKey", "centralStep4PartnersKey", "centralStep4FinanceKey",
+    "centralStep4ImpactKey", "centralStep4AdministrationKey", "centralStep4SystemKey",
+    "centralStep4WebsiteKey", "centralStep4ConnectionsKey", "centralStep4ComplianceKey",
+    "centralStep4GlobalSearchKey",
+]:
+    check(token in seeds, f"Cold-start Central baseline coverage missing: {token}")
+check('payload["seeded"] == true' in seeds,
+      "Seeded read-model marker missing")
+check("readModelSeeded(payload)" in readiness and "job.refresh()" in readiness,
+      "Startup readiness can accept a seeded Central row without attempting real materialization")
+check("seedPartnerWorkspaceBaseline(ctx, item)" in readiness,
+      "Startup readiness does not seed missing tenant workspaces before materialization")
 
 # Read helpers may use DB + memory LKG only, never downstream services.
 for signature in [
