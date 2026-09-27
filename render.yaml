@@ -391,6 +391,11 @@ services:
           type: pserv
           name: himate-storage
           property: hostport
+      - key: GATEWAY_HOSTPORT
+        fromService:
+          type: web
+          name: himate
+          property: hostport
 
   - type: pserv
     name: himate-cms
