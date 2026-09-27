@@ -326,6 +326,21 @@ func centralStep3EndRefresh(key string) {
 	centralStep3Snapshots.refreshMu.Unlock()
 }
 
+func centralStep3WaitBeginRefresh(ctx context.Context, key string) bool {
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if centralStep3BeginRefresh(key) {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-ticker.C:
+		}
+	}
+}
+
 func (a *app) runCentralStep3Materializer() {
 	a.refreshCentralStep3Snapshots()
 	ticker := time.NewTicker(centralStep3RefreshInterval)
