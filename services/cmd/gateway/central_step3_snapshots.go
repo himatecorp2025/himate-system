@@ -81,11 +81,11 @@ func centralSnapshotValid(key string, payload map[string]any) bool {
 	case centralStep3RegistryKey:
 		required = []string{"modules", "groups", "trend"}
 	case centralStep3PlansKey:
-		required = []string{"plans"}
+		required = []string{"plans", "modules"}
 	case centralStep3AnalyticsKey:
-		required = []string{"analytics"}
+		required = []string{"analytics", "modules"}
 	case centralStep3CommercialKey:
-		required = []string{"partners", "matrix_items", "subscription_items", "matrix_available", "subscriptions_available"}
+		required = []string{"partners", "matrix_items", "subscription_items", "modules", "plans", "matrix_available", "subscriptions_available"}
 		if payload["matrix_available"] != true || payload["subscriptions_available"] != true {
 			return false
 		}
@@ -404,18 +404,6 @@ func (a *app) refreshCentralStep3Registry() {
 	}
 	if failed {
 		a.logCentralRefreshFailure(centralStep3RegistryKey, []string{"catalog"})
-		if _, _, ok := centralStep3SnapshotGet(centralStep3RegistryKey); ok {
-			return
-		}
-		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer persistCancel()
-		a.centralStep3Store(persistCtx, centralStep3RegistryKey, map[string]any{
-			"modules": []map[string]any{},
-			"groups":  []map[string]any{},
-			"trend":   []map[string]any{},
-			"status": "unavailable",
-			"unavailable": []string{"catalog"},
-		})
 		return
 	}
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -432,46 +420,71 @@ func (a *app) refreshCentralStep3Registry() {
 func (a *app) refreshCentralStep3Plans() {
 	ctx, cancel := context.WithTimeout(context.Background(), centralStep3MaterializeBudget)
 	defer cancel()
-	var page central10ItemsPage
-	if err := a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/plans", &page); err != nil {
-		a.logCentralRefreshFailure(centralStep3PlansKey, []string{"billing_plans"})
-		if _, _, ok := centralStep3SnapshotGet(centralStep3PlansKey); ok {
-			return
-		}
-		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer persistCancel()
-		a.centralStep3Store(persistCtx, centralStep3PlansKey, map[string]any{
-			"plans": []map[string]any{}, "status": "unavailable", "unavailable": []string{"billing_plans"},
-		})
+
+	var plans, modules central10ItemsPage
+	var plansErr, modulesErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		plansErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/plans", &plans)
+	}()
+	go func() {
+		defer wg.Done()
+		modulesErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/modules", &modules)
+	}()
+	wg.Wait()
+	if plansErr != nil || modulesErr != nil {
+		unavailable := []string{}
+		if plansErr != nil { unavailable = append(unavailable, "billing_plans") }
+		if modulesErr != nil { unavailable = append(unavailable, "catalog_modules") }
+		a.logCentralRefreshFailure(centralStep3PlansKey, unavailable)
 		return
 	}
-	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
 	defer persistCancel()
 	a.centralStep3Store(persistCtx, centralStep3PlansKey, map[string]any{
-		"plans": page.Items, "status": "healthy", "unavailable": []string{},
+		"plans": plans.Items,
+		"modules": modules.Items,
+		"status": "healthy",
+		"unavailable": []string{},
 	})
 }
 
 func (a *app) refreshCentralStep3Analytics() {
 	ctx, cancel := context.WithTimeout(context.Background(), centralStep3MaterializeBudget)
 	defer cancel()
+
 	var analytics map[string]any
-	if err := a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/packages/analytics", &analytics); err != nil {
-		a.logCentralRefreshFailure(centralStep3AnalyticsKey, []string{"package_analytics"})
-		if _, _, ok := centralStep3SnapshotGet(centralStep3AnalyticsKey); ok {
-			return
-		}
-		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer persistCancel()
-		a.centralStep3Store(persistCtx, centralStep3AnalyticsKey, map[string]any{
-			"analytics": map[string]any{}, "status": "unavailable", "unavailable": []string{"package_analytics"},
-		})
+	var modules central10ItemsPage
+	var analyticsErr, modulesErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		analyticsErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/packages/analytics", &analytics)
+	}()
+	go func() {
+		defer wg.Done()
+		modulesErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/modules", &modules)
+	}()
+	wg.Wait()
+	if analyticsErr != nil || modulesErr != nil {
+		unavailable := []string{}
+		if analyticsErr != nil { unavailable = append(unavailable, "package_analytics") }
+		if modulesErr != nil { unavailable = append(unavailable, "catalog_modules") }
+		a.logCentralRefreshFailure(centralStep3AnalyticsKey, unavailable)
 		return
 	}
-	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
 	defer persistCancel()
 	a.centralStep3Store(persistCtx, centralStep3AnalyticsKey, map[string]any{
-		"analytics": analytics, "status": "healthy", "unavailable": []string{},
+		"analytics": analytics,
+		"modules": modules.Items,
+		"status": "healthy",
+		"unavailable": []string{},
 	})
 }
 
@@ -482,20 +495,6 @@ func (a *app) refreshCentralStep3Commercial() {
 	partners, partnerErr := a.central10AllPartners(ctx)
 	if partnerErr != nil {
 		a.logCentralRefreshFailure(centralStep3CommercialKey, []string{"partners"})
-		if _, _, ok := centralStep3SnapshotGet(centralStep3CommercialKey); ok {
-			return
-		}
-		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer persistCancel()
-		a.centralStep3Store(persistCtx, centralStep3CommercialKey, map[string]any{
-			"partners": []map[string]any{},
-			"matrix_items": []map[string]any{},
-			"subscription_items": []map[string]any{},
-			"matrix_available": false,
-			"subscriptions_available": false,
-			"status": "unavailable",
-			"unavailable": []string{"partners"},
-		})
 		return
 	}
 	partnerIDs := make([]string, 0, len(partners))
@@ -506,33 +505,51 @@ func (a *app) refreshCentralStep3Commercial() {
 	}
 	sort.Strings(partnerIDs)
 
-	matrixItems, subscriptionItems, matrixErr, subscriptionsErr := a.central10CommercialSources(ctx, partnerIDs, true)
-	previous, _, _ := centralStep3SnapshotGet(centralStep3CommercialKey)
-	if matrixErr != nil {
-		matrixItems = anyItems(previous["matrix_items"])
-	}
-	if subscriptionsErr != nil {
-		subscriptionItems = anyItems(previous["subscription_items"])
-	}
+	var modules, plans central10ItemsPage
+	var modulesErr, plansErr error
+	var matrixItems, subscriptionItems []map[string]any
+	var matrixErr, subscriptionsErr error
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		matrixItems, subscriptionItems, matrixErr, subscriptionsErr = a.central10CommercialSources(ctx, partnerIDs, true)
+	}()
+	go func() {
+		defer wg.Done()
+		modulesErr = a.internalGET(ctx, a.hosts["catalog"], "/api/v1/modules", &modules)
+	}()
+	go func() {
+		defer wg.Done()
+		plansErr = a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/plans", &plans)
+	}()
+	wg.Wait()
+
 	unavailable := []string{}
 	if matrixErr != nil { unavailable = append(unavailable, "commercial_matrix") }
 	if subscriptionsErr != nil { unavailable = append(unavailable, "subscription_matrix") }
-	status := "healthy"
-	if len(unavailable) > 0 { status = "partial" }
-	payload := map[string]any{
-		"partners":            partners,
-		"matrix_items":        matrixItems,
-		"subscription_items":  subscriptionItems,
-		"matrix_available":    matrixErr == nil || len(matrixItems) > 0,
-		"subscriptions_available": subscriptionsErr == nil || len(subscriptionItems) > 0,
-		"status": status,
-		"unavailable": unavailable,
+	if modulesErr != nil { unavailable = append(unavailable, "catalog_modules") }
+	if plansErr != nil { unavailable = append(unavailable, "billing_plans") }
+	if len(unavailable) > 0 {
+		a.logCentralRefreshFailure(centralStep3CommercialKey, unavailable)
+		return
 	}
-	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+
+	payload := map[string]any{
+		"partners": partners,
+		"matrix_items": matrixItems,
+		"subscription_items": subscriptionItems,
+		"modules": modules.Items,
+		"plans": plans.Items,
+		"matrix_available": true,
+		"subscriptions_available": true,
+		"status": "healthy",
+		"unavailable": []string{},
+	}
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
 	defer persistCancel()
 	a.centralStep3Store(persistCtx, centralStep3CommercialKey, payload)
 }
-
 func centralStep3Meta(
 	started time.Time,
 	snapshotKey string,
