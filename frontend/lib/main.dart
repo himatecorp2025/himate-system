@@ -6919,9 +6919,6 @@ class _PackagesPageState extends State<PackagesPage> {
     return expected.length == actual.length && expected.containsAll(actual);
   }
 
-  bool _packageMutationVisible(Map<String,dynamic> updated) =>
-      _packageMutationMatches(plans, updated);
-
   String _packageDisplayPrice(Map<String,dynamic> plan) {
     final currency = '${plan['currency'] ?? 'USD'}'.toUpperCase();
     final amount = number(plan['monthly_price']);
