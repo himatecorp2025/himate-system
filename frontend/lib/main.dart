@@ -8028,13 +8028,8 @@ class _PackageComparisonTable extends StatelessWidget {
         },
       ),
       (
-        uiLiteral('Configured modules'),
-        (plan) {
-          final unlimited = '${plan['selection_mode'] ?? ''}'.toUpperCase() == 'UNLIMITED';
-          if (unlimited) return uiLiteral('Automatic');
-          final included = plan['included_modules'] is List ? (plan['included_modules'] as List).length : 0;
-          return '$included';
-        },
+        uiLiteral('Active partners'),
+        (plan) => '${(plan['active_partner_count'] as num?)?.toInt() ?? 0}',
       ),
       (uiLiteral('Status'), (plan) => uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
     ];
