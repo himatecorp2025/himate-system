@@ -327,6 +327,13 @@ func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time
 			a.refreshCentralPartnerWorkspaceSnapshots(ctx, false)
 		}()
 	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		a.refreshCentralUserNotificationSnapshots(ctx)
+	}()
 	wg.Wait()
 
 	verifyCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
