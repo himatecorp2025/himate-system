@@ -392,17 +392,7 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
-		common.JSON(w, http.StatusOK, map[string]any{
-			"ready":        false,
-			"access":       map[string]any{},
-			"health":       map[string]any{},
-			"provisioning": []map[string]any{},
-			"environments": []map[string]any{},
-			"events":       []map[string]any{},
-			"backups":      map[string]any{"provider": "", "items": []map[string]any{}},
-			"kpis":         map[string]any{},
-			"meta":         centralStep4Meta(started, centralStep4SystemKey, time.Time{}, "warming", []string{}),
-		})
+		a.readModelInvariantFailure(w, centralStep4SystemKey)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
