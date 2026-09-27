@@ -584,20 +584,29 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Widget hubOverview() {
-    final publishedPages = pages.where((page) {
-      final status = (page['status'] ?? page['publication_status'] ?? '').toString().toUpperCase();
-      return status == 'PUBLISHED' || status == 'ACTIVE' || page['published_version_id'] != null;
-    }).length;
-    final imageAssets = media.where((asset) => (asset['mime_type'] ?? '').toString().startsWith('image/')).length;
+    final pageCount = (websiteKpis['pages'] as num?)?.toInt() ?? pages.length;
+    final publishedPages = (websiteKpis['published_pages'] as num?)?.toInt() ?? 0;
+    final mediaCount = (websiteKpis['media_assets'] as num?)?.toInt() ?? media.length;
+    final imageAssets = (websiteKpis['image_assets'] as num?)?.toInt() ?? 0;
+    final environmentCount = (websiteKpis['environments'] as num?)?.toInt() ?? environments.length;
+    final liveEnvironments = (websiteKpis['live_environments'] as num?)?.toInt() ?? 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ResponsiveKpiGrid(children: [
-          Kpi(label: 'Pages', value: '${pages.length}', note: 'CMS page records', icon: Icons.description_outlined, accent: brandSteel),
-          Kpi(label: 'Media assets', value: '${media.length}', note: '$imageAssets image assets', icon: Icons.perm_media_outlined, accent: brandGold),
-          Kpi(label: 'Published pages', value: '$publishedPages', note: 'Published or active content', icon: Icons.public_outlined, accent: brandSuccess),
-          Kpi(label: 'Partner connections', value: widget.canConnections ? 'ON' : '—', note: widget.canConnections ? 'Connection workspace available' : 'Permission required', icon: Icons.hub_outlined, accent: const Color(0xFF6C63D9)),
+          Kpi(label: 'Pages', value: widget.canCms ? '$pageCount' : '—', note: widget.canCms ? 'CMS page records' : 'Permission required', icon: Icons.description_outlined, accent: brandSteel),
+          Kpi(label: 'Media assets', value: widget.canCms ? '$mediaCount' : '—', note: widget.canCms ? uiBilingual('$imageAssets image assets', '$imageAssets képfájl') : 'Permission required', icon: Icons.perm_media_outlined, accent: brandGold),
+          Kpi(label: 'Published pages', value: widget.canCms ? '$publishedPages' : '—', note: widget.canCms ? 'Published or active content' : 'Permission required', icon: Icons.public_outlined, accent: brandSuccess),
+          Kpi(
+            label: 'Live environments',
+            value: widget.canEnvironments ? '$liveEnvironments' : '—',
+            note: widget.canEnvironments
+                ? uiBilingual('$environmentCount deployment environments', '$environmentCount telepítési környezet')
+                : 'Permission required',
+            icon: Icons.cloud_done_outlined,
+            accent: const Color(0xFF6C63D9),
+          ),
         ]),
         const SizedBox(height: 18),
         LayoutBuilder(
@@ -616,7 +625,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'SEO', subtitle: 'Metadata, page keywords, Open Graph and technical discovery controls.', icon: Icons.search_rounded, accent: brandGold, onTap: () => setState(() => section = 'seo'))),
               if (widget.canEnvironments)
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'Domain & Deployment', subtitle: 'Production domains, TLS and deployment environment status.', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => setState(() => section = 'domains'))),
-              SizedBox(width: width, child: _WebsiteHubCard(title: 'Analytics', subtitle: 'Website measurement readiness and analytics integration status without invented traffic data.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: () => setState(() => section = 'analytics'))),
+              if (widget.canCms)
+                SizedBox(width: width, child: _WebsiteHubCard(title: 'Analytics', subtitle: 'Website measurement readiness and analytics integration status without invented traffic data.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: () => setState(() => section = 'analytics'))),
               if (widget.canConnections)
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'Partner Connections', subtitle: 'Partner website adapters, connector state and last successful synchronization.', icon: Icons.groups_2_outlined, accent: const Color(0xFFD84965), onTap: () => setState(() => section = 'connections'))),
             ];
