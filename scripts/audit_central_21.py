@@ -46,6 +46,38 @@ central17 = read("services/cmd/gateway/central17_round3.go")
 readiness = read("services/cmd/gateway/read_model_readiness.go")
 seeds = read("services/cmd/gateway/read_model_seeds.go")
 health_service = read("services/cmd/health/main.go")
+common_go = read("services/internal/common/common.go")
+step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
+
+# Shared database capacity and background materializer concurrency are part of
+# the CQRS contract. A zero-fan-out read path is not production-safe if the
+# background workers can exhaust the shared PostgreSQL cluster.
+for token in [
+    'dbPoolInt("HIMATE_DB_MAX_OPEN_CONNS", 4, 1, 16)',
+    'dbPoolInt("HIMATE_DB_MAX_IDLE_CONNS", 2, 0, maxOpen)',
+    'db.SetMaxOpenConns(maxOpen)',
+    'db.SetMaxIdleConns(maxIdle)',
+    'db.SetConnMaxIdleTime(5 * time.Minute)',
+]:
+    check(token in common_go, f"Topology-safe PostgreSQL pool contract missing: {token}")
+for token in [
+    'readModelRefreshConcurrency   = 3',
+    'readModelRefreshSlots = make(chan struct{}, readModelRefreshConcurrency)',
+    'withReadModelRefreshSlot',
+    'refreshReadModelsForBatch(events)',
+    'WHERE processed_at IS NULL AND id <= $1',
+]:
+    check(token in models, f"Bounded/coalesced materializer contract missing: {token}")
+check('a.refreshCentralProjectionSerialized(refresh.key, refresh.fn)' in snapshots,
+      "Step3 materializer bypasses the global projection concurrency gate")
+check('a.refreshCentralProjectionSerialized(refresh.key, refresh.fn)' in step4_snapshots,
+      "Step4 materializer bypasses the global projection concurrency gate")
+for token in [
+    'centralPartnerWorkspaceMaterializeWorkers = 2',
+    'centralPartnerWorkspaceSourceConcurrency  = 4',
+    'a.withReadModelRefreshSlot(partnerCtx, centralPartnerWorkspaceKey(partnerID)',
+]:
+    check(token in tenant_snapshots, f"Tenant materializer concurrency contract missing: {token}")
 
 # Persistent, indexed Central + tenant projections.
 for token in [
