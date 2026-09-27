@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -293,6 +294,20 @@ func partnerWorkspaceBaseline(partner map[string]any) map[string]any {
 
 func (a *app) seedCentralReadModelBaselines(ctx context.Context) error {
 	for key, payload := range centralReadModelBaselines() {
+		var existingRaw []byte
+		err := a.db.QueryRowContext(ctx,
+			`SELECT payload FROM identity.central_screen_snapshots WHERE snapshot_key=$1`,
+			key,
+		).Scan(&existingRaw)
+		if err == nil {
+			var existing map[string]any
+			if json.Unmarshal(existingRaw, &existing) == nil && centralSnapshotValid(key, existing) {
+				continue
+			}
+		} else if err != sql.ErrNoRows {
+			return fmt.Errorf("read baseline candidate %s: %w", key, err)
+		}
+
 		raw, err := json.Marshal(payload)
 		if err != nil {
 			return fmt.Errorf("marshal baseline %s: %w", key, err)
@@ -300,26 +315,42 @@ func (a *app) seedCentralReadModelBaselines(ctx context.Context) error {
 		if _, err := a.db.ExecContext(ctx,
 			`INSERT INTO identity.central_screen_snapshots(snapshot_key,payload,updated_at)
 			 VALUES($1,$2::jsonb,NOW())
-			 ON CONFLICT(snapshot_key) DO NOTHING`,
+			 ON CONFLICT(snapshot_key) DO UPDATE
+			 SET payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at`,
 			key, string(raw),
 		); err != nil {
-			return fmt.Errorf("seed baseline %s: %w", key, err)
+			return fmt.Errorf("seed/repair baseline %s: %w", key, err)
 		}
 	}
 
 	year := time.Now().UTC().Year()
 	dashboard := dashboardReadModelBaseline(year, a.env, a.version)
-	raw, err := json.Marshal(dashboard)
-	if err != nil {
-		return fmt.Errorf("marshal dashboard baseline: %w", err)
+	var dashboardRaw []byte
+	dashboardErr := a.db.QueryRowContext(ctx,
+		`SELECT payload FROM identity.dashboard_snapshots WHERE year=$1`,
+		year,
+	).Scan(&dashboardRaw)
+	dashboardNeedsSeed := dashboardErr == sql.ErrNoRows
+	if dashboardErr == nil {
+		var existing map[string]any
+		dashboardNeedsSeed = json.Unmarshal(dashboardRaw, &existing) != nil || !dashboardSnapshotValid(existing)
+	} else if dashboardErr != sql.ErrNoRows {
+		return fmt.Errorf("read dashboard baseline candidate: %w", dashboardErr)
 	}
-	if _, err := a.db.ExecContext(ctx,
-		`INSERT INTO identity.dashboard_snapshots(year,payload,updated_at)
-		 VALUES($1,$2::jsonb,NOW())
-		 ON CONFLICT(year) DO NOTHING`,
-		year, string(raw),
-	); err != nil {
-		return fmt.Errorf("seed dashboard baseline: %w", err)
+	if dashboardNeedsSeed {
+		raw, err := json.Marshal(dashboard)
+		if err != nil {
+			return fmt.Errorf("marshal dashboard baseline: %w", err)
+		}
+		if _, err := a.db.ExecContext(ctx,
+			`INSERT INTO identity.dashboard_snapshots(year,payload,updated_at)
+			 VALUES($1,$2::jsonb,NOW())
+			 ON CONFLICT(year) DO UPDATE
+			 SET payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at`,
+			year, string(raw),
+		); err != nil {
+			return fmt.Errorf("seed/repair dashboard baseline: %w", err)
+		}
 	}
 	return a.seedPartnerBaselinesFromCentralSnapshot(ctx)
 }
@@ -329,6 +360,20 @@ func (a *app) seedPartnerWorkspaceBaseline(ctx context.Context, partner map[stri
 	if partnerID == "" {
 		return nil
 	}
+	var existingRaw []byte
+	err := a.db.QueryRowContext(ctx,
+		`SELECT payload FROM identity.partner_workspace_snapshots WHERE partner_id=$1`,
+		partnerID,
+	).Scan(&existingRaw)
+	if err == nil {
+		var existing map[string]any
+		if json.Unmarshal(existingRaw, &existing) == nil && partnerWorkspaceSnapshotValid(existing) {
+			return nil
+		}
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+
 	payload := partnerWorkspaceBaseline(partner)
 	if !partnerWorkspaceSnapshotValid(payload) {
 		return fmt.Errorf("partner baseline failed validation: %s", partnerID)
@@ -340,7 +385,8 @@ func (a *app) seedPartnerWorkspaceBaseline(ctx context.Context, partner map[stri
 	_, err = a.db.ExecContext(ctx,
 		`INSERT INTO identity.partner_workspace_snapshots(partner_id,payload,updated_at)
 		 VALUES($1,$2::jsonb,NOW())
-		 ON CONFLICT(partner_id) DO NOTHING`,
+		 ON CONFLICT(partner_id) DO UPDATE
+		 SET payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at`,
 		partnerID, string(raw),
 	)
 	return err
