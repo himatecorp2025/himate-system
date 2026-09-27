@@ -1347,6 +1347,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.dashboard(w, r, u)
 		return
 	}
+	if a.serveCentralMaterializedGET(w, r, u) {
+		return
+	}
 	switch {
 	case r.URL.Path == "/api/v1/profile":
 		a.profile(w,r,u)
