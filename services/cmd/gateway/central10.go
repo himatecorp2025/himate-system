@@ -755,6 +755,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 
 	modules := anyItems(snapshot["modules"])
 	groups := anyItems(snapshot["groups"])
+	trend := anyItems(snapshot["trend"])
 
 	registryQ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("registry_q")))
 	registryGroup := strings.TrimSpace(r.URL.Query().Get("registry_group"))
@@ -817,6 +818,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 			"modules": filteredModules,
 			"groups": groups,
 			"topics": topics,
+			"trend": trend,
 			"kpis": map[string]any{
 				"module_registry": len(modules), "active_modules": liveReady, "source_linked": sourceLinked,
 				"relationships": relationshipCount, "active_partner_assignments": activeAssignments,
