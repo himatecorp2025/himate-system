@@ -11,7 +11,7 @@ openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 
 start = frontend.index("  Future<void> addPartner() async {")
-end = frontend.index("  List<Map<String, dynamic>> get filtered => partners;", start)
+end = frontend.index("  @override\n  Widget build(BuildContext context) {", start)
 add_partner = frontend[start:end]
 
 checks = [
