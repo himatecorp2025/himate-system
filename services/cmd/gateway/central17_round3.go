@@ -176,7 +176,8 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 	ctx, cancel := context.WithTimeout(r.Context(), 1100*time.Millisecond)
 	defer cancel()
 	var healthPayload, provisioningPayload, environmentsPayload, backupsPayload map[string]any
-	var healthErr, provisioningErr, environmentsErr, backupsErr error
+	var healthErr, provisioningErr, environmentsErr, backupsErr, auditErr error
+	auditEvents := []map[string]any{}
 	var wg sync.WaitGroup
 
 	if canHealth {
@@ -207,6 +208,35 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 			backupsErr = a.internalGET(ctx, a.hosts["backups"], "/api/v1/backups/summary", &backupsPayload)
 		}()
 	}
+	if canAudit {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rows, err := a.db.QueryContext(ctx, `SELECT action,method,path,status,outcome,created_at
+				FROM identity.audit_events ORDER BY id DESC LIMIT 12`)
+			if err != nil {
+				auditErr = err
+				return
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var action, method, path, outcome string
+				var status int
+				var createdAt time.Time
+				if err := rows.Scan(&action, &method, &path, &status, &outcome, &createdAt); err != nil {
+					auditErr = err
+					return
+				}
+				auditEvents = append(auditEvents, map[string]any{
+					"action": action, "method": method, "path": path,
+					"status": status, "outcome": outcome, "created_at": createdAt.UTC(),
+				})
+			}
+			if err := rows.Err(); err != nil {
+				auditErr = err
+			}
+		}()
+	}
 	wg.Wait()
 
 	unavailable := []string{}
@@ -235,6 +265,13 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 	if canBackups {
 		if backupsErr != nil {
 			unavailable = append(unavailable, "backups")
+		} else {
+			successful++
+		}
+	}
+	if canAudit {
+		if auditErr != nil {
+			unavailable = append(unavailable, "audit_events")
 		} else {
 			successful++
 		}
@@ -306,6 +343,7 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 		},
 		"provisioning": provisioning,
 		"environments": environments,
+		"events": auditEvents,
 		"backups": map[string]any{
 			"provider": central10String(backupsPayload["provider"]),
 			"items":    backups,
