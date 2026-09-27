@@ -254,6 +254,7 @@ func main() {
 	}
 	a.bootstrapDashboardSnapshot()
 	a.bootstrapCentralStep3Snapshots()
+	a.bootstrapPartnerWorkspaceSnapshots()
 	// Restore only validated Last-Known-Good Central snapshots. Missing or
 	// legacy degraded snapshots are rebuilt before the first normal request;
 	// background materializers keep them fresh without putting fan-out work on
@@ -264,6 +265,7 @@ func main() {
 	go a.runCentralStep3Materializer()
 	go a.runCentralStep4Materializer()
 	go a.runCentralPartnerWorkspaceMaterializer()
+	go a.runReadModelRefreshWorker()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
@@ -411,6 +413,7 @@ func (a *app) migrate(ctx context.Context) error {
 		central8GatewayMigration(),
 		central10DashboardSnapshotMigration(),
 		central10Step3SnapshotMigration(),
+		materializedReadModelMigration(),
 	}); err != nil {
 		return err
 	}
@@ -1313,6 +1316,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 				if state, ok := newState.(map[string]any); ok {
 					a.applyCentralModuleMutationSnapshot(r.URL.Path, state)
 				}
+				refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
+				a.enqueueReadModelRefresh(refreshCtx, r.URL.Path, finalPartnerID)
+				refreshCancel()
 			}
 			finalPartnerID := partnerID
 			if finalPartnerID == "" {
