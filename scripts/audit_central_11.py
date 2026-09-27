@@ -15,6 +15,8 @@ modules = read("frontend/lib/module_control_plane.dart")
 design = read("frontend/lib/design_guide.dart")
 localization = read("frontend/lib/localization.dart")
 gateway = read("services/cmd/gateway/main.go")
+gateway_c10 = read("services/cmd/gateway/central10.go")
+step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 partners = read("services/cmd/partners/main.go")
 fixture = read("services/cmd/partners/test_fixture.go")
 storage = read("services/cmd/storage/main.go")
@@ -29,20 +31,27 @@ compose = read("docker-compose.yml")
 openapi = read("docs/openapi.yaml")
 acceptance = read("docs/CENTRAL-11_ACCEPTANCE.md")
 
-# First-click cache-key parity / prewarm.
+# CENTRAL-21 first-click contract: no browser prewarm and no hidden page
+# pre-mount. Presets are query-only views over the authoritative Partners
+# snapshot, while the Gateway owns all data warming.
 for token in [
-    "centralPartnersPresetPath(lifecycle: 'LIVE')",
-    "centralPartnersPresetPath(lifecycle: 'PROSPECT')",
-    "centralPartnersPresetPath(reference: true)",
+    "String centralPartnersPresetPath(",
     "centralFinancePath(invoiceStatus: status)",
-    "'/api/v1/system-health/snapshot'",
-    "'/api/v1/provisioning/jobs'",
-    "'/api/v1/environments'",
-    "'/api/v1/backups/summary'",
+    "void _warmControlPlane()",
+    "Gateway owns authoritative read-model warming",
 ]:
-    check(token in frontend, f"first-click prewarm contract missing: {token}")
-check("primaryTargets" in frontend and "deferredTargets" in frontend,
-      "Central prewarm tiers are missing")
+    check(token in frontend, f"first-click canonical-path contract missing: {token}")
+warm_start = frontend.find("void _warmControlPlane()")
+warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
+warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
+check("api.prefetch(" not in warm and "primaryTargets" not in warm and "deferredTargets" not in warm,
+      "Central browser prewarm tiers survived")
+check("_prebuildPriorityPages" not in frontend,
+      "hidden workspace pre-mount still recreates a hard-refresh request wave")
+check("centralStep3SnapshotGet(centralStep4PartnersKey)" in gateway_c10,
+      "Partners presets are not served from the authoritative Partners snapshot")
+check("refreshCentralStep4Partners" in step4,
+      "Partners authoritative background materializer missing")
 
 for class_name in [
     "class _PartnersPageState",
@@ -51,13 +60,8 @@ for class_name in [
 ]:
     start = frontend.find(class_name)
     check(start >= 0, f"{class_name} missing")
-    snippet = frontend[start:start + 1800]
+    snippet = frontend[start:start + 2200]
     check("bool loading = true;" in snippet, f"{class_name} does not start in truthful loading state")
-
-check("Future<void> _prebuildPriorityPages()" in frontend, "priority page prebuild is missing")
-for idx in ["1", "4", "5", "6", "7"]:
-    check(idx in frontend[frontend.find("_prebuildPriorityPages"):frontend.find("static const int navCount")],
-          f"priority prebuild does not cover page {idx}")
 
 # Packages: inactive selection must be explained by authoritative eligibility.
 for token in [
