@@ -216,6 +216,10 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Impact services are temporarily unavailable': 'A hatáskezelési szolgáltatások átmenetileg nem érhetők el',
+    'Impact, Evidence and Reports could not be refreshed. No infinite loading state is used; retry when the services recover.': 'A Hatás, Bizonyítékok és Jelentések adatai nem frissíthetők. A rendszer nem használ végtelen betöltési állapotot; próbáld újra, amikor a szolgáltatások helyreálltak.',
+    'Unavailable services': 'Nem elérhető szolgáltatások',
+    'Impact data is partially available': 'A hatásadatok részlegesen érhetők el',
     'Partners, modules and impact at a glance.': 'Áttekintés a partnerekről, modulokról és a hatásról.',
     'Search partners, modules and reports...': 'Keresés partnerek, modulok és jelentések között...',
     'Open': 'Megnyitás',
