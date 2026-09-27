@@ -26,6 +26,8 @@ curl --max-time 3 -fsS -c "$COOKIE" -H 'Content-Type: application/json' -d "$LOG
 
 TEST_PARTNER_ID="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT id FROM partners.partners WHERE test_partner=TRUE AND lower(trim(display_name))='test partner' ORDER BY created_at DESC LIMIT 1")"
 test -n "$TEST_PARTNER_ID"
+MODULE_KEY="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT module_key FROM catalog.modules ORDER BY module_key LIMIT 1")"
+test -n "$MODULE_KEY"
 
 printf 'CENTRAL-21 persistent LKG database coverage... '
 STATE="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' <<'SQL'
@@ -41,6 +43,9 @@ SELECT
      AND payload ? 'partner_domains_deployments'
      AND payload ? 'partner_audit_events'
      AND payload ? 'partner_permissions'
+     AND payload ? 'module_commercial_history'
+     AND payload ? 'start22_summary'
+     AND payload ? 'start22_retention'
    ));
 SQL
 )"
@@ -84,6 +89,10 @@ PY
 printf 'CENTRAL-21 baseline materialized REST reads and <=20ms local SLO... '
 check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model" "true"
 check_read "/api/v1/modules" "persistent-read-model" "true"
+check_read "/api/v1/modules/$MODULE_KEY/relationships" "persistent-read-model" "true"
+check_read "/api/v1/modules/$MODULE_KEY/impact-metrics" "persistent-read-model" "true"
+check_read "/api/v1/modules/$MODULE_KEY/usage" "persistent-read-model" "true"
+check_read "/api/v1/connectors/start22/mapping" "persistent-read-model" "true"
 check_read "/api/v1/billing/plans" "persistent-read-model" "true"
 check_read "/api/v1/billing/finance/overview" "persistent-read-model" "true"
 check_read "/api/v1/system-health/snapshot" "persistent-read-model" "true"
@@ -94,6 +103,9 @@ check_read "/api/v1/impact/summary" "persistent-read-model" "true"
 check_read "/api/v1/reports" "persistent-read-model" "true"
 check_read "/api/v1/partners/$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
 check_read "/api/v1/partners/$TEST_PARTNER_ID/modules" "persistent-tenant-read-model" "true"
+check_read "/api/v1/partners/$TEST_PARTNER_ID/modules/$MODULE_KEY/commercial-history" "persistent-tenant-read-model" "true"
+check_read "/api/v1/connectors/start22/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
+check_read "/api/v1/connectors/start22/retention?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
 check_read "/api/v1/partners/$TEST_PARTNER_ID/portal-users" "persistent-tenant-read-model" "true"
 check_read "/api/v1/provisioning/jobs?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
 check_read "/api/v1/impact/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
@@ -109,6 +121,10 @@ printf 'CENTRAL-21 zero-fan-out reads survive dependency outage... '
 # would now hit the 2s curl deadline or return a 5xx.
 check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model"
 check_read "/api/v1/modules" "persistent-read-model"
+check_read "/api/v1/modules/$MODULE_KEY/relationships" "persistent-read-model"
+check_read "/api/v1/modules/$MODULE_KEY/impact-metrics" "persistent-read-model"
+check_read "/api/v1/modules/$MODULE_KEY/usage" "persistent-read-model"
+check_read "/api/v1/connectors/start22/mapping" "persistent-read-model"
 check_read "/api/v1/billing/plans" "persistent-read-model"
 check_read "/api/v1/billing/finance/overview" "persistent-read-model"
 check_read "/api/v1/system-health/snapshot" "persistent-read-model"
@@ -119,6 +135,9 @@ check_read "/api/v1/impact/summary" "persistent-read-model"
 check_read "/api/v1/reports" "persistent-read-model"
 check_read "/api/v1/partners/$TEST_PARTNER_ID" "persistent-tenant-read-model"
 check_read "/api/v1/partners/$TEST_PARTNER_ID/modules" "persistent-tenant-read-model"
+check_read "/api/v1/partners/$TEST_PARTNER_ID/modules/$MODULE_KEY/commercial-history" "persistent-tenant-read-model"
+check_read "/api/v1/connectors/start22/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
+check_read "/api/v1/connectors/start22/retention?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
 check_read "/api/v1/partners/$TEST_PARTNER_ID/portal-users" "persistent-tenant-read-model"
 check_read "/api/v1/provisioning/jobs?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
 check_read "/api/v1/impact/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
