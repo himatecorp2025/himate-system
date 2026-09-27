@@ -33,6 +33,7 @@ def func_block(source: str, signature: str) -> str:
 main = read("services/cmd/gateway/main.go")
 snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
 tenant_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
+catalog = read("services/cmd/catalog/main.go")
 models = read("services/cmd/gateway/materialized_read_models.go")
 central_reads = read("services/cmd/gateway/central_materialized_reads.go")
 partner_reads = read("services/cmd/gateway/partner_materialized_reads.go")
@@ -192,6 +193,40 @@ check("partnerWorkspaceForRead" in access and 'snapshot["portal_gate"]' in acces
       "Partner Portal access gate is not sourced from tenant LKG")
 check("internalGET" not in access and 'a.hosts["billing"]' not in access,
       "Partner Portal login regressed to synchronous Billing fan-out")
+
+# Remaining deep screen reads must also be projected; none may fall through
+# to Catalog/Connector/Partner live proxies.
+for token in [
+    '"/internal/v1/read-model/module-details"',
+    '"/internal/v1/read-model/partner-module-history/"',
+]:
+    check(token in catalog, f"Catalog bulk projection source missing: {token}")
+
+for token in [
+    '"module_details"',
+]:
+    check(token in snapshots, f"Central module detail LKG field missing: {token}")
+for token in [
+    '"module_commercial_history"',
+    '"start22_summary"',
+    '"start22_retention"',
+]:
+    check(token in models and token in tenant_snapshots,
+          f"Tenant projection field missing or not validated: {token}")
+
+for token in [
+    'case "relationships":',
+    'case "impact-metrics":',
+    'case "usage":',
+    'strings.HasSuffix(path, "/commercial-history")',
+    'path == "/api/v1/connectors/start22/mapping"',
+    'path == "/api/v1/connectors/start22/summary"',
+    'path == "/api/v1/connectors/start22/retention"',
+]:
+    check(token in central_reads, f"Deep materialized GET route missing: {token}")
+
+check('"start22_mapping"' in snapshots and '"start22_summary"' in snapshots,
+      "Connections LKG validator does not require complete START-22 projection")
 
 # Background workers are the only place where multi-service fan-out belongs.
 check("materializeCentralPartnerWorkspace" in tenant_snapshots and
