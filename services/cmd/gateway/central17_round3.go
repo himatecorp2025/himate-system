@@ -357,6 +357,10 @@ func (a *app) materializeCentralSystem(ctx context.Context) map[string]any {
 		"provisioning": provisioning,
 		"environments": environments,
 		"events":       auditEvents,
+		"health_api":        healthPayload,
+		"provisioning_api":  provisioningPayload,
+		"environments_api":  environmentsPayload,
+		"backups_api":       backupsPayload,
 		"backups": map[string]any{
 			"provider": central10String(backupsPayload["provider"]),
 			"items":    backups,
