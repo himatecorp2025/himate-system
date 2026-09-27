@@ -106,24 +106,33 @@ class _Central17UsMapState extends State<_Central17UsMap> {
                 const SizedBox(height:8),
                 LText('${partners.length} ${uiLiteral(partners.length == 1 ? 'active partner' : 'active partners')}',style:const TextStyle(color:brandTextSoft,fontSize:11)),
                 const SizedBox(height:12),
-                for (var i=0;i<partners.length;i++) ...[
-                  Container(
-                    width:double.infinity,
-                    padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),
-                    decoration:BoxDecoration(color:const Color(0xFFF8FAFD),borderRadius:BorderRadius.circular(11),border:Border.all(color:brandMist)),
-                    child:Row(children:[
-                      const Icon(Icons.apartment_rounded,color:brandNavy,size:18),
-                      const SizedBox(width:9),
-                      Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                        LText('${partners[i]['name'] ?? '—'}',style:const TextStyle(color:brandNavy,fontSize:11.5,fontWeight:FontWeight.w700)),
-                        const SizedBox(height:2),
-                        LText('${partners[i]['city'] ?? ''}${('${partners[i]['city'] ?? ''}').isNotEmpty ? ', ' : ''}$state',style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
-                      ])),
-                      _StatusPill(label:'${partners[i]['lifecycle'] ?? 'LIVE'}'),
-                    ]),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (var i=0;i<partners.length;i++) ...[
+                          Container(
+                            width:double.infinity,
+                            padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),
+                            decoration:BoxDecoration(color:const Color(0xFFF8FAFD),borderRadius:BorderRadius.circular(11),border:Border.all(color:brandMist)),
+                            child:Row(children:[
+                              const Icon(Icons.apartment_rounded,color:brandNavy,size:18),
+                              const SizedBox(width:9),
+                              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                                LText('${partners[i]['name'] ?? '—'}',style:const TextStyle(color:brandNavy,fontSize:11.5,fontWeight:FontWeight.w700)),
+                                const SizedBox(height:2),
+                                LText('${partners[i]['city'] ?? ''}${('${partners[i]['city'] ?? ''}').isNotEmpty ? ', ' : ''}$state',style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
+                              ])),
+                              _StatusPill(label:'${partners[i]['lifecycle'] ?? 'LIVE'}'),
+                            ]),
+                          ),
+                          if (i != partners.length - 1) const SizedBox(height:7),
+                        ],
+                      ],
+                    ),
                   ),
-                  if (i != partners.length - 1) const SizedBox(height:7),
-                ],
+                ),
               ],
             ),
           ),
@@ -166,8 +175,8 @@ class _Central17UsMapState extends State<_Central17UsMap> {
               for(final row in activeRows)
                 if(labelledStates.contains('${row['state'] ?? ''}') && _positions['${row['state'] ?? ''}'] case final Offset pos)
                   Positioned(
-                    left:(c.maxWidth*pos.dx).clamp(8,c.maxWidth-98),
-                    top:(c.maxHeight*pos.dy-34).clamp(4,c.maxHeight-34),
+                    left:(c.maxWidth*pos.dx).clamp(8.0, math.max(8.0, c.maxWidth-98)).toDouble(),
+                    top:(c.maxHeight*pos.dy-34).clamp(4.0, math.max(4.0, c.maxHeight-34)).toDouble(),
                     child:IgnorePointer(
                       child:Container(
                         padding:const EdgeInsets.symmetric(horizontal:6,vertical:4),
