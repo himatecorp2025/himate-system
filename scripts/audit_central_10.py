@@ -231,7 +231,7 @@ check("onRefresh: applyModel" in modules_ui,
 for token in [
     "Loading the latest partner portfolio snapshot.",
     "Loading the latest finance snapshot.",
-    "Loading the latest impact and evidence snapshot.",
+    "Impact data is loading",
 ]:
     check(token in frontend, f"Central-10.1 Loading != Zero guard missing: {token}")
 check("Loading the latest module registry snapshot." in modules_ui,
