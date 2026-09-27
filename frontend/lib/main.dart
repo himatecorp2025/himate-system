@@ -136,7 +136,7 @@ ThemeData buildBrandTheme() {
     error: brandDanger,
   );
   final base = GoogleFonts.interTextTheme(ThemeData.light().textTheme);
-  final display = GoogleFonts.cormorantGaramondTextTheme(ThemeData.light().textTheme);
+  final display = GoogleFonts.loraTextTheme(ThemeData.light().textTheme);
   const inputBorder = OutlineInputBorder(
     borderRadius: BorderRadius.all(Radius.circular(12)),
     borderSide: BorderSide(color: brandMist),
@@ -154,9 +154,9 @@ ThemeData buildBrandTheme() {
       headlineLarge: display.headlineLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.45, height: 1.03),
       headlineMedium: display.headlineMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.3, height: 1.05),
       headlineSmall: display.headlineSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.15, height: 1.08),
-      titleLarge: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
-      titleMedium: base.titleMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
-      titleSmall: base.titleSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      titleLarge: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w600),
+      titleMedium: display.titleMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w600),
+      titleSmall: base.titleSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w600),
       bodyLarge: base.bodyLarge?.copyWith(color: brandCharcoal),
       bodyMedium: base.bodyMedium?.copyWith(color: brandCharcoal),
       bodySmall: base.bodySmall?.copyWith(color: brandTextSoft),
@@ -1459,7 +1459,7 @@ class _DesktopLoginComposition extends StatelessWidget {
                 const Spacer(),
                 LText(
                   'Culture\nConnects\nPeople',
-                  style: GoogleFonts.cormorantGaramond(
+                  style: GoogleFonts.lora(
                     color: brandWhite,
                     fontSize: headlineSize,
                     height: .88,
@@ -1546,7 +1546,7 @@ class _CompactLoginComposition extends StatelessWidget {
           SizedBox(height: narrow ? 58 : 90),
           LText(
             'Culture Connects People',
-            style: GoogleFonts.cormorantGaramond(
+            style: GoogleFonts.lora(
               color: brandWhite,
               fontSize: narrow ? 38 : 47,
               height: .95,
@@ -1637,7 +1637,7 @@ class _LoginCard extends StatelessWidget {
           LText(
             tr(context, 'welcomeBack'),
             textAlign: TextAlign.center,
-            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 39, fontWeight: FontWeight.w700, height: 1),
+            style: GoogleFonts.lora(color: brandNavy, fontSize: 39, fontWeight: FontWeight.w700, height: 1),
           ),
           const SizedBox(height: 8),
           LText(tr(context, 'signInSubtitle'), textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 15.5)),
@@ -2211,7 +2211,7 @@ class _ShellState extends State<Shell> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  LText(referenceTitle, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                                  LText(referenceTitle, style: GoogleFonts.lora(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
                                   const SizedBox(height: 4),
                                   LText(referenceSubtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
                                 ],
@@ -2383,7 +2383,7 @@ class _SidebarContent extends StatelessWidget {
                     const Divider(color: Color(0x22FFFFFF), height: 1),
                     const SizedBox(height: 18),
                     LText('Greater impact.\nStronger communities.\nA sustainable future.',
-                        style: GoogleFonts.cormorantGaramond(
+                        style: GoogleFonts.lora(
                           color: const Color(0xFFD9E2EC),
                           fontSize: 16,
                           height: 1.35,
@@ -2651,7 +2651,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
                   Expanded(
                     child: LText(
                       uiLiteral('Global search'),
-                      style: GoogleFonts.cormorantGaramond(fontSize: 24, fontWeight: FontWeight.w700, color: brandNavy),
+                      style: GoogleFonts.lora(fontSize: 24, fontWeight: FontWeight.w700, color: brandNavy),
                     ),
                   ),
                   IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
@@ -2993,7 +2993,7 @@ class _DashboardUsMapCard extends StatelessWidget {
                 Row(children: [
                   const Icon(Icons.location_on_rounded, color: brandSteel, size: 22),
                   const SizedBox(width: 8),
-                  Expanded(child: LText(uiLiteral('Partners in the United States'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w700))),
+                  Expanded(child: LText(uiLiteral('Partners in the United States'), style: GoogleFonts.lora(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w700))),
                   IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
                 ]),
                 const SizedBox(height: 12),
@@ -3035,7 +3035,7 @@ class _DashboardUsMapCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        LText(uiLiteral('Partners in the United States'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                        LText(uiLiteral('Partners in the United States'), style: GoogleFonts.lora(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
                         LText(uiLiteral('Active partner distribution by state'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
                       ],
                     ),
@@ -3102,7 +3102,7 @@ class _DashboardMapStat extends StatelessWidget {
         decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(12)),
         child: Column(
           children: [
-            LText(value, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 26, fontWeight: FontWeight.w700, height: 1)),
+            LText(value, style: GoogleFonts.lora(color: brandNavy, fontSize: 26, fontWeight: FontWeight.w700, height: 1)),
             const SizedBox(height: 4),
             LText(label, textAlign: TextAlign.center, style: const TextStyle(color: brandTextSoft, fontSize: 9)),
           ],
@@ -3223,7 +3223,7 @@ class _DashboardPartnerReportPreview extends StatelessWidget {
                 children: [
                   const Icon(Icons.description_outlined, color: brandSteel, size: 20),
                   const SizedBox(width: 8),
-                  Expanded(child: LText(uiLiteral('Partner reporting'), style: GoogleFonts.cormorantGaramond(color: brandNavy,fontSize:19,fontWeight:FontWeight.w700))),
+                  Expanded(child: LText(uiLiteral('Partner reporting'), style: GoogleFonts.lora(color: brandNavy,fontSize:19,fontWeight:FontWeight.w700))),
                   if (onOpenPartners != null)
                     TextButton(onPressed: onOpenPartners, child: LText(uiLiteral('All partners'))),
                 ],
@@ -3315,7 +3315,7 @@ class _ImpactPanelState extends State<_ImpactPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  LText(widget.title, style: GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20)),
+                  LText(widget.title, style: GoogleFonts.lora(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20)),
                   if (widget.subtitle.isNotEmpty)
                     LText(widget.subtitle, style: const TextStyle(color:brandTextSoft,fontSize:9.5)),
                 ],
@@ -3495,7 +3495,7 @@ class _ActivityPanel extends StatelessWidget {
       padding:const EdgeInsets.fromLTRB(20,20,20,16),
       child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         Row(children:[
-          Expanded(child:LText(uiLiteral('Recent Activity'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+          Expanded(child:LText(uiLiteral('Recent Activity'),style:GoogleFonts.lora(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
           LText(uiLiteral('Live audit feed'),style:GoogleFonts.inter(color:brandSteel,fontSize:9.5,fontWeight:FontWeight.w600)),
         ]),
         const SizedBox(height:10),
@@ -4690,7 +4690,7 @@ class _PartnersPageState extends State<PartnersPage> {
                         Expanded(
                           child: LText(
                             '${uiLiteral('Partners')} ($total)',
-                            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 24, fontWeight: FontWeight.w700),
+                            style: GoogleFonts.lora(color: brandNavy, fontSize: 24, fontWeight: FontWeight.w700),
                           ),
                         ),
                         SizedBox(
@@ -7475,7 +7475,7 @@ class _PackageOverviewCardState extends State<_PackageOverviewCard> {
                 const SizedBox(height: 18),
                 LText(
                   widget.name,
-                  style: GoogleFonts.cormorantGaramond(
+                  style: GoogleFonts.lora(
                     color: brandNavy,
                     fontSize: 31,
                     fontWeight: FontWeight.w700,
@@ -7609,7 +7609,7 @@ class _PackageComparisonTable extends StatelessWidget {
           children: [
             LText(
               uiLiteral('Package comparison'),
-              style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w700),
+              style: GoogleFonts.lora(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             LText(
@@ -7763,7 +7763,7 @@ class _FinanceInvoicePreview extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  LText(uiLiteral('Invoices'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                  LText(uiLiteral('Invoices'), style: GoogleFonts.lora(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
                   LText(uiLiteral('Recent invoice activity'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
                 ]),
               ),
@@ -9597,48 +9597,6 @@ class _ImpactPageState extends State<ImpactPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading &&
-        definitions.isEmpty &&
-        summary.isEmpty &&
-        evidence.isEmpty &&
-        reports.isEmpty) {
-      return const Content(
-        showHeader: false,
-        eyebrow: 'IMPACT CONTROL',
-        title: 'Impact & Reports',
-        subtitle: 'Loading the latest impact and evidence snapshot.',
-        child: _BrandLoading(),
-      );
-    }
-    if (!loading &&
-        error == null &&
-        impactSnapshotWarming &&
-        definitions.isEmpty &&
-        summary.isEmpty &&
-        evidence.isEmpty &&
-        reports.isEmpty) {
-      return Content(
-        showHeader: false,
-        title: 'Impact & Reports',
-        subtitle: 'Real outcomes, transparent reports and evidence.',
-        actions: [
-          OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
-        ],
-        child: const _MessageCard(
-          icon: Icons.hourglass_empty_rounded,
-          title: 'Impact snapshot is warming',
-          message: 'No materialized Impact snapshot exists yet. The page is usable without an infinite loading loop; refresh when backend preparation completes.',
-        ),
-      );
-    }
-    if (error != null) {
-      return Content(
-        showHeader: false,
-        title: 'Impact & Reports',
-        subtitle: 'Metrics, Evidence and reproducible reports.',
-        child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
-      );
-    }
     final canReadImpact = impactAccess['impact'] != false;
     final canWriteImpact = impactAccess['impact_write'] == true;
     final canReadEvidence = impactAccess['evidence'] != false;
@@ -9664,6 +9622,30 @@ class _ImpactPageState extends State<ImpactPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (loading) ...[
+            const _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Impact data is loading',
+              message: 'The workspace remains available while the latest metrics, evidence and reports are refreshed.',
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (impactSnapshotWarming) ...[
+            _MessageCard(
+              icon: Icons.hourglass_empty_rounded,
+              title: uiLiteral('Impact snapshot is warming'),
+              message: uiLiteral('No materialized snapshot is ready yet. Empty states stay visible and the backend continues preparation without blocking this workspace.'),
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (error != null) ...[
+            _MessageCard(
+              icon: Icons.warning_amber_rounded,
+              title: uiLiteral('Impact data is partially unavailable'),
+              message: error!,
+            ),
+            const SizedBox(height: 14),
+          ],
           if (!canReadImpact || !canReadEvidence || !canReadReports) ...[
             _MessageCard(
               icon: Icons.lock_outline_rounded,
@@ -10681,7 +10663,7 @@ class _SystemCurrentHealthCard extends StatelessWidget {
               Row(children:[
                 const Icon(Icons.bar_chart_rounded,color:brandSteel,size:21),
                 const SizedBox(width:9),
-                Expanded(child:LText('System health overview',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
+                Expanded(child:LText('System health overview',style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
                 _StatusPill(label: overall),
               ]),
               const SizedBox(height:5),
@@ -10753,7 +10735,7 @@ class _SystemInfrastructureSummary extends StatelessWidget {
         child:Padding(
           padding:const EdgeInsets.all(18),
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            LText('Infrastructure status',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+            LText('Infrastructure status',style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
             _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
             _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
@@ -11679,7 +11661,7 @@ class _PartnerCardState extends State<PartnerCard> {
                     Expanded(
                       child: RichText(
                         text: TextSpan(children: [
-                          TextSpan(text: amountLabel, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w700)),
+                          TextSpan(text: amountLabel, style: GoogleFonts.lora(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w700)),
                           TextSpan(text: ' / ${uiLiteral('month')}', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 8.8)),
                         ]),
                       ),
@@ -12479,10 +12461,10 @@ class Content extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (eyebrow != null) ...[
-              LText(eyebrow!, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w600)),
+              LText(eyebrow!, style: GoogleFonts.lora(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
             ],
-            LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: narrow ? 36 : 42, fontWeight: FontWeight.w600, height: .98)),
+            LText(title, style: GoogleFonts.lora(color: brandNavy, fontSize: narrow ? 36 : 42, fontWeight: FontWeight.w600, height: .98)),
             const SizedBox(height: 6),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12.5, height: 1.45))),
           ],
@@ -12654,7 +12636,7 @@ class _KpiState extends State<Kpi> {
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
-                        child: LText(widget.value, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                        child: LText(widget.value, style: GoogleFonts.lora(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
                       ),
                       const SizedBox(height: 4),
                       LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
@@ -12703,7 +12685,7 @@ class _CentralActionCard extends StatelessWidget {
                     child: Icon(icon, color: accent, size: 23),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(child: LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w700))),
+                  Expanded(child: LText(title, style: GoogleFonts.lora(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w700))),
                   Icon(Icons.arrow_forward_rounded, color: accent, size: 19),
                 ]),
                 const SizedBox(height: 9),
