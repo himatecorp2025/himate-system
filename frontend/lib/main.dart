@@ -8478,8 +8478,10 @@ class _FinancePageState extends State<FinancePage> {
     );
 
     if (ok == true) {
+      final expectedLegalName = legal.text.trim();
+      final expectedRegistration = registration.text.trim();
       await widget.api.put('/api/v1/billing/profile', {
-        'legal_name': legal.text.trim(),
+        'legal_name': expectedLegalName,
         'registration_number': registration.text.trim(),
         'address': address.text.trim(),
         'tax_id': tax.text.trim(),
@@ -8495,7 +8497,10 @@ class _FinancePageState extends State<FinancePage> {
         'vat_jurisdiction': vatJurisdiction.text.trim(),
         'tax_label': taxLabel.text.trim(),
       });
-      await load();
+      await _syncFinanceMutation(
+        () => '${profile?['legal_name'] ?? ''}' == expectedLegalName &&
+            '${profile?['registration_number'] ?? ''}' == expectedRegistration,
+      );
       if (mounted) success('Billing profile updated.');
     }
 
