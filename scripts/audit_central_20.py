@@ -21,6 +21,7 @@ gateway_main = read('services/cmd/gateway/main.go')
 step3 = read('services/cmd/gateway/central_step3_snapshots.go')
 step4 = read('services/cmd/gateway/central_step4_snapshots.go')
 partner_snapshots = read('services/cmd/gateway/central_partner_workspace_snapshots.go')
+read_models = read('services/cmd/gateway/materialized_read_models.go')
 fixture = read('services/cmd/partners/test_fixture.go')
 
 # 1. Public landing geometry is restored to the Sep 19 reference while the
@@ -113,9 +114,16 @@ for token in [
     'centralPartnerWorkspacePrefix',
     'materializeCentralPartnerWorkspace',
     'refreshCentralPartnerWorkspaceSnapshots',
-    'centralStep3Store(persistCtx, key, payload)',
+    'centralStep3Store(persistCtx, centralPartnerWorkspaceKey(partnerID), payload)',
 ]:
     check(token in partner_snapshots, f'per-partner LKG materializer missing: {token}')
+for token in [
+    'CREATE TABLE IF NOT EXISTS identity.partner_workspace_snapshots',
+    'func (a *app) persistPartnerWorkspaceSnapshot',
+    'if partnerID == "" || !partnerWorkspaceSnapshotValid(payload)',
+    'partner read-model refresh rejected; retaining last-known-good snapshot',
+]:
+    check(token in read_models, f'dedicated tenant LKG persistence contract missing: {token}')
 
 # 5. Golden Test Partner represents six distinct historical months plus an active subscription.
 for token in [
