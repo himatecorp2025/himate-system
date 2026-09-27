@@ -12,6 +12,7 @@ def check(ok: bool, message: str) -> None:
 
 frontend = read("frontend/lib/main.dart")
 gateway = read("services/cmd/gateway/central10.go")
+central_reads = read("services/cmd/gateway/central_materialized_reads.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 billing8 = read("services/cmd/billing/central8.go")
 partners8 = read("services/cmd/partners/central8.go")
@@ -29,16 +30,23 @@ for token in [
     check(token in step4, f"Partners materialization contract missing: {token}")
 
 for token in [
-    "centralStep3SnapshotGet(centralStep4PartnersKey)",
-    "snapshotItems := step4Items(snapshot[\"items\"])",
+    "centralSnapshotForRead(r.Context(), centralStep4PartnersKey)",
+    "materializedPartnerList(r)",
     "searchContains(",
-    '"X-Himate-Cache", "hot-snapshot"',
+    '"X-Himate-Cache", "persistent-read-model"',
+    '"lifecycle_counts"',
+    '"reference_count"',
+]:
+    check(token in central_reads, f"Partners persistent-read/filter contract missing: {token}")
+
+for token in [
+    "snapshotItems := step4Items(snapshot[\"items\"])",
     'delete(row, "base_service_fee")',
     'delete(row, "active_modules")',
     'delete(row, "system_health")',
     '"pagination": map[string]any{',
 ]:
-    check(token in gateway, f"Partners hot-read/filter/RBAC contract missing: {token}")
+    check(token in gateway, f"Central Partners screen RBAC/pagination contract missing: {token}")
 
 check('case strings.Contains(path, "module"), strings.Contains(path, "catalog"):' in gateway,
       "catalog invalidation path is missing")
@@ -68,8 +76,8 @@ check("api.prefetch(" not in warm and "primaryTargets" not in warm and "deferred
       "browser staged prewarm survived CENTRAL-21")
 check("_prebuildPriorityPages" not in frontend,
       "hidden page prebuild still causes first-load request fan-out")
-check("centralStep3SnapshotGet(centralStep4FinanceKey)" in gateway,
-      "Finance request path is not bound to the authoritative hot snapshot")
+check("centralSnapshotForRead(r.Context(), centralStep4FinanceKey)" in gateway,
+      "Finance request path is not bound to the authoritative persistent snapshot")
 
 for source, name in [
     (partners8, "Partners"),
