@@ -73,6 +73,9 @@ func centralSnapshotValid(key string, payload map[string]any) bool {
 	if payload == nil || !strings.EqualFold(central10String(payload["status"]), "healthy") {
 		return false
 	}
+	if raw, exists := payload["unavailable"]; exists && len(central10Step4Unavailable(raw)) > 0 {
+		return false
+	}
 	required := []string{}
 	switch key {
 	case centralStep3RegistryKey:
