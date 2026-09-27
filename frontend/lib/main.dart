@@ -4598,10 +4598,11 @@ class _PartnersPageState extends State<PartnersPage> {
                           );
                           final category = DropdownButtonFormField<String>(
                             value: categoryFilter,
+                            isExpanded: true,
                             decoration: InputDecoration(labelText: uiLiteral('Category')),
                             items: [
-                              const DropdownMenuItem(value: 'ALL', child: LText('All categories')),
-                              for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: LText('${c['name']}')),
+                              DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All categories'), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: LText('${c['name']}', maxLines: 1, overflow: TextOverflow.ellipsis)),
                             ],
                             onChanged: (v) {
                               setState(() => categoryFilter = v ?? 'ALL');
@@ -4610,6 +4611,7 @@ class _PartnersPageState extends State<PartnersPage> {
                           );
                           final lifecycle = DropdownButtonFormField<String>(
                             value: lifecycleFilter,
+                            isExpanded: true,
                             decoration: InputDecoration(labelText: uiLiteral('Lifecycle')),
                             items: [
                               const DropdownMenuItem(value: 'ALL', child: LText('All lifecycle states')),
@@ -4622,6 +4624,7 @@ class _PartnersPageState extends State<PartnersPage> {
                           );
                           final health = DropdownButtonFormField<String>(
                             value: healthFilter,
+                            isExpanded: true,
                             decoration: InputDecoration(labelText: uiLiteral('Health')),
                             items: const [
                               DropdownMenuItem(value: 'ALL', child: LText('All health states')),
@@ -4874,6 +4877,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> provisioningJobs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> evidence = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> connectorCredentials = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> portalUsers = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> billingEvents = <Map<String, dynamic>>[];
@@ -4901,6 +4905,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   final GlobalKey _modulesKey = GlobalKey();
   final GlobalKey _financeKey = GlobalKey();
   final GlobalKey _statisticsKey = GlobalKey();
+  final GlobalKey _evidenceKey = GlobalKey();
   final GlobalKey _usersKey = GlobalKey();
   final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
@@ -4913,7 +4918,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     _WorkspaceSpec('Pricing & Subscription', Icons.payments_outlined, 'Activation fee and recurring terms', true),
     _WorkspaceSpec('Finance & Documents', Icons.folder_copy_outlined, 'Invoices and commercial evidence', true),
     _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics and provenance', true),
-    _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', false),
+    _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', true),
     _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', false),
     _WorkspaceSpec('Users & Contacts', Icons.group_outlined, 'Partner Portal users and organization contacts', true),
     _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Secure connector identities and credentials', true),
@@ -4981,6 +4986,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         environments = items(<String, dynamic>{'items': model['environments']});
         provisioningJobs = items(<String, dynamic>{'items': model['provisioning_jobs']});
         impactSummary = items(<String, dynamic>{'items': model['impact_summary']});
+        evidence = items(<String, dynamic>{'items': model['evidence']});
         connectorCredentials = items(<String, dynamic>{'items': model['connector_credentials']});
         portalUsers = items(<String, dynamic>{'items': model['portal_users']});
         billingEvents = items(<String, dynamic>{'items': model['billing_events']});
@@ -5177,28 +5183,41 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     unawaited(_loadModuleView());
   }
 
-  void _scrollToInitialSection() {
-    if (_initialSectionHandled || widget.initialSection == null) return;
-    _initialSectionHandled = true;
-    final slug = widget.initialSection!;
-    final key = switch (slug) {
-      'overview' => _overviewKey,
-      'company-data' => _companyKey,
-      'system-and-environment' => _environmentKey,
-      'pricing-and-subscription' => _pricingKey,
-      'modules' => _modulesKey,
-      'finance-and-documents' => _financeKey,
-      'statistics' => _statisticsKey,
-      'users-and-contacts' => _usersKey,
-      'integrations' => _integrationsKey,
-      _ => _overviewKey,
-    };
+  GlobalKey _workspaceKeyForSlug(String slug) => switch (slug) {
+    'overview' => _overviewKey,
+    'company-data' => _companyKey,
+    'system-and-environment' => _environmentKey,
+    'pricing-and-subscription' => _pricingKey,
+    'modules' => _modulesKey,
+    'finance-and-documents' => _financeKey,
+    'statistics' => _statisticsKey,
+    'evidence' => _evidenceKey,
+    'users-and-contacts' => _usersKey,
+    'integrations' => _integrationsKey,
+    _ => _overviewKey,
+  };
+
+  void _scrollWorkspaceSlug(String slug) {
+    final key = _workspaceKeyForSlug(slug);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = key.currentContext;
       if (target != null) {
         Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic, alignment: .04);
       }
     });
+  }
+
+  void _scrollToInitialSection() {
+    if (_initialSectionHandled || widget.initialSection == null) return;
+    _initialSectionHandled = true;
+    _scrollWorkspaceSlug(widget.initialSection!);
+  }
+
+  void _openWorkspaceSection(_WorkspaceSpec spec) {
+    final slug = workspaceRouteSlug(spec.title);
+    final id = Uri.encodeComponent('${partner['id'] ?? ''}');
+    replaceBrowserHistory('', '/app/partners/$id/$slug');
+    _scrollWorkspaceSlug(slug);
   }
 
   void success(String message) {
@@ -6412,12 +6431,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                   width: width,
                                   child: WorkspaceCard(
                                     spec: spec,
-                                    onTap: spec.active
-                                        ? () => Navigator.pushNamed(
-                                              context,
-                                              "/app/partners/${partner['id']}/${workspaceRouteSlug(spec.title)}",
-                                            )
-                                        : null,
+                                    onTap: spec.active ? () => _openWorkspaceSection(spec) : null,
                                   ),
                                 ),
                             ],
@@ -6652,6 +6666,51 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                             _DefinitionRow(label: 'Aggregation', value: '${metric['aggregation'] ?? '—'}'),
                                             _DefinitionRow(label: 'Latest period', value: '${metric['latest_period_end'] ?? '—'}'),
                                             _DefinitionRow(label: 'Observations', value: '${metric['observations'] ?? 0}'),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
+                        key: _evidenceKey,
+                        child: _SectionHeader(
+                          title: uiLiteral('Evidence'),
+                          subtitle: uiLiteral('Partner-scoped impact evidence from the authoritative Evidence service.'),
+                          trailing: _MiniCounter(label: '${evidence.length} ${uiLiteral('records')}'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      evidence.isEmpty
+                          ? _MessageCard(
+                              icon: Icons.verified_outlined,
+                              title: uiLiteral('No evidence recorded yet'),
+                              message: uiLiteral('Evidence added under Impact & Reports for this partner will appear here automatically.'),
+                            )
+                          : LayoutBuilder(
+                              builder: (context, c) {
+                                final width = c.maxWidth < 620
+                                    ? c.maxWidth
+                                    : c.maxWidth < 1000
+                                        ? (c.maxWidth - 12) / 2
+                                        : (c.maxWidth - 24) / 3;
+                                return Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    for (final item in evidence)
+                                      SizedBox(
+                                        width: width,
+                                        child: _InfoCard(
+                                          title: '${item['title'] ?? item['id'] ?? uiLiteral('Evidence')}',
+                                          icon: Icons.verified_outlined,
+                                          children: [
+                                            _DefinitionRow(label: uiLiteral('Type'), value: uiLiteral(_humanize('${item['evidence_type'] ?? '—'}'))),
+                                            _DefinitionRow(label: uiLiteral('Verification'), value: uiLiteral(_humanize('${item['verification_status'] ?? '—'}'))),
+                                            _DefinitionRow(label: uiLiteral('Metric'), value: '${item['metric_key'] ?? '—'}'),
+                                            _DefinitionRow(label: uiLiteral('Period end'), value: '${item['period_end'] ?? '—'}'),
                                           ],
                                         ),
                                       ),
