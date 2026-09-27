@@ -55,7 +55,7 @@ DASHBOARD="$(curl -fsS -b "$COOKIE" "$BASE_URL/api/v1/dashboard/summary?year=$YE
 printf '%s' "$DASHBOARD" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-g=d["geography"]
+g=d["partner_geo"]
 rows=g["states"]
 names={x["state"] for x in rows}
 assert len(rows)>=51,len(rows)
