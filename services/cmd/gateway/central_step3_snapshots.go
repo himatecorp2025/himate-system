@@ -101,6 +101,7 @@ func centralSnapshotValid(key string, payload map[string]any) bool {
 		required = []string{
 			"health", "provisioning", "environments", "events", "backups", "kpis",
 			"health_api", "provisioning_api", "environments_api", "backups_api",
+			"backup_restore_points", "backup_restore_tests_api", "backup_restore_jobs_api",
 		}
 	case centralStep4WebsiteKey:
 		required = []string{"pages", "media", "environments", "kpis", "seo", "seo_audit", "contact_inquiries", "cms_design", "cms_page_details", "cms_page_versions", "cms_page_audits"}
