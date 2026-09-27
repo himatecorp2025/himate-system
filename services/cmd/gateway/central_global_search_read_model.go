@@ -1,9 +1,6 @@
 package main
 
-import (
-	"context"
-	"time"
-)
+import "context"
 
 func (a *app) materializeCentralGlobalSearch(ctx context.Context) map[string]any {
 	partners, _, partnersOK := a.centralSnapshotForRead(ctx, centralStep4PartnersKey)
