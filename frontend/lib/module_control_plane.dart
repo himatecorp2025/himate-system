@@ -228,13 +228,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyModel,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
       applyModel(model);
     } catch (e) {
       if (mounted) setState(() { error = e.toString(); loading = false; });
@@ -274,13 +272,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyModel,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
       applyModel(model);
     } catch (e) {
       if (mounted) {
