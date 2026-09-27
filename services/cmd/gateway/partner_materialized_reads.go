@@ -179,8 +179,11 @@ func (a *app) servePartnerMaterializedGET(w http.ResponseWriter, r *http.Request
 		permission = "modules.read"
 	case path == "/impact/summary":
 		permission = "impact.read"
-	case path == "/users", strings.HasPrefix(path, "/users/") && strings.HasSuffix(path, "/modules"):
+	case path == "/users", strings.HasPrefix(path, "/users/") && strings.HasSuffix(path, "/modules"),
+		path == "/audit", path == "/permissions":
 		permission = "users.read"
+	case path == "/contacts", path == "/domains", path == "/deployments":
+		permission = "company.read"
 	case path == "/notifications":
 		permission = "notifications.read"
 	case path == "/design", path == "/design/media":
@@ -237,6 +240,15 @@ func (a *app) servePartnerMaterializedGET(w http.ResponseWriter, r *http.Request
 		common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "portal_billing_invoices"))
 	case path == "/impact/summary":
 		common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "portal_impact"))
+	case path == "/contacts":
+		items := partnerWorkspaceItems(snapshot, "partner_contacts")
+		common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
+	case path == "/domains", path == "/deployments":
+		common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "partner_domains_deployments"))
+	case path == "/audit":
+		common.JSON(w, http.StatusOK, partnerAuditFeedFromSnapshot(snapshot, r))
+	case path == "/permissions":
+		common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "partner_permissions"))
 	case path == "/users":
 		items := partnerWorkspaceItems(snapshot, "portal_users")
 		common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
