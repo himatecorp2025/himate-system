@@ -8592,7 +8592,10 @@ class _FinancePageState extends State<FinancePage> {
                     Kpi(
                       label: 'Outstanding',
                       value: '${financeKpis['outstanding_label'] ?? r'$0.00'}',
-                      note: '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} approved / sent invoices',
+                      note: uiBilingual(
+                        '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} approved / sent invoices',
+                        '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} jóváhagyott / elküldött számla',
+                      ),
                       icon: Icons.outbox_outlined,
                       accent: brandGold,
                       onTap: () => applyInvoiceFilter(sentCount > 0 ? 'SENT' : 'APPROVED'),
