@@ -667,7 +667,6 @@ class _HimateAppState extends State<HimateApp> {
   bool loading = true;
   String anonymousLocale = 'en_US';
 
-  Timer? _restoreFallback;
   String? _pendingDeepLink;
   bool _deepLinkHandled = false;
 
@@ -682,11 +681,6 @@ class _HimateAppState extends State<HimateApp> {
     final path = Uri.base.path;
     if (path == '/app' || path.startsWith('/app/')) {
       if (path != '/app') _pendingDeepLink = path;
-      _restoreFallback = Timer(const Duration(seconds: 3), () {
-        if (mounted && loading) {
-          setState(() => loading = false);
-        }
-      });
       restore();
     } else if (path == '/login') {
       // Paint the login form immediately, then reuse any valid HttpOnly
@@ -698,13 +692,6 @@ class _HimateAppState extends State<HimateApp> {
       loading = false;
     }
   }
-
-  @override
-  void dispose() {
-    _restoreFallback?.cancel();
-    super.dispose();
-  }
-
 
   bool _can(String permission) {
     final current = user;
@@ -740,9 +727,7 @@ class _HimateAppState extends State<HimateApp> {
 
   Future<void> _restoreLoginSession() async {
     try {
-      final restored = await api
-          .get('/api/v1/auth/me', force: true)
-          .timeout(const Duration(seconds: 2));
+      final restored = await api.get('/api/v1/auth/me', force: true);
       if (!mounted) return;
       user = restored;
       _warmControlPlane();
@@ -759,16 +744,13 @@ class _HimateAppState extends State<HimateApp> {
 
   Future<void> restore() async {
     try {
-      user = await api
-          .get('/api/v1/auth/me', force: true)
-          .timeout(const Duration(seconds: 3));
+      user = await api.get('/api/v1/auth/me', force: true);
     } catch (_) {
-      // Any auth/network failure falls back to the login screen instead of
-      // trapping the user behind an endless loading indicator.
+      // An invalid/expired session falls back to login; a slow request is no
+      // longer converted into a synthetic client timeout.
       user = null;
     } finally {
       if (user != null) _warmControlPlane();
-      _restoreFallback?.cancel();
       if (mounted) {
         setState(() => loading = false);
         if (user != null && _pendingDeepLink != null && !_deepLinkHandled) {
