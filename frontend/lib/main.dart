@@ -6987,7 +6987,7 @@ class _PackagesPageState extends State<PackagesPage> {
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: _MiniCounter(label: '${selected.length} / $limit SELECTED'),
+                  child: _MiniCounter(label: uiBilingual('${selected.length} / $limit SELECTED', '${selected.length} / $limit KIVÁLASZTVA')),
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
@@ -7204,7 +7204,9 @@ class _PackagesPageState extends State<PackagesPage> {
           _SectionHeader(
             title: 'Package Analytics',
             subtitle: 'Partner distribution, package usage, Portal activity and current commercial context from authoritative runtime data.',
-            trailing: analyticsLoading ? const _MiniCounter(label: 'REFRESHING') : _MiniCounter(label: '${analyticsPartners.length} PARTNERS'),
+            trailing: analyticsLoading
+                ? _MiniCounter(label: uiBilingual('REFRESHING', 'FRISSÍTÉS'))
+                : _MiniCounter(label: uiBilingual('${analyticsPartners.length} PARTNERS', '${analyticsPartners.length} PARTNER')),
           ),
           const SizedBox(height: 12),
           if (analyticsError != null && analytics.isEmpty)
@@ -7269,11 +7271,17 @@ class _PackagesPageState extends State<PackagesPage> {
                                   _MiniCounter(label: '${partner['billing_frequency'] ?? '—'}'),
                                   _MiniCounter(label: '${partner['classification'] ?? '—'}'),
                                   _MiniCounter(label: '${partner['onboarding_state'] ?? '—'}'),
-                                  _MiniCounter(label: '${partner['module_usage_events_30d'] ?? 0} MODULE USES / 30D'),
+                                  _MiniCounter(label: uiBilingual(
+                                    '${partner['module_usage_events_30d'] ?? 0} MODULE USES / 30D',
+                                    '${partner['module_usage_events_30d'] ?? 0} MODULHASZNÁLAT / 30 NAP',
+                                  )),
                                   _MiniCounter(
                                     label: partner['portal_activity_measured'] == true && number(partner['portal_active_hours_30d']) > 0
-                                        ? '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTAL HOURS / 30D'
-                                        : 'NO PORTAL ACTIVITY RECORDED',
+                                        ? uiBilingual(
+                                            '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTAL HOURS / 30D',
+                                            '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTÁLÓRA / 30 NAP',
+                                          )
+                                        : uiBilingual('NO PORTAL ACTIVITY RECORDED', 'NINCS RÖGZÍTETT PORTÁLAKTIVITÁS'),
                                   ),
                                 ],
                               ),
@@ -7784,10 +7792,10 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   String get revenuePlanLabel => switch (revenuePlan) {
-    'STARTER' => 'Starter',
-    'BUSINESS' => 'Business',
-    'FLEX' => 'Premium',
-    _ => 'All revenue',
+    'STARTER' => uiLiteral('Starter'),
+    'BUSINESS' => uiLiteral('Business'),
+    'FLEX' => uiLiteral('Premium'),
+    _ => uiLiteral('All revenue'),
   };
 
   void applyInvoiceFilter(String status) {
@@ -8085,8 +8093,14 @@ class _FinancePageState extends State<FinancePage> {
 
   Widget financeChart() {
     final rows = chartRows;
-    final windowLabel = revenuePeriod == 'WEEKLY' ? 'last 4 weeks' : 'last 12 months';
+    final windowLabel = revenuePeriod == 'WEEKLY'
+        ? uiBilingual('last 4 weeks', 'elmúlt 4 hét')
+        : uiBilingual('last 12 months', 'elmúlt 12 hónap');
     final planLabel = revenuePlanLabel;
+    final revenueTitle = uiBilingual(
+      'Paid revenue · $windowLabel · $planLabel',
+      'Fizetett bevétel · $windowLabel · $planLabel',
+    );
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -8101,7 +8115,7 @@ class _FinancePageState extends State<FinancePage> {
                   child: DropdownButtonFormField<String>(
                     value: revenuePeriod,
                     isDense: true,
-                    decoration: const InputDecoration(labelText: 'Period'),
+                    decoration: InputDecoration(labelText: uiLiteral('Period')),
                     items: const [
                       DropdownMenuItem(value: 'WEEKLY', child: LText('Weekly')),
                       DropdownMenuItem(value: 'MONTHLY', child: LText('Monthly')),
@@ -8116,7 +8130,7 @@ class _FinancePageState extends State<FinancePage> {
                   child: DropdownButtonFormField<String>(
                     value: revenuePlan,
                     isDense: true,
-                    decoration: const InputDecoration(labelText: 'Package'),
+                    decoration: InputDecoration(labelText: uiLiteral('Package')),
                     items: const [
                       DropdownMenuItem(value: 'ALL', child: LText('All')),
                       DropdownMenuItem(value: 'STARTER', child: LText('Starter')),
@@ -8132,13 +8146,13 @@ class _FinancePageState extends State<FinancePage> {
             );
             if (constraints.maxWidth < 720) {
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                LText('Paid revenue · $windowLabel · $planLabel', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14)),
+                LText(revenueTitle, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14)),
                 const SizedBox(height: 12),
                 controls,
               ]);
             }
             return Row(children: [
-              Expanded(child: LText('Paid revenue · $windowLabel · $planLabel', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
+              Expanded(child: LText(revenueTitle, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
               controls,
               const SizedBox(width: 8),
               _MiniCounter(label: chartCurrency),
@@ -8382,7 +8396,7 @@ class _FinancePageState extends State<FinancePage> {
                     Kpi(
                       label: 'Invoices',
                       value: '${invoices.length}',
-                      note: '$draftCount draft · $approvedCount approved',
+                      note: uiBilingual('$draftCount draft · $approvedCount approved', '$draftCount piszkozat · $approvedCount jóváhagyva'),
                       icon: Icons.receipt_long_outlined,
                       accent: brandSteel,
                       onTap: () => applyInvoiceFilter('ALL'),
@@ -8398,7 +8412,7 @@ class _FinancePageState extends State<FinancePage> {
                     Kpi(
                       label: 'Settled',
                       value: '${financeKpis['paid_ytd_label'] ?? r'$0.00'}',
-                      note: '$paidCount paid invoices',
+                      note: uiBilingual('$paidCount paid invoices', '$paidCount fizetett számla'),
                       icon: Icons.payments_outlined,
                       accent: brandSuccess,
                       onTap: () => applyInvoiceFilter('PAID'),
@@ -8454,7 +8468,7 @@ class _FinancePageState extends State<FinancePage> {
                           child: _CentralActionCard(
                             title: 'Invoice approval queue',
                             subtitle: 'Review and approve generated invoice drafts before they can be sent.',
-                            footer: '$draftCount awaiting approval',
+                            footer: uiBilingual('$draftCount awaiting approval', '$draftCount jóváhagyásra vár'),
                             icon: Icons.fact_check_outlined,
                             accent: brandSteel,
                             onTap: () => applyInvoiceFilter('DRAFT'),
@@ -8465,7 +8479,7 @@ class _FinancePageState extends State<FinancePage> {
                           child: _CentralActionCard(
                             title: 'Partner onboarding',
                             subtitle: 'Registration, commercial approval, license activation and Portal access.',
-                            footer: '$pendingOnboarding active onboarding processes',
+                            footer: uiBilingual('$pendingOnboarding active onboarding processes', '$pendingOnboarding aktív onboarding folyamat'),
                             icon: Icons.group_add_outlined,
                             accent: brandGold,
                             onTap: scrollToOnboarding,
@@ -8497,7 +8511,7 @@ class _FinancePageState extends State<FinancePage> {
                         subtitle: 'Draft → Approved → Sent → Paid / Cancelled. Collection is blocked until the invoice is Sent.',
                       ),
                     ),
-                    _MiniCounter(label: '${visibleInvoices.length} shown'),
+                    _MiniCounter(label: uiBilingual('${visibleInvoices.length} shown', '${visibleInvoices.length} megjelenítve')),
                   ],
                   ),
                 ),
@@ -8641,7 +8655,7 @@ class _FinancePageState extends State<FinancePage> {
                           subtitle: 'Registered → Pending Review → Classified → invoice/payment or documented support → Admin Approval → Active.',
                         ),
                       ),
-                      _MiniCounter(label: '$pendingOnboarding pending'),
+                      _MiniCounter(label: uiBilingual('$pendingOnboarding pending', '$pendingOnboarding függőben')),
                     ],
                   ),
                 ),
@@ -9523,7 +9537,7 @@ class _ImpactPageState extends State<ImpactPage> {
             },
           ),
           const SizedBox(height: 18),
-          _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: '${summary.length} metrics')),
+          _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: uiBilingual('${summary.length} metrics', '${summary.length} mérőszám'))),
           const SizedBox(height: 12),
           if (summary.isEmpty)
             const _MessageCard(
@@ -9559,7 +9573,7 @@ class _ImpactPageState extends State<ImpactPage> {
               },
             ),
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: '$evidenceTotal records')),
+          _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: uiBilingual('$evidenceTotal records', '$evidenceTotal rekord'))),
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -9728,7 +9742,7 @@ class _ImpactPageState extends State<ImpactPage> {
             ),
           ],
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Reports', subtitle: 'Partner, multi-partner and HIMATE Global PDFs generated from frozen, auditable snapshots.', trailing: _MiniCounter(label: '${reports.length} reports')),
+          _SectionHeader(title: 'Reports', subtitle: 'Partner, multi-partner and HIMATE Global PDFs generated from frozen, auditable snapshots.', trailing: _MiniCounter(label: uiBilingual('${reports.length} reports', '${reports.length} jelentés'))),
           const SizedBox(height: 12),
           if (reports.isEmpty)
             const _MessageCard(icon: Icons.picture_as_pdf_outlined, title: 'No reports yet', message: 'Generate a report to freeze impact metrics, data sources and Evidence references into a reproducible snapshot.')
@@ -9794,7 +9808,7 @@ class _ImpactPageState extends State<ImpactPage> {
               },
             ),
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions reused by manual entry, connectors and verified-document workflows.', trailing: _MiniCounter(label: '${definitions.length} definitions')),
+          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions reused by manual entry, connectors and verified-document workflows.', trailing: _MiniCounter(label: uiBilingual('${definitions.length} definitions', '${definitions.length} definíció'))),
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
