@@ -199,6 +199,7 @@ func (a *app) servePartnerMaterializedGET(w http.ResponseWriter, r *http.Request
 		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Partner workspace is not ready")
 		return true
 	}
+	w.Header().Set("X-Himate-Cache", "persistent-tenant-read-model")
 
 	switch {
 	case path == "/dashboard":
@@ -277,6 +278,5 @@ func (a *app) servePartnerMaterializedGET(w http.ResponseWriter, r *http.Request
 	default:
 		return false
 	}
-	w.Header().Set("X-Himate-Cache", "persistent-tenant-read-model")
 	return true
 }
