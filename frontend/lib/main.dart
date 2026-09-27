@@ -7115,8 +7115,6 @@ class _PackagesPageState extends State<PackagesPage> {
         setState(() {
           analyticsLoading = false;
           modulesLoading = false;
-          analyticsError = 'Package analytics snapshot is warming. Refresh when ready.';
-          modulesError = 'Module catalog snapshot is warming. Refresh when ready.';
         });
         return;
       }
@@ -7126,16 +7124,12 @@ class _PackagesPageState extends State<PackagesPage> {
         if (modulesReady) {
           modules = items(<String, dynamic>{'items': model['modules']});
           modulesError = null;
-        } else {
-          modulesError = 'Module catalog is temporarily unavailable. Package cards remain usable.';
         }
         if (analyticsReady) {
           analytics = model['analytics'] is Map
               ? Map<String, dynamic>.from(model['analytics'] as Map)
               : <String, dynamic>{};
           analyticsError = null;
-        } else {
-          analyticsError = 'Package analytics is temporarily unavailable. Package definitions remain usable.';
         }
         modulesLoading = false;
         analyticsLoading = false;
@@ -7149,13 +7143,11 @@ class _PackagesPageState extends State<PackagesPage> {
         onRefresh: applySupplementary,
       );
       applySupplementary(model);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         modulesLoading = false;
         analyticsLoading = false;
-        modulesError = e.toString();
-        analyticsError = e.toString();
       });
     }
   }
@@ -7452,36 +7444,13 @@ class _PackagesPageState extends State<PackagesPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && plans.isEmpty) {
+    if (plans.isEmpty && !packageReady) {
       return const Content(
         showHeader: false,
         eyebrow: 'COMMERCIAL CONTROL PLANE',
         title: 'Packages',
         subtitle: 'Central subscription packages, prices and module entitlements.',
         child: _BrandLoading(),
-      );
-    }
-    if (error != null && plans.isEmpty) {
-      return Content(
-        showHeader: false,
-        eyebrow: 'COMMERCIAL CONTROL PLANE',
-        title: 'Packages',
-        subtitle: 'Central subscription packages, prices and module entitlements.',
-        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Retry'))],
-        child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Packages could not be loaded', message: error!),
-      );
-    }
-    if (!loading && !packageReady && plans.isEmpty) {
-      return Content(
-        showHeader: false,
-        title: 'Packages',
-        subtitle: 'Subscription packages, module entitlements and configuration.',
-        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
-        child: const _MessageCard(
-          icon: Icons.hourglass_empty_rounded,
-          title: 'Package snapshot is warming',
-          message: 'No materialized package snapshot exists yet. This page does not start an infinite polling loop; refresh when backend preparation completes.',
-        ),
       );
     }
     final analyticsPackages = analytics['packages'] is List
@@ -7569,16 +7538,9 @@ class _PackagesPageState extends State<PackagesPage> {
               );
             },
           ),
-          if (modulesLoading) ...[
+          if (modulesLoading && modules.isEmpty) ...[
             const SizedBox(height: 10),
             const LinearProgressIndicator(minHeight: 2),
-          ] else if (modulesError != null && modules.isEmpty) ...[
-            const SizedBox(height: 10),
-            _MessageCard(
-              icon: Icons.widgets_outlined,
-              title: 'Module catalog is temporarily unavailable',
-              message: modulesError!,
-            ),
           ],
           const SizedBox(height: 18),
           _PackageComparisonTable(
@@ -7598,17 +7560,11 @@ class _PackagesPageState extends State<PackagesPage> {
                 : _MiniCounter(label: uiBilingual('${analyticsPartners.length} PARTNERS', '${analyticsPartners.length} PARTNER')),
           ),
           const SizedBox(height: 12),
-          if (analyticsError != null && analytics.isEmpty)
-            _MessageCard(
-              icon: Icons.query_stats_outlined,
-              title: 'Package analytics is temporarily unavailable',
-              message: analyticsError!,
-            )
-          else if (analyticsLoading && analytics.isEmpty)
-            const _MessageCard(
-              icon: Icons.sync_rounded,
-              title: 'Loading package analytics',
-              message: 'Package cards remain usable while analytics loads independently.',
+          if (analyticsLoading && analytics.isEmpty)
+            const LinearProgressIndicator(
+              minHeight: 2,
+              color: brandGold,
+              backgroundColor: brandMist,
             )
           else if (analyticsPackages.isEmpty)
             const _MessageCard(
@@ -8280,21 +8236,12 @@ class _FinancePageState extends State<FinancePage> {
   final GlobalKey onboardingKey = GlobalKey();
   final GlobalKey invoiceKey = GlobalKey();
   bool loading = true;
-  bool warming = false;
-  int _warmRetryCount = 0;
-  Timer? _warmRetry;
   String? error;
 
   @override
   void initState() {
     super.initState();
     load();
-  }
-
-  @override
-  void dispose() {
-    _warmRetry?.cancel();
-    super.dispose();
   }
 
   String _financePath() {
@@ -8321,35 +8268,15 @@ class _FinancePageState extends State<FinancePage> {
       if (!mounted || path != _financePath()) return;
       if (model['ready'] != true) {
         setState(() {
-          loading = false;
-          warming = true;
+          loading = true;
           error = null;
         });
-        // Snapshot production is asynchronous. Hammering the Gateway every
-        // 400 ms cannot make the materializer finish faster and can compete
-        // with the very service calls needed to build the snapshot. Retry a
-        // bounded number of times, then leave an explicit warming state that
-        // the user can refresh manually.
-        _warmRetry?.cancel();
-        if (_warmRetryCount < 2) {
-          _warmRetryCount += 1;
-          _warmRetry = Timer(Duration(milliseconds: 900 * _warmRetryCount), () {
-            if (mounted && path == _financePath()) {
-              unawaited(load(force: true, quiet: true));
-            }
-          });
-        } else {
-          setState(() => loading = false);
-        }
         return;
       }
       final chart = model['chart'] is Map
           ? Map<String, dynamic>.from(model['chart'] as Map)
           : <String, dynamic>{};
-      _warmRetry?.cancel();
-      _warmRetryCount = 0;
       setState(() {
-        warming = false;
         profile = model['profile'] is Map
             ? Map<String, dynamic>.from(model['profile'] as Map)
             : null;
@@ -8376,8 +8303,14 @@ class _FinancePageState extends State<FinancePage> {
       applyModel(model);
     } catch (e) {
       if (!mounted) return;
+      final hasLastKnownGood = profile != null ||
+          financeKpis.isNotEmpty ||
+          invoices.isNotEmpty ||
+          partners.isNotEmpty ||
+          onboardingRows.isNotEmpty ||
+          chartRows.isNotEmpty;
       setState(() {
-        loading = false;
+        loading = !hasLastKnownGood;
         error = e.toString();
       });
     }
@@ -9026,9 +8959,7 @@ class _FinancePageState extends State<FinancePage> {
         showHeader: false,
         eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
         title: 'Licensing & Finance',
-        subtitle: warming
-            ? 'Preparing the finance snapshot. The page will update automatically without continuous polling.'
-            : 'Loading the latest finance snapshot.',
+        subtitle: 'Loading the authoritative finance snapshot.',
         child: const _BrandLoading(),
       );
     }
@@ -9057,19 +8988,9 @@ class _FinancePageState extends State<FinancePage> {
       showHeader: false,
       title: 'Licensing & Finance',
       subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
-      child: error != null
-          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
-          : Column(
+      child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (warming) ...[
-                  const _MessageCard(
-                    icon: Icons.sync_rounded,
-                    title: 'Finance snapshot is warming',
-                    message: 'The latest persisted finance view is being prepared. Continuous polling is disabled; use Refresh if the snapshot is still unavailable.',
-                  ),
-                  const SizedBox(height: 14),
-                ],
                 if (loading) const LinearProgressIndicator(minHeight: 2),
                 ResponsiveKpiGrid(
                   children: [
