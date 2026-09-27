@@ -93,7 +93,7 @@ func centralSnapshotValid(key string, payload map[string]any) bool {
 	case centralStep4ImpactKey:
 		required = []string{"definitions", "summary", "evidence", "reports", "analytics"}
 	case centralStep4AdministrationKey:
-		required = []string{"company", "items", "kpis"}
+		required = []string{"company", "items", "kpis", "admin_roles", "admin_users", "admin_secrets", "audit_events", "company_documents", "invoice_register", "backup_api"}
 	case centralStep4SystemKey:
 		required = []string{"health", "provisioning", "environments", "events", "backups", "kpis"}
 	case centralStep4WebsiteKey:
