@@ -7078,6 +7078,7 @@ class _PackagesPageState extends State<PackagesPage> {
   Widget build(BuildContext context) {
     if (loading && plans.isEmpty) {
       return const Content(
+        showHeader: false,
         eyebrow: 'COMMERCIAL CONTROL PLANE',
         title: 'Packages',
         subtitle: 'Central subscription packages, prices and module entitlements.',
@@ -7086,6 +7087,7 @@ class _PackagesPageState extends State<PackagesPage> {
     }
     if (error != null && plans.isEmpty) {
       return Content(
+        showHeader: false,
         eyebrow: 'COMMERCIAL CONTROL PLANE',
         title: 'Packages',
         subtitle: 'Central subscription packages, prices and module entitlements.',
@@ -7095,6 +7097,7 @@ class _PackagesPageState extends State<PackagesPage> {
     }
     if (!loading && !packageReady && plans.isEmpty) {
       return Content(
+        showHeader: false,
         title: 'Packages',
         subtitle: 'Subscription packages, module entitlements and configuration.',
         actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
@@ -7135,6 +7138,7 @@ class _PackagesPageState extends State<PackagesPage> {
     final customPackages = plans.length - canonicalPlans.length;
 
     return Content(
+      showHeader: false,
       title: 'Packages',
       subtitle: 'Subscription packages, module entitlements and configuration.',
       actions: [
@@ -8308,6 +8312,7 @@ class _FinancePageState extends State<FinancePage> {
         onboardingRows.isEmpty &&
         chartRows.isEmpty) {
       return Content(
+        showHeader: false,
         eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
         title: 'Licensing & Finance',
         subtitle: warming
@@ -8338,6 +8343,7 @@ class _FinancePageState extends State<FinancePage> {
     }
 
     return Content(
+      showHeader: false,
       title: 'Licensing & Finance',
       subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
       actions: [
@@ -9331,6 +9337,7 @@ class _ImpactPageState extends State<ImpactPage> {
         evidence.isEmpty &&
         reports.isEmpty) {
       return const Content(
+        showHeader: false,
         eyebrow: 'IMPACT CONTROL',
         title: 'Impact & Reports',
         subtitle: 'Loading the latest impact and evidence snapshot.',
@@ -9345,6 +9352,7 @@ class _ImpactPageState extends State<ImpactPage> {
         evidence.isEmpty &&
         reports.isEmpty) {
       return Content(
+        showHeader: false,
         title: 'Impact & Reports',
         subtitle: 'Real outcomes, transparent reports and evidence.',
         actions: [
@@ -9359,6 +9367,7 @@ class _ImpactPageState extends State<ImpactPage> {
     }
     if (error != null) {
       return Content(
+        showHeader: false,
         title: 'Impact & Reports',
         subtitle: 'Metrics, Evidence and reproducible reports.',
         child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
@@ -9380,6 +9389,7 @@ class _ImpactPageState extends State<ImpactPage> {
     final impactHasData = impactAnalytics['has_data'] == true || monthlyTrend.isNotEmpty || weeklyTrend.isNotEmpty;
 
     return Content(
+      showHeader: false,
       title: 'Impact & Reports',
       subtitle: 'Real outcomes. Transparent reporting. Measurable impact.',
       child: Column(
