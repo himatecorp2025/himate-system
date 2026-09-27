@@ -1,9 +1,17 @@
 part of 'main.dart';
 
 class DesignGuidePanel extends StatefulWidget {
-  const DesignGuidePanel({required this.api, required this.media, super.key});
+  const DesignGuidePanel({
+    required this.api,
+    required this.media,
+    this.canWrite = true,
+    this.canApprove = true,
+    super.key,
+  });
   final Api api;
   final List<Map<String, dynamic>> media;
+  final bool canWrite;
+  final bool canApprove;
 
   @override
   State<DesignGuidePanel> createState() => _DesignGuidePanelState();
@@ -217,6 +225,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
       };
 
   Future<bool> saveDraft({bool quiet = false}) async {
+    if (!widget.canWrite) return false;
     final validation = validate();
     if (validation != null) {
       if (mounted) {
@@ -246,6 +255,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   }
 
   Future<void> createPreview(String viewport) async {
+    if (!widget.canWrite) return;
     if (!await saveDraft(quiet: true)) return;
     if (mounted) setState(() => saving = true);
     try {
@@ -276,6 +286,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   }
 
   Future<void> publish() async {
+    if (!widget.canWrite || !widget.canApprove) return;
     if (!await saveDraft(quiet: true)) return;
     if (mounted) setState(() => saving = true);
     try {
@@ -482,7 +493,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
         LayoutBuilder(
           builder: (context, constraints) {
             final preview = InkWell(
-              onTap: saving ? null : () => createPreview('desktop'),
+              onTap: saving || !widget.canWrite ? null : () => createPreview('desktop'),
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 constraints: const BoxConstraints(minHeight: 220),
@@ -693,27 +704,27 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
           ),
           actions: [
             OutlinedButton.icon(
-              onPressed: saving ? null : () => saveDraft(),
+              onPressed: saving || !widget.canWrite ? null : () => saveDraft(),
               icon: const Icon(Icons.save_outlined),
               label: const LText('Save design draft'),
             ),
             OutlinedButton.icon(
-              onPressed: saving ? null : () => createPreview('desktop'),
+              onPressed: saving || !widget.canWrite ? null : () => createPreview('desktop'),
               icon: const Icon(Icons.desktop_windows_outlined),
               label: const LText('Desktop preview'),
             ),
             OutlinedButton.icon(
-              onPressed: saving ? null : () => createPreview('tablet'),
+              onPressed: saving || !widget.canWrite ? null : () => createPreview('tablet'),
               icon: const Icon(Icons.tablet_mac_outlined),
               label: const LText('Tablet preview'),
             ),
             OutlinedButton.icon(
-              onPressed: saving ? null : () => createPreview('mobile'),
+              onPressed: saving || !widget.canWrite ? null : () => createPreview('mobile'),
               icon: const Icon(Icons.phone_iphone_outlined),
               label: const LText('Mobile preview'),
             ),
             FilledButton.icon(
-              onPressed: saving ? null : publish,
+              onPressed: saving || !widget.canWrite || !widget.canApprove ? null : publish,
               icon: const Icon(Icons.publish_outlined),
               label: const LText('Publish Active Brand'),
             ),
