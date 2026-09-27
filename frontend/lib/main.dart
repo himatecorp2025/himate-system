@@ -10764,10 +10764,20 @@ class _SystemCurrentHealthCard extends StatelessWidget {
 }
 
 class _SystemInfrastructureSummary extends StatelessWidget {
-  const _SystemInfrastructureSummary({required this.environments,required this.backups,required this.partnerCount});
+  const _SystemInfrastructureSummary({
+    required this.environments,
+    required this.backups,
+    required this.partnerCount,
+    required this.canEnvironments,
+    required this.canBackups,
+    required this.canHealth,
+  });
   final List<Map<String,dynamic>> environments;
   final List<Map<String,dynamic>> backups;
   final int partnerCount;
+  final bool canEnvironments;
+  final bool canBackups;
+  final bool canHealth;
 
   @override
   Widget build(BuildContext context) {
@@ -10781,16 +10791,27 @@ class _SystemInfrastructureSummary extends StatelessWidget {
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             LText('Infrastructure status',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
-            _DefinitionRow(label:'Managed environments',value:'${environments.length}'),
-            _DefinitionRow(label:'Production environments',value:'$production'),
-            _DefinitionRow(label:'Live environments',value:'$live'),
-            _DefinitionRow(label:'Partner systems',value:'$partnerCount'),
-            _DefinitionRow(label:'Backup scopes',value:'${backups.length}'),
+            _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
+            _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
+            _DefinitionRow(label:'Live environments',value:canEnvironments?'$live':'—'),
+            _DefinitionRow(label:'Partner systems',value:canHealth?'$partnerCount':'—'),
+            _DefinitionRow(label:'Backup scopes',value:canBackups?'${backups.length}':'—'),
             const Spacer(),
-            const Row(children:[
-              Icon(Icons.verified_outlined,color:brandSuccess,size:17),
-              SizedBox(width:7),
-              Expanded(child:LText('All values come from live operations endpoints.',style:TextStyle(color:brandTextSoft,fontSize:9.5))),
+            Row(children:[
+              Icon(
+                canEnvironments || canBackups || canHealth ? Icons.verified_outlined : Icons.lock_outline_rounded,
+                color: canEnvironments || canBackups || canHealth ? brandSuccess : brandTextSoft,
+                size:17,
+              ),
+              const SizedBox(width:7),
+              Expanded(
+                child:LText(
+                  canEnvironments || canBackups || canHealth
+                      ? uiLiteral('All visible values come from authoritative operations endpoints.')
+                      : uiLiteral('Permission required'),
+                  style:const TextStyle(color:brandTextSoft,fontSize:9.5),
+                ),
+              ),
             ]),
           ]),
         ),
