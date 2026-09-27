@@ -18,6 +18,7 @@ const (
 	centralStep4SystemKey         = "system_screen"
 	centralStep4WebsiteKey        = "website_screen"
 	centralStep4ConnectionsKey    = "connections_screen"
+	centralStep4ComplianceKey     = "compliance_screen"
 	centralStep4RefreshInterval   = 10 * time.Second
 	centralStep4MaterializeBudget = 6 * time.Second
 )
@@ -61,6 +62,7 @@ func (a *app) refreshCentralStep4Snapshots() {
 		{centralStep4SystemKey, a.refreshCentralStep4System},
 		{centralStep4WebsiteKey, a.refreshCentralStep4Website},
 		{centralStep4ConnectionsKey, a.refreshCentralStep4Connections},
+		{centralStep4ComplianceKey, a.refreshCentralStep4Compliance},
 	}
 	for _, refresh := range refreshes {
 		refresh := refresh
@@ -597,4 +599,14 @@ func (a *app) refreshCentralStep4Connections() {
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
 	defer persistCancel()
 	a.centralStep3Store(persistCtx, centralStep4ConnectionsKey, payload)
+}
+
+
+func (a *app) refreshCentralStep4Compliance() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+	payload := a.materializeCentralCompliance(ctx)
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4ComplianceKey, payload)
 }
