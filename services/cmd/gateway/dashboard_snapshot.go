@@ -567,26 +567,4 @@ func (a *app) dashboardSnapshotForRead(year int) (map[string]any, time.Time, boo
 	return a.dashboardSnapshotForReadContext(context.Background(), year)
 }
 
-func dashboardWarmingSnapshot(year int, env, version string) map[string]any {
-	return map[string]any{
-		"year":     year,
-		"partners": dashboardUnavailableBlock(),
-		"modules":  dashboardUnavailableBlock(),
-		"billing":  dashboardUnavailableBlock(),
-		"impact":      dashboardUnavailableBlock(),
-		"partner_geo": dashboardUnavailableBlock(),
-		"activity":    map[string]any{"items": []any{}, "count": 0, "source": "IDENTITY_APPEND_ONLY_AUDIT", "status": "warming"},
-		"system": map[string]any{
-			"status":       "warming",
-			"environment":  env,
-			"version":      version,
-			"architecture": "materialized-dashboard-snapshot",
-		},
-		"meta": map[string]any{
-			"architecture": "MATERIALIZED_DASHBOARD_SNAPSHOT",
-			"status":       "warming",
-			"unavailable":  []string{"activity", "billing", "impact", "modules", "partner_geo", "partners"},
-			"generated_at": time.Now().UTC(),
-		},
-	}
-}
+
