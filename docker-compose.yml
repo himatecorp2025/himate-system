@@ -222,7 +222,6 @@ services:
       EVIDENCE_HOSTPORT: evidence:10000
       PARTNERS_HOSTPORT: partners:10000
       STORAGE_HOSTPORT: storage:10000
-      GATEWAY_HOSTPORT: gateway:10000
     depends_on:
       postgres:
         condition: service_healthy
