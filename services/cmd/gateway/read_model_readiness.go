@@ -25,6 +25,7 @@ func (a *app) centralReadinessJobs() []centralReadinessJob {
 		{centralStep4SystemKey, a.refreshCentralStep4System},
 		{centralStep4WebsiteKey, a.refreshCentralStep4Website},
 		{centralStep4ConnectionsKey, a.refreshCentralStep4Connections},
+		{centralStep4ComplianceKey, a.refreshCentralStep4Compliance},
 	}
 }
 
