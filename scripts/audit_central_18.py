@@ -89,6 +89,7 @@ for token in [
     "'implementation_state': 'READY'",
     "'publication_status': 'PUBLISHED'",
     "modules-add-module-button",
+    "module-detail-activate-button",
     "Marketplace active",
 ]:
     check(token in modules, f"module lifecycle control missing: {token}")
