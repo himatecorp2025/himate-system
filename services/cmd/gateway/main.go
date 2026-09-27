@@ -1574,7 +1574,16 @@ func (a *app) emitNotification(event auditEvent) {
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+host+"/internal/v1/notifications/events",bytes.NewReader(body));if err!=nil{return}
 	req.Header.Set("Content-Type","application/json")
 	common.BindInternalRequest(req,a.internalToken)
-	resp,err:=common.DoInternal(a.client,req);if err==nil&&resp!=nil{resp.Body.Close()}
+	resp,err:=common.DoInternal(a.client,req)
+	if err==nil&&resp!=nil{
+		status:=resp.StatusCode
+		resp.Body.Close()
+		if status<http.StatusBadRequest{
+			refreshCtx,refreshCancel:=context.WithTimeout(context.Background(),12*time.Second)
+			a.refreshCentralUserNotificationSnapshots(refreshCtx)
+			refreshCancel()
+		}
+	}
 }
 
 func auditLimit(value string, fallback, max int) int {
