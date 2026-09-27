@@ -134,13 +134,16 @@ class _Central17UsMapState extends State<_Central17UsMap> {
 
   @override
   Widget build(BuildContext context) {
-    final activeRows = widget.states.where((r)=>(r['count'] as num?)?.toInt() != 0).toList();
+    final activeRows = widget.states.where((r)=>(r['count'] as num?)?.toInt() != 0).toList()
+      ..sort((a,b)=>((b['count'] as num?)?.toInt() ?? 0).compareTo((a['count'] as num?)?.toInt() ?? 0));
+    final labelledStates = activeRows.take(5).map((e)=>'${e['state'] ?? ''}').toSet();
     return FutureBuilder<String>(
       future: _svgFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child:SizedBox(width:22,height:22,child:CircularProgressIndicator(strokeWidth:2)));
         return LayoutBuilder(
           builder:(context,c)=>Stack(
+            clipBehavior:Clip.none,
             children:[
               Positioned.fill(child:SvgPicture.string(snapshot.data!,fit:BoxFit.contain,alignment:Alignment.center)),
               for(final row in activeRows)
@@ -157,6 +160,22 @@ class _Central17UsMapState extends State<_Central17UsMap> {
                           padding:EdgeInsets.all(4),
                           child:Icon(Icons.location_on_rounded,color:brandGold,size:24,shadows:[Shadow(color:Colors.white,blurRadius:5)]),
                         ),
+                      ),
+                    ),
+                  ),
+              for(final row in activeRows)
+                if(labelledStates.contains('${row['state'] ?? ''}') && _positions['${row['state'] ?? ''}'] case final Offset pos)
+                  Positioned(
+                    left:(c.maxWidth*pos.dx).clamp(8,c.maxWidth-98),
+                    top:(c.maxHeight*pos.dy-34).clamp(4,c.maxHeight-34),
+                    child:IgnorePointer(
+                      child:Container(
+                        padding:const EdgeInsets.symmetric(horizontal:6,vertical:4),
+                        decoration:BoxDecoration(color:brandWhite.withOpacity(.94),borderRadius:BorderRadius.circular(7),boxShadow:[BoxShadow(color:brandNavy.withOpacity(.08),blurRadius:8,offset:const Offset(0,2))]),
+                        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                          LText('${row['state']}',style:const TextStyle(color:brandNavy,fontSize:8.5,fontWeight:FontWeight.w700)),
+                          LText('${row['count']} ${uiLiteral('partners')}',style:const TextStyle(color:brandTextSoft,fontSize:7.6)),
+                        ]),
                       ),
                     ),
                   ),
@@ -246,4 +265,74 @@ class _Central17TrendPainter extends CustomPainter {
       oldDelegate.partnerValues.toString()!=partnerValues.toString() ||
       oldDelegate.moneyValues.toString()!=moneyValues.toString() ||
       oldDelegate.labels.toString()!=labels.toString();
+}
+
+
+class _Central17TrendCard extends StatelessWidget {
+  const _Central17TrendCard({
+    required this.partnerTrend,
+    required this.revenueTrend,
+    required this.currency,
+    required this.year,
+  });
+  final List<Map<String,dynamic>> partnerTrend;
+  final List<Map<String,dynamic>> revenueTrend;
+  final String currency;
+  final int year;
+
+  @override
+  Widget build(BuildContext context) {
+    final locale=himateLocaleCode(Localizations.localeOf(context));
+    final partnerByMonth=<int,double>{};
+    for(final row in partnerTrend){
+      final m=(row['month'] as num?)?.toInt() ?? 0;
+      if(m>=1&&m<=12) partnerByMonth[m]=number(row['value']);
+    }
+    final revenueByMonth=<int,double>{};
+    for(final row in revenueTrend){
+      final m=(row['month'] as num?)?.toInt() ?? 0;
+      if(m<1||m>12)continue;
+      if(currency.isNotEmpty && '${row['currency'] ?? ''}'!=currency)continue;
+      revenueByMonth[m]=number(row['revenue']);
+    }
+    final partners=List<double>.generate(12,(i)=>partnerByMonth[i+1] ?? 0);
+    final revenue=List<double>.generate(12,(i)=>revenueByMonth[i+1] ?? 0);
+    final labels=List<String>.generate(12,(i)=>intl.DateFormat.MMM(locale).format(DateTime(year,i+1)).replaceAll('.', ''));
+
+    return SizedBox(
+      height:330,
+      child:Card(
+        child:Padding(
+          padding:const EdgeInsets.fromLTRB(20,17,18,16),
+          child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Row(children:[
+              Container(width:34,height:34,decoration:BoxDecoration(color:brandSteel.withOpacity(.08),borderRadius:BorderRadius.circular(10)),child:const Icon(Icons.bar_chart_rounded,color:brandSteel,size:20)),
+              const SizedBox(width:10),
+              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                LText(uiLiteral('12 month trend'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+                LText(uiLiteral('Partner count and settled amounts'),style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
+              ])),
+              _Central17LegendDot(color:brandNavy,label:uiLiteral('Active partners')),
+              const SizedBox(width:14),
+              _Central17LegendDot(color:brandGold,label:currency.isEmpty?uiLiteral('Settled amount'): '${uiLiteral('Settled amount')} ($currency)'),
+            ]),
+            const SizedBox(height:10),
+            Expanded(child:_Central17TrendChart(partnerValues:partners,moneyValues:revenue,labels:labels)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _Central17LegendDot extends StatelessWidget {
+  const _Central17LegendDot({required this.color,required this.label});
+  final Color color;
+  final String label;
+  @override
+  Widget build(BuildContext context)=>Row(mainAxisSize:MainAxisSize.min,children:[
+    Container(width:7,height:7,decoration:BoxDecoration(color:color,shape:BoxShape.circle)),
+    const SizedBox(width:5),
+    LText(label,style:const TextStyle(color:brandTextSoft,fontSize:8.7,fontWeight:FontWeight.w600)),
+  ]);
 }
