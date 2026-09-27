@@ -1321,7 +1321,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     groupLabel(group),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700),
+                    style: GoogleFonts.lora(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 2),
                   LText(
