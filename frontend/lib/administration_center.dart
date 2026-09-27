@@ -1336,12 +1336,14 @@ class AdministrationRecoveryPanel extends StatefulWidget {
     required this.partnerRows,
     required this.ids,
     required this.canMutate,
+    required this.canApproveRestore,
     super.key,
   });
   final Api api;
   final List<Map<String, dynamic>> partnerRows;
   final List<String> ids;
   final bool canMutate;
+  final bool canApproveRestore;
 
   @override
   State<AdministrationRecoveryPanel> createState() => _AdministrationRecoveryPanelState();
@@ -1393,6 +1395,7 @@ class _AdministrationRecoveryPanelState extends State<AdministrationRecoveryPane
       partnerLabels: labels,
       productionRestoreEligible: eligible,
       canMutate: widget.canMutate,
+      canApproveRestore: widget.canApproveRestore,
       scopeToPartnerIds: true,
     );
   }
