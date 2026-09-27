@@ -46,7 +46,10 @@ func validSystemSnapshot() map[string]any {
 		"health_api":        map[string]any{},
 		"provisioning_api":  map[string]any{},
 		"environments_api":  map[string]any{},
-		"backups_api":       map[string]any{},
+		"backups_api":              map[string]any{},
+		"backup_restore_points":    map[string]any{},
+		"backup_restore_tests_api": map[string]any{"items": []map[string]any{}},
+		"backup_restore_jobs_api":  map[string]any{"items": []map[string]any{}},
 	}
 }
 
@@ -98,6 +101,9 @@ func validPartnerWorkspaceSnapshot() map[string]any {
 		"portal_notifications":            map[string]any{},
 		"tenant_finance":                  map[string]any{},
 		"partner_audit_events":            []map[string]any{},
+		"partner_contacts":                []map[string]any{},
+		"partner_domains_deployments":     map[string]any{"items": []map[string]any{}, "count": 0},
+		"partner_permissions":             map[string]any{"users": []map[string]any{}, "module_policies": map[string]any{}},
 	}
 }
 
