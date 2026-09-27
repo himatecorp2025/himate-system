@@ -2086,6 +2086,13 @@ class _ShellState extends State<Shell> {
         final allNav = navFor(context);
         final visibleNav = <NavSpec>[for (final index in visibleIndexes) allNav[index]];
         final visibleSelected = visibleIndexes.indexOf(selected).clamp(0, visibleIndexes.length - 1);
+        final round1Header = selected >= 0 && selected <= 2;
+        final round1Title = selected == 0 ? uiLiteral('Dashboard') : selected == 1 ? uiLiteral('Partners') : uiLiteral('Modules');
+        final round1Subtitle = selected == 0
+            ? uiLiteral('Partners, modules and impact at a glance.')
+            : selected == 1
+                ? uiLiteral('Partner management, relationships and collaboration at a glance.')
+                : uiLiteral('Modules overview, organized by topic.');
         if (mobile) {
           return Scaffold(
             appBar: AppBar(
@@ -2161,12 +2168,45 @@ class _ShellState extends State<Shell> {
                 child: Column(
                   children: [
                     Container(
-                      height: 74,
+                      height: round1Header ? 86 : 74,
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       decoration: const BoxDecoration(color: brandSurface, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
                         children: [
-                          if (!tablet)
+                          if (round1Header && !tablet) ...[
+                            Expanded(
+                              flex: 4,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  LText(round1Title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                                  const SizedBox(height: 4),
+                                  LText(round1Subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 22),
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                readOnly: true,
+                                onTap: () => unawaited(openGlobalSearch(context)),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: uiLiteral('Search partners, modules and reports...'),
+                                  prefixIcon: const Icon(Icons.search_rounded, size: 19),
+                                  suffixIcon: Container(
+                                    margin: const EdgeInsets.all(8),
+                                    alignment: Alignment.center,
+                                    width: 28,
+                                    decoration: BoxDecoration(color: const Color(0xFFF0F3F7), borderRadius: BorderRadius.circular(6)),
+                                    child: const LText('⌘ K', style: TextStyle(color: brandTextSoft, fontSize: 8.5, fontWeight: FontWeight.w700)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ] else if (!tablet)
                             Expanded(
                               child: Align(
                                 alignment: Alignment.centerLeft,
@@ -2175,7 +2215,7 @@ class _ShellState extends State<Shell> {
                                   child: TextField(
                                     readOnly: true,
                                     onTap: () => unawaited(openGlobalSearch(context)),
-                                    decoration: InputDecoration(isDense: true, hintText: uiLiteral('Search anywhere...'), prefixIcon: Icon(Icons.search_rounded, size: 19)),
+                                    decoration: InputDecoration(isDense: true, hintText: uiLiteral('Search anywhere...'), prefixIcon: const Icon(Icons.search_rounded, size: 19)),
                                   ),
                                 ),
                               ),
