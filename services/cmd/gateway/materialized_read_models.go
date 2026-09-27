@@ -321,6 +321,41 @@ func (a *app) refreshCentralProjectionSerialized(key string, refresh func()) boo
 	return true
 }
 
+func (a *app) refreshHealthSourceWriteThrough() bool {
+	host := strings.TrimSpace(a.hosts["health"])
+	if host == "" {
+		if a.log != nil {
+			a.log.Error("health write-through refresh skipped: host not configured")
+		}
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/internal/v1/system-health/refresh", nil)
+	if err != nil {
+		if a.log != nil {
+			a.log.Error("health write-through refresh request failed", "error", err)
+		}
+		return false
+	}
+	common.BindInternalRequest(req, a.internalToken)
+	resp, err := common.DoInternal(a.client, req)
+	if err != nil {
+		if a.log != nil {
+			a.log.Error("health write-through refresh failed", "error", err)
+		}
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if a.log != nil {
+			a.log.Error("health write-through refresh rejected", "status", resp.StatusCode)
+		}
+		return false
+	}
+	return true
+}
+
 func (a *app) writeThroughReadModels(partnerID, reason string) {
 	reason = strings.ToLower(strings.TrimSpace(reason))
 	jobsByKey := map[string]func(){}
@@ -338,6 +373,14 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		strings.Contains(reason, "health") || strings.Contains(reason, "backup") || strings.Contains(reason, "connector")
 	adminMutation := strings.Contains(reason, "admin") || strings.Contains(reason, "audit") ||
 		strings.Contains(reason, "role") || strings.Contains(reason, "secret")
+
+	// Health is itself a materialized domain projection. Refresh it on the write
+	// path before rebuilding the Central System projection so an immediate GET/F5
+	// observes the committed provisioning/environment/connector/partner state
+	// without any read-side fan-out.
+	if partnerMutation || systemMutation {
+		a.refreshHealthSourceWriteThrough()
+	}
 
 	if partnerMutation {
 		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
