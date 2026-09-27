@@ -709,9 +709,13 @@ func (a *app) writeThroughCentralPartnerWorkspace(partnerID string) {
 	}
 	defer centralStep3EndRefresh(key)
 
-	refreshCtx, refreshCancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
-	defer refreshCancel()
-	a.refreshCentralPartnerWorkspaceLocked(refreshCtx, partnerID)
+	slotCtx, slotCancel := context.WithTimeout(context.Background(), readModelRefreshAcquireBudget)
+	defer slotCancel()
+	a.withReadModelRefreshSlot(slotCtx, key, func() {
+		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
+		defer refreshCancel()
+		a.refreshCentralPartnerWorkspaceLocked(refreshCtx, partnerID)
+	})
 }
 
 func (a *app) requestCentralPartnerWorkspaceRefresh(partnerID string) {
@@ -720,9 +724,13 @@ func (a *app) requestCentralPartnerWorkspaceRefresh(partnerID string) {
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
+		ctx, cancel := context.WithTimeout(context.Background(), readModelRefreshAcquireBudget)
 		defer cancel()
-		a.refreshCentralPartnerWorkspace(ctx, partnerID)
+		a.withReadModelRefreshSlot(ctx, centralPartnerWorkspaceKey(partnerID), func() {
+			refreshCtx, refreshCancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
+			defer refreshCancel()
+			a.refreshCentralPartnerWorkspace(refreshCtx, partnerID)
+		})
 	}()
 }
 
