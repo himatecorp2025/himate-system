@@ -209,9 +209,6 @@ func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor
 		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Connections read model is not ready")
 		return
 	}
-	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
-		a.requestCentralStep4Refresh()
-	}
 
 	all := step4Items(snapshot["items"])
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
