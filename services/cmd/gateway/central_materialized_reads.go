@@ -421,6 +421,121 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		common.JSON(w,http.StatusOK,partnerWorkspaceMap(snapshot,"backups_api")); return true
 	}
 
+	if strings.HasPrefix(path, "/api/v1/backups/restore-points/") {
+		id := strings.Trim(strings.TrimPrefix(path, "/api/v1/backups/restore-points/"), "/")
+		if id == "" || strings.Contains(id, "/") {
+			return false
+		}
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
+		if !ok {
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "System read model is not ready")
+			return true
+		}
+		points := partnerWorkspaceMap(snapshot, "backup_restore_points")
+		item, exists := points[id]
+		if !exists {
+			common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Restore point not found")
+			return true
+		}
+		w.Header().Set("X-Himate-Cache", "persistent-read-model")
+		common.JSON(w, http.StatusOK, item)
+		return true
+	}
+
+	if path == "/api/v1/backups/restore-tests" {
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
+		if !ok {
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "System read model is not ready")
+			return true
+		}
+		items := anyItems(partnerWorkspaceMap(snapshot, "backup_restore_tests_api")["items"])
+		partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
+		restorePointID := strings.TrimSpace(r.URL.Query().Get("restore_point_id"))
+		filtered := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			if partnerID != "" && central10String(item["partner_id"]) != partnerID {
+				continue
+			}
+			if restorePointID != "" && central10String(item["restore_point_id"]) != restorePointID {
+				continue
+			}
+			filtered = append(filtered, central10CopyMap(item))
+		}
+		limit := queryInt(r.URL.Query().Get("limit"), 50, 200)
+		if limit > len(filtered) {
+			limit = len(filtered)
+		}
+		filtered = filtered[:limit]
+		w.Header().Set("X-Himate-Cache", "persistent-read-model")
+		common.JSON(w, http.StatusOK, map[string]any{"items": filtered, "count": len(filtered)})
+		return true
+	}
+
+	if strings.HasPrefix(path, "/api/v1/backups/restore-tests/") {
+		id := strings.Trim(strings.TrimPrefix(path, "/api/v1/backups/restore-tests/"), "/")
+		if id == "" || strings.Contains(id, "/") {
+			return false
+		}
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
+		if !ok {
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "System read model is not ready")
+			return true
+		}
+		for _, item := range anyItems(partnerWorkspaceMap(snapshot, "backup_restore_tests_api")["items"]) {
+			if central10String(item["id"]) == id {
+				w.Header().Set("X-Himate-Cache", "persistent-read-model")
+				common.JSON(w, http.StatusOK, item)
+				return true
+			}
+		}
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Restore test not found")
+		return true
+	}
+
+	if path == "/api/v1/backups/restores" {
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
+		if !ok {
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "System read model is not ready")
+			return true
+		}
+		items := anyItems(partnerWorkspaceMap(snapshot, "backup_restore_jobs_api")["items"])
+		partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
+		filtered := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			if partnerID != "" && central10String(item["partner_id"]) != partnerID {
+				continue
+			}
+			filtered = append(filtered, central10CopyMap(item))
+		}
+		if len(filtered) > 100 {
+			filtered = filtered[:100]
+		}
+		w.Header().Set("X-Himate-Cache", "persistent-read-model")
+		common.JSON(w, http.StatusOK, map[string]any{"items": filtered, "count": len(filtered)})
+		return true
+	}
+
+	if strings.HasPrefix(path, "/api/v1/backups/restores/") {
+		id := strings.Trim(strings.TrimPrefix(path, "/api/v1/backups/restores/"), "/")
+		if id == "" || strings.Contains(id, "/") {
+			return false
+		}
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
+		if !ok {
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "System read model is not ready")
+			return true
+		}
+		for _, item := range anyItems(partnerWorkspaceMap(snapshot, "backup_restore_jobs_api")["items"]) {
+			if central10String(item["id"]) == id {
+				w.Header().Set("X-Himate-Cache", "persistent-read-model")
+				common.JSON(w, http.StatusOK, item)
+				return true
+			}
+		}
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Restore job not found")
+		return true
+	}
+
 	if strings.HasPrefix(path, "/api/v1/system-health/partner-snapshots") {
 		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4PartnersKey)
 		if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","Partner read model is not ready"); return true }
