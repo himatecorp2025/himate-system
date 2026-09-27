@@ -7545,6 +7545,89 @@ class _PackageAnalyticsChart extends StatelessWidget {
   }
 }
 
+class _FinanceInvoicePreview extends StatelessWidget {
+  const _FinanceInvoicePreview({required this.invoices, required this.onViewAll});
+  final List<Map<String,dynamic>> invoices;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = invoices.take(4).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 17, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.receipt_long_outlined, color: brandGold, size: 19),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  LText(uiLiteral('Invoices'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                  LText(uiLiteral('Recent invoice activity'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                ]),
+              ),
+              TextButton(onPressed: onViewAll, child: LText(uiLiteral('View all'))),
+            ]),
+            const SizedBox(height: 12),
+            if (recent.isEmpty)
+              Expanded(
+                child: Center(
+                  child: LText(uiLiteral('No invoices yet'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                ),
+              )
+            else
+              for (var i=0;i<recent.length;i++) ...[
+                Builder(builder: (context) {
+                  final invoice=recent[i];
+                  final status='${invoice['workflow_status'] ?? invoice['status'] ?? 'DRAFT'}';
+                  final currency='${invoice['currency'] ?? 'USD'}';
+                  final amount=number(invoice['gross_total'] ?? invoice['total']);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(9)),
+                        child: const Icon(Icons.description_outlined, color: brandSteel, size: 17),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          LText(
+                            '${invoice['partner_name'] ?? invoice['partner_id'] ?? '—'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 2),
+                          LText(
+                            '$currency ${amount.toStringAsFixed(2)}',
+                            style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                          ),
+                        ]),
+                      ),
+                      const SizedBox(width: 7),
+                      _StatusPill(label: status),
+                    ]),
+                  );
+                }),
+                if (i != recent.length-1) const Divider(height: 1),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class FinancePage extends StatefulWidget {
   const FinancePage({required this.api, super.key});
   final Api api;
@@ -7566,6 +7649,7 @@ class _FinancePageState extends State<FinancePage> {
   String revenuePeriod = 'MONTHLY';
   String revenuePlan = 'ALL';
   final GlobalKey onboardingKey = GlobalKey();
+  final GlobalKey invoiceKey = GlobalKey();
   bool loading = true;
   bool warming = false;
   int _warmRetryCount = 0;
@@ -8233,6 +8317,13 @@ class _FinancePageState extends State<FinancePage> {
       }
     }
 
+    void scrollToInvoices() {
+      final target = invoiceKey.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
+      }
+    }
+
     return Content(
       title: 'Licensing & Finance',
       subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
@@ -8304,7 +8395,31 @@ class _FinancePageState extends State<FinancePage> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                financeChart(),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final invoicePreview = _FinanceInvoicePreview(
+                      invoices: visibleInvoices,
+                      onViewAll: scrollToInvoices,
+                    );
+                    if (constraints.maxWidth < 980) {
+                      return Column(
+                        children: [
+                          financeChart(),
+                          const SizedBox(height: 12),
+                          invoicePreview,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(flex: 3, child: financeChart()),
+                        const SizedBox(width: 12),
+                        Expanded(flex: 2, child: invoicePreview),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 16),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -8353,7 +8468,9 @@ class _FinancePageState extends State<FinancePage> {
                   },
                 ),
                 const SizedBox(height: 24),
-                Row(
+                Container(
+                  key: invoiceKey,
+                  child: Row(
                   children: [
                     const Expanded(
                       child: _SectionHeader(
@@ -8363,6 +8480,7 @@ class _FinancePageState extends State<FinancePage> {
                     ),
                     _MiniCounter(label: '${visibleInvoices.length} shown'),
                   ],
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
