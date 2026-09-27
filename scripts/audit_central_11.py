@@ -84,7 +84,7 @@ for token in [
     "correlation_id",
 ]:
     check(token in system, f"System diagnostics/cache contract missing: {token}")
-check("Future.wait([" not in system[system.find("Future<Map<String, dynamic>> _load"):system.find("void _refresh")],
+check("Future.wait([" not in system[system.find("Future<Map<String, dynamic>> _load"):system.find("Future<void> _openDeveloperDiagnostics")],
       "System initial overview regressed to a Flutter-side API waterfall")
 
 # Design Guide / CMS real preview and fixed responsive viewport frame.
