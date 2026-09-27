@@ -282,6 +282,10 @@ func main() {
 	// the browser request path.
 	a.warmMissingCentralSnapshots()
 	a.warmMissingCentralPartnerWorkspaces()
+	// Replay durable projection events left by a previous process lifetime
+	// before the readiness gate. Failed events remain pending and never replace
+	// a Last-Known-Good projection; the background worker retries them later.
+	a.processReadModelRefreshQueue()
 	readinessCtx, readinessCancel := context.WithTimeout(context.Background(), 45*time.Second)
 	if err := a.ensureMaterializedReadModelsReady(readinessCtx); err != nil {
 		readinessCancel()
