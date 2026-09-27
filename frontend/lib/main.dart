@@ -10231,7 +10231,10 @@ class _SystemPageState extends State<SystemPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: LText('Developer diagnostics unavailable: $e'), backgroundColor: brandDanger),
+        SnackBar(
+          content: LText(uiBilingual('Developer diagnostics unavailable: $e', 'Fejlesztői diagnosztika nem érhető el: $e')),
+          backgroundColor: brandDanger,
+        ),
       );
     }
   }
@@ -10714,7 +10717,13 @@ class _SystemCurrentHealthCard extends StatelessWidget {
                 backgroundColor: brandMist,
               ),
               const SizedBox(height:10),
-              LText('$good / ${services.length} services healthy',style:const TextStyle(color:brandNavy,fontSize:11,fontWeight:FontWeight.w700)),
+              LText(
+                uiBilingual(
+                  '$good / ${services.length} services healthy',
+                  '$good / ${services.length} szolgáltatás egészséges',
+                ),
+                style:const TextStyle(color:brandNavy,fontSize:11,fontWeight:FontWeight.w700),
+              ),
               const SizedBox(height:14),
               Wrap(
                 spacing:7,
