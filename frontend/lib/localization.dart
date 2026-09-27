@@ -219,6 +219,10 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Central management of HIMATE, partner administration, documents, access and recovery.': 'A HIMATE, a partneradminisztráció, a dokumentumok, a hozzáférés és a helyreállítás központi kezelése.',
+    'System health, partner runtime state, deployments and technical diagnostics.': 'Rendszerállapot, partner futtatási állapot, telepítések és technikai diagnosztika.',
+    'Service responding normally': 'A szolgáltatás normálisan válaszol',
+    'Awaiting healthy response': 'Egészséges válaszra vár',
     'Content, brand, discovery, domains and marketing operations in one place.': 'Tartalom, márka, láthatóság, domainek és marketingműveletek egy helyen.',
     'Platform health, infrastructure, deployments and technical diagnostics.': 'Platformállapot, infrastruktúra, telepítések és technikai diagnosztika.',
     'Corporate governance, partner administration, access and recovery.': 'Vállalati irányítás, partneradminisztráció, hozzáférés és helyreállítás.',
