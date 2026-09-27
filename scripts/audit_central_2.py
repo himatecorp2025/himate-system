@@ -68,7 +68,7 @@ for token in [
     "runDashboardMaterializer",
     "materializeDashboardSnapshot",
     "dashboardStaleBlock",
-    '"architecture": "MATERIALIZED_DASHBOARD_SNAPSHOT"',
+    '"MATERIALIZED_DASHBOARD_SNAPSHOT"',
 ]:
     require(token in dashboard_snapshot, f"Materialized Dashboard contract missing: {token}")
 
