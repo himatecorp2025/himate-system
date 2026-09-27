@@ -7030,10 +7030,16 @@ class _PackagesPageState extends State<PackagesPage> {
       0,
       (sum, row) => sum + ((row['active_partner_count'] as num?)?.toInt() ?? 0),
     );
-    final customPackages = plans.where((plan) {
+    final canonicalPlans = plans.where((plan) {
       final key = '${plan['plan_key'] ?? ''}'.toUpperCase();
-      return key != 'STARTER' && key != 'BUSINESS' && key != 'FLEX' && key != 'PREMIUM';
-    }).length;
+      return key == 'STARTER' || key == 'BUSINESS' || key == 'FLEX' || key == 'PREMIUM';
+    }).toList()
+      ..sort((a, b) {
+        const order = <String,int>{'STARTER': 0, 'BUSINESS': 1, 'FLEX': 2, 'PREMIUM': 2};
+        return (order['${a['plan_key'] ?? ''}'.toUpperCase()] ?? 99)
+            .compareTo(order['${b['plan_key'] ?? ''}'.toUpperCase()] ?? 99);
+      });
+    final customPackages = plans.length - canonicalPlans.length;
 
     return Content(
       title: 'Packages',
@@ -7065,15 +7071,19 @@ class _PackagesPageState extends State<PackagesPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  for (final plan in plans)
+                  for (final plan in canonicalPlans)
                     SizedBox(
                       width: width,
                       child: _PackageOverviewCard(
+                        planKey: '${plan['plan_key'] ?? ''}',
                         name: '${plan['display_name'] ?? plan['plan_key']}',
                         price: '${plan['display_price'] ?? '—'}',
                         description: _packageDescription(plan),
                         entitlement: _packageEntitlement(plan),
                         active: plan['active'] == true,
+                        moduleLimit: (plan['module_limit'] as num?)?.toInt(),
+                        includedModuleCount: (plan['included_modules'] is List) ? (plan['included_modules'] as List).length : 0,
+                        activePartnerCount: (plan['active_partner_count'] as num?)?.toInt() ?? 0,
                         onTap: () => unawaited(editPackage(plan)),
                         onEdit: () => unawaited(editPackage(plan)),
                       ),
@@ -7194,19 +7204,27 @@ class _PackagesPageState extends State<PackagesPage> {
 
 class _PackageOverviewCard extends StatefulWidget {
   const _PackageOverviewCard({
+    required this.planKey,
     required this.name,
     required this.price,
     required this.description,
     required this.entitlement,
     required this.active,
+    required this.moduleLimit,
+    required this.includedModuleCount,
+    required this.activePartnerCount,
     required this.onTap,
     required this.onEdit,
   });
+  final String planKey;
   final String name;
   final String price;
   final String description;
   final String entitlement;
   final bool active;
+  final int? moduleLimit;
+  final int includedModuleCount;
+  final int activePartnerCount;
   final VoidCallback onTap;
   final VoidCallback onEdit;
 
@@ -7217,62 +7235,142 @@ class _PackageOverviewCard extends StatefulWidget {
 class _PackageOverviewCardState extends State<_PackageOverviewCard> {
   bool hover = false;
 
+  bool get highlighted => widget.planKey.toUpperCase() == 'BUSINESS';
+
+  IconData get packageIcon => switch (widget.planKey.toUpperCase()) {
+    'STARTER' => Icons.rocket_launch_outlined,
+    'BUSINESS' => Icons.business_center_outlined,
+    'FLEX' || 'PREMIUM' => Icons.workspace_premium_outlined,
+    _ => Icons.inventory_2_outlined,
+  };
+
   @override
   Widget build(BuildContext context) => MouseRegion(
     onEnter: (_) => setState(() => hover = true),
     onExit: (_) => setState(() => hover = false),
     child: AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      duration: const Duration(milliseconds: 170),
+      transform: Matrix4.translationValues(0, hover ? -4 : highlighted ? -2 : 0, 0),
+      constraints: const BoxConstraints(minHeight: 360),
       decoration: BoxDecoration(
-        color: brandSurfaceRaised,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: hover ? brandGold.withOpacity(.85) : brandIonBlue.withOpacity(.30), width: hover ? 1.5 : 1.0),
-        boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: highlighted
+              ? brandGold
+              : hover
+                  ? brandGold.withOpacity(.68)
+                  : brandMist,
+          width: highlighted ? 1.8 : hover ? 1.3 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: brandNavy.withOpacity(highlighted ? .11 : hover ? .09 : .05),
+            blurRadius: highlighted ? 26 : hover ? 22 : 14,
+            offset: Offset(0, highlighted ? 10 : hover ? 8 : 5),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 17),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(11)),
-                    child: const Icon(Icons.inventory_2_outlined, color: brandNavy, size: 23),
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: highlighted ? brandGold.withOpacity(.14) : brandSteel.withOpacity(.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(packageIcon, color: highlighted ? brandGold : brandNavy, size: 25),
                   ),
                   const Spacer(),
+                  if (highlighted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(color: brandGold.withOpacity(.14), borderRadius: BorderRadius.circular(99)),
+                      child: LText(uiLiteral('Most popular'), style: const TextStyle(color: Color(0xFF8B6508), fontSize: 9, fontWeight: FontWeight.w800)),
+                    ),
+                  const SizedBox(width: 6),
                   IconButton(
                     tooltip: uiLiteral('Edit package'),
                     onPressed: widget.onEdit,
-                    icon: const Icon(Icons.edit_outlined, size: 19),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
                   ),
                 ]),
                 const SizedBox(height: 18),
-                LText(widget.name, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 28, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                LText(widget.price, style: const TextStyle(color: brandTextSoft, fontSize: 13, fontWeight: FontWeight.w600)),
+                LText(
+                  widget.name,
+                  style: GoogleFonts.cormorantGaramond(
+                    color: brandNavy,
+                    fontSize: 31,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                LText(
+                  widget.price,
+                  style: const TextStyle(color: brandTextSoft, fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 13),
+                LText(widget.description, style: const TextStyle(color: brandCharcoal, fontSize: 11.3, height: 1.48)),
+                const SizedBox(height: 16),
+                const Divider(height: 1),
                 const SizedBox(height: 14),
-                LText(widget.description, style: const TextStyle(color: brandCharcoal, fontSize: 11.5, height: 1.45)),
-                const SizedBox(height: 14),
-                _RuleStrip(items: [
-                  _RuleItem(Icons.widgets_outlined, 'Included', widget.entitlement),
-                  _RuleItem(Icons.circle, 'Status', widget.active ? 'ACTIVE' : 'INACTIVE'),
-                ]),
-                const SizedBox(height: 18),
+                _PackageFeatureRow(
+                  icon: Icons.widgets_outlined,
+                  label: uiLiteral('Included modules'),
+                  value: widget.moduleLimit == null ? uiLiteral('Unlimited') : '${widget.moduleLimit}',
+                ),
+                const SizedBox(height: 9),
+                _PackageFeatureRow(
+                  icon: Icons.checklist_rounded,
+                  label: uiLiteral('Configured modules'),
+                  value: widget.moduleLimit == null ? uiLiteral('Automatic') : '${widget.includedModuleCount} / ${widget.moduleLimit}',
+                ),
+                const SizedBox(height: 9),
+                _PackageFeatureRow(
+                  icon: Icons.groups_2_outlined,
+                  label: uiLiteral('Active partners'),
+                  value: '${widget.activePartnerCount}',
+                ),
+                const SizedBox(height: 9),
+                _PackageFeatureRow(
+                  icon: Icons.verified_outlined,
+                  label: uiLiteral('Status'),
+                  value: uiLiteral(widget.active ? 'Active' : 'Inactive'),
+                ),
+                const Spacer(),
+                const SizedBox(height: 16),
                 Row(children: [
-                  const LText('Package details', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w800)),
-                  const Spacer(),
-                  AnimatedSlide(
-                    offset: hover ? const Offset(.14, 0) : Offset.zero,
-                    duration: const Duration(milliseconds: 150),
-                    child: const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 20),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: widget.onTap,
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                      label: LText(uiLiteral('Package details')),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Material(
+                    color: highlighted ? brandGold : const Color(0xFFF1F5FA),
+                    borderRadius: BorderRadius.circular(9),
+                    child: InkWell(
+                      onTap: widget.onTap,
+                      borderRadius: BorderRadius.circular(9),
+                      child: SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: Icon(Icons.arrow_forward_rounded, color: highlighted ? brandNavy : brandSteel, size: 19),
+                      ),
+                    ),
                   ),
                 ]),
               ],
@@ -7282,6 +7380,27 @@ class _PackageOverviewCardState extends State<_PackageOverviewCard> {
       ),
     ),
   );
+}
+
+class _PackageFeatureRow extends StatelessWidget {
+  const _PackageFeatureRow({required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, color: brandSteel, size: 15),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
+        const SizedBox(width: 8),
+        LText(value, style: const TextStyle(color: brandNavy, fontSize: 9.8, fontWeight: FontWeight.w800)),
+      ]);
 }
 
 class _PackageAnalyticsChart extends StatelessWidget {
