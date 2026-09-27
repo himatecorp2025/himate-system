@@ -2950,6 +2950,40 @@ class _DashboardUsMapCard extends StatelessWidget {
   final int activePartners;
   final bool available;
 
+  void _openFullView(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: brandWhite,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 980, maxHeight: 680),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
+            child: Column(
+              children: [
+                Row(children: [
+                  const Icon(Icons.location_on_rounded, color: brandSteel, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(child: LText(uiLiteral('Partners in the United States'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w700))),
+                  IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
+                ]),
+                const SizedBox(height: 12),
+                Expanded(child: _Central17UsMap(states: states, partners: partners)),
+                const SizedBox(height: 10),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _DashboardMapStat(value: '$activeStates', label: uiLiteral('active states'), accent: brandGold),
+                  const SizedBox(width: 12),
+                  _DashboardMapStat(value: '$activePartners', label: uiLiteral('US partners'), accent: brandSteel),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -2977,6 +3011,12 @@ class _DashboardUsMapCard extends StatelessWidget {
                         LText(uiLiteral('Active partner distribution by state'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
                       ],
                     ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: available ? () => _openFullView(context) : null,
+                    icon: const Icon(Icons.open_in_full_rounded, size: 15),
+                    label: LText(uiLiteral('Full view')),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9)),
                   ),
                 ],
               ),
