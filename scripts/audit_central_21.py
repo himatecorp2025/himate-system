@@ -54,9 +54,10 @@ for token in [
     "identity.partner_workspace_snapshots",
     "partner_id TEXT PRIMARY KEY",
     "identity.read_model_refresh_queue",
-    "readModelTargetLatency = 15 * time.Millisecond",
 ]:
     check(token in models, f"Persistent CQRS contract missing: {token}")
+check("readModelTargetLatency" in models and "15 * time.Millisecond" in models,
+      "Persistent CQRS contract missing: readModelTargetLatency=15ms")
 
 # Last-Known-Good is a hard storage invariant.
 check('strings.EqualFold(central10String(payload["status"]), "healthy")' in snapshots,
