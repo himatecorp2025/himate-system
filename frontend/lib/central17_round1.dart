@@ -393,3 +393,19 @@ class _Central17ModuleTrendCard extends StatelessWidget {
     );
   }
 }
+
+
+class _Central17SoftChip extends StatelessWidget {
+  const _Central17SoftChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F4F8),
+          borderRadius: BorderRadius.circular(99),
+        ),
+        child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 8.5, fontWeight: FontWeight.w600)),
+      );
+}
