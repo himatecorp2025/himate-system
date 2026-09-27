@@ -63,7 +63,7 @@ check("readModelTargetLatency" in models and "15 * time.Millisecond" in models,
       "Persistent CQRS contract missing: readModelTargetLatency=15ms")
 check("centralReadModelBaselines()[key]" in models,
       "Central read path has no healthy structural fallback after DB+memory LKG failure")
-dashboard_handler = func_block(main, "func (a *app) dashboard")
+dashboard_handler = func_block(main, "func (a *app) dashboard(w http.ResponseWriter")
 check("dashboardReadModelBaseline" in dashboard_handler and "dashboardWarmingSnapshot" not in dashboard_handler,
       "Dashboard browser read path can still emit a warming/degraded fallback")
 
