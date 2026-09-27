@@ -83,6 +83,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// CENTRAL-18: Golden Test Partner data is reconciled asynchronously because
+	// its fixture spans Catalog, Billing, Impact, Evidence and Reports schemas.
+	// Other microservices migrate those schemas concurrently, so this must never
+	// block Partners startup.
+	go a.runGoldenTestFixtureReconciler()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{"status": "ok", "service": "partners", "time": time.Now().UTC()})
