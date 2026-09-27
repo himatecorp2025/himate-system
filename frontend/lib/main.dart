@@ -2085,6 +2085,7 @@ class _ShellState extends State<Shell> {
                 canBillingRead: can('billing.read'),
                 canBillingWrite: can('billing.write') || can('billing.approve'),
                 canBackupsRead: can('backups.read'),
+                canBackupsWrite: can('backups.write') || can('backups.approve'),
                 canBackupsApprove: can('backups.approve'),
                 canAuditRead: can('audit.read'),
               )
@@ -6487,7 +6488,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           if (job != null) {
                             cards.add(
                               _InfoCard(
-                                title: 'Provisioning Engine',
+                                title: uiLiteral('Provisioning Engine'),
                                 icon: Icons.precision_manufacturing_outlined,
                                 children: [
                                   _DefinitionRow(label: 'Status', value: '${job['status'] ?? 'UNKNOWN'}'),
@@ -10474,6 +10475,7 @@ class _SystemPageState extends State<SystemPage> {
         final canEnvironmentsWrite = access['environments_write'] == true;
         final canEnvironmentsApprove = access['environments_approve'] == true;
         final canBackups = provisional || access['backups'] == true;
+        final canBackupsWrite = access['backups_write'] == true;
         final canBackupsApprove = access['backups_approve'] == true;
         final canAudit = access['audit'] == true;
         final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
@@ -10481,6 +10483,7 @@ class _SystemPageState extends State<SystemPage> {
             ? (meta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
             : <String>[];
         final backupPartnerIds = <String>{
+          if (canBackups) '_platform',
           for (final p in partners)
             if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty &&
                 '${p['database_health'] ?? ''}' == 'OK' &&
@@ -10511,8 +10514,8 @@ class _SystemPageState extends State<SystemPage> {
 
         return Content(
           showHeader: false,
-          title: 'System & Operations',
-          subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
+          title: uiLiteral('System & Operations'),
+          subtitle: uiLiteral('System health, partner runtime state, deployments and technical diagnostics.'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -10536,7 +10539,7 @@ class _SystemPageState extends State<SystemPage> {
               ],
               ResponsiveKpiGrid(children: [
                 Kpi(
-                  label: 'System status',
+                  label: uiLiteral('System status'),
                   value: canHealth ? overall : '—',
                   note: canHealth
                       ? uiBilingual('$healthyServices / $serviceCount services healthy', '$healthyServices / $serviceCount szolgáltatás egészséges')
@@ -10545,14 +10548,14 @@ class _SystemPageState extends State<SystemPage> {
                   accent: issueCount == 0 ? brandSuccess : brandWarning,
                 ),
                 Kpi(
-                  label: 'Partner systems',
+                  label: uiLiteral('Partner systems'),
                   value: canHealth ? '$partnerSystems' : '—',
                   note: canHealth ? 'Partner health aggregates' : uiLiteral('Permission required'),
                   icon: Icons.hub_outlined,
                   accent: brandSteel,
                 ),
                 Kpi(
-                  label: 'Deployments',
+                  label: uiLiteral('Deployments'),
                   value: canEnvironments ? '$deployedEnvironments' : '—',
                   note: canEnvironments
                       ? uiBilingual('$environmentCount managed environments', '$environmentCount kezelt környezet')
@@ -10561,7 +10564,7 @@ class _SystemPageState extends State<SystemPage> {
                   accent: brandSuccess,
                 ),
                 Kpi(
-                  label: 'Issues',
+                  label: uiLiteral('Issues'),
                   value: canHealth ? '$issueCount' : '—',
                   note: canHealth
                       ? uiBilingual('$degradedServices services · $degradedPartners partners', '$degradedServices szolgáltatás · $degradedPartners partner')
@@ -10608,8 +10611,8 @@ class _SystemPageState extends State<SystemPage> {
               const SizedBox(height: 18),
               if (canHealth) ...[
                 _SectionHeader(
-                  title: 'Main service status',
-                  subtitle: 'Current authoritative status of critical microservices.',
+                  title: uiLiteral('Main service status'),
+                  subtitle: uiLiteral('Current authoritative status of critical microservices.'),
                   trailing: canAudit
                       ? OutlinedButton.icon(
                           onPressed: _openDeveloperDiagnostics,
@@ -10635,8 +10638,8 @@ class _SystemPageState extends State<SystemPage> {
                     ],
                   ),
                 _SectionHeader(
-                  title: 'Partner Health',
-                  subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
+                  title: uiLiteral('Partner Health'),
+                  subtitle: uiLiteral('Connector, environment, provisioning and platform-version state aggregated per partner.'),
                   trailing: _MiniCounter(label: uiBilingual('${partners.length} partners', '${partners.length} partner')),
                 ),
                 const SizedBox(height: 12),
@@ -10686,8 +10689,8 @@ class _SystemPageState extends State<SystemPage> {
               ],
               if (canProvisioning) ...[
                 _SectionHeader(
-                  title: 'Provisioning Engine',
-                  subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
+                  title: uiLiteral('Provisioning Engine'),
+                  subtitle: uiLiteral('Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.'),
                   trailing: _MiniCounter(label: uiBilingual('${provisioning.length} jobs', '${provisioning.length} feladat')),
                 ),
                 const SizedBox(height: 12),
@@ -10744,14 +10747,15 @@ class _SystemPageState extends State<SystemPage> {
                   initialSummary: backupSummary,
                   partnerIds: backupPartnerIds,
                   initialProvider: backupProvider,
-                  canMutate: canBackupsApprove,
+                  canMutate: canBackupsWrite,
+                  canApproveRestore: canBackupsApprove,
                 ),
                 const SizedBox(height: 24),
               ],
               if (canAudit) ...[
                 _SectionHeader(
-                  title: 'Recent protected events',
-                  subtitle: 'Latest authenticated operations from the immutable central audit trail.',
+                  title: uiLiteral('Recent protected events'),
+                  subtitle: uiLiteral('Latest authenticated operations from the immutable central audit trail.'),
                   trailing: _MiniCounter(label: uiBilingual('${recentEvents.length} events', '${recentEvents.length} esemény')),
                 ),
                 const SizedBox(height: 12),
@@ -10880,11 +10884,11 @@ class _SystemCurrentHealthCard extends StatelessWidget {
               Row(children:[
                 const Icon(Icons.bar_chart_rounded,color:brandSteel,size:21),
                 const SizedBox(width:9),
-                Expanded(child:LText('System health overview',style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
+                Expanded(child:LText(uiLiteral('System health overview'),style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
                 _StatusPill(label: overall),
               ]),
               const SizedBox(height:5),
-              const LText('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.',style:TextStyle(color:brandTextSoft,fontSize:9.5)),
+              LText(uiLiteral('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.'),style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
               const Spacer(),
               LinearProgressIndicator(
                 value: ratio,
@@ -10952,7 +10956,7 @@ class _SystemInfrastructureSummary extends StatelessWidget {
         child:Padding(
           padding:const EdgeInsets.all(18),
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            LText('Infrastructure status',style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+            LText(uiLiteral('Infrastructure status'),style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
             _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
             _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
@@ -16669,8 +16673,8 @@ class _SystemPageState extends State<SystemPage> {
 
         return Content(
           showHeader: false,
-          title: 'System & Operations',
-          subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
+          title: uiLiteral('System & Operations'),
+          subtitle: uiLiteral('System health, partner runtime state, deployments and technical diagnostics.'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -16694,7 +16698,7 @@ class _SystemPageState extends State<SystemPage> {
               ],
               ResponsiveKpiGrid(children: [
                 Kpi(
-                  label: 'System status',
+                  label: uiLiteral('System status'),
                   value: canHealth ? overall : '—',
                   note: canHealth
                       ? uiBilingual('$healthyServices / $serviceCount services healthy', '$healthyServices / $serviceCount szolgáltatás egészséges')
@@ -16703,14 +16707,14 @@ class _SystemPageState extends State<SystemPage> {
                   accent: issueCount == 0 ? brandSuccess : brandWarning,
                 ),
                 Kpi(
-                  label: 'Partner systems',
+                  label: uiLiteral('Partner systems'),
                   value: canHealth ? '$partnerSystems' : '—',
                   note: canHealth ? 'Partner health aggregates' : uiLiteral('Permission required'),
                   icon: Icons.hub_outlined,
                   accent: brandSteel,
                 ),
                 Kpi(
-                  label: 'Deployments',
+                  label: uiLiteral('Deployments'),
                   value: canEnvironments ? '$deployedEnvironments' : '—',
                   note: canEnvironments
                       ? uiBilingual('$environmentCount managed environments', '$environmentCount kezelt környezet')
@@ -16719,7 +16723,7 @@ class _SystemPageState extends State<SystemPage> {
                   accent: brandSuccess,
                 ),
                 Kpi(
-                  label: 'Issues',
+                  label: uiLiteral('Issues'),
                   value: canHealth ? '$issueCount' : '—',
                   note: canHealth
                       ? uiBilingual('$degradedServices services · $degradedPartners partners', '$degradedServices szolgáltatás · $degradedPartners partner')
@@ -16766,8 +16770,8 @@ class _SystemPageState extends State<SystemPage> {
               const SizedBox(height: 18),
               if (canHealth) ...[
                 _SectionHeader(
-                  title: 'Main service status',
-                  subtitle: 'Current authoritative status of critical microservices.',
+                  title: uiLiteral('Main service status'),
+                  subtitle: uiLiteral('Current authoritative status of critical microservices.'),
                   trailing: canAudit
                       ? OutlinedButton.icon(
                           onPressed: _openDeveloperDiagnostics,
@@ -16793,8 +16797,8 @@ class _SystemPageState extends State<SystemPage> {
                     ],
                   ),
                 _SectionHeader(
-                  title: 'Partner Health',
-                  subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
+                  title: uiLiteral('Partner Health'),
+                  subtitle: uiLiteral('Connector, environment, provisioning and platform-version state aggregated per partner.'),
                   trailing: _MiniCounter(label: uiBilingual('${partners.length} partners', '${partners.length} partner')),
                 ),
                 const SizedBox(height: 12),
@@ -16844,8 +16848,8 @@ class _SystemPageState extends State<SystemPage> {
               ],
               if (canProvisioning) ...[
                 _SectionHeader(
-                  title: 'Provisioning Engine',
-                  subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
+                  title: uiLiteral('Provisioning Engine'),
+                  subtitle: uiLiteral('Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.'),
                   trailing: _MiniCounter(label: uiBilingual('${provisioning.length} jobs', '${provisioning.length} feladat')),
                 ),
                 const SizedBox(height: 12),
@@ -16908,8 +16912,8 @@ class _SystemPageState extends State<SystemPage> {
               ],
               if (canAudit) ...[
                 _SectionHeader(
-                  title: 'Recent protected events',
-                  subtitle: 'Latest authenticated operations from the immutable central audit trail.',
+                  title: uiLiteral('Recent protected events'),
+                  subtitle: uiLiteral('Latest authenticated operations from the immutable central audit trail.'),
                   trailing: _MiniCounter(label: uiBilingual('${recentEvents.length} events', '${recentEvents.length} esemény')),
                 ),
                 const SizedBox(height: 12),
@@ -17038,11 +17042,11 @@ class _SystemCurrentHealthCard extends StatelessWidget {
               Row(children:[
                 const Icon(Icons.bar_chart_rounded,color:brandSteel,size:21),
                 const SizedBox(width:9),
-                Expanded(child:LText('System health overview',style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
+                Expanded(child:LText(uiLiteral('System health overview'),style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
                 _StatusPill(label: overall),
               ]),
               const SizedBox(height:5),
-              const LText('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.',style:TextStyle(color:brandTextSoft,fontSize:9.5)),
+              LText(uiLiteral('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.'),style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
               const Spacer(),
               LinearProgressIndicator(
                 value: ratio,
@@ -17110,7 +17114,7 @@ class _SystemInfrastructureSummary extends StatelessWidget {
         child:Padding(
           padding:const EdgeInsets.all(18),
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            LText('Infrastructure status',style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+            LText(uiLiteral('Infrastructure status'),style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
             _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
             _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
