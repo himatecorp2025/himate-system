@@ -827,18 +827,16 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 func (a *app) central10ModulesCommercial(w http.ResponseWriter, r *http.Request, actor user) {
 	started := time.Now()
 	commercialSnapshot, commercialUpdatedAt, commercialOK := a.centralSnapshotForRead(r.Context(), centralStep3CommercialKey)
-	registrySnapshot, _, registryOK := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
-	plansSnapshot, plansUpdatedAt, plansOK := a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)
-	if !commercialOK || !registryOK || !plansOK {
+	if !commercialOK {
 		a.requestCentralStep3Refresh()
 		a.readModelInvariantFailure(w, centralStep3CommercialKey)
 		return
 	}
-	if time.Since(commercialUpdatedAt) > 2*centralStep3RefreshInterval || (plansOK && time.Since(plansUpdatedAt) > 2*centralStep3RefreshInterval) {
+	if time.Since(commercialUpdatedAt) > 2*centralStep3RefreshInterval {
 		a.requestCentralStep3Refresh()
 	}
 
-	modules := anyItems(registrySnapshot["modules"])
+	modules := anyItems(commercialSnapshot["modules"])
 	partners := []map[string]any{}
 	matrixItems := []map[string]any{}
 	subscriptionItems := []map[string]any{}
@@ -935,7 +933,7 @@ func (a *app) central10ModulesCommercial(w http.ResponseWriter, r *http.Request,
 
 	canonicalPlans := []map[string]any{}
 	if a.hasPermission(actor, "billing.read") {
-		for _, plan := range anyItems(plansSnapshot["plans"]) {
+		for _, plan := range anyItems(commercialSnapshot["plans"]) {
 			key := strings.ToUpper(central10String(plan["plan_key"]))
 			if key == "STARTER" || key == "BUSINESS" || key == "FLEX" || key == "PREMIUM" {
 				canonicalPlans = append(canonicalPlans, central10CanonicalPlan(plan, moduleByKey))
@@ -971,14 +969,8 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 	}
 	if time.Since(updatedAt) > 2*centralStep3RefreshInterval { a.requestCentralStep3Refresh() }
 
-	registrySnapshot, _, registryOK := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
-	if !registryOK {
-		a.requestCentralStep3Refresh()
-		a.readModelInvariantFailure(w, centralStep3RegistryKey)
-		return
-	}
 	moduleByKey := map[string]map[string]any{}
-	for _, module := range anyItems(registrySnapshot["modules"]) {
+	for _, module := range anyItems(plansSnapshot["modules"]) {
 		moduleByKey[central10String(module["key"])] = module
 	}
 	canonical := []map[string]any{}
@@ -1004,9 +996,8 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 
 func (a *app) central10PackagesSupplementary(w http.ResponseWriter, r *http.Request, actor user) {
 	started := time.Now()
-	registrySnapshot, registryUpdatedAt, registryOK := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
 	analyticsSnapshot, analyticsUpdatedAt, analyticsOK := a.centralSnapshotForRead(r.Context(), centralStep3AnalyticsKey)
-	if !registryOK || !analyticsOK {
+	if !analyticsOK {
 		a.requestCentralStep3Refresh()
 		a.readModelInvariantFailure(w, "packages_supplementary")
 		return
@@ -1014,7 +1005,7 @@ func (a *app) central10PackagesSupplementary(w http.ResponseWriter, r *http.Requ
 
 	eligibleModules := []map[string]any{}
 	if a.hasPermission(actor, "catalog.read") {
-		for _, module := range anyItems(registrySnapshot["modules"]) {
+		for _, module := range anyItems(analyticsSnapshot["modules"]) {
 			if central10PackageEligibleModule(module) {
 				eligibleModules = append(eligibleModules, module)
 			}
@@ -1024,8 +1015,7 @@ func (a *app) central10PackagesSupplementary(w http.ResponseWriter, r *http.Requ
 	if raw, ok := analyticsSnapshot["analytics"].(map[string]any); ok {
 		analytics = central10CopyMap(raw)
 	}
-	updatedAt := registryUpdatedAt
-	if analyticsUpdatedAt.After(updatedAt) { updatedAt = analyticsUpdatedAt }
+	updatedAt := analyticsUpdatedAt
 
 	payload := map[string]any{
 		"ready": true,
