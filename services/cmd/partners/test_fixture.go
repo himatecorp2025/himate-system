@@ -42,11 +42,15 @@ func (w *fixtureReconcileWriter) Write(payload []byte) (int, error) {
 }
 
 func (a *app) reconcileGoldenTestFixtures(ctx context.Context) (int, error) {
-	rows, err := a.db.QueryContext(ctx, `SELECT id
-		FROM partners.partners
-		WHERE test_partner=TRUE
-		  AND POSITION($1 IN COALESCE(notes,''))=0
-		ORDER BY created_at,id`, testFixtureMarker)
+	rows, err := a.db.QueryContext(ctx, `SELECT p.id
+		FROM partners.partners p
+		WHERE p.test_partner=TRUE
+		  AND lower(trim(p.display_name))='test partner'
+		  AND NOT EXISTS (
+			SELECT 1 FROM billing.invoices i
+			WHERE i.partner_id=p.id AND i.source='TEST_FIXTURE'
+		  )
+		ORDER BY p.created_at,p.id`)
 	if err != nil {
 		return 0, err
 	}
