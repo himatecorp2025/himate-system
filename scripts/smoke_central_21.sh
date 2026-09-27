@@ -68,17 +68,23 @@ SELECT
      AND payload ? 'start22_summary'
      AND payload ? 'start22_retention'
      AND payload ? 'company_profile'
-   ));
+   )),
+  (SELECT COUNT(*) FROM identity.central_screen_snapshots WHERE COALESCE(payload->>'seeded','false')='true'),
+  (SELECT COUNT(*) FROM identity.partner_workspace_snapshots WHERE COALESCE(payload->>'seeded','false')='true'),
+  (SELECT COUNT(*) FROM identity.dashboard_snapshots WHERE COALESCE(payload->>'seeded','false')='true');
 SQL
 )"
 printf '%s' "$STATE" | python3 -c '
 import sys
-healthy_c,bad_c,healthy_t,bad_t,partners,incomplete_t=map(int,sys.stdin.read().strip().split("|"))
+healthy_c,bad_c,healthy_t,bad_t,partners,incomplete_t,seeded_c,seeded_t,seeded_d=map(int,sys.stdin.read().strip().split("|"))
 assert healthy_c >= 12,(healthy_c,bad_c)
 assert bad_c == 0,(healthy_c,bad_c)
 assert bad_t == 0,(healthy_t,bad_t)
 assert healthy_t >= partners,(healthy_t,partners)
 assert incomplete_t == 0,incomplete_t
+assert seeded_c == 0,("Central baseline was not replaced",seeded_c)
+assert seeded_t == 0,("Tenant baseline was not replaced",seeded_t)
+assert seeded_d == 0,("Dashboard baseline was not replaced",seeded_d)
 '
 echo ok
 
