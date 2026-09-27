@@ -15,25 +15,7 @@ import (
 
 const testFixtureMarker = "HIMATE_GOLDEN_TEST_FIXTURE"
 
-var sqlIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*package main
-
-import (
-	"context"
-	"database/sql"
-	"encoding/json"
-	"fmt"
-	"himate.local/services/internal/common"
-	"net/http"
-	"net/url"
-	"regexp"
-	"strings"
-	"time"
-)
-
-const testFixtureMarker = "HIMATE_GOLDEN_TEST_FIXTURE"
-
-)
-
+var sqlIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 type fixtureReconcileWriter struct {
 	header http.Header
 	status int
