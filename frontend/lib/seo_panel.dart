@@ -398,6 +398,15 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
           trailing: _MiniCounter(label: 'v$version'),
         ),
         const SizedBox(height: 12),
+        if (!widget.canWrite)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Read only'),
+              message: uiLiteral('Your current role can view SEO settings but cannot modify them.'),
+            ),
+          ),
         if (error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -435,6 +444,7 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
         ResponsiveFieldPair(
           first: TextField(
             controller: keywordsEN,
+            readOnly: !widget.canWrite,
             minLines: 2,
             maxLines: 4,
             decoration: InputDecoration(
@@ -449,6 +459,7 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
           ),
           second: TextField(
             controller: keywordsHU,
+            readOnly: !widget.canWrite,
             minLines: 2,
             maxLines: 4,
             decoration: InputDecoration(
@@ -466,12 +477,14 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
         ResponsiveFieldPair(
           first: TextField(
             controller: organizationName,
+            readOnly: !widget.canWrite,
             decoration: InputDecoration(
               labelText: uiLiteral('Schema.org organization name'),
             ),
           ),
           second: TextField(
             controller: organizationURL,
+            readOnly: !widget.canWrite,
             decoration: InputDecoration(
               labelText: uiLiteral('Schema.org organization HTTPS URL'),
               hintText: 'https://www.himate.com',
@@ -497,9 +510,11 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
                 ),
               ),
           ],
-          onChanged: (value) {
-            setState(() => defaultOGImage = value ?? '');
-          },
+          onChanged: widget.canWrite
+              ? (value) {
+                  setState(() => defaultOGImage = value ?? '');
+                }
+              : null,
         ),
         const SizedBox(height: 14),
         ResponsiveActionBar(
