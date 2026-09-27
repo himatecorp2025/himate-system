@@ -55,12 +55,14 @@ class WebsiteMarketingPage extends StatefulWidget {
     this.canCms = true,
     this.canContact = true,
     this.canConnections = true,
+    this.canEnvironments = true,
     super.key,
   });
   final Api api;
   final bool canCms;
   final bool canContact;
   final bool canConnections;
+  final bool canEnvironments;
 
   @override
   State<WebsiteMarketingPage> createState() => _WebsiteMarketingPageState();
@@ -69,7 +71,10 @@ class WebsiteMarketingPage extends StatefulWidget {
 class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   List<Map<String, dynamic>> pages = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> media = <Map<String, dynamic>>[];
-  bool loading = false;
+  List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
+  Map<String, dynamic> websiteKpis = <String, dynamic>{};
+  Map<String, dynamic> websiteMeta = <String, dynamic>{};
+  bool loading = true;
   String section = 'overview';
   String? error;
 
@@ -79,27 +84,37 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     if (widget.canCms) load();
   }
 
-  Future<void> load() async {
-    if (!widget.canCms) return;
-    if (mounted) setState(() => error = null);
-    final failures = <String>[];
-
-    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
-      try {
-        final data = await widget.api.get(path);
-        if (mounted) setState(() => apply(data));
-      } catch (e) {
-        failures.add(e.toString());
-      }
-    }
-
-    await Future.wait<void>([
-      fetch('/api/v1/cms/pages', (data) => pages = items(data)),
-      fetch('/api/v1/cms/media', (data) => media = items(data)),
-    ]);
-
-    if (mounted && failures.length == 2) {
-      setState(() => error = failures.first);
+  Future<void> load({bool force = false}) async {
+    if (!mounted) return;
+    setState(() {
+      if (pages.isEmpty && media.isEmpty && environments.isEmpty) loading = true;
+      error = null;
+    });
+    try {
+      final model = await widget.api.get(
+        centralWebsiteInitialPath(),
+        force: force,
+        maxAge: const Duration(seconds: 15),
+      );
+      if (!mounted) return;
+      setState(() {
+        pages = items(<String,dynamic>{'items': model['pages']});
+        media = items(<String,dynamic>{'items': model['media']});
+        environments = items(<String,dynamic>{'items': model['environments']});
+        websiteKpis = model['kpis'] is Map
+            ? Map<String,dynamic>.from(model['kpis'] as Map)
+            : <String,dynamic>{};
+        websiteMeta = model['meta'] is Map
+            ? Map<String,dynamic>.from(model['meta'] as Map)
+            : <String,dynamic>{};
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
+      });
     }
   }
 
@@ -200,7 +215,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           'sections': <Map<String, dynamic>>[],
         },
       });
-      await load();
+      await load(force: true);
     }
 
     localeChoice.dispose();
@@ -244,7 +259,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
         bytes,
         file.name,
       );
-      await load();
+      await load(force: true);
     }
     alt.dispose();
   }
@@ -264,7 +279,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
 
     if (payload != null) {
       await widget.api.put('/api/v1/cms/pages/' + id + '/draft', payload);
-      await load();
+      await load(force: true);
     }
   }
 
@@ -282,7 +297,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           ),
         );
       }
-      await load();
+      await load(force: true);
     } catch (e) {
       _showError('Preview could not be created', e);
     }
@@ -292,7 +307,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     final id = (page['id'] ?? '').toString();
     try {
       await widget.api.post('/api/v1/cms/pages/' + id + '/publish');
-      await load();
+      await load(force: true);
     } catch (e) {
       _showError('Publish blocked', e);
     }
@@ -368,7 +383,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                                   <String, dynamic>{'version_id': (version['id'] ?? '').toString()},
                                 );
                                 if (dialogContext.mounted) Navigator.pop(dialogContext);
-                                await load();
+                                await load(force: true);
                               },
                               child: const LText('Restore'),
                             )
@@ -599,7 +614,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'CMS', subtitle: 'Website pages and content editing with immutable draft, preview and publish history.', icon: Icons.description_outlined, accent: const Color(0xFF7557E8), onTap: () => setState(() => section = 'pages'))),
               if (widget.canCms)
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'SEO', subtitle: 'Metadata, page keywords, Open Graph and technical discovery controls.', icon: Icons.search_rounded, accent: brandGold, onTap: () => setState(() => section = 'seo'))),
-              SizedBox(width: width, child: _WebsiteHubCard(title: 'Domain & Deployment', subtitle: 'Production domains, TLS and deployment environment status.', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => setState(() => section = 'domains'))),
+              if (widget.canEnvironments)
+                SizedBox(width: width, child: _WebsiteHubCard(title: 'Domain & Deployment', subtitle: 'Production domains, TLS and deployment environment status.', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => setState(() => section = 'domains'))),
               SizedBox(width: width, child: _WebsiteHubCard(title: 'Analytics', subtitle: 'Website measurement readiness and analytics integration status without invented traffic data.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: () => setState(() => section = 'analytics'))),
               if (widget.canConnections)
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'Partner Connections', subtitle: 'Partner website adapters, connector state and last successful synchronization.', icon: Icons.groups_2_outlined, accent: const Color(0xFFD84965), onTap: () => setState(() => section = 'connections'))),
@@ -721,7 +737,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       case 'connections':
         return PartnerConnectionsPanel(api: widget.api);
       case 'domains':
-        return WebsiteDomainsPanel(api: widget.api);
+        return WebsiteDomainsPanel(api: widget.api, initialEnvironments: environments);
       case 'analytics':
         return WebsiteAnalyticsPanel(pages: pages, media: media);
       default:
@@ -731,9 +747,17 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const _BrandLoading();
-    if (error != null) {
+    if (loading && pages.isEmpty && media.isEmpty && environments.isEmpty) {
+      return const Content(
+        showHeader: false,
+        title: 'Website & Marketing',
+        subtitle: 'Website management, online presence, marketing tools and analytics in one place.',
+        child: _BrandLoading(),
+      );
+    }
+    if (error != null && pages.isEmpty && media.isEmpty && environments.isEmpty) {
       return Content(
+        showHeader: false,
         eyebrow: 'WEBSITE · MARKETING · PARTNER OPERATIONS',
         title: 'Website & Marketing',
         subtitle: 'Content, brand, discovery and partner operations workspaces.',
@@ -741,7 +765,13 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       );
     }
 
+    final status = '${websiteMeta['status'] ?? 'healthy'}'.toLowerCase();
+    final unavailable = websiteMeta['unavailable'] is List
+        ? (websiteMeta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
+        : <String>[];
+
     return Content(
+      showHeader: section != 'overview',
       title: section == 'overview' ? 'Website & Marketing' : ({
         'design': 'Design Guide',
         'pages': 'CMS Pages',
@@ -767,7 +797,20 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
         if (section == 'media')
           FilledButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const LText('Upload media')),
       ],
-      child: activeSection(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
+            _MessageCard(
+              icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
+              title: uiLiteral(status == 'stale' ? 'Website data is temporarily stale' : 'Website data is partially available'),
+              message: '${uiLiteral('Unavailable services')}: ${unavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ],
+          activeSection(),
+        ],
+      ),
     );
   }
 }
@@ -829,25 +872,18 @@ class _WebsiteHubCard extends StatelessWidget {
 }
 
 class WebsiteDomainsPanel extends StatelessWidget {
-  const WebsiteDomainsPanel({required this.api, super.key});
+  const WebsiteDomainsPanel({
+    required this.api,
+    required this.initialEnvironments,
+    super.key,
+  });
   final Api api;
+  final List<Map<String,dynamic>> initialEnvironments;
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
-        future: api.get('/api/v1/environments', maxAge: const Duration(seconds: 5)),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
-            return const _MessageCard(
-              icon: Icons.sync_rounded,
-              title: 'Loading domain environments',
-              message: 'Domain and deployment state is loaded independently from the Website overview.',
-            );
-          }
-          if (snapshot.hasError || snapshot.data == null) {
-            return _MessageCard(icon: Icons.cloud_off_outlined, title: 'Domain & Deployment unavailable', message: '${snapshot.error ?? 'No environment data'}');
-          }
-          return DomainsDeploymentsPanel(api: api, initialEnvironments: items(snapshot.data!));
-        },
+  Widget build(BuildContext context) => DomainsDeploymentsPanel(
+        api: api,
+        initialEnvironments: initialEnvironments,
       );
 }
 
