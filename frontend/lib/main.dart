@@ -4859,7 +4859,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     super.dispose();
   }
 
-  Future<void> load({bool force = false}) async {
+  Future<void> load() async {
     final generation = ++_supplementalLoadGeneration;
     final hasPrimary =
         '${partner['id'] ?? ''}'.isNotEmpty && '${partner['display_name'] ?? ''}'.isNotEmpty;
