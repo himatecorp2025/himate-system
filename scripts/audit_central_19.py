@@ -15,6 +15,8 @@ def check(ok: bool, message: str) -> None:
 gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
 admin = read("services/cmd/gateway/central14.go")
+snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
+step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 frontend = read("frontend/lib/main.dart")
 
 for token in [
@@ -31,21 +33,35 @@ check("a.applyCentralModuleMutationSnapshot(r.URL.Path, state)" in gateway_main,
       "successful module mutation is not reconciled into the hot registry snapshot")
 
 for token in [
-    "localCtx,localCancel:=context.WithTimeout",
-    "QueryRowContext(localCtx,`SELECT COUNT(*) FROM identity.users WHERE active=TRUE`)",
-    'unavailable=append(unavailable,"administrators")',
-    'if status=="healthy" {',
+    "func (a *app) materializeCentralAdministration(ctx context.Context)",
+    "centralStep3SnapshotGet(centralStep4AdministrationKey)",
+    'centralStep4Meta(started, centralStep4AdministrationKey, updatedAt, "healthy", []string{})',
 ]:
-    check(token in admin, f"Administration timeout/cache contract missing: {token}")
+    check(token in admin, f"Administration authoritative snapshot contract missing: {token}")
+
+for token in [
+    "func centralSnapshotValid(key string, payload map[string]any) bool",
+    'strings.EqualFold(central10String(payload["status"]), "healthy")',
+    "central read-model refresh rejected; retaining last-known-good snapshot",
+]:
+    check(token in snapshots, f"Last-Known-Good persistence contract missing: {token}")
+check("centralStep4AdministrationKey" in step4 and "refreshCentralStep4Administration" in step4,
+      "Administration background materializer is not registered")
 
 for token in [
     "_cacheableGetResponse",
     "data['ready'] == false",
     "onRefresh != null && _cacheableGetResponse(path, freshData)",
-    "Future<void> load({bool force = false, bool quiet = false})",
-    "unawaited(load(force: true, quiet: true))",
+    "void _warmControlPlane()",
+    "Gateway owns authoritative read-model warming",
 ]:
-    check(token in frontend, f"frontend refresh-state contract missing: {token}")
+    check(token in frontend, f"frontend authoritative refresh-state contract missing: {token}")
+warm_start = frontend.find("void _warmControlPlane()")
+warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
+warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
+check("api.prefetch(" not in warm, "frontend still launches a hard-refresh prefetch storm")
+check("unawaited(load(force: true, quiet: true))" not in frontend,
+      "Finance still contains CENTRAL-19 retry polling")
 
 if failures:
     print(f"CENTRAL-19 FAIL: {len(failures)} issue(s)")
