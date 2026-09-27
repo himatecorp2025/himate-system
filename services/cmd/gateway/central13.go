@@ -96,13 +96,28 @@ func (a *app) materializeCentralConnections(ctx context.Context) map[string]any 
 	}
 
 	var connections central10ItemsPage
-	connectionErr := a.internalGET(ctx, a.hosts["connector"], "/internal/v1/partner-connections", &connections)
+	var start22Mapping map[string]any
+	var connectionErr, mappingErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		connectionErr = a.internalGET(ctx, a.hosts["connector"], "/internal/v1/partner-connections", &connections)
+	}()
+	go func() {
+		defer wg.Done()
+		mappingErr = a.internalGET(ctx, a.hosts["connector"], "/api/v1/connectors/start22/mapping", &start22Mapping)
+	}()
+	wg.Wait()
 	unavailable := []string{}
 	if partnerErr != nil {
 		unavailable = append(unavailable, "partners")
 	}
 	if connectionErr != nil {
 		unavailable = append(unavailable, "connector_runtime")
+	}
+	if mappingErr != nil {
+		unavailable = append(unavailable, "start22_mapping")
 	}
 
 	connectionByPartner := map[string]map[string]any{}
@@ -151,6 +166,7 @@ func (a *app) materializeCentralConnections(ctx context.Context) map[string]any 
 		"status": status,
 		"unavailable": unavailable,
 		"items": all,
+		"start22_mapping": start22Mapping,
 		"kpis": map[string]any{
 			"partner_count": len(all),
 			"active": statusCounts["ACTIVE"],
