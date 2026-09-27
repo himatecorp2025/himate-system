@@ -460,6 +460,51 @@ func (a *app) refreshCentralStep4Impact() {
 		unavailable = append(unavailable, "evidence")
 		evidence = step4Items(step4Unavailable(previous, "evidence"))
 	}
+
+	integrityByID := map[string]any{}
+	integrityErr := false
+	if evidenceErr == nil {
+		previousIntegrity := step4Map(step4Unavailable(previous, "evidence_integrity"))
+		var integrityWG sync.WaitGroup
+		var integrityMu sync.Mutex
+		sem := make(chan struct{}, 8)
+		for _, raw := range evidence {
+			item := raw
+			id := central10String(item["id"])
+			if id == "" || item["has_file"] != true {
+				continue
+			}
+			expectedSHA := central10String(item["sha256"])
+			if old, ok := previousIntegrity[id].(map[string]any); ok &&
+				old["valid"] == true && central10String(old["sha256"]) == expectedSHA {
+				integrityByID[id] = central10CopyMap(old)
+				continue
+			}
+			integrityWG.Add(1)
+			go func() {
+				defer integrityWG.Done()
+				select {
+				case sem <- struct{}{}:
+					defer func(){ <-sem }()
+				case <-ctx.Done():
+					integrityMu.Lock(); integrityErr = true; integrityMu.Unlock(); return
+				}
+				var result map[string]any
+				if err := a.internalGET(ctx, a.hosts["evidence"], "/api/v1/evidence/"+id+"/integrity", &result); err != nil {
+					integrityMu.Lock(); integrityErr = true; integrityMu.Unlock(); return
+				}
+				integrityMu.Lock()
+				integrityByID[id] = result
+				integrityMu.Unlock()
+			}()
+		}
+		integrityWG.Wait()
+		if integrityErr {
+			unavailable = append(unavailable, "evidence_integrity")
+		}
+	} else if previous != nil {
+		integrityByID = step4Map(previous["evidence_integrity"])
+	}
 	if reportsErr == nil {
 		successful++
 	} else {
@@ -487,6 +532,7 @@ func (a *app) refreshCentralStep4Impact() {
 		"definitions": definitions.Items,
 		"summary":     summary.Items,
 		"evidence":    evidence,
+		"evidence_integrity": integrityByID,
 		"reports":     reports.Items,
 		"analytics":   analytics,
 		"status":      status,
