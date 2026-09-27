@@ -2152,7 +2152,7 @@ func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusServiceUnavailable, "CONTACT_UNAVAILABLE", "Contact service is unavailable")
 		return
 	}
-	recorder := &auditResponseWriter{ResponseWriter: w}
+	recorder := &auditResponseWriter{ResponseWriter: w, deferred: true}
 	proxy.ServeHTTP(recorder, r)
 	status := recorder.status
 	if status == 0 { status = http.StatusOK }
@@ -2160,7 +2160,12 @@ func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
 		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
 		a.enqueueReadModelRefresh(refreshCtx, r.URL.Path, "")
 		refreshCancel()
+		// Public inquiry creation is an external write path. Refresh the Website
+		// projection before releasing the ACK so Administration/Marketing reads
+		// are immediately consistent without a synchronous read-side fan-out.
+		a.writeThroughReadModels("", r.URL.Path)
 	}
+	recorder.flushDeferred()
 }
 func (a *app) internalGET(ctx context.Context, host, path string, dst any) error {
 	if strings.TrimSpace(host) == "" {
