@@ -259,9 +259,11 @@ func main() {
 	// background materializers keep them fresh without putting fan-out work on
 	// the browser request path.
 	a.warmMissingCentralSnapshots()
+	a.warmMissingCentralPartnerWorkspaces()
 	go a.runDashboardMaterializer()
 	go a.runCentralStep3Materializer()
 	go a.runCentralStep4Materializer()
+	go a.runCentralPartnerWorkspaceMaterializer()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
