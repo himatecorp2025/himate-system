@@ -1054,6 +1054,7 @@ class PartnerRouteLoader extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
           return const Content(
+            showHeader: false,
             eyebrow: 'PLATFORM OPERATIONS',
             title: 'System & Operations',
             subtitle: 'Independent services behind one authenticated public gateway.',
@@ -10254,6 +10255,7 @@ class _SystemPageState extends State<SystemPage> {
         }
         if (snapshot.hasError || snapshot.data == null) {
           return Content(
+            showHeader: false,
             eyebrow: 'PLATFORM OPERATIONS',
             title: 'System & Operations',
             subtitle: 'Independent services behind one authenticated public gateway.',
@@ -10276,6 +10278,7 @@ class _SystemPageState extends State<SystemPage> {
             : <String,dynamic>{};
         final provisioning = items(<String,dynamic>{'items': model['provisioning']});
         final environments = items(<String,dynamic>{'items': model['environments']});
+        final recentEvents = items(<String,dynamic>{'items': model['events']});
         final backupResponse = model['backups'] is Map
             ? Map<String,dynamic>.from(model['backups'] as Map)
             : <String,dynamic>{};
@@ -10311,21 +10314,28 @@ class _SystemPageState extends State<SystemPage> {
           final status = '${value ?? 'UNKNOWN'}'.toUpperCase();
           return const {'OK', 'HEALTHY', 'LIVE', 'READY', 'ACTIVE', 'DEPLOYED'}.contains(status);
         }
-        final degradedServices = services.where((service) => !isHealthyStatus(service['status'])).length;
-        final degradedPartners = partners.where((partner) => !isHealthyStatus(partner['overall_status'])).length;
-        final issueCount = degradedServices + degradedPartners;
-        final deployedEnvironments = environments.where((environment) => '${environment['deployment_status'] ?? ''}'.toUpperCase() == 'DEPLOYED').length;
-        final healthyServices = services.where((service) => isHealthyStatus(service['status'])).length;
+        final healthyServices = (kpis['healthy_services'] as num?)?.toInt() ??
+            services.where((service) => isHealthyStatus(service['status'])).length;
+        final serviceCount = (kpis['service_count'] as num?)?.toInt() ?? services.length;
+        final degradedServices = serviceCount - healthyServices;
+        final degradedPartners = (kpis['degraded_partners'] as num?)?.toInt() ??
+            partners.where((partner) => !isHealthyStatus(partner['overall_status'])).length;
+        final issueCount = (kpis['issues'] as num?)?.toInt() ?? (degradedServices + degradedPartners);
+        final deployedEnvironments = (kpis['deployed_environments'] as num?)?.toInt() ?? 0;
+        final environmentCount = (kpis['environment_count'] as num?)?.toInt() ?? environments.length;
+        final partnerSystems = (kpis['partner_systems'] as num?)?.toInt() ?? partners.length;
 
         return Content(
+          showHeader: false,
           title: 'System & Operations',
           subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
           actions: [
-            OutlinedButton.icon(
-              onPressed: _openDeveloperDiagnostics,
-              icon: const Icon(Icons.bug_report_outlined),
-              label: const LText('Developer diagnostics'),
-            ),
+            if (canHealth && canAudit)
+              OutlinedButton.icon(
+                onPressed: _openDeveloperDiagnostics,
+                icon: const Icon(Icons.bug_report_outlined),
+                label: const LText('Developer diagnostics'),
+              ),
             OutlinedButton.icon(
               onPressed: _refresh,
               icon: const Icon(Icons.refresh_rounded),
@@ -10335,32 +10345,46 @@ class _SystemPageState extends State<SystemPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
+                _MessageCard(
+                  icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
+                  title: uiLiteral(status == 'stale' ? 'Operations data is temporarily stale' : 'Operations data is partially available'),
+                  message: '${uiLiteral('Unavailable services')}: ${unavailable.join(', ')}',
+                ),
+                const SizedBox(height: 14),
+              ],
               ResponsiveKpiGrid(children: [
                 Kpi(
                   label: 'System status',
-                  value: overall,
-                  note: '$healthyServices / ${services.length} services healthy',
+                  value: canHealth ? overall : '—',
+                  note: canHealth
+                      ? uiBilingual('$healthyServices / $serviceCount services healthy', '$healthyServices / $serviceCount szolgáltatás egészséges')
+                      : uiLiteral('Permission required'),
                   icon: Icons.dns_outlined,
                   accent: issueCount == 0 ? brandSuccess : brandWarning,
                 ),
                 Kpi(
                   label: 'Partner systems',
-                  value: '${partners.length}',
-                  note: 'Partner health aggregates',
+                  value: canHealth ? '$partnerSystems' : '—',
+                  note: canHealth ? 'Partner health aggregates' : uiLiteral('Permission required'),
                   icon: Icons.hub_outlined,
                   accent: brandSteel,
                 ),
                 Kpi(
                   label: 'Deployments',
-                  value: '$deployedEnvironments',
-                  note: '${environments.length} managed environments',
+                  value: canEnvironments ? '$deployedEnvironments' : '—',
+                  note: canEnvironments
+                      ? uiBilingual('$environmentCount managed environments', '$environmentCount kezelt környezet')
+                      : uiLiteral('Permission required'),
                   icon: Icons.inventory_2_outlined,
                   accent: brandSuccess,
                 ),
                 Kpi(
                   label: 'Issues',
-                  value: '$issueCount',
-                  note: '$degradedServices services · $degradedPartners partners',
+                  value: canHealth ? '$issueCount' : '—',
+                  note: canHealth
+                      ? uiBilingual('$degradedServices services · $degradedPartners partners', '$degradedServices szolgáltatás · $degradedPartners partner')
+                      : uiLiteral('Permission required'),
                   icon: Icons.warning_amber_rounded,
                   accent: issueCount == 0 ? brandSuccess : brandDanger,
                 ),
@@ -10368,21 +10392,34 @@ class _SystemPageState extends State<SystemPage> {
               const SizedBox(height: 18),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final healthCard = _SystemCurrentHealthCard(services: services, overall: overall);
-                  final infrastructure = _SystemInfrastructureSummary(
-                    environments: environments,
-                    backups: backupSummary,
-                    partnerCount: partners.length,
-                  );
-                  if (constraints.maxWidth < 940) {
-                    return Column(children: [healthCard, const SizedBox(height: 14), infrastructure]);
+                  final children = <Widget>[
+                    if (canHealth)
+                      _SystemCurrentHealthCard(services: services, overall: overall),
+                    _SystemInfrastructureSummary(
+                      environments: environments,
+                      backups: backupSummary,
+                      partnerCount: partners.length,
+                      canEnvironments: canEnvironments,
+                      canBackups: canBackups,
+                      canHealth: canHealth,
+                    ),
+                  ];
+                  if (constraints.maxWidth < 940 || children.length == 1) {
+                    return Column(
+                      children: [
+                        for (var index = 0; index < children.length; index++) ...[
+                          children[index],
+                          if (index < children.length - 1) const SizedBox(height: 14),
+                        ],
+                      ],
+                    );
                   }
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(flex: 7, child: healthCard),
+                      Expanded(flex: 7, child: children[0]),
                       const SizedBox(width: 14),
-                      Expanded(flex: 4, child: infrastructure),
+                      Expanded(flex: 4, child: children[1]),
                     ],
                   );
                 },
