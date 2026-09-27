@@ -736,7 +736,7 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
   }
 }
 
-class _AdministrationCenterHeroCard extends StatelessWidget {
+class _AdministrationCenterHeroCard extends StatefulWidget {
   const _AdministrationCenterHeroCard({
     required this.title,
     required this.subtitle,
@@ -753,79 +753,197 @@ class _AdministrationCenterHeroCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 330),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(colors: [brandWhite, accent.withOpacity(.045)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+  State<_AdministrationCenterHeroCard> createState() => _AdministrationCenterHeroCardState();
+}
+
+class _AdministrationCenterHeroCardState extends State<_AdministrationCenterHeroCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onTap != null;
+    return MouseRegion(
+      onEnter: enabled ? (_) => setState(() => hover = true) : null,
+      onExit: enabled ? (_) => setState(() => hover = false) : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        transform: Matrix4.translationValues(0, hover ? -4 : 0, 0),
+        constraints: const BoxConstraints(minHeight: 330),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: hover ? widget.accent.withOpacity(.65) : brandMist,
+            width: hover ? 1.4 : 1,
+          ),
+          gradient: LinearGradient(
+            colors: [brandWhite, widget.accent.withOpacity(hover ? .07 : .035)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: brandNavy.withOpacity(hover ? .10 : .045),
+              blurRadius: hover ? 26 : 14,
+              offset: Offset(0, hover ? 10 : 5),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(
               children: [
-                Row(children: [
-                  Container(width: 58,height:58,decoration:BoxDecoration(color:accent.withOpacity(.10),borderRadius:BorderRadius.circular(15)),child:Icon(icon,color:accent,size:29)),
-                  const SizedBox(width:14),
-                  Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                    LText(title,style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:25,fontWeight:FontWeight.w700)),
-                    const SizedBox(height:3),
-                    LText(subtitle,style:const TextStyle(color:brandTextSoft,fontSize:10.5,height:1.4)),
-                  ])),
-                ]),
-                const SizedBox(height:20),
-                for (final item in bullets)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(children:[
-                      Container(width:20,height:20,decoration:BoxDecoration(color:accent,borderRadius:BorderRadius.circular(99)),child:const Icon(Icons.check_rounded,color:Colors.white,size:13)),
-                      const SizedBox(width:9),
-                      Expanded(child:LText(item,style:const TextStyle(color:brandCharcoal,fontSize:10.5))),
-                    ]),
-                  ),
-                const Spacer(),
-                SizedBox(
-                  width: 210,
-                  child: FilledButton.icon(
-                    onPressed: onTap,
-                    style: FilledButton.styleFrom(backgroundColor: accent),
-                    icon: const Icon(Icons.open_in_new_rounded,size:17),
-                    label: LText(actionLabel),
+                Positioned(
+                  right: 14,
+                  top: 12,
+                  child: Icon(widget.icon, size: 104, color: widget.accent.withOpacity(.055)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Opacity(
+                    opacity: enabled ? 1 : .55,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              color: widget.accent.withOpacity(.11),
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: Icon(widget.icon, color: widget.accent, size: 29),
+                          ),
+                          const SizedBox(width:14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:CrossAxisAlignment.start,
+                              children:[
+                                LText(
+                                  widget.title,
+                                  style:GoogleFonts.cormorantGaramond(
+                                    color:brandNavy,
+                                    fontSize:26,
+                                    fontWeight:FontWeight.w700,
+                                    height:1.02,
+                                  ),
+                                ),
+                                const SizedBox(height:4),
+                                LText(widget.subtitle,style:const TextStyle(color:brandTextSoft,fontSize:10.5,height:1.4)),
+                              ],
+                            ),
+                          ),
+                        ]),
+                        const SizedBox(height:20),
+                        for (final item in widget.bullets)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(children:[
+                              Container(
+                                width:20,
+                                height:20,
+                                decoration:BoxDecoration(color:widget.accent,borderRadius:BorderRadius.circular(99)),
+                                child:const Icon(Icons.check_rounded,color:Colors.white,size:13),
+                              ),
+                              const SizedBox(width:9),
+                              Expanded(child:LText(item,style:const TextStyle(color:brandCharcoal,fontSize:10.5))),
+                            ]),
+                          ),
+                        const Spacer(),
+                        SizedBox(
+                          width: 210,
+                          child: FilledButton.icon(
+                            onPressed: widget.onTap,
+                            style: FilledButton.styleFrom(backgroundColor: widget.accent),
+                            icon: Icon(hover ? Icons.arrow_forward_rounded : Icons.open_in_new_rounded,size:17),
+                            label: LText(widget.actionLabel),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
-class _AdministrationQuickCard extends StatelessWidget {
-  const _AdministrationQuickCard({required this.title,required this.subtitle,required this.icon,required this.accent,this.onTap});
+class _AdministrationQuickCard extends StatefulWidget {
+  const _AdministrationQuickCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    this.onTap,
+  });
   final String title,subtitle;
   final IconData icon;
   final Color accent;
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: InkWell(
-      onTap:onTap,
-      borderRadius:BorderRadius.circular(16),
-      child:Padding(
-        padding:const EdgeInsets.all(17),
-        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Container(width:42,height:42,decoration:BoxDecoration(color:accent.withOpacity(.09),borderRadius:BorderRadius.circular(12)),child:Icon(icon,color:accent,size:21)),
-          const SizedBox(height:13),
-          LText(title,style:const TextStyle(color:brandNavy,fontSize:12,fontWeight:FontWeight.w800)),
-          const SizedBox(height:6),
-          LText(subtitle,style:const TextStyle(color:brandTextSoft,fontSize:9.5,height:1.4)),
-          const SizedBox(height:12),
-          Row(children:[LText('Open',style:TextStyle(color:accent,fontSize:9.5,fontWeight:FontWeight.w700)),const Spacer(),Icon(Icons.arrow_forward_rounded,color:accent,size:16)]),
-        ]),
+  State<_AdministrationQuickCard> createState() => _AdministrationQuickCardState();
+}
+
+class _AdministrationQuickCardState extends State<_AdministrationQuickCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: widget.onTap == null ? null : (_) => setState(() => hover = true),
+    onExit: widget.onTap == null ? null : (_) => setState(() => hover = false),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 170),
+      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: hover ? widget.accent.withOpacity(.55) : brandMist),
+        boxShadow: [
+          BoxShadow(
+            color: brandNavy.withOpacity(hover ? .08 : .035),
+            blurRadius: hover ? 18 : 10,
+            offset: Offset(0, hover ? 7 : 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap:widget.onTap,
+          borderRadius:BorderRadius.circular(16),
+          child:Padding(
+            padding:const EdgeInsets.all(17),
+            child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Row(children:[
+                Container(
+                  width:42,
+                  height:42,
+                  decoration:BoxDecoration(color:widget.accent.withOpacity(.09),borderRadius:BorderRadius.circular(12)),
+                  child:Icon(widget.icon,color:widget.accent,size:21),
+                ),
+                const Spacer(),
+                Icon(Icons.arrow_forward_rounded,color:hover?widget.accent:brandTextSoft,size:16),
+              ]),
+              const SizedBox(height:13),
+              LText(widget.title,style:const TextStyle(color:brandNavy,fontSize:12,fontWeight:FontWeight.w800)),
+              const SizedBox(height:6),
+              LText(widget.subtitle,style:const TextStyle(color:brandTextSoft,fontSize:9.5,height:1.4)),
+              const SizedBox(height:12),
+              LText(
+                uiLiteral('Open workspace'),
+                style:TextStyle(color:hover?widget.accent:brandSteel,fontSize:9.5,fontWeight:FontWeight.w700),
+              ),
+            ]),
+          ),
+        ),
       ),
     ),
   );
