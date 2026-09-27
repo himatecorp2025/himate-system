@@ -9,6 +9,7 @@ class BackupsPanel extends StatefulWidget {
     this.partnerLabels = const <String, String>{},
     this.productionRestoreEligible = const <String, bool>{},
     this.canMutate = true,
+    this.canApproveRestore,
     this.scopeToPartnerIds = false,
     super.key,
   });
@@ -20,6 +21,7 @@ class BackupsPanel extends StatefulWidget {
   final Map<String, String> partnerLabels;
   final Map<String, bool> productionRestoreEligible;
   final bool canMutate;
+  final bool? canApproveRestore;
   final bool scopeToPartnerIds;
 
   @override
@@ -288,6 +290,10 @@ class _BackupsPanelState extends State<BackupsPanel> {
   }
 
   Future<void> _restoreProduction(String partnerId) async {
+    if ((widget.canApproveRestore ?? widget.canMutate) != true) {
+      _notify(uiLiteral('Production restore approval permission is required.'), failure: true);
+      return;
+    }
     if (partnerId == '_platform') {
       _notify('Platform production recovery is maintenance-only and cannot be executed from the live control plane.', failure: true);
       return;
@@ -580,7 +586,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 if (partnerId != '_platform')
                   FilledButton.icon(
                     onPressed: isBusy ||
-                            !widget.canMutate ||
+                            (widget.canApproveRestore ?? widget.canMutate) != true ||
                             recoverability != 'VERIFIED' ||
                             backupStatus != 'READY' ||
                             pointId.isEmpty ||
