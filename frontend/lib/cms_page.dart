@@ -81,7 +81,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.canCms) load();
+    load();
   }
 
   Future<void> load({bool force = false}) async {
