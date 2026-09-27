@@ -720,11 +720,11 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	if path == "/api/v1/system-health/snapshot" {
+	if path == "/api/v1/system-health" || path == "/api/v1/system-health/snapshot" {
 		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
 		if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","System read model is not ready"); return true }
 		w.Header().Set("X-Himate-Cache","persistent-read-model")
-		common.JSON(w,http.StatusOK,partnerWorkspaceMap(snapshot,"health"))
+		common.JSON(w,http.StatusOK,partnerWorkspaceMap(snapshot,"health_api"))
 		return true
 	}
 
