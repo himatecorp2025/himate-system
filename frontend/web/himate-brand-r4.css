@@ -773,3 +773,204 @@ body{background:var(--design-background);color:var(--design-text);font-family:va
 .dark-section,.cta,.footer{background-color:var(--design-navy)}
 .content-section,.editorial,.impact-copy,.numbers,.feature,.contact-box{background-color:var(--design-background)}
 .content-section,.editorial,.feature,.contact-box{color:var(--design-text)}
+
+
+/* CENTRAL-21: approved Sep 19 landing geometry restoration.
+   Branding/logo selectors are intentionally excluded from this layer. */
+@media (min-width:1001px){
+  :root{
+    --public-inset:clamp(64px,5.1vw,92px);
+    --hero-copy:575px;
+  }
+
+  .wrap{
+    width:min(1510px,calc(100% - (var(--public-inset)*2)));
+    margin-inline:auto;
+  }
+
+  .site-nav{height:138px}
+  .nav-inner{
+    align-items:flex-start;
+    gap:24px;
+    padding-top:2px;
+  }
+  .site-nav .links{
+    margin-left:clamp(30px,4vw,70px);
+    padding-top:37px;
+    flex:1;
+    justify-content:flex-end;
+    gap:clamp(34px,2.65vw,48px);
+  }
+  .site-nav .links a{
+    font-size:clamp(18.5px,1.25vw,21.25px);
+    line-height:1;
+  }
+  .nav-divider{
+    display:block;
+    width:1px;
+    height:30px;
+    margin:0 5px;
+  }
+  .nav-login-text{padding:9px 0}
+  .login-pill{min-width:124px;min-height:52px}
+
+  .hero{
+    min-height:100svh;
+    background:
+      repeating-radial-gradient(
+        circle at 12% 29%,
+        transparent 0 56px,
+        rgba(58,96,130,.16) 57px 58px,
+        transparent 59px 91px
+      ),
+      var(--brandbook-deep);
+  }
+  .hero-bg{
+    left:23%;
+    right:-23%;
+    top:0;
+    bottom:0;
+    background:url('/art/statue_hero_r5.png') center center/cover no-repeat;
+  }
+  .hero-bg:after{
+    background:linear-gradient(
+      90deg,
+      rgba(6,23,44,.64) 0%,
+      rgba(6,23,44,.25) 29%,
+      rgba(6,23,44,.035) 58%,
+      rgba(6,23,44,0) 100%
+    );
+  }
+  .hero:before{
+    content:"";
+    position:absolute;
+    z-index:2;
+    left:-7%;
+    top:49%;
+    width:73%;
+    height:190px;
+    border-top:2px solid rgba(215,174,98,.82);
+    border-radius:50%;
+    transform:rotate(-9deg);
+    pointer-events:none;
+  }
+  .hero:after{
+    left:24%;
+    right:-5%;
+    top:18%;
+    height:2px;
+    background:linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(245,214,151,.98) 20%,
+      rgba(215,174,98,.98) 58%,
+      transparent 100%
+    );
+    transform:rotate(-9deg);
+    opacity:1;
+  }
+  .hero>.wrap{
+    align-items:center;
+    padding-top:138px;
+    padding-bottom:0;
+  }
+  .hero-content{
+    width:41%;
+    max-width:575px;
+    padding-left:clamp(16px,1.15vw,22px);
+  }
+  .hero .caps.gold{
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:4.8px;
+    color:#E0BA73;
+    text-shadow:0 1px 2px rgba(0,0,0,.60);
+  }
+  .hero h1{
+    margin:20px 0 22px;
+    font-size:clamp(68px,4.3vw,88px);
+    font-weight:600;
+    line-height:.92;
+    letter-spacing:-.55px;
+    color:#F1DFB9;
+    text-shadow:0 2px 2px rgba(0,0,0,.68);
+  }
+  .hero p{
+    max-width:560px;
+    font-size:18px;
+    font-weight:600;
+    line-height:1.37;
+    color:#F1F3F6;
+    text-shadow:0 1px 2px rgba(0,0,0,.65);
+  }
+  .hero-actions{
+    gap:30px;
+    margin-top:30px;
+  }
+  .hero-actions .btn{
+    height:58px;
+    min-height:58px;
+    border-radius:6px;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:1.45px;
+  }
+  .hero-actions .btn-gold{
+    min-width:320px;
+    background:linear-gradient(90deg,#F7DDA0 0%,#E9C47A 48%,#D6AC5C 100%);
+    box-shadow:0 3px 0 rgba(80,52,15,.23),0 9px 22px rgba(0,0,0,.12);
+  }
+  .hero-actions .watch-story{
+    min-width:304px;
+    border:2px solid rgba(215,174,98,.96);
+    border-radius:999px;
+    background:rgba(5,18,34,.46);
+  }
+
+  .hero-sideword{
+    right:7.1%;
+    top:37%;
+    font-size:42px;
+    font-weight:700;
+    letter-spacing:7px;
+    line-height:1.26;
+    color:#F6F1E8;
+    text-shadow:0 1px 3px rgba(0,0,0,.64);
+  }
+  .hero-sideword:after{
+    width:76px;
+    margin-top:18px;
+    border-top:3px solid var(--brandbook-gold);
+  }
+
+  .hero-metrics{
+    min-height:clamp(100px,6.3vw,130px);
+    padding:0 52px;
+    border-top:2px solid rgba(215,174,98,.82);
+    background:rgba(5,20,37,.50);
+    backdrop-filter:blur(1.5px);
+  }
+  .metric{
+    justify-content:center;
+    gap:24px;
+    padding:20px 28px;
+    border-right:1px solid rgba(242,231,209,.44);
+  }
+  .metric-icon{
+    width:46px;
+    height:46px;
+    flex-basis:46px;
+    color:var(--brandbook-gold)!important;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.45));
+  }
+  .metric-icon svg{stroke-width:1.7}
+  .metric strong{
+    font-size:15px;
+    font-weight:700;
+    letter-spacing:3.15px;
+    line-height:1.18;
+    color:#F1DEB9;
+    text-shadow:0 1px 2px rgba(0,0,0,.64);
+  }
+  .metric span{display:none}
+}
