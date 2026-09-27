@@ -305,6 +305,12 @@ check('"partner_id"' in connector_proxy and 'reason += "/impact"' in connector_p
 check('mux.HandleFunc("/connector/v1/", a.connectorPublicProxy)' in main,
       "Connector public writes bypass the CQRS write-through bridge")
 
+public_contact = func_block(main, "func (a *app) publicContact")
+check(public_contact != "", "Public Contact projection bridge is missing")
+check("deferred: true" in public_contact and "enqueueReadModelRefresh" in public_contact and
+      "writeThroughReadModels" in public_contact and "flushDeferred" in public_contact,
+      "Public Contact write does not synchronously refresh Website read models before ACK")
+
 webhook_proxy = func_block(main, "func (a *app) stripeWebhookProxy")
 check(webhook_proxy != "", "Gateway payment webhook projection bridge is missing")
 check("enqueueReadModelRefresh" in webhook_proxy and "writeThroughReadModels" in webhook_proxy,
