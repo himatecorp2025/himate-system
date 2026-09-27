@@ -354,8 +354,13 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       setState(() {
         showCommercialMatrix = true;
         commercialPerspective = 'PARTNER';
+        commercialQuery = '';
+        commercialPartnerFilter = 'ALL';
+        commercialModuleFilter = 'ALL';
+        commercialStatusFilter = 'ALL';
+        commercialShown = 120;
       });
-      if (!commercialReady) unawaited(loadCommercial());
+      unawaited(loadCommercial());
       return;
     }
     setState(() => showCommercialMatrix = false);
@@ -1902,6 +1907,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 onSelect: selectWorkspaceView,
               ),
               const SizedBox(height: 18),
+              if (!showCommercialMatrix) ...[
               Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                 if (!topicOverview) ...[
                   IconButton(
@@ -1995,9 +2001,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 ],
                 if (filtered.isEmpty)
                   _MessageCard(
-                    icon: Icons.inventory_2_outlined,
-                    title: uiLiteral('No modules found'),
-                    message: uiLiteral('No modules match the current topic or filters.'),
+                    icon: registryPreset == 'RELATIONSHIPS' ? Icons.link_off_rounded : Icons.inventory_2_outlined,
+                    title: uiLiteral(registryPreset == 'RELATIONSHIPS' ? 'No module connections found' : 'No modules found'),
+                    message: uiLiteral(registryPreset == 'RELATIONSHIPS'
+                        ? 'No dependency, integration, extension, conflict or replacement connections are configured yet.'
+                        : 'No modules match the current topic or filters.'),
                   )
                 else
                   LayoutBuilder(builder: (context, constraints) {
@@ -2015,6 +2023,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                       ],
                     );
                   }),
+              ],
               ],
               if (showCommercialMatrix) ...[
                 const SizedBox(height: 8),
