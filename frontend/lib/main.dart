@@ -1026,7 +1026,15 @@ class _HimateAppState extends State<HimateApp> {
               ? loadingScreen()
               : user == null
                   ? loginPage()
-                  : PartnerRouteLoader(api: api, partnerId: partnerId, initialSection: section),
+                  : Shell(
+                      api: api,
+                      user: user!,
+                      onUserChanged: updateSignedInUser,
+                      onLogout: logout,
+                      initialSelected: 1,
+                      initialPartnerId: partnerId,
+                      initialPartnerSection: section,
+                    ),
         );
       },
       onUnknownRoute: (_) => MaterialPageRoute(
@@ -1049,19 +1057,21 @@ class PartnerRouteLoader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final path = '/api/v1/central/partners/$partnerId';
     return FutureBuilder<Map<String, dynamic>>(
-      future: api.get('/api/v1/central/partners/$partnerId', maxAge: const Duration(seconds: 5)),
+      future: api.get(path, maxAge: const Duration(seconds: 5)),
+      initialData: api.peek(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
-          return const Content(
+          return Content(
             showHeader: false,
-            eyebrow: 'PLATFORM OPERATIONS',
-            title: 'System & Operations',
-            subtitle: 'Independent services behind one authenticated public gateway.',
-            child: _MessageCard(
+            eyebrow: uiLiteral('PARTNER WORKSPACE'),
+            title: uiLiteral('Partner workspace'),
+            subtitle: uiLiteral('Loading partner data and operational context.'),
+            child: const _MessageCard(
               icon: Icons.sync_rounded,
-              title: 'Refreshing operations data',
-              message: 'No cached operations snapshot is available yet. The page is ready and data will appear automatically.',
+              title: 'Loading partner workspace',
+              message: 'The partner route is active. Authoritative partner data is loading without leaving the Central shell.',
             ),
           );
         }
@@ -1890,6 +1900,8 @@ class Shell extends StatefulWidget {
     required this.onUserChanged,
     required this.onLogout,
     this.initialSelected = 0,
+    this.initialPartnerId,
+    this.initialPartnerSection,
     super.key,
   });
   final Api api;
@@ -1897,6 +1909,8 @@ class Shell extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>> onUserChanged;
   final Future<void> Function() onLogout;
   final int initialSelected;
+  final String? initialPartnerId;
+  final String? initialPartnerSection;
 
   @override
   State<Shell> createState() => _ShellState();
@@ -2042,7 +2056,14 @@ class _ShellState extends State<Shell> {
           _selectNav(index);
         },
       );
-      case 1: return PartnersPage(api: widget.api);
+      case 1:
+        return widget.initialPartnerId == null
+            ? PartnersPage(api: widget.api)
+            : PartnerRouteLoader(
+                api: widget.api,
+                partnerId: widget.initialPartnerId!,
+                initialSection: widget.initialPartnerSection,
+              );
       case 2: return ModuleControlPlanePage(api: widget.api);
       case 3: return PackagesPage(api: widget.api);
       case 4: return FinancePage(api: widget.api);
@@ -4478,12 +4499,9 @@ class _PartnersPageState extends State<PartnersPage> {
       final partnerId = '${createdResult['id']}';
       unawaited(load(reset: true));
       success('Partner master data, Portal Owner, logo and commercial defaults were saved.');
-      Navigator.push(
+      Navigator.pushNamed(
         context,
-        MaterialPageRoute(
-          settings: RouteSettings(name: '/app/partners/$partnerId'),
-          builder: (_) => PartnerWorkspace(api: widget.api, partner: createdResult),
-        ),
+        '/app/partners/${Uri.encodeComponent(partnerId)}',
       );
     }
 
@@ -4781,12 +4799,9 @@ class _PartnersPageState extends State<PartnersPage> {
                               width: width,
                               child: PartnerCard(
                                 partner: p,
-                                onTap: () => Navigator.push(
+                                onTap: () => Navigator.pushNamed(
                                   context,
-                                  MaterialPageRoute(
-                                    settings: RouteSettings(name: "/app/partners/${p['id']}"),
-                                    builder: (_) => PartnerWorkspace(api: widget.api, partner: p),
-                                  ),
+                                  "/app/partners/${Uri.encodeComponent('${p['id']}')}",
                                 ),
                               ),
                             ),
