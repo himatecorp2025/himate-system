@@ -536,266 +536,111 @@ func central10PartnerCategories(locale string, remote []map[string]any) []map[st
 
 func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
+	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4PartnersKey)
+	if !ok {
+		a.requestCentralStep4Refresh()
+		common.JSON(w, http.StatusOK, map[string]any{
+			"ready":      false,
+			"items":      []map[string]any{},
+			"categories": central10PartnerCategories(common.RequestLocale(r), nil),
+			"pagination": map[string]any{"count": 0, "total": 0, "limit": 24, "offset": 0, "has_more": false},
+			"kpis":       map[string]any{},
+			"meta":       centralStep4Meta(started, centralStep4PartnersKey, time.Time{}, "warming", []string{}),
+		})
+		return
+	}
+	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
+		a.requestCentralStep4Refresh()
+	}
 
-	// CENTRAL-18: every Partners view is served from the complete enriched
-	// materialized portfolio. Search/filter/pagination must never re-enter the
-	// live multi-service fan-out path and spin while one downstream is slow.
 	q := r.URL.Query()
-	if snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
-		rawCategories := step4Items(snapshot["categories_raw"])
-		snapshotItems := step4Items(snapshot["items"])
-		needle := strings.ToLower(strings.TrimSpace(q.Get("q")))
-		category := strings.TrimSpace(q.Get("category"))
-		lifecycle := strings.ToUpper(strings.TrimSpace(q.Get("lifecycle")))
-		health := strings.ToUpper(strings.TrimSpace(q.Get("health")))
-		referenceOnly := strings.EqualFold(strings.TrimSpace(q.Get("reference")), "true")
-		limit := central10QueryLimit(q.Get("limit"), 24, 200)
-		offset := 0
-		if parsed, err := strconv.Atoi(strings.TrimSpace(q.Get("offset"))); err == nil && parsed > 0 {
-			offset = parsed
-		}
+	rawCategories := step4Items(snapshot["categories_raw"])
+	snapshotItems := step4Items(snapshot["items"])
+	needle := strings.ToLower(strings.TrimSpace(q.Get("q")))
+	category := strings.TrimSpace(q.Get("category"))
+	lifecycle := strings.ToUpper(strings.TrimSpace(q.Get("lifecycle")))
+	health := strings.ToUpper(strings.TrimSpace(q.Get("health")))
+	referenceOnly := strings.EqualFold(strings.TrimSpace(q.Get("reference")), "true")
+	limit := central10QueryLimit(q.Get("limit"), 24, 200)
+	offset := 0
+	if parsed, err := strconv.Atoi(strings.TrimSpace(q.Get("offset"))); err == nil && parsed > 0 {
+		offset = parsed
+	}
 
-		filtered := make([]map[string]any, 0, len(snapshotItems))
-		for _, raw := range snapshotItems {
-			if needle != "" && !searchContains(
-				needle,
-				raw["id"], raw["display_name"], raw["legal_name"], raw["brand_name"],
-				raw["category_id"], raw["category_key"], raw["category_name"],
-				raw["country"], raw["state_region"], raw["city"],
-				raw["contact_name"], raw["contact_email"],
-			) {
+	filtered := make([]map[string]any, 0, len(snapshotItems))
+	for _, raw := range snapshotItems {
+		if needle != "" && !searchContains(
+			needle,
+			raw["id"], raw["display_name"], raw["legal_name"], raw["brand_name"],
+			raw["category_id"], raw["category_key"], raw["category_name"],
+			raw["country"], raw["state_region"], raw["city"],
+			raw["contact_name"], raw["contact_email"],
+		) {
+			continue
+		}
+		if category != "" && category != "ALL" &&
+			!strings.EqualFold(category, central10String(raw["category_id"])) &&
+			!strings.EqualFold(category, central10String(raw["category_key"])) {
+			continue
+		}
+		if lifecycle != "" && lifecycle != "ALL" &&
+			!strings.EqualFold(lifecycle, central10String(raw["lifecycle"])) {
+			continue
+		}
+		if health != "" && health != "ALL" {
+			rowHealth := strings.ToUpper(central10String(raw["system_health"]))
+			if rowHealth == "" {
+				rowHealth = "UNKNOWN"
+			}
+			if rowHealth != health {
 				continue
 			}
-			if category != "" && category != "ALL" &&
-				!strings.EqualFold(category, central10String(raw["category_id"])) &&
-				!strings.EqualFold(category, central10String(raw["category_key"])) {
-				continue
-			}
-			if lifecycle != "" && lifecycle != "ALL" &&
-				!strings.EqualFold(lifecycle, central10String(raw["lifecycle"])) {
-				continue
-			}
-			if health != "" && health != "ALL" {
-				rowHealth := strings.ToUpper(central10String(raw["system_health"]))
-				if rowHealth == "" { rowHealth = "UNKNOWN" }
-				if rowHealth != health { continue }
-			}
-			if referenceOnly && raw["reference_partner"] != true {
-				continue
-			}
-			row := central10CopyMap(raw)
-			if !a.hasPermission(actor, "catalog.read") {
-				delete(row, "active_modules")
-				delete(row, "extra_module_fee")
-			}
-			if !a.hasPermission(actor, "billing.read") {
-				delete(row, "base_service_fee")
-				delete(row, "service_value_30d")
-				delete(row, "currency")
-			}
-			if !a.hasPermission(actor, "health.read") {
-				delete(row, "system_health")
-				delete(row, "platform_version")
-				delete(row, "connector_health")
-				delete(row, "environment_status")
-				delete(row, "provisioning_status")
-			}
-			filtered = append(filtered, row)
 		}
-
-		total := len(filtered)
-		if offset > total { offset = total }
-		end := offset + limit
-		if end > total { end = total }
-		visibleItems := filtered[offset:end]
-		payload := map[string]any{
-			"items":      visibleItems,
-			"categories": central10PartnerCategories(common.RequestLocale(r), rawCategories),
-			"pagination": map[string]any{
-				"count": len(visibleItems), "total": total, "limit": limit,
-				"offset": offset, "has_more": end < total,
-			},
-			"kpis": step4Map(snapshot["kpis"]),
-			"meta": centralStep4Meta(started, centralStep4PartnersKey, updatedAt, central10String(snapshot["status"]), central10Step4Unavailable(snapshot["unavailable"])),
+		if referenceOnly && raw["reference_partner"] != true {
+			continue
 		}
-		w.Header().Set("X-Himate-Cache", "hot-snapshot")
-		w.Header().Set("Server-Timing", fmt.Sprintf("central-partners-snapshot;dur=%d", time.Since(started).Milliseconds()))
-		common.JSON(w, http.StatusOK, payload)
-		return
-	}
-	a.requestCentralStep4Refresh()
-
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
-	defer cancel()
-
-	type partnerPage struct {
-		Items           []map[string]any `json:"items"`
-		Count           int              `json:"count"`
-		Total           int              `json:"total"`
-		Limit           int              `json:"limit"`
-		Offset          int              `json:"offset"`
-		HasMore         bool             `json:"has_more"`
-		LifecycleCounts map[string]int   `json:"lifecycle_counts"`
-		ReferenceCount  int              `json:"reference_count"`
-	}
-	type page struct {
-		Items []map[string]any `json:"items"`
-	}
-
-	query := r.URL.Query()
-	values := url.Values{}
-	for _, key := range []string{"q", "category", "lifecycle", "health", "reference", "include_archived", "limit", "offset"} {
-		if value := strings.TrimSpace(query.Get(key)); value != "" {
-			values.Set(key, value)
+		row := central10CopyMap(raw)
+		if !a.hasPermission(actor, "catalog.read") {
+			delete(row, "active_modules")
+			delete(row, "extra_module_fee")
 		}
-	}
-	if values.Get("limit") == "" {
-		values.Set("limit", "24")
-	}
-	if values.Get("offset") == "" {
-		values.Set("offset", "0")
-	}
-	values.Set("include_stats", "true")
-	partnerPath := "/api/v1/partners?" + values.Encode()
-
-	var partners partnerPage
-	var categories, catalogPortfolio, billingPortfolio, healthPortfolio page
-	var partnerErr, categoriesErr, catalogErr, billingErr, healthErr error
-
-	var first sync.WaitGroup
-	first.Add(2)
-	go func() {
-		defer first.Done()
-		partnerErr = a.internalGET(ctx, a.hosts["partners"], partnerPath, &partners)
-	}()
-	go func() {
-		defer first.Done()
-		categoriesErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partner-categories", &categories)
-	}()
-	first.Wait()
-
-	if partnerErr != nil {
-		if stale, ok, _ := central10Cached(cacheKey, false); ok {
-			stale["meta"] = central10Meta(started, "stale", []string{"partners"})
-			w.Header().Set("X-Himate-Cache", "stale")
-			common.JSON(w, http.StatusOK, stale)
-			return
+		if !a.hasPermission(actor, "billing.read") {
+			delete(row, "base_service_fee")
+			delete(row, "service_value_30d")
+			delete(row, "currency")
 		}
-		common.APIError(w, http.StatusBadGateway, "PARTNERS_UNAVAILABLE", "Partner read model is temporarily unavailable")
-		return
+		if !a.hasPermission(actor, "health.read") {
+			delete(row, "system_health")
+			delete(row, "platform_version")
+			delete(row, "connector_health")
+			delete(row, "environment_status")
+			delete(row, "provisioning_status")
+		}
+		filtered = append(filtered, row)
 	}
 
-	ids := make([]string, 0, len(partners.Items))
-	for _, item := range partners.Items {
-		if id := central10String(item["id"]); id != "" {
-			ids = append(ids, id)
-		}
+	total := len(filtered)
+	if offset > total {
+		offset = total
 	}
-	if len(ids) > 0 {
-		filter := url.QueryEscape(strings.Join(ids, ","))
-		var enrich sync.WaitGroup
-		if a.hasPermission(actor, "catalog.read") {
-			enrich.Add(1)
-			go func() {
-				defer enrich.Done()
-				catalogErr = a.internalGET(ctx, a.hosts["catalog"], "/internal/v1/portfolio?ids="+filter, &catalogPortfolio)
-			}()
-		}
-		if a.hasPermission(actor, "billing.read") {
-			enrich.Add(1)
-			go func() {
-				defer enrich.Done()
-				billingErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/portfolio?ids="+filter, &billingPortfolio)
-			}()
-		}
-		if a.hasPermission(actor, "health.read") {
-			enrich.Add(1)
-			go func() {
-				defer enrich.Done()
-				healthErr = a.internalGET(ctx, a.hosts["health"], "/internal/v1/system-health/partner-snapshots?ids="+filter, &healthPortfolio)
-			}()
-		}
-		enrich.Wait()
+	end := offset + limit
+	if end > total {
+		end = total
 	}
-
-	catalogByID := map[string]map[string]any{}
-	for _, item := range catalogPortfolio.Items {
-		catalogByID[central10String(item["partner_id"])] = item
-	}
-	billingByID := map[string]map[string]any{}
-	for _, item := range billingPortfolio.Items {
-		billingByID[central10String(item["partner_id"])] = item
-	}
-	healthByID := map[string]map[string]any{}
-	for _, item := range healthPortfolio.Items {
-		healthByID[central10String(item["partner_id"])] = item
-	}
-
-	for _, partner := range partners.Items {
-		id := central10String(partner["id"])
-		if cat := catalogByID[id]; cat != nil {
-			partner["active_modules"] = central10Int(cat["active_modules"])
-			partner["extra_module_fee"] = central10Float(cat["extra_module_fee"])
-		}
-		if bill := billingByID[id]; bill != nil {
-			base := central10Float(bill["effective_base_fee"])
-			extra := central10Float(partner["extra_module_fee"])
-			partner["base_service_fee"] = base
-			partner["service_value_30d"] = mathRound2(base + extra)
-			if currency := central10String(bill["currency"]); currency != "" {
-				partner["currency"] = currency
-			}
-			partner["plan_key"] = central10String(bill["plan_key"])
-			partner["plan_name"] = central10String(bill["plan_name"])
-			partner["plan_status"] = central10String(bill["plan_status"])
-		}
-		if health := healthByID[id]; health != nil {
-			if value := central10String(health["overall_status"]); value != "" {
-				partner["system_health"] = value
-			}
-			if value := central10String(health["platform_version"]); value != "" {
-				partner["platform_version"] = value
-			}
-			partner["connector_health"] = health["connector_health"]
-			partner["environment_status"] = health["environment_status"]
-			partner["provisioning_status"] = health["provisioning_status"]
-		}
-	}
-
-	unavailable := []string{}
-	if categoriesErr != nil { unavailable = append(unavailable, "partner_categories") }
-	if catalogErr != nil { unavailable = append(unavailable, "catalog_portfolio") }
-	if billingErr != nil { unavailable = append(unavailable, "billing_portfolio") }
-	if healthErr != nil { unavailable = append(unavailable, "health_portfolio") }
-	status := "healthy"
-	if len(unavailable) > 0 { status = "partial" }
-
-	recordTotal := 0
-	for _, value := range partners.LifecycleCounts { recordTotal += value }
-	if recordTotal == 0 && partners.Total > 0 && strings.TrimSpace(r.URL.Query().Get("q")) == "" {
-		recordTotal = partners.Total
-	}
-
-	mergedCategories := central10PartnerCategories(common.RequestLocale(r), categories.Items)
+	visibleItems := filtered[offset:end]
 	payload := map[string]any{
-		"items": partners.Items,
-		"categories": mergedCategories,
+		"ready":      true,
+		"items":      visibleItems,
+		"categories": central10PartnerCategories(common.RequestLocale(r), rawCategories),
 		"pagination": map[string]any{
-			"count": partners.Count, "total": partners.Total, "limit": partners.Limit,
-			"offset": partners.Offset, "has_more": partners.HasMore,
+			"count": len(visibleItems), "total": total, "limit": limit,
+			"offset": offset, "has_more": end < total,
 		},
-		"kpis": map[string]any{
-			"partner_records": recordTotal,
-			"live_partners": partners.LifecycleCounts["LIVE"],
-			"prospects": partners.LifecycleCounts["PROSPECT"],
-			"reference_partners": partners.ReferenceCount,
-			"lifecycle_counts": partners.LifecycleCounts,
-		},
-		"meta": central10Meta(started, status, unavailable),
+		"kpis": step4Map(snapshot["kpis"]),
+		"meta": centralStep4Meta(started, centralStep4PartnersKey, updatedAt, "healthy", []string{}),
 	}
-	central10Store(cacheKey, payload)
-	w.Header().Set("X-Himate-Cache", "miss")
-	w.Header().Set("Server-Timing", fmt.Sprintf("central-partners;dur=%d", time.Since(started).Milliseconds()))
+	w.Header().Set("X-Himate-Cache", "hot-snapshot")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-partners-snapshot;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
 }
 
