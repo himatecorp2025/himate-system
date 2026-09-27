@@ -313,7 +313,7 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 		return
 	}
 
-	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4SystemKey)
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
 		common.JSON(w, http.StatusOK, map[string]any{
