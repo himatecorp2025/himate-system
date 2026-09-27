@@ -90,24 +90,24 @@ func (a *app) materializeCentralWebsite(ctx context.Context) map[string]any {
 			if id == "" {
 				continue
 			}
-			id := id
+			pageID := id
 			detailWG.Add(1)
 			go func() {
 				defer detailWG.Done()
 				var detail, versions, audit map[string]any
-				detailErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+id, &detail)
-				versionsErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+id+"/versions", &versions)
-				auditErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+id+"/audit", &audit)
+				detailErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+pageID, &detail)
+				versionsErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+pageID+"/versions", &versions)
+				auditErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+pageID+"/audit", &audit)
 				if detailErr != nil || versionsErr != nil || auditErr != nil {
 					detailMu.Lock()
-					unavailable = append(unavailable, "cms_page_detail:"+id)
+					unavailable = append(unavailable, "cms_page_detail:"+pageID)
 					detailMu.Unlock()
 					return
 				}
 				detailMu.Lock()
-				pageDetails[id] = detail
-				pageVersions[id] = versions
-				pageAudits[id] = audit
+				pageDetails[pageID] = detail
+				pageVersions[pageID] = versions
+				pageAudits[pageID] = audit
 				detailMu.Unlock()
 			}()
 		}
