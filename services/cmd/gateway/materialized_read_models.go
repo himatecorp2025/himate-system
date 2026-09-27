@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -50,6 +51,34 @@ func materializedReadModelMigration() common.Migration {
 			  WHERE processed_at IS NULL`,
 		},
 	}
+}
+
+func (a *app) internalGETWithHeaders(ctx context.Context, host, path string, headers map[string]string, dst any) error {
+	if strings.TrimSpace(host) == "" {
+		return fmt.Errorf("private service host is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+path, nil)
+	if err != nil {
+		return err
+	}
+	common.BindInternalRequest(req, a.internalToken)
+	for key, value := range headers {
+		if strings.TrimSpace(value) != "" {
+			req.Header.Set(key, value)
+		}
+	}
+	resp, err := common.DoInternal(a.client, req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	if dst == nil {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(dst)
 }
 
 func (a *app) loadCentralSnapshotDB(ctx context.Context, key string) (map[string]any, time.Time, error) {
