@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	readModelTargetLatency      = 20 * time.Millisecond
+	readModelTargetLatency      = 15 * time.Millisecond
 	readModelRefreshPoll        = 2 * time.Second
 	readModelRefreshBatch       = 100
 	readModelPersistBudget      = 2 * time.Second
