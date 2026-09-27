@@ -3463,6 +3463,8 @@ class _PartnersPageState extends State<PartnersPage> {
   String lifecycleFilter = 'ALL';
   String healthFilter = 'ALL';
   bool referenceOnly = false;
+  String partnerSort = 'AZ';
+  bool gridMode = true;
   static const int pageSize = 24;
   int offset = 0;
   int total = 0;
@@ -4387,7 +4389,15 @@ class _PartnersPageState extends State<PartnersPage> {
     }
   }
 
-  List<Map<String, dynamic>> get filtered => partners;
+  List<Map<String, dynamic>> get filtered {
+    final rows = List<Map<String, dynamic>>.from(partners);
+    rows.sort((a, b) {
+      final an = '${a['display_name'] ?? ''}'.toLowerCase();
+      final bn = '${b['display_name'] ?? ''}'.toLowerCase();
+      return partnerSort == 'ZA' ? bn.compareTo(an) : an.compareTo(bn);
+    });
+    return rows;
+  }
 
   @override
   Widget build(BuildContext context) {
