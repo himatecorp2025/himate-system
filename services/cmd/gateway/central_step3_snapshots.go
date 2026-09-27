@@ -366,16 +366,16 @@ func (a *app) refreshCentralStep3Snapshots() {
 		{centralStep3AnalyticsKey, a.refreshCentralStep3Analytics},
 		{centralStep3CommercialKey, a.refreshCentralStep3Commercial},
 	}
+	var wg sync.WaitGroup
 	for _, refresh := range refreshes {
 		refresh := refresh
-		if !centralStep3BeginRefresh(refresh.key) {
-			continue
-		}
+		wg.Add(1)
 		go func() {
-			defer centralStep3EndRefresh(refresh.key)
-			refresh.fn()
+			defer wg.Done()
+			a.refreshCentralProjectionSerialized(refresh.key, refresh.fn)
 		}()
 	}
+	wg.Wait()
 }
 
 func (a *app) refreshCentralStep3Registry() {
