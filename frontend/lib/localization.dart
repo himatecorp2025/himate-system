@@ -216,6 +216,8 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Partners, modules and impact at a glance.': 'Áttekintés a partnerekről, modulokról és a hatásról.',
+    'Search partners, modules and reports...': 'Keresés partnerek, modulok és jelentések között...',
     'Open': 'Megnyitás',
     'active': 'aktív',
     'Module usage growth': 'Modulhasználat növekedése',
