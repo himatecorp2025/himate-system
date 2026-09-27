@@ -100,6 +100,8 @@ func centralSnapshotValid(key string, payload map[string]any) bool {
 		required = []string{"pages", "media", "environments", "kpis", "seo", "seo_audit", "contact_inquiries", "cms_design", "cms_page_details", "cms_page_versions", "cms_page_audits"}
 	case centralStep4ConnectionsKey:
 		required = []string{"items", "kpis"}
+	case centralStep4ComplianceKey:
+		required = []string{"items", "details"}
 	default:
 		if strings.HasPrefix(key, centralPartnerWorkspacePrefix) && centralPartnerWorkspaceID(key) != "" {
 			return partnerWorkspaceSnapshotValid(payload)
@@ -181,6 +183,7 @@ func (a *app) warmMissingCentralSnapshots() {
 		{centralStep4SystemKey, a.refreshCentralStep4System},
 		{centralStep4WebsiteKey, a.refreshCentralStep4Website},
 		{centralStep4ConnectionsKey, a.refreshCentralStep4Connections},
+		{centralStep4ComplianceKey, a.refreshCentralStep4Compliance},
 	}
 
 	warm := func(jobs []struct {
