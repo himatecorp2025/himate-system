@@ -302,25 +302,48 @@ func (a *app)process(id string){
 	snapshotSum:=sha256.Sum256(rawSnapshot);snapshotSHA:=hex.EncodeToString(snapshotSum[:])
 	if _,err=a.db.ExecContext(ctx,`UPDATE reports.jobs SET snapshot=$2::jsonb,snapshot_sha256=$3,evidence_ids=$4::jsonb,updated_at=NOW() WHERE id=$1`,id,string(rawSnapshot),snapshotSHA,string(rawEvidence));err!=nil{a.fail(id,err);return}
 	rec.Snapshot=rawSnapshot;rec.SnapshotSHA256=snapshotSHA;rec.EvidenceIDs=rawEvidence
-	if err=a.renderFromStoredSnapshot(ctx,rec);err!=nil{a.fail(id,err);return}
+
+	artifact,err:=a.renderStoredSnapshotArtifact(ctx,rec)
+	if err!=nil{a.fail(id,err);return}
 	if len(evidenceIDs)>0{
-		_ = a.internalPOST(ctx,a.evidenceHost,"/internal/v1/evidence/report-links",map[string]any{"report_id":id,"evidence_ids":evidenceIDs},nil)
+		if err=a.internalPOST(ctx,a.evidenceHost,"/internal/v1/evidence/report-links",map[string]any{"report_id":id,"evidence_ids":evidenceIDs},nil);err!=nil{
+			a.fail(id,fmt.Errorf("link report evidence: %w",err));return
+		}
 	}
+	if err=a.markReportReady(ctx,id,artifact);err!=nil{a.fail(id,err);return}
 }
 
 func (a *app)fail(id string,err error){_,_=a.db.Exec(`UPDATE reports.jobs SET status='FAILED',last_error=$2,completed_at=NOW(),updated_at=NOW() WHERE id=$1`,id,truncate(err.Error(),500))}
 
-func (a *app)renderFromStoredSnapshot(ctx context.Context,rec reportRecord)error{
+type reportArtifact struct{
+	Namespace string
+	ObjectKey string
+	SHA256 string
+	SizeBytes int
+}
+
+func (a *app)renderStoredSnapshotArtifact(ctx context.Context,rec reportRecord)(reportArtifact,error){
 	var snapshot map[string]any
-	if err:=json.Unmarshal(rec.Snapshot,&snapshot);err!=nil{return fmt.Errorf("snapshot: %w",err)}
+	if err:=json.Unmarshal(rec.Snapshot,&snapshot);err!=nil{return reportArtifact{},fmt.Errorf("snapshot: %w",err)}
 	pdf:=renderPDF(snapshot)
 	sum:=sha256.Sum256(pdf);checksum:=hex.EncodeToString(sum[:])
 	namespace:="_reports";key:="reports/"+rec.ID+".pdf"
-	if err:=a.ensureStorageNamespace(ctx,namespace);err!=nil{return err}
-	stored,err:=a.putObject(ctx,namespace,key,pdf);if err!=nil{return err}
-	if got:=strings.TrimSpace(fmt.Sprint(stored["sha256"]));got!=""&&got!=checksum{return fmt.Errorf("stored report checksum mismatch")}
-	_,err=a.db.ExecContext(ctx,`UPDATE reports.jobs SET status='READY',pdf_namespace=$2,pdf_object_key=$3,pdf_sha256=$4,pdf_size_bytes=$5,last_error='',completed_at=NOW(),updated_at=NOW() WHERE id=$1`,rec.ID,namespace,key,checksum,len(pdf))
+	if err:=a.ensureStorageNamespace(ctx,namespace);err!=nil{return reportArtifact{},err}
+	stored,err:=a.putObject(ctx,namespace,key,pdf);if err!=nil{return reportArtifact{},err}
+	if got:=strings.TrimSpace(fmt.Sprint(stored["sha256"]));got!=""&&got!=checksum{return reportArtifact{},fmt.Errorf("stored report checksum mismatch")}
+	return reportArtifact{Namespace:namespace,ObjectKey:key,SHA256:checksum,SizeBytes:len(pdf)},nil
+}
+
+func (a *app)markReportReady(ctx context.Context,id string,artifact reportArtifact)error{
+	_,err:=a.db.ExecContext(ctx,`UPDATE reports.jobs SET status='READY',pdf_namespace=$2,pdf_object_key=$3,pdf_sha256=$4,pdf_size_bytes=$5,last_error='',completed_at=NOW(),updated_at=NOW() WHERE id=$1`,
+		id,artifact.Namespace,artifact.ObjectKey,artifact.SHA256,artifact.SizeBytes)
 	return err
+}
+
+func (a *app)renderFromStoredSnapshot(ctx context.Context,rec reportRecord)error{
+	artifact,err:=a.renderStoredSnapshotArtifact(ctx,rec)
+	if err!=nil{return err}
+	return a.markReportReady(ctx,rec.ID,artifact)
 }
 
 func truncate(v string,n int)string{if len(v)<=n{return v};return v[:n]}
