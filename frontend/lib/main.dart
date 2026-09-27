@@ -3741,6 +3741,48 @@ class _PartnersPageState extends State<PartnersPage> {
     unawaited(load());
   }
 
+  bool _invoiceMutationVisible(Map<String,dynamic> updated) {
+    final id = '${updated['id'] ?? ''}';
+    if (id.isEmpty) return false;
+    final expected = '${updated['workflow_status'] ?? updated['status'] ?? ''}'.toUpperCase();
+    Map<String,dynamic>? current;
+    for (final invoice in invoices) {
+      if ('${invoice['id'] ?? ''}' == id) {
+        current = invoice;
+        break;
+      }
+    }
+    if (invoiceFilter != 'ALL' && expected.isNotEmpty && invoiceFilter != expected) {
+      return current == null;
+    }
+    if (current == null) return false;
+    final actual = '${current['workflow_status'] ?? current['status'] ?? ''}'.toUpperCase();
+    return expected.isEmpty || actual == expected;
+  }
+
+  bool _onboardingMutationVisible(String partnerID, String expectedState) {
+    Map<String,dynamic>? current;
+    for (final row in onboardingRows) {
+      if ('${row['partner_id'] ?? ''}' == partnerID) {
+        current = row;
+        break;
+      }
+    }
+    if (expectedState == 'ACTIVE') return current == null;
+    return current != null && '${current['state'] ?? ''}'.toUpperCase() == expectedState;
+  }
+
+  Future<void> _syncFinanceMutation(bool Function() isVisible) async {
+    await load(force: true);
+    if (!mounted || isVisible()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    await load(force: true);
+    if (isVisible()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (mounted) await load(force: true);
+  }
+
   void success(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
@@ -8030,7 +8072,7 @@ class _FinancePageState extends State<FinancePage> {
         failure('Partner, description and a positive net amount are required.');
       } else {
         try {
-          await widget.api.post('/api/v1/billing/invoices', {
+          final created = await widget.api.post('/api/v1/billing/invoices', {
             'partner_id': selectedPartner,
             'currency': currency.text.trim().toUpperCase(),
             'description': description.text.trim(),
@@ -8041,7 +8083,7 @@ class _FinancePageState extends State<FinancePage> {
             'notes': notes.text.trim(),
           });
           invoiceFilter = 'DRAFT';
-          await load();
+          await _syncFinanceMutation(() => _invoiceMutationVisible(created));
           if (mounted) success('Invoice draft created.');
         } catch (e) {
           if (mounted) failure(e.toString());
@@ -8084,11 +8126,11 @@ class _FinancePageState extends State<FinancePage> {
     );
     if (ok == true) {
       try {
-        await widget.api.post('/api/v1/billing/invoices/${invoice['id']}/$action', {
+        final updated = await widget.api.post('/api/v1/billing/invoices/${invoice['id']}/$action', {
           'reason': reason.text.trim(),
           'payment_reference': paymentReference.text.trim(),
         });
-        await load();
+        await _syncFinanceMutation(() => _invoiceMutationVisible(updated));
         if (mounted) success('$label completed.');
       } catch (e) {
         if (mounted) failure(e.toString());
@@ -8105,7 +8147,9 @@ class _FinancePageState extends State<FinancePage> {
         'classification': '${row['classification'] ?? 'UNCLASSIFIED'}',
         'reason': reason ?? 'Central-6 administrator onboarding workflow',
       });
-      await load();
+      await _syncFinanceMutation(
+        () => _onboardingMutationVisible('${row['partner_id']}', nextState),
+      );
       if (mounted) success('Onboarding moved to ${_humanize(nextState)}.');
     } catch (e) {
       if (mounted) failure(e.toString());
@@ -8180,7 +8224,9 @@ class _FinancePageState extends State<FinancePage> {
             'currency': currency.text.trim().toUpperCase(),
             'evidence_reference': evidence.text.trim(),
           });
-          await load();
+          await _syncFinanceMutation(
+            () => _onboardingMutationVisible('${row['partner_id']}', 'CLASSIFIED'),
+          );
           if (mounted) success('Partner classification saved.');
         } catch (e) {
           if (mounted) failure(e.toString());
