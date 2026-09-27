@@ -7293,7 +7293,14 @@ class _PackagesPageState extends State<PackagesPage> {
             ),
           ],
           const SizedBox(height: 18),
-          _PackageComparisonTable(plans: canonicalPlans),
+          _PackageComparisonTable(
+            plans: canonicalPlans,
+            onExport: () => openPdfExportIfAvailable(
+              context,
+              widget.api,
+              '/api/v1/billing/packages/export.pdf',
+            ),
+          ),
           const SizedBox(height: 24),
           _SectionHeader(
             title: 'Package Analytics',
@@ -7700,8 +7707,9 @@ class _PackageFeatureRow extends StatelessWidget {
 }
 
 class _PackageComparisonTable extends StatelessWidget {
-  const _PackageComparisonTable({required this.plans});
+  const _PackageComparisonTable({required this.plans, required this.onExport});
   final List<Map<String,dynamic>> plans;
+  final VoidCallback onExport;
 
   String _mode(Map<String,dynamic> plan) {
     final value = '${plan['selection_mode'] ?? ''}'.toUpperCase();
@@ -7736,14 +7744,31 @@ class _PackageComparisonTable extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            LText(
-              uiLiteral('Package comparison'),
-              style: GoogleFonts.lora(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            LText(
-              uiLiteral('Compare the current authoritative Billing plan values.'),
-              style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LText(
+                        uiLiteral('Package comparison'),
+                        style: GoogleFonts.lora(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      LText(
+                        uiLiteral('Compare the current authoritative Billing plan values.'),
+                        style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onExport,
+                  icon: const Icon(Icons.download_outlined, size: 16),
+                  label: LText(uiLiteral('Export PDF')),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             SingleChildScrollView(
