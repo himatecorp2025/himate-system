@@ -245,12 +245,8 @@ func (a *app) central14Administration(w http.ResponseWriter, r *http.Request, ac
 	started := time.Now()
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4AdministrationKey)
 	if !ok {
-		a.requestCentralStep4Refresh()
 		a.readModelInvariantFailure(w, centralStep4AdministrationKey)
 		return
-	}
-	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
-		a.requestCentralStep4Refresh()
 	}
 
 	canPartners := a.hasPermission(actor, "partners.read")
