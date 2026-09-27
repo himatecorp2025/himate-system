@@ -10425,138 +10425,252 @@ class _SystemPageState extends State<SystemPage> {
                 },
               ),
               const SizedBox(height: 18),
-              _SectionHeader(
-                title: 'Main service status',
-                subtitle: 'Current authoritative status of critical microservices.',
-                trailing: OutlinedButton.icon(
-                  onPressed: _openDeveloperDiagnostics,
-                  icon: const Icon(Icons.code_rounded, size: 17),
-                  label: const LText('Developer diagnostics'),
+              if (canHealth) ...[
+                _SectionHeader(
+                  title: 'Main service status',
+                  subtitle: 'Current authoritative status of critical microservices.',
+                  trailing: canAudit
+                      ? OutlinedButton.icon(
+                          onPressed: _openDeveloperDiagnostics,
+                          icon: const Icon(Icons.code_rounded, size: 17),
+                          label: const LText('Developer diagnostics'),
+                        )
+                      : _MiniCounter(label: uiBilingual('$serviceCount services', '$serviceCount szolgáltatás')),
                 ),
-              ),
-              const SizedBox(height: 12),
-              if (services.isEmpty)
-                const _MessageCard(
-                  icon: Icons.dns_outlined,
-                  title: 'No service health data',
-                  message: 'No service-health snapshot is available yet.',
-                )
-              else
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (final s in services.take(8))
-                      ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
-                  ],
-                ),
-              const SizedBox(height: 24),
-              _SectionHeader(
-                title: 'Service Health',
-                subtitle: 'Readiness and liveness are monitored independently for each microservice.',
-                trailing: _MiniCounter(label: '${services.length} services'),
-              ),
-              const SizedBox(height: 12),
-              if (services.isEmpty)
-                const _MessageCard(
-                  icon: Icons.dns_outlined,
-                  title: 'No service health data',
-                  message: 'No service-health snapshot is available yet.',
-                )
-              else
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (final s in services)
-                      ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
-                  ],
-                ),
-              const SizedBox(height: 24),
-              _SectionHeader(
-                title: 'Partner Health',
-                subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
-                trailing: _MiniCounter(label: '${partners.length} partners'),
-              ),
-              const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, c) {
-                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                  return Wrap(
+                const SizedBox(height: 12),
+                if (services.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.dns_outlined,
+                    title: 'No service health data',
+                    message: 'No service-health snapshot is available yet.',
+                  )
+                else
+                  Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final p in partners)
-                        SizedBox(
-                          width: width,
-                          child: _InfoCard(
-                            title: '${p['partner_id']}',
-                            icon: Icons.monitor_heart_outlined,
-                            children: [
-                              _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Partner DB', value: '${p['database_health'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Storage', value: '${p['storage_health'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Hostname / runtime', value: '${p['hostname_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Data sync', value: '${p['sync_status'] ?? 'NEVER'}'),
-                              _DefinitionRow(label: 'Last sync', value: '${p['last_sync_at'] ?? '—'}'),
-                              _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
-                            ],
-                          ),
-                        ),
+                      for (final s in services.take(8))
+                        ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
                     ],
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              Start22ConnectorPanel(api: api),
-              const SizedBox(height: 24),
-              _SectionHeader(
-                title: 'Provisioning Engine',
-                subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
-                trailing: _MiniCounter(label: '${provisioning.length} jobs'),
-              ),
-              const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, c) {
-                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                  return Wrap(
+                  ),
+                const SizedBox(height: 24),
+                _SectionHeader(
+                  title: 'Service Health',
+                  subtitle: 'Readiness and liveness are monitored independently for each microservice.',
+                  trailing: _MiniCounter(label: uiBilingual('${services.length} services', '${services.length} szolgáltatás')),
+                ),
+                const SizedBox(height: 12),
+                if (services.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.dns_outlined,
+                    title: 'No service health data',
+                    message: 'No service-health snapshot is available yet.',
+                  )
+                else
+                  Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final j in provisioning)
-                        SizedBox(
-                          width: width,
-                          child: _InfoCard(
-                            title: '${j['partner_id']}',
-                            icon: Icons.precision_manufacturing_outlined,
-                            children: [
-                              _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
-                              _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
-                              _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
-                            ],
-                          ),
-                        ),
+                      for (final s in services)
+                        ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
                     ],
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              DomainsDeploymentsPanel(
-                api: api,
-                initialEnvironments: environments,
-              ),
-              const SizedBox(height: 24),
-              BackupsPanel(
-                api: api,
-                initialSummary: backupSummary,
-                partnerIds: backupPartnerIds,
-                initialProvider: backupProvider,
-              ),
-              const SizedBox(height: 24),
+                  ),
+                const SizedBox(height: 24),
+                _SectionHeader(
+                  title: 'Partner Health',
+                  subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
+                  trailing: _MiniCounter(label: uiBilingual('${partners.length} partners', '${partners.length} partner')),
+                ),
+                const SizedBox(height: 12),
+                if (partners.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.monitor_heart_outlined,
+                    title: 'No partner health data',
+                    message: 'No partner health aggregate is available in the current snapshot.',
+                  )
+                else
+                  LayoutBuilder(
+                    builder: (context, c) {
+                      final width = c.maxWidth < 620
+                          ? c.maxWidth
+                          : c.maxWidth < 1000
+                              ? (c.maxWidth - 12) / 2
+                              : (c.maxWidth - 24) / 3;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final p in partners)
+                            SizedBox(
+                              width: width,
+                              child: _InfoCard(
+                                title: '${p['partner_id']}',
+                                icon: Icons.monitor_heart_outlined,
+                                children: [
+                                  _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Partner DB', value: '${p['database_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Storage', value: '${p['storage_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Hostname / runtime', value: '${p['hostname_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Data sync', value: '${p['sync_status'] ?? 'NEVER'}'),
+                                  _DefinitionRow(label: 'Last sync', value: '${p['last_sync_at'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                const SizedBox(height: 24),
+              ],
+              if (canConnections) ...[
+                Start22ConnectorPanel(api: api),
+                const SizedBox(height: 24),
+              ],
+              if (canProvisioning) ...[
+                _SectionHeader(
+                  title: 'Provisioning Engine',
+                  subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
+                  trailing: _MiniCounter(label: uiBilingual('${provisioning.length} jobs', '${provisioning.length} feladat')),
+                ),
+                const SizedBox(height: 12),
+                if (provisioning.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.precision_manufacturing_outlined,
+                    title: 'No provisioning jobs',
+                    message: 'No provisioning job is present in the current operations snapshot.',
+                  )
+                else
+                  LayoutBuilder(
+                    builder: (context, c) {
+                      final width = c.maxWidth < 620
+                          ? c.maxWidth
+                          : c.maxWidth < 1000
+                              ? (c.maxWidth - 12) / 2
+                              : (c.maxWidth - 24) / 3;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final j in provisioning)
+                            SizedBox(
+                              width: width,
+                              child: _InfoCard(
+                                title: '${j['partner_id']}',
+                                icon: Icons.precision_manufacturing_outlined,
+                                children: [
+                                  _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
+                                  _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                const SizedBox(height: 24),
+              ],
+              if (canEnvironments) ...[
+                DomainsDeploymentsPanel(
+                  api: api,
+                  initialEnvironments: environments,
+                ),
+                const SizedBox(height: 24),
+              ],
+              if (canBackups) ...[
+                BackupsPanel(
+                  api: api,
+                  initialSummary: backupSummary,
+                  partnerIds: backupPartnerIds,
+                  initialProvider: backupProvider,
+                ),
+                const SizedBox(height: 24),
+              ],
+              if (canAudit) ...[
+                _SectionHeader(
+                  title: 'Recent protected events',
+                  subtitle: 'Latest authenticated operations from the immutable central audit trail.',
+                  trailing: _MiniCounter(label: uiBilingual('${recentEvents.length} events', '${recentEvents.length} esemény')),
+                ),
+                const SizedBox(height: 12),
+                if (recentEvents.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.event_note_outlined,
+                    title: 'No recent protected events',
+                    message: 'The current audit window does not contain protected operations.',
+                  )
+                else
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Column(
+                        children: [
+                          for (var index = 0; index < recentEvents.length; index++) ...[
+                            Builder(
+                              builder: (context) {
+                                final event = recentEvents[index];
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 34,
+                                        height: 34,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF4F7FB),
+                                          borderRadius: BorderRadius.circular(9),
+                                        ),
+                                        child: Icon(
+                                          '${event['outcome'] ?? ''}'.toUpperCase() == 'SUCCESS'
+                                              ? Icons.check_circle_outline_rounded
+                                              : Icons.shield_outlined,
+                                          color: '${event['outcome'] ?? ''}'.toUpperCase() == 'SUCCESS'
+                                              ? brandSuccess
+                                              : brandSteel,
+                                          size: 17,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            LText(
+                                              '${event['action'] ?? event['method'] ?? 'EVENT'}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            LText(
+                                              '${event['method'] ?? '—'} · ${event['path'] ?? '—'}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _StatusPill(label: '${event['outcome'] ?? event['status'] ?? 'UNKNOWN'}'),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            if (index < recentEvents.length - 1) const Divider(height: 1),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 24),
+              ],
               LayoutBuilder(
                 builder: (context, c) {
                   const architecture = _ArchitectureCard();
