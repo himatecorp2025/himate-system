@@ -10366,8 +10366,8 @@ class _SystemPageState extends State<SystemPage> {
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => BrandDialog(
-          title: 'Developer diagnostics',
-          subtitle: 'Current degraded services and the latest failed protected operations.',
+          title: uiLiteral('Developer diagnostics'),
+          subtitle: uiLiteral('Current degraded services and the latest failed protected operations.'),
           icon: Icons.bug_report_outlined,
           width: 820,
           child: Column(
@@ -10375,9 +10375,9 @@ class _SystemPageState extends State<SystemPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _RuleStrip(items: [
-                _RuleItem(Icons.monitor_heart_outlined, 'Control plane', '${health['status'] ?? 'UNKNOWN'}'),
-                _RuleItem(Icons.warning_amber_rounded, 'Degraded services', '${unhealthy.length}'),
-                _RuleItem(Icons.error_outline_rounded, 'Recent failed operations', '${failures.length}'),
+                _RuleItem(Icons.monitor_heart_outlined, uiLiteral('Control plane'), '${health['status'] ?? 'UNKNOWN'}'),
+                _RuleItem(Icons.warning_amber_rounded, uiLiteral('Degraded services'), '${unhealthy.length}'),
+                _RuleItem(Icons.error_outline_rounded, uiLiteral('Recent failed operations'), '${failures.length}'),
               ]),
               const SizedBox(height: 16),
               const _DialogSectionLabel('DEGRADED SERVICES'),
@@ -10617,7 +10617,7 @@ class _SystemPageState extends State<SystemPage> {
                       ? OutlinedButton.icon(
                           onPressed: _openDeveloperDiagnostics,
                           icon: const Icon(Icons.code_rounded, size: 17),
-                          label: const LText('Developer diagnostics'),
+                          label: LText(uiLiteral('Developer diagnostics')),
                         )
                       : _MiniCounter(label: uiBilingual('$serviceCount services', '$serviceCount szolgáltatás')),
                 ),
@@ -10625,8 +10625,8 @@ class _SystemPageState extends State<SystemPage> {
                 if (services.isEmpty)
                   const _MessageCard(
                     icon: Icons.dns_outlined,
-                    title: 'No service health data',
-                    message: 'No service-health snapshot is available yet.',
+                    title: uiLiteral('No service health data'),
+                    message: uiLiteral('No service-health snapshot is available yet.'),
                   )
                 else
                   Wrap(
@@ -10646,8 +10646,8 @@ class _SystemPageState extends State<SystemPage> {
                 if (partners.isEmpty)
                   const _MessageCard(
                     icon: Icons.monitor_heart_outlined,
-                    title: 'No partner health data',
-                    message: 'No partner health aggregate is available in the current snapshot.',
+                    title: uiLiteral('No partner health data'),
+                    message: uiLiteral('No partner health aggregate is available in the current snapshot.'),
                   )
                 else
                   LayoutBuilder(
@@ -10668,16 +10668,16 @@ class _SystemPageState extends State<SystemPage> {
                                 title: '${p['partner_id']}',
                                 icon: Icons.monitor_heart_outlined,
                                 children: [
-                                  _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Partner DB', value: '${p['database_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Storage', value: '${p['storage_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Hostname / runtime', value: '${p['hostname_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Data sync', value: '${p['sync_status'] ?? 'NEVER'}'),
-                                  _DefinitionRow(label: 'Last sync', value: '${p['last_sync_at'] ?? '—'}'),
-                                  _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Overall'), value: uiLiteral(_humanize('${p['overall_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Connector'), value: uiLiteral(_humanize('${p['connector_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Environment'), value: uiLiteral(_humanize('${p['environment_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Partner DB'), value: uiLiteral(_humanize('${p['database_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Storage'), value: uiLiteral(_humanize('${p['storage_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Hostname / runtime'), value: uiLiteral(_humanize('${p['hostname_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Data sync'), value: uiLiteral(_humanize('${p['sync_status'] ?? 'NEVER'}'))),
+                                  _DefinitionRow(label: uiLiteral('Last sync'), value: '${p['last_sync_at'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Provisioning'), value: uiLiteral(_humanize('${p['provisioning_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Version'), value: '${p['platform_version'] ?? '—'}'),
                                 ],
                               ),
                             ),
@@ -10697,8 +10697,8 @@ class _SystemPageState extends State<SystemPage> {
                 if (provisioning.isEmpty)
                   const _MessageCard(
                     icon: Icons.precision_manufacturing_outlined,
-                    title: 'No provisioning jobs',
-                    message: 'No provisioning job is present in the current operations snapshot.',
+                    title: uiLiteral('No provisioning jobs'),
+                    message: uiLiteral('No provisioning job is present in the current operations snapshot.'),
                   )
                 else
                   LayoutBuilder(
@@ -10719,10 +10719,10 @@ class _SystemPageState extends State<SystemPage> {
                                 title: '${j['partner_id']}',
                                 icon: Icons.precision_manufacturing_outlined,
                                 children: [
-                                  _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
-                                  _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
-                                  _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Status'), value: uiLiteral(_humanize('${j['status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Current step'), value: '${j['current_step'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('System'), value: '${j['system_name'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Release'), value: '${j['desired_release'] ?? '—'}'),
                                 ],
                               ),
                             ),
@@ -10762,8 +10762,8 @@ class _SystemPageState extends State<SystemPage> {
                 if (recentEvents.isEmpty)
                   const _MessageCard(
                     icon: Icons.event_note_outlined,
-                    title: 'No recent protected events',
-                    message: 'The current audit window does not contain protected operations.',
+                    title: uiLiteral('No recent protected events'),
+                    message: uiLiteral('The current audit window does not contain protected operations.'),
                   )
                 else
                   Card(
@@ -10958,11 +10958,11 @@ class _SystemInfrastructureSummary extends StatelessWidget {
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             LText(uiLiteral('Infrastructure status'),style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
-            _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
-            _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
-            _DefinitionRow(label:'Live environments',value:canEnvironments?'$live':'—'),
-            _DefinitionRow(label:'Partner systems',value:canHealth?'$partnerCount':'—'),
-            _DefinitionRow(label:'Backup scopes',value:canBackups?'${backups.length}':'—'),
+            _DefinitionRow(label:uiLiteral('Managed environments'),value:canEnvironments?'${environments.length}':'—'),
+            _DefinitionRow(label:uiLiteral('Production environments'),value:canEnvironments?'$production':'—'),
+            _DefinitionRow(label:uiLiteral('Live environments'),value:canEnvironments?'$live':'—'),
+            _DefinitionRow(label:uiLiteral('Partner systems'),value:canHealth?'$partnerCount':'—'),
+            _DefinitionRow(label:uiLiteral('Backup scopes'),value:canBackups?'${backups.length}':'—'),
             const Spacer(),
             Row(children:[
               Icon(
@@ -16527,8 +16527,8 @@ class _SystemPageState extends State<SystemPage> {
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => BrandDialog(
-          title: 'Developer diagnostics',
-          subtitle: 'Current degraded services and the latest failed protected operations.',
+          title: uiLiteral('Developer diagnostics'),
+          subtitle: uiLiteral('Current degraded services and the latest failed protected operations.'),
           icon: Icons.bug_report_outlined,
           width: 820,
           child: Column(
@@ -16536,9 +16536,9 @@ class _SystemPageState extends State<SystemPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _RuleStrip(items: [
-                _RuleItem(Icons.monitor_heart_outlined, 'Control plane', '${health['status'] ?? 'UNKNOWN'}'),
-                _RuleItem(Icons.warning_amber_rounded, 'Degraded services', '${unhealthy.length}'),
-                _RuleItem(Icons.error_outline_rounded, 'Recent failed operations', '${failures.length}'),
+                _RuleItem(Icons.monitor_heart_outlined, uiLiteral('Control plane'), '${health['status'] ?? 'UNKNOWN'}'),
+                _RuleItem(Icons.warning_amber_rounded, uiLiteral('Degraded services'), '${unhealthy.length}'),
+                _RuleItem(Icons.error_outline_rounded, uiLiteral('Recent failed operations'), '${failures.length}'),
               ]),
               const SizedBox(height: 16),
               const _DialogSectionLabel('DEGRADED SERVICES'),
@@ -16776,7 +16776,7 @@ class _SystemPageState extends State<SystemPage> {
                       ? OutlinedButton.icon(
                           onPressed: _openDeveloperDiagnostics,
                           icon: const Icon(Icons.code_rounded, size: 17),
-                          label: const LText('Developer diagnostics'),
+                          label: LText(uiLiteral('Developer diagnostics')),
                         )
                       : _MiniCounter(label: uiBilingual('$serviceCount services', '$serviceCount szolgáltatás')),
                 ),
@@ -16784,8 +16784,8 @@ class _SystemPageState extends State<SystemPage> {
                 if (services.isEmpty)
                   const _MessageCard(
                     icon: Icons.dns_outlined,
-                    title: 'No service health data',
-                    message: 'No service-health snapshot is available yet.',
+                    title: uiLiteral('No service health data'),
+                    message: uiLiteral('No service-health snapshot is available yet.'),
                   )
                 else
                   Wrap(
@@ -16805,8 +16805,8 @@ class _SystemPageState extends State<SystemPage> {
                 if (partners.isEmpty)
                   const _MessageCard(
                     icon: Icons.monitor_heart_outlined,
-                    title: 'No partner health data',
-                    message: 'No partner health aggregate is available in the current snapshot.',
+                    title: uiLiteral('No partner health data'),
+                    message: uiLiteral('No partner health aggregate is available in the current snapshot.'),
                   )
                 else
                   LayoutBuilder(
@@ -16827,16 +16827,16 @@ class _SystemPageState extends State<SystemPage> {
                                 title: '${p['partner_id']}',
                                 icon: Icons.monitor_heart_outlined,
                                 children: [
-                                  _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Partner DB', value: '${p['database_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Storage', value: '${p['storage_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Hostname / runtime', value: '${p['hostname_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Data sync', value: '${p['sync_status'] ?? 'NEVER'}'),
-                                  _DefinitionRow(label: 'Last sync', value: '${p['last_sync_at'] ?? '—'}'),
-                                  _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Overall'), value: uiLiteral(_humanize('${p['overall_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Connector'), value: uiLiteral(_humanize('${p['connector_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Environment'), value: uiLiteral(_humanize('${p['environment_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Partner DB'), value: uiLiteral(_humanize('${p['database_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Storage'), value: uiLiteral(_humanize('${p['storage_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Hostname / runtime'), value: uiLiteral(_humanize('${p['hostname_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Data sync'), value: uiLiteral(_humanize('${p['sync_status'] ?? 'NEVER'}'))),
+                                  _DefinitionRow(label: uiLiteral('Last sync'), value: '${p['last_sync_at'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Provisioning'), value: uiLiteral(_humanize('${p['provisioning_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Version'), value: '${p['platform_version'] ?? '—'}'),
                                 ],
                               ),
                             ),
@@ -16856,8 +16856,8 @@ class _SystemPageState extends State<SystemPage> {
                 if (provisioning.isEmpty)
                   const _MessageCard(
                     icon: Icons.precision_manufacturing_outlined,
-                    title: 'No provisioning jobs',
-                    message: 'No provisioning job is present in the current operations snapshot.',
+                    title: uiLiteral('No provisioning jobs'),
+                    message: uiLiteral('No provisioning job is present in the current operations snapshot.'),
                   )
                 else
                   LayoutBuilder(
@@ -16878,10 +16878,10 @@ class _SystemPageState extends State<SystemPage> {
                                 title: '${j['partner_id']}',
                                 icon: Icons.precision_manufacturing_outlined,
                                 children: [
-                                  _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
-                                  _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
-                                  _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Status'), value: uiLiteral(_humanize('${j['status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Current step'), value: '${j['current_step'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('System'), value: '${j['system_name'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Release'), value: '${j['desired_release'] ?? '—'}'),
                                 ],
                               ),
                             ),
@@ -16920,8 +16920,8 @@ class _SystemPageState extends State<SystemPage> {
                 if (recentEvents.isEmpty)
                   const _MessageCard(
                     icon: Icons.event_note_outlined,
-                    title: 'No recent protected events',
-                    message: 'The current audit window does not contain protected operations.',
+                    title: uiLiteral('No recent protected events'),
+                    message: uiLiteral('The current audit window does not contain protected operations.'),
                   )
                 else
                   Card(
@@ -17116,11 +17116,11 @@ class _SystemInfrastructureSummary extends StatelessWidget {
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             LText(uiLiteral('Infrastructure status'),style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
-            _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
-            _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
-            _DefinitionRow(label:'Live environments',value:canEnvironments?'$live':'—'),
-            _DefinitionRow(label:'Partner systems',value:canHealth?'$partnerCount':'—'),
-            _DefinitionRow(label:'Backup scopes',value:canBackups?'${backups.length}':'—'),
+            _DefinitionRow(label:uiLiteral('Managed environments'),value:canEnvironments?'${environments.length}':'—'),
+            _DefinitionRow(label:uiLiteral('Production environments'),value:canEnvironments?'$production':'—'),
+            _DefinitionRow(label:uiLiteral('Live environments'),value:canEnvironments?'$live':'—'),
+            _DefinitionRow(label:uiLiteral('Partner systems'),value:canHealth?'$partnerCount':'—'),
+            _DefinitionRow(label:uiLiteral('Backup scopes'),value:canBackups?'${backups.length}':'—'),
             const Spacer(),
             Row(children:[
               Icon(
