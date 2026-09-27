@@ -140,6 +140,8 @@ for token in [
     "row.PlanKey = central8CanonicalPlanKey(row.PlanKey)",
 ]:
     check(token in billing8, f"Premium package canonicalization missing: {token}")
+check("CASE WHEN plan_key='PREMIUM' THEN 'FLEX' ELSE plan_key END" in read("services/cmd/billing/central5.go"),
+      "package active-partner fallback does not count legacy PREMIUM subscriptions")
 
 for token in [
     'runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"',
@@ -159,7 +161,9 @@ for token in [
     "func (a *app) runGoldenTestFixtureReconciler()",
     "func (a *app) reconcileGoldenTestFixtures(",
     "HIMATE_GOLDEN_TEST_FIXTURE",
-    "WHERE test_partner=TRUE",
+    "p.test_partner=TRUE",
+    "lower(trim(p.display_name))='test partner'",
+    "i.source='TEST_FIXTURE'",
     "fixtures := []monthFixture{",
 ]:
     check(token in partner_fixture, f"automatic Golden Test Partner fixture contract missing: {token}")
