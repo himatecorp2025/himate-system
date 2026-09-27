@@ -92,6 +92,7 @@ func validPartnerWorkspaceSnapshot() map[string]any {
 		"environments_api":                map[string]any{"items": []map[string]any{}},
 		"provisioning_api":                map[string]any{"items": []map[string]any{}},
 		"impact_api":                      map[string]any{"items": []map[string]any{}},
+		"impact_values_api":               map[string]any{"items": []map[string]any{}},
 		"evidence_api":                    map[string]any{"items": []map[string]any{}},
 		"connector_credentials_api":       map[string]any{"items": []map[string]any{}},
 		"portal_users_api":                map[string]any{"items": []map[string]any{}, "count": 0},
