@@ -176,21 +176,28 @@ func (a *app) partnerAuth(r *http.Request)(partnerUser,error){
 
 var errPartnerPortalAccessDisabled = errors.New("partner portal access is disabled")
 
-func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error {
+type partnerWorkspaceContextKey struct{}
+
+func (a *app) partnerAccessSnapshot(ctx context.Context, partnerID string) (map[string]any, error) {
 	snapshot, _, ok := a.partnerWorkspaceForRead(ctx, partnerID)
 	if !ok {
-		return fmt.Errorf("partner materialized workspace is not ready")
+		return nil, fmt.Errorf("partner materialized workspace is not ready")
 	}
 	partner := step4Map(snapshot["partner"])
 	lifecycle := strings.ToUpper(central10String(partner["lifecycle"]))
 	if lifecycle == "SUSPENDED" || lifecycle == "ARCHIVED" {
-		return errPartnerPortalAccessDisabled
+		return nil, errPartnerPortalAccessDisabled
 	}
 	gate := step4Map(snapshot["portal_gate"])
 	if gate["allowed"] != true {
-		return errPartnerPortalAccessDisabled
+		return nil, errPartnerPortalAccessDisabled
 	}
-	return nil
+	return snapshot, nil
+}
+
+func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error {
+	_, err := a.partnerAccessSnapshot(ctx, partnerID)
+	return err
 }
 
 func writePartnerAccessError(w http.ResponseWriter, err error) {
@@ -359,6 +366,9 @@ func partnerWorkspaceModulesForUser(snapshot map[string]any, u partnerUser) map[
 }
 
 func (a *app) partnerWorkspaceRequest(r *http.Request, u partnerUser) (map[string]any, bool) {
+	if cached, ok := r.Context().Value(partnerWorkspaceContextKey{}).(map[string]any); ok && cached != nil {
+		return cached, true
+	}
 	snapshot, _, ok := a.partnerWorkspaceForRead(r.Context(), u.PartnerID)
 	return snapshot, ok
 }
@@ -400,9 +410,10 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
 	if !browserMutationOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
 	accessCtx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
-	accessErr:=a.partnerAccessAllowed(accessCtx,u.PartnerID)
+	accessSnapshot,accessErr:=a.partnerAccessSnapshot(accessCtx,u.PartnerID)
 	cancel()
 	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
+	r=r.WithContext(context.WithValue(r.Context(),partnerWorkspaceContextKey{},accessSnapshot))
 	go a.recordPartnerPortalActivity(u)
 	mutating:=r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions
 	if mutating{
