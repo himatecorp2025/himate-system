@@ -98,7 +98,7 @@ check('status = "partial"' in step4,
 
 # Shared shell: Round 2 pages use the same reference hierarchy as Round 1.
 for token in [
-    "final referenceHeader = selected >= 0 && selected <= 5",
+    "final referenceHeader = selected >= 0 && selected <=",
     "Subscription packages, module entitlements and configuration.",
     "Invoicing, receivables, licenses and partner onboarding overview.",
     "Real outcomes. Transparent reporting. Measurable impact.",

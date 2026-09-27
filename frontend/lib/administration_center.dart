@@ -68,10 +68,10 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
     return Uri(path: '/api/v1/central/administration', queryParameters: params).toString();
   }
 
-  Future<void> load({bool quiet = false}) async {
+  Future<void> load({bool quiet = false, bool force = false}) async {
     if (!quiet && mounted) setState(() { loading = true; error = null; });
     try {
-      final model = await widget.api.get(administrationPath(), force: true, maxAge: const Duration(seconds: 20));
+      final model = await widget.api.get(administrationPath(), force: force, maxAge: const Duration(seconds: 20));
       if (!mounted) return;
       setState(() {
         company = model['company'] is Map ? Map<String, dynamic>.from(model['company'] as Map) : <String, dynamic>{};
@@ -223,11 +223,12 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
     final recoverability = (company['recoverability_status'] ?? 'UNVERIFIED').toString();
 
     return Content(
+      showHeader: false,
       title: 'Administration',
       subtitle: 'Central management of HIMATE, partner administration, documents, access and recovery.',
       actions: [
         OutlinedButton.icon(
-          onPressed: loading ? null : () => load(),
+          onPressed: loading ? null : () => load(force: true),
           icon: const Icon(Icons.refresh_rounded),
           label: const LText('Refresh'),
         ),
@@ -274,7 +275,10 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
                       icon: Icons.groups_2_outlined,
                       accent: brandGold,
                       bullets: [
-                        '$partnerCount partner administration records',
+                        uiBilingual(
+                          '$partnerCount partner administration records',
+                          '$partnerCount partner adminisztrációs rekord',
+                        ),
                         'Partner users and lifecycle context',
                         'Tenant documents and audit history',
                         'Verified partner backup and recovery',
@@ -621,9 +625,17 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && company.isEmpty && partners.isEmpty) return const _BrandLoading();
+    if (loading && company.isEmpty && partners.isEmpty) {
+      return const Content(
+        showHeader: false,
+        title: 'Administration',
+        subtitle: 'Central management of HIMATE, partner administration, documents, access and recovery.',
+        child: _BrandLoading(),
+      );
+    }
     if (error != null && company.isEmpty && partners.isEmpty) {
       return Content(
+        showHeader: false,
         eyebrow: 'CENTRAL-14 · ADMINISTRATION',
         title: 'Administration Center',
         subtitle: 'Corporate and partner administration read model.',
@@ -727,7 +739,7 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
   }
 }
 
-class _AdministrationCenterHeroCard extends StatelessWidget {
+class _AdministrationCenterHeroCard extends StatefulWidget {
   const _AdministrationCenterHeroCard({
     required this.title,
     required this.subtitle,
@@ -744,79 +756,197 @@ class _AdministrationCenterHeroCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 330),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(colors: [brandWhite, accent.withOpacity(.045)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+  State<_AdministrationCenterHeroCard> createState() => _AdministrationCenterHeroCardState();
+}
+
+class _AdministrationCenterHeroCardState extends State<_AdministrationCenterHeroCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onTap != null;
+    return MouseRegion(
+      onEnter: enabled ? (_) => setState(() => hover = true) : null,
+      onExit: enabled ? (_) => setState(() => hover = false) : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        transform: Matrix4.translationValues(0, hover ? -4 : 0, 0),
+        constraints: const BoxConstraints(minHeight: 330),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: hover ? widget.accent.withOpacity(.65) : brandMist,
+            width: hover ? 1.4 : 1,
+          ),
+          gradient: LinearGradient(
+            colors: [brandWhite, widget.accent.withOpacity(hover ? .07 : .035)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: brandNavy.withOpacity(hover ? .10 : .045),
+              blurRadius: hover ? 26 : 14,
+              offset: Offset(0, hover ? 10 : 5),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(
               children: [
-                Row(children: [
-                  Container(width: 58,height:58,decoration:BoxDecoration(color:accent.withOpacity(.10),borderRadius:BorderRadius.circular(15)),child:Icon(icon,color:accent,size:29)),
-                  const SizedBox(width:14),
-                  Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                    LText(title,style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:25,fontWeight:FontWeight.w700)),
-                    const SizedBox(height:3),
-                    LText(subtitle,style:const TextStyle(color:brandTextSoft,fontSize:10.5,height:1.4)),
-                  ])),
-                ]),
-                const SizedBox(height:20),
-                for (final item in bullets)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(children:[
-                      Container(width:20,height:20,decoration:BoxDecoration(color:accent,borderRadius:BorderRadius.circular(99)),child:const Icon(Icons.check_rounded,color:Colors.white,size:13)),
-                      const SizedBox(width:9),
-                      Expanded(child:LText(item,style:const TextStyle(color:brandCharcoal,fontSize:10.5))),
-                    ]),
-                  ),
-                const Spacer(),
-                SizedBox(
-                  width: 210,
-                  child: FilledButton.icon(
-                    onPressed: onTap,
-                    style: FilledButton.styleFrom(backgroundColor: accent),
-                    icon: const Icon(Icons.open_in_new_rounded,size:17),
-                    label: LText(actionLabel),
+                Positioned(
+                  right: 14,
+                  top: 12,
+                  child: Icon(widget.icon, size: 104, color: widget.accent.withOpacity(.055)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Opacity(
+                    opacity: enabled ? 1 : .55,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              color: widget.accent.withOpacity(.11),
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: Icon(widget.icon, color: widget.accent, size: 29),
+                          ),
+                          const SizedBox(width:14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:CrossAxisAlignment.start,
+                              children:[
+                                LText(
+                                  widget.title,
+                                  style:GoogleFonts.cormorantGaramond(
+                                    color:brandNavy,
+                                    fontSize:26,
+                                    fontWeight:FontWeight.w700,
+                                    height:1.02,
+                                  ),
+                                ),
+                                const SizedBox(height:4),
+                                LText(widget.subtitle,style:const TextStyle(color:brandTextSoft,fontSize:10.5,height:1.4)),
+                              ],
+                            ),
+                          ),
+                        ]),
+                        const SizedBox(height:20),
+                        for (final item in widget.bullets)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(children:[
+                              Container(
+                                width:20,
+                                height:20,
+                                decoration:BoxDecoration(color:widget.accent,borderRadius:BorderRadius.circular(99)),
+                                child:const Icon(Icons.check_rounded,color:Colors.white,size:13),
+                              ),
+                              const SizedBox(width:9),
+                              Expanded(child:LText(item,style:const TextStyle(color:brandCharcoal,fontSize:10.5))),
+                            ]),
+                          ),
+                        const Spacer(),
+                        SizedBox(
+                          width: 210,
+                          child: FilledButton.icon(
+                            onPressed: widget.onTap,
+                            style: FilledButton.styleFrom(backgroundColor: widget.accent),
+                            icon: Icon(hover ? Icons.arrow_forward_rounded : Icons.open_in_new_rounded,size:17),
+                            label: LText(widget.actionLabel),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
-class _AdministrationQuickCard extends StatelessWidget {
-  const _AdministrationQuickCard({required this.title,required this.subtitle,required this.icon,required this.accent,this.onTap});
+class _AdministrationQuickCard extends StatefulWidget {
+  const _AdministrationQuickCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    this.onTap,
+  });
   final String title,subtitle;
   final IconData icon;
   final Color accent;
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: InkWell(
-      onTap:onTap,
-      borderRadius:BorderRadius.circular(16),
-      child:Padding(
-        padding:const EdgeInsets.all(17),
-        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Container(width:42,height:42,decoration:BoxDecoration(color:accent.withOpacity(.09),borderRadius:BorderRadius.circular(12)),child:Icon(icon,color:accent,size:21)),
-          const SizedBox(height:13),
-          LText(title,style:const TextStyle(color:brandNavy,fontSize:12,fontWeight:FontWeight.w800)),
-          const SizedBox(height:6),
-          LText(subtitle,style:const TextStyle(color:brandTextSoft,fontSize:9.5,height:1.4)),
-          const SizedBox(height:12),
-          Row(children:[LText('Open',style:TextStyle(color:accent,fontSize:9.5,fontWeight:FontWeight.w700)),const Spacer(),Icon(Icons.arrow_forward_rounded,color:accent,size:16)]),
-        ]),
+  State<_AdministrationQuickCard> createState() => _AdministrationQuickCardState();
+}
+
+class _AdministrationQuickCardState extends State<_AdministrationQuickCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: widget.onTap == null ? null : (_) => setState(() => hover = true),
+    onExit: widget.onTap == null ? null : (_) => setState(() => hover = false),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 170),
+      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: hover ? widget.accent.withOpacity(.55) : brandMist),
+        boxShadow: [
+          BoxShadow(
+            color: brandNavy.withOpacity(hover ? .08 : .035),
+            blurRadius: hover ? 18 : 10,
+            offset: Offset(0, hover ? 7 : 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap:widget.onTap,
+          borderRadius:BorderRadius.circular(16),
+          child:Padding(
+            padding:const EdgeInsets.all(17),
+            child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Row(children:[
+                Container(
+                  width:42,
+                  height:42,
+                  decoration:BoxDecoration(color:widget.accent.withOpacity(.09),borderRadius:BorderRadius.circular(12)),
+                  child:Icon(widget.icon,color:widget.accent,size:21),
+                ),
+                const Spacer(),
+                Icon(Icons.arrow_forward_rounded,color:hover?widget.accent:brandTextSoft,size:16),
+              ]),
+              const SizedBox(height:13),
+              LText(widget.title,style:const TextStyle(color:brandNavy,fontSize:12,fontWeight:FontWeight.w800)),
+              const SizedBox(height:6),
+              LText(widget.subtitle,style:const TextStyle(color:brandTextSoft,fontSize:9.5,height:1.4)),
+              const SizedBox(height:12),
+              LText(
+                uiLiteral('Open workspace'),
+                style:TextStyle(color:hover?widget.accent:brandSteel,fontSize:9.5,fontWeight:FontWeight.w700),
+              ),
+            ]),
+          ),
+        ),
       ),
     ),
   );

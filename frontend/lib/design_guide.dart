@@ -1,9 +1,17 @@
 part of 'main.dart';
 
 class DesignGuidePanel extends StatefulWidget {
-  const DesignGuidePanel({required this.api, required this.media, super.key});
+  const DesignGuidePanel({
+    required this.api,
+    required this.media,
+    this.canWrite = true,
+    this.canApprove = true,
+    super.key,
+  });
   final Api api;
   final List<Map<String, dynamic>> media;
+  final bool canWrite;
+  final bool canApprove;
 
   @override
   State<DesignGuidePanel> createState() => _DesignGuidePanelState();
@@ -217,6 +225,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
       };
 
   Future<bool> saveDraft({bool quiet = false}) async {
+    if (!widget.canWrite) return false;
     final validation = validate();
     if (validation != null) {
       if (mounted) {
@@ -246,6 +255,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   }
 
   Future<void> createPreview(String viewport) async {
+    if (!widget.canWrite) return;
     if (!await saveDraft(quiet: true)) return;
     if (mounted) setState(() => saving = true);
     try {
@@ -276,6 +286,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
   }
 
   Future<void> publish() async {
+    if (!widget.canWrite || !widget.canApprove) return;
     if (!await saveDraft(quiet: true)) return;
     if (mounted) setState(() => saving = true);
     try {
@@ -400,7 +411,8 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
     return TextField(
       controller: controller,
       textCapitalization: TextCapitalization.characters,
-      onChanged: (_) => setState(() {}),
+      readOnly: !widget.canWrite,
+      onChanged: widget.canWrite ? (_) => setState(() {}) : null,
       decoration: InputDecoration(
         labelText: uiLiteral(label),
         hintText: '#06172C',
@@ -408,7 +420,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
           padding: const EdgeInsets.all(9),
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: () => pickColor(label, controller),
+            onTap: widget.canWrite ? () => pickColor(label, controller) : null,
             child: Tooltip(
               message: uiLiteral('Choose color'),
               child: Container(
@@ -441,10 +453,12 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
             child: LText((asset['original_filename'] ?? asset['id'] ?? '').toString()),
           ),
       ],
-      onChanged: (value) => setState(() {
-        assetSlots[slot] = value ?? '';
-        if (slot == 'header_wordmark') logoMediaAssetId = value ?? '';
-      }),
+      onChanged: widget.canWrite
+          ? (value) => setState(() {
+                assetSlots[slot] = value ?? '';
+                if (slot == 'header_wordmark') logoMediaAssetId = value ?? '';
+              })
+          : null,
     );
   }
 
@@ -467,6 +481,15 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
           trailing: _MiniCounter(label: 'v$version'),
         ),
         const SizedBox(height: 12),
+        if (!widget.canWrite)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Read only'),
+              message: uiLiteral('Your current role can view the Design Guide but cannot modify it.'),
+            ),
+          ),
         if (error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -482,7 +505,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
         LayoutBuilder(
           builder: (context, constraints) {
             final preview = InkWell(
-              onTap: saving ? null : () => createPreview('desktop'),
+              onTap: saving || !widget.canWrite ? null : () => createPreview('desktop'),
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 constraints: const BoxConstraints(minHeight: 220),
@@ -551,9 +574,11 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
                     DropdownMenuItem(value: 'modern_grid', child: LText('Modern grid')),
                     DropdownMenuItem(value: 'minimal', child: LText('Minimal')),
                   ],
-                  onChanged: (value) {
-                    if (value != null) setState(() => layoutKey = value);
-                  },
+                  onChanged: widget.canWrite
+                      ? (value) {
+                          if (value != null) setState(() => layoutKey = value);
+                        }
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 ResponsiveFieldPair(
@@ -571,24 +596,29 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
                     value: headingFont,
                     decoration: InputDecoration(labelText: uiLiteral('Heading font')),
                     items: [for (final font in headingFonts) DropdownMenuItem(value: font, child: LText(font))],
-                    onChanged: (value) {
-                      if (value != null) setState(() => headingFont = value);
-                    },
+                    onChanged: widget.canWrite
+                        ? (value) {
+                            if (value != null) setState(() => headingFont = value);
+                          }
+                        : null,
                   ),
                   second: DropdownButtonFormField<String>(
                     value: bodyFont,
                     decoration: InputDecoration(labelText: uiLiteral('Body font')),
                     items: [for (final font in bodyFonts) DropdownMenuItem(value: font, child: LText(font))],
-                    onChanged: (value) {
-                      if (value != null) setState(() => bodyFont = value);
-                    },
+                    onChanged: widget.canWrite
+                        ? (value) {
+                            if (value != null) setState(() => bodyFont = value);
+                          }
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: radius,
                   keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
+                  readOnly: !widget.canWrite,
+                  onChanged: widget.canWrite ? (_) => setState(() {}) : null,
                   decoration: InputDecoration(labelText: uiLiteral('Button corner radius'), helperText: uiLiteral('0–40 pixels')),
                 ),
               ],
@@ -612,7 +642,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
           title: 'Website Navigation',
           subtitle: 'Control visible public menu items, bilingual labels and order.',
           trailing: OutlinedButton.icon(
-            onPressed: navigation.length >= 12 ? null : addNavigation,
+            onPressed: !widget.canWrite || navigation.length >= 12 ? null : addNavigation,
             icon: const Icon(Icons.add_rounded),
             label: const LText('Add navigation item'),
           ),
@@ -634,17 +664,17 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
                           Row(children: [
                             Expanded(child: LText('Navigation item ${index + 1}', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700))),
                             IconButton(
-                              onPressed: index > 0 ? () => moveNavigation(index, -1) : null,
+                              onPressed: widget.canWrite && index > 0 ? () => moveNavigation(index, -1) : null,
                               tooltip: uiLiteral('Move up'),
                               icon: const Icon(Icons.arrow_upward_rounded),
                             ),
                             IconButton(
-                              onPressed: index < navigation.length - 1 ? () => moveNavigation(index, 1) : null,
+                              onPressed: widget.canWrite && index < navigation.length - 1 ? () => moveNavigation(index, 1) : null,
                               tooltip: uiLiteral('Move down'),
                               icon: const Icon(Icons.arrow_downward_rounded),
                             ),
                             IconButton(
-                              onPressed: () => setState(() => navigation.removeAt(index)),
+                              onPressed: widget.canWrite ? () => setState(() => navigation.removeAt(index)) : null,
                               tooltip: uiLiteral('Remove'),
                               icon: const Icon(Icons.delete_outline_rounded, color: brandDanger),
                             ),
@@ -653,11 +683,13 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
                           ResponsiveFieldPair(
                             first: TextFormField(
                               initialValue: (navigation[index]['label_en'] ?? '').toString(),
+                              enabled: widget.canWrite,
                               decoration: InputDecoration(labelText: uiLiteral('English label')),
                               onChanged: (value) => navigation[index]['label_en'] = value,
                             ),
                             second: TextFormField(
                               initialValue: (navigation[index]['label_hu'] ?? '').toString(),
+                              enabled: widget.canWrite,
                               decoration: InputDecoration(labelText: uiLiteral('Hungarian label')),
                               onChanged: (value) => navigation[index]['label_hu'] = value,
                             ),
@@ -666,6 +698,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
                           ResponsiveFieldPair(
                             first: TextFormField(
                               initialValue: (navigation[index]['url'] ?? '').toString(),
+                              enabled: widget.canWrite,
                               decoration: InputDecoration(labelText: uiLiteral('URL')),
                               onChanged: (value) => navigation[index]['url'] = value,
                             ),
@@ -673,7 +706,7 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
                               contentPadding: EdgeInsets.zero,
                               title: const LText('Visible in navigation'),
                               value: navigation[index]['visible'] != false,
-                              onChanged: (value) => setState(() => navigation[index]['visible'] = value),
+                              onChanged: widget.canWrite ? (value) => setState(() => navigation[index]['visible'] = value) : null,
                             ),
                           ),
                         ],
@@ -693,27 +726,27 @@ class _DesignGuidePanelState extends State<DesignGuidePanel> {
           ),
           actions: [
             OutlinedButton.icon(
-              onPressed: saving ? null : () => saveDraft(),
+              onPressed: saving || !widget.canWrite ? null : () => saveDraft(),
               icon: const Icon(Icons.save_outlined),
               label: const LText('Save design draft'),
             ),
             OutlinedButton.icon(
-              onPressed: saving ? null : () => createPreview('desktop'),
+              onPressed: saving || !widget.canWrite ? null : () => createPreview('desktop'),
               icon: const Icon(Icons.desktop_windows_outlined),
               label: const LText('Desktop preview'),
             ),
             OutlinedButton.icon(
-              onPressed: saving ? null : () => createPreview('tablet'),
+              onPressed: saving || !widget.canWrite ? null : () => createPreview('tablet'),
               icon: const Icon(Icons.tablet_mac_outlined),
               label: const LText('Tablet preview'),
             ),
             OutlinedButton.icon(
-              onPressed: saving ? null : () => createPreview('mobile'),
+              onPressed: saving || !widget.canWrite ? null : () => createPreview('mobile'),
               icon: const Icon(Icons.phone_iphone_outlined),
               label: const LText('Mobile preview'),
             ),
             FilledButton.icon(
-              onPressed: saving ? null : publish,
+              onPressed: saving || !widget.canWrite || !widget.canApprove ? null : publish,
               icon: const Icon(Icons.publish_outlined),
               label: const LText('Publish Active Brand'),
             ),

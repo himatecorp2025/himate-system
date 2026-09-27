@@ -44,6 +44,14 @@ func (a *app) invalidateCentral10Caches(path string) {
 		strings.Contains(path, "module") ||
 		strings.Contains(path, "billing") ||
 		strings.Contains(path, "subscription")
+	invalidateWebsite := strings.Contains(path, "cms") ||
+		strings.Contains(path, "environment") ||
+		strings.Contains(path, "connector")
+	invalidateSystem := strings.Contains(path, "system-health") ||
+		strings.Contains(path, "provision") ||
+		strings.Contains(path, "environment") ||
+		strings.Contains(path, "connector") ||
+		strings.Contains(path, "backup")
 
 	central10ReadCache.Lock()
 	for key := range central10ReadCache.items {
@@ -60,6 +68,12 @@ func (a *app) invalidateCentral10Caches(path string) {
 			remove = true
 		}
 		if invalidateAdministration && strings.Contains(lowerKey, "/api/v1/central/administration?") {
+			remove = true
+		}
+		if invalidateWebsite && strings.Contains(lowerKey, "/api/v1/central/website?") {
+			remove = true
+		}
+		if invalidateSystem && strings.Contains(lowerKey, "/api/v1/central/system?") {
 			remove = true
 		}
 		if remove {
@@ -401,6 +415,10 @@ func (a *app) central10ReadModel(w http.ResponseWriter, r *http.Request, actor u
 		a.central10Finance(w, r, actor, key)
 	case r.URL.Path == "/api/v1/central/impact":
 		a.central10Impact(w, r, actor, key)
+	case r.URL.Path == "/api/v1/central/website":
+		a.central17Website(w, r, actor, key)
+	case r.URL.Path == "/api/v1/central/system":
+		a.central17System(w, r, actor, key)
 	default:
 		common.APIError(w, http.StatusNotFound, "CENTRAL_READ_MODEL_NOT_FOUND", "Central read model endpoint not found")
 	}

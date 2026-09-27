@@ -176,6 +176,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
   }
 
   Future<void> _createRestorePoint([String? partnerId]) async {
+    if (!widget.canMutate) return;
     final id = partnerId ?? await _choosePartner();
     if (id == null || id.isEmpty || busy.contains(id)) return;
     setState(() => busy.add(id));
@@ -641,11 +642,14 @@ class _BackupsPanelState extends State<BackupsPanel> {
                     : const Icon(Icons.refresh_rounded, size: 17),
                 label: const LText('Refresh'),
               ),
-              FilledButton.icon(
-                onPressed: partnerIds.isEmpty ? null : () => _createRestorePoint(),
-                icon: const Icon(Icons.add_rounded),
-                label: const LText('New restore point'),
-              ),
+              if (widget.canMutate)
+                FilledButton.icon(
+                  onPressed: partnerIds.isEmpty ? null : () => _createRestorePoint(),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const LText('New restore point'),
+                )
+              else
+                _MiniCounter(label: uiLiteral('Read only')),
             ],
           ),
         ),

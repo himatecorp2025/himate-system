@@ -55,12 +55,14 @@ class WebsiteMarketingPage extends StatefulWidget {
     this.canCms = true,
     this.canContact = true,
     this.canConnections = true,
+    this.canEnvironments = true,
     super.key,
   });
   final Api api;
   final bool canCms;
   final bool canContact;
   final bool canConnections;
+  final bool canEnvironments;
 
   @override
   State<WebsiteMarketingPage> createState() => _WebsiteMarketingPageState();
@@ -69,41 +71,66 @@ class WebsiteMarketingPage extends StatefulWidget {
 class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   List<Map<String, dynamic>> pages = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> media = <Map<String, dynamic>>[];
-  bool loading = false;
+  List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
+  Map<String, dynamic> websiteKpis = <String, dynamic>{};
+  Map<String, dynamic> websiteMeta = <String, dynamic>{};
+  Map<String, dynamic> websiteAccess = <String, dynamic>{};
+  bool loading = true;
   String section = 'overview';
   String? error;
 
   @override
   void initState() {
     super.initState();
-    if (widget.canCms) load();
+    load();
   }
 
-  Future<void> load() async {
-    if (!widget.canCms) return;
-    if (mounted) setState(() => error = null);
-    final failures = <String>[];
-
-    Future<void> fetch(String path, void Function(Map<String, dynamic>) apply) async {
-      try {
-        final data = await widget.api.get(path);
-        if (mounted) setState(() => apply(data));
-      } catch (e) {
-        failures.add(e.toString());
-      }
-    }
-
-    await Future.wait<void>([
-      fetch('/api/v1/cms/pages', (data) => pages = items(data)),
-      fetch('/api/v1/cms/media', (data) => media = items(data)),
-    ]);
-
-    if (mounted && failures.length == 2) {
-      setState(() => error = failures.first);
+  Future<void> load({bool force = false}) async {
+    if (!mounted) return;
+    setState(() {
+      if (pages.isEmpty && media.isEmpty && environments.isEmpty) loading = true;
+      error = null;
+    });
+    try {
+      final model = await widget.api.get(
+        centralWebsiteInitialPath(),
+        force: force,
+        maxAge: const Duration(seconds: 15),
+      );
+      if (!mounted) return;
+      setState(() {
+        pages = items(<String,dynamic>{'items': model['pages']});
+        media = items(<String,dynamic>{'items': model['media']});
+        environments = items(<String,dynamic>{'items': model['environments']});
+        websiteKpis = model['kpis'] is Map
+            ? Map<String,dynamic>.from(model['kpis'] as Map)
+            : <String,dynamic>{};
+        websiteMeta = model['meta'] is Map
+            ? Map<String,dynamic>.from(model['meta'] as Map)
+            : <String,dynamic>{};
+        websiteAccess = model['access'] is Map
+            ? Map<String,dynamic>.from(model['access'] as Map)
+            : <String,dynamic>{};
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = e.toString();
+      });
     }
   }
+
+  bool get canCmsWrite => websiteAccess['cms_write'] == true;
+  bool get canCmsApprove => websiteAccess['cms_approve'] == true;
+  bool get canContactWrite => websiteAccess['contact_write'] == true;
+  bool get canEnvironmentWrite => websiteAccess['environments_write'] == true;
+  bool get canEnvironmentApprove => websiteAccess['environments_approve'] == true;
 
   Future<void> createPage() async {
+    if (!canCmsWrite) return;
+
     final key = TextEditingController();
     final name = TextEditingController();
     final slug = TextEditingController();
@@ -200,7 +227,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           'sections': <Map<String, dynamic>>[],
         },
       });
-      await load();
+      await load(force: true);
     }
 
     localeChoice.dispose();
@@ -210,6 +237,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Future<void> uploadMedia() async {
+    if (!canCmsWrite) return;
+
     final file = await pickBrowserFile('image/png,image/jpeg,image/webp,video/mp4,video/webm');
     if (file == null) return;
 
@@ -244,12 +273,14 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
         bytes,
         file.name,
       );
-      await load();
+      await load(force: true);
     }
     alt.dispose();
   }
 
   Future<void> editDraft(Map<String, dynamic> page) async {
+    if (!canCmsWrite) return;
+
     final id = (page['id'] ?? '').toString();
     final detail = await widget.api.get('/api/v1/cms/pages/' + id, force: true);
     final draft = detail['draft'] is Map
@@ -264,11 +295,13 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
 
     if (payload != null) {
       await widget.api.put('/api/v1/cms/pages/' + id + '/draft', payload);
-      await load();
+      await load(force: true);
     }
   }
 
   Future<void> createPreview(Map<String, dynamic> page) async {
+    if (!canCmsWrite) return;
+
     final id = (page['id'] ?? '').toString();
     try {
       final result = await widget.api.post('/api/v1/cms/pages/' + id + '/preview');
@@ -282,17 +315,19 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           ),
         );
       }
-      await load();
+      await load(force: true);
     } catch (e) {
       _showError('Preview could not be created', e);
     }
   }
 
   Future<void> publish(Map<String, dynamic> page) async {
+    if (!canCmsApprove) return;
+
     final id = (page['id'] ?? '').toString();
     try {
       await widget.api.post('/api/v1/cms/pages/' + id + '/publish');
-      await load();
+      await load(force: true);
     } catch (e) {
       _showError('Publish blocked', e);
     }
@@ -360,7 +395,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                             ? 'Created ' + (version['created_at'] ?? '').toString() + ' · ' + (version['created_by'] ?? '').toString()
                             : 'Rollback activation of ' + rollback + ' · ' + (version['created_at'] ?? '').toString(),
                       ),
-                      trailing: state == 'PUBLISHED'
+                      trailing: state == 'PUBLISHED' && canCmsApprove
                           ? OutlinedButton(
                               onPressed: () async {
                                 await widget.api.post(
@@ -368,7 +403,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                                   <String, dynamic>{'version_id': (version['id'] ?? '').toString()},
                                 );
                                 if (dialogContext.mounted) Navigator.pop(dialogContext);
-                                await load();
+                                await load(force: true);
                               },
                               child: const LText('Restore'),
                             )
@@ -487,21 +522,24 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  FilledButton.icon(
-                    onPressed: () => editDraft(page),
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const LText('Edit draft'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => createPreview(page),
-                    icon: const Icon(Icons.visibility_outlined),
-                    label: const LText('Preview'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => publish(page),
-                    icon: const Icon(Icons.publish_outlined),
-                    label: const LText('Publish'),
-                  ),
+                  if (canCmsWrite)
+                    FilledButton.icon(
+                      onPressed: () => editDraft(page),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const LText('Edit draft'),
+                    ),
+                  if (canCmsWrite)
+                    OutlinedButton.icon(
+                      onPressed: () => createPreview(page),
+                      icon: const Icon(Icons.visibility_outlined),
+                      label: const LText('Preview'),
+                    ),
+                  if (canCmsApprove)
+                    OutlinedButton.icon(
+                      onPressed: () => publish(page),
+                      icon: const Icon(Icons.publish_outlined),
+                      label: const LText('Publish'),
+                    ),
                   TextButton.icon(
                     onPressed: () => showVersions(page),
                     icon: const Icon(Icons.history_rounded),
@@ -512,6 +550,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                     icon: const Icon(Icons.receipt_long_outlined),
                     label: const LText('Audit'),
                   ),
+                  if (!canCmsWrite && !canCmsApprove)
+                    _MiniCounter(label: uiLiteral('Read only')),
                 ],
               ),
             ],
@@ -569,20 +609,29 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Widget hubOverview() {
-    final publishedPages = pages.where((page) {
-      final status = (page['status'] ?? page['publication_status'] ?? '').toString().toUpperCase();
-      return status == 'PUBLISHED' || status == 'ACTIVE' || page['published_version_id'] != null;
-    }).length;
-    final imageAssets = media.where((asset) => (asset['mime_type'] ?? '').toString().startsWith('image/')).length;
+    final pageCount = (websiteKpis['pages'] as num?)?.toInt() ?? pages.length;
+    final publishedPages = (websiteKpis['published_pages'] as num?)?.toInt() ?? 0;
+    final mediaCount = (websiteKpis['media_assets'] as num?)?.toInt() ?? media.length;
+    final imageAssets = (websiteKpis['image_assets'] as num?)?.toInt() ?? 0;
+    final environmentCount = (websiteKpis['environments'] as num?)?.toInt() ?? environments.length;
+    final liveEnvironments = (websiteKpis['live_environments'] as num?)?.toInt() ?? 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ResponsiveKpiGrid(children: [
-          Kpi(label: 'Pages', value: '${pages.length}', note: 'CMS page records', icon: Icons.description_outlined, accent: brandSteel),
-          Kpi(label: 'Media assets', value: '${media.length}', note: '$imageAssets image assets', icon: Icons.perm_media_outlined, accent: brandGold),
-          Kpi(label: 'Published pages', value: '$publishedPages', note: 'Published or active content', icon: Icons.public_outlined, accent: brandSuccess),
-          Kpi(label: 'Partner connections', value: widget.canConnections ? 'ON' : '—', note: widget.canConnections ? 'Connection workspace available' : 'Permission required', icon: Icons.hub_outlined, accent: const Color(0xFF6C63D9)),
+          Kpi(label: 'Pages', value: widget.canCms ? '$pageCount' : '—', note: widget.canCms ? 'CMS page records' : 'Permission required', icon: Icons.description_outlined, accent: brandSteel),
+          Kpi(label: 'Media assets', value: widget.canCms ? '$mediaCount' : '—', note: widget.canCms ? uiBilingual('$imageAssets image assets', '$imageAssets képfájl') : 'Permission required', icon: Icons.perm_media_outlined, accent: brandGold),
+          Kpi(label: 'Published pages', value: widget.canCms ? '$publishedPages' : '—', note: widget.canCms ? 'Published or active content' : 'Permission required', icon: Icons.public_outlined, accent: brandSuccess),
+          Kpi(
+            label: 'Live environments',
+            value: widget.canEnvironments ? '$liveEnvironments' : '—',
+            note: widget.canEnvironments
+                ? uiBilingual('$environmentCount deployment environments', '$environmentCount telepítési környezet')
+                : 'Permission required',
+            icon: Icons.cloud_done_outlined,
+            accent: const Color(0xFF6C63D9),
+          ),
         ]),
         const SizedBox(height: 18),
         LayoutBuilder(
@@ -599,8 +648,10 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'CMS', subtitle: 'Website pages and content editing with immutable draft, preview and publish history.', icon: Icons.description_outlined, accent: const Color(0xFF7557E8), onTap: () => setState(() => section = 'pages'))),
               if (widget.canCms)
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'SEO', subtitle: 'Metadata, page keywords, Open Graph and technical discovery controls.', icon: Icons.search_rounded, accent: brandGold, onTap: () => setState(() => section = 'seo'))),
-              SizedBox(width: width, child: _WebsiteHubCard(title: 'Domain & Deployment', subtitle: 'Production domains, TLS and deployment environment status.', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => setState(() => section = 'domains'))),
-              SizedBox(width: width, child: _WebsiteHubCard(title: 'Analytics', subtitle: 'Website measurement readiness and analytics integration status without invented traffic data.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: () => setState(() => section = 'analytics'))),
+              if (widget.canEnvironments)
+                SizedBox(width: width, child: _WebsiteHubCard(title: 'Domain & Deployment', subtitle: 'Production domains, TLS and deployment environment status.', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => setState(() => section = 'domains'))),
+              if (widget.canCms)
+                SizedBox(width: width, child: _WebsiteHubCard(title: 'Analytics', subtitle: 'Website measurement readiness and analytics integration status without invented traffic data.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: () => setState(() => section = 'analytics'))),
               if (widget.canConnections)
                 SizedBox(width: width, child: _WebsiteHubCard(title: 'Partner Connections', subtitle: 'Partner website adapters, connector state and last successful synchronization.', icon: Icons.groups_2_outlined, accent: const Color(0xFFD84965), onTap: () => setState(() => section = 'connections'))),
             ];
@@ -709,21 +760,36 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   Widget activeSection() {
     switch (section) {
       case 'design':
-        return DesignGuidePanel(api: widget.api, media: media);
+        return DesignGuidePanel(
+          api: widget.api,
+          media: media,
+          canWrite: canCmsWrite,
+          canApprove: canCmsApprove,
+        );
       case 'pages':
         return cmsPagesSection();
       case 'media':
         return mediaSection();
       case 'seo':
-        return SEOKeywordsPanel(api: widget.api, media: media);
+        return SEOKeywordsPanel(
+          api: widget.api,
+          media: media,
+          canWrite: canCmsWrite,
+          canApprove: canCmsApprove,
+        );
       case 'leads':
-        return ContactLeadsPanel(api: widget.api);
+        return ContactLeadsPanel(api: widget.api, canWrite: canContactWrite);
       case 'connections':
         return PartnerConnectionsPanel(api: widget.api);
       case 'domains':
-        return WebsiteDomainsPanel(api: widget.api);
+        return WebsiteDomainsPanel(
+          api: widget.api,
+          initialEnvironments: environments,
+          canWrite: canEnvironmentWrite,
+          canApprove: canEnvironmentApprove,
+        );
       case 'analytics':
-        return WebsiteAnalyticsPanel(pages: pages, media: media);
+        return WebsiteAnalyticsPanel(pages: pages, media: media, kpis: websiteKpis);
       default:
         return hubOverview();
     }
@@ -731,9 +797,17 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const _BrandLoading();
-    if (error != null) {
+    if (loading && pages.isEmpty && media.isEmpty && environments.isEmpty) {
+      return const Content(
+        showHeader: false,
+        title: 'Website & Marketing',
+        subtitle: 'Website management, online presence, marketing tools and analytics in one place.',
+        child: _BrandLoading(),
+      );
+    }
+    if (error != null && pages.isEmpty && media.isEmpty && environments.isEmpty) {
       return Content(
+        showHeader: false,
         eyebrow: 'WEBSITE · MARKETING · PARTNER OPERATIONS',
         title: 'Website & Marketing',
         subtitle: 'Content, brand, discovery and partner operations workspaces.',
@@ -741,7 +815,13 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       );
     }
 
+    final status = '${websiteMeta['status'] ?? 'healthy'}'.toLowerCase();
+    final unavailable = websiteMeta['unavailable'] is List
+        ? (websiteMeta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
+        : <String>[];
+
     return Content(
+      showHeader: section != 'overview',
       title: section == 'overview' ? 'Website & Marketing' : ({
         'design': 'Design Guide',
         'pages': 'CMS Pages',
@@ -762,17 +842,30 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             icon: const Icon(Icons.arrow_back_rounded),
             label: const LText('Back'),
           ),
-        if (section == 'pages')
+        if (section == 'pages' && canCmsWrite)
           FilledButton.icon(onPressed: createPage, icon: const Icon(Icons.add_rounded), label: const LText('New CMS page')),
-        if (section == 'media')
+        if (section == 'media' && canCmsWrite)
           FilledButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const LText('Upload media')),
       ],
-      child: activeSection(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
+            _MessageCard(
+              icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
+              title: uiLiteral(status == 'stale' ? 'Website data is temporarily stale' : 'Website data is partially available'),
+              message: '${uiLiteral('Unavailable services')}: ${unavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ],
+          activeSection(),
+        ],
+      ),
     );
   }
 }
 
-class _WebsiteHubCard extends StatelessWidget {
+class _WebsiteHubCard extends StatefulWidget {
   const _WebsiteHubCard({
     required this.title,
     required this.subtitle,
@@ -786,42 +879,97 @@ class _WebsiteHubCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(14)),
-                    child: Icon(icon, color: accent, size: 27),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(child: LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 21, fontWeight: FontWeight.w700))),
-                ]),
-                const SizedBox(height: 14),
-                LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45)),
-                const SizedBox(height: 18),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(10), border: Border.all(color: brandMist)),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      LText(uiLiteral('Open'), style: const TextStyle(color: brandSteel, fontSize: 10.5, fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward_rounded, color: brandSteel, size: 17),
-                    ],
-                  ),
+  State<_WebsiteHubCard> createState() => _WebsiteHubCardState();
+}
+
+class _WebsiteHubCardState extends State<_WebsiteHubCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        onEnter: (_) => setState(() => hover = true),
+        onExit: (_) => setState(() => hover = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 170),
+          transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+          decoration: BoxDecoration(
+            color: brandWhite,
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(color: hover ? brandGold.withOpacity(.72) : brandMist, width: hover ? 1.3 : 1),
+            boxShadow: [
+              BoxShadow(
+                color: brandNavy.withOpacity(hover ? .09 : .045),
+                blurRadius: hover ? 22 : 12,
+                offset: Offset(0, hover ? 8 : 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(17),
+              onTap: widget.onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(color: widget.accent.withOpacity(.09), borderRadius: BorderRadius.circular(14)),
+                        child: Icon(widget.icon, color: widget.accent, size: 27),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: LText(
+                          widget.title,
+                          style: GoogleFonts.cormorantGaramond(
+                            color: brandNavy,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            height: 1.05,
+                          ),
+                        ),
+                      ),
+                      AnimatedRotation(
+                        turns: hover ? 0 : -.02,
+                        duration: const Duration(milliseconds: 170),
+                        child: Icon(Icons.arrow_forward_rounded, color: hover ? brandGold : brandSteel, size: 19),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    LText(widget.subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45)),
+                    const SizedBox(height: 18),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 170),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: hover ? brandGold.withOpacity(.09) : const Color(0xFFF4F7FB),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: hover ? brandGold.withOpacity(.45) : brandMist),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          LText(
+                            uiLiteral('Open workspace'),
+                            style: TextStyle(
+                              color: hover ? const Color(0xFF8B6508) : brandSteel,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(Icons.arrow_forward_rounded, color: hover ? brandGold : brandSteel, size: 17),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -829,46 +977,50 @@ class _WebsiteHubCard extends StatelessWidget {
 }
 
 class WebsiteDomainsPanel extends StatelessWidget {
-  const WebsiteDomainsPanel({required this.api, super.key});
+  const WebsiteDomainsPanel({
+    required this.api,
+    required this.initialEnvironments,
+    required this.canWrite,
+    required this.canApprove,
+    super.key,
+  });
   final Api api;
+  final List<Map<String,dynamic>> initialEnvironments;
+  final bool canWrite;
+  final bool canApprove;
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
-        future: api.get('/api/v1/environments', maxAge: const Duration(seconds: 5)),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
-            return const _MessageCard(
-              icon: Icons.sync_rounded,
-              title: 'Loading domain environments',
-              message: 'Domain and deployment state is loaded independently from the Website overview.',
-            );
-          }
-          if (snapshot.hasError || snapshot.data == null) {
-            return _MessageCard(icon: Icons.cloud_off_outlined, title: 'Domain & Deployment unavailable', message: '${snapshot.error ?? 'No environment data'}');
-          }
-          return DomainsDeploymentsPanel(api: api, initialEnvironments: items(snapshot.data!));
-        },
+  Widget build(BuildContext context) => DomainsDeploymentsPanel(
+        api: api,
+        initialEnvironments: initialEnvironments,
+        canWrite: canWrite,
+        canApprove: canApprove,
       );
 }
 
 class WebsiteAnalyticsPanel extends StatelessWidget {
-  const WebsiteAnalyticsPanel({required this.pages, required this.media, super.key});
+  const WebsiteAnalyticsPanel({
+    required this.pages,
+    required this.media,
+    required this.kpis,
+    super.key,
+  });
   final List<Map<String, dynamic>> pages;
   final List<Map<String, dynamic>> media;
+  final Map<String,dynamic> kpis;
 
   @override
   Widget build(BuildContext context) {
-    final published = pages.where((page) {
-      final status = (page['status'] ?? page['publication_status'] ?? '').toString().toUpperCase();
-      return status == 'PUBLISHED' || status == 'ACTIVE' || page['published_version_id'] != null;
-    }).length;
+    final pageCount = (kpis['pages'] as num?)?.toInt() ?? pages.length;
+    final published = (kpis['published_pages'] as num?)?.toInt() ?? 0;
+    final mediaCount = (kpis['media_assets'] as num?)?.toInt() ?? media.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ResponsiveKpiGrid(children: [
-          Kpi(label: 'CMS pages', value: '${pages.length}', note: 'Tracked content records', icon: Icons.description_outlined, accent: brandSteel),
+          Kpi(label: 'CMS pages', value: '$pageCount', note: 'Tracked content records', icon: Icons.description_outlined, accent: brandSteel),
           Kpi(label: 'Published', value: '$published', note: 'Published or active pages', icon: Icons.public_outlined, accent: brandSuccess),
-          Kpi(label: 'Media assets', value: '${media.length}', note: 'CMS media records', icon: Icons.perm_media_outlined, accent: brandGold),
+          Kpi(label: 'Media assets', value: '$mediaCount', note: 'CMS media records', icon: Icons.perm_media_outlined, accent: brandGold),
           const Kpi(label: 'Traffic analytics', value: '—', note: 'No authoritative traffic dataset connected', icon: Icons.query_stats_outlined, accent: Color(0xFF6C63D9)),
         ]),
         const SizedBox(height: 16),

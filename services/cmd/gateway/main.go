@@ -1353,7 +1353,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/v1/central/partners" || strings.HasPrefix(r.URL.Path, "/api/v1/central/partners/") ||
 		r.URL.Path == "/api/v1/central/modules" || r.URL.Path == "/api/v1/central/modules/commercial" ||
 		r.URL.Path == "/api/v1/central/packages" || r.URL.Path == "/api/v1/central/packages/supplementary" ||
-		r.URL.Path == "/api/v1/central/finance" || r.URL.Path == "/api/v1/central/impact":
+		r.URL.Path == "/api/v1/central/finance" || r.URL.Path == "/api/v1/central/impact" ||
+		r.URL.Path == "/api/v1/central/website" || r.URL.Path == "/api/v1/central/system":
 		a.central10ReadModel(w, r, u)
 	case r.URL.Path == "/api/v1/notifications" || strings.HasPrefix(r.URL.Path, "/api/v1/notifications/"):
 		r.Header.Set("X-Himate-Permissions", strings.Join(a.permissionsForRoles(u.Roles), ","))

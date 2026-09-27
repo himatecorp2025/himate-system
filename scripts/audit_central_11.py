@@ -75,21 +75,25 @@ system_state = frontend.find("class _SystemPageState", system_start)
 system_end = frontend.find("\nclass ", system_state + 1)
 system = frontend[system_start:system_end] if system_start >= 0 and system_state > system_start and system_end > system_state else ""
 for token in [
-    "late Future<List<Map<String, dynamic>>> _future;",
+    "late Future<Map<String, dynamic>> _future;",
     "_future = _load();",
+    "centralSystemInitialPath()",
     "Developer diagnostics",
     "/api/v1/system-health/snapshot",
     "/api/v1/audit/events?outcome=FAILED&limit=20&offset=0",
     "correlation_id",
 ]:
     check(token in system, f"System diagnostics/cache contract missing: {token}")
+check("Future.wait([" not in system[system.find("Future<Map<String, dynamic>> _load"):system.find("void _refresh")],
+      "System initial overview regressed to a Flutter-side API waterfall")
 
 # Design Guide / CMS real preview and fixed responsive viewport frame.
 for token in [
-    "onTap: saving ? null : () => createPreview('desktop')",
+    "createPreview('desktop')",
     "Click the preview to open the real draft website in a new tab.",
+    "!widget.canWrite",
 ]:
-    check(token in design, f"Design Guide actionable preview missing: {token}")
+    check(token in design, f"Design Guide actionable permission-safe preview missing: {token}")
 for token in [
     'width := "1440px"',
     'height := "900px"',

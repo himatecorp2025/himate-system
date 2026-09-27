@@ -310,6 +310,10 @@ String centralImpactInitialPath() => Uri(
       },
     ).toString();
 
+String centralWebsiteInitialPath() => '/api/v1/central/website';
+
+String centralSystemInitialPath() => '/api/v1/central/system';
+
 String centralConnectionsInitialPath() => Uri(
       path: '/api/v1/central/connections',
       queryParameters: const <String, String>{'limit': '120', 'offset': '0'},
@@ -437,11 +441,14 @@ class Api {
       addDashboard();
     } else if (path.startsWith('/api/v1/cms')) {
       add('/api/v1/cms');
+      add('/api/v1/central/website');
     } else if (path.startsWith('/api/v1/contact/inquiries')) {
       add('/api/v1/contact/inquiries');
+      add('/api/v1/central/website');
     } else if (path.startsWith('/api/v1/backups')) {
       add('/api/v1/backups');
       add('/api/v1/central/administration');
+      add('/api/v1/central/system');
       add('/api/v1/system-health');
     } else if (path.startsWith('/api/v1/provisioning') ||
         path.startsWith('/api/v1/environments') ||
@@ -450,6 +457,10 @@ class Api {
       add('/api/v1/environments');
       add('/api/v1/connectors');
       add('/api/v1/central/connections');
+      add('/api/v1/central/system');
+      if (path.startsWith('/api/v1/environments') || path.startsWith('/api/v1/connectors')) {
+        add('/api/v1/central/website');
+      }
       add('/api/v1/system-health');
     } else if (path.startsWith('/api/v1/admin')) {
       add('/api/v1/admin');
@@ -1043,6 +1054,7 @@ class PartnerRouteLoader extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
           return const Content(
+            showHeader: false,
             eyebrow: 'PLATFORM OPERATIONS',
             title: 'System & Operations',
             subtitle: 'Independent services behind one authenticated public gateway.',
@@ -2009,13 +2021,13 @@ class _ShellState extends State<Shell> {
     if (can('billing.read')) indexes.add(3);
     if (can('billing.read')) indexes.add(4);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(5);
-    if (can('cms.read') || can('contact.read') || can('connectors.read')) indexes.add(6);
+    if (can('cms.read') || can('contact.read') || can('connectors.read') || can('environments.read')) indexes.add(6);
     // The approved CENTRAL-16 information architecture places Administration
     // before technical System & Operations. Compliance archives remain
     // addressable by deep-link and from Administration, but are no longer a
     // competing top-level workspace.
     if (can('administration.read') || can('audit.read')) indexes.add(8);
-    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('backups.read')) indexes.add(7);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
   }
@@ -2040,6 +2052,7 @@ class _ShellState extends State<Shell> {
         canCms: can('cms.read'),
         canContact: can('contact.read'),
         canConnections: can('connectors.read'),
+        canEnvironments: can('environments.read'),
       );
       case 7: return SystemPage(api: widget.api);
       case 8:
@@ -2086,7 +2099,7 @@ class _ShellState extends State<Shell> {
         final allNav = navFor(context);
         final visibleNav = <NavSpec>[for (final index in visibleIndexes) allNav[index]];
         final visibleSelected = visibleIndexes.indexOf(selected).clamp(0, visibleIndexes.length - 1);
-        final referenceHeader = selected >= 0 && selected <= 5;
+        final referenceHeader = selected >= 0 && selected <= 8;
         final referenceTitle = switch (selected) {
           0 => uiLiteral('Dashboard'),
           1 => uiLiteral('Partners'),
@@ -2094,6 +2107,9 @@ class _ShellState extends State<Shell> {
           3 => uiLiteral('Packages'),
           4 => uiLiteral('Licensing & Finance'),
           5 => uiLiteral('Impact & Reports'),
+          6 => uiLiteral('Website & Marketing'),
+          7 => uiLiteral('System & Operations'),
+          8 => uiLiteral('Administration'),
           _ => '',
         };
         final referenceSubtitle = switch (selected) {
@@ -2103,6 +2119,9 @@ class _ShellState extends State<Shell> {
           3 => uiLiteral('Subscription packages, module entitlements and configuration.'),
           4 => uiLiteral('Invoicing, receivables, licenses and partner onboarding overview.'),
           5 => uiLiteral('Real outcomes. Transparent reporting. Measurable impact.'),
+          6 => uiLiteral('Content, brand, discovery, domains and marketing operations in one place.'),
+          7 => uiLiteral('Platform health, infrastructure, deployments and technical diagnostics.'),
+          8 => uiLiteral('Corporate governance, partner administration, access and recovery.'),
           _ => '',
         };
         if (mobile) {
@@ -10084,7 +10103,7 @@ class SystemPage extends StatefulWidget {
 }
 
 class _SystemPageState extends State<SystemPage> {
-  late Future<List<Map<String, dynamic>>> _future;
+  late Future<Map<String, dynamic>> _future;
 
   Api get api => widget.api;
 
@@ -10094,15 +10113,12 @@ class _SystemPageState extends State<SystemPage> {
     _future = _load();
   }
 
-  Future<List<Map<String, dynamic>>> _load({bool force = false}) async {
-    final r = await Future.wait([
-      api.get('/api/v1/system-health/snapshot', force: force, maxAge: const Duration(seconds: 15)),
-      api.get('/api/v1/provisioning/jobs', force: force, maxAge: const Duration(seconds: 15)),
-      api.get('/api/v1/environments', force: force, maxAge: const Duration(seconds: 15)),
-      api.get('/api/v1/backups/summary', force: force, maxAge: const Duration(seconds: 15)),
-    ]);
-    return r;
-  }
+  Future<Map<String, dynamic>> _load({bool force = false}) =>
+      api.get(
+        centralSystemInitialPath(),
+        force: force,
+        maxAge: const Duration(seconds: 15),
+      );
 
   void _refresh() {
     setState(() => _future = _load(force: true));
@@ -10192,14 +10208,17 @@ class _SystemPageState extends State<SystemPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: LText('Developer diagnostics unavailable: $e'), backgroundColor: brandDanger),
+        SnackBar(
+          content: LText(uiBilingual('Developer diagnostics unavailable: $e', 'Fejlesztői diagnosztika nem érhető el: $e')),
+          backgroundColor: brandDanger,
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
+    return FutureBuilder<Map<String, dynamic>>(
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
@@ -10216,6 +10235,7 @@ class _SystemPageState extends State<SystemPage> {
         }
         if (snapshot.hasError || snapshot.data == null) {
           return Content(
+            showHeader: false,
             eyebrow: 'PLATFORM OPERATIONS',
             title: 'System & Operations',
             subtitle: 'Independent services behind one authenticated public gateway.',
@@ -10223,14 +10243,41 @@ class _SystemPageState extends State<SystemPage> {
           );
         }
 
-        final health = snapshot.data![0];
-        final provisioning = items(snapshot.data![1]);
-        final environments = items(snapshot.data![2]);
-        final backupResponse = snapshot.data![3];
+        final model = snapshot.data!;
+        final access = model['access'] is Map
+            ? Map<String,dynamic>.from(model['access'] as Map)
+            : <String,dynamic>{};
+        final meta = model['meta'] is Map
+            ? Map<String,dynamic>.from(model['meta'] as Map)
+            : <String,dynamic>{};
+        final kpis = model['kpis'] is Map
+            ? Map<String,dynamic>.from(model['kpis'] as Map)
+            : <String,dynamic>{};
+        final health = model['health'] is Map
+            ? Map<String,dynamic>.from(model['health'] as Map)
+            : <String,dynamic>{};
+        final provisioning = items(<String,dynamic>{'items': model['provisioning']});
+        final environments = items(<String,dynamic>{'items': model['environments']});
+        final recentEvents = items(<String,dynamic>{'items': model['events']});
+        final backupResponse = model['backups'] is Map
+            ? Map<String,dynamic>.from(model['backups'] as Map)
+            : <String,dynamic>{};
         final backupSummary = items(backupResponse);
         final backupProvider = '${backupResponse['provider'] ?? 'unknown'}';
-        final services = items({'items': health['services']});
-        final partners = items({'items': health['partners']});
+        final services = items(<String,dynamic>{'items': health['services']});
+        final partners = items(<String,dynamic>{'items': health['partners']});
+        final canHealth = access['health'] == true;
+        final canProvisioning = access['provisioning'] == true;
+        final canEnvironments = access['environments'] == true;
+        final canEnvironmentsWrite = access['environments_write'] == true;
+        final canEnvironmentsApprove = access['environments_approve'] == true;
+        final canBackups = access['backups'] == true;
+        final canBackupsApprove = access['backups_approve'] == true;
+        final canAudit = access['audit'] == true;
+        final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
+        final unavailable = meta['unavailable'] is List
+            ? (meta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
+            : <String>[];
         final backupPartnerIds = <String>{
           for (final p in partners)
             if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty &&
@@ -10249,21 +10296,28 @@ class _SystemPageState extends State<SystemPage> {
           final status = '${value ?? 'UNKNOWN'}'.toUpperCase();
           return const {'OK', 'HEALTHY', 'LIVE', 'READY', 'ACTIVE', 'DEPLOYED'}.contains(status);
         }
-        final degradedServices = services.where((service) => !isHealthyStatus(service['status'])).length;
-        final degradedPartners = partners.where((partner) => !isHealthyStatus(partner['overall_status'])).length;
-        final issueCount = degradedServices + degradedPartners;
-        final deployedEnvironments = environments.where((environment) => '${environment['deployment_status'] ?? ''}'.toUpperCase() == 'DEPLOYED').length;
-        final healthyServices = services.where((service) => isHealthyStatus(service['status'])).length;
+        final healthyServices = (kpis['healthy_services'] as num?)?.toInt() ??
+            services.where((service) => isHealthyStatus(service['status'])).length;
+        final serviceCount = (kpis['service_count'] as num?)?.toInt() ?? services.length;
+        final degradedServices = serviceCount - healthyServices;
+        final degradedPartners = (kpis['degraded_partners'] as num?)?.toInt() ??
+            partners.where((partner) => !isHealthyStatus(partner['overall_status'])).length;
+        final issueCount = (kpis['issues'] as num?)?.toInt() ?? (degradedServices + degradedPartners);
+        final deployedEnvironments = (kpis['deployed_environments'] as num?)?.toInt() ?? 0;
+        final environmentCount = (kpis['environment_count'] as num?)?.toInt() ?? environments.length;
+        final partnerSystems = (kpis['partner_systems'] as num?)?.toInt() ?? partners.length;
 
         return Content(
+          showHeader: false,
           title: 'System & Operations',
           subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
           actions: [
-            OutlinedButton.icon(
-              onPressed: _openDeveloperDiagnostics,
-              icon: const Icon(Icons.bug_report_outlined),
-              label: const LText('Developer diagnostics'),
-            ),
+            if (canHealth && canAudit)
+              OutlinedButton.icon(
+                onPressed: _openDeveloperDiagnostics,
+                icon: const Icon(Icons.bug_report_outlined),
+                label: const LText('Developer diagnostics'),
+              ),
             OutlinedButton.icon(
               onPressed: _refresh,
               icon: const Icon(Icons.refresh_rounded),
@@ -10273,32 +10327,46 @@ class _SystemPageState extends State<SystemPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
+                _MessageCard(
+                  icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
+                  title: uiLiteral(status == 'stale' ? 'Operations data is temporarily stale' : 'Operations data is partially available'),
+                  message: '${uiLiteral('Unavailable services')}: ${unavailable.join(', ')}',
+                ),
+                const SizedBox(height: 14),
+              ],
               ResponsiveKpiGrid(children: [
                 Kpi(
                   label: 'System status',
-                  value: overall,
-                  note: '$healthyServices / ${services.length} services healthy',
+                  value: canHealth ? overall : '—',
+                  note: canHealth
+                      ? uiBilingual('$healthyServices / $serviceCount services healthy', '$healthyServices / $serviceCount szolgáltatás egészséges')
+                      : uiLiteral('Permission required'),
                   icon: Icons.dns_outlined,
                   accent: issueCount == 0 ? brandSuccess : brandWarning,
                 ),
                 Kpi(
                   label: 'Partner systems',
-                  value: '${partners.length}',
-                  note: 'Partner health aggregates',
+                  value: canHealth ? '$partnerSystems' : '—',
+                  note: canHealth ? 'Partner health aggregates' : uiLiteral('Permission required'),
                   icon: Icons.hub_outlined,
                   accent: brandSteel,
                 ),
                 Kpi(
                   label: 'Deployments',
-                  value: '$deployedEnvironments',
-                  note: '${environments.length} managed environments',
+                  value: canEnvironments ? '$deployedEnvironments' : '—',
+                  note: canEnvironments
+                      ? uiBilingual('$environmentCount managed environments', '$environmentCount kezelt környezet')
+                      : uiLiteral('Permission required'),
                   icon: Icons.inventory_2_outlined,
                   accent: brandSuccess,
                 ),
                 Kpi(
                   label: 'Issues',
-                  value: '$issueCount',
-                  note: '$degradedServices services · $degradedPartners partners',
+                  value: canHealth ? '$issueCount' : '—',
+                  note: canHealth
+                      ? uiBilingual('$degradedServices services · $degradedPartners partners', '$degradedServices szolgáltatás · $degradedPartners partner')
+                      : uiLiteral('Permission required'),
                   icon: Icons.warning_amber_rounded,
                   accent: issueCount == 0 ? brandSuccess : brandDanger,
                 ),
@@ -10306,158 +10374,261 @@ class _SystemPageState extends State<SystemPage> {
               const SizedBox(height: 18),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final healthCard = _SystemCurrentHealthCard(services: services, overall: overall);
-                  final infrastructure = _SystemInfrastructureSummary(
-                    environments: environments,
-                    backups: backupSummary,
-                    partnerCount: partners.length,
-                  );
-                  if (constraints.maxWidth < 940) {
-                    return Column(children: [healthCard, const SizedBox(height: 14), infrastructure]);
+                  final children = <Widget>[
+                    if (canHealth)
+                      _SystemCurrentHealthCard(services: services, overall: overall),
+                    _SystemInfrastructureSummary(
+                      environments: environments,
+                      backups: backupSummary,
+                      partnerCount: partners.length,
+                      canEnvironments: canEnvironments,
+                      canBackups: canBackups,
+                      canHealth: canHealth,
+                    ),
+                  ];
+                  if (constraints.maxWidth < 940 || children.length == 1) {
+                    return Column(
+                      children: [
+                        for (var index = 0; index < children.length; index++) ...[
+                          children[index],
+                          if (index < children.length - 1) const SizedBox(height: 14),
+                        ],
+                      ],
+                    );
                   }
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(flex: 7, child: healthCard),
+                      Expanded(flex: 7, child: children[0]),
                       const SizedBox(width: 14),
-                      Expanded(flex: 4, child: infrastructure),
+                      Expanded(flex: 4, child: children[1]),
                     ],
                   );
                 },
               ),
               const SizedBox(height: 18),
-              _SectionHeader(
-                title: 'Main service status',
-                subtitle: 'Current authoritative status of critical microservices.',
-                trailing: OutlinedButton.icon(
-                  onPressed: _openDeveloperDiagnostics,
-                  icon: const Icon(Icons.code_rounded, size: 17),
-                  label: const LText('Developer diagnostics'),
+              if (canHealth) ...[
+                _SectionHeader(
+                  title: 'Main service status',
+                  subtitle: 'Current authoritative status of critical microservices.',
+                  trailing: canAudit
+                      ? OutlinedButton.icon(
+                          onPressed: _openDeveloperDiagnostics,
+                          icon: const Icon(Icons.code_rounded, size: 17),
+                          label: const LText('Developer diagnostics'),
+                        )
+                      : _MiniCounter(label: uiBilingual('$serviceCount services', '$serviceCount szolgáltatás')),
                 ),
-              ),
-              const SizedBox(height: 12),
-              if (services.isEmpty)
-                const _MessageCard(
-                  icon: Icons.dns_outlined,
-                  title: 'No service health data',
-                  message: 'No service-health snapshot is available yet.',
-                )
-              else
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (final s in services.take(8))
-                      ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
-                  ],
-                ),
-              const SizedBox(height: 24),
-              _SectionHeader(
-                title: 'Service Health',
-                subtitle: 'Readiness and liveness are monitored independently for each microservice.',
-                trailing: _MiniCounter(label: '${services.length} services'),
-              ),
-              const SizedBox(height: 12),
-              if (services.isEmpty)
-                const _MessageCard(
-                  icon: Icons.dns_outlined,
-                  title: 'No service health data',
-                  message: 'No service-health snapshot is available yet.',
-                )
-              else
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (final s in services)
-                      ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
-                  ],
-                ),
-              const SizedBox(height: 24),
-              _SectionHeader(
-                title: 'Partner Health',
-                subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
-                trailing: _MiniCounter(label: '${partners.length} partners'),
-              ),
-              const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, c) {
-                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                  return Wrap(
+                const SizedBox(height: 12),
+                if (services.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.dns_outlined,
+                    title: 'No service health data',
+                    message: 'No service-health snapshot is available yet.',
+                  )
+                else
+                  Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final p in partners)
-                        SizedBox(
-                          width: width,
-                          child: _InfoCard(
-                            title: '${p['partner_id']}',
-                            icon: Icons.monitor_heart_outlined,
-                            children: [
-                              _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Partner DB', value: '${p['database_health'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Storage', value: '${p['storage_health'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Hostname / runtime', value: '${p['hostname_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Data sync', value: '${p['sync_status'] ?? 'NEVER'}'),
-                              _DefinitionRow(label: 'Last sync', value: '${p['last_sync_at'] ?? '—'}'),
-                              _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
-                            ],
-                          ),
-                        ),
+                      for (final s in services)
+                        ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
                     ],
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              Start22ConnectorPanel(api: api),
-              const SizedBox(height: 24),
-              _SectionHeader(
-                title: 'Provisioning Engine',
-                subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
-                trailing: _MiniCounter(label: '${provisioning.length} jobs'),
-              ),
-              const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, c) {
-                  final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1000 ? (c.maxWidth - 12) / 2 : (c.maxWidth - 24) / 3;
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (final j in provisioning)
-                        SizedBox(
-                          width: width,
-                          child: _InfoCard(
-                            title: '${j['partner_id']}',
-                            icon: Icons.precision_manufacturing_outlined,
-                            children: [
-                              _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
-                              _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
-                              _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
-                              _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
-                            ],
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              DomainsDeploymentsPanel(
-                api: api,
-                initialEnvironments: environments,
-              ),
-              const SizedBox(height: 24),
-              BackupsPanel(
-                api: api,
-                initialSummary: backupSummary,
-                partnerIds: backupPartnerIds,
-                initialProvider: backupProvider,
-              ),
-              const SizedBox(height: 24),
+                  ),
+                _SectionHeader(
+                  title: 'Partner Health',
+                  subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
+                  trailing: _MiniCounter(label: uiBilingual('${partners.length} partners', '${partners.length} partner')),
+                ),
+                const SizedBox(height: 12),
+                if (partners.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.monitor_heart_outlined,
+                    title: 'No partner health data',
+                    message: 'No partner health aggregate is available in the current snapshot.',
+                  )
+                else
+                  LayoutBuilder(
+                    builder: (context, c) {
+                      final width = c.maxWidth < 620
+                          ? c.maxWidth
+                          : c.maxWidth < 1000
+                              ? (c.maxWidth - 12) / 2
+                              : (c.maxWidth - 24) / 3;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final p in partners)
+                            SizedBox(
+                              width: width,
+                              child: _InfoCard(
+                                title: '${p['partner_id']}',
+                                icon: Icons.monitor_heart_outlined,
+                                children: [
+                                  _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Partner DB', value: '${p['database_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Storage', value: '${p['storage_health'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Hostname / runtime', value: '${p['hostname_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Data sync', value: '${p['sync_status'] ?? 'NEVER'}'),
+                                  _DefinitionRow(label: 'Last sync', value: '${p['last_sync_at'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                const SizedBox(height: 24),
+              ],
+              if (canProvisioning) ...[
+                _SectionHeader(
+                  title: 'Provisioning Engine',
+                  subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
+                  trailing: _MiniCounter(label: uiBilingual('${provisioning.length} jobs', '${provisioning.length} feladat')),
+                ),
+                const SizedBox(height: 12),
+                if (provisioning.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.precision_manufacturing_outlined,
+                    title: 'No provisioning jobs',
+                    message: 'No provisioning job is present in the current operations snapshot.',
+                  )
+                else
+                  LayoutBuilder(
+                    builder: (context, c) {
+                      final width = c.maxWidth < 620
+                          ? c.maxWidth
+                          : c.maxWidth < 1000
+                              ? (c.maxWidth - 12) / 2
+                              : (c.maxWidth - 24) / 3;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final j in provisioning)
+                            SizedBox(
+                              width: width,
+                              child: _InfoCard(
+                                title: '${j['partner_id']}',
+                                icon: Icons.precision_manufacturing_outlined,
+                                children: [
+                                  _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
+                                  _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
+                                  _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
+                                  _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                const SizedBox(height: 24),
+              ],
+              if (canEnvironments) ...[
+                DomainsDeploymentsPanel(
+                  api: api,
+                  initialEnvironments: environments,
+                  canWrite: canEnvironmentsWrite,
+                  canApprove: canEnvironmentsApprove,
+                ),
+                const SizedBox(height: 24),
+              ],
+              if (canBackups) ...[
+                BackupsPanel(
+                  api: api,
+                  initialSummary: backupSummary,
+                  partnerIds: backupPartnerIds,
+                  initialProvider: backupProvider,
+                  canMutate: canBackupsApprove,
+                ),
+                const SizedBox(height: 24),
+              ],
+              if (canAudit) ...[
+                _SectionHeader(
+                  title: 'Recent protected events',
+                  subtitle: 'Latest authenticated operations from the immutable central audit trail.',
+                  trailing: _MiniCounter(label: uiBilingual('${recentEvents.length} events', '${recentEvents.length} esemény')),
+                ),
+                const SizedBox(height: 12),
+                if (recentEvents.isEmpty)
+                  const _MessageCard(
+                    icon: Icons.event_note_outlined,
+                    title: 'No recent protected events',
+                    message: 'The current audit window does not contain protected operations.',
+                  )
+                else
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Column(
+                        children: [
+                          for (var index = 0; index < recentEvents.length; index++) ...[
+                            Builder(
+                              builder: (context) {
+                                final event = recentEvents[index];
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 34,
+                                        height: 34,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF4F7FB),
+                                          borderRadius: BorderRadius.circular(9),
+                                        ),
+                                        child: Icon(
+                                          '${event['outcome'] ?? ''}'.toUpperCase() == 'SUCCESS'
+                                              ? Icons.check_circle_outline_rounded
+                                              : Icons.shield_outlined,
+                                          color: '${event['outcome'] ?? ''}'.toUpperCase() == 'SUCCESS'
+                                              ? brandSuccess
+                                              : brandSteel,
+                                          size: 17,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            LText(
+                                              '${event['action'] ?? event['method'] ?? 'EVENT'}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            LText(
+                                              '${event['method'] ?? '—'} · ${event['path'] ?? '—'}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _StatusPill(label: '${event['outcome'] ?? event['status'] ?? 'UNKNOWN'}'),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            if (index < recentEvents.length - 1) const Divider(height: 1),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 24),
+              ],
               LayoutBuilder(
                 builder: (context, c) {
                   const architecture = _ArchitectureCard();
@@ -10524,7 +10695,13 @@ class _SystemCurrentHealthCard extends StatelessWidget {
                 backgroundColor: brandMist,
               ),
               const SizedBox(height:10),
-              LText('$good / ${services.length} services healthy',style:const TextStyle(color:brandNavy,fontSize:11,fontWeight:FontWeight.w700)),
+              LText(
+                uiBilingual(
+                  '$good / ${services.length} services healthy',
+                  '$good / ${services.length} szolgáltatás egészséges',
+                ),
+                style:const TextStyle(color:brandNavy,fontSize:11,fontWeight:FontWeight.w700),
+              ),
               const SizedBox(height:14),
               Wrap(
                 spacing:7,
@@ -10551,10 +10728,20 @@ class _SystemCurrentHealthCard extends StatelessWidget {
 }
 
 class _SystemInfrastructureSummary extends StatelessWidget {
-  const _SystemInfrastructureSummary({required this.environments,required this.backups,required this.partnerCount});
+  const _SystemInfrastructureSummary({
+    required this.environments,
+    required this.backups,
+    required this.partnerCount,
+    required this.canEnvironments,
+    required this.canBackups,
+    required this.canHealth,
+  });
   final List<Map<String,dynamic>> environments;
   final List<Map<String,dynamic>> backups;
   final int partnerCount;
+  final bool canEnvironments;
+  final bool canBackups;
+  final bool canHealth;
 
   @override
   Widget build(BuildContext context) {
@@ -10568,16 +10755,27 @@ class _SystemInfrastructureSummary extends StatelessWidget {
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             LText('Infrastructure status',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
-            _DefinitionRow(label:'Managed environments',value:'${environments.length}'),
-            _DefinitionRow(label:'Production environments',value:'$production'),
-            _DefinitionRow(label:'Live environments',value:'$live'),
-            _DefinitionRow(label:'Partner systems',value:'$partnerCount'),
-            _DefinitionRow(label:'Backup scopes',value:'${backups.length}'),
+            _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
+            _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
+            _DefinitionRow(label:'Live environments',value:canEnvironments?'$live':'—'),
+            _DefinitionRow(label:'Partner systems',value:canHealth?'$partnerCount':'—'),
+            _DefinitionRow(label:'Backup scopes',value:canBackups?'${backups.length}':'—'),
             const Spacer(),
-            const Row(children:[
-              Icon(Icons.verified_outlined,color:brandSuccess,size:17),
-              SizedBox(width:7),
-              Expanded(child:LText('All values come from live operations endpoints.',style:TextStyle(color:brandTextSoft,fontSize:9.5))),
+            Row(children:[
+              Icon(
+                canEnvironments || canBackups || canHealth ? Icons.verified_outlined : Icons.lock_outline_rounded,
+                color: canEnvironments || canBackups || canHealth ? brandSuccess : brandTextSoft,
+                size:17,
+              ),
+              const SizedBox(width:7),
+              Expanded(
+                child:LText(
+                  canEnvironments || canBackups || canHealth
+                      ? uiLiteral('All visible values come from authoritative operations endpoints.')
+                      : uiLiteral('Permission required'),
+                  style:const TextStyle(color:brandTextSoft,fontSize:9.5),
+                ),
+              ),
             ]),
           ]),
         ),
@@ -12333,6 +12531,18 @@ class Content extends StatelessWidget {
                       ],
                     ),
                 if (showHeader) const SizedBox(height: 22),
+                if (!showHeader && actions.isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 9,
+                      runSpacing: 9,
+                      children: actions,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 child,
               ],
             ),
