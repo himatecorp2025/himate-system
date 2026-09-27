@@ -179,6 +179,12 @@ for source, signature, label in [
     for forbidden in ["internalGET", "internalGETWithHeaders", "serveProxy", "a.client.Do", "http.NewRequestWithContext"]:
         check(forbidden not in block, f"{label} performs forbidden request-path I/O: {forbidden}")
 
+# Central routing must not short-circuit persistent reads through the legacy
+# process-memory response cache.
+central_router = func_block(central10, "func (a *app) central10ReadModel")
+check("central10Cached(" not in central_router,
+      "Central browser read router can bypass the persistent DB projection through legacy response cache")
+
 # Critical screen handlers must only read materialized projections.
 for source, signature in [
     (central10, "func (a *app) central10Partners"),
