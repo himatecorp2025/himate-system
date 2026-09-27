@@ -1065,13 +1065,39 @@ class PartnerRouteLoader extends StatelessWidget {
   final String partnerId;
   final String? initialSection;
 
+  Future<Map<String, dynamic>> _loadPrimaryPartner() async {
+    final detailPath = '/api/v1/central/partners/$partnerId';
+    final cached = api.peek(detailPath);
+    if (cached != null && cached['partner'] is Map) {
+      return cached;
+    }
+
+    final portfolioPath = Uri(
+      path: '/api/v1/central/partners',
+      queryParameters: <String, String>{
+        'q': partnerId,
+        'limit': '24',
+        'offset': '0',
+      },
+    ).toString();
+    final portfolio = await api
+        .get(portfolioPath, maxAge: const Duration(seconds: 5))
+        .timeout(const Duration(seconds: 3));
+    for (final row in items(portfolio)) {
+      if ('${row['id'] ?? ''}' == partnerId) {
+        return <String, dynamic>{'partner': row};
+      }
+    }
+
+    return api
+        .get(detailPath, force: true, maxAge: const Duration(seconds: 3))
+        .timeout(const Duration(seconds: 3));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final path = '/api/v1/central/partners/$partnerId';
     return FutureBuilder<Map<String, dynamic>>(
-      future: api
-          .get(path, maxAge: const Duration(seconds: 5))
-          .timeout(const Duration(seconds: 3)),
+      future: _loadPrimaryPartner(),
       initialData: api.peek(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
