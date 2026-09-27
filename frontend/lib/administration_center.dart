@@ -17,6 +17,7 @@ class AdministrationCenterPage extends StatefulWidget {
     required this.canBillingRead,
     required this.canBillingWrite,
     required this.canBackupsRead,
+    required this.canBackupsWrite,
     required this.canBackupsApprove,
     required this.canAuditRead,
     super.key,
@@ -28,6 +29,7 @@ class AdministrationCenterPage extends StatefulWidget {
   final bool canBillingRead;
   final bool canBillingWrite;
   final bool canBackupsRead;
+  final bool canBackupsWrite;
   final bool canBackupsApprove;
   final bool canAuditRead;
 
@@ -673,7 +675,8 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
             api: widget.api,
             partnerRows: partners,
             ids: const <String>['_platform'],
-            canMutate: widget.canBackupsApprove,
+            canMutate: widget.canBackupsWrite,
+            canApproveRestore: widget.canBackupsApprove,
           ),
         );
       case 'partner_documents':
@@ -723,7 +726,8 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
             api: widget.api,
             partnerRows: <Map<String, dynamic>>[partner],
             ids: <String>[id],
-            canMutate: widget.canBackupsApprove,
+            canMutate: widget.canBackupsWrite,
+            canApproveRestore: widget.canBackupsApprove,
           ),
         );
       default:
