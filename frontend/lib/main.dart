@@ -562,20 +562,19 @@ class Api {
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;
     final uri = Uri.parse(path);
-    // Central performance is an API/SLO concern, not a browser-abort policy.
-    // Keep one transport safety timeout so a temporary >800 ms response cannot
-    // be converted into a false client failure while hot snapshots recover.
-    const timeout = Duration(seconds: 4);
+    const mutationTimeout = Duration(seconds: 4);
     if (method == 'POST') {
-      response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(timeout);
+      response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(mutationTimeout);
     } else if (method == 'PUT') {
-      response = await client.put(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
+      response = await client.put(uri, headers: headers, body: jsonEncode(body)).timeout(mutationTimeout);
     } else if (method == 'PATCH') {
-      response = await client.patch(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
+      response = await client.patch(uri, headers: headers, body: jsonEncode(body)).timeout(mutationTimeout);
     } else if (method == 'DELETE') {
-      response = await client.delete(uri, headers: headers).timeout(timeout);
+      response = await client.delete(uri, headers: headers).timeout(mutationTimeout);
     } else {
-      response = await client.get(uri, headers: headers).timeout(timeout);
+      // Central read performance is enforced by the Gateway read-model SLO.
+      // Never convert a transient backend delay into a browser TimeoutException.
+      response = await client.get(uri, headers: headers);
     }
     if (response.statusCode == 204) return <String, dynamic>{};
     Map<String, dynamic> data = <String, dynamic>{};
@@ -719,65 +718,9 @@ class _HimateAppState extends State<HimateApp> {
   }
 
   void _warmControlPlane() {
-    if (user == null) return;
-
-    // Keep login/navigation responsive by warming only the first screen keys
-    // immediately. Preset/status variants are useful, but firing all of them
-    // at once competes with the user's first real navigation request.
-    final primaryTargets = <String>{};
-    final deferredTargets = <String>{};
-    if (_can('dashboard.read')) {
-      primaryTargets.add(centralDashboardInitialPath());
-    }
-    if (_can('partners.read')) {
-      primaryTargets.add(centralPartnersInitialPath());
-      deferredTargets.add(centralPartnersPresetPath(lifecycle: 'LIVE'));
-      deferredTargets.add(centralPartnersPresetPath(lifecycle: 'PROSPECT'));
-      deferredTargets.add(centralPartnersPresetPath(reference: true));
-    }
-    if (_can('catalog.read')) {
-      primaryTargets.add(centralModulesInitialPath());
-      deferredTargets.add(centralModulesCommercialInitialPath());
-    }
-    if (_can('billing.read')) {
-      primaryTargets.add(centralPackagesInitialPath());
-      deferredTargets.add(centralPackagesSupplementaryInitialPath());
-      primaryTargets.add(centralFinanceInitialPath());
-      for (final status in const ['DRAFT', 'APPROVED', 'SENT', 'PAID']) {
-        deferredTargets.add(centralFinancePath(invoiceStatus: status));
-      }
-    }
-    if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
-      deferredTargets.add(centralImpactInitialPath());
-    }
-    if (_can('connectors.read')) {
-      deferredTargets.add(centralConnectionsInitialPath());
-    }
-    if (_can('administration.read')) {
-      deferredTargets.add(centralAdministrationInitialPath());
-    }
-    if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
-      deferredTargets.add('/api/v1/system-health/snapshot');
-      deferredTargets.add('/api/v1/provisioning/jobs');
-      deferredTargets.add('/api/v1/environments');
-      deferredTargets.add('/api/v1/backups/summary');
-    }
-
-    final path = Uri.base.path;
-    if (_can('partners.read') && path.startsWith('/app/partners/')) {
-      final id = path.substring('/app/partners/'.length).split('/').first;
-      if (id.isNotEmpty) primaryTargets.add('/api/v1/central/partners/$id');
-    }
-
-    if (primaryTargets.isNotEmpty) {
-      api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30));
-    }
-    if (deferredTargets.isNotEmpty) {
-      Timer(const Duration(milliseconds: 1500), () {
-        if (!mounted || user == null) return;
-        api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30));
-      });
-    }
+    // CENTRAL-21: the Gateway owns authoritative read-model warming. The
+    // browser must not issue a parallel prefetch storm after auth/session
+    // restore because those requests can race with the page's own first read.
   }
 
   Future<void> _loadPublishedBrandAssets() async {
@@ -1080,18 +1023,21 @@ class PartnerRouteLoader extends StatelessWidget {
         'offset': '0',
       },
     ).toString();
-    final portfolio = await api
-        .get(portfolioPath, maxAge: const Duration(seconds: 5))
-        .timeout(const Duration(seconds: 3));
+    final portfolio = await api.get(
+      portfolioPath,
+      maxAge: const Duration(seconds: 5),
+    );
     for (final row in items(portfolio)) {
       if ('${row['id'] ?? ''}' == partnerId) {
         return <String, dynamic>{'partner': row};
       }
     }
 
-    return api
-        .get(detailPath, force: true, maxAge: const Duration(seconds: 3))
-        .timeout(const Duration(seconds: 3));
+    return api.get(
+      detailPath,
+      force: true,
+      maxAge: const Duration(seconds: 3),
+    );
   }
 
   @override
@@ -3795,13 +3741,11 @@ class _PartnersPageState extends State<PartnersPage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyModel,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
       applyModel(model);
     } catch (e) {
       if (mounted && generation == _loadGeneration) {
@@ -4625,14 +4569,7 @@ class _PartnersPageState extends State<PartnersPage> {
                   ),
                   const SizedBox(height: 14),
                 ],
-                if (error != null) ...[
-                  _MessageCard(
-                    icon: Icons.cloud_off_outlined,
-                    title: uiLiteral('Partner data is partially unavailable'),
-                    message: error!,
-                  ),
-                  const SizedBox(height: 14),
-                ],
+
                 ResponsiveKpiGrid(
                       children: [
                         Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy, onTap: () => applyPortfolioPreset()),
@@ -5016,7 +4953,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       final model = await widget.api.get(
         '/api/v1/central/partners/$id',
         maxAge: const Duration(seconds: 5),
-      ).timeout(const Duration(seconds: 8));
+      );
       if (!mounted || generation != _supplementalLoadGeneration) return;
       final core = model['partner'] is Map
           ? Map<String, dynamic>.from(model['partner'] as Map)
@@ -5208,9 +5145,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         path,
         force: force,
         maxAge: const Duration(seconds: 3),
-      ).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => throw TimeoutException('Partner module view timed out after 5 seconds'),
       );
       if (!mounted) return;
       setState(() {
@@ -7051,14 +6985,12 @@ class _PackagesPageState extends State<PackagesPage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            force: force,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyPrimary,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyPrimary,
+      );
       applyPrimary(model);
       if (model['ready'] == true) unawaited(loadSupplementary());
     } catch (e) {
@@ -7229,13 +7161,11 @@ class _PackagesPageState extends State<PackagesPage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applySupplementary,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applySupplementary,
+      );
       applySupplementary(model);
     } catch (e) {
       if (!mounted) return;
@@ -8455,14 +8385,12 @@ class _FinancePageState extends State<FinancePage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            force: force,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyModel,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
       applyModel(model);
     } catch (e) {
       if (!mounted) return;
@@ -10824,20 +10752,10 @@ class _SystemPageState extends State<SystemPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (provisional) ...[
-                _MessageCard(
-                  icon: snapshot.hasError ? Icons.cloud_off_outlined : Icons.sync_rounded,
-                  title: uiLiteral(snapshot.hasError ? 'Operations data is temporarily unavailable' : 'Operations data is loading'),
-                  message: snapshot.hasError
-                      ? '${snapshot.error}'
-                      : uiLiteral('The complete System & Operations layout remains visible while the latest health snapshot is prepared.'),
-                ),
-                const SizedBox(height: 14),
-              ],
-              if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
-                _MessageCard(
-                  icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
-                  title: uiLiteral(status == 'stale' ? 'Operations data is temporarily stale' : 'Operations data is partially available'),
-                  message: '${uiLiteral('Unavailable services')}: ${unavailable.join(', ')}',
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  color: brandGold,
+                  backgroundColor: brandMist,
                 ),
                 const SizedBox(height: 14),
               ],
