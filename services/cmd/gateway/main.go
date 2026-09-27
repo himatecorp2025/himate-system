@@ -2002,7 +2002,7 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	}
 
 	refreshRequested := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")), "true")
-	payload, updatedAt, stale := a.dashboardSnapshotForRead(year)
+	payload, updatedAt, stale := a.dashboardSnapshotForReadContext(r.Context(), year)
 	if payload == nil {
 		payload = dashboardWarmingSnapshot(year, a.env, a.version)
 		stale = true
