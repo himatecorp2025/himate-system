@@ -169,7 +169,8 @@ for token in [
     check(token in frontend, f"CENTRAL-16 System & Operations contract missing: {token}")
 
 # No fixed card-count acceptance. Responsive/dynamic collection rendering stays data driven.
-check("for (final plan in plans)" in frontend, "CENTRAL-16 package rendering is not dynamic")
+check("for (final plan in canonicalPlans)" in frontend or "for (final plan in plans)" in frontend,
+      "CENTRAL-16 package rendering is not dynamic")
 check("for (final p in filtered)" in frontend, "CENTRAL-16 partner rendering is not dynamic")
 
 if errors:
