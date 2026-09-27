@@ -5,36 +5,42 @@ import (
 	"time"
 )
 
-func TestCentral10CanonicalPlans(t *testing.T) {
+func TestCentral10CanonicalPlansPreserveBillingAuthority(t *testing.T) {
 	cases := []struct {
 		key, name, display, entitlement string
-		price                         int
-		limit                         any
+		price                         float64
+		inputLimit                    int
+		outputLimit                   any
 	}{
-		{"STARTER", "Starter", "$990 + VAT", "10 modules", 990, 10},
-		{"BUSINESS", "Business", "$1,490 + VAT", "20 modules", 1490, 20},
-		{"FLEX", "Premium", "$2,490 + VAT", "Unlimited", 2490, nil},
+		{"STARTER", "Starter", "$1,111 + VAT", "10 modules", 1111, 10, 10},
+		{"BUSINESS", "Business", "$2,222 + VAT", "20 modules", 2222, 20, 20},
+		{"FLEX", "Premium", "$3,333 + VAT", "Unlimited", 3333, 0, nil},
 	}
 	for _, tc := range cases {
-		got := central10CanonicalPlan(map[string]any{"plan_key": tc.key}, map[string]map[string]any{})
+		got := central10CanonicalPlan(map[string]any{
+			"plan_key": tc.key,
+			"currency": "USD",
+			"monthly_price": tc.price,
+			"module_limit": tc.inputLimit,
+		}, map[string]map[string]any{})
 		if got["display_name"] != tc.name {
 			t.Fatalf("%s display name = %v", tc.key, got["display_name"])
 		}
 		if got["display_price"] != tc.display {
 			t.Fatalf("%s display price = %v", tc.key, got["display_price"])
 		}
-		if got["monthly_price"] != tc.price {
-			t.Fatalf("%s monthly price = %v", tc.key, got["monthly_price"])
+		if central10Float(got["monthly_price"]) != tc.price {
+			t.Fatalf("%s monthly price = %v, want authoritative %v", tc.key, got["monthly_price"], tc.price)
 		}
 		if got["entitlement"] != tc.entitlement {
 			t.Fatalf("%s entitlement = %v", tc.key, got["entitlement"])
 		}
-		if tc.limit == nil {
+		if tc.outputLimit == nil {
 			if got["module_limit"] != nil {
 				t.Fatalf("%s module limit = %v, want nil", tc.key, got["module_limit"])
 			}
-		} else if got["module_limit"] != tc.limit {
-			t.Fatalf("%s module limit = %v, want %v", tc.key, got["module_limit"], tc.limit)
+		} else if central10Int(got["module_limit"]) != tc.inputLimit {
+			t.Fatalf("%s module limit = %v, want authoritative %v", tc.key, got["module_limit"], tc.inputLimit)
 		}
 	}
 }
