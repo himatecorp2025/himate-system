@@ -705,6 +705,7 @@ class HimateI18n {
     'New Partner': 'Új partner',
     'Search partners...': 'Partnerek keresése...',
     'All categories': 'Minden kategória',
+    'No partner records in this state': 'Nincs partnerrekord ebben az államban',
     'All lifecycle states': 'Minden életciklus-állapot',
     'All health states': 'Minden egészségi állapot',
     'Reference partner': 'Referenciapartner',
