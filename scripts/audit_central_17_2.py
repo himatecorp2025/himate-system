@@ -65,16 +65,22 @@ for token in [
     "impactStatus == 'partial'",
     "Some Impact sections are restricted",
     "canReadImpact",
+    "canWriteImpact",
     "canReadEvidence",
+    "canWriteEvidence",
     "canReadReports",
+    "canWriteReports",
 ]:
     check(token in frontend, f"CENTRAL-17.2 Impact UI contract missing: {token}")
 
 for token in [
     '"access": map[string]any{',
     'a.hasPermission(actor, "impact.read")',
+    'a.hasPermission(actor, "impact.write")',
     'a.hasPermission(actor, "evidence.read")',
+    'a.hasPermission(actor, "evidence.write")',
     'a.hasPermission(actor, "reports.read")',
+    'a.hasPermission(actor, "reports.write")',
 ]:
     check(token in gateway, f"CENTRAL-17.2 Impact permission read-model contract missing: {token}")
 
