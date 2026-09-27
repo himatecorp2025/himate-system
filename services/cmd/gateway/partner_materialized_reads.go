@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -157,6 +159,93 @@ func tenantFinanceMaterializedGET(snapshot map[string]any, path string, u partne
 	return nil, 0, false
 }
 
+func partnerPDFEscape(value string) string {
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	value = strings.ReplaceAll(value, "(", "\\(")
+	value = strings.ReplaceAll(value, ")", "\\)")
+	return value
+}
+
+func partnerBasicPDF(lines []string) []byte {
+	var stream strings.Builder
+	stream.WriteString("BT /F1 12 Tf 50 790 Td ")
+	for i, line := range lines {
+		if i > 0 {
+			stream.WriteString("0 -18 Td ")
+		}
+		stream.WriteString("(")
+		stream.WriteString(partnerPDFEscape(line))
+		stream.WriteString(") Tj ")
+	}
+	stream.WriteString("ET")
+	content := stream.String()
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content),
+	}
+	var out bytes.Buffer
+	out.WriteString("%PDF-1.4\n")
+	offsets := make([]int, len(objects)+1)
+	for i, object := range objects {
+		offsets[i+1] = out.Len()
+		fmt.Fprintf(&out, "%d 0 obj\n%s\nendobj\n", i+1, object)
+	}
+	xref := out.Len()
+	fmt.Fprintf(&out, "xref\n0 %d\n0000000000 65535 f \n", len(objects)+1)
+	for i := 1; i <= len(objects); i++ {
+		fmt.Fprintf(&out, "%010d 00000 n \n", offsets[i])
+	}
+	fmt.Fprintf(&out, "trailer << /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF", len(objects)+1, xref)
+	return out.Bytes()
+}
+
+func servePartnerInvoicePDFFromSnapshot(w http.ResponseWriter, snapshot map[string]any, invoiceID string) {
+	invoiceID = strings.TrimSpace(invoiceID)
+	var invoice map[string]any
+	for _, item := range anyItems(partnerWorkspaceMap(snapshot, "portal_billing_invoices")["items"]) {
+		if central10String(item["id"]) == invoiceID {
+			invoice = item
+			break
+		}
+	}
+	if invoice == nil {
+		common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Invoice not found")
+		return
+	}
+	workflow := strings.ToUpper(central10String(invoice["workflow_status"]))
+	if workflow == "DRAFT" {
+		common.APIError(w, http.StatusConflict, "INVOICE_NOT_APPROVED", "Draft invoice has no distributable PDF")
+		return
+	}
+	profile := partnerWorkspaceMap(snapshot, "company_profile")
+	lines := []string{
+		"HIMATE INVOICE",
+		"Invoice: " + invoiceID,
+		"Issuer: " + central10String(profile["legal_name"]),
+		"Address: " + central10String(profile["address"]),
+		"Tax ID: " + central10String(profile["tax_id"]),
+		"Billing email: " + central10String(profile["email"]),
+		"Partner: " + central10String(invoice["partner_id"]),
+		"Period: " + central10String(invoice["service_period_start"]) + " - " + central10String(invoice["service_period_end_exclusive"]),
+		fmt.Sprintf("Net: %s %.2f", central10String(invoice["currency"]), central10Float(invoice["net_total"])),
+		fmt.Sprintf("Tax: %.2f%% = %.2f", central10Float(invoice["tax_rate_percent"]), central10Float(invoice["tax_amount"])),
+		fmt.Sprintf("Total: %s %.2f", central10String(invoice["currency"]), central10Float(invoice["gross_total"])),
+		"Status: " + workflow,
+	}
+	if deadline := central10String(invoice["payment_deadline_at"]); deadline != "" {
+		lines = append(lines, "Payment deadline: "+deadline)
+	}
+	pdf := partnerBasicPDF(lines)
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", invoiceID+".pdf"))
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(pdf)
+}
+
 // servePartnerMaterializedGET preserves the existing Partner Portal REST
 // contract while making every screen-data GET a single tenant snapshot read.
 // It deliberately performs no internalGET/internalJSON/proxy operation.
@@ -172,7 +261,8 @@ func (a *app) servePartnerMaterializedGET(w http.ResponseWriter, r *http.Request
 	case path == "/company":
 		permission = "company.read"
 	case path == "/plans", path == "/plan", path == "/charity",
-		path == "/billing/summary", path == "/billing/subscriptions", path == "/billing/invoices":
+		path == "/billing/summary", path == "/billing/subscriptions", path == "/billing/invoices",
+		strings.HasPrefix(path, "/billing/invoices/") && strings.HasSuffix(path, "/pdf"):
 		permission = "billing.read"
 	case path == "/plan/modules", path == "/charity/modules", path == "/modules",
 		strings.HasPrefix(path, "/runtime/modules/"):
@@ -238,6 +328,13 @@ func (a *app) servePartnerMaterializedGET(w http.ResponseWriter, r *http.Request
 		common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "portal_billing_subscriptions"))
 	case path == "/billing/invoices":
 		common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "portal_billing_invoices"))
+	case strings.HasPrefix(path, "/billing/invoices/") && strings.HasSuffix(path, "/pdf"):
+		invoiceID := strings.Trim(strings.TrimSuffix(strings.TrimPrefix(path, "/billing/invoices/"), "/pdf"), "/")
+		if invoiceID == "" || strings.Contains(invoiceID, "/") {
+			common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Invoice not found")
+			return true
+		}
+		servePartnerInvoicePDFFromSnapshot(w, snapshot, invoiceID)
 	case path == "/impact/summary":
 		common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "portal_impact"))
 	case path == "/contacts":
