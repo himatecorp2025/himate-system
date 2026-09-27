@@ -10465,10 +10465,10 @@ class _SystemPageState extends State<SystemPage> {
                 _RuleItem(Icons.error_outline_rounded, uiLiteral('Recent failed operations'), '${failures.length}'),
               ]),
               const SizedBox(height: 16),
-              const _DialogSectionLabel('DEGRADED SERVICES'),
+              _DialogSectionLabel(uiLiteral('DEGRADED SERVICES')),
               const SizedBox(height: 8),
               if (unhealthy.isEmpty)
-                const LText('No degraded service is present in the current health snapshot.')
+                LText(uiLiteral('No degraded service is present in the current health snapshot.'))
               else
                 Wrap(
                   spacing: 8,
@@ -10482,10 +10482,10 @@ class _SystemPageState extends State<SystemPage> {
                   ],
                 ),
               const SizedBox(height: 18),
-              const _DialogSectionLabel('LATEST FAILED OPERATIONS'),
+              _DialogSectionLabel(uiLiteral('LATEST FAILED OPERATIONS')),
               const SizedBox(height: 8),
               if (failures.isEmpty)
-                const LText('No failed protected operation was recorded in the latest audit window.')
+                LText(uiLiteral('No failed protected operation was recorded in the latest audit window.'))
               else
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 360),
@@ -13032,7 +13032,7 @@ class ServiceCard extends StatelessWidget {
             const Spacer(),
             LText(name, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14)),
             const SizedBox(height: 3),
-            LText(ok ? 'Service responding normally' : 'Awaiting healthy response', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+            LText(uiLiteral(ok ? 'Service responding normally' : 'Awaiting healthy response'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
           ]),
         ),
       ),
