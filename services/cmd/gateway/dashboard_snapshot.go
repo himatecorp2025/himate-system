@@ -325,15 +325,15 @@ func (a *app) requestDashboardRefresh() {
 }
 
 func (a *app) runDashboardMaterializer() {
-	a.refreshDashboardSnapshot(time.Now().UTC().Year())
+	a.refreshDashboardSerialized()
 	ticker := time.NewTicker(dashboardSnapshotRefreshInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			a.refreshDashboardSnapshot(time.Now().UTC().Year())
+			a.refreshDashboardSerialized()
 		case <-a.dashboardRefreshCh:
-			a.refreshDashboardSnapshot(time.Now().UTC().Year())
+			a.refreshDashboardSerialized()
 		}
 	}
 }
