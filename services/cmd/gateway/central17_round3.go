@@ -241,10 +241,11 @@ func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor use
 
 func (a *app) materializeCentralSystem(ctx context.Context) map[string]any {
 	var healthPayload, provisioningPayload, environmentsPayload, backupsPayload map[string]any
-	var healthErr, provisioningErr, environmentsErr, backupsErr, auditErr error
+	var restoreTestsPayload, restoreJobsPayload map[string]any
+	var healthErr, provisioningErr, environmentsErr, backupsErr, restoreTestsErr, restoreJobsErr, auditErr error
 	auditEvents := []map[string]any{}
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(7)
 
 	go func() {
 		defer wg.Done()
@@ -261,6 +262,14 @@ func (a *app) materializeCentralSystem(ctx context.Context) map[string]any {
 	go func() {
 		defer wg.Done()
 		backupsErr = a.internalGET(ctx, a.hosts["backups"], "/api/v1/backups/summary", &backupsPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		restoreTestsErr = a.internalGET(ctx, a.hosts["backups"], "/api/v1/backups/restore-tests?limit=200", &restoreTestsPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		restoreJobsErr = a.internalGET(ctx, a.hosts["backups"], "/api/v1/backups/restores", &restoreJobsPayload)
 	}()
 	go func() {
 		defer wg.Done()
@@ -303,6 +312,12 @@ func (a *app) materializeCentralSystem(ctx context.Context) map[string]any {
 	if backupsErr != nil {
 		unavailable = append(unavailable, "backups")
 	}
+	if restoreTestsErr != nil {
+		unavailable = append(unavailable, "backup_restore_tests")
+	}
+	if restoreJobsErr != nil {
+		unavailable = append(unavailable, "backup_restore_jobs")
+	}
 	if auditErr != nil {
 		unavailable = append(unavailable, "audit_events")
 	}
@@ -342,6 +357,20 @@ func (a *app) materializeCentralSystem(ctx context.Context) map[string]any {
 		overall = "UNKNOWN"
 	}
 	issueCount := (len(services) - healthyServices) + degradedPartners
+	restorePointsByID := map[string]any{}
+	for _, summary := range backups {
+		pointID := central10String(summary["latest_restore_point_id"])
+		if pointID == "" {
+			continue
+		}
+		restorePointsByID[pointID] = map[string]any{
+			"id": pointID,
+			"partner_id": summary["partner_id"],
+			"status": summary["latest_backup_status"],
+			"provider": summary["provider"],
+			"completed_at": summary["latest_backup_at"],
+		}
+	}
 	status := "healthy"
 	if len(unavailable) > 0 {
 		status = "partial"
@@ -357,10 +386,13 @@ func (a *app) materializeCentralSystem(ctx context.Context) map[string]any {
 		"provisioning": provisioning,
 		"environments": environments,
 		"events":       auditEvents,
-		"health_api":        healthPayload,
-		"provisioning_api":  provisioningPayload,
-		"environments_api":  environmentsPayload,
-		"backups_api":       backupsPayload,
+		"health_api":              healthPayload,
+		"provisioning_api":        provisioningPayload,
+		"environments_api":        environmentsPayload,
+		"backups_api":             backupsPayload,
+		"backup_restore_points":   restorePointsByID,
+		"backup_restore_tests_api": restoreTestsPayload,
+		"backup_restore_jobs_api":  restoreJobsPayload,
 		"backups": map[string]any{
 			"provider": central10String(backupsPayload["provider"]),
 			"items":    backups,
