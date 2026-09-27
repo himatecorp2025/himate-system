@@ -10561,6 +10561,42 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+class _PartnerViewToggle extends StatelessWidget {
+  const _PartnerViewToggle({required this.gridMode, required this.onChanged});
+  final bool gridMode;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 42,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(color: brandWhite, borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          _PartnerViewButton(icon: Icons.grid_view_rounded, selected: gridMode, onTap: () => onChanged(true)),
+          const SizedBox(width: 2),
+          _PartnerViewButton(icon: Icons.view_list_rounded, selected: !gridMode, onTap: () => onChanged(false)),
+        ]),
+      );
+}
+
+class _PartnerViewButton extends StatelessWidget {
+  const _PartnerViewButton({required this.icon, required this.selected, required this.onTap});
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: selected ? brandNavy : Colors.transparent,
+        borderRadius: BorderRadius.circular(7),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(7),
+          child: SizedBox(width: 34, height: 34, child: Icon(icon, size: 17, color: selected ? brandWhite : brandTextSoft)),
+        ),
+      );
+}
+
 class PartnerCard extends StatefulWidget {
   const PartnerCard({required this.partner, required this.onTap, super.key});
   final Map<String, dynamic> partner;
