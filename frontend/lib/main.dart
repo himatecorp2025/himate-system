@@ -7577,7 +7577,8 @@ class _FinanceInvoicePreview extends StatelessWidget {
             ]),
             const SizedBox(height: 12),
             if (recent.isEmpty)
-              Expanded(
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 36),
                 child: Center(
                   child: LText(uiLiteral('No invoices yet'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
                 ),
@@ -8411,7 +8412,7 @@ class _FinancePageState extends State<FinancePage> {
                       );
                     }
                     return Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(flex: 3, child: financeChart()),
                         const SizedBox(width: 12),
