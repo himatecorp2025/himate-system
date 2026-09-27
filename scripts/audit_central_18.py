@@ -52,7 +52,7 @@ for token in [
 ]:
     check(token in step4, f"complete Partners snapshot contract missing: {token}")
 for token in [
-    "centralStep3SnapshotGet(centralStep4PartnersKey)",
+    "centralSnapshotForRead(r.Context(), centralStep4PartnersKey)",
     'snapshotItems := step4Items(snapshot["items"])',
     "searchContains(",
     '"pagination": map[string]any{',
@@ -78,7 +78,7 @@ for token in [
     "initialPartnerId",
     "PartnerRouteLoader(",
     "_openWorkspaceSection(",
-    "initialData: api.peek(path)",
+    "initialData: api.peek('/api/v1/central/partners/$partnerId')",
     "evidence = items(<String, dynamic>{'items': model['evidence']})",
 ]:
     check(token in frontend, f"partner refresh/workspace contract missing: {token}")
@@ -117,8 +117,8 @@ check("centralStep3SnapshotGet(centralStep4PartnersKey)" in admin,
 admin_ui = read("frontend/lib/administration_center.dart")
 check(".timeout(const Duration(seconds: 6))" not in admin_ui,
       "Administration frontend still converts a slow authoritative read into a client timeout")
-check("centralStep3SnapshotGet(centralStep4AdministrationKey)" in admin,
-      "Administration request path is not snapshot-only")
+check("centralSnapshotForRead(r.Context(), centralStep4AdministrationKey)" in admin,
+      "Administration request path is not persistent-snapshot-only")
 
 for token in [
     "if len(services)<=1",
