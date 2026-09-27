@@ -189,9 +189,6 @@ func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor use
 		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Website read model is not ready")
 		return
 	}
-	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
-		a.requestCentralStep4Refresh()
-	}
 
 	pages := []map[string]any{}
 	media := []map[string]any{}
@@ -423,12 +420,8 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
 	if !ok {
-		a.requestCentralStep4Refresh()
 		a.readModelInvariantFailure(w, centralStep4SystemKey)
 		return
-	}
-	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
-		a.requestCentralStep4Refresh()
 	}
 
 	health := step4Map(snapshot["health"])
