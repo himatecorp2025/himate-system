@@ -8387,6 +8387,7 @@ class _ImpactPageState extends State<ImpactPage> {
   Map<String, dynamic> impactAnalytics = <String, dynamic>{};
   Map<String, dynamic> impactKpis = <String, dynamic>{};
   Map<String, dynamic> impactMeta = <String, dynamic>{};
+  Map<String, dynamic> impactAccess = <String, dynamic>{};
   bool impactSnapshotWarming = false;
   int evidenceTotal = 0;
   int evidenceOffset = 0;
@@ -8458,6 +8459,7 @@ class _ImpactPageState extends State<ImpactPage> {
         impactAnalytics = model['analytics'] is Map ? Map<String, dynamic>.from(model['analytics'] as Map) : <String, dynamic>{};
         impactKpis = model['kpis'] is Map ? Map<String, dynamic>.from(model['kpis'] as Map) : <String, dynamic>{};
         impactMeta = meta;
+        impactAccess = model['access'] is Map ? Map<String, dynamic>.from(model['access'] as Map) : <String, dynamic>{};
         impactSnapshotWarming = false;
         evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
         loading = false;
@@ -9031,6 +9033,9 @@ class _ImpactPageState extends State<ImpactPage> {
         child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
       );
     }
+    final canReadImpact = impactAccess['impact'] != false;
+    final canReadEvidence = impactAccess['evidence'] != false;
+    final canReadReports = impactAccess['reports'] != false;
     final impactStatus = '${impactMeta['status'] ?? ''}'.toLowerCase();
     final impactUnavailable = impactMeta['unavailable'] is List
         ? (impactMeta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
@@ -9049,6 +9054,18 @@ class _ImpactPageState extends State<ImpactPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (!canReadImpact || !canReadEvidence || !canReadReports) ...[
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Some Impact sections are restricted'),
+              message: [
+                if (!canReadImpact) uiLiteral('Metrics'),
+                if (!canReadEvidence) uiLiteral('Evidence'),
+                if (!canReadReports) uiLiteral('Reports'),
+              ].join(' · '),
+            ),
+            const SizedBox(height: 14),
+          ],
           if (impactStatus == 'unavailable') ...[
             _MessageCard(
               icon: Icons.cloud_off_outlined,
