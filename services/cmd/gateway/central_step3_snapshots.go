@@ -97,7 +97,19 @@ func centralSnapshotValid(key string, payload map[string]any) bool {
 	case centralStep4SystemKey:
 		required = []string{"health", "provisioning", "environments", "events", "backups", "kpis"}
 	default:
-		return false
+		if strings.HasPrefix(key, centralPartnerWorkspacePrefix) && centralPartnerWorkspaceID(key) != "" {
+			required = []string{
+				"partner", "modules", "module_view", "production_environment",
+				"preferred_connector_environment", "billing", "terms", "license",
+				"documents", "invoices", "subscriptions", "environments",
+				"provisioning_jobs", "impact_summary", "evidence",
+				"connector_credentials", "portal_users", "agreement",
+				"commercial_status", "billing_events", "website_adapter",
+				"partner_design", "payment_profile",
+			}
+		} else {
+			return false
+		}
 	}
 	for _, field := range required {
 		if _, ok := payload[field]; !ok {
