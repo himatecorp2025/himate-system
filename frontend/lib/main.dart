@@ -2754,6 +2754,7 @@ class DashboardPage extends StatelessWidget {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
             return Content(
+              showHeader: false,
               title: uiLiteral('Dashboard'),
               subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
               child: ResponsiveKpiGrid(children: [
@@ -2766,6 +2767,7 @@ class DashboardPage extends StatelessWidget {
           }
           if (snapshot.hasError && snapshot.data == null) {
             return Content(
+              showHeader: false,
               title: uiLiteral('Dashboard'),
               subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
               child: _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Dashboard data is temporarily unavailable'), message: '${snapshot.error}'),
@@ -2828,6 +2830,7 @@ class DashboardPage extends StatelessWidget {
           final geoPartners = items(<String, dynamic>{'items': geo['partners']});
 
           return Content(
+              showHeader: false,
             title: uiLiteral('Dashboard'),
             subtitle: uiLiteral('Partners, modules and impact in one executive overview.'),
             actions: [
@@ -4443,6 +4446,7 @@ class _PartnersPageState extends State<PartnersPage> {
   Widget build(BuildContext context) {
     if (loading && !statsReady && partners.isEmpty && partnerKpis.isEmpty) {
       return const Content(
+        showHeader: false,
         eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
         title: 'Partners',
         subtitle: 'Loading the latest partner portfolio snapshot.',
@@ -4455,6 +4459,7 @@ class _PartnersPageState extends State<PartnersPage> {
     final allRecords = (partnerKpis['partner_records'] as num?)?.toInt() ?? 0;
 
     return Content(
+      showHeader: false,
       title: 'Partners',
       subtitle: 'Partner management, relationships and collaboration at a glance.',
       actions: const [],
