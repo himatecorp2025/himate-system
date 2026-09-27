@@ -1,10 +1,18 @@
 part of 'main.dart';
 
 class SEOKeywordsPanel extends StatefulWidget {
-  const SEOKeywordsPanel({required this.api, required this.media, super.key});
+  const SEOKeywordsPanel({
+    required this.api,
+    required this.media,
+    this.canWrite = true,
+    this.canApprove = true,
+    super.key,
+  });
 
   final Api api;
   final List<Map<String, dynamic>> media;
+  final bool canWrite;
+  final bool canApprove;
 
   @override
   State<SEOKeywordsPanel> createState() => _SEOKeywordsPanelState();
@@ -134,6 +142,7 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
   }
 
   Future<bool> saveDraft({bool quiet = false}) async {
+    if (!widget.canWrite) return false;
     if (mounted) setState(() => saving = true);
     try {
       final response =
@@ -167,6 +176,7 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
   }
 
   Future<void> publish() async {
+    if (!widget.canWrite || !widget.canApprove) return;
     if (!await saveDraft(quiet: true)) return;
     if (mounted) setState(() => saving = true);
 
@@ -504,12 +514,12 @@ class _SEOKeywordsPanelState extends State<SEOKeywordsPanel> {
           ),
           actions: [
             OutlinedButton.icon(
-              onPressed: saving ? null : () => saveDraft(),
+              onPressed: saving || !widget.canWrite ? null : () => saveDraft(),
               icon: const Icon(Icons.save_outlined),
               label: const LText('Save SEO draft'),
             ),
             FilledButton.icon(
-              onPressed: saving ? null : publish,
+              onPressed: saving || !widget.canWrite || !widget.canApprove ? null : publish,
               icon: const Icon(Icons.publish_outlined),
               label: const LText('Publish SEO settings'),
             ),
