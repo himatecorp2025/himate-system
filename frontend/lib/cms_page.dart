@@ -797,24 +797,6 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && pages.isEmpty && media.isEmpty && environments.isEmpty) {
-      return const Content(
-        showHeader: false,
-        title: 'Website & Marketing',
-        subtitle: 'Website management, online presence, marketing tools and analytics in one place.',
-        child: _BrandLoading(),
-      );
-    }
-    if (error != null && pages.isEmpty && media.isEmpty && environments.isEmpty) {
-      return Content(
-        showHeader: false,
-        eyebrow: 'WEBSITE · MARKETING · PARTNER OPERATIONS',
-        title: 'Website & Marketing',
-        subtitle: 'Content, brand, discovery and partner operations workspaces.',
-        child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Website & Marketing unavailable', message: error!),
-      );
-    }
-
     final status = '${websiteMeta['status'] ?? 'healthy'}'.toLowerCase();
     final unavailable = websiteMeta['unavailable'] is List
         ? (websiteMeta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
@@ -850,6 +832,22 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (loading) ...[
+            const _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Website data is loading',
+              message: 'The Website & Marketing workspace stays available while CMS, media and environment data refresh in the background.',
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (error != null) ...[
+            _MessageCard(
+              icon: Icons.warning_amber_rounded,
+              title: uiLiteral('Website data is partially unavailable'),
+              message: error!,
+            ),
+            const SizedBox(height: 14),
+          ],
           if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
             _MessageCard(
               icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
@@ -925,7 +923,7 @@ class _WebsiteHubCardState extends State<_WebsiteHubCard> {
                       Expanded(
                         child: LText(
                           widget.title,
-                          style: GoogleFonts.cormorantGaramond(
+                          style: GoogleFonts.lora(
                             color: brandNavy,
                             fontSize: 22,
                             fontWeight: FontWeight.w700,
