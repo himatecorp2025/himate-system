@@ -1699,7 +1699,7 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 
 	type page struct{ Items []map[string]any `json:"items"` }
 	var partner, billing, terms, license, agreement, commercialStatus, paymentProfile, websiteAdapter map[string]any
-	var modules, documents, invoices, subscriptions, environments, provisioningJobs, impactSummary, connectorCredentials, billingEvents page
+	var modules, documents, invoices, subscriptions, environments, provisioningJobs, impactSummary, evidenceItems, connectorCredentials, billingEvents page
 	portalUsers := []map[string]any{}
 	unavailable := []string{}
 	var unavailableMu sync.Mutex
@@ -1741,6 +1741,9 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	}
 	if a.hasPermission(actor, "impact.read") {
 		runPage("impact", "impact", "/api/v1/impact/summary?partner_id="+url.QueryEscape(partnerID), &impactSummary)
+	}
+	if a.hasPermission(actor, "evidence.read") {
+		runPage("evidence", "evidence", "/api/v1/evidence?partner_id="+url.QueryEscape(partnerID)+"&limit=50&offset=0", &evidenceItems)
 	}
 	if a.hasPermission(actor, "connectors.read") {
 		runPage("connector_credentials", "connector", "/api/v1/connectors/"+url.PathEscape(partnerID)+"/credential", &connectorCredentials)
@@ -1792,6 +1795,7 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		"environments": environments.Items,
 		"provisioning_jobs": provisioningJobs.Items,
 		"impact_summary": impactSummary.Items,
+		"evidence": evidenceItems.Items,
 		"connector_credentials": connectorCredentials.Items,
 		"portal_users": portalUsers,
 		"agreement": agreement,
