@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"sort"
 	"net/url"
 	"strings"
 	"sync"
@@ -55,16 +57,175 @@ func (a *app) partnerWorkspaceBasePartner(partnerID string) map[string]any {
 	return nil
 }
 
-func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID string) map[string]any {
-	type page struct {
-		Items []map[string]any `json:"items"`
+func partnerPortalModulesWithPlanContext(source, plans, current map[string]any) map[string]any {
+	out := central10CopyMap(source)
+	configured := current["configured"] == true
+	currentKey := strings.ToUpper(central10String(current["plan_key"]))
+	currentModules := stringSetFromAny(current["active_module_keys"])
+	planItems := anyItems(plans["items"])
+	currentSort := -1
+	for _, plan := range planItems {
+		if strings.EqualFold(central10String(plan["plan_key"]), currentKey) {
+			currentSort = central10Int(plan["sort_order"])
+		}
 	}
 
+	enriched := make([]map[string]any, 0, len(anyItems(source["items"])))
+	for _, raw := range anyItems(source["items"]) {
+		module := central10CopyMap(raw)
+		key := central10String(module["key"])
+		executable := module["executable"] == true
+		availableKeys := []string{}
+		availableNames := []string{}
+		upgradeKeys := []string{}
+		upgradeNames := []string{}
+		for _, plan := range planItems {
+			if plan["customer_selectable"] != true || plan["active"] != true || plan["ready"] != true {
+				continue
+			}
+			planKey := strings.ToUpper(central10String(plan["plan_key"]))
+			planName := central10String(plan["display_name"])
+			mode := strings.ToUpper(central10String(plan["selection_mode"]))
+			inPlan := false
+			switch mode {
+			case "FIXED":
+				inPlan = stringSetFromAny(plan["fixed_module_keys"])[key]
+			case "SELECTABLE", "UNLIMITED":
+				inPlan = executable
+			}
+			if !inPlan {
+				continue
+			}
+			availableKeys = append(availableKeys, planKey)
+			availableNames = append(availableNames, planName)
+			if configured && central10Int(plan["sort_order"]) > currentSort {
+				upgradeKeys = append(upgradeKeys, planKey)
+				upgradeNames = append(upgradeNames, planName)
+			}
+		}
+		module["available_in_plans"] = availableKeys
+		module["available_in_plan_names"] = availableNames
+		module["upgrade_plan_keys"] = upgradeKeys
+		module["upgrade_plan_names"] = upgradeNames
+		module["in_current_plan"] = configured && currentModules[key]
+		if len(upgradeKeys) > 0 {
+			module["recommended_upgrade_plan"] = upgradeKeys[0]
+			module["recommended_upgrade_plan_name"] = upgradeNames[0]
+		}
+		module["current_plan_key"] = currentKey
+		enriched = append(enriched, module)
+	}
+	out["items"] = enriched
+	out["count"] = len(enriched)
+	out["plan_context_available"] = true
+	out["current_plan_key"] = currentKey
+	out["current_plan_display_name"] = current["display_name"]
+	return out
+}
+
+func partnerPortalSelectablePlans(source map[string]any) map[string]any {
+	out := central10CopyMap(source)
+	filtered := []map[string]any{}
+	for _, item := range anyItems(source["items"]) {
+		if item["customer_selectable"] == true && item["active"] == true {
+			filtered = append(filtered, central10CopyMap(item))
+		}
+	}
+	out["items"] = filtered
+	out["count"] = len(filtered)
+	return out
+}
+
+func (a *app) materializePartnerUserPolicies(ctx context.Context, partnerID string, users []map[string]any, modules map[string]any) (map[string]any, map[string]partnerUserModulePolicy, error) {
+	owned := map[string]map[string]any{}
+	ownedKeys := []string{}
+	for _, item := range anyItems(modules["items"]) {
+		key := central10String(item["key"])
+		if key == "" {
+			continue
+		}
+		if strings.EqualFold(central10String(item["access_state"]), "ACTIVE") && item["executable"] == true {
+			owned[key] = item
+			ownedKeys = append(ownedKeys, key)
+		}
+	}
+	sort.Strings(ownedKeys)
+
+	selectedByUser := map[string]map[string]bool{}
+	rows, err := a.db.QueryContext(ctx,
+		`SELECT user_id,module_key
+		 FROM identity.partner_user_modules
+		 WHERE partner_id=$1
+		 ORDER BY user_id,module_key`,
+		partnerID,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	for rows.Next() {
+		var userID, moduleKey string
+		if err := rows.Scan(&userID, &moduleKey); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		if selectedByUser[userID] == nil {
+			selectedByUser[userID] = map[string]bool{}
+		}
+		selectedByUser[userID][moduleKey] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, nil, err
+	}
+	rows.Close()
+
+	serialized := map[string]any{}
+	runtime := map[string]partnerUserModulePolicy{}
+	for _, user := range users {
+		userID := central10String(user["id"])
+		if userID == "" {
+			continue
+		}
+		mode := normalizePartnerModuleAccessMode(central10String(user["module_access_mode"]))
+		selected := selectedByUser[userID]
+		if selected == nil {
+			selected = map[string]bool{}
+		}
+		effective := []string{}
+		stale := []string{}
+		if mode == partnerModuleAccessAllOwned {
+			effective = append(effective, ownedKeys...)
+		} else {
+			for key := range selected {
+				if _, ok := owned[key]; ok {
+					effective = append(effective, key)
+				} else {
+					stale = append(stale, key)
+				}
+			}
+			sort.Strings(effective)
+			sort.Strings(stale)
+		}
+		policy := partnerUserModulePolicy{
+			Mode: mode, Selected: selected, Owned: owned, OwnedKeys: ownedKeys,
+			Effective: effective, Stale: stale,
+		}
+		runtime[userID] = policy
+		serialized[userID] = partnerUserModulePolicyMap(policy)
+	}
+	return serialized, runtime, nil
+}
+
+func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID string) map[string]any {
 	partner := a.partnerWorkspaceBasePartner(partnerID)
 	var livePartner, billing, terms, license, agreement, commercialStatus map[string]any
 	var paymentProfile, websiteAdapter, partnerDesign map[string]any
-	var modules, documents, invoices, subscriptions, environments, provisioningJobs page
-	var impactSummary, evidenceItems, connectorCredentials, billingEvents page
+	var modules, documents, invoices, subscriptions, environments, provisioningJobs map[string]any
+	var impactSummary, evidenceItems, connectorCredentials, billingEvents map[string]any
+	var portalGate, portalModulesEN, portalModulesHU, portalPlansRaw, portalPlan map[string]any
+	var portalPlanModules, portalCharity, portalCharityModules, portalDesignMedia map[string]any
+	var portalInvoices map[string]any
+	var tenantFinancePolicy, tenantFinanceInvoices map[string]any
 	portalUsers := []map[string]any{}
 
 	unavailable := []string{}
@@ -86,37 +247,54 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 			mark(name, a.internalGET(ctx, a.hosts[service], path, dst))
 		}()
 	}
-	runPage := func(name, service, path string, dst *page) {
+	runTenantMap := func(name, service, path string, headers map[string]string, dst *map[string]any) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			mark(name, a.internalGET(ctx, a.hosts[service], path, dst))
+			mark(name, a.internalGETWithHeaders(ctx, a.hosts[service], path, headers, dst))
 		}()
 	}
 
 	escapedID := url.PathEscape(partnerID)
 	runMap("partner", "partners", "/api/v1/partners/"+escapedID, &livePartner)
-	runPage("modules", "catalog", "/api/v1/partners/"+escapedID+"/modules", &modules)
+	runMap("modules", "catalog", "/api/v1/partners/"+escapedID+"/modules", &modules)
 
 	base := "/api/v1/billing/partners/" + escapedID
 	runMap("billing_summary", "billing", base+"/summary", &billing)
 	runMap("billing_terms", "billing", base+"/terms", &terms)
 	runMap("license", "billing", base+"/license", &license)
-	runPage("documents", "billing", base+"/documents", &documents)
-	runPage("invoices", "billing", base+"/invoices", &invoices)
-	runPage("subscriptions", "billing", base+"/subscriptions", &subscriptions)
+	runMap("documents", "billing", base+"/documents", &documents)
+	runMap("invoices", "billing", base+"/invoices", &invoices)
+	runMap("subscriptions", "billing", base+"/subscriptions", &subscriptions)
 	runMap("agreement", "billing", base+"/agreement", &agreement)
 	runMap("commercial_status", "billing", base+"/commercial-status", &commercialStatus)
-	runPage("billing_events", "billing", base+"/events", &billingEvents)
+	runMap("billing_events", "billing", base+"/events", &billingEvents)
+	runMap("portal_gate", "billing", "/internal/v1/partners/"+escapedID+"/portal-gate", &portalGate)
+	runMap("portal_plans", "billing", "/api/v1/billing/plans", &portalPlansRaw)
+	runMap("portal_plan", "billing", base+"/plan", &portalPlan)
+	runMap("portal_plan_modules", "billing", base+"/plan/modules", &portalPlanModules)
+	runMap("portal_charity", "billing", base+"/commercial-mode", &portalCharity)
+	runMap("portal_charity_modules", "billing", base+"/charity/modules", &portalCharityModules)
+	runMap("portal_invoices", "billing", base+"/invoices?partner_visible=true", &portalInvoices)
 
-	runPage("environments", "environments", "/api/v1/environments?partner_id="+url.QueryEscape(partnerID), &environments)
-	runPage("provisioning", "provisioning", "/api/v1/provisioning/jobs?partner_id="+url.QueryEscape(partnerID), &provisioningJobs)
-	runPage("impact", "impact", "/api/v1/impact/summary?partner_id="+url.QueryEscape(partnerID), &impactSummary)
-	runPage("evidence", "evidence", "/api/v1/evidence?partner_id="+url.QueryEscape(partnerID)+"&limit=50&offset=0", &evidenceItems)
-	runPage("connector_credentials", "connector", "/api/v1/connectors/"+escapedID+"/credential", &connectorCredentials)
+	runMap("environments", "environments", "/api/v1/environments?partner_id="+url.QueryEscape(partnerID), &environments)
+	runMap("provisioning", "provisioning", "/api/v1/provisioning/jobs?partner_id="+url.QueryEscape(partnerID), &provisioningJobs)
+	runMap("impact", "impact", "/api/v1/impact/summary?partner_id="+url.QueryEscape(partnerID), &impactSummary)
+	runMap("evidence", "evidence", "/api/v1/evidence?partner_id="+url.QueryEscape(partnerID)+"&limit=200&offset=0", &evidenceItems)
+	runMap("connector_credentials", "connector", "/api/v1/connectors/"+escapedID+"/credential", &connectorCredentials)
 	runMap("website_adapter", "connector", "/api/v1/connectors/"+escapedID+"/website-adapter?environment=PRODUCTION", &websiteAdapter)
 	runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"+escapedID, &partnerDesign)
+	runMap("portal_design_media", "cms", "/internal/v1/cms/partner-media/"+escapedID, &portalDesignMedia)
 	runMap("payment_profile", "payments", "/api/v1/payments/partners/"+escapedID+"/profile", &paymentProfile)
+	runMap("portal_modules_en", "catalog", "/internal/v1/partner-portal/"+escapedID+"/modules?locale=en_US", &portalModulesEN)
+	runMap("portal_modules_hu", "catalog", "/internal/v1/partner-portal/"+escapedID+"/modules?locale=hu_HU", &portalModulesHU)
+
+	tenantHeaders := map[string]string{
+		"X-Himate-Partner-ID": partnerID,
+		"X-Himate-User-ID":    "read-model-worker",
+	}
+	runTenantMap("tenant_finance_policy", "tenant-finance", "/internal/v1/tenant-finance/policy", tenantHeaders, &tenantFinancePolicy)
+	runTenantMap("tenant_finance_invoices", "tenant-finance", "/internal/v1/tenant-finance/invoices", tenantHeaders, &tenantFinanceInvoices)
 
 	wg.Add(1)
 	go func() {
@@ -133,8 +311,6 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	if livePartner != nil {
 		partner = livePartner
 	} else if partner != nil {
-		// The complete Partners screen is itself LKG. A transient detail-read
-		// miss must not invalidate a usable base partner record.
 		filtered := unavailable[:0]
 		for _, name := range unavailable {
 			if name != "partner" {
@@ -147,8 +323,91 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 		unavailable = append(unavailable, "partner")
 	}
 
-	moduleView := central10PartnerModuleView(modules.Items, subscriptions.Items, "", "ALL")
-	productionEnvironment := central10ProductionEnvironment(environments.Items)
+	portalModulesEN = partnerPortalModulesWithPlanContext(portalModulesEN, portalPlansRaw, portalPlan)
+	portalModulesHU = partnerPortalModulesWithPlanContext(portalModulesHU, portalPlansRaw, portalPlan)
+	portalPlans := partnerPortalSelectablePlans(portalPlansRaw)
+
+	userPolicies, runtimePolicies, policyErr := a.materializePartnerUserPolicies(ctx, partnerID, portalUsers, portalModulesEN)
+	mark("portal_user_module_policies", policyErr)
+
+	portalNotifications := map[string]any{}
+	if policyErr == nil {
+		var notificationsMu sync.Mutex
+		var notificationWG sync.WaitGroup
+		for _, rawUser := range portalUsers {
+			user := rawUser
+			userID := central10String(user["id"])
+			if userID == "" || user["active"] != true {
+				continue
+			}
+			policy := runtimePolicies[userID]
+			notificationWG.Add(1)
+			go func() {
+				defer notificationWG.Done()
+				var out map[string]any
+				headers := map[string]string{
+					"X-Himate-User-ID":            userID,
+					"X-Himate-Partner-ID":         partnerID,
+					"X-Himate-Permissions":        strings.Join(partnerPermissions(central10String(user["role"])), ","),
+					"X-Himate-Module-Keys":        strings.Join(policy.Effective, ","),
+					"X-Himate-Notification-Scope": "PARTNER",
+				}
+				err := a.internalGETWithHeaders(ctx, a.hosts["notifications"], "/api/v1/notifications?limit=100", headers, &out)
+				if err != nil {
+					mark("portal_notifications:"+userID, err)
+					return
+				}
+				notificationsMu.Lock()
+				portalNotifications[userID] = out
+				notificationsMu.Unlock()
+			}()
+		}
+		notificationWG.Wait()
+	}
+
+	partnerAuditEvents := []map[string]any{}
+	rows, auditErr := a.db.QueryContext(ctx,
+		`SELECT id,actor_id,actor_name,actor_roles,request_id,correlation_id,action,method,path,resource,partner_id,status,outcome,old_state,new_state,duration_ms,created_at
+		 FROM identity.audit_events
+		 WHERE partner_id=$1
+		 ORDER BY created_at DESC,id DESC
+		 LIMIT 500`,
+		partnerID,
+	)
+	if auditErr == nil {
+		for rows.Next() {
+			var id int64
+			var actorID, actorName, requestID, correlationID, action, method, path, resource, rowPartnerID, outcome string
+			var rolesRaw, oldRaw, newRaw []byte
+			var statusCode int
+			var duration int64
+			var created time.Time
+			if err := rows.Scan(&id, &actorID, &actorName, &rolesRaw, &requestID, &correlationID, &action, &method, &path, &resource, &rowPartnerID, &statusCode, &outcome, &oldRaw, &newRaw, &duration, &created); err != nil {
+				auditErr = err
+				break
+			}
+			var roles []string
+			var oldState, newState any
+			_ = json.Unmarshal(rolesRaw, &roles)
+			_ = json.Unmarshal(oldRaw, &oldState)
+			_ = json.Unmarshal(newRaw, &newState)
+			partnerAuditEvents = append(partnerAuditEvents, map[string]any{
+				"id": id, "actor_id": actorID, "actor_name": actorName, "actor_roles": roles,
+				"request_id": requestID, "correlation_id": correlationID, "action": action,
+				"method": method, "path": path, "resource": resource, "partner_id": rowPartnerID,
+				"status": statusCode, "outcome": outcome, "old_state": oldState, "new_state": newState,
+				"duration_ms": duration, "created_at": created.UTC(),
+			})
+		}
+		if err := rows.Err(); err != nil && auditErr == nil {
+			auditErr = err
+		}
+		rows.Close()
+	}
+	mark("partner_audit_events", auditErr)
+
+	moduleView := central10PartnerModuleView(anyItems(modules["items"]), anyItems(subscriptions["items"]), "", "ALL")
+	productionEnvironment := central10ProductionEnvironment(anyItems(environments["items"]))
 	preferredConnectorEnvironment := "STAGING"
 	if productionEnvironment != nil {
 		preferredConnectorEnvironment = "PRODUCTION"
@@ -169,21 +428,38 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 		"billing":                         billing,
 		"terms":                           terms,
 		"license":                         license,
-		"documents":                       documents.Items,
-		"invoices":                        invoices.Items,
-		"subscriptions":                   subscriptions.Items,
-		"environments":                    environments.Items,
-		"provisioning_jobs":               provisioningJobs.Items,
-		"impact_summary":                  impactSummary.Items,
-		"evidence":                        evidenceItems.Items,
-		"connector_credentials":           connectorCredentials.Items,
+		"documents":                       anyItems(documents["items"]),
+		"invoices":                        anyItems(invoices["items"]),
+		"subscriptions":                   anyItems(subscriptions["items"]),
+		"environments":                    anyItems(environments["items"]),
+		"provisioning_jobs":               anyItems(provisioningJobs["items"]),
+		"impact_summary":                  anyItems(impactSummary["items"]),
+		"evidence":                        anyItems(evidenceItems["items"]),
+		"connector_credentials":           anyItems(connectorCredentials["items"]),
 		"portal_users":                    portalUsers,
 		"agreement":                       agreement,
 		"commercial_status":               commercialStatus,
-		"billing_events":                  billingEvents.Items,
+		"billing_events":                  anyItems(billingEvents["items"]),
 		"website_adapter":                 websiteAdapter,
 		"partner_design":                  partnerDesign,
 		"payment_profile":                 paymentProfile,
+		"portal_gate":                     portalGate,
+		"portal_modules":                  map[string]any{"en_US": portalModulesEN, "hu_HU": portalModulesHU},
+		"portal_plans":                    portalPlans,
+		"portal_plan":                     portalPlan,
+		"portal_plan_modules":             portalPlanModules,
+		"portal_charity":                  portalCharity,
+		"portal_charity_modules":          portalCharityModules,
+		"portal_design_media":             portalDesignMedia,
+		"portal_user_module_policies":     userPolicies,
+		"portal_notifications":            portalNotifications,
+		"portal_billing_invoices":         portalInvoices,
+		"portal_impact":                   impactSummary,
+		"tenant_finance": map[string]any{
+			"policy":   tenantFinancePolicy,
+			"invoices": tenantFinanceInvoices,
+		},
+		"partner_audit_events": partnerAuditEvents,
 	}
 }
 
