@@ -1311,6 +1311,11 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
 				newState = requestState
 			}
+			finalPartnerID := partnerID
+			if finalPartnerID == "" {
+				finalPartnerID = auditPartnerIDFromState(newState)
+				if finalPartnerID == "" { finalPartnerID = auditPartnerIDFromState(requestState) }
+			}
 			if status < 400 {
 				a.invalidateCentral10Caches(r.URL.Path)
 				if state, ok := newState.(map[string]any); ok {
@@ -1319,11 +1324,6 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 				refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
 				a.enqueueReadModelRefresh(refreshCtx, r.URL.Path, finalPartnerID)
 				refreshCancel()
-			}
-			finalPartnerID := partnerID
-			if finalPartnerID == "" {
-				finalPartnerID = auditPartnerIDFromState(newState)
-				if finalPartnerID == "" { finalPartnerID = auditPartnerIDFromState(requestState) }
 			}
 			event := baseEvent
 			event.PartnerID = finalPartnerID
