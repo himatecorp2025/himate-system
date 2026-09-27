@@ -275,7 +275,10 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
                       icon: Icons.groups_2_outlined,
                       accent: brandGold,
                       bullets: [
-                        '$partnerCount partner administration records',
+                        uiBilingual(
+                          '$partnerCount partner administration records',
+                          '$partnerCount partner adminisztrációs rekord',
+                        ),
                         'Partner users and lifecycle context',
                         'Tenant documents and audit history',
                         'Verified partner backup and recovery',
