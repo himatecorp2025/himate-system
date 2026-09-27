@@ -10775,6 +10775,10 @@ class _PartnerCardState extends State<PartnerCard> {
                       ]),
                     ),
                     const SizedBox(width: 6),
+                    if (p['test_partner'] == true) ...[
+                      const _StatusPill(label: 'TEST'),
+                      const SizedBox(width: 5),
+                    ],
                     _StatusPill(label: '${p['lifecycle'] ?? 'UNKNOWN'}'),
                   ]),
                   if (p['reference_partner'] == true) ...[
