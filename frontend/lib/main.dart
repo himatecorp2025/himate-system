@@ -10102,15 +10102,30 @@ class _ImpactPageState extends State<ImpactPage> {
 }
 
 class SystemPage extends StatefulWidget {
-  const SystemPage({required this.api, super.key});
+  const SystemPage({
+    required this.api,
+    required this.canHealth,
+    required this.canProvisioning,
+    required this.canEnvironments,
+    required this.canConnections,
+    required this.canBackups,
+    required this.canAudit,
+    super.key,
+  });
   final Api api;
+  final bool canHealth;
+  final bool canProvisioning;
+  final bool canEnvironments;
+  final bool canConnections;
+  final bool canBackups;
+  final bool canAudit;
 
   @override
   State<SystemPage> createState() => _SystemPageState();
 }
 
 class _SystemPageState extends State<SystemPage> {
-  late Future<List<Map<String, dynamic>>> _future;
+  late Future<Map<String, dynamic>> _future;
 
   Api get api => widget.api;
 
@@ -10120,15 +10135,12 @@ class _SystemPageState extends State<SystemPage> {
     _future = _load();
   }
 
-  Future<List<Map<String, dynamic>>> _load({bool force = false}) async {
-    final r = await Future.wait([
-      api.get('/api/v1/system-health/snapshot', force: force, maxAge: const Duration(seconds: 15)),
-      api.get('/api/v1/provisioning/jobs', force: force, maxAge: const Duration(seconds: 15)),
-      api.get('/api/v1/environments', force: force, maxAge: const Duration(seconds: 15)),
-      api.get('/api/v1/backups/summary', force: force, maxAge: const Duration(seconds: 15)),
-    ]);
-    return r;
-  }
+  Future<Map<String, dynamic>> _load({bool force = false}) =>
+      api.get(
+        centralSystemInitialPath(),
+        force: force,
+        maxAge: const Duration(seconds: 15),
+      );
 
   void _refresh() {
     setState(() => _future = _load(force: true));
@@ -10225,7 +10237,7 @@ class _SystemPageState extends State<SystemPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
+    return FutureBuilder<Map<String, dynamic>>(
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
@@ -10249,14 +10261,38 @@ class _SystemPageState extends State<SystemPage> {
           );
         }
 
-        final health = snapshot.data![0];
-        final provisioning = items(snapshot.data![1]);
-        final environments = items(snapshot.data![2]);
-        final backupResponse = snapshot.data![3];
+        final model = snapshot.data!;
+        final access = model['access'] is Map
+            ? Map<String,dynamic>.from(model['access'] as Map)
+            : <String,dynamic>{};
+        final meta = model['meta'] is Map
+            ? Map<String,dynamic>.from(model['meta'] as Map)
+            : <String,dynamic>{};
+        final kpis = model['kpis'] is Map
+            ? Map<String,dynamic>.from(model['kpis'] as Map)
+            : <String,dynamic>{};
+        final health = model['health'] is Map
+            ? Map<String,dynamic>.from(model['health'] as Map)
+            : <String,dynamic>{};
+        final provisioning = items(<String,dynamic>{'items': model['provisioning']});
+        final environments = items(<String,dynamic>{'items': model['environments']});
+        final backupResponse = model['backups'] is Map
+            ? Map<String,dynamic>.from(model['backups'] as Map)
+            : <String,dynamic>{};
         final backupSummary = items(backupResponse);
         final backupProvider = '${backupResponse['provider'] ?? 'unknown'}';
-        final services = items({'items': health['services']});
-        final partners = items({'items': health['partners']});
+        final services = items(<String,dynamic>{'items': health['services']});
+        final partners = items(<String,dynamic>{'items': health['partners']});
+        final canHealth = access['health'] == true;
+        final canProvisioning = access['provisioning'] == true;
+        final canEnvironments = access['environments'] == true;
+        final canConnections = access['connections'] == true;
+        final canBackups = access['backups'] == true;
+        final canAudit = access['audit'] == true;
+        final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
+        final unavailable = meta['unavailable'] is List
+            ? (meta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
+            : <String>[];
         final backupPartnerIds = <String>{
           for (final p in partners)
             if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty &&
