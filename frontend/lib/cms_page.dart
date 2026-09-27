@@ -129,6 +129,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   bool get canEnvironmentApprove => websiteAccess['environments_approve'] == true;
 
   Future<void> createPage() async {
+    if (!canCmsWrite) return;
+
     final key = TextEditingController();
     final name = TextEditingController();
     final slug = TextEditingController();
@@ -235,6 +237,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Future<void> uploadMedia() async {
+    if (!canCmsWrite) return;
+
     final file = await pickBrowserFile('image/png,image/jpeg,image/webp,video/mp4,video/webm');
     if (file == null) return;
 
@@ -275,6 +279,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Future<void> editDraft(Map<String, dynamic> page) async {
+    if (!canCmsWrite) return;
+
     final id = (page['id'] ?? '').toString();
     final detail = await widget.api.get('/api/v1/cms/pages/' + id, force: true);
     final draft = detail['draft'] is Map
@@ -294,6 +300,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Future<void> createPreview(Map<String, dynamic> page) async {
+    if (!canCmsWrite) return;
+
     final id = (page['id'] ?? '').toString();
     try {
       final result = await widget.api.post('/api/v1/cms/pages/' + id + '/preview');
@@ -314,6 +322,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   }
 
   Future<void> publish(Map<String, dynamic> page) async {
+    if (!canCmsApprove) return;
+
     final id = (page['id'] ?? '').toString();
     try {
       await widget.api.post('/api/v1/cms/pages/' + id + '/publish');
@@ -385,7 +395,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                             ? 'Created ' + (version['created_at'] ?? '').toString() + ' · ' + (version['created_by'] ?? '').toString()
                             : 'Rollback activation of ' + rollback + ' · ' + (version['created_at'] ?? '').toString(),
                       ),
-                      trailing: state == 'PUBLISHED'
+                      trailing: state == 'PUBLISHED' && canCmsApprove
                           ? OutlinedButton(
                               onPressed: () async {
                                 await widget.api.post(
