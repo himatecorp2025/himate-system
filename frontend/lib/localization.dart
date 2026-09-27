@@ -2074,7 +2074,6 @@ class HimateI18n {
     'Register a dependency or integration relation.': 'Függőségi vagy integrációs kapcsolat rögzítése.',
     'Relationship Graph': 'Modulkapcsolatok',
     'Shows module dependencies, integrations, conflicts, extensions and replacement relations. The selected module is the source node.': 'A modul függőségeit, integrációit, konfliktusait, kiterjesztéseit és helyettesítési kapcsolatait mutatja. A kiválasztott modul a kiindulópont.',
-    'Add dependency, integration, extension, conflict or replacement relations.': 'Adj hozzá függőségi, integrációs, kiterjesztési, konfliktus- vagy helyettesítési kapcsolatot.',
     'Impact metrics': 'Hatásmutatók',
     'Source': 'Forrás',
     'Not linked': 'Nincs összekapcsolva',
