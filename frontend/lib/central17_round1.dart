@@ -132,7 +132,13 @@ class _Central17UsMapState extends State<_Central17UsMap> {
                   IconButton(onPressed:()=>Navigator.pop(dialogContext),icon:const Icon(Icons.close_rounded)),
                 ]),
                 const SizedBox(height:8),
-                LText('${partners.length} ${uiLiteral(partners.length == 1 ? 'active partner' : 'active partners')}',style:const TextStyle(color:brandTextSoft,fontSize:11)),
+                LText(
+                  uiBilingual(
+                    '$activeCount active · ${partners.length} partner record${partners.length == 1 ? '' : 's'}',
+                    '$activeCount aktív · ${partners.length} partnerrekord',
+                  ),
+                  style:const TextStyle(color:brandTextSoft,fontSize:11),
+                ),
                 const SizedBox(height:12),
                 if (partners.isEmpty)
                   _MessageCard(
