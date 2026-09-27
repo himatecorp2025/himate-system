@@ -497,8 +497,54 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	}
 }
 
-func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time.Time) bool {
-	partnerID = strings.TrimSpace(partnerID)
+type readModelRefreshEvent struct {
+	id        int64
+	partnerID string
+	reason    string
+	createdAt time.Time
+}
+
+func (a *app) refreshDashboardSerialized() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), readModelRefreshAcquireBudget)
+	defer cancel()
+	return a.withReadModelRefreshSlot(ctx, "dashboard", func() {
+		a.refreshDashboardSnapshot(time.Now().UTC().Year())
+	})
+}
+
+func (a *app) refreshNotificationsSerialized() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), readModelRefreshAcquireBudget)
+	defer cancel()
+	return a.withReadModelRefreshSlot(ctx, "central_notifications", func() {
+		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer refreshCancel()
+		a.refreshCentralUserNotificationSnapshots(refreshCtx)
+	})
+}
+
+func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
+	if len(events) == 0 {
+		return true
+	}
+	latestCreatedAt := events[0].createdAt.UTC()
+	partnerIDs := map[string]bool{}
+	refreshAllTenants := false
+	for _, item := range events {
+		if item.createdAt.After(latestCreatedAt) {
+			latestCreatedAt = item.createdAt.UTC()
+		}
+		if id := strings.TrimSpace(item.partnerID); id != "" {
+			partnerIDs[id] = true
+		}
+		if readModelReasonRefreshesAllTenants(item.reason) {
+			refreshAllTenants = true
+		}
+	}
+
+	// Durable recovery is intentionally coalesced: one batch rebuilds the
+	// Central projection set once, regardless of how many source writes landed
+	// while the worker was busy. Synchronous write-through already handles the
+	// immediate mutation -> F5 consistency window.
 	var wg sync.WaitGroup
 	for _, job := range a.centralReadinessJobs() {
 		job := job
@@ -514,16 +560,18 @@ func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		a.refreshDashboardSnapshot(time.Now().UTC().Year())
+		a.refreshDashboardSerialized()
 	}()
-	if partnerID != "" {
+
+	for partnerID := range partnerIDs {
+		partnerID := partnerID
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			a.writeThroughCentralPartnerWorkspace(partnerID)
 		}()
 	}
-	if readModelReasonRefreshesAllTenants(reason) {
+	if refreshAllTenants {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -535,18 +583,19 @@ func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-		defer cancel()
-		a.refreshCentralUserNotificationSnapshots(ctx)
+		a.refreshNotificationsSerialized()
 	}()
 	wg.Wait()
-	a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch)
 
-	verifyCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	if !a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch) {
+		return false
+	}
+
+	verifyCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	for _, job := range a.centralReadinessJobs() {
 		_, updated, err := a.loadCentralSnapshotDB(verifyCtx, job.key)
-		if err != nil || updated.Before(createdAt) {
+		if err != nil || updated.Before(latestCreatedAt) {
 			return false
 		}
 	}
@@ -554,13 +603,21 @@ func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time
 	if err != nil || !dashboardSnapshotValid(dashboardPayload) {
 		return false
 	}
-	if partnerID != "" {
+	for partnerID := range partnerIDs {
 		_, updated, err := a.loadPartnerWorkspaceDB(verifyCtx, partnerID)
-		if err != nil || updated.Before(createdAt) {
+		if err != nil || updated.Before(latestCreatedAt) {
 			return false
 		}
 	}
 	return true
+}
+
+func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time.Time) bool {
+	return a.refreshReadModelsForBatch([]readModelRefreshEvent{{
+		partnerID: strings.TrimSpace(partnerID),
+		reason: reason,
+		createdAt: createdAt.UTC(),
+	}})
 }
 
 func (a *app) processReadModelRefreshQueue() {
@@ -578,34 +635,38 @@ func (a *app) processReadModelRefreshQueue() {
 		}
 		return
 	}
-	type event struct {
-		id        int64
-		partnerID string
-		reason    string
-		createdAt time.Time
-	}
-	events := []event{}
+	events := []readModelRefreshEvent{}
 	for rows.Next() {
-		var item event
+		var item readModelRefreshEvent
 		if rows.Scan(&item.id, &item.partnerID, &item.reason, &item.createdAt) == nil {
 			events = append(events, item)
 		}
 	}
 	rows.Close()
+	if len(events) == 0 {
+		return
+	}
 
-	for _, item := range events {
-		if !a.refreshReadModelsForEvent(item.partnerID, item.reason, item.createdAt.UTC()) {
-			if a.log != nil {
-				a.log.Warn("read-model refresh event remains pending", "event_id", item.id, "reason", item.reason, "partner_id", item.partnerID)
-			}
-			continue
+	if !a.refreshReadModelsForBatch(events) {
+		if a.log != nil {
+			a.log.Warn(
+				"read-model refresh batch remains pending",
+				"event_count", len(events),
+				"first_event_id", events[0].id,
+				"last_event_id", events[len(events)-1].id,
+			)
 		}
-		if _, err := a.db.Exec(
-			`UPDATE identity.read_model_refresh_queue SET processed_at=NOW() WHERE id=$1`,
-			item.id,
-		); err != nil && a.log != nil {
-			a.log.Error("read-model refresh event acknowledgement failed", "event_id", item.id, "error", err)
-		}
+		return
+	}
+
+	lastID := events[len(events)-1].id
+	if _, err := a.db.Exec(
+		`UPDATE identity.read_model_refresh_queue
+		 SET processed_at=NOW()
+		 WHERE processed_at IS NULL AND id <= $1`,
+		lastID,
+	); err != nil && a.log != nil {
+		a.log.Error("read-model refresh batch acknowledgement failed", "last_event_id", lastID, "error", err)
 	}
 }
 
