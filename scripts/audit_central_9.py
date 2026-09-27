@@ -48,7 +48,8 @@ for token in [
 backend_readmodel_packages = all(token in gateway_c10 for token in [
     "central10PlanDisplayPrice(",
     'central10Float(plan["monthly_price"])',
-    'central10Int(plan["module_limit"])',
+    'out["module_limit"] = 10',
+    'out["module_limit"] = 20',
     'out["display_name"] = "Starter"',
     'out["display_name"] = "Business"',
     'out["display_name"] = "Premium"',
