@@ -267,12 +267,18 @@ func main() {
 		log.Error("materialized read-model startup gate failed", "error", err)
 		os.Exit(1)
 	}
+	if err := a.ensureCentralUserNotificationReadModelsReady(readinessCtx); err != nil {
+		readinessCancel()
+		log.Error("Central user read-model startup gate failed", "error", err)
+		os.Exit(1)
+	}
 	readinessCancel()
 	go a.runDashboardMaterializer()
 	go a.runCentralStep3Materializer()
 	go a.runCentralStep4Materializer()
 	go a.runCentralPartnerWorkspaceMaterializer()
 	go a.runReadModelRefreshWorker()
+	go a.runCentralUserNotificationMaterializer()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
@@ -421,6 +427,7 @@ func (a *app) migrate(ctx context.Context) error {
 		central10DashboardSnapshotMigration(),
 		central10Step3SnapshotMigration(),
 		materializedReadModelMigration(),
+		centralUserReadModelMigration(),
 	}); err != nil {
 		return err
 	}
@@ -1352,6 +1359,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	r.Header.Set("X-Himate-User-ID", u.ID)
 	if r.URL.Path == "/api/v1/dashboard/summary" {
 		a.dashboard(w, r, u)
+		return
+	}
+	if a.serveCentralNotificationGET(w, r, u) {
 		return
 	}
 	if a.serveCentralMaterializedGET(w, r, u) {
