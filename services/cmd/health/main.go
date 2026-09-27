@@ -374,6 +374,16 @@ func (a *app)systemHealthSnapshot(w http.ResponseWriter,r *http.Request){
 		common.APIError(w,500,"DB","Could not load system health snapshots")
 		return
 	}
+	// On a cold process the HTTP server and monitor goroutine start together.
+	// Do not expose a misleading postgres-only "OK" snapshot during that race:
+	// the first reader self-heals the snapshot once, with a bounded budget.
+	if len(services)<=1 {
+		ctx,cancel:=context.WithTimeout(r.Context(),4*time.Second)
+		services=a.checkServices(ctx)
+		_ = a.partnerHealth(ctx)
+		cancel()
+		if refreshed,err:=a.partnerSnapshotRows();err==nil { partners=refreshed }
+	}
 
 	overall:="OK"
 	for _,s:=range services{
