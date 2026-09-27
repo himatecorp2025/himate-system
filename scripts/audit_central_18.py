@@ -66,7 +66,7 @@ for token in [
 for token in [
     "_nearestState(",
     "onTapUp:(details)",
-    "No active partners in this state",
+    "No partner records in this state",
     "'Alaska':'AK'",
 ]:
     check(token in usmap, f"interactive US map contract missing: {token}")
