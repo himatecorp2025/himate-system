@@ -127,23 +127,44 @@ type auditEvent struct {
 
 type auditResponseWriter struct {
 	http.ResponseWriter
-	status int
-	body   bytes.Buffer
+	status   int
+	body     bytes.Buffer
+	deferred bool
+	flushed  bool
 }
 
 func (w *auditResponseWriter) WriteHeader(status int) {
 	if w.status == 0 { w.status = status }
-	w.ResponseWriter.WriteHeader(status)
+	if !w.deferred {
+		w.ResponseWriter.WriteHeader(status)
+	}
 }
 
 func (w *auditResponseWriter) Write(p []byte) (int, error) {
 	if w.status == 0 { w.status = http.StatusOK }
+	if w.deferred {
+		_, _ = w.body.Write(p)
+		return len(p), nil
+	}
 	if w.body.Len() < 65536 {
 		remaining := 65536 - w.body.Len()
 		if len(p) < remaining { remaining = len(p) }
 		if remaining > 0 { _, _ = w.body.Write(p[:remaining]) }
 	}
 	return w.ResponseWriter.Write(p)
+}
+
+func (w *auditResponseWriter) flushDeferred() {
+	if !w.deferred || w.flushed {
+		return
+	}
+	w.flushed = true
+	status := w.status
+	if status == 0 { status = http.StatusOK }
+	w.ResponseWriter.WriteHeader(status)
+	if w.body.Len() > 0 {
+		_, _ = w.ResponseWriter.Write(w.body.Bytes())
+	}
 }
 
 func (w *auditResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
@@ -1314,9 +1335,10 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, http.StatusServiceUnavailable, "AUDIT_DURABILITY", "Mutation blocked because the durable audit intent could not be recorded")
 			return
 		}
-		recorder := &auditResponseWriter{ResponseWriter: w}
+		recorder := &auditResponseWriter{ResponseWriter: w, deferred: true}
 		w = recorder
 		defer func() {
+			defer recorder.flushDeferred()
 			status := recorder.status
 			if status == 0 { status = http.StatusOK }
 			outcome := "SUCCESS"
@@ -1338,6 +1360,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 				refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
 				a.enqueueReadModelRefresh(refreshCtx, r.URL.Path, finalPartnerID)
 				refreshCancel()
+				// Write-through projection refresh runs before the buffered mutation
+				// response is released, closing the mutation -> immediate F5 window.
+				a.writeThroughReadModels(finalPartnerID, r.URL.Path)
 			}
 			event := baseEvent
 			event.PartnerID = finalPartnerID
