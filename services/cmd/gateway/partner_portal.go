@@ -420,6 +420,14 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 		defer func(){
 			status:=rec.status;if status==0{status=200};outcome:="SUCCESS";if status>=400{outcome="FAILED"}
 			newState:=decodeAuditState(rec.body.Bytes());if state,ok:=newState.(map[string]any);ok&&len(state)==0{newState=requestState}
+			if status < http.StatusBadRequest {
+				// The durable refresh event survives process restarts; the immediate
+				// refresh signal minimizes the mutation -> F5 visibility window.
+				refreshCtx,refreshCancel:=context.WithTimeout(context.Background(),time.Second)
+				a.enqueueReadModelRefresh(refreshCtx,r.URL.Path,u.PartnerID)
+				refreshCancel()
+				a.requestCentralPartnerWorkspaceRefresh(u.PartnerID)
+			}
 			event:=baseEvent
 			event.Status=status;event.Outcome=outcome;event.NewState=newState;event.DurationMS=time.Since(started).Milliseconds()
 			finalizeCtx,finalizeCancel:=context.WithTimeout(context.Background(),3*time.Second)
@@ -431,6 +439,9 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	r.Header.Set("X-Himate-Partner-ID",u.PartnerID)
 
 	path:=strings.TrimPrefix(r.URL.Path,"/partner/api/v1")
+	if a.servePartnerMaterializedGET(w,r,u,path) {
+		return
+	}
 	switch{
 	case path=="/dashboard"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"dashboard.read"){a.partnerDashboard(w,r,u)}
