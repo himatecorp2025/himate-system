@@ -176,6 +176,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
   }
 
   Future<void> _createRestorePoint([String? partnerId]) async {
+    if (!widget.canMutate) return;
     final id = partnerId ?? await _choosePartner();
     if (id == null || id.isEmpty || busy.contains(id)) return;
     setState(() => busy.add(id));
