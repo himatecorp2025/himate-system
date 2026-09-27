@@ -126,6 +126,38 @@ func partnerPortalModulesWithPlanContext(source, plans, current map[string]any) 
 	return out
 }
 
+func partnerPortalPlanModulesFromPlan(partnerID string, current map[string]any) map[string]any {
+	configured := current["configured"] == true
+	keys := []string{}
+	if configured {
+		for key := range stringSetFromAny(current["active_module_keys"]) {
+			if strings.TrimSpace(key) != "" {
+				keys = append(keys, key)
+			}
+		}
+		sort.Strings(keys)
+	}
+	selectionMode := strings.ToUpper(central10String(current["selection_mode"]))
+	entitlementMode := strings.ToUpper(central10String(current["entitlement_mode"]))
+	if entitlementMode == "" {
+		entitlementMode = selectionMode
+	}
+	var moduleLimit any
+	if configured {
+		moduleLimit = current["module_limit"]
+	}
+	return map[string]any{
+		"partner_id":        partnerID,
+		"plan_key":          central10String(current["plan_key"]),
+		"selection_mode":    selectionMode,
+		"entitlement_mode":  entitlementMode,
+		"module_limit":      moduleLimit,
+		"module_keys":       keys,
+		"count":             len(keys),
+		"unlimited_modules": configured && current["unlimited_modules"] == true,
+	}
+}
+
 func partnerPortalSelectablePlans(source map[string]any) map[string]any {
 	out := central10CopyMap(source)
 	if out == nil {
@@ -231,7 +263,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	var moduleCommercialHistory map[string]any
 	var start22SummaryAll, start22SummaryProduction, start22SummaryStaging, start22Retention map[string]any
 	var portalGate, portalModulesEN, portalModulesHU, portalPlansRaw, portalPlan map[string]any
-	var portalPlanModules, portalCharity, portalCharityModules, portalDesignMedia map[string]any
+	var portalCharity, portalCharityModules, portalDesignMedia map[string]any
 	var portalInvoices map[string]any
 	var tenantFinancePolicy, tenantFinanceInvoices map[string]any
 	portalUsers := []map[string]any{}
@@ -281,7 +313,6 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	runMap("portal_gate", "billing", "/internal/v1/partners/"+escapedID+"/portal-gate", &portalGate)
 	runMap("portal_plans", "billing", "/api/v1/billing/plans", &portalPlansRaw)
 	runMap("portal_plan", "billing", base+"/plan", &portalPlan)
-	runMap("portal_plan_modules", "billing", base+"/plan/modules", &portalPlanModules)
 	runMap("portal_charity", "billing", base+"/commercial-mode", &portalCharity)
 	runMap("portal_charity_modules", "billing", base+"/charity/modules", &portalCharityModules)
 	runMap("portal_invoices", "billing", base+"/invoices?partner_visible=true", &portalInvoices)
@@ -335,6 +366,12 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	if partner == nil {
 		unavailable = append(unavailable, "partner")
 	}
+
+	// /plan already carries the authoritative entitlement set. Build the
+	// historical /plan/modules REST shape locally instead of adding a second
+	// Billing dependency that can turn an otherwise complete tenant snapshot
+	// partial during startup.
+	portalPlanModules := partnerPortalPlanModulesFromPlan(partnerID, portalPlan)
 
 	portalModulesEN = partnerPortalModulesWithPlanContext(portalModulesEN, portalPlansRaw, portalPlan)
 	portalModulesHU = partnerPortalModulesWithPlanContext(portalModulesHU, portalPlansRaw, portalPlan)
