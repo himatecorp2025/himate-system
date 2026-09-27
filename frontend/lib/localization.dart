@@ -82,6 +82,9 @@ String uiLiteralFor(BuildContext context, String value) =>
 
 String uiLiteral(String value) => HimateI18n.literal(HimateI18n.activeLocale, value);
 
+String uiBilingual(String en, String hu) =>
+    HimateI18n.activeLocale.toLowerCase().startsWith('hu') ? hu : en;
+
 class HimateI18n {
   static String activeLocale = 'en_US';
 
