@@ -2861,13 +2861,6 @@ class DashboardPage extends StatelessWidget {
               showHeader: false,
             title: uiLiteral('Dashboard'),
             subtitle: uiLiteral('Partners, modules and impact in one executive overview.'),
-            actions: [
-              OutlinedButton.icon(
-                onPressed: () => openPdfExportIfAvailable(context, api, '/api/v1/partners/export.pdf'),
-                icon: const Icon(Icons.download_outlined),
-                label: LText(uiLiteral('PDF export')),
-              ),
-            ],
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2941,6 +2934,7 @@ class DashboardPage extends StatelessWidget {
                     final report = _DashboardPartnerReportPreview(
                       partners: geoPartners,
                       onOpenPartners: canNavigate(1) ? () => onNavigate(1) : null,
+                      onExport: () => openPdfExportIfAvailable(context, api, '/api/v1/partners/export.pdf'),
                     );
                     if (constraints.maxWidth < 980) {
                       return Column(children: [activityPanel, const SizedBox(height: 16), report]);
@@ -3198,9 +3192,10 @@ class _DashboardUsMapPainter extends CustomPainter {
 }
 
 class _DashboardPartnerReportPreview extends StatelessWidget {
-  const _DashboardPartnerReportPreview({required this.partners, this.onOpenPartners});
+  const _DashboardPartnerReportPreview({required this.partners, this.onOpenPartners, this.onExport});
   final List<Map<String, dynamic>> partners;
   final VoidCallback? onOpenPartners;
+  final VoidCallback? onExport;
 
   String _shortDate(dynamic raw) {
     final parsed = DateTime.tryParse('${raw ?? ''}');
@@ -3226,6 +3221,12 @@ class _DashboardPartnerReportPreview extends StatelessWidget {
                   Expanded(child: LText(uiLiteral('Partner reporting'), style: GoogleFonts.lora(color: brandNavy,fontSize:19,fontWeight:FontWeight.w700))),
                   if (onOpenPartners != null)
                     TextButton(onPressed: onOpenPartners, child: LText(uiLiteral('All partners'))),
+                  if (onExport != null)
+                    OutlinedButton.icon(
+                      onPressed: onExport,
+                      icon: const Icon(Icons.download_outlined, size: 16),
+                      label: LText(uiLiteral('PDF export')),
+                    ),
                 ],
               ),
               LText(uiLiteral('Join date, state, active modules and lifecycle status from the Central read model.'), style: const TextStyle(color:brandTextSoft,fontSize:9.5)),
@@ -7201,14 +7202,6 @@ class _PackagesPageState extends State<PackagesPage> {
       showHeader: false,
       title: 'Packages',
       subtitle: 'Subscription packages, module entitlements and configuration.',
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/billing/packages/export.pdf'),
-          icon: const Icon(Icons.download_outlined),
-          label: const LText('Export PDF'),
-        ),
-        OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
-      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -8581,23 +8574,6 @@ class _FinancePageState extends State<FinancePage> {
       showHeader: false,
       title: 'Licensing & Finance',
       subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
-          icon: const Icon(Icons.download_outlined),
-          label: const LText('Export PDF'),
-        ),
-        OutlinedButton.icon(
-          onPressed: editProfile,
-          icon: const Icon(Icons.account_balance_outlined),
-          label: const LText('Billing profile'),
-        ),
-        FilledButton.icon(
-          onPressed: partners.isEmpty ? null : () => createManualInvoice(),
-          icon: const Icon(Icons.add_card_outlined),
-          label: const LText('New invoice'),
-        ),
-      ],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
           : Column(
@@ -10272,19 +10248,6 @@ class _SystemPageState extends State<SystemPage> {
           showHeader: false,
           title: 'System & Operations',
           subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
-          actions: [
-            if (canHealth && canAudit)
-              OutlinedButton.icon(
-                onPressed: _openDeveloperDiagnostics,
-                icon: const Icon(Icons.bug_report_outlined),
-                label: const LText('Developer diagnostics'),
-              ),
-            OutlinedButton.icon(
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const LText('Refresh diagnostics'),
-            ),
-          ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
