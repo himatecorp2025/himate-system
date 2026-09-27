@@ -111,7 +111,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
     final staging = environments.where((e) => '${e['kind']}' == 'STAGING').toList();
     final partnerIds = staging.map((e) => '${e['partner_id']}').where((e) => e.isNotEmpty).toSet().toList()..sort();
     if (partnerIds.isEmpty) {
-      _notify('Create or provision a staging environment before production.', failure: true);
+      _notify(uiLiteral('Create or provision a staging environment before production.'), failure: true);
       return;
     }
 
@@ -287,7 +287,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
     if (!widget.canApprove) return;
     final blockers = _blockers(environment);
     if (blockers.isNotEmpty) {
-      _notify('Launch blocked: ${blockers.join('; ')}', failure: true);
+      _notify('${uiLiteral('Launch blocked')}: ${blockers.join('; ')}', failure: true);
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -314,7 +314,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
       ),
     );
     if (confirmed == true) {
-      await _action(environment, 'launch', 'Production is LIVE.');
+      await _action(environment, 'launch', uiLiteral('Production is LIVE.'));
     }
   }
 
@@ -418,15 +418,15 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
                   ),
                 if (production && widget.canWrite)
                   OutlinedButton.icon(
-                    onPressed: isBusy ? null : () => _action(e, 'verify-domain', 'Domain verification completed.'),
+                    onPressed: isBusy ? null : () => _action(e, 'verify-domain', uiLiteral('Domain verification completed.')),
                     icon: const Icon(Icons.verified_outlined, size: 17),
                     label: LText(uiLiteral('Verify DNS/TLS')),
                   ),
                 if (widget.canApprove)
                   FilledButton.icon(
-                    onPressed: isBusy ? null : () => _action(e, 'deploy', production ? 'Production deployment completed.' : 'Staging deployment completed.'),
+                    onPressed: isBusy ? null : () => _action(e, 'deploy', uiLiteral(production ? 'Production deployment completed.' : 'Staging deployment completed.')),
                     icon: const Icon(Icons.cloud_upload_outlined, size: 17),
-                    label: LText('${e['deployment_status']}' == 'DEPLOYED' ? 'Redeploy' : 'Deploy'),
+                    label: LText(uiLiteral('${e['deployment_status']}' == 'DEPLOYED' ? 'Redeploy' : 'Deploy')),
                   ),
                 if (production && !isLive && widget.canApprove)
                   FilledButton.icon(
@@ -477,7 +477,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
         ]),
         const SizedBox(height: 14),
         if (environments.isEmpty)
-          const _MessageCard(
+          _MessageCard(
             icon: Icons.dns_outlined,
             title: uiLiteral('No partner environments'),
             message: uiLiteral('Provision a staging environment first. Production can then be configured here with an explicit public hostname.'),
