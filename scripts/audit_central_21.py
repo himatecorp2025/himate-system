@@ -238,7 +238,7 @@ for token in [
     '"catalog_modules_api"', '"provisioning_api"', '"impact_api"',
     '"evidence_api"', '"connector_credentials_api"', '"portal_gate"',
     '"tenant_finance"', '"partner_audit_events"', '"partner_contacts"',
-    '"partner_domains_deployments"', '"partner_permissions"',
+    '"partner_domains_deployments"', '"partner_permissions"', '"company_profile"',
 ]:
     check(token in tenant_snapshots, f"Tenant persistent projection missing block: {token}")
 
@@ -263,6 +263,16 @@ for token in [
     'strings.HasPrefix(path, "/api/v1/backups/restore-points/")',
 ]:
     check(token in central_reads, f"Backup recovery browser GET is not materialized: {token}")
+
+# Binary reads are materialized too: Partner invoice PDF must use one tenant LKG.
+check('"company_profile"' in tenant_snapshots and '"company_profile"' in models,
+      "Tenant LKG does not carry the invoice issuer/company profile")
+check('strings.HasPrefix(path, "/billing/invoices/") && strings.HasSuffix(path, "/pdf")' in partner_reads,
+      "Partner invoice PDF GET is not intercepted by the tenant read model")
+pdf_read = func_block(partner_reads, "func servePartnerInvoicePDFFromSnapshot")
+check(pdf_read != "", "Materialized Partner invoice PDF renderer is missing")
+for forbidden in ["internalGET", "internalGETWithHeaders", "serveProxy", "a.client.Do", "http.NewRequestWithContext"]:
+    check(forbidden not in pdf_read, f"Partner invoice PDF regressed to live fan-out: {forbidden}")
 
 # Writes are durable + write-through before buffered response release.
 check("identity.read_model_refresh_queue" in models and "enqueueReadModelRefresh" in models,
