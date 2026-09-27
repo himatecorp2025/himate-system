@@ -219,6 +219,13 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Sent': 'Elküldve',
+    'Cancelled': 'Törölve',
+    'Registered': 'Regisztrált',
+    'Pending Review': 'Ellenőrzésre vár',
+    'Classified': 'Besorolt',
+    'Admin Approval': 'Admin jóváhagyás',
+    'Unclassified': 'Nincs besorolva',
     'Classification': 'Besorolás',
     'Package comparison': 'Csomag-összehasonlítás',
     'Compare the current authoritative Billing plan values.': 'Az aktuális, hiteles számlázási csomagértékek összehasonlítása.',
