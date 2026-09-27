@@ -111,9 +111,12 @@ for token in [
 check("if (canBackups) '_platform'" in frontend, "System backup panel does not expose the platform restore-point scope")
 
 check("centralStep3SnapshotGet(centralStep4PartnersKey)" in admin,
-      "Administration refresh does not reuse the materialized partner snapshot")
-check(".timeout(const Duration(seconds: 6))" in read("frontend/lib/administration_center.dart"),
-      "Administration frontend can still wait without a bounded timeout")
+      "Administration materializer does not reuse the materialized partner snapshot")
+admin_ui = read("frontend/lib/administration_center.dart")
+check(".timeout(const Duration(seconds: 6))" not in admin_ui,
+      "Administration frontend still converts a slow authoritative read into a client timeout")
+check("centralStep3SnapshotGet(centralStep4AdministrationKey)" in admin,
+      "Administration request path is not snapshot-only")
 
 for token in [
     "if len(services)<=1",
