@@ -302,7 +302,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	var livePartner, billing, terms, license, agreement, commercialStatus map[string]any
 	var companyProfile, paymentProfile, websiteAdapter, partnerDesign map[string]any
 	var modules, documents, invoices, subscriptions, environments, provisioningJobs map[string]any
-	var impactSummary, evidenceItems, connectorCredentials, billingEvents map[string]any
+	var impactSummary, impactValues, evidenceItems, connectorCredentials, billingEvents map[string]any
 	var moduleCommercialHistory map[string]any
 	var start22SummaryAll, start22SummaryProduction, start22SummaryStaging, start22Retention map[string]any
 	var portalGate, portalModulesEN, portalModulesHU, portalPlansRaw, portalPlan map[string]any
@@ -364,6 +364,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	runMap("environments", "environments", "/api/v1/environments?partner_id="+url.QueryEscape(partnerID), &environments)
 	runMap("provisioning", "provisioning", "/api/v1/provisioning/jobs?partner_id="+url.QueryEscape(partnerID), &provisioningJobs)
 	runMap("impact", "impact", "/api/v1/impact/summary?partner_id="+url.QueryEscape(partnerID), &impactSummary)
+	runMap("impact_values", "impact", "/api/v1/impact/values?partner_id="+url.QueryEscape(partnerID)+"&limit=500", &impactValues)
 	runMap("evidence", "evidence", "/api/v1/evidence?partner_id="+url.QueryEscape(partnerID)+"&limit=200&offset=0", &evidenceItems)
 	runMap("connector_credentials", "connector", "/api/v1/connectors/"+escapedID+"/credential", &connectorCredentials)
 	runMap("website_adapter", "connector", "/api/v1/connectors/"+escapedID+"/website-adapter?environment=PRODUCTION", &websiteAdapter)
@@ -565,6 +566,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 		"environments_api":                environments,
 		"provisioning_api":                provisioningJobs,
 		"impact_api":                      impactSummary,
+		"impact_values_api":               impactValues,
 		"evidence_api":                    evidenceItems,
 		"connector_credentials_api":       connectorCredentials,
 		"portal_users_api": map[string]any{
