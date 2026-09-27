@@ -8726,6 +8726,8 @@ class _ImpactPageState extends State<ImpactPage> {
   Map<String, dynamic> impactMeta = <String, dynamic>{};
   Map<String, dynamic> impactAccess = <String, dynamic>{};
   bool impactSnapshotWarming = false;
+  int _impactWarmRetryCount = 0;
+  Timer? _impactWarmRetry;
   int evidenceTotal = 0;
   int evidenceOffset = 0;
   static const int evidenceLimit = 12;
@@ -8741,6 +8743,12 @@ class _ImpactPageState extends State<ImpactPage> {
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void dispose() {
+    _impactWarmRetry?.cancel();
+    super.dispose();
   }
 
   String evidencePath() {
@@ -8786,8 +8794,19 @@ class _ImpactPageState extends State<ImpactPage> {
           impactSnapshotWarming = true;
           impactMeta = meta;
         });
+        _impactWarmRetry?.cancel();
+        if (_impactWarmRetryCount < 2) {
+          _impactWarmRetryCount += 1;
+          _impactWarmRetry = Timer(Duration(milliseconds: 900 * _impactWarmRetryCount), () {
+            if (mounted && path == evidencePath()) {
+              unawaited(load());
+            }
+          });
+        }
         return;
       }
+      _impactWarmRetry?.cancel();
+      _impactWarmRetryCount = 0;
       setState(() {
         definitions = items(<String, dynamic>{'items': model['definitions']});
         summary = items(<String, dynamic>{'items': model['summary']});
@@ -8811,6 +8830,7 @@ class _ImpactPageState extends State<ImpactPage> {
       );
       applyModel(model);
     } catch (e) {
+      _impactWarmRetry?.cancel();
       if (!mounted) return;
       setState(() {
         loading = false;
