@@ -8530,10 +8530,52 @@ class _FinancePageState extends State<FinancePage> {
           }),
           const SizedBox(height: 18),
           if (rows.isEmpty)
-            const _MessageCard(
-              icon: Icons.bar_chart_outlined,
-              title: 'No paid revenue in this view',
-              message: 'There is no ledger data for the selected period/package. The chart stays empty instead of retrying indefinitely.',
+            SizedBox(
+              height: 205,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          for (var i = 0; i < 5; i++)
+                            const Divider(height: 1, color: Color(0xFFE5EAF1)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 2,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        for (final label in revenuePeriod == 'WEEKLY'
+                            ? const ['W1', 'W2', 'W3', 'W4']
+                            : const ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'])
+                          LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 8.2)),
+                      ],
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: brandWhite.withOpacity(.90),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: brandMist),
+                      ),
+                      child: LText(
+                        uiLiteral('No paid revenue in this view'),
+                        style: const TextStyle(color: brandTextSoft, fontSize: 9.5, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             )
           else
             SizedBox(
