@@ -32,6 +32,7 @@ type app struct{
 	evidenceHost string
 	partnersHost string
 	storageHost string
+	gatewayHost string
 	client *http.Client
 }
 
@@ -50,7 +51,8 @@ func main(){
 	a:=&app{
 		db:db,token:os.Getenv("HIMATE_INTERNAL_TOKEN"),impactHost:os.Getenv("IMPACT_HOSTPORT"),
 		evidenceHost:os.Getenv("EVIDENCE_HOSTPORT"),partnersHost:os.Getenv("PARTNERS_HOSTPORT"),
-		storageHost:os.Getenv("STORAGE_HOSTPORT"),client:&http.Client{Timeout:20*time.Second},
+		storageHost:os.Getenv("STORAGE_HOSTPORT"),gatewayHost:os.Getenv("GATEWAY_HOSTPORT"),
+		client:&http.Client{Timeout:45*time.Second},
 	}
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
 	if err:=a.migrate(ctx);err!=nil{log.Error("migration","error",err);os.Exit(1)}
@@ -291,6 +293,49 @@ func (a *app)buildSnapshot(ctx context.Context,rec reportRecord)(map[string]any,
 
 func contains(values []string,target string)bool{for _,v:=range values{if v==target{return true}};return false}
 
+func reportSnapshotPartnerIDs(snapshot map[string]any) []string {
+	raw, ok := snapshot["partner_ids"]
+	if !ok { return []string{} }
+	out := []string{}
+	switch values := raw.(type) {
+	case []string:
+		out = append(out, values...)
+	case []any:
+		for _, value := range values { out = append(out, strings.TrimSpace(fmt.Sprint(value))) }
+	}
+	return uniqueStrings(out)
+}
+
+func (a *app) synchronizeReadModels(ctx context.Context, partnerIDs []string) error {
+	host := strings.TrimSpace(a.gatewayHost)
+	if host == "" { return fmt.Errorf("GATEWAY_HOSTPORT is required for report projection synchronization") }
+	body, _ := json.Marshal(map[string]any{
+		"reason": "/internal/reports/background-complete/evidence/report",
+		"partner_ids": uniqueStrings(partnerIDs),
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/internal/v1/read-model/write-through", bytes.NewReader(body))
+	if err != nil { return err }
+	req.Header.Set("Content-Type", "application/json")
+	common.BindInternalRequest(req, a.token)
+	resp, err := common.DoInternal(a.client, req)
+	if err != nil { return err }
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var payload map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&payload)
+		return fmt.Errorf("Gateway read-model synchronization returned %d: %v", resp.StatusCode, payload)
+	}
+	return nil
+}
+
+func (a *app) requeueProjectionSync(id string, err error) {
+	message := "Read-model synchronization pending"
+	if err != nil { message = truncate(err.Error(), 500) }
+	_, _ = a.db.Exec(`UPDATE reports.jobs
+		SET status='QUEUED',last_error=$2,started_at=NULL,completed_at=NULL,updated_at=NOW()
+		WHERE id=$1`, id, message)
+}
+
 func (a *app)process(id string){
 	ctx,cancel:=context.WithTimeout(context.Background(),90*time.Second);defer cancel()
 	rec,err:=a.get(id);if err!=nil{return}
@@ -310,7 +355,15 @@ func (a *app)process(id string){
 			a.fail(id,fmt.Errorf("link report evidence: %w",err));return
 		}
 	}
+	// The transaction owner becomes READY first, but all browser reads are
+	// served from the Gateway CQRS projection. Therefore READY is externally
+	// visible only after this synchronous source-event write-through completes.
 	if err=a.markReportReady(ctx,id,artifact);err!=nil{a.fail(id,err);return}
+	partnerIDs:=reportSnapshotPartnerIDs(snapshot)
+	if err=a.synchronizeReadModels(ctx,partnerIDs);err!=nil{
+		a.requeueProjectionSync(id,fmt.Errorf("synchronize report read models: %w",err))
+		return
+	}
 }
 
 func (a *app)fail(id string,err error){_,_=a.db.Exec(`UPDATE reports.jobs SET status='FAILED',last_error=$2,completed_at=NOW(),updated_at=NOW() WHERE id=$1`,id,truncate(err.Error(),500))}
