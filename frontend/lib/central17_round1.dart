@@ -100,7 +100,7 @@ class _Central17UsMapState extends State<_Central17UsMap> {
                 Row(children:[
                   Container(width:38,height:38,decoration:BoxDecoration(color:brandGold.withOpacity(.12),borderRadius:BorderRadius.circular(11)),child:const Icon(Icons.location_on_rounded,color:brandGold,size:21)),
                   const SizedBox(width:10),
-                  Expanded(child:LText(state,style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:23,fontWeight:FontWeight.w700))),
+                  Expanded(child:LText(state,style:GoogleFonts.lora(color:brandNavy,fontSize:23,fontWeight:FontWeight.w700))),
                   IconButton(onPressed:()=>Navigator.pop(dialogContext),icon:const Icon(Icons.close_rounded)),
                 ]),
                 const SizedBox(height:8),
@@ -319,7 +319,7 @@ class _Central17TrendCard extends StatelessWidget {
               Container(width:34,height:34,decoration:BoxDecoration(color:brandSteel.withOpacity(.08),borderRadius:BorderRadius.circular(10)),child:const Icon(Icons.bar_chart_rounded,color:brandSteel,size:20)),
               const SizedBox(width:10),
               Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                LText(uiLiteral('12 month trend'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+                LText(uiLiteral('12 month trend'),style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
                 LText(uiLiteral('Partner count and settled amounts'),style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
               ])),
               _Central17LegendDot(color:brandNavy,label:uiLiteral('Active partners')),
@@ -375,7 +375,7 @@ class _Central17ModuleTrendCard extends StatelessWidget {
               Container(width:34,height:34,decoration:BoxDecoration(color:brandSteel.withOpacity(.08),borderRadius:BorderRadius.circular(10)),child:const Icon(Icons.bar_chart_rounded,color:brandSteel,size:20)),
               const SizedBox(width:10),
               Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                LText(uiLiteral('Module usage growth'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+                LText(uiLiteral('Module usage growth'),style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
                 LText(uiLiteral('Active module count by month'),style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
               ])),
               _Central17LegendDot(color:brandSteel,label:uiLiteral('Active modules')),
@@ -384,9 +384,26 @@ class _Central17ModuleTrendCard extends StatelessWidget {
             ]),
             const SizedBox(height:8),
             Expanded(
-              child: trend.isEmpty
-                ? Center(child:LText(uiLiteral('No module usage history is available yet.'),style:const TextStyle(color:brandTextSoft,fontSize:10.5)))
-                : _Central17TrendChart(partnerValues:modules,moneyValues:partners,labels:labels),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  _Central17TrendChart(partnerValues:modules,moneyValues:partners,labels:labels),
+                  if (trend.isEmpty)
+                    IgnorePointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: brandWhite.withOpacity(.88),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: LText(
+                          uiLiteral('No module usage history is available yet.'),
+                          style: const TextStyle(color:brandTextSoft,fontSize:9.5),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ]),
         ),
