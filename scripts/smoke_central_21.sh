@@ -92,7 +92,7 @@ check_read() {
   path="$1"
   expected_cache="$2"
   enforce_slo="${3:-false}"
-  TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$COOKIE" "$BASE_URL$path")"
+  TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$COOKIE" -H 'X-Himate-Locale: en' "$BASE_URL$path")"
   grep -Eiq "^X-Himate-Cache: ($expected_cache)\r?$" "$HEADERS" || {
     echo "Unexpected read-model cache header for $path"
     cat "$HEADERS"
