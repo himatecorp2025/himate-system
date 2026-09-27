@@ -389,12 +389,25 @@ func readModelVerificationKeys(reason string) []string {
 	return out
 }
 
+func readModelGlobalTenantScopes(reason string) (modules, plans, design bool) {
+	path := strings.ToLower(strings.TrimSpace(reason))
+	if i := strings.Index(path, "/audit"); i >= 0 {
+		path = path[:i]
+	}
+	modules = path == "/api/v1/modules" ||
+		strings.HasPrefix(path, "/api/v1/modules/") ||
+		path == "/api/v1/module-groups" ||
+		strings.HasPrefix(path, "/api/v1/module-groups/")
+	plans = path == "/api/v1/billing/plans" ||
+		strings.HasPrefix(path, "/api/v1/billing/plans/")
+	design = path == "/api/v1/cms/design" ||
+		strings.HasPrefix(path, "/api/v1/cms/design/")
+	return modules, plans, design
+}
+
 func readModelReasonRefreshesAllTenants(reason string) bool {
-	reason = strings.ToLower(strings.TrimSpace(reason))
-	return strings.Contains(reason, "/modules") ||
-		strings.Contains(reason, "/module-groups") ||
-		strings.Contains(reason, "/billing/plans") ||
-		strings.Contains(reason, "/cms/design")
+	modules, plans, design := readModelGlobalTenantScopes(reason)
+	return modules || plans || design
 }
 
 func (a *app) refreshCentralProjectionSerialized(key string, refresh func()) bool {
@@ -537,6 +550,18 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		go func() {
 			defer wg.Done()
 			a.writeThroughCentralPartnerWorkspace(partnerID)
+		}()
+	}
+
+	// Global catalog/plan/design definitions change tenant-facing projections
+	// for every partner. Refresh only the affected tenant snapshot slices before
+	// releasing the mutation ACK; the durable queue still performs the full
+	// background reconciliation afterwards.
+	if readModelReasonRefreshesAllTenants(reason) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a.writeThroughGlobalTenantReadModels(reason)
 		}()
 	}
 

@@ -194,3 +194,43 @@ func TestCentralBrowserMaterializedReadSeparatesBrowserAndLegacyClients(t *testi
 		t.Fatal("mutations must never be intercepted by materialized read path")
 	}
 }
+
+func TestReadModelGlobalTenantScopesSeparateGlobalAndPartnerMutations(t *testing.T) {
+	global := []struct {
+		reason      string
+		wantModules bool
+		wantPlans   bool
+		wantDesign  bool
+	}{
+		{"/api/v1/modules/audit", true, false, false},
+		{"/api/v1/modules/finance/audit", true, false, false},
+		{"/api/v1/module-groups/client_operations/audit", true, false, false},
+		{"/api/v1/billing/plans/STARTER/audit", false, true, false},
+		{"/api/v1/cms/design/publish/audit", false, false, true},
+	}
+	for _, tc := range global {
+		modules, plans, design := readModelGlobalTenantScopes(tc.reason)
+		if modules != tc.wantModules || plans != tc.wantPlans || design != tc.wantDesign {
+			t.Fatalf("global tenant scope %q = (%v,%v,%v), want (%v,%v,%v)",
+				tc.reason, modules, plans, design, tc.wantModules, tc.wantPlans, tc.wantDesign)
+		}
+		if !readModelReasonRefreshesAllTenants(tc.reason) {
+			t.Fatalf("global mutation %q must refresh all tenant read models", tc.reason)
+		}
+	}
+
+	local := []string{
+		"/api/v1/partners/ptr_1/modules/finance/audit",
+		"/partner/api/v1/modules/finance/activate/audit",
+		"/partner/api/v1/modules/finance/subscription/audit",
+		"/api/v1/billing/partners/ptr_1/plan/audit",
+		"/api/v1/cms/pages/page_1/audit",
+	}
+	for _, reason := range local {
+		modules, plans, design := readModelGlobalTenantScopes(reason)
+		if modules || plans || design || readModelReasonRefreshesAllTenants(reason) {
+			t.Fatalf("partner-scoped mutation %q must not amplify into all-tenant refresh", reason)
+		}
+	}
+}
+

@@ -18,6 +18,8 @@ const (
 	centralPartnerWorkspaceStartupBudget      = 12 * time.Second
 	centralPartnerWorkspaceMaterializeWorkers = 2
 	centralPartnerWorkspaceSourceConcurrency  = 4
+	centralPartnerWorkspaceGlobalWriteWorkers = 8
+	centralPartnerWorkspaceGlobalWriteBudget  = 3 * time.Second
 )
 
 func centralPartnerWorkspaceKey(partnerID string) string {
@@ -716,6 +718,201 @@ func (a *app) writeThroughCentralPartnerWorkspace(partnerID string) {
 		defer refreshCancel()
 		a.refreshCentralPartnerWorkspaceLocked(refreshCtx, partnerID)
 	})
+}
+
+func (a *app) persistedPartnerWorkspaceIDs(ctx context.Context) ([]string, error) {
+	rows, err := a.db.QueryContext(ctx,
+		`SELECT partner_id FROM identity.partner_workspace_snapshots ORDER BY updated_at DESC,partner_id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
+}
+
+func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID string, moduleScope, planScope, designScope bool) bool {
+	partnerID = strings.TrimSpace(partnerID)
+	if partnerID == "" {
+		return true
+	}
+	key := centralPartnerWorkspaceKey(partnerID)
+	if !centralStep3WaitBeginRefresh(ctx, key) {
+		if a.log != nil {
+			a.log.Warn("global tenant write-through could not acquire projection lock", "partner_id", partnerID)
+		}
+		return false
+	}
+	defer centralStep3EndRefresh(key)
+
+	snapshot, _, err := a.loadPartnerWorkspaceDB(ctx, partnerID)
+	if err != nil {
+		if a.log != nil {
+			a.log.Warn("global tenant write-through skipped missing LKG", "partner_id", partnerID, "error", err)
+		}
+		return false
+	}
+	// Historical compatibility baselines can exist without an authoritative
+	// partner. They are not tenant-facing and must not turn a global refresh into
+	// a dependency storm.
+	partner := partnerWorkspaceMap(snapshot, "partner")
+	if id := strings.TrimSpace(central10String(partner["id"])); id == "" || id != partnerID {
+		return true
+	}
+
+	escapedID := url.PathEscape(partnerID)
+	var modules, history, portalEN, portalHU, plansRaw, currentPlan, design, media map[string]any
+	var sourceWG sync.WaitGroup
+	var sourceMu sync.Mutex
+	sourceErrors := []string{}
+	fetch := func(name, service, path string, dst *map[string]any) {
+		sourceWG.Add(1)
+		go func() {
+			defer sourceWG.Done()
+			if err := a.internalGET(ctx, a.hosts[service], path, dst); err != nil {
+				sourceMu.Lock()
+				sourceErrors = append(sourceErrors, name)
+				sourceMu.Unlock()
+			}
+		}()
+	}
+
+	if moduleScope {
+		fetch("modules", "catalog", "/api/v1/partners/"+escapedID+"/modules", &modules)
+		fetch("module_commercial_history", "catalog", "/internal/v1/read-model/partner-module-history/"+escapedID, &history)
+	}
+	if moduleScope || planScope {
+		fetch("portal_modules_en", "catalog", "/internal/v1/partner-portal/"+escapedID+"/modules?locale=en_US", &portalEN)
+		fetch("portal_modules_hu", "catalog", "/internal/v1/partner-portal/"+escapedID+"/modules?locale=hu_HU", &portalHU)
+		fetch("portal_plans", "billing", "/api/v1/billing/plans", &plansRaw)
+		fetch("portal_plan", "billing", "/api/v1/billing/partners/"+escapedID+"/plan", &currentPlan)
+	}
+	if designScope {
+		fetch("partner_design", "cms", "/internal/v1/cms/partner-design/"+escapedID, &design)
+		fetch("portal_design_media", "cms", "/internal/v1/cms/partner-media/"+escapedID, &media)
+	}
+	sourceWG.Wait()
+	if len(sourceErrors) > 0 {
+		if a.log != nil {
+			a.log.Warn("global tenant write-through source refresh failed; retaining LKG",
+				"partner_id", partnerID, "unavailable", sourceErrors)
+		}
+		return false
+	}
+
+	if moduleScope {
+		moduleView := central10PartnerModuleView(
+			anyItems(modules["items"]),
+			partnerWorkspaceItems(snapshot, "subscriptions"),
+			"", "ALL",
+		)
+		snapshot["modules"] = moduleView["items"]
+		snapshot["module_view"] = moduleView
+		snapshot["catalog_modules_api"] = modules
+		snapshot["module_commercial_history"] = history
+	}
+	if moduleScope || planScope {
+		portalEN = partnerPortalModulesWithPlanContext(portalEN, plansRaw, currentPlan)
+		portalHU = partnerPortalModulesWithPlanContext(portalHU, plansRaw, currentPlan)
+		snapshot["portal_modules"] = map[string]any{"en_US": portalEN, "hu_HU": portalHU}
+		snapshot["portal_plans"] = partnerPortalSelectablePlans(plansRaw)
+		snapshot["portal_plan"] = currentPlan
+		snapshot["portal_plan_modules"] = partnerPortalPlanModulesFromPlan(partnerID, currentPlan)
+
+		portalUsers := partnerWorkspaceItems(snapshot, "portal_users")
+		if policies, _, policyErr := a.materializePartnerUserPolicies(ctx, partnerID, portalUsers, portalEN); policyErr == nil {
+			snapshot["portal_user_module_policies"] = policies
+			permissions := partnerWorkspaceMap(snapshot, "partner_permissions")
+			permissions["users"] = portalUsers
+			permissions["module_policies"] = policies
+			snapshot["partner_permissions"] = permissions
+		} else if a.log != nil {
+			a.log.Warn("global tenant write-through policy refresh failed; retaining prior policy",
+				"partner_id", partnerID, "error", policyErr)
+		}
+	}
+	if designScope {
+		snapshot["partner_design"] = design
+		snapshot["portal_design_media"] = media
+	}
+
+	persistCtx, cancel := context.WithTimeout(ctx, readModelPersistBudget)
+	defer cancel()
+	return a.persistPartnerWorkspaceSnapshot(persistCtx, partnerID, snapshot)
+}
+
+func (a *app) writeThroughGlobalTenantReadModels(reason string) bool {
+	moduleScope, planScope, designScope := readModelGlobalTenantScopes(reason)
+	if !moduleScope && !planScope && !designScope {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceGlobalWriteBudget)
+	defer cancel()
+	ids, err := a.persistedPartnerWorkspaceIDs(ctx)
+	if err != nil {
+		if a.log != nil {
+			a.log.Error("global tenant write-through inventory failed", "reason", reason, "error", err)
+		}
+		return false
+	}
+	if len(ids) == 0 {
+		return true
+	}
+
+	workers := centralPartnerWorkspaceGlobalWriteWorkers
+	if len(ids) < workers {
+		workers = len(ids)
+	}
+	jobs := make(chan string)
+	var wg sync.WaitGroup
+	var failedMu sync.Mutex
+	failed := []string{}
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for partnerID := range jobs {
+				if !a.refreshGlobalTenantReadModelSlice(ctx, partnerID, moduleScope, planScope, designScope) {
+					failedMu.Lock()
+					failed = append(failed, partnerID)
+					failedMu.Unlock()
+				}
+			}
+		}()
+	}
+sendLoop:
+	for _, partnerID := range ids {
+		select {
+		case jobs <- partnerID:
+		case <-ctx.Done():
+			break sendLoop
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	if ctx.Err() != nil {
+		if a.log != nil {
+			a.log.Warn("global tenant write-through reached mutation budget", "reason", reason, "error", ctx.Err())
+		}
+		return false
+	}
+	if len(failed) > 0 {
+		if a.log != nil {
+			a.log.Warn("global tenant write-through retained LKG for failed tenants", "reason", reason, "partners", failed)
+		}
+		return false
+	}
+	return true
 }
 
 func (a *app) requestCentralPartnerWorkspaceRefresh(partnerID string) {

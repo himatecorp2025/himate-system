@@ -119,6 +119,40 @@ check("read_model_source" in summary_block
       "Billing summary does not isolate read-model materialization from lifecycle synchronization")
 
 # Immediate mutation -> browser F5 consistency and legacy health compatibility.
+# Global definitions are cross-tenant: module registry, plan catalog and design
+# changes must update the tenant read-model slice before the mutation ACK.
+check("func readModelGlobalTenantScopes" in models
+      and 'path == "/api/v1/modules"' in models
+      and 'path == "/api/v1/module-groups"' in models
+      and 'path == "/api/v1/billing/plans"' in models
+      and 'path == "/api/v1/cms/design"' in models,
+      "Global tenant mutation classifier is incomplete")
+check("a.writeThroughGlobalTenantReadModels(reason)" in models,
+      "Synchronous write-through does not refresh all tenant snapshots for global definitions")
+check("refreshGlobalTenantReadModelSlice" in workspace
+      and "/internal/v1/partner-portal/" in workspace
+      and "/api/v1/billing/plans" in workspace
+      and "/internal/v1/cms/partner-design/" in workspace,
+      "Global tenant write-through does not rebuild module/plan/design tenant slices")
+check('strings.Contains(reason, "/modules")' not in models,
+      "All-tenant refresh classifier is still broad enough to capture partner-scoped module writes")
+
+cross_tenant_smokes = {
+    path for path, source in script_sources.items()
+    if "/partner/api/v1/modules" in source
+    and (
+        "/api/v1/modules/" in source
+        or "/api/v1/billing/plans/" in source
+        or "/api/v1/cms/design/" in source
+    )
+}
+for required in [
+    "scripts/smoke_start_23_11_1.sh",
+    "scripts/smoke_start_23_11_3.sh",
+]:
+    check(required in cross_tenant_smokes,
+          f"Cross-tenant mutation/read smoke coverage disappeared: {required}")
+
 check("a.refreshHealthSourceWriteThrough()" in models,
       "System/partner writes no longer synchronously refresh persistent Health compatibility state")
 check('strings.Contains(reason, "environment") || strings.Contains(reason, "provision")' in models,
