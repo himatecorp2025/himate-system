@@ -540,12 +540,8 @@ func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor us
 	started := time.Now()
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4PartnersKey)
 	if !ok {
-		a.requestCentralStep4Refresh()
 		a.readModelInvariantFailure(w, centralStep4PartnersKey)
 		return
-	}
-	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
-		a.requestCentralStep4Refresh()
 	}
 
 	q := r.URL.Query()
@@ -729,12 +725,8 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 	started := time.Now()
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
 	if !ok {
-		a.requestCentralStep3Refresh()
 		a.readModelInvariantFailure(w, centralStep3RegistryKey)
 		return
-	}
-	if time.Since(updatedAt) > 2*centralStep3RefreshInterval {
-		a.requestCentralStep3Refresh()
 	}
 
 	modules := anyItems(snapshot["modules"])
@@ -819,12 +811,8 @@ func (a *app) central10ModulesCommercial(w http.ResponseWriter, r *http.Request,
 	started := time.Now()
 	commercialSnapshot, commercialUpdatedAt, commercialOK := a.centralSnapshotForRead(r.Context(), centralStep3CommercialKey)
 	if !commercialOK {
-		a.requestCentralStep3Refresh()
 		a.readModelInvariantFailure(w, centralStep3CommercialKey)
 		return
-	}
-	if time.Since(commercialUpdatedAt) > 2*centralStep3RefreshInterval {
-		a.requestCentralStep3Refresh()
 	}
 
 	modules := anyItems(commercialSnapshot["modules"])
@@ -954,11 +942,9 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 	started := time.Now()
 	plansSnapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)
 	if !ok {
-		a.requestCentralStep3Refresh()
 		a.readModelInvariantFailure(w, centralStep3PlansKey)
 		return
 	}
-	if time.Since(updatedAt) > 2*centralStep3RefreshInterval { a.requestCentralStep3Refresh() }
 
 	moduleByKey := map[string]map[string]any{}
 	for _, module := range anyItems(plansSnapshot["modules"]) {
@@ -989,7 +975,6 @@ func (a *app) central10PackagesSupplementary(w http.ResponseWriter, r *http.Requ
 	started := time.Now()
 	analyticsSnapshot, analyticsUpdatedAt, analyticsOK := a.centralSnapshotForRead(r.Context(), centralStep3AnalyticsKey)
 	if !analyticsOK {
-		a.requestCentralStep3Refresh()
 		a.readModelInvariantFailure(w, "packages_supplementary")
 		return
 	}
@@ -1120,12 +1105,8 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 	started := time.Now()
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4FinanceKey)
 	if !ok {
-		a.requestCentralStep4Refresh()
 		a.readModelInvariantFailure(w, centralStep4FinanceKey)
 		return
-	}
-	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
-		a.requestCentralStep4Refresh()
 	}
 
 	profile := step4Map(snapshot["profile"])
@@ -1259,12 +1240,8 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 	started := time.Now()
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
 	if !ok {
-		a.requestCentralStep4Refresh()
 		a.readModelInvariantFailure(w, centralStep4ImpactKey)
 		return
-	}
-	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
-		a.requestCentralStep4Refresh()
 	}
 
 	definitions := []map[string]any{}
@@ -1493,12 +1470,8 @@ func (a *app) central10PartnerModules(w http.ResponseWriter, r *http.Request, ac
 	key := centralPartnerWorkspaceKey(partnerID)
 	snapshot, updatedAt, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
 	if !ok {
-		a.requestCentralPartnerWorkspaceRefresh(partnerID)
 		a.readModelInvariantFailure(w, key)
 		return
-	}
-	if time.Since(updatedAt) > 2*centralPartnerWorkspaceRefreshInterval {
-		a.requestCentralPartnerWorkspaceRefresh(partnerID)
 	}
 
 	modules := step4Items(snapshot["modules"])
@@ -1525,12 +1498,8 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	key := centralPartnerWorkspaceKey(partnerID)
 	snapshot, updatedAt, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
 	if !ok {
-		a.requestCentralPartnerWorkspaceRefresh(partnerID)
 		a.readModelInvariantFailure(w, key)
 		return
-	}
-	if time.Since(updatedAt) > 2*centralPartnerWorkspaceRefreshInterval {
-		a.requestCentralPartnerWorkspaceRefresh(partnerID)
 	}
 
 	partner := step4Map(snapshot["partner"])
