@@ -4,11 +4,15 @@ class DomainsDeploymentsPanel extends StatefulWidget {
   const DomainsDeploymentsPanel({
     required this.api,
     required this.initialEnvironments,
+    this.canWrite = true,
+    this.canApprove = true,
     super.key,
   });
 
   final Api api;
   final List<Map<String, dynamic>> initialEnvironments;
+  final bool canWrite;
+  final bool canApprove;
 
   @override
   State<DomainsDeploymentsPanel> createState() => _DomainsDeploymentsPanelState();
@@ -66,6 +70,8 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
     String successMessage, {
     Map<String, dynamic> body = const <String, dynamic>{},
   }) async {
+    final requiresApproval = suffix == 'deploy' || suffix == 'launch';
+    if ((requiresApproval && !widget.canApprove) || (!requiresApproval && !widget.canWrite)) return;
     final id = '${environment['id'] ?? ''}';
     if (id.isEmpty || busy.contains(id)) return;
     setState(() => busy.add(id));
@@ -101,6 +107,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
   }
 
   Future<void> _createProduction() async {
+    if (!widget.canWrite) return;
     final staging = environments.where((e) => '${e['kind']}' == 'STAGING').toList();
     final partnerIds = staging.map((e) => '${e['partner_id']}').where((e) => e.isNotEmpty).toSet().toList()..sort();
     if (partnerIds.isEmpty) {
@@ -209,6 +216,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
   }
 
   Future<void> _editEnvironment(Map<String, dynamic> environment) async {
+    if (!widget.canWrite) return;
     final hostname = TextEditingController(text: _value(environment['hostname'], fallback: ''));
     final release = TextEditingController(text: _value(environment['desired_release'], fallback: ''));
     final version = TextEditingController(text: _value(environment['platform_version'], fallback: ''));
@@ -276,6 +284,7 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
   }
 
   Future<void> _launch(Map<String, dynamic> environment) async {
+    if (!widget.canApprove) return;
     final blockers = _blockers(environment);
     if (blockers.isNotEmpty) {
       _notify('Launch blocked: ${blockers.join('; ')}', failure: true);
@@ -401,28 +410,32 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                OutlinedButton.icon(
-                  onPressed: isBusy ? null : () => _editEnvironment(e),
-                  icon: const Icon(Icons.tune_rounded, size: 17),
-                  label: const LText('Configure'),
-                ),
-                if (production)
+                if (widget.canWrite)
+                  OutlinedButton.icon(
+                    onPressed: isBusy ? null : () => _editEnvironment(e),
+                    icon: const Icon(Icons.tune_rounded, size: 17),
+                    label: const LText('Configure'),
+                  ),
+                if (production && widget.canWrite)
                   OutlinedButton.icon(
                     onPressed: isBusy ? null : () => _action(e, 'verify-domain', 'Domain verification completed.'),
                     icon: const Icon(Icons.verified_outlined, size: 17),
                     label: const LText('Verify DNS/TLS'),
                   ),
-                FilledButton.icon(
-                  onPressed: isBusy ? null : () => _action(e, 'deploy', production ? 'Production deployment completed.' : 'Staging deployment completed.'),
-                  icon: const Icon(Icons.cloud_upload_outlined, size: 17),
-                  label: LText('${e['deployment_status']}' == 'DEPLOYED' ? 'Redeploy' : 'Deploy'),
-                ),
-                if (production && !isLive)
+                if (widget.canApprove)
+                  FilledButton.icon(
+                    onPressed: isBusy ? null : () => _action(e, 'deploy', production ? 'Production deployment completed.' : 'Staging deployment completed.'),
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 17),
+                    label: LText('${e['deployment_status']}' == 'DEPLOYED' ? 'Redeploy' : 'Deploy'),
+                  ),
+                if (production && !isLive && widget.canApprove)
                   FilledButton.icon(
                     onPressed: isBusy || !launchReady ? null : () => _launch(e),
                     icon: const Icon(Icons.rocket_launch_outlined, size: 17),
                     label: const LText('Go LIVE'),
                   ),
+                if (!widget.canWrite && !widget.canApprove)
+                  const _MiniCounter(label: 'READ ONLY'),
               ],
             ),
             if (isBusy) ...[
@@ -447,11 +460,13 @@ class _DomainsDeploymentsPanelState extends State<DomainsDeploymentsPanel> {
         _SectionHeader(
           title: 'Domains & Deployments',
           subtitle: 'Staging and production release state, DNS/TLS verification and controlled READY FOR LAUNCH → LIVE transition.',
-          trailing: FilledButton.icon(
-            onPressed: _createProduction,
-            icon: const Icon(Icons.add_rounded),
-            label: const LText('Add production'),
-          ),
+          trailing: widget.canWrite
+              ? FilledButton.icon(
+                  onPressed: _createProduction,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const LText('Add production'),
+                )
+              : _MiniCounter(label: uiLiteral('Read only')),
         ),
         const SizedBox(height: 12),
         _RuleStrip(items: [
