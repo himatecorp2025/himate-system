@@ -6826,6 +6826,81 @@ class _PackagesPageState extends State<PackagesPage> {
       '${module['publication_status'] ?? ''}' == 'PUBLISHED' &&
       '${module['implementation_state'] ?? ''}' == 'READY';
 
+  Future<void> showPackageDetails(Map<String, dynamic> plan) async {
+    final included = plan['included_modules'] is List
+        ? (plan['included_modules'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final unlimited = '${plan['plan_key'] ?? ''}'.toUpperCase() == 'FLEX' ||
+        '${plan['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: '${plan['display_name'] ?? plan['plan_key']}',
+        subtitle: _packageDescription(plan),
+        icon: unlimited ? Icons.workspace_premium_outlined : Icons.inventory_2_outlined,
+        width: 760,
+        primaryLabel: uiLiteral('Close'),
+        onPrimary: () => Navigator.pop(dialogContext),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ResponsiveFieldPair(
+              first: _InfoCard(
+                title: uiLiteral('Commercial'),
+                icon: Icons.payments_outlined,
+                children: [
+                  _DefinitionRow(label: uiLiteral('Monthly package price'), value: '${plan['display_price'] ?? '—'}'),
+                  _DefinitionRow(label: uiLiteral('Entitlement'), value: _packageEntitlement(plan)),
+                  _DefinitionRow(label: uiLiteral('Status'), value: uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
+                ],
+              ),
+              second: _InfoCard(
+                title: uiLiteral('Module entitlement'),
+                icon: Icons.widgets_outlined,
+                children: [
+                  _DefinitionRow(label: uiLiteral('Module limit'), value: unlimited ? uiLiteral('Unlimited') : '${plan['module_limit'] ?? '—'}'),
+                  _DefinitionRow(label: uiLiteral('Configured modules'), value: unlimited ? uiLiteral('Automatic') : '${included.length}'),
+                  _DefinitionRow(label: uiLiteral('Selection mode'), value: '${plan['selection_mode'] ?? '—'}'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _SectionHeader(
+              title: uiLiteral('Included modules'),
+              subtitle: unlimited
+                  ? uiLiteral('Every current and future eligible module is included automatically.')
+                  : uiLiteral('Authoritative modules included in this package.'),
+              trailing: _MiniCounter(label: unlimited ? uiLiteral('Unlimited') : '${included.length}'),
+            ),
+            const SizedBox(height: 10),
+            if (unlimited)
+              const _MessageCard(
+                icon: Icons.all_inclusive_rounded,
+                title: 'Automatic Unlimited entitlement',
+                message: 'Premium includes all current and future eligible modules automatically.',
+              )
+            else if (included.isEmpty)
+              _MessageCard(
+                icon: Icons.inventory_2_outlined,
+                title: uiLiteral('No configured modules'),
+                message: uiLiteral('This package does not have a configured module set yet.'),
+              )
+            else
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  for (final module in included)
+                    Chip(label: LText('${module['label'] ?? module['key'] ?? '—'}')),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> editPackage(Map<String, dynamic> plan) async {
     final key = '${plan['plan_key']}';
     final limit = (plan['module_limit'] as num?)?.toInt() ?? 0;
@@ -7024,6 +7099,12 @@ class _PackagesPageState extends State<PackagesPage> {
     final analyticsPartners = analytics['partners'] is List
         ? (analytics['partners'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
         : <Map<String,dynamic>>[];
+    final analyticsByPlan = <String,Map<String,dynamic>>{
+      for (final row in analyticsPackages)
+        '${row['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
+            ? 'FLEX'
+            : '${row['plan_key'] ?? ''}'.toUpperCase(): row,
+    };
     final activityMeasured = analytics['portal_activity_measured'] == true;
 
     final activeSubscriptions = analyticsPackages.fold<int>(
@@ -7083,8 +7164,8 @@ class _PackagesPageState extends State<PackagesPage> {
                         active: plan['active'] == true,
                         moduleLimit: (plan['module_limit'] as num?)?.toInt(),
                         includedModuleCount: (plan['included_modules'] is List) ? (plan['included_modules'] as List).length : 0,
-                        activePartnerCount: (plan['active_partner_count'] as num?)?.toInt() ?? 0,
-                        onTap: () => unawaited(editPackage(plan)),
+                        activePartnerCount: (analyticsByPlan['${plan['plan_key'] ?? ''}'.toUpperCase()]?['active_partner_count'] as num?)?.toInt() ?? 0,
+                        onTap: () => unawaited(showPackageDetails(plan)),
                         onEdit: () => unawaited(editPackage(plan)),
                       ),
                     ),
