@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	central10ReadBudget = 650 * time.Millisecond
-	central10FreshTTL   = 30 * time.Second
-	central10StaleTTL   = 10 * time.Minute
+	central10ReadBudget             = 650 * time.Millisecond
+	central10PartnerWorkspaceBudget = 1500 * time.Millisecond
+	central10FreshTTL               = 30 * time.Second
+	central10StaleTTL               = 10 * time.Minute
 )
 
 type central10CacheEntry struct {
@@ -1779,7 +1780,7 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	partnerID := raw
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
+	ctx, cancel := context.WithTimeout(r.Context(), central10PartnerWorkspaceBudget)
 	defer cancel()
 
 	type page struct{ Items []map[string]any `json:"items"` }
@@ -1905,7 +1906,9 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		"payment_profile": paymentProfile,
 		"meta": central10Meta(started, status, unavailable),
 	}
-	central10Store(cacheKey, payload)
+	if status == "healthy" {
+		central10Store(cacheKey, payload)
+	}
 	w.Header().Set("X-Himate-Cache", "miss")
 	w.Header().Set("Server-Timing", fmt.Sprintf("central-partner-workspace;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
