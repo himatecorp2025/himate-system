@@ -173,7 +173,8 @@ class _Central17UsMapState extends State<_Central17UsMap> {
                     ),
                   ),
               for(final row in activeRows)
-                if(labelledStates.contains('${row['state'] ?? ''}') && _positions['${row['state'] ?? ''}'] case final Offset pos)
+                if(labelledStates.contains('${row['state'] ?? ''}'))
+                  if(_positions['${row['state'] ?? ''}'] case final Offset pos)
                   Positioned(
                     left:(c.maxWidth*pos.dx).clamp(8.0, math.max(8.0, c.maxWidth-98)).toDouble(),
                     top:(c.maxHeight*pos.dy-34).clamp(4.0, math.max(4.0, c.maxHeight-34)).toDouble(),
