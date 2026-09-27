@@ -22,6 +22,7 @@ gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
 step3_snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
+partner_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
 dashboard_snapshots = read("services/cmd/gateway/dashboard_snapshot.go")
 render = read("render.yaml")
 impact = read("services/cmd/impact/main.go")
@@ -59,35 +60,31 @@ check("/api/v1/central/partners/{partnerId}" in openapi,
 check("/api/v1/central/partners/{partnerId}/modules" in openapi,
       "Central-10 Partner Workspace module read-model OpenAPI path missing")
 
-# Flutter widgets may remain lazily mounted, but every permission-visible Central
-# read model must be warm before the first menu click.
+# Flutter widgets remain lazily mounted, while the Gateway owns all warmup.
+# Browser prefetch must never race the page's first read on hard refresh.
 for token in [
     "final Map<int, Widget> _pageCache",
     "_pageCache.putIfAbsent",
-    "final primaryTargets = <String>{};",
-    "final deferredTargets = <String>{};",
-    "primaryTargets.add(centralDashboardInitialPath())",
-    "primaryTargets.add(centralPartnersInitialPath())",
-    "primaryTargets.add(centralModulesInitialPath())",
-    "deferredTargets.add(centralModulesCommercialInitialPath())",
-    "primaryTargets.add(centralPackagesInitialPath())",
-    "deferredTargets.add(centralPackagesSupplementaryInitialPath())",
-    "primaryTargets.add(centralFinanceInitialPath())",
-    "deferredTargets.add(centralImpactInitialPath())",
-    "api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30))",
-    "api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30))",
+    "void _warmControlPlane()",
+    "Gateway owns authoritative read-model warming",
 ]:
-    check(token in frontend, f"Central-10.1 Step 5 pre-click warmup contract missing: {token}")
+    check(token in frontend, f"Central-10.1 browser/Gateway warmup contract missing: {token}")
 
 warm_start = frontend.find("void _warmControlPlane()")
 warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
 warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
-check("paths.add('/api/v1/billing/plans')" not in warm,
-      "Central-10 still contains the old eager raw Billing prefetch storm")
-check("paths.add('/api/v1/modules')" not in warm,
-      "Central-10 still eagerly prefetches raw module endpoints")
-check("String? target;" not in warm,
-      "Central-10.1 Step 5 still warms only the current route")
+check("api.prefetch(" not in warm,
+      "Central-10 still launches a browser prefetch storm")
+check("primaryTargets" not in warm and "deferredTargets" not in warm,
+      "Central-10 still keeps obsolete browser warmup queues")
+for token in [
+    "a.warmMissingCentralSnapshots()",
+    "a.warmMissingCentralPartnerWorkspaces()",
+    "go a.runCentralStep3Materializer()",
+    "go a.runCentralStep4Materializer()",
+    "go a.runCentralPartnerWorkspaceMaterializer()",
+]:
+    check(token in gateway_main, f"Central Gateway startup warmup missing: {token}")
 
 # Browser-side fan-out and obsolete read transforms are forbidden on the core paths.
 for token, message in [
@@ -135,7 +132,8 @@ for token in [
     "void Function(Map<String, dynamic> freshData)? onRefresh",
     "ValueListenable<int> cacheSignal(String path)",
     "_storeCache(path, data, maxAge)",
-    "const timeout = Duration(seconds: 4)",
+    "const mutationTimeout = Duration(seconds: 4)",
+    "response = await client.get(uri, headers: headers);",
 ]:
     check(token in frontend, f"Central-10.1 Step 1 network/cache contract missing: {token}")
 
@@ -164,17 +162,14 @@ for exact_prefetch in [
           f"Central-10.1 exact warmup/mount cache key missing: {exact_prefetch}")
 
 for shared_path_contract in [
-    "primaryTargets.add(centralDashboardInitialPath())",
     "final path = centralDashboardInitialPath()",
-    "deferredTargets.add(centralModulesCommercialInitialPath())",
-    "primaryTargets.add(centralFinanceInitialPath())",
+    "String centralModulesCommercialInitialPath()",
     "return centralFinanceInitialPath();",
-    "deferredTargets.add(centralImpactInitialPath())",
     "return centralImpactInitialPath();",
     "valueListenable: api.cacheSignal(path)",
 ]:
     check(shared_path_contract in frontend,
-          f"Central-10.1 shared warmup/mount path or reactive SWR binding missing: {shared_path_contract}")
+          f"Central-10.1 shared canonical path or reactive SWR binding missing: {shared_path_contract}")
 
 check("if (defaultView) return centralModulesCommercialInitialPath();" in modules_ui,
       "Central-10.1 Modules commercial default mount does not reuse the warmup cache key")
@@ -230,11 +225,11 @@ check("onRefresh: applyModel" in modules_ui,
 
 for token in [
     "Partner data is loading",
-    "Loading the latest finance snapshot.",
+    "Loading the authoritative finance snapshot.",
     "Impact data is loading",
 ]:
     check(token in frontend, f"Central-10.1 Loading != Zero guard missing: {token}")
-check("Loading the latest module registry snapshot." in modules_ui,
+check("Loading the authoritative module registry." in modules_ui,
       "Central-10.1 Modules Loading != Zero guard missing")
 
 check("bool loading = true;" in modules_ui,
@@ -336,7 +331,7 @@ for token in [
     "Future<void> loadSupplementary()",
     "/api/v1/central/packages/supplementary",
     "modulesLoading",
-    "Package cards remain usable while analytics loads independently.",
+    "analyticsLoading",
 ]:
     check(token in frontend, f"Step 3 Packages progressive Flutter contract missing: {token}")
 
@@ -518,11 +513,11 @@ check("maximum: 200, default: 120" not in openapi,
 # Responsibility score: explicit user-visible read-model capabilities. The
 # acceptance floor is 95%; Flutter retains only presentation state and action input.
 responsibilities = [
-    ("cache/degraded fallback", "central10StaleTTL" in gateway),
-    ("bounded backend aggregation", "central10ReadBudget = 650 * time.Millisecond" in gateway),
-    ("partner search/filter", 'values.Set("include_stats", "true")' in gateway),
-    ("partner KPI aggregation", '"kpis": map[string]any{' in gateway),
-    ("partner enrichment join", 'catalogByID :=' in gateway and 'billingByID :=' in gateway),
+    ("LKG persistence gate", "centralSnapshotValid" in step3_snapshots and "centralStep3Store" in step3_snapshots),
+    ("startup authoritative warmup", "warmMissingCentralSnapshots" in step3_snapshots),
+    ("partner snapshot search/filter", "snapshotItems := step4Items(snapshot[\"items\"])" in gateway),
+    ("partner KPI aggregation", '"lifecycle_counts":   lifecycleCounts' in step4_snapshots or '"lifecycle_counts": lifecycleCounts' in step4_snapshots),
+    ("partner enrichment materialization", "catalogByID :=" in step4_snapshots and "billingByID :=" in step4_snapshots),
     ("partner category fallback/merge/order", "central10PartnerCategories" in gateway),
     ("module registry filtering", "registryPreset :=" in gateway),
     ("module KPI aggregation", '"module_registry": len(modules)' in gateway),
@@ -539,8 +534,8 @@ responsibilities = [
     ("finance multi-currency ready labels", "central10MoneyLabel" in gateway),
     ("impact screen aggregation", "central10Impact" in gateway and "refreshCentralStep4Impact" in step4_snapshots),
     ("impact evidence filtering", "central10Step4EvidenceMatches" in gateway),
-    ("partner workspace aggregation", "central10PartnerWorkspace" in gateway),
-    ("partner workspace module filter/group/KPIs", "central10PartnerModuleView" in gateway),
+    ("partner workspace materialization", "materializeCentralPartnerWorkspace" in partner_snapshots),
+    ("partner workspace snapshot-only request", "centralStep3SnapshotGet(key)" in gateway),
     ("partner workspace subscription join", 'row["subscription"] = subscription' in gateway),
     ("partner workspace environment selection", "central10ProductionEnvironment" in gateway),
     ("weekly window selection", "central10NormalizeDashboardImpact" in gateway),
