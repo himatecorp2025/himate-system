@@ -32,16 +32,22 @@ func (a *app) centralReadinessJobs() []centralReadinessJob {
 
 func (a *app) ensureDashboardReadModelReady(ctx context.Context) error {
 	year := time.Now().UTC().Year()
-	if payload, _, err := a.loadDashboardSnapshotContext(ctx, year); err == nil && dashboardSnapshotValid(payload) {
+	payload, _, err := a.loadDashboardSnapshotContext(ctx, year)
+	if err == nil && dashboardSnapshotValid(payload) && !readModelSeeded(payload) {
 		return nil
 	}
+	// Seed rows make the first DB read deterministic, but they never suppress an
+	// eager attempt to build the real projection before the public port opens.
 	a.refreshDashboardSnapshot(year)
-	payload, _, err := a.loadDashboardSnapshotContext(ctx, year)
+	payload, _, err = a.loadDashboardSnapshotContext(ctx, year)
 	if err != nil {
 		return err
 	}
 	if !dashboardSnapshotValid(payload) {
 		return fmt.Errorf("dashboard read model is not Last-Known-Good")
+	}
+	if readModelSeeded(payload) && a.log != nil {
+		a.log.Warn("dashboard is using healthy cold-start baseline until background projection succeeds", "year", year)
 	}
 	return nil
 }
@@ -49,12 +55,18 @@ func (a *app) ensureDashboardReadModelReady(ctx context.Context) error {
 func (a *app) ensureCentralReadModelsReady(ctx context.Context) error {
 	missing := []string{}
 	for _, job := range a.centralReadinessJobs() {
-		if _, _, err := a.loadCentralSnapshotDB(ctx, job.key); err == nil {
+		payload, _, err := a.loadCentralSnapshotDB(ctx, job.key)
+		if err == nil && !readModelSeeded(payload) {
 			continue
 		}
 		job.refresh()
-		if _, _, err := a.loadCentralSnapshotDB(ctx, job.key); err != nil {
+		payload, _, err = a.loadCentralSnapshotDB(ctx, job.key)
+		if err != nil {
 			missing = append(missing, job.key)
+			continue
+		}
+		if readModelSeeded(payload) && a.log != nil {
+			a.log.Warn("Central screen is using healthy cold-start baseline until background projection succeeds", "snapshot_key", job.key)
 		}
 	}
 	if len(missing) > 0 {
@@ -74,14 +86,27 @@ func (a *app) ensurePartnerReadModelsReady(ctx context.Context) error {
 		if partnerID == "" {
 			continue
 		}
-		if _, _, err := a.loadPartnerWorkspaceDB(ctx, partnerID); err == nil {
+		payload, _, loadErr := a.loadPartnerWorkspaceDB(ctx, partnerID)
+		if loadErr != nil {
+			if seedErr := a.seedPartnerWorkspaceBaseline(ctx, item); seedErr != nil {
+				missing = append(missing, partnerID)
+				continue
+			}
+			payload, _, loadErr = a.loadPartnerWorkspaceDB(ctx, partnerID)
+		}
+		if loadErr == nil && !readModelSeeded(payload) {
 			continue
 		}
 		partnerCtx, cancel := context.WithTimeout(ctx, centralPartnerWorkspaceMaterializeBudget)
 		a.refreshCentralPartnerWorkspace(partnerCtx, partnerID)
 		cancel()
-		if _, _, err := a.loadPartnerWorkspaceDB(ctx, partnerID); err != nil {
+		payload, _, loadErr = a.loadPartnerWorkspaceDB(ctx, partnerID)
+		if loadErr != nil {
 			missing = append(missing, partnerID)
+			continue
+		}
+		if readModelSeeded(payload) && a.log != nil {
+			a.log.Warn("tenant workspace is using healthy cold-start baseline until background projection succeeds", "partner_id", partnerID)
 		}
 	}
 	if len(missing) > 0 {
