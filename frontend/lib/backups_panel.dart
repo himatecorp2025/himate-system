@@ -668,7 +668,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
         ]),
         const SizedBox(height: 14),
         if (partnerIds.isEmpty)
-          const _MessageCard(
+          _MessageCard(
             icon: Icons.backup_outlined,
             title: uiLiteral('No provisioned partner available'),
             message: uiLiteral('Provision a partner first. The backup service will then capture its isolated database, media namespace and configuration state.'),
