@@ -15,6 +15,7 @@ import (
 	"himate.local/services/internal/common"
 	"html"
 	"io"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -38,6 +39,7 @@ const loginAttemptMaxEntries = 4096
 
 type app struct {
 	db               *sql.DB
+	log              *slog.Logger
 	secret           string
 	internalToken    string
 	webDir           string
@@ -186,7 +188,7 @@ func main() {
 		IdleConnTimeout:     90 * time.Second,
 	}
 	a := &app{
-		db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
+		db: db, log: log, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
 		version: common.Env("HIMATE_APP_VERSION", "0.8.33-start-23.12"),
 		ttl: time.Duration(ttlHours) * time.Hour, rememberTTL: time.Duration(rememberTTLHours) * time.Hour,
@@ -252,9 +254,10 @@ func main() {
 	}
 	a.bootstrapDashboardSnapshot()
 	a.bootstrapCentralStep3Snapshots()
-	// A Central route must never become Live before its critical read models
-	// are renderable. Persisted snapshots are reused immediately; only missing
-	// snapshots are synchronously materialized once during gateway startup.
+	// Restore only validated Last-Known-Good Central snapshots. Missing or
+	// legacy degraded snapshots are rebuilt before the first normal request;
+	// background materializers keep them fresh without putting fan-out work on
+	// the browser request path.
 	a.warmMissingCentralSnapshots()
 	go a.runDashboardMaterializer()
 	go a.runCentralStep3Materializer()
