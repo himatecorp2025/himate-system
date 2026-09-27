@@ -17,6 +17,7 @@ billing_main = read("services/cmd/billing/main.go")
 billing8 = read("services/cmd/billing/central8.go")
 gateway10 = read("services/cmd/gateway/central10.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
+partner_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
 dashboard = read("services/cmd/gateway/dashboard_snapshot.go")
 health = read("services/cmd/health/main.go")
 system = read("services/cmd/gateway/central17_round3.go")
@@ -51,8 +52,8 @@ for token in [
 ]:
     check(token in step4, f"complete Partners snapshot contract missing: {token}")
 for token in [
-    "every Partners view is served from the complete enriched",
     "centralStep3SnapshotGet(centralStep4PartnersKey)",
+    'snapshotItems := step4Items(snapshot["items"])',
     "searchContains(",
     '"pagination": map[string]any{',
 ]:
@@ -83,7 +84,8 @@ for token in [
     check(token in frontend, f"partner refresh/workspace contract missing: {token}")
 check("_WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', true)" in frontend,
       "Partner Evidence workspace is not active")
-check('runPage("evidence", "evidence"' in gateway10, "partner Evidence is not backed by the Evidence service")
+check('runPage("evidence", "evidence"' in partner_snapshots,
+      "partner Evidence is not backed by the background Evidence materializer")
 
 for token in [
     "Future<void> activateModule(",
@@ -151,8 +153,10 @@ admin_end = administration_ui.find("\nclass _AdministrationCenterHeroCard", admi
 admin_view = administration_ui[admin_start:admin_end]
 check("child: _BrandLoading()" not in admin_view,
       "Administration browser refresh still replaces the workspace with a blocking loader")
-check("Administration data is loading" in admin_view,
-      "Administration non-blocking refresh state is missing")
+check("const LinearProgressIndicator(" in admin_view,
+      "Administration neutral authoritative-loading state is missing")
+check("Administration data is partially unavailable" not in admin_view,
+      "Administration still exposes degraded read-model errors to the user")
 
 for token in [
     "func central8CanonicalPlanKey(key string) string",
@@ -165,9 +169,9 @@ check("CASE WHEN plan_key='PREMIUM' THEN 'FLEX' ELSE plan_key END" in read("serv
 
 for token in [
     'runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"',
-    '"partner_design": partnerDesign',
+    '"partner_design":                 partnerDesign',
 ]:
-    check(token in gateway10, f"partner Branding & Website read-model contract missing: {token}")
+    check(token in partner_snapshots, f"partner Branding & Website materialized read-model contract missing: {token}")
 
 for token in [
     "_WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', true)",
