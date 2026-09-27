@@ -167,129 +167,72 @@ func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor use
 	common.JSON(w, http.StatusOK, payload)
 }
 
-func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
-	started := time.Now()
-	canHealth := a.hasPermission(actor, "health.read")
-	canProvisioning := a.hasPermission(actor, "provisioning.read")
-	canEnvironments := a.hasPermission(actor, "environments.read")
-	canBackups := a.hasPermission(actor, "backups.read")
-	canAudit := a.hasPermission(actor, "audit.read")
-	if !canHealth && !canProvisioning && !canEnvironments && !canBackups {
-		common.APIError(w, http.StatusForbidden, "FORBIDDEN", "System & Operations read permission required")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
-	defer cancel()
+func (a *app) materializeCentralSystem(ctx context.Context) map[string]any {
 	var healthPayload, provisioningPayload, environmentsPayload, backupsPayload map[string]any
 	var healthErr, provisioningErr, environmentsErr, backupsErr, auditErr error
 	auditEvents := []map[string]any{}
 	var wg sync.WaitGroup
+	wg.Add(5)
 
-	if canHealth {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			healthErr = a.internalGET(ctx, a.hosts["health"], "/api/v1/system-health/snapshot", &healthPayload)
-		}()
-	}
-	if canProvisioning {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			provisioningErr = a.internalGET(ctx, a.hosts["provisioning"], "/api/v1/provisioning/jobs", &provisioningPayload)
-		}()
-	}
-	if canEnvironments {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			environmentsErr = a.internalGET(ctx, a.hosts["environments"], "/api/v1/environments", &environmentsPayload)
-		}()
-	}
-	if canBackups {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			backupsErr = a.internalGET(ctx, a.hosts["backups"], "/api/v1/backups/summary", &backupsPayload)
-		}()
-	}
-	if canAudit {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			rows, err := a.db.QueryContext(ctx, `SELECT action,method,path,status,outcome,created_at
-				FROM identity.audit_events ORDER BY id DESC LIMIT 12`)
-			if err != nil {
+	go func() {
+		defer wg.Done()
+		healthErr = a.internalGET(ctx, a.hosts["health"], "/api/v1/system-health/snapshot", &healthPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		provisioningErr = a.internalGET(ctx, a.hosts["provisioning"], "/api/v1/provisioning/jobs", &provisioningPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		environmentsErr = a.internalGET(ctx, a.hosts["environments"], "/api/v1/environments", &environmentsPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		backupsErr = a.internalGET(ctx, a.hosts["backups"], "/api/v1/backups/summary", &backupsPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		rows, err := a.db.QueryContext(ctx, `SELECT action,method,path,status,outcome,created_at
+			FROM identity.audit_events ORDER BY id DESC LIMIT 12`)
+		if err != nil {
+			auditErr = err
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var action, method, path, outcome string
+			var status int
+			var createdAt time.Time
+			if err := rows.Scan(&action, &method, &path, &status, &outcome, &createdAt); err != nil {
 				auditErr = err
 				return
 			}
-			defer rows.Close()
-			for rows.Next() {
-				var action, method, path, outcome string
-				var status int
-				var createdAt time.Time
-				if err := rows.Scan(&action, &method, &path, &status, &outcome, &createdAt); err != nil {
-					auditErr = err
-					return
-				}
-				auditEvents = append(auditEvents, map[string]any{
-					"action": action, "method": method, "path": path,
-					"status": status, "outcome": outcome, "created_at": createdAt.UTC(),
-				})
-			}
-			if err := rows.Err(); err != nil {
-				auditErr = err
-			}
-		}()
-	}
+			auditEvents = append(auditEvents, map[string]any{
+				"action": action, "method": method, "path": path,
+				"status": status, "outcome": outcome, "created_at": createdAt.UTC(),
+			})
+		}
+		if err := rows.Err(); err != nil {
+			auditErr = err
+		}
+	}()
 	wg.Wait()
 
 	unavailable := []string{}
-	successful := 0
-	if canHealth {
-		if healthErr != nil {
-			unavailable = append(unavailable, "system_health")
-		} else {
-			successful++
-		}
+	if healthErr != nil {
+		unavailable = append(unavailable, "system_health")
 	}
-	if canProvisioning {
-		if provisioningErr != nil {
-			unavailable = append(unavailable, "provisioning")
-		} else {
-			successful++
-		}
+	if provisioningErr != nil {
+		unavailable = append(unavailable, "provisioning")
 	}
-	if canEnvironments {
-		if environmentsErr != nil {
-			unavailable = append(unavailable, "environments")
-		} else {
-			successful++
-		}
+	if environmentsErr != nil {
+		unavailable = append(unavailable, "environments")
 	}
-	if canBackups {
-		if backupsErr != nil {
-			unavailable = append(unavailable, "backups")
-		} else {
-			successful++
-		}
+	if backupsErr != nil {
+		unavailable = append(unavailable, "backups")
 	}
-	if canAudit {
-		if auditErr != nil {
-			unavailable = append(unavailable, "audit_events")
-		} else {
-			successful++
-		}
-	}
-
-	if successful == 0 && len(unavailable) > 0 {
-		if stale, ok, _ := central10Cached(cacheKey, false); ok {
-			stale["meta"] = central10Meta(started, "stale", unavailable)
-			w.Header().Set("X-Himate-Cache", "stale")
-			common.JSON(w, http.StatusOK, stale)
-			return
-		}
+	if auditErr != nil {
+		unavailable = append(unavailable, "audit_events")
 	}
 
 	services := central17Items(map[string]any{"items": healthPayload["services"]})
@@ -322,16 +265,102 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 			deployedEnvironments++
 		}
 	}
-
 	overall := central10String(healthPayload["status"])
 	if overall == "" {
-		if canHealth && healthErr != nil {
-			overall = "UNAVAILABLE"
-		} else {
-			overall = "UNKNOWN"
-		}
+		overall = "UNKNOWN"
 	}
 	issueCount := (len(services) - healthyServices) + degradedPartners
+	status := "healthy"
+	if len(unavailable) > 0 {
+		status = "partial"
+	}
+	return map[string]any{
+		"status":      status,
+		"unavailable": unavailable,
+		"health": map[string]any{
+			"status":   overall,
+			"services": services,
+			"partners": partners,
+		},
+		"provisioning": provisioning,
+		"environments": environments,
+		"events":       auditEvents,
+		"backups": map[string]any{
+			"provider": central10String(backupsPayload["provider"]),
+			"items":    backups,
+		},
+		"kpis": map[string]any{
+			"healthy_services":      healthyServices,
+			"service_count":         len(services),
+			"partner_systems":       len(partners),
+			"deployed_environments": deployedEnvironments,
+			"environment_count":     len(environments),
+			"issues":                issueCount,
+			"degraded_partners":     degradedPartners,
+		},
+	}
+}
+
+func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
+	started := time.Now()
+	canHealth := a.hasPermission(actor, "health.read")
+	canProvisioning := a.hasPermission(actor, "provisioning.read")
+	canEnvironments := a.hasPermission(actor, "environments.read")
+	canBackups := a.hasPermission(actor, "backups.read")
+	canAudit := a.hasPermission(actor, "audit.read")
+	if !canHealth && !canProvisioning && !canEnvironments && !canBackups {
+		common.APIError(w, http.StatusForbidden, "FORBIDDEN", "System & Operations read permission required")
+		return
+	}
+
+	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4SystemKey)
+	if !ok {
+		a.requestCentralStep4Refresh()
+		common.JSON(w, http.StatusOK, map[string]any{
+			"ready":        false,
+			"access":       map[string]any{},
+			"health":       map[string]any{},
+			"provisioning": []map[string]any{},
+			"environments": []map[string]any{},
+			"events":       []map[string]any{},
+			"backups":      map[string]any{"provider": "", "items": []map[string]any{}},
+			"kpis":         map[string]any{},
+			"meta":         centralStep4Meta(started, centralStep4SystemKey, time.Time{}, "warming", []string{}),
+		})
+		return
+	}
+	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
+		a.requestCentralStep4Refresh()
+	}
+
+	health := step4Map(snapshot["health"])
+	provisioning := step4Items(snapshot["provisioning"])
+	environments := step4Items(snapshot["environments"])
+	events := step4Items(snapshot["events"])
+	backups := step4Map(snapshot["backups"])
+	kpis := step4Map(snapshot["kpis"])
+
+	if !canHealth {
+		health = map[string]any{}
+		for _, key := range []string{"healthy_services", "service_count", "partner_systems", "issues", "degraded_partners"} {
+			delete(kpis, key)
+		}
+	}
+	if !canProvisioning {
+		provisioning = []map[string]any{}
+	}
+	if !canEnvironments {
+		environments = []map[string]any{}
+		delete(kpis, "deployed_environments")
+		delete(kpis, "environment_count")
+	}
+	if !canBackups {
+		backups = map[string]any{"provider": "", "items": []map[string]any{}}
+	}
+	if !canAudit {
+		events = []map[string]any{}
+	}
+
 	payload := map[string]any{
 		"ready": true,
 		"access": map[string]any{
@@ -346,31 +375,15 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 			"backups_approve":      a.hasPermission(actor, "backups.approve"),
 			"audit":                canAudit,
 		},
-		"health": map[string]any{
-			"status":   overall,
-			"services": services,
-			"partners": partners,
-		},
+		"health":       health,
 		"provisioning": provisioning,
 		"environments": environments,
-		"events": auditEvents,
-		"backups": map[string]any{
-			"provider": central10String(backupsPayload["provider"]),
-			"items":    backups,
-		},
-		"kpis": map[string]any{
-			"healthy_services":      healthyServices,
-			"service_count":         len(services),
-			"partner_systems":       len(partners),
-			"deployed_environments": deployedEnvironments,
-			"environment_count":     len(environments),
-			"issues":                issueCount,
-			"degraded_partners":     degradedPartners,
-		},
-		"meta": central10Meta(started, central17Status(unavailable, successful), unavailable),
+		"events":       events,
+		"backups":      backups,
+		"kpis":         kpis,
+		"meta":         centralStep4Meta(started, centralStep4SystemKey, updatedAt, "healthy", []string{}),
 	}
-	central10Store(cacheKey, payload)
-	w.Header().Set("X-Himate-Cache", "miss")
-	w.Header().Set("Server-Timing", fmt.Sprintf("central-system;dur=%d", time.Since(started).Milliseconds()))
+	w.Header().Set("X-Himate-Cache", "hot-snapshot")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-system-snapshot;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
 }
