@@ -12567,6 +12567,18 @@ class Content extends StatelessWidget {
                       ],
                     ),
                 if (showHeader) const SizedBox(height: 22),
+                if (!showHeader && actions.isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 9,
+                      runSpacing: 9,
+                      children: actions,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 child,
               ],
             ),
