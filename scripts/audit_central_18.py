@@ -169,7 +169,7 @@ check("CASE WHEN plan_key='PREMIUM' THEN 'FLEX' ELSE plan_key END" in read("serv
 
 for token in [
     'runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"',
-    '"partner_design":                 partnerDesign',
+    '"partner_design":                  partnerDesign',
 ]:
     check(token in partner_snapshots, f"partner Branding & Website materialized read-model contract missing: {token}")
 
