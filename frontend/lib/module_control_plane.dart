@@ -9,9 +9,10 @@ class ModuleControlPlanePage extends StatefulWidget {
 }
 
 class _ModuleWorkspaceTabs extends StatelessWidget {
-  const _ModuleWorkspaceTabs({required this.selected, required this.onSelect});
+  const _ModuleWorkspaceTabs({required this.selected, required this.onSelect, this.trailing});
   final String selected;
   final ValueChanged<String> onSelect;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -29,39 +30,57 @@ class _ModuleWorkspaceTabs extends StatelessWidget {
         border: Border.all(color: brandMist),
       ),
       child: LayoutBuilder(
-        builder: (context, constraints) => Wrap(
-          spacing: 5,
-          runSpacing: 5,
-          children: [
-            for (final spec in specs)
-              SizedBox(
-                width: constraints.maxWidth < 680 ? (constraints.maxWidth - 5) / 2 : 150,
-                child: Material(
-                  color: selected == spec.$1 ? const Color(0xFFEAF2FF) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
+        builder: (context, constraints) {
+          Widget tabs(double itemWidth) => Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            children: [
+              for (final spec in specs)
+                SizedBox(
+                  width: itemWidth,
+                  child: Material(
+                    color: selected == spec.$1 ? const Color(0xFFEAF2FF) : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
-                    onTap: () => onSelect(spec.$1),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(spec.$2, size: 17, color: selected == spec.$1 ? brandSteel : brandTextSoft),
-                          const SizedBox(width: 7),
-                          LText(uiLiteral(spec.$3), style: TextStyle(
-                            color: selected == spec.$1 ? brandSteel : brandNavy,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                          )),
-                        ],
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => onSelect(spec.$1),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(spec.$2, size: 17, color: selected == spec.$1 ? brandSteel : brandTextSoft),
+                            const SizedBox(width: 7),
+                            LText(uiLiteral(spec.$3), style: TextStyle(
+                              color: selected == spec.$1 ? brandSteel : brandNavy,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            )),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ],
-        ),
+            ],
+          );
+          if (constraints.maxWidth < 900 || trailing == null) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tabs(constraints.maxWidth < 680 ? (constraints.maxWidth - 5) / 2 : 150),
+                if (trailing != null) ...[const SizedBox(height: 8), trailing!],
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: tabs(145)),
+              const SizedBox(width: 12),
+              SizedBox(width: 365, child: trailing),
+            ],
+          );
+        },
       ),
     );
   }
