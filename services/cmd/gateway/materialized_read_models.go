@@ -375,6 +375,9 @@ func readModelVerificationKeys(reason string) []string {
 	if strings.Contains(reason, "environment") || strings.Contains(reason, "provision") ||
 		strings.Contains(reason, "health") || strings.Contains(reason, "backup") || strings.Contains(reason, "connector") {
 		add(centralStep4SystemKey)
+		if strings.Contains(reason, "environment") { add(centralStep4WebsiteKey) }
+		if strings.Contains(reason, "connector") { add(centralStep4ConnectionsKey); add(centralStep4PartnersKey) }
+		if strings.Contains(reason, "backup") { add(centralStep4AdministrationKey) }
 	}
 	if strings.Contains(reason, "admin") || strings.Contains(reason, "audit") ||
 		strings.Contains(reason, "role") || strings.Contains(reason, "secret") {
@@ -670,48 +673,83 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 	}
 	latestCreatedAt := events[0].createdAt.UTC()
 	partnerIDs := map[string]bool{}
+	targetKeys := map[string]bool{}
+	refreshAll := false
 	refreshAllTenants := false
+	refreshDashboard := false
+	refreshGlobalSearch := false
+	refreshHealth := false
+
 	for _, item := range events {
+		reason := strings.ToLower(strings.TrimSpace(item.reason))
 		if item.createdAt.After(latestCreatedAt) {
 			latestCreatedAt = item.createdAt.UTC()
 		}
 		if id := strings.TrimSpace(item.partnerID); id != "" {
 			partnerIDs[id] = true
 		}
-		if readModelReasonRefreshesAllTenants(item.reason) {
-			refreshAllTenants = true
+		keys := readModelVerificationKeys(reason)
+		if len(keys) == 0 {
+			refreshAll = true
+		}
+		for _, key := range keys { targetKeys[key] = true }
+		if readModelReasonRefreshesAllTenants(reason) { refreshAllTenants = true }
+
+		partnerMutation := strings.Contains(reason, "partner")
+		moduleMutation := strings.Contains(reason, "module") || strings.Contains(reason, "catalog")
+		billingMutation := strings.Contains(reason, "billing") || strings.Contains(reason, "invoice") ||
+			strings.Contains(reason, "subscription") || strings.Contains(reason, "plan") ||
+			strings.Contains(reason, "license") || strings.Contains(reason, "payment")
+		impactMutation := strings.Contains(reason, "impact") || strings.Contains(reason, "evidence") || strings.Contains(reason, "report")
+		websiteMutation := strings.Contains(reason, "cms") || strings.Contains(reason, "seo") ||
+			strings.Contains(reason, "contact") || strings.Contains(reason, "domain")
+		systemMutation := strings.Contains(reason, "environment") || strings.Contains(reason, "provision") ||
+			strings.Contains(reason, "health") || strings.Contains(reason, "backup") || strings.Contains(reason, "connector")
+		adminMutation := strings.Contains(reason, "admin") || strings.Contains(reason, "audit") ||
+			strings.Contains(reason, "role") || strings.Contains(reason, "secret")
+		if partnerMutation || systemMutation { refreshHealth = true }
+		if partnerMutation || moduleMutation || billingMutation || impactMutation { refreshDashboard = true }
+		if partnerMutation || moduleMutation || websiteMutation || adminMutation { refreshGlobalSearch = true }
+	}
+	if refreshAll {
+		for _, job := range a.centralReadinessJobs() {
+			if job.key != centralStep4GlobalSearchKey { targetKeys[job.key] = true }
+		}
+		refreshDashboard = true
+		refreshGlobalSearch = true
+		refreshHealth = true
+		refreshAllTenants = true
+	}
+	if refreshHealth {
+		a.refreshHealthSourceWriteThrough()
+	}
+
+	jobsByKey := map[string]func(){}
+	for _, job := range a.centralReadinessJobs() {
+		if targetKeys[job.key] && job.key != centralStep4GlobalSearchKey {
+			jobsByKey[job.key] = job.refresh
 		}
 	}
 
-	// Durable recovery is intentionally coalesced: one batch rebuilds the
-	// Central projection set once, regardless of how many source writes landed
-	// while the worker was busy. Synchronous write-through already handles the
-	// immediate mutation -> F5 consistency window.
+	// Coalesce a durable batch by projection key: one source event burst yields
+	// one rebuild per affected Central projection and one per affected tenant.
 	var wg sync.WaitGroup
-	for _, job := range a.centralReadinessJobs() {
-		job := job
-		if job.key == centralStep4GlobalSearchKey {
-			continue
-		}
+	for key, refresh := range jobsByKey {
+		key, refresh := key, refresh
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			a.refreshCentralProjectionSerialized(job.key, job.refresh)
+			a.refreshCentralProjectionSerialized(key, refresh)
 		}()
 	}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		a.refreshDashboardSerialized()
-	}()
-
+	if refreshDashboard {
+		wg.Add(1)
+		go func() { defer wg.Done(); a.refreshDashboardSerialized() }()
+	}
 	for partnerID := range partnerIDs {
 		partnerID := partnerID
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			a.writeThroughCentralPartnerWorkspace(partnerID)
-		}()
+		go func() { defer wg.Done(); a.writeThroughCentralPartnerWorkspace(partnerID) }()
 	}
 	if refreshAllTenants {
 		wg.Add(1)
@@ -723,27 +761,29 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 		}()
 	}
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		a.refreshNotificationsSerialized()
-	}()
+	go func() { defer wg.Done(); a.refreshNotificationsSerialized() }()
 	wg.Wait()
 
-	if !a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch) {
-		return false
+	if refreshGlobalSearch {
+		if !a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch) {
+			return false
+		}
+		targetKeys[centralStep4GlobalSearchKey] = true
 	}
 
 	verifyCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
-	for _, job := range a.centralReadinessJobs() {
-		_, updated, err := a.loadCentralSnapshotDB(verifyCtx, job.key)
+	for key := range targetKeys {
+		_, updated, err := a.loadCentralSnapshotDB(verifyCtx, key)
 		if err != nil || updated.Before(latestCreatedAt) {
 			return false
 		}
 	}
-	dashboardPayload, _, err := a.loadDashboardSnapshotContext(verifyCtx, time.Now().UTC().Year())
-	if err != nil || !dashboardSnapshotValid(dashboardPayload) {
-		return false
+	if refreshDashboard {
+		dashboardPayload, updated, err := a.loadDashboardSnapshotContext(verifyCtx, time.Now().UTC().Year())
+		if err != nil || !dashboardSnapshotValid(dashboardPayload) || updated.Before(latestCreatedAt) {
+			return false
+		}
 	}
 	for partnerID := range partnerIDs {
 		_, updated, err := a.loadPartnerWorkspaceDB(verifyCtx, partnerID)
