@@ -641,11 +641,14 @@ class _BackupsPanelState extends State<BackupsPanel> {
                     : const Icon(Icons.refresh_rounded, size: 17),
                 label: const LText('Refresh'),
               ),
-              FilledButton.icon(
-                onPressed: partnerIds.isEmpty ? null : () => _createRestorePoint(),
-                icon: const Icon(Icons.add_rounded),
-                label: const LText('New restore point'),
-              ),
+              if (widget.canMutate)
+                FilledButton.icon(
+                  onPressed: partnerIds.isEmpty ? null : () => _createRestorePoint(),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const LText('New restore point'),
+                )
+              else
+                _MiniCounter(label: uiLiteral('Read only')),
             ],
           ),
         ),
