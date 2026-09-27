@@ -4552,15 +4552,6 @@ class _PartnersPageState extends State<PartnersPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && !statsReady && partners.isEmpty && partnerKpis.isEmpty) {
-      return const Content(
-        showHeader: false,
-        eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
-        title: 'Partners',
-        subtitle: 'Loading the latest partner portfolio snapshot.',
-        child: _BrandLoading(),
-      );
-    }
     final live = (partnerKpis['live_partners'] as num?)?.toInt() ?? 0;
     final prospects = (partnerKpis['prospects'] as num?)?.toInt() ?? 0;
     final reference = (partnerKpis['reference_partners'] as num?)?.toInt() ?? 0;
@@ -4571,12 +4562,26 @@ class _PartnersPageState extends State<PartnersPage> {
       title: 'Partners',
       subtitle: 'Partner management, relationships and collaboration at a glance.',
       actions: const [],
-      child: error != null
-          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
-          : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ResponsiveKpiGrid(
+      child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (loading && !statsReady) ...[
+                  _MessageCard(
+                    icon: Icons.sync_rounded,
+                    title: uiLiteral('Partner data is loading'),
+                    message: uiLiteral('The partner workspace is already available while the latest materialized portfolio is loaded.'),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                if (error != null) ...[
+                  _MessageCard(
+                    icon: Icons.cloud_off_outlined,
+                    title: uiLiteral('Partner data is partially unavailable'),
+                    message: error!,
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                ResponsiveKpiGrid(
                       children: [
                         Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy, onTap: () => applyPortfolioPreset()),
                         Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => applyPortfolioPreset(lifecycle: 'LIVE')),
@@ -4843,8 +4848,8 @@ class _PartnersPageState extends State<PartnersPage> {
                         );
                       },
                     ),
-                  ],
-                ),
+              ],
+            ),
     );
   }
 }
