@@ -547,7 +547,7 @@ func central10PartnerCategories(locale string, remote []map[string]any) []map[st
 
 func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4PartnersKey)
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4PartnersKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
 		common.JSON(w, http.StatusOK, map[string]any{
@@ -743,7 +743,7 @@ func central10CanonicalPlan(plan map[string]any, moduleByKey map[string]map[stri
 
 func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep3RegistryKey)
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
 	if !ok {
 		a.requestCentralStep3Refresh()
 		payload := map[string]any{
@@ -845,9 +845,9 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 
 func (a *app) central10ModulesCommercial(w http.ResponseWriter, r *http.Request, actor user) {
 	started := time.Now()
-	commercialSnapshot, commercialUpdatedAt, commercialOK := centralStep3SnapshotGet(centralStep3CommercialKey)
-	registrySnapshot, _, registryOK := centralStep3SnapshotGet(centralStep3RegistryKey)
-	plansSnapshot, plansUpdatedAt, plansOK := centralStep3SnapshotGet(centralStep3PlansKey)
+	commercialSnapshot, commercialUpdatedAt, commercialOK := a.centralSnapshotForRead(r.Context(), centralStep3CommercialKey)
+	registrySnapshot, _, registryOK := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
+	plansSnapshot, plansUpdatedAt, plansOK := a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)
 	if !commercialOK {
 		a.requestCentralStep3Refresh()
 		payload := map[string]any{
@@ -998,7 +998,7 @@ func (a *app) central10ModulesCommercial(w http.ResponseWriter, r *http.Request,
 
 func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	plansSnapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep3PlansKey)
+	plansSnapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)
 	if !ok {
 		a.requestCentralStep3Refresh()
 		payload := map[string]any{
@@ -1013,7 +1013,7 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 	if time.Since(updatedAt) > 2*centralStep3RefreshInterval { a.requestCentralStep3Refresh() }
 
 	moduleByKey := map[string]map[string]any{}
-	if registrySnapshot, _, registryOK := centralStep3SnapshotGet(centralStep3RegistryKey); registryOK {
+	if registrySnapshot, _, registryOK := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey); registryOK {
 		for _, module := range anyItems(registrySnapshot["modules"]) {
 			moduleByKey[central10String(module["key"])] = module
 		}
@@ -1044,8 +1044,8 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 
 func (a *app) central10PackagesSupplementary(w http.ResponseWriter, r *http.Request, actor user) {
 	started := time.Now()
-	registrySnapshot, registryUpdatedAt, registryOK := centralStep3SnapshotGet(centralStep3RegistryKey)
-	analyticsSnapshot, analyticsUpdatedAt, analyticsOK := centralStep3SnapshotGet(centralStep3AnalyticsKey)
+	registrySnapshot, registryUpdatedAt, registryOK := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
+	analyticsSnapshot, analyticsUpdatedAt, analyticsOK := a.centralSnapshotForRead(r.Context(), centralStep3AnalyticsKey)
 	if !registryOK || !analyticsOK {
 		a.requestCentralStep3Refresh()
 	}
@@ -1196,7 +1196,7 @@ func central10Step4Unavailable(raw any) []string {
 
 func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4FinanceKey)
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4FinanceKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
 		payload := map[string]any{
@@ -1344,7 +1344,7 @@ func central10Step4EvidenceMatches(row map[string]any, r *http.Request) bool {
 
 func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
-	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4ImpactKey)
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
 		payload := map[string]any{
@@ -1587,7 +1587,7 @@ func (a *app) central10PartnerModules(w http.ResponseWriter, r *http.Request, ac
 	}
 	partnerID := parts[0]
 	key := centralPartnerWorkspaceKey(partnerID)
-	snapshot, updatedAt, ok := centralStep3SnapshotGet(key)
+	snapshot, updatedAt, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
 	if !ok {
 		a.requestCentralPartnerWorkspaceRefresh(partnerID)
 		view := central10PartnerModuleView(nil, nil, r.URL.Query().Get("q"), r.URL.Query().Get("state"))
