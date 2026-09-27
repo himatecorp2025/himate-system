@@ -105,6 +105,9 @@ check("WHERE partner_id=$1" in models, "Tenant read path is not indexed by partn
 check('path == "/api/v1/system-health"' in central_reads and
       'centralSnapshotForRead(r.Context(), centralStep4SystemKey)' in central_reads,
       "Legacy system-health GET is not routed through the persistent System read model")
+check('case path == "/api/v1/partner-categories":' in central_reads and
+      'centralSnapshotForRead(r.Context(), centralStep4PartnersKey)' in central_reads,
+      "Partner category GET is not routed through the persistent Partners read model")
 
 # Browser GET interception must happen before legacy owner-service proxy switches.
 check(main.find("a.serveCentralMaterializedGET(w, r, u)") <
