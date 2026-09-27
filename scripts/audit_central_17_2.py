@@ -25,6 +25,8 @@ step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 for token in [
     "for (final plan in canonicalPlans)",
     "class _PackageFeatureRow",
+    "class _PackageComparisonTable",
+    "Package comparison",
     "Most popular",
     "showPackageDetails(plan)",
     "editPackage(plan)",
