@@ -216,6 +216,15 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Most popular': 'Legnépszerűbb',
+    'Automatic': 'Automatikus',
+    'Commercial': 'Kereskedelmi',
+    'Module limit': 'Modullimit',
+    'Selection mode': 'Kiválasztási mód',
+    'Every current and future eligible module is included automatically.': 'Minden jelenlegi és jövőbeli jogosult modul automatikusan része a csomagnak.',
+    'Authoritative modules included in this package.': 'A csomagban szereplő hiteles modulok.',
+    'No configured modules': 'Nincsenek beállított modulok',
+    'This package does not have a configured module set yet.': 'Ehhez a csomaghoz még nincs beállítva modulkészlet.',
     'Some Impact sections are restricted': 'A Hatás és jelentések egyes részei korlátozottak',
     'Metrics': 'Mérőszámok',
     'Impact services are temporarily unavailable': 'A hatáskezelési szolgáltatások átmenetileg nem érhetők el',
