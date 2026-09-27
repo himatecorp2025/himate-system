@@ -28,8 +28,8 @@ for target in [
     require(target in frontend_compact, f"Dashboard KPI navigation missing: {target}")
 
 require("final VoidCallback? onTap;" in frontend, "KPI cards do not expose an interactive callback")
-require("impact['weekly_trend']" in frontend and "weeklyTrend" in frontend and "_ImpactPanel(" in frontend,
-        "Dashboard does not consume weekly Impact data")
+require("p['trend']" in frontend and "billing['monthly']" in frontend and "_Central17TrendCard(" in frontend,
+        "Dashboard reference trend does not consume authoritative partner and settled-revenue data")
 require("DropdownMenuItem(value:true,child:LText(uiLiteral('Weekly')))" in frontend_compact,
         "Program Impact Weekly selector is missing")
 require("oldDelegate.labels.toString()!=labels.toString()" in frontend_compact,

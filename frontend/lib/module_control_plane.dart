@@ -9,9 +9,10 @@ class ModuleControlPlanePage extends StatefulWidget {
 }
 
 class _ModuleWorkspaceTabs extends StatelessWidget {
-  const _ModuleWorkspaceTabs({required this.selected, required this.onSelect});
+  const _ModuleWorkspaceTabs({required this.selected, required this.onSelect, this.trailing});
   final String selected;
   final ValueChanged<String> onSelect;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -29,39 +30,57 @@ class _ModuleWorkspaceTabs extends StatelessWidget {
         border: Border.all(color: brandMist),
       ),
       child: LayoutBuilder(
-        builder: (context, constraints) => Wrap(
-          spacing: 5,
-          runSpacing: 5,
-          children: [
-            for (final spec in specs)
-              SizedBox(
-                width: constraints.maxWidth < 680 ? (constraints.maxWidth - 5) / 2 : 150,
-                child: Material(
-                  color: selected == spec.$1 ? const Color(0xFFEAF2FF) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
+        builder: (context, constraints) {
+          Widget tabs(double itemWidth) => Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            children: [
+              for (final spec in specs)
+                SizedBox(
+                  width: itemWidth,
+                  child: Material(
+                    color: selected == spec.$1 ? const Color(0xFFEAF2FF) : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
-                    onTap: () => onSelect(spec.$1),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(spec.$2, size: 17, color: selected == spec.$1 ? brandSteel : brandTextSoft),
-                          const SizedBox(width: 7),
-                          LText(uiLiteral(spec.$3), style: TextStyle(
-                            color: selected == spec.$1 ? brandSteel : brandNavy,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                          )),
-                        ],
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => onSelect(spec.$1),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(spec.$2, size: 17, color: selected == spec.$1 ? brandSteel : brandTextSoft),
+                            const SizedBox(width: 7),
+                            LText(uiLiteral(spec.$3), style: TextStyle(
+                              color: selected == spec.$1 ? brandSteel : brandNavy,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            )),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ],
-        ),
+            ],
+          );
+          if (constraints.maxWidth < 900 || trailing == null) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tabs(constraints.maxWidth < 680 ? (constraints.maxWidth - 5) / 2 : 150),
+                if (trailing != null) ...[const SizedBox(height: 8), trailing!],
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: tabs(145)),
+              const SizedBox(width: 12),
+              SizedBox(width: 365, child: trailing),
+            ],
+          );
+        },
       ),
     );
   }
@@ -72,6 +91,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> registryModules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> groups = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> topicRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> moduleTrend = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> commercialGroups = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptionPlans = <Map<String, dynamic>>[];
@@ -198,6 +218,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         registryModules = items(<String, dynamic>{'items': registry['modules']});
         groups = items(<String, dynamic>{'items': registry['groups']});
         topicRows = items(<String, dynamic>{'items': registry['topics']});
+        moduleTrend = items(<String, dynamic>{'items': registry['trend']});
         registryKpis = registry['kpis'] is Map
             ? Map<String, dynamic>.from(registry['kpis'] as Map)
             : <String, dynamic>{};
@@ -354,8 +375,13 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       setState(() {
         showCommercialMatrix = true;
         commercialPerspective = 'PARTNER';
+        commercialQuery = '';
+        commercialPartnerFilter = 'ALL';
+        commercialModuleFilter = 'ALL';
+        commercialStatusFilter = 'ALL';
+        commercialShown = 120;
       });
-      if (!commercialReady) unawaited(loadCommercial());
+      unawaited(loadCommercial());
       return;
     }
     setState(() => showCommercialMatrix = false);
@@ -1253,6 +1279,15 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
   }
 
+  Color _topicTone(String key) {
+    if (key.contains('finance')) return brandSuccess;
+    if (key.contains('operation') || key.contains('client')) return brandGold;
+    if (key.contains('marketing')) return brandSteel;
+    if (key.contains('website') || key.contains('event')) return const Color(0xFF7C4DDA);
+    if (key.contains('security')) return const Color(0xFF5D6B7A);
+    return brandNavy;
+  }
+
   Widget topicGroupCard(Map<String, dynamic> group) {
     final key = s(group['group_key']);
     final meta = topicByKey(key) ?? group;
@@ -1260,49 +1295,69 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final liveReady = (meta['live_ready'] as num?)?.toInt() ?? 0;
     final inDevelopment = (meta['in_development'] as num?)?.toInt() ?? 0;
     final assignments = (meta['active_partner_assignments'] as num?)?.toInt() ?? 0;
+    final tone = _topicTone(key);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => openTopic(key),
         child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 72,
+                height: 72,
                 decoration: BoxDecoration(
-                  color: brandNavy.withOpacity(.07),
+                  color: tone.withOpacity(.09),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: Icon(groupIcon(key), color: brandNavy, size: 23),
+                child: Icon(groupIcon(key), color: tone, size: 34),
               ),
-              const Spacer(),
-              const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 19),
-            ]),
-            const SizedBox(height: 18),
-            LText(
-              groupLabel(group),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            LText(
-              '$moduleCount ${uiLiteral('modules')}',
-              style: const TextStyle(color: brandTextSoft, fontSize: 10.5, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 16),
-            Wrap(spacing: 7, runSpacing: 7, children: [
-              _StatusPill(label: '$liveReady ${uiLiteral('live ready')}'),
-              if (inDevelopment > 0) _StatusPill(label: '$inDevelopment ${uiLiteral('in development')}'),
-            ]),
-            const SizedBox(height: 12),
-            LText(
-              '$assignments ${uiLiteral('active partner assignments')}',
-              style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
-            ),
-          ]),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  LText(
+                    groupLabel(group),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  LText(
+                    '$moduleCount ${uiLiteral('modules')}',
+                    style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  LText(
+                    '$liveReady ${uiLiteral('live ready')} · $assignments ${uiLiteral('active partner assignments')}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 6, runSpacing: 5, children: [
+                    _Central17SoftChip(label: '$liveReady ${uiLiteral('active')}'),
+                    if (inDevelopment > 0) _Central17SoftChip(label: '$inDevelopment ${uiLiteral('in development')}'),
+                  ]),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const Icon(Icons.chevron_right_rounded, color: brandNavy, size: 20),
+                const SizedBox(height: 9),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                  decoration: BoxDecoration(color: const Color(0xFFEAF2FF), borderRadius: BorderRadius.circular(8)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    LText(uiLiteral('Open'), style: const TextStyle(color: brandSteel, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_rounded, color: brandSteel, size: 14),
+                  ]),
+                ),
+              ]),
+            ],
+          ),
         ),
       ),
     );
@@ -1774,6 +1829,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         groups.isEmpty &&
         topicRows.isEmpty) {
       return const Content(
+        showHeader: false,
         eyebrow: 'MODULE CONTROL PLANE',
         title: 'Modules',
         subtitle: 'Loading the latest module registry snapshot.',
@@ -1789,6 +1845,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         groups.isEmpty &&
         topicRows.isEmpty) {
       return Content(
+        showHeader: false,
         title: uiLiteral('Modules'),
         subtitle: uiLiteral('Modules overview, organized by topic.'),
         actions: [
@@ -1813,6 +1870,13 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final partnerUsage = (registryKpis['active_partner_assignments'] as num?)?.toInt() ?? 0;
     final currentGroup = selectedGroupKey == null ? null : groupByKey(selectedGroupKey!);
     final topicOverview = selectedGroupKey == null && registryPreset == 'TOPICS';
+    final visibleTopics = query.trim().isEmpty
+        ? topicRows
+        : topicRows.where((topic) {
+            final needle = query.trim().toLowerCase();
+            return groupLabel(topic).toLowerCase().contains(needle) ||
+                s(topic['group_key']).toLowerCase().contains(needle);
+          }).toList();
 
     String registryTitle = uiLiteral('Module Topics');
     String registrySubtitle = uiLiteral('Open a topic to see its modules. Module cards can be moved to another topic from their action menu.');
@@ -1831,6 +1895,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     return Content(
+      showHeader: false,
       title: uiLiteral('Modules'),
       subtitle: uiLiteral('Modules overview, organized by topic.'),
       actions: [
@@ -1864,20 +1929,20 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ResponsiveKpiGrid(children: [
                 Kpi(
-                  label: uiLiteral('Module registry'),
-                  value: registryTotal.toString(),
-                  note: uiLiteral('Canonical + custom modules'),
-                  icon: Icons.hub_outlined,
-                  accent: brandNavy,
-                  onTap: showTopicOverview,
-                ),
-                Kpi(
                   label: uiLiteral('Active modules'),
                   value: liveReady.toString(),
                   note: uiLiteral('READY + PUBLISHED for live assignment'),
-                  icon: Icons.check_circle_outline_rounded,
-                  accent: brandSuccess,
+                  icon: Icons.inventory_2_outlined,
+                  accent: brandSteel,
                   onTap: () => applyRegistryPreset('ACTIVE'),
+                ),
+                Kpi(
+                  label: uiLiteral('Module registry'),
+                  value: registryTotal.toString(),
+                  note: uiLiteral('Canonical + custom modules'),
+                  icon: Icons.storage_rounded,
+                  accent: brandGold,
+                  onTap: showTopicOverview,
                 ),
                 Kpi(
                   label: uiLiteral('Source linked'),
@@ -1897,45 +1962,95 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 ),
               ]),
               const SizedBox(height: 16),
+              _Central17ModuleTrendCard(trend: moduleTrend),
+              const SizedBox(height: 16),
               _ModuleWorkspaceTabs(
                 selected: workspaceView,
                 onSelect: selectWorkspaceView,
+                trailing: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: ValueKey('module-workspace-search-$workspaceView'),
+                        onChanged: (value) {
+                          if (workspaceView == 'PARTNERS') {
+                            setState(() {
+                              commercialQuery = value;
+                              commercialShown = 120;
+                            });
+                            _scheduleCommercialReload();
+                            return;
+                          }
+                          setState(() => query = value);
+                          if (workspaceView != 'TOPICS') _scheduleRegistryReload();
+                        },
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: uiLiteral(
+                            workspaceView == 'TOPICS'
+                                ? 'Search topics...'
+                                : workspaceView == 'PARTNERS'
+                                    ? 'Search partners or modules...'
+                                    : workspaceView == 'CONNECTIONS'
+                                        ? 'Search connections...'
+                                        : 'Search modules...',
+                          ),
+                          prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    PopupMenuButton<String>(
+                      tooltip: uiLiteral('Module actions'),
+                      icon: const Icon(Icons.more_horiz_rounded, color: brandNavy),
+                      onSelected: (value) {
+                        if (value == 'packages') {
+                          setState(() => showSubscriptionPlans = true);
+                        } else if (value == 'group') {
+                          unawaited(addGroup());
+                        } else if (value == 'module') {
+                          unawaited(addModule());
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: 'packages', child: Row(children: [const Icon(Icons.workspace_premium_outlined, size: 17), const SizedBox(width: 8), LText(uiLiteral('Packages'))])),
+                        PopupMenuItem(value: 'group', enabled: !loading, child: Row(children: [const Icon(Icons.category_outlined, size: 17), const SizedBox(width: 8), LText(uiLiteral('Add group'))])),
+                        PopupMenuItem(value: 'module', enabled: !loading && groups.isNotEmpty, child: Row(children: [const Icon(Icons.add_box_outlined, size: 17), const SizedBox(width: 8), LText(uiLiteral('Add module'))])),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 18),
-              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                if (!topicOverview) ...[
+              if (!showCommercialMatrix) ...[
+              if (!topicOverview) ...[
+                Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                   IconButton(
                     tooltip: uiLiteral('Back to module topics'),
                     onPressed: showTopicOverview,
                     icon: const Icon(Icons.arrow_back_rounded),
                   ),
                   const SizedBox(width: 4),
-                ],
-                Expanded(
-                  child: _SectionHeader(
-                    title: registryTitle,
-                    subtitle: registrySubtitle,
-                    trailing: _MiniCounter(
-                      label: topicOverview
-                          ? '${topicRows.length} ${uiLiteral('topics')} · $registryTotal ${uiLiteral('modules')}'
-                          : '${filtered.length} ${uiLiteral('modules')}',
+                  Expanded(
+                    child: _SectionHeader(
+                      title: registryTitle,
+                      subtitle: registrySubtitle,
+                      trailing: _MiniCounter(label: '${filtered.length} ${uiLiteral('modules')}'),
                     ),
                   ),
-                ),
-              ]),
-              const SizedBox(height: 12),
+                ]),
+                const SizedBox(height: 12),
+              ],
               if (topicOverview)
                 LayoutBuilder(builder: (context, constraints) {
-                  final width = constraints.maxWidth < 640
+                  final width = constraints.maxWidth < 720
                       ? constraints.maxWidth
-                      : constraints.maxWidth < 1060
-                          ? (constraints.maxWidth - 12) / 2
-                          : (constraints.maxWidth - 24) / 3;
+                      : (constraints.maxWidth - 12) / 2;
                   return Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final group in topicRows)
+                      for (final group in visibleTopics)
                         SizedBox(width: width, child: topicGroupCard(group)),
                     ],
                   );
@@ -1995,9 +2110,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 ],
                 if (filtered.isEmpty)
                   _MessageCard(
-                    icon: Icons.inventory_2_outlined,
-                    title: uiLiteral('No modules found'),
-                    message: uiLiteral('No modules match the current topic or filters.'),
+                    icon: registryPreset == 'RELATIONSHIPS' ? Icons.link_off_rounded : Icons.inventory_2_outlined,
+                    title: uiLiteral(registryPreset == 'RELATIONSHIPS' ? 'No module connections found' : 'No modules found'),
+                    message: uiLiteral(registryPreset == 'RELATIONSHIPS'
+                        ? 'No dependency, integration, extension, conflict or replacement connections are configured yet.'
+                        : 'No modules match the current topic or filters.'),
                   )
                 else
                   LayoutBuilder(builder: (context, constraints) {
@@ -2015,6 +2132,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                       ],
                     );
                   }),
+              ],
               ],
               if (showCommercialMatrix) ...[
                 const SizedBox(height: 8),

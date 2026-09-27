@@ -1927,9 +1927,62 @@ func (a *app) dashboardAnalytics(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate billing analytics")
 		return
 	}
+
+	monthlyRows, err := a.db.Query(`
+		WITH revenue AS (
+			SELECT l.currency, l.paid_amount::numeric AS amount, l.payment_date::date AS occurred_on
+			FROM billing.initial_licenses l
+			JOIN partners.partners p ON p.id=l.partner_id
+			WHERE l.status='PAID'
+			  AND p.test_partner=FALSE
+			  AND l.provider_payment_id<>''
+			  AND l.payment_date >= make_date($1,1,1)
+			  AND l.payment_date < make_date($1+1,1,1)
+			UNION ALL
+			SELECT i.currency, i.total::numeric AS amount, i.paid_at::date AS occurred_on
+			FROM billing.invoices i
+			JOIN partners.partners p ON p.id=i.partner_id
+			WHERE i.status='PAID'
+			  AND p.test_partner=FALSE
+			  AND i.provider_status='SUCCEEDED'
+			  AND i.provider_payment_id<>''
+			  AND i.paid_at >= make_date($1,1,1)::timestamptz
+			  AND i.paid_at < make_date($1+1,1,1)::timestamptz
+		)
+		SELECT EXTRACT(MONTH FROM occurred_on)::int AS month, currency, COALESCE(SUM(amount),0)
+		FROM revenue
+		GROUP BY month,currency
+		ORDER BY month,currency`, year)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate monthly billing analytics")
+		return
+	}
+	defer monthlyRows.Close()
+
+	monthly := []map[string]any{}
+	for monthlyRows.Next() {
+		var month int
+		var currency string
+		var amount float64
+		if err := monthlyRows.Scan(&month, &currency, &amount); err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not read monthly billing analytics")
+			return
+		}
+		monthly = append(monthly, map[string]any{
+			"month": month,
+			"currency": currency,
+			"revenue": math.Round(amount*100) / 100,
+		})
+	}
+	if err := monthlyRows.Err(); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate monthly billing analytics")
+		return
+	}
+
 	common.JSON(w, http.StatusOK, map[string]any{
 		"year": year,
 		"items": items,
+		"monthly": monthly,
 		"count": len(items),
 		"source": "BILLING_PAID_LEDGER",
 		"currency_policy": "NO_FX_CONVERSION",
@@ -1938,13 +1991,18 @@ func (a *app) dashboardAnalytics(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { common.APIError(w, 405, "METHOD", "Use GET"); return }
-	query := `SELECT partner_id,currency,activation_fee,activation_fee_waived,activation_fee_reason,base_monthly_fee,annual_increase_percent,cycle_days,invoice_day,price_effective_from,service_anchor_date,updated_at FROM billing.partner_terms`
+	query := `SELECT t.partner_id,t.currency,t.activation_fee,t.activation_fee_waived,t.activation_fee_reason,t.base_monthly_fee,
+		t.annual_increase_percent,t.cycle_days,t.invoice_day,t.price_effective_from,t.service_anchor_date,t.updated_at,
+		COALESCE(s.plan_key,''),COALESCE(p.display_name,''),COALESCE(s.status,'')
+		FROM billing.partner_terms t
+		LEFT JOIN billing.partner_plan_subscriptions s ON s.partner_id=t.partner_id
+		LEFT JOIN billing.subscription_plans p ON p.plan_key=s.plan_key`
 	args := []any{}
 	if ids := strings.TrimSpace(r.URL.Query().Get("ids")); ids != "" {
-		query += ` WHERE partner_id = ANY(string_to_array($1, ','))`
+		query += ` WHERE t.partner_id = ANY(string_to_array($1, ','))`
 		args = append(args, ids)
 	}
-	query += ` ORDER BY partner_id`
+	query += ` ORDER BY t.partner_id`
 	rows, err := a.db.Query(query, args...)
 	if err != nil { common.APIError(w, 500, "DB", "Could not load billing portfolio"); return }
 	defer rows.Close()
@@ -1952,8 +2010,17 @@ func (a *app) portfolio(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	for rows.Next() {
 		var t terms
-		if rows.Scan(&t.PartnerID, &t.Currency, &t.ActivationFee, &t.ActivationFeeWaived, &t.ActivationFeeReason, &t.BaseMonthlyFee, &t.AnnualIncreasePercent, &t.CycleDays, &t.InvoiceDay, &t.PriceEffectiveFrom, &t.ServiceAnchorDate, &t.UpdatedAt) == nil {
-			items = append(items, map[string]any{"partner_id": t.PartnerID, "effective_base_fee": effectiveBaseFee(t, now), "currency": t.Currency, "updated_at": t.UpdatedAt})
+		var planKey, planName, planStatus string
+		if rows.Scan(&t.PartnerID, &t.Currency, &t.ActivationFee, &t.ActivationFeeWaived, &t.ActivationFeeReason, &t.BaseMonthlyFee, &t.AnnualIncreasePercent, &t.CycleDays, &t.InvoiceDay, &t.PriceEffectiveFrom, &t.ServiceAnchorDate, &t.UpdatedAt, &planKey, &planName, &planStatus) == nil {
+			items = append(items, map[string]any{
+				"partner_id": t.PartnerID,
+				"effective_base_fee": effectiveBaseFee(t, now),
+				"currency": t.Currency,
+				"plan_key": planKey,
+				"plan_name": planName,
+				"plan_status": planStatus,
+				"updated_at": t.UpdatedAt,
+			})
 		}
 	}
 	common.JSON(w, 200, map[string]any{"items": items})

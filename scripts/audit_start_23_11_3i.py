@@ -17,7 +17,7 @@ release_smoke = (root / "scripts/smoke_start_23_11_3i.sh").read_text(encoding="u
 
 release = "0.8.33-start-23.12"
 frontend_start = frontend.index("  Future<void> addPartner() async {")
-frontend_end = frontend.index("  List<Map<String, dynamic>> get filtered => partners;", frontend_start)
+frontend_end = frontend.index("  @override\n  Widget build(BuildContext context) {", frontend_start)
 add_partner = frontend[frontend_start:frontend_end]
 
 cms_fetch_start = gateway.index("func (a *app) fetchPublishedCMS")

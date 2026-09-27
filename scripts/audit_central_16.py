@@ -17,12 +17,14 @@ def check(condition: bool, message: str) -> None:
         errors.append(message)
 
 frontend = read("frontend/lib/main.dart")
+round1_ui = read("frontend/lib/central17_round1.dart")
 dashboard = read("services/cmd/gateway/dashboard_snapshot.go")
 central10 = read("services/cmd/gateway/central10.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 modules_ui = read("frontend/lib/module_control_plane.dart")
 website_ui = read("frontend/lib/cms_page.dart")
 administration_ui = read("frontend/lib/administration_center.dart")
+localization = read("frontend/lib/localization.dart")
 
 # Shared approved visual system.
 for token in [
@@ -32,11 +34,13 @@ for token in [
     "brightness: Brightness.light",
     "scaffoldBackgroundColor: brandIvory",
     "GoogleFonts.cormorantGaramond",
-    "Nagyobb hatás.",
-    "Erősebb közösségek.",
-    "Fenntartható jövő.",
+    "Greater impact.",
+    "Stronger communities.",
+    "A sustainable future.",
 ]:
     check(token in frontend, f"CENTRAL-16 shared design contract missing: {token}")
+check("'Greater impact.\\nStronger communities.\\nA sustainable future.': 'Nagyobb hatás.\\nErősebb közösségek.\\nFenntartható jövő.'" in localization,
+      "CENTRAL-17.1 locale-safe sidebar slogan mapping missing")
 
 # Backend-first architecture remains authoritative.
 for token in [
@@ -52,10 +56,11 @@ for token in [
     "class _DashboardUsMapPainter",
     "class _DashboardPartnerReportPreview",
     "Partners in the United States",
-    "12 month trend",
     "PDF export",
 ]:
     check(token in frontend, f"CENTRAL-16 Dashboard contract missing: {token}")
+check("12 month trend" in frontend or "12 month trend" in round1_ui,
+      "CENTRAL-16 Dashboard contract missing: 12 month trend")
 
 for token in [
     "func dashboardPartnerGeo(",

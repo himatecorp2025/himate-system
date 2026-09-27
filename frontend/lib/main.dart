@@ -13,6 +13,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart' as intl;
 import 'package:intl/date_symbol_data_local.dart' show initializeDateFormatting;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'browser_platform.dart';
 
 part 'cms_page.dart';
@@ -35,6 +36,7 @@ part 'partner_design.dart';
 part 'partner_connections.dart';
 part 'commercial_automation_ui.dart';
 part 'compliance_archives.dart';
+part 'central17_round1.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -2084,6 +2086,13 @@ class _ShellState extends State<Shell> {
         final allNav = navFor(context);
         final visibleNav = <NavSpec>[for (final index in visibleIndexes) allNav[index]];
         final visibleSelected = visibleIndexes.indexOf(selected).clamp(0, visibleIndexes.length - 1);
+        final round1Header = selected >= 0 && selected <= 2;
+        final round1Title = selected == 0 ? uiLiteral('Dashboard') : selected == 1 ? uiLiteral('Partners') : uiLiteral('Modules');
+        final round1Subtitle = selected == 0
+            ? uiLiteral('Partners, modules and impact at a glance.')
+            : selected == 1
+                ? uiLiteral('Partner management, relationships and collaboration at a glance.')
+                : uiLiteral('Modules overview, organized by topic.');
         if (mobile) {
           return Scaffold(
             appBar: AppBar(
@@ -2132,12 +2141,17 @@ class _ShellState extends State<Shell> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 230),
                 curve: Curves.easeOutCubic,
-                width: tablet || collapsed ? 82 : 258,
+                width: tablet || collapsed ? 82 : 244,
                 decoration: const BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF061426), brandNavy, Color(0xFF0A2C4C)]),
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF071A2E), Color(0xFF0B2744), Color(0xFF071C32)]),
                 ),
-                child: SafeArea(
-                  child: _SidebarContent(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (!(tablet || collapsed))
+                      const Positioned(left: 0, right: 0, bottom: 82, height: 320, child: _SidebarMountainArt()),
+                    SafeArea(
+                      child: _SidebarContent(
                     nav: visibleNav,
                     selected: visibleSelected,
                     collapsed: tablet || collapsed,
@@ -2145,19 +2159,54 @@ class _ShellState extends State<Shell> {
                     onSelect: (i) => _selectNav(visibleIndexes[i]),
                     onToggle: tablet ? null : () => setState(() => collapsed = !collapsed),
                     onLogout: widget.onLogout,
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
                 child: Column(
                   children: [
                     Container(
-                      height: 74,
+                      height: round1Header ? 86 : 74,
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       decoration: const BoxDecoration(color: brandSurface, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
                         children: [
-                          if (!tablet)
+                          if (round1Header && !tablet) ...[
+                            Expanded(
+                              flex: 4,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  LText(round1Title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                                  const SizedBox(height: 4),
+                                  LText(round1Subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 22),
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                readOnly: true,
+                                onTap: () => unawaited(openGlobalSearch(context)),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: uiLiteral('Search partners, modules and reports...'),
+                                  prefixIcon: const Icon(Icons.search_rounded, size: 19),
+                                  suffixIcon: Container(
+                                    margin: const EdgeInsets.all(8),
+                                    alignment: Alignment.center,
+                                    width: 28,
+                                    decoration: BoxDecoration(color: const Color(0xFFF0F3F7), borderRadius: BorderRadius.circular(6)),
+                                    child: const LText('⌘ K', style: TextStyle(color: brandTextSoft, fontSize: 8.5, fontWeight: FontWeight.w700)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ] else if (!tablet)
                             Expanded(
                               child: Align(
                                 alignment: Alignment.centerLeft,
@@ -2166,7 +2215,7 @@ class _ShellState extends State<Shell> {
                                   child: TextField(
                                     readOnly: true,
                                     onTap: () => unawaited(openGlobalSearch(context)),
-                                    decoration: InputDecoration(isDense: true, hintText: uiLiteral('Search anywhere...'), prefixIcon: Icon(Icons.search_rounded, size: 19)),
+                                    decoration: InputDecoration(isDense: true, hintText: uiLiteral('Search anywhere...'), prefixIcon: const Icon(Icons.search_rounded, size: 19)),
                                   ),
                                 ),
                               ),
@@ -2302,7 +2351,7 @@ class _SidebarContent extends StatelessWidget {
                   children: [
                     const Divider(color: Color(0x22FFFFFF), height: 1),
                     const SizedBox(height: 18),
-                    LText('Nagyobb hatás.\nErősebb közösségek.\nFenntartható jövő.',
+                    LText('Greater impact.\nStronger communities.\nA sustainable future.',
                         style: GoogleFonts.cormorantGaramond(
                           color: const Color(0xFFD9E2EC),
                           fontSize: 16,
@@ -2366,25 +2415,30 @@ class _NavItemState extends State<_NavItem> {
                 constraints: const BoxConstraints(minHeight: 52),
                 padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 12, vertical: 9),
                 decoration: BoxDecoration(
-                  color: active ? brandGold.withOpacity(.09) : hover ? Colors.white.withOpacity(.055) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: active ? brandGold.withOpacity(.70) : Colors.transparent),
+                  color: active ? brandGold.withOpacity(.16) : hover ? Colors.white.withOpacity(.055) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
                 ),
                 child: widget.collapsed
                     ? Center(child: Icon(widget.spec.icon, color: active ? brandGold : const Color(0xFFA8B7C7), size: 21))
-                    : Row(
+                    : Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          Icon(widget.spec.icon, color: active ? brandGold : const Color(0xFFA8B7C7), size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: LText(
-                              widget.spec.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: active ? const Color(0xFFF2D79F) : const Color(0xFFD9E2EC), fontWeight: active ? FontWeight.w700 : FontWeight.w500, fontSize: 12.5),
-                            ),
+                          Row(
+                            children: [
+                              Icon(widget.spec.icon, color: active ? brandGold : const Color(0xFFB6C3D0), size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: LText(
+                                  widget.spec.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: active ? const Color(0xFFF0D58E) : const Color(0xFFD9E2EC), fontWeight: active ? FontWeight.w700 : FontWeight.w500, fontSize: 12.5),
+                                ),
+                              ),
+                            ],
                           ),
-                          if (active) Container(width: 3, height: 18, decoration: BoxDecoration(color: brandGold, borderRadius: BorderRadius.circular(99))),
+                          if (active)
+                            Positioned(left: -13, top: 7, child: Container(width: 4, height: 22, decoration: BoxDecoration(color: brandGold, borderRadius: BorderRadius.circular(99)))),
                         ],
                       ),
               ),
@@ -2700,6 +2754,7 @@ class DashboardPage extends StatelessWidget {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
             return Content(
+              showHeader: false,
               title: uiLiteral('Dashboard'),
               subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
               child: ResponsiveKpiGrid(children: [
@@ -2712,6 +2767,7 @@ class DashboardPage extends StatelessWidget {
           }
           if (snapshot.hasError && snapshot.data == null) {
             return Content(
+              showHeader: false,
               title: uiLiteral('Dashboard'),
               subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
               child: _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Dashboard data is temporarily unavailable'), message: '${snapshot.error}'),
@@ -2732,7 +2788,6 @@ class DashboardPage extends StatelessWidget {
           final impactAvailable = impact['available'] != false;
           final billingAuthorized = billing['authorized'] != false;
           final impactAuthorized = impact['authorized'] != false;
-          final impactHasData = impact['has_data'] == true;
           final revenueRows = items(billing);
 
           String revenueValue = !billingAvailable ? '—' : billingAuthorized ? '0' : uiLiteral('Restricted');
@@ -2762,13 +2817,17 @@ class DashboardPage extends StatelessWidget {
                   ? uiLiteral('Verified people reached · YTD')
                   : uiLiteral('Impact permission required');
 
-          final monthlyTrend = items(<String, dynamic>{'items': impact['trend']});
-          final weeklyTrend = items(<String, dynamic>{'items': impact['weekly_trend']});
+          final partnerTrend = items(<String, dynamic>{'items': p['trend']});
+          final billingMonthly = items(<String, dynamic>{'items': billing['monthly']});
+          final billingCurrencies = billingMonthly.map((row) => '${row['currency'] ?? ''}').where((value) => value.isNotEmpty).toSet();
+          final dashboardCurrency = billingCurrencies.length == 1 ? billingCurrencies.first : '';
+          final dashboardRevenueTrend = dashboardCurrency.isEmpty ? <Map<String, dynamic>>[] : billingMonthly;
           final activities = items(activity);
           final geoStates = items(<String, dynamic>{'items': geo['states']});
           final geoPartners = items(<String, dynamic>{'items': geo['partners']});
 
           return Content(
+              showHeader: false,
             title: uiLiteral('Dashboard'),
             subtitle: uiLiteral('Partners, modules and impact in one executive overview.'),
             actions: [
@@ -2818,19 +2877,17 @@ class DashboardPage extends StatelessWidget {
                 const SizedBox(height: 18),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final trend = _ImpactPanel(
-                      monthlyTrend: monthlyTrend,
-                      weeklyTrend: weeklyTrend,
+                    final trend = _Central17TrendCard(
+                      partnerTrend: partnerTrend,
+                      revenueTrend: dashboardRevenueTrend,
+                      currency: dashboardCurrency,
                       year: year,
-                      authorized: impactAuthorized,
-                      hasData: impactHasData,
-                      title: uiLiteral('12 month trend'),
-                      subtitle: uiLiteral('Verified impact trend from the authoritative read model'),
                     );
                     final map = _DashboardUsMapCard(
                       states: geoStates,
                       activeStates: (geo['active_states'] as num?)?.toInt() ?? 0,
                       activePartners: (geo['active_partners'] as num?)?.toInt() ?? 0,
+                      partners: geoPartners,
                       available: geo['available'] != false,
                     );
                     if (constraints.maxWidth < 980) {
@@ -2881,12 +2938,48 @@ class _DashboardUsMapCard extends StatelessWidget {
     required this.states,
     required this.activeStates,
     required this.activePartners,
+    required this.partners,
     required this.available,
   });
   final List<Map<String, dynamic>> states;
+  final List<Map<String, dynamic>> partners;
   final int activeStates;
   final int activePartners;
   final bool available;
+
+  void _openFullView(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: brandWhite,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 980, maxHeight: 680),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
+            child: Column(
+              children: [
+                Row(children: [
+                  const Icon(Icons.location_on_rounded, color: brandSteel, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(child: LText(uiLiteral('Partners in the United States'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w700))),
+                  IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
+                ]),
+                const SizedBox(height: 12),
+                Expanded(child: _Central17UsMap(states: states, partners: partners)),
+                const SizedBox(height: 10),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  SizedBox(width: 122, child: _DashboardMapStat(value: '$activeStates', label: uiLiteral('active states'), accent: brandGold)),
+                  const SizedBox(width: 12),
+                  SizedBox(width: 122, child: _DashboardMapStat(value: '$activePartners', label: uiLiteral('US partners'), accent: brandSteel)),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2916,6 +3009,12 @@ class _DashboardUsMapCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  OutlinedButton.icon(
+                    onPressed: available ? () => _openFullView(context) : null,
+                    icon: const Icon(Icons.open_in_full_rounded, size: 15),
+                    label: LText(uiLiteral('Full view')),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9)),
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -2924,7 +3023,7 @@ class _DashboardUsMapCard extends StatelessWidget {
                     ? Center(child: LText(uiLiteral('Partner geography is temporarily unavailable'), style: const TextStyle(color: brandTextSoft)))
                     : Row(
                         children: [
-                          Expanded(child: _DashboardUsMap(states: states)),
+                          Expanded(child: _Central17UsMap(states: states, partners: partners)),
                           const SizedBox(width: 10),
                           SizedBox(
                             width: 92,
@@ -2980,6 +3079,7 @@ class _DashboardMapStat extends StatelessWidget {
       );
 }
 
+// ignore: unused_element
 class _DashboardUsMap extends StatelessWidget {
   const _DashboardUsMap({required this.states});
   final List<Map<String, dynamic>> states;
@@ -3444,6 +3544,8 @@ class _PartnersPageState extends State<PartnersPage> {
   String lifecycleFilter = 'ALL';
   String healthFilter = 'ALL';
   bool referenceOnly = false;
+  String partnerSort = 'AZ';
+  bool gridMode = true;
   static const int pageSize = 24;
   int offset = 0;
   int total = 0;
@@ -4368,12 +4470,21 @@ class _PartnersPageState extends State<PartnersPage> {
     }
   }
 
-  List<Map<String, dynamic>> get filtered => partners;
+  List<Map<String, dynamic>> get filtered {
+    final rows = List<Map<String, dynamic>>.from(partners);
+    rows.sort((a, b) {
+      final an = '${a['display_name'] ?? ''}'.toLowerCase();
+      final bn = '${b['display_name'] ?? ''}'.toLowerCase();
+      return partnerSort == 'ZA' ? bn.compareTo(an) : an.compareTo(bn);
+    });
+    return rows;
+  }
 
   @override
   Widget build(BuildContext context) {
     if (loading && !statsReady && partners.isEmpty && partnerKpis.isEmpty) {
       return const Content(
+        showHeader: false,
         eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
         title: 'Partners',
         subtitle: 'Loading the latest partner portfolio snapshot.',
@@ -4386,22 +4497,10 @@ class _PartnersPageState extends State<PartnersPage> {
     final allRecords = (partnerKpis['partner_records'] as num?)?.toInt() ?? 0;
 
     return Content(
+      showHeader: false,
       title: 'Partners',
       subtitle: 'Partner management, relationships and collaboration at a glance.',
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
-          icon: const Icon(Icons.download_outlined),
-          label: const LText('Export PDF'),
-        ),
-        OutlinedButton.icon(onPressed: addCategory, icon: const Icon(Icons.category_outlined), label: const LText('Add category')),
-        FilledButton.icon(
-          key: const Key('partners-new-partner-button'),
-          onPressed: addPartner,
-          icon: const Icon(Icons.add_business_outlined),
-          label: const LText('New Partner'),
-        ),
-      ],
+      actions: const [],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
           : Column(
@@ -4514,12 +4613,37 @@ class _PartnersPageState extends State<PartnersPage> {
                         },
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
+                          icon: const Icon(Icons.download_outlined, size: 17),
+                          label: LText(uiLiteral('Export PDF')),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: addCategory,
+                          icon: const Icon(Icons.create_new_folder_outlined, size: 17),
+                          label: LText(uiLiteral('Add category')),
+                        ),
+                        FilledButton.icon(
+                          key: const Key('partners-new-partner-button'),
+                          onPressed: addPartner,
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: LText(uiLiteral('New Partner')),
+                          style: FilledButton.styleFrom(backgroundColor: brandGold, foregroundColor: brandNavy),
+                        ),
+                      ],
+                    ),
                     if (referenceOnly) ...[
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: InputChip(
-                          label: const LText('Reference partners only'),
+                          label: LText(uiLiteral('Reference partners only')),
                           avatar: const Icon(Icons.workspace_premium_outlined, size: 16),
                           onDeleted: clearReferenceFilter,
                         ),
@@ -4532,25 +4656,44 @@ class _PartnersPageState extends State<PartnersPage> {
                     ],
                     Row(
                       children: [
-                        LText('Partner portfolio', style: Theme.of(context).textTheme.titleLarge),
-                        const SizedBox(width: 10),
-                        _MiniCounter(
-                          label: statsReady
-                              ? '${partners.length} ${uiLiteral('shown')} · $total ${uiLiteral('matched')}'
-                              : '${partners.length} ${uiLiteral('shown')}',
+                        Expanded(
+                          child: LText(
+                            '${uiLiteral('Partners')} ($total)',
+                            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 24, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 132,
+                          child: DropdownButtonFormField<String>(
+                            value: partnerSort,
+                            isDense: true,
+                            decoration: const InputDecoration(prefixIcon: Icon(Icons.swap_vert_rounded, size: 17)),
+                            items: [
+                              DropdownMenuItem(value: 'AZ', child: LText(uiLiteral('Name (A–Z)'))),
+                              DropdownMenuItem(value: 'ZA', child: LText(uiLiteral('Name (Z–A)'))),
+                            ],
+                            onChanged: (value) => setState(() => partnerSort = value ?? 'AZ'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _PartnerViewToggle(
+                          gridMode: gridMode,
+                          onChanged: (value) => setState(() => gridMode = value),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     LayoutBuilder(
                       builder: (context, c) {
-                        final width = c.maxWidth < 620
+                        final width = !gridMode
                             ? c.maxWidth
-                            : c.maxWidth < 980
-                                ? (c.maxWidth - 14) / 2
-                                : c.maxWidth < 1320
-                                    ? (c.maxWidth - 28) / 3
-                                    : (c.maxWidth - 42) / 4;
+                            : c.maxWidth < 620
+                                ? c.maxWidth
+                                : c.maxWidth < 980
+                                    ? (c.maxWidth - 14) / 2
+                                    : c.maxWidth < 1320
+                                        ? (c.maxWidth - 28) / 3
+                                        : (c.maxWidth - 42) / 4;
                         final cards = <Widget>[
                           if (filtered.isEmpty)
                             SizedBox(
@@ -10501,6 +10644,42 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+class _PartnerViewToggle extends StatelessWidget {
+  const _PartnerViewToggle({required this.gridMode, required this.onChanged});
+  final bool gridMode;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 42,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(color: brandWhite, borderRadius: BorderRadius.circular(9), border: Border.all(color: brandMist)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          _PartnerViewButton(icon: Icons.grid_view_rounded, selected: gridMode, onTap: () => onChanged(true)),
+          const SizedBox(width: 2),
+          _PartnerViewButton(icon: Icons.view_list_rounded, selected: !gridMode, onTap: () => onChanged(false)),
+        ]),
+      );
+}
+
+class _PartnerViewButton extends StatelessWidget {
+  const _PartnerViewButton({required this.icon, required this.selected, required this.onTap});
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: selected ? brandNavy : Colors.transparent,
+        borderRadius: BorderRadius.circular(7),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(7),
+          child: SizedBox(width: 34, height: 34, child: Icon(icon, size: 17, color: selected ? brandWhite : brandTextSoft)),
+        ),
+      );
+}
+
 class PartnerCard extends StatefulWidget {
   const PartnerCard({required this.partner, required this.onTap, super.key});
   final Map<String, dynamic> partner;
@@ -10513,78 +10692,129 @@ class PartnerCard extends StatefulWidget {
 class _PartnerCardState extends State<PartnerCard> {
   bool hover = false;
 
+  IconData _categoryIcon(String category) {
+    final value = category.toLowerCase();
+    if (value.contains('health') || value.contains('egész')) return Icons.favorite_border_rounded;
+    if (value.contains('education') || value.contains('oktat')) return Icons.groups_2_outlined;
+    if (value.contains('environment') || value.contains('környe')) return Icons.eco_outlined;
+    if (value.contains('community') || value.contains('közöss')) return Icons.diversity_3_outlined;
+    if (value.contains('nonprofit') || value.contains('alapít')) return Icons.volunteer_activism_outlined;
+    return Icons.apartment_rounded;
+  }
+
+  Color _categoryTone(String category) {
+    final value = category.toLowerCase();
+    if (value.contains('health') || value.contains('egész')) return brandDanger;
+    if (value.contains('environment') || value.contains('környe')) return brandSuccess;
+    if (value.contains('education') || value.contains('oktat')) return const Color(0xFF7C4DDA);
+    return brandSteel;
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.partner;
+    final category = _localizedPartnerCategory(p);
+    final tone = _categoryTone(category);
+    final planName = '${p['plan_name'] ?? ''}'.trim();
+    final planKey = '${p['plan_key'] ?? ''}'.trim();
+    final packageLabel = planName.isNotEmpty ? planName : (planKey.isNotEmpty ? _humanize(planKey) : uiLiteral('No package'));
+    final currency = '${p['currency'] ?? 'USD'}'.trim().isEmpty ? 'USD' : '${p['currency']}';
+    final amount = number(p['service_value_30d']);
+    final amountLabel = intl.NumberFormat.currency(
+      locale: HimateI18n.activeLocale == 'hu_HU' ? 'hu_HU' : 'en_US',
+      symbol: currency == 'USD' ? r'$' : '$currency ',
+      decimalDigits: amount % 1 == 0 ? 0 : 2,
+    ).format(amount);
+
     return MouseRegion(
       onEnter: (_) => setState(() => hover = true),
       onExit: (_) => setState(() => hover = false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+        duration: const Duration(milliseconds: 170),
+        transform: Matrix4.translationValues(0, hover ? -2 : 0, 0),
+        constraints: const BoxConstraints(minHeight: 162),
         decoration: BoxDecoration(
-          color: brandSurfaceRaised,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: hover ? brandGold.withOpacity(.78) : brandIonBlue.withOpacity(.24), width: hover ? 1.5 : 1.1),
-          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
+          color: brandWhite,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: hover ? brandGold.withOpacity(.45) : brandMist),
+          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .075 : .035), blurRadius: hover ? 20 : 12, offset: const Offset(0, 5))],
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: widget.onTap,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(13),
             child: Padding(
-              padding: const EdgeInsets.all(17),
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      _PartnerLogo(url: '${p['logo_url'] ?? ''}'),
-                      const Spacer(),
-                      if (p['test_partner'] == true) ...[
-                        const _StatusPill(label: 'TEST'),
-                        const SizedBox(width: 7),
-                      ],
-                      if (p['reference_partner'] == true)
-                        Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      width: 43,
+                      height: 43,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: tone.withOpacity(.09), shape: BoxShape.circle),
+                      child: Icon(_categoryIcon(category), color: tone, size: 22),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        LText('${p['display_name'] ?? '—'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 12, fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 3),
+                        if (p['reference_partner'] == true)
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.star_rounded, color: brandGold, size: 13),
+                            const SizedBox(width: 3),
+                            LText(uiLiteral('Reference partner'), style: const TextStyle(color: Color(0xFF9A6D00), fontSize: 8.8, fontWeight: FontWeight.w700)),
+                          ])
+                        else
+                          LText(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+                      ]),
+                    ),
+                    const SizedBox(width: 6),
+                    if (p['test_partner'] == true) ...[
+                      const _StatusPill(label: 'TEST'),
+                      const SizedBox(width: 5),
                     ],
-                  ),
-                  const SizedBox(height: 16),
-                  LText('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  LText(_localizedPartnerCategory(p), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
-                  const SizedBox(height: 7),
-                  LText(
-                    '${p['primary_domain'] ?? ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
-                  ),
-                  const SizedBox(height: 11),
-                  Row(children: [
-                    _StatusPill(label: '${p['lifecycle']}'),
-                    const Spacer(),
-                    _StatusPill(label: '${p['system_health'] ?? 'UNKNOWN'}'),
+                    _StatusPill(label: '${p['lifecycle'] ?? 'UNKNOWN'}'),
                   ]),
-                  const SizedBox(height: 11),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _PartnerMetric(label: 'MODULES', value: '${p['active_modules'] ?? 0}'),
-                      _PartnerMetric(label: '30 DAYS', value: '${p['currency'] ?? 'USD'} ${number(p['service_value_30d']).toStringAsFixed(0)}'),
-                      _PartnerMetric(label: 'VERSION', value: '${p['platform_version']?.toString().isNotEmpty == true ? p['platform_version'] : '—'}'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                  if (p['reference_partner'] == true) ...[
+                    const SizedBox(height: 5),
+                    LText(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+                  ],
+                  const Spacer(),
                   const Divider(height: 1),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 9),
                   Row(children: [
-                    Expanded(child: LText('${p['id']}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
-                    const LText('Open workspace', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                    const Icon(Icons.inventory_2_outlined, color: Color(0xFF58708A), size: 15),
                     const SizedBox(width: 5),
-                    AnimatedSlide(offset: hover ? const Offset(.12, 0) : Offset.zero, duration: const Duration(milliseconds: 160), child: const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 16)),
+                    Expanded(child: LText(packageLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.4))),
+                    const Icon(Icons.grid_view_rounded, color: brandSteel, size: 14),
+                    const SizedBox(width: 5),
+                    LText('${p['active_modules'] ?? 0} ${uiLiteral('modules')}', style: const TextStyle(color: brandTextSoft, fontSize: 9.4)),
+                  ]),
+                  const SizedBox(height: 9),
+                  Row(children: [
+                    const Icon(Icons.autorenew_rounded, color: brandSteel, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(children: [
+                          TextSpan(text: amountLabel, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w700)),
+                          TextSpan(text: ' / ${uiLiteral('month')}', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 8.8)),
+                        ]),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      decoration: BoxDecoration(color: const Color(0xFFF1F6FC), borderRadius: BorderRadius.circular(8)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        LText(uiLiteral('Details'), style: const TextStyle(color: brandNavy, fontSize: 9.3, fontWeight: FontWeight.w700)),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_rounded, color: brandSteel, size: 14),
+                      ]),
+                    ),
                   ]),
                 ],
               ),
@@ -10596,6 +10826,7 @@ class _PartnerCardState extends State<PartnerCard> {
   }
 }
 
+// ignore: unused_element
 class _PartnerLogo extends StatelessWidget {
   const _PartnerLogo({required this.url});
   final String url;
@@ -10639,6 +10870,7 @@ class _PartnerLogo extends StatelessWidget {
 }
 
 
+// ignore: unused_element
 class _PartnerMetric extends StatelessWidget {
   const _PartnerMetric({required this.label, required this.value});
   final String label, value;
@@ -11351,11 +11583,12 @@ class _OperationsControlsCard extends StatelessWidget {
 }
 
 class Content extends StatelessWidget {
-  const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, super.key});
+  const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, this.showHeader = true, super.key});
   final String title, subtitle;
   final String? eyebrow;
   final Widget child;
   final List<Widget> actions;
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -11391,34 +11624,35 @@ class Content extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (narrow || stackActions)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      header,
-                      if (actions.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        Wrap(spacing: 9, runSpacing: 9, children: actions),
+                if (showHeader)
+                  if (narrow || stackActions)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        header,
+                        if (actions.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Wrap(spacing: 9, runSpacing: 9, children: actions),
+                        ],
                       ],
-                    ],
-                  )
-                else
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: header),
-                      if (actions.isNotEmpty) ...[
-                        const SizedBox(width: 20),
-                        Flexible(
-                          child: Align(
-                            alignment: Alignment.topRight,
-                            child: Wrap(alignment: WrapAlignment.end, spacing: 9, runSpacing: 9, children: actions),
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: header),
+                        if (actions.isNotEmpty) ...[
+                          const SizedBox(width: 20),
+                          Flexible(
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: Wrap(alignment: WrapAlignment.end, spacing: 9, runSpacing: 9, children: actions),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
-                const SizedBox(height: 22),
+                    ),
+                if (showHeader) const SizedBox(height: 22),
                 child,
               ],
             ),
