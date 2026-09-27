@@ -10542,78 +10542,125 @@ class PartnerCard extends StatefulWidget {
 class _PartnerCardState extends State<PartnerCard> {
   bool hover = false;
 
+  IconData _categoryIcon(String category) {
+    final value = category.toLowerCase();
+    if (value.contains('health') || value.contains('egész')) return Icons.favorite_border_rounded;
+    if (value.contains('education') || value.contains('oktat')) return Icons.groups_2_outlined;
+    if (value.contains('environment') || value.contains('környe')) return Icons.eco_outlined;
+    if (value.contains('community') || value.contains('közöss')) return Icons.diversity_3_outlined;
+    if (value.contains('nonprofit') || value.contains('alapít')) return Icons.volunteer_activism_outlined;
+    return Icons.apartment_rounded;
+  }
+
+  Color _categoryTone(String category) {
+    final value = category.toLowerCase();
+    if (value.contains('health') || value.contains('egész')) return brandDanger;
+    if (value.contains('environment') || value.contains('környe')) return brandSuccess;
+    if (value.contains('education') || value.contains('oktat')) return const Color(0xFF7C4DDA);
+    return brandSteel;
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.partner;
+    final category = _localizedPartnerCategory(p);
+    final tone = _categoryTone(category);
+    final planName = '${p['plan_name'] ?? ''}'.trim();
+    final planKey = '${p['plan_key'] ?? ''}'.trim();
+    final packageLabel = planName.isNotEmpty ? planName : (planKey.isNotEmpty ? _humanize(planKey) : uiLiteral('No package'));
+    final currency = '${p['currency'] ?? 'USD'}'.trim().isEmpty ? 'USD' : '${p['currency']}';
+    final amount = number(p['service_value_30d']);
+    final amountLabel = intl.NumberFormat.currency(
+      locale: HimateI18n.activeLocale == 'hu_HU' ? 'hu_HU' : 'en_US',
+      symbol: currency == 'USD' ? r'$' : '$currency ',
+      decimalDigits: amount % 1 == 0 ? 0 : 2,
+    ).format(amount);
+
     return MouseRegion(
       onEnter: (_) => setState(() => hover = true),
       onExit: (_) => setState(() => hover = false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+        duration: const Duration(milliseconds: 170),
+        transform: Matrix4.translationValues(0, hover ? -2 : 0, 0),
+        constraints: const BoxConstraints(minHeight: 162),
         decoration: BoxDecoration(
-          color: brandSurfaceRaised,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: hover ? brandGold.withOpacity(.78) : brandIonBlue.withOpacity(.24), width: hover ? 1.5 : 1.1),
-          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
+          color: brandWhite,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: hover ? brandGold.withOpacity(.45) : brandMist),
+          boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .075 : .035), blurRadius: hover ? 20 : 12, offset: const Offset(0, 5))],
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: widget.onTap,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(13),
             child: Padding(
-              padding: const EdgeInsets.all(17),
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      _PartnerLogo(url: '${p['logo_url'] ?? ''}'),
-                      const Spacer(),
-                      if (p['test_partner'] == true) ...[
-                        const _StatusPill(label: 'TEST'),
-                        const SizedBox(width: 7),
-                      ],
-                      if (p['reference_partner'] == true)
-                        Tooltip(message: 'Reference partner', child: Icon(Icons.workspace_premium_rounded, color: brandGold, size: 21)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  LText('${p['display_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  LText(_localizedPartnerCategory(p), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 11)),
-                  const SizedBox(height: 7),
-                  LText(
-                    '${p['primary_domain'] ?? ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
-                  ),
-                  const SizedBox(height: 11),
-                  Row(children: [
-                    _StatusPill(label: '${p['lifecycle']}'),
-                    const Spacer(),
-                    _StatusPill(label: '${p['system_health'] ?? 'UNKNOWN'}'),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      width: 43,
+                      height: 43,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: tone.withOpacity(.09), shape: BoxShape.circle),
+                      child: Icon(_categoryIcon(category), color: tone, size: 22),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        LText('${p['display_name'] ?? '—'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandNavy, fontSize: 12, fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 3),
+                        if (p['reference_partner'] == true)
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.star_rounded, color: brandGold, size: 13),
+                            const SizedBox(width: 3),
+                            LText(uiLiteral('Reference partner'), style: const TextStyle(color: Color(0xFF9A6D00), fontSize: 8.8, fontWeight: FontWeight.w700)),
+                          ])
+                        else
+                          LText(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+                      ]),
+                    ),
+                    const SizedBox(width: 6),
+                    _StatusPill(label: '${p['lifecycle'] ?? 'UNKNOWN'}'),
                   ]),
-                  const SizedBox(height: 11),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _PartnerMetric(label: 'MODULES', value: '${p['active_modules'] ?? 0}'),
-                      _PartnerMetric(label: '30 DAYS', value: '${p['currency'] ?? 'USD'} ${number(p['service_value_30d']).toStringAsFixed(0)}'),
-                      _PartnerMetric(label: 'VERSION', value: '${p['platform_version']?.toString().isNotEmpty == true ? p['platform_version'] : '—'}'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                  if (p['reference_partner'] == true) ...[
+                    const SizedBox(height: 5),
+                    LText(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.2)),
+                  ],
+                  const Spacer(),
                   const Divider(height: 1),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 9),
                   Row(children: [
-                    Expanded(child: LText('${p['id']}', style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
-                    const LText('Open workspace', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                    const Icon(Icons.inventory_2_outlined, color: Color(0xFF58708A), size: 15),
                     const SizedBox(width: 5),
-                    AnimatedSlide(offset: hover ? const Offset(.12, 0) : Offset.zero, duration: const Duration(milliseconds: 160), child: const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 16)),
+                    Expanded(child: LText(packageLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.4))),
+                    const Icon(Icons.grid_view_rounded, color: brandSteel, size: 14),
+                    const SizedBox(width: 5),
+                    LText('${p['active_modules'] ?? 0} ${uiLiteral('modules')}', style: const TextStyle(color: brandTextSoft, fontSize: 9.4)),
+                  ]),
+                  const SizedBox(height: 9),
+                  Row(children: [
+                    const Icon(Icons.autorenew_rounded, color: brandSteel, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(children: [
+                          TextSpan(text: amountLabel, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w700)),
+                          TextSpan(text: ' / ${uiLiteral('month')}', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 8.8)),
+                        ]),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      decoration: BoxDecoration(color: const Color(0xFFF1F6FC), borderRadius: BorderRadius.circular(8)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        LText(uiLiteral('Details'), style: const TextStyle(color: brandNavy, fontSize: 9.3, fontWeight: FontWeight.w700)),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_rounded, color: brandSteel, size: 14),
+                      ]),
+                    ),
                   ]),
                 ],
               ),
