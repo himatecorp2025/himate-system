@@ -39,6 +39,7 @@ central_reads = read("services/cmd/gateway/central_materialized_reads.go")
 partner_reads = read("services/cmd/gateway/partner_materialized_reads.go")
 partner_portal = read("services/cmd/gateway/partner_portal.go")
 payments = read("services/cmd/payments/main.go")
+reports_service = read("services/cmd/reports/main.go")
 central10 = read("services/cmd/gateway/central10.go")
 central13 = read("services/cmd/gateway/central13.go")
 central14 = read("services/cmd/gateway/central14.go")
@@ -396,6 +397,24 @@ pdf_read = func_block(partner_reads, "func servePartnerInvoicePDFFromSnapshot")
 check(pdf_read != "", "Materialized Partner invoice PDF renderer is missing")
 for forbidden in ["internalGET", "internalGETWithHeaders", "serveProxy", "a.client.Do", "http.NewRequestWithContext"]:
     check(forbidden not in pdf_read, f"Partner invoice PDF regressed to live fan-out: {forbidden}")
+
+# Source-owned background writes participate in the same durable CQRS event
+# stream. Report READY/evidence linkage must not become visible until the
+# corresponding Impact + tenant projections have consumed the event.
+for token in [
+    "identity.read_model_refresh_queue",
+    "/internal/reports/background-complete/evidence/report",
+    "processed_at FROM identity.read_model_refresh_queue",
+    "synchronizeReadModels(ctx,partnerIDs)",
+    "requeueProjectionSync",
+]:
+    check(token in reports_service, f"Reports background CQRS event contract missing: {token}")
+check("targetKeys := map[string]bool{}" in models and
+      "readModelVerificationKeys(reason)" in models and
+      "jobsByKey := map[string]func(){}" in models,
+      "Durable refresh queue does not coalesce events into targeted projections")
+check("for key := range targetKeys" in models,
+      "Durable refresh verification is not scoped to affected projections")
 
 # Writes are durable + write-through before buffered response release.
 check("identity.read_model_refresh_queue" in models and "enqueueReadModelRefresh" in models,
