@@ -7543,6 +7543,16 @@ class _PackagesPageState extends State<PackagesPage> {
         return (order['${a['plan_key'] ?? ''}'.toUpperCase()] ?? 99)
             .compareTo(order['${b['plan_key'] ?? ''}'.toUpperCase()] ?? 99);
       });
+    final canonicalPlansWithAnalytics = <Map<String,dynamic>>[
+      for (final plan in canonicalPlans)
+        <String,dynamic>{
+          ...plan,
+          if (analyticsByPlan[_normalizedPackageKey(plan['plan_key'] ?? '')] case final Map<String,dynamic> row)
+            ...row,
+          'plan_key': _normalizedPackageKey(plan['plan_key'] ?? ''),
+          'display_name': '${plan['display_name'] ?? plan['plan_key']}',
+        },
+    ];
     final customPackages = plans.length - canonicalPlans.length;
 
     return Content(
@@ -7568,7 +7578,7 @@ class _PackagesPageState extends State<PackagesPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  for (final plan in canonicalPlans)
+                  for (final plan in canonicalPlansWithAnalytics)
                     SizedBox(
                       width: width,
                       child: _PackageOverviewCard(
@@ -7604,7 +7614,7 @@ class _PackagesPageState extends State<PackagesPage> {
           ],
           const SizedBox(height: 18),
           _PackageComparisonTable(
-            plans: canonicalPlans,
+            plans: canonicalPlansWithAnalytics,
             onExport: () => openPdfExportIfAvailable(
               context,
               widget.api,
