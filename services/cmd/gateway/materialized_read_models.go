@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"himate.local/services/internal/common"
@@ -284,9 +285,74 @@ func (a *app) enqueueReadModelRefresh(ctx context.Context, reason, partnerID str
 	}
 }
 
+func readModelReasonRefreshesAllTenants(reason string) bool {
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	return strings.Contains(reason, "/modules") ||
+		strings.Contains(reason, "/module-groups") ||
+		strings.Contains(reason, "/billing/plans") ||
+		strings.Contains(reason, "/cms/design")
+}
+
+func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time.Time) bool {
+	partnerID = strings.TrimSpace(partnerID)
+	var wg sync.WaitGroup
+	for _, job := range a.centralReadinessJobs() {
+		job := job
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			job.refresh()
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		a.refreshDashboardSnapshot(time.Now().UTC().Year())
+	}()
+	if partnerID != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
+			defer cancel()
+			a.refreshCentralPartnerWorkspace(ctx, partnerID)
+		}()
+	}
+	if readModelReasonRefreshesAllTenants(reason) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceStartupBudget)
+			defer cancel()
+			a.refreshCentralPartnerWorkspaceSnapshots(ctx, false)
+		}()
+	}
+	wg.Wait()
+
+	verifyCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for _, job := range a.centralReadinessJobs() {
+		_, updated, err := a.loadCentralSnapshotDB(verifyCtx, job.key)
+		if err != nil || updated.Before(createdAt) {
+			return false
+		}
+	}
+	_, dashboardUpdated, err := a.loadDashboardSnapshotContext(verifyCtx, time.Now().UTC().Year())
+	if err != nil || dashboardUpdated.Before(createdAt) {
+		return false
+	}
+	if partnerID != "" {
+		_, updated, err := a.loadPartnerWorkspaceDB(verifyCtx, partnerID)
+		if err != nil || updated.Before(createdAt) {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *app) processReadModelRefreshQueue() {
 	rows, err := a.db.Query(
-		`SELECT id,partner_id,reason
+		`SELECT id,partner_id,reason,created_at
 		 FROM identity.read_model_refresh_queue
 		 WHERE processed_at IS NULL
 		 ORDER BY id
@@ -303,32 +369,28 @@ func (a *app) processReadModelRefreshQueue() {
 		id        int64
 		partnerID string
 		reason    string
+		createdAt time.Time
 	}
 	events := []event{}
 	for rows.Next() {
 		var item event
-		if rows.Scan(&item.id, &item.partnerID, &item.reason) == nil {
+		if rows.Scan(&item.id, &item.partnerID, &item.reason, &item.createdAt) == nil {
 			events = append(events, item)
 		}
 	}
 	rows.Close()
 
 	for _, item := range events {
-		if item.partnerID != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
-			a.refreshCentralPartnerWorkspace(ctx, item.partnerID)
-			cancel()
+		if !a.refreshReadModelsForEvent(item.partnerID, item.reason, item.createdAt.UTC()) {
+			if a.log != nil {
+				a.log.Warn("read-model refresh event remains pending", "event_id", item.id, "reason", item.reason, "partner_id", item.partnerID)
+			}
+			continue
 		}
-		// Cross-tenant aggregates may be affected by any successful mutation.
-		a.requestCentralStep3Refresh()
-		a.requestCentralStep4Refresh()
-		a.requestDashboardRefresh()
-
-		_, err := a.db.Exec(
+		if _, err := a.db.Exec(
 			`UPDATE identity.read_model_refresh_queue SET processed_at=NOW() WHERE id=$1`,
 			item.id,
-		)
-		if err != nil && a.log != nil {
+		); err != nil && a.log != nil {
 			a.log.Error("read-model refresh event acknowledgement failed", "event_id", item.id, "error", err)
 		}
 	}
