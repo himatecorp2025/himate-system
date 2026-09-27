@@ -43,6 +43,10 @@ func validSystemSnapshot() map[string]any {
 		"events":       []map[string]any{},
 		"backups":      map[string]any{},
 		"kpis":         map[string]any{},
+		"health_api":        map[string]any{},
+		"provisioning_api":  map[string]any{},
+		"environments_api":  map[string]any{},
+		"backups_api":       map[string]any{},
 	}
 }
 
@@ -73,6 +77,13 @@ func validPartnerWorkspaceSnapshot() map[string]any {
 		"website_adapter":                 map[string]any{},
 		"partner_design":                  map[string]any{},
 		"payment_profile":                 map[string]any{},
+		"catalog_modules_api":             map[string]any{"items": []map[string]any{}},
+		"environments_api":                map[string]any{"items": []map[string]any{}},
+		"provisioning_api":                map[string]any{"items": []map[string]any{}},
+		"impact_api":                      map[string]any{"items": []map[string]any{}},
+		"evidence_api":                    map[string]any{"items": []map[string]any{}},
+		"connector_credentials_api":       map[string]any{"items": []map[string]any{}},
+		"portal_users_api":                map[string]any{"items": []map[string]any{}, "count": 0},
 		"portal_gate":                     map[string]any{},
 		"portal_modules":                  map[string]any{},
 		"portal_plans":                    map[string]any{},
@@ -90,6 +101,47 @@ func validPartnerWorkspaceSnapshot() map[string]any {
 	}
 }
 
+func validPlansSnapshot() map[string]any {
+	return map[string]any{
+		"status": "healthy", "unavailable": []string{},
+		"plans": []map[string]any{},
+		"modules": []map[string]any{},
+	}
+}
+
+func validAnalyticsSnapshot() map[string]any {
+	return map[string]any{
+		"status": "healthy", "unavailable": []string{},
+		"analytics": map[string]any{},
+		"modules": []map[string]any{},
+	}
+}
+
+func validCommercialSnapshot() map[string]any {
+	return map[string]any{
+		"status": "healthy", "unavailable": []string{},
+		"partners": []map[string]any{},
+		"matrix_items": []map[string]any{},
+		"subscription_items": []map[string]any{},
+		"modules": []map[string]any{},
+		"plans": []map[string]any{},
+		"matrix_available": true,
+		"subscriptions_available": true,
+	}
+}
+
+func validGlobalSearchSnapshot() map[string]any {
+	return map[string]any{
+		"status": "healthy", "unavailable": []string{},
+		"partners": []map[string]any{},
+		"modules": []map[string]any{},
+		"contact_inquiries": []map[string]any{},
+		"cms_pages": []map[string]any{},
+		"admin_users": []map[string]any{},
+		"audit_events": []map[string]any{},
+	}
+}
+
 func TestCentralSnapshotValidRejectsDegraded(t *testing.T) {
 	for _, status := range []string{"partial", "unavailable", "warming", "stale", ""} {
 		payload := validRegistrySnapshot("LKG")
@@ -97,6 +149,39 @@ func TestCentralSnapshotValidRejectsDegraded(t *testing.T) {
 		if centralSnapshotValid(centralStep3RegistryKey, payload) {
 			t.Fatalf("status %q was accepted as Last-Known-Good", status)
 		}
+	}
+}
+
+func TestCentralSnapshotValidRejectsHiddenUnavailable(t *testing.T) {
+	payload := validRegistrySnapshot("LKG")
+	payload["unavailable"] = []string{"catalog"}
+	if centralSnapshotValid(centralStep3RegistryKey, payload) {
+		t.Fatal("healthy snapshot with hidden unavailable dependency was accepted")
+	}
+	tenant := validPartnerWorkspaceSnapshot()
+	tenant["unavailable"] = []string{"billing"}
+	if partnerWorkspaceSnapshotValid(tenant) {
+		t.Fatal("healthy tenant snapshot with hidden unavailable dependency was accepted")
+	}
+}
+
+func TestCentralSnapshotValidRejectsLegacyNonCompositeScreens(t *testing.T) {
+	plans := validPlansSnapshot()
+	delete(plans, "modules")
+	if centralSnapshotValid(centralStep3PlansKey, plans) {
+		t.Fatal("legacy Plans snapshot without module projection was accepted")
+	}
+
+	analytics := validAnalyticsSnapshot()
+	delete(analytics, "modules")
+	if centralSnapshotValid(centralStep3AnalyticsKey, analytics) {
+		t.Fatal("legacy package analytics snapshot without module projection was accepted")
+	}
+
+	commercial := validCommercialSnapshot()
+	delete(commercial, "plans")
+	if centralSnapshotValid(centralStep3CommercialKey, commercial) {
+		t.Fatal("legacy Commercial snapshot without plans projection was accepted")
 	}
 }
 
@@ -114,6 +199,10 @@ func TestCentralSnapshotValidAcceptsAuthoritativeScreens(t *testing.T) {
 		payload map[string]any
 	}{
 		{centralStep3RegistryKey, validRegistrySnapshot("Registry")},
+		{centralStep3PlansKey, validPlansSnapshot()},
+		{centralStep3AnalyticsKey, validAnalyticsSnapshot()},
+		{centralStep3CommercialKey, validCommercialSnapshot()},
+		{centralStep4GlobalSearchKey, validGlobalSearchSnapshot()},
 		{centralStep4AdministrationKey, validAdministrationSnapshot()},
 		{centralStep4SystemKey, validSystemSnapshot()},
 		{centralPartnerWorkspaceKey("partner_1"), validPartnerWorkspaceSnapshot()},
