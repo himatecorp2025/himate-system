@@ -73,7 +73,9 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
   Future<void> load({bool quiet = false, bool force = false}) async {
     if (!quiet && mounted) setState(() { loading = true; error = null; });
     try {
-      final model = await widget.api.get(administrationPath(), force: force, maxAge: const Duration(seconds: 20));
+      final model = await widget.api
+          .get(administrationPath(), force: force, maxAge: const Duration(seconds: 5))
+          .timeout(const Duration(seconds: 6));
       if (!mounted) return;
       setState(() {
         company = model['company'] is Map ? Map<String, dynamic>.from(model['company'] as Map) : <String, dynamic>{};
