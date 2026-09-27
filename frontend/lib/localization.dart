@@ -1936,6 +1936,8 @@ class HimateI18n {
     'Stable module key': 'Állandó modulazonosító',
     'Current implementation state': 'Jelenlegi megvalósítási állapot',
     'Marketplace activation': 'Piactéri aktiválás',
+    'This module is READY, PUBLISHED and available for package and partner assignment.': 'Ez a modul READY és PUBLISHED állapotú, ezért csomagokhoz és partnerekhez rendelhető.',
+    'Activate this module to publish it for package and partner assignment.': 'Aktiváld a modult, hogy közzétehető és csomagokhoz, illetve partnerekhez rendelhető legyen.',
     'Activation marks the module READY, PUBLISHED and operationally ACTIVE. It then becomes eligible for package configuration and partner entitlement.': 'Az aktiválás a modult READY, PUBLISHED és működésileg ACTIVE állapotba helyezi. Ezután hozzárendelhető csomagokhoz és partnerekhez.',
     'Module activated and published.': 'A modul aktiválva és közzétéve.',
     'Module activation failed': 'A modul aktiválása sikertelen',
