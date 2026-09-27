@@ -266,6 +266,14 @@ func (a *app) warmMissingCentralPartnerWorkspaces() {
 	}
 }
 
+func (a *app) requestAllCentralPartnerWorkspaceRefreshes() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceStartupBudget)
+		defer cancel()
+		a.refreshCentralPartnerWorkspaceSnapshots(ctx, false)
+	}()
+}
+
 func (a *app) runCentralPartnerWorkspaceMaterializer() {
 	ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceStartupBudget)
 	a.refreshCentralPartnerWorkspaceSnapshots(ctx, false)
