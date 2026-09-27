@@ -35,77 +35,85 @@ func central17Status(unavailable []string, successful int) string {
 	return "healthy"
 }
 
-func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
-	started := time.Now()
-	canCMS := a.hasPermission(actor, "cms.read")
-	canContact := a.hasPermission(actor, "contact.read")
-	canConnections := a.hasPermission(actor, "connectors.read")
-	canEnvironments := a.hasPermission(actor, "environments.read")
-	if !canCMS && !canContact && !canConnections && !canEnvironments {
-		common.APIError(w, http.StatusForbidden, "FORBIDDEN", "Website & Marketing read permission required")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
-	defer cancel()
-
+func (a *app) materializeCentralWebsite(ctx context.Context) map[string]any {
 	var pagesPayload, mediaPayload, environmentsPayload map[string]any
-	var pagesErr, mediaErr, environmentsErr error
+	var seoPayload, seoAuditPayload, contactPayload map[string]any
+	var pagesErr, mediaErr, environmentsErr, seoErr, seoAuditErr, contactErr error
 	var wg sync.WaitGroup
-	if canCMS {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			pagesErr = a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages", &pagesPayload)
-		}()
-		go func() {
-			defer wg.Done()
-			mediaErr = a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/media", &mediaPayload)
-		}()
-	}
-	if canEnvironments {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			environmentsErr = a.internalGET(ctx, a.hosts["environments"], "/api/v1/environments", &environmentsPayload)
-		}()
-	}
+	wg.Add(6)
+	go func() {
+		defer wg.Done()
+		pagesErr = a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages", &pagesPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		mediaErr = a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/media", &mediaPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		environmentsErr = a.internalGET(ctx, a.hosts["environments"], "/api/v1/environments", &environmentsPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		seoErr = a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/seo", &seoPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		seoAuditErr = a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/seo/audit", &seoAuditPayload)
+	}()
+	go func() {
+		defer wg.Done()
+		contactErr = a.internalGET(ctx, a.hosts["contact"], "/api/v1/contact/inquiries?limit=200&offset=0", &contactPayload)
+	}()
 	wg.Wait()
 
 	unavailable := []string{}
-	successful := 0
-	if canCMS {
-		if pagesErr != nil {
-			unavailable = append(unavailable, "cms_pages")
-		} else {
-			successful++
-		}
-		if mediaErr != nil {
-			unavailable = append(unavailable, "cms_media")
-		} else {
-			successful++
-		}
-	}
-	if canEnvironments {
-		if environmentsErr != nil {
-			unavailable = append(unavailable, "environments")
-		} else {
-			successful++
-		}
-	}
-
-	if successful == 0 && len(unavailable) > 0 {
-		if stale, ok, _ := central10Cached(cacheKey, false); ok {
-			stale["meta"] = central10Meta(started, "stale", unavailable)
-			w.Header().Set("X-Himate-Cache", "stale")
-			common.JSON(w, http.StatusOK, stale)
-			return
-		}
-	}
+	if pagesErr != nil { unavailable = append(unavailable, "cms_pages") }
+	if mediaErr != nil { unavailable = append(unavailable, "cms_media") }
+	if environmentsErr != nil { unavailable = append(unavailable, "environments") }
+	if seoErr != nil { unavailable = append(unavailable, "seo") }
+	if seoAuditErr != nil { unavailable = append(unavailable, "seo_audit") }
+	if contactErr != nil { unavailable = append(unavailable, "contact_inquiries") }
 
 	pages := central17Items(pagesPayload)
 	media := central17Items(mediaPayload)
 	environments := central17Items(environmentsPayload)
+
+	pageDetails := map[string]any{}
+	pageVersions := map[string]any{}
+	pageAudits := map[string]any{}
+	if pagesErr == nil {
+		var detailWG sync.WaitGroup
+		var detailMu sync.Mutex
+		for _, page := range pages {
+			id := central10String(page["id"])
+			if id == "" {
+				continue
+			}
+			id := id
+			detailWG.Add(1)
+			go func() {
+				defer detailWG.Done()
+				var detail, versions, audit map[string]any
+				detailErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+id, &detail)
+				versionsErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+id+"/versions", &versions)
+				auditErr := a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages/"+id+"/audit", &audit)
+				if detailErr != nil || versionsErr != nil || auditErr != nil {
+					detailMu.Lock()
+					unavailable = append(unavailable, "cms_page_detail:"+id)
+					detailMu.Unlock()
+					return
+				}
+				detailMu.Lock()
+				pageDetails[id] = detail
+				pageVersions[id] = versions
+				pageAudits[id] = audit
+				detailMu.Unlock()
+			}()
+		}
+		detailWG.Wait()
+	}
+
 	published := 0
 	for _, page := range pages {
 		status := strings.ToUpper(central10String(page["status"]))
@@ -132,6 +140,72 @@ func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor use
 			liveEnvironments++
 		}
 	}
+	status := "healthy"
+	if len(unavailable) > 0 {
+		status = "partial"
+	}
+	return map[string]any{
+		"status": status,
+		"unavailable": unavailable,
+		"pages": pages,
+		"media": media,
+		"environments": environments,
+		"seo": seoPayload,
+		"seo_audit": seoAuditPayload,
+		"contact_inquiries": contactPayload,
+		"cms_page_details": pageDetails,
+		"cms_page_versions": pageVersions,
+		"cms_page_audits": pageAudits,
+		"kpis": map[string]any{
+			"pages": len(pages),
+			"published_pages": published,
+			"media_assets": len(media),
+			"image_assets": imageAssets,
+			"environments": len(environments),
+			"live_environments": liveEnvironments,
+		},
+	}
+}
+
+func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
+	started := time.Now()
+	canCMS := a.hasPermission(actor, "cms.read")
+	canContact := a.hasPermission(actor, "contact.read")
+	canConnections := a.hasPermission(actor, "connectors.read")
+	canEnvironments := a.hasPermission(actor, "environments.read")
+	if !canCMS && !canContact && !canConnections && !canEnvironments {
+		common.APIError(w, http.StatusForbidden, "FORBIDDEN", "Website & Marketing read permission required")
+		return
+	}
+
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4WebsiteKey)
+	if !ok {
+		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Website read model is not ready")
+		return
+	}
+	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
+		a.requestCentralStep4Refresh()
+	}
+
+	pages := []map[string]any{}
+	media := []map[string]any{}
+	environments := []map[string]any{}
+	kpis := step4Map(snapshot["kpis"])
+	if canCMS {
+		pages = step4Items(snapshot["pages"])
+		media = step4Items(snapshot["media"])
+	} else {
+		delete(kpis, "pages")
+		delete(kpis, "published_pages")
+		delete(kpis, "media_assets")
+		delete(kpis, "image_assets")
+	}
+	if canEnvironments {
+		environments = step4Items(snapshot["environments"])
+	} else {
+		delete(kpis, "environments")
+		delete(kpis, "live_environments")
+	}
 
 	payload := map[string]any{
 		"ready": true,
@@ -148,22 +222,14 @@ func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor use
 			"environments_write":   a.hasPermission(actor, "environments.write"),
 			"environments_approve": a.hasPermission(actor, "environments.approve"),
 		},
-		"pages":        pages,
-		"media":        media,
+		"pages": pages,
+		"media": media,
 		"environments": environments,
-		"kpis": map[string]any{
-			"pages":             len(pages),
-			"published_pages":   published,
-			"media_assets":      len(media),
-			"image_assets":      imageAssets,
-			"environments":      len(environments),
-			"live_environments": liveEnvironments,
-		},
-		"meta": central10Meta(started, central17Status(unavailable, successful), unavailable),
+		"kpis": kpis,
+		"meta": centralStep4Meta(started, centralStep4WebsiteKey, updatedAt, "healthy", []string{}),
 	}
-	central10Store(cacheKey, payload)
-	w.Header().Set("X-Himate-Cache", "miss")
-	w.Header().Set("Server-Timing", fmt.Sprintf("central-website;dur=%d", time.Since(started).Milliseconds()))
+	w.Header().Set("X-Himate-Cache", "persistent-read-model")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-website-read-model;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
 }
 
