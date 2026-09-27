@@ -229,7 +229,7 @@ check("onRefresh: applyModel" in modules_ui,
       "Central-10.1 Modules page does not consume SWR refresh callbacks")
 
 for token in [
-    "Loading the latest partner portfolio snapshot.",
+    "Partner data is loading",
     "Loading the latest finance snapshot.",
     "Impact data is loading",
 ]:
