@@ -133,6 +133,21 @@ check("if (moduleSetChanged) 'fixed_module_keys'" in frontend,
 check("if (fixed) 'fixed_module_keys'" not in frontend,
       "legacy package save still submits fixed_module_keys on every price edit")
 check("isExpanded: true" in frontend, "partner filter dropdown overflow guard missing")
+partners_start = frontend.find("class _PartnersPageState")
+partners_end = frontend.find("\nclass PartnerWorkspace", partners_start)
+partners_view = frontend[partners_start:partners_end]
+check("subtitle: 'Loading the latest partner portfolio snapshot.'" not in partners_view,
+      "Partners browser refresh still replaces the workspace with a blocking loader")
+check("Partner data is loading" in partners_view,
+      "Partners non-blocking refresh state is missing")
+administration_ui = read("frontend/lib/administration_center.dart")
+admin_start = administration_ui.find("class _AdministrationCenterPageState")
+admin_end = administration_ui.find("\nclass _AdministrationCenterHeroCard", admin_start)
+admin_view = administration_ui[admin_start:admin_end]
+check("child: _BrandLoading()" not in admin_view,
+      "Administration browser refresh still replaces the workspace with a blocking loader")
+check("Administration data is loading" in admin_view,
+      "Administration non-blocking refresh state is missing")
 
 for token in [
     "func central8CanonicalPlanKey(key string) string",
