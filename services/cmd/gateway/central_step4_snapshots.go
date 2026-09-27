@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -375,10 +376,11 @@ func (a *app) refreshCentralStep4Impact() {
 
 	var definitions, summary, reports central10ItemsPage
 	var evidence []map[string]any
-	var definitionsErr, summaryErr, evidenceErr, reportsErr error
+	var analytics map[string]any
+	var definitionsErr, summaryErr, evidenceErr, reportsErr, analyticsErr error
 
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(5)
 	go func() {
 		defer wg.Done()
 		definitionsErr = a.internalGET(ctx, a.hosts["impact"], "/api/v1/impact/definitions", &definitions)
@@ -394,6 +396,10 @@ func (a *app) refreshCentralStep4Impact() {
 	go func() {
 		defer wg.Done()
 		reportsErr = a.internalGET(ctx, a.hosts["reports"], "/api/v1/reports", &reports)
+	}()
+	go func() {
+		defer wg.Done()
+		analyticsErr = a.internalGET(ctx, a.hosts["impact"], "/internal/v1/impact/dashboard?year="+strconv.Itoa(time.Now().UTC().Year()), &analytics)
 	}()
 	wg.Wait()
 
@@ -425,6 +431,13 @@ func (a *app) refreshCentralStep4Impact() {
 		unavailable = append(unavailable, "reports")
 		reports.Items = step4Items(step4Unavailable(previous, "reports"))
 	}
+	if analyticsErr == nil && analytics != nil {
+		successful++
+		analytics = central10NormalizeDashboardImpact(analytics)
+	} else {
+		unavailable = append(unavailable, "impact_analytics")
+		analytics = step4Map(step4Unavailable(previous, "analytics"))
+	}
 	if successful == 0 && previous == nil {
 		return
 	}
@@ -438,6 +451,7 @@ func (a *app) refreshCentralStep4Impact() {
 		"summary":     summary.Items,
 		"evidence":    evidence,
 		"reports":     reports.Items,
+		"analytics":   analytics,
 		"status":      status,
 		"unavailable": unavailable,
 	}

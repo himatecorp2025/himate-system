@@ -46,22 +46,22 @@ Future<void> main() async {
   runApp(partnerPortal ? const PartnerPortalApp() : const HimateApp());
 }
 
-const brandNavy = Color(0xFF72B7FF);
-const brandSteel = Color(0xFF28A8FF);
-const brandGold = Color(0xFFE2B95B);
-const brandIvory = Color(0xFF020914);
-const brandMist = Color(0xFF173653);
-const brandCharcoal = Color(0xFFF1F6FC);
+const brandNavy = Color(0xFF102642);
+const brandSteel = Color(0xFF1769E0);
+const brandGold = Color(0xFFD2A323);
+const brandIvory = Color(0xFFF6F8FC);
+const brandMist = Color(0xFFE5EAF1);
+const brandCharcoal = Color(0xFF17243B);
 const brandWhite = Color(0xFFFFFFFF);
-const brandSuccess = Color(0xFF46D9AD);
-const brandWarning = Color(0xFFF3BD55);
-const brandDanger = Color(0xFFFF7878);
-const brandNavyDeep = Color(0xFF020914);
-const brandNavySoft = Color(0xFF0A3158);
-const brandTextSoft = Color(0xFFA9C0D8);
-const brandSurface = Color(0xFF07182A);
-const brandSurfaceRaised = Color(0xFF0B2540);
-const brandIonBlue = Color(0xFF19B5FF);
+const brandSuccess = Color(0xFF18A957);
+const brandWarning = Color(0xFFD99A13);
+const brandDanger = Color(0xFFD94A4A);
+const brandNavyDeep = Color(0xFF071A2E);
+const brandNavySoft = Color(0xFF123452);
+const brandTextSoft = Color(0xFF6D7C91);
+const brandSurface = Color(0xFFFFFFFF);
+const brandSurfaceRaised = Color(0xFFFFFFFF);
+const brandIonBlue = Color(0xFF1769E0);
 
 const navy = brandNavy;
 const gold = brandGold;
@@ -126,114 +126,109 @@ Future<String?> promptMfaCode(BuildContext context, Map<String, dynamic> challen
 
 ThemeData buildBrandTheme() {
   final scheme = ColorScheme.fromSeed(
-    seedColor: brandIonBlue,
-    brightness: Brightness.dark,
-    primary: brandIonBlue,
+    seedColor: brandSteel,
+    brightness: Brightness.light,
+    primary: brandSteel,
     secondary: brandGold,
-    surface: brandSurfaceRaised,
+    surface: brandWhite,
     error: brandDanger,
   );
-  final base = GoogleFonts.interTextTheme(ThemeData.dark().textTheme);
-  final display = GoogleFonts.cormorantGaramondTextTheme(ThemeData.dark().textTheme);
+  final base = GoogleFonts.interTextTheme(ThemeData.light().textTheme);
+  final display = GoogleFonts.cormorantGaramondTextTheme(ThemeData.light().textTheme);
+  const inputBorder = OutlineInputBorder(
+    borderRadius: BorderRadius.all(Radius.circular(12)),
+    borderSide: BorderSide(color: brandMist),
+  );
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
+    brightness: Brightness.light,
     colorScheme: scheme,
-    scaffoldBackgroundColor: brandNavyDeep,
+    scaffoldBackgroundColor: brandIvory,
     visualDensity: VisualDensity.standard,
     splashFactory: InkSparkle.splashFactory,
+    dividerColor: brandMist,
     textTheme: base.copyWith(
-      displaySmall: display.displaySmall?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.7, height: 1.02),
-      headlineLarge: display.headlineLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.45, height: 1.03),
-      headlineMedium: display.headlineMedium?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.3, height: 1.05),
-      headlineSmall: display.headlineSmall?.copyWith(color: brandWhite, fontWeight: FontWeight.w600, letterSpacing: -.15, height: 1.08),
-      titleLarge: display.titleLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w700),
-      titleMedium: base.titleMedium?.copyWith(color: brandWhite, fontWeight: FontWeight.w700),
-      bodyLarge: base.bodyLarge?.copyWith(color: brandCharcoal, height: 1.5),
-      bodyMedium: base.bodyMedium?.copyWith(color: brandCharcoal, height: 1.45),
-      bodySmall: base.bodySmall?.copyWith(color: brandTextSoft, height: 1.4),
-      labelLarge: base.labelLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w700, letterSpacing: .05),
+      displaySmall: display.displaySmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.7, height: 1.02),
+      headlineLarge: display.headlineLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.45, height: 1.03),
+      headlineMedium: display.headlineMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.3, height: 1.05),
+      headlineSmall: display.headlineSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.15, height: 1.08),
+      titleLarge: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      titleMedium: base.titleMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      titleSmall: base.titleSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      bodyLarge: base.bodyLarge?.copyWith(color: brandCharcoal),
+      bodyMedium: base.bodyMedium?.copyWith(color: brandCharcoal),
+      bodySmall: base.bodySmall?.copyWith(color: brandTextSoft),
+      labelLarge: base.labelLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
     ),
     cardTheme: CardThemeData(
-      color: brandSurfaceRaised,
+      color: brandWhite,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
-      shadowColor: brandIonBlue.withOpacity(.18),
-      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: brandIonBlue.withOpacity(.24), width: 1.0),
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: brandMist),
       ),
     ),
-    inputDecorationTheme: InputDecorationTheme(
+    inputDecorationTheme: const InputDecorationTheme(
       filled: true,
-      fillColor: brandSurface,
-      labelStyle: base.bodyMedium?.copyWith(color: brandTextSoft),
-      hintStyle: base.bodyMedium?.copyWith(color: brandTextSoft.withOpacity(.72)),
-      prefixIconColor: brandIonBlue,
-      suffixIconColor: brandIonBlue,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: brandMist.withOpacity(.9))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandIonBlue, width: 1.5)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandDanger)),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: brandMist)),
-    ),
-    checkboxTheme: CheckboxThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-      fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? brandIonBlue : brandSurface),
-      checkColor: WidgetStateProperty.all(brandNavyDeep),
-      side: const BorderSide(color: brandIonBlue, width: 1.4),
+      fillColor: Color(0xFFF9FBFE),
+      border: inputBorder,
+      enabledBorder: inputBorder,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderSide: BorderSide(color: brandSteel, width: 1.4),
+      ),
+      hintStyle: TextStyle(color: Color(0xFF8B98AA), fontSize: 12),
+      labelStyle: TextStyle(color: brandTextSoft, fontSize: 12),
+      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.disabled)) return brandIonBlue.withOpacity(.34);
-          if (states.contains(WidgetState.hovered)) return const Color(0xFF39C2FF);
-          if (states.contains(WidgetState.pressed)) return const Color(0xFF0E8FD5);
-          return brandIonBlue;
-        }),
-        foregroundColor: WidgetStateProperty.all(brandNavyDeep),
-        overlayColor: WidgetStateProperty.all(brandWhite.withOpacity(.08)),
-        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 21, vertical: 16)),
-        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(9))),
-        textStyle: WidgetStateProperty.all(base.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
-        elevation: WidgetStateProperty.all(0),
+      style: FilledButton.styleFrom(
+        backgroundColor: brandNavy,
+        foregroundColor: brandWhite,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandWhite : brandNavy),
-        side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.hovered) ? brandIonBlue : brandMist)),
-        backgroundColor: WidgetStateProperty.all(brandSurface.withOpacity(.72)),
-        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.08)),
-        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
-        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(9))),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: brandNavy,
+        side: const BorderSide(color: brandMist),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) ? brandWhite : brandNavy),
-        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.07)),
-      ),
+      style: TextButton.styleFrom(foregroundColor: brandSteel, textStyle: const TextStyle(fontWeight: FontWeight.w700)),
     ),
-    iconButtonTheme: IconButtonThemeData(
-      style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.all(brandNavy),
-        overlayColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.08)),
-      ),
+    chipTheme: ChipThemeData(
+      backgroundColor: const Color(0xFFF1F4F8),
+      selectedColor: const Color(0xFFE9F2FF),
+      side: const BorderSide(color: brandMist),
+      labelStyle: const TextStyle(color: brandNavy, fontSize: 11, fontWeight: FontWeight.w600),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
     ),
-    dividerColor: brandMist,
-    scrollbarTheme: ScrollbarThemeData(
-      thumbColor: WidgetStateProperty.all(brandIonBlue.withOpacity(.42)),
-      radius: const Radius.circular(12),
-      thickness: WidgetStateProperty.all(6),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: brandNavyDeep,
+      contentTextStyle: const TextStyle(color: brandWhite),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: brandWhite,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      titleTextStyle: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: brandSurface,
-      foregroundColor: brandWhite,
+      backgroundColor: brandWhite,
+      foregroundColor: brandNavy,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
-      titleTextStyle: display.titleLarge?.copyWith(color: brandWhite, fontWeight: FontWeight.w600),
+      titleTextStyle: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      iconTheme: const IconThemeData(color: brandNavy),
     ),
   );
 }
@@ -2013,9 +2008,12 @@ class _ShellState extends State<Shell> {
     if (can('billing.read')) indexes.add(4);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(5);
     if (can('cms.read') || can('contact.read') || can('connectors.read')) indexes.add(6);
-    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
+    // The approved CENTRAL-16 information architecture places Administration
+    // before technical System & Operations. Compliance archives remain
+    // addressable by deep-link and from Administration, but are no longer a
+    // competing top-level workspace.
     if (can('administration.read') || can('audit.read')) indexes.add(8);
-    if (can('audit.read')) indexes.add(9);
+    if (can('health.read') || can('provisioning.read') || can('environments.read') || can('connectors.read') || can('backups.read')) indexes.add(7);
     if (indexes.isEmpty) indexes.add(0);
     return indexes;
   }
@@ -2296,29 +2294,34 @@ class _SidebarContent extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: EdgeInsets.all(collapsed ? 10 : 12),
+          padding: EdgeInsets.fromLTRB(collapsed ? 10 : 24, 12, collapsed ? 10 : 18, 22),
           child: collapsed
               ? Tooltip(message: 'Sign out', child: _SidebarIconButton(icon: Icons.logout_rounded, onTap: onLogout))
-              : Container(
-                  padding: const EdgeInsets.all(11),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(.055), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(.08))),
-                  child: Row(
-                    children: [
-                      _Avatar(name: '${user['name'] ?? 'Admin User'}', dark: true),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            LText('${user['name'] ?? 'Admin User'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 11.5)),
-                            const SizedBox(height: 2),
-                            LText('${user['email'] ?? 'System Administrator'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: const Color(0xFF91A4B8), fontSize: 9.5)),
-                          ],
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Divider(color: Color(0x22FFFFFF), height: 1),
+                    const SizedBox(height: 18),
+                    LText('Nagyobb hatás.\nErősebb közösségek.\nFenntartható jövő.',
+                        style: GoogleFonts.cormorantGaramond(
+                          color: const Color(0xFFD9E2EC),
+                          fontSize: 16,
+                          height: 1.35,
+                          fontWeight: FontWeight.w500,
+                        )),
+                    const SizedBox(height: 14),
+                    Container(width: 26, height: 2, color: brandGold),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: LText('HIMATE System\nv1.2.0',
+                              style: TextStyle(color: Color(0xFF7890A7), fontSize: 9.5, height: 1.45)),
                         ),
-                      ),
-                      _SidebarIconButton(icon: Icons.logout_rounded, onTap: onLogout, size: 34),
-                    ],
-                  ),
+                        _SidebarIconButton(icon: Icons.logout_rounded, onTap: onLogout, size: 34),
+                      ],
+                    ),
+                  ],
                 ),
         ),
       ],
@@ -2409,22 +2412,21 @@ class _SidebarIconButton extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.name, this.dark = false});
+  const _Avatar({required this.name});
   final String name;
-  final bool dark;
 
   @override
   Widget build(BuildContext context) {
     final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
     final initials = parts.isEmpty ? 'AU' : parts.take(2).map((e) => e[0].toUpperCase()).join();
     return Container(
-      width: 34,
-      height: 34,
+      width: 38,
+      height: 38,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: dark ? brandSteel : const Color(0xFF165A9B),
+        color: brandNavy,
         shape: BoxShape.circle,
-        border: Border.all(color: dark ? Colors.white.withOpacity(.14) : Colors.transparent),
+        border: Border.all(color: brandMist),
       ),
       child: LText(initials, style: const TextStyle(color: brandWhite, fontWeight: FontWeight.w700, fontSize: 10)),
     );
@@ -2693,109 +2695,454 @@ class DashboardPage extends StatelessWidget {
     return ValueListenableBuilder<int>(
       valueListenable: api.cacheSignal(path),
       builder: (context, _, __) => FutureBuilder<Map<String, dynamic>>(
-      future: api.get(path),
-      initialData: api.peek(path),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+        future: api.get(path),
+        initialData: api.peek(path),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+            return Content(
+              title: uiLiteral('Dashboard'),
+              subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
+              child: ResponsiveKpiGrid(children: [
+                Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: brandSteel, onTap: canNavigate(1) ? () => onNavigate(1) : null),
+                Kpi(label: uiLiteral('Active Modules'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.inventory_2_outlined, accent: brandGold, onTap: canNavigate(2) ? () => onNavigate(2) : null),
+                Kpi(label: uiLiteral('Settled Revenue'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.paid_outlined, accent: brandSuccess, onTap: canNavigate(4) ? () => onNavigate(4) : null),
+                Kpi(label: uiLiteral('Impact'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.eco_outlined, accent: brandSteel, onTap: canNavigate(5) ? () => onNavigate(5) : null),
+              ]),
+            );
+          }
+          if (snapshot.hasError && snapshot.data == null) {
+            return Content(
+              title: uiLiteral('Dashboard'),
+              subtitle: uiLiteral('Partners, modules, finance and impact at a glance.'),
+              child: _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Dashboard data is temporarily unavailable'), message: '${snapshot.error}'),
+            );
+          }
+
+          final d = snapshot.data ?? <String, dynamic>{};
+          final p = Map<String, dynamic>.from(d['partners'] ?? <String, dynamic>{});
+          final m = Map<String, dynamic>.from(d['modules'] ?? <String, dynamic>{});
+          final billing = Map<String, dynamic>.from(d['billing'] ?? <String, dynamic>{});
+          final impact = Map<String, dynamic>.from(d['impact'] ?? <String, dynamic>{});
+          final activity = Map<String, dynamic>.from(d['activity'] ?? <String, dynamic>{});
+          final geo = Map<String, dynamic>.from(d['partner_geo'] ?? <String, dynamic>{});
+
+          final partnersAvailable = p['available'] != false;
+          final modulesAvailable = m['available'] != false;
+          final billingAvailable = billing['available'] != false;
+          final impactAvailable = impact['available'] != false;
+          final billingAuthorized = billing['authorized'] != false;
+          final impactAuthorized = impact['authorized'] != false;
+          final impactHasData = impact['has_data'] == true;
+          final revenueRows = items(billing);
+
+          String revenueValue = !billingAvailable ? '—' : billingAuthorized ? '0' : uiLiteral('Restricted');
+          String revenueNote = !billingAvailable
+              ? uiLiteral('Loading authoritative value')
+              : billingAuthorized
+                  ? uiLiteral('No paid revenue recorded this year')
+                  : uiLiteral('Billing permission required');
+          if (billingAuthorized && revenueRows.length == 1) {
+            final row = revenueRows.first;
+            revenueValue = _dashboardMoney('${row['currency'] ?? ''}', row['revenue_ytd']);
+            revenueNote = uiLiteral('Paid activation + recurring revenue');
+          } else if (billingAuthorized && revenueRows.length > 1) {
+            revenueValue = uiLiteral('Mixed');
+            revenueNote = revenueRows.map((row) => _dashboardMoney('${row['currency'] ?? ''}', row['revenue_ytd'])).join(' · ');
+          }
+
+          final people = impact['people_reached_ytd'];
+          final peopleValue = !impactAvailable
+              ? '—'
+              : impactAuthorized
+                  ? _dashboardCompact(people ?? 0)
+                  : uiLiteral('Restricted');
+          final peopleNote = !impactAvailable
+              ? uiLiteral('Loading authoritative value')
+              : impactAuthorized
+                  ? uiLiteral('Verified people reached · YTD')
+                  : uiLiteral('Impact permission required');
+
+          final monthlyTrend = items(<String, dynamic>{'items': impact['trend']});
+          final weeklyTrend = items(<String, dynamic>{'items': impact['weekly_trend']});
+          final activities = items(activity);
+          final geoStates = items(<String, dynamic>{'items': geo['states']});
+          final geoPartners = items(<String, dynamic>{'items': geo['partners']});
+
           return Content(
-            eyebrow: uiLiteral('Loading live control-plane data'),
-            title: uiLiteral('Welcome to HIMATE System'),
-            subtitle: uiLiteral('The Go read model is assembling the first usable dashboard payload.'),
-            child: ResponsiveKpiGrid(children: [
-              Kpi(label: uiLiteral('Active Partners'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_2_outlined, accent: const Color(0xFF0B5DA8), onTap: canNavigate(1) ? () => onNavigate(1) : null),
-              Kpi(label: uiLiteral('Active Programs'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.description_outlined, accent: brandNavy, onTap: canNavigate(2) ? () => onNavigate(2) : null),
-              Kpi(label: uiLiteral('Revenue (YTD)'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.bar_chart_rounded, accent: brandGold, onTap: canNavigate(4) ? () => onNavigate(4) : null),
-              Kpi(label: uiLiteral('People Reached'), value: '—', note: uiLiteral('Loading authoritative value'), icon: Icons.groups_rounded, accent: brandNavy, onTap: canNavigate(5) ? () => onNavigate(5) : null),
-            ]),
+            title: uiLiteral('Dashboard'),
+            subtitle: uiLiteral('Partners, modules and impact in one executive overview.'),
+            actions: [
+              OutlinedButton.icon(
+                onPressed: () => openPdfExportIfAvailable(context, api, '/api/v1/partners/export.pdf'),
+                icon: const Icon(Icons.download_outlined),
+                label: LText(uiLiteral('PDF export')),
+              ),
+            ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ResponsiveKpiGrid(children: [
+                  Kpi(
+                    label: uiLiteral('Active Partners'),
+                    value: partnersAvailable ? '${p['live'] ?? 0}' : '—',
+                    note: partnersAvailable ? uiLiteral('${p['total'] ?? 0} partner records') : uiLiteral('Loading authoritative value'),
+                    icon: Icons.groups_2_outlined,
+                    accent: brandSteel,
+                    onTap: canNavigate(1) ? () => onNavigate(1) : null,
+                  ),
+                  Kpi(
+                    label: uiLiteral('Active Modules'),
+                    value: modulesAvailable ? '${m['catalog_total'] ?? 0}' : '—',
+                    note: modulesAvailable ? uiLiteral('Available module portfolio') : uiLiteral('Loading authoritative value'),
+                    icon: Icons.inventory_2_outlined,
+                    accent: brandGold,
+                    onTap: canNavigate(2) ? () => onNavigate(2) : null,
+                  ),
+                  Kpi(
+                    label: uiLiteral('Settled Revenue'),
+                    value: revenueValue,
+                    note: revenueNote,
+                    icon: Icons.paid_outlined,
+                    accent: brandSuccess,
+                    onTap: canNavigate(4) ? () => onNavigate(4) : null,
+                  ),
+                  Kpi(
+                    label: uiLiteral('Impact'),
+                    value: peopleValue,
+                    note: peopleNote,
+                    icon: Icons.eco_outlined,
+                    accent: brandSteel,
+                    onTap: canNavigate(5) ? () => onNavigate(5) : null,
+                  ),
+                ]),
+                const SizedBox(height: 18),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final trend = _ImpactPanel(
+                      monthlyTrend: monthlyTrend,
+                      weeklyTrend: weeklyTrend,
+                      year: year,
+                      authorized: impactAuthorized,
+                      hasData: impactHasData,
+                      title: uiLiteral('12 month trend'),
+                      subtitle: uiLiteral('Verified impact trend from the authoritative read model'),
+                    );
+                    final map = _DashboardUsMapCard(
+                      states: geoStates,
+                      activeStates: (geo['active_states'] as num?)?.toInt() ?? 0,
+                      activePartners: (geo['active_partners'] as num?)?.toInt() ?? 0,
+                      available: geo['available'] != false,
+                    );
+                    if (constraints.maxWidth < 980) {
+                      return Column(children: [trend, const SizedBox(height: 16), map]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 7, child: trend),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 5, child: map),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final activityPanel = _ActivityPanel(items: activities);
+                    final report = _DashboardPartnerReportPreview(
+                      partners: geoPartners,
+                      onOpenPartners: canNavigate(1) ? () => onNavigate(1) : null,
+                    );
+                    if (constraints.maxWidth < 980) {
+                      return Column(children: [activityPanel, const SizedBox(height: 16), report]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 5, child: activityPanel),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 7, child: report),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
           );
-        }
-        if (snapshot.hasError && snapshot.data == null) {
-          return Content(
-            title: uiLiteral('Welcome to HIMATE System'),
-            subtitle: uiLiteral('Manage partners, programs and cultural impact — all in one place.'),
-            child: _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Dashboard data is temporarily unavailable'), message: '${snapshot.error}'),
-          );
-        }
-        final d=snapshot.data??<String,dynamic>{};
-        final p=Map<String,dynamic>.from(d['partners']??<String,dynamic>{});
-        final m=Map<String,dynamic>.from(d['modules']??<String,dynamic>{});
-        final billing=Map<String,dynamic>.from(d['billing']??<String,dynamic>{});
-        final impact=Map<String,dynamic>.from(d['impact']??<String,dynamic>{});
-        final activity=Map<String,dynamic>.from(d['activity']??<String,dynamic>{});
-        final partnersAvailable=p['available']!=false;
-        final modulesAvailable=m['available']!=false;
-        final billingAvailable=billing['available']!=false;
-        final impactAvailable=impact['available']!=false;
-        final billingAuthorized=billing['authorized']!=false;
-        final impactAuthorized=impact['authorized']!=false;
-        final impactHasData=impact['has_data']==true;
-        final revenueRows=items(billing);
-        String revenueValue=!billingAvailable?'—':billingAuthorized?'0':uiLiteral('Restricted');
-        String revenueNote=!billingAvailable
-            ?uiLiteral('Loading authoritative value')
-            :billingAuthorized
-                ?uiLiteral('No paid revenue recorded this year')
-                :uiLiteral('Billing permission required');
-        if(billingAuthorized&&revenueRows.length==1){
-          final row=revenueRows.first;
-          final currency='${row['currency']??''}';
-          revenueValue=_dashboardMoney(currency,row['revenue_ytd']);
-          revenueNote=uiLiteral('Paid activation + recurring revenue');
-        }else if(billingAuthorized&&revenueRows.length>1){
-          revenueValue=uiLiteral('Mixed');
-          revenueNote=revenueRows
-              .map((row)=>_dashboardMoney('${row['currency']??''}',row['revenue_ytd']))
-              .join(' · ');
-        }
-        final people=impact['people_reached_ytd'];
-        final peopleValue=!impactAvailable
-            ?'—'
-            :impactAuthorized
-                ?_dashboardCompact(people??0)
-                :uiLiteral('Restricted');
-        final peopleNote=!impactAvailable
-            ?uiLiteral('Loading authoritative value')
-            :impactAuthorized
-                ?uiLiteral('Verified attendance metric · YTD')
-                :uiLiteral('Impact permission required');
-        final hour=DateTime.now().hour;
-        final greeting=hour<12?uiLiteral('Good morning,'):hour<18?uiLiteral('Good afternoon,'):uiLiteral('Good evening,');
-        return Content(
-          eyebrow:greeting,
-          title:uiLiteral('Welcome to HIMATE System'),
-          subtitle:uiLiteral('Manage partners, programs, and cultural impact — all in one place.'),
-          child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            LayoutBuilder(builder:(context,c){
-              final gap=14.0;
-              final cols=c.maxWidth<620?2:4;
-              final w=(c.maxWidth-gap*(cols-1))/cols;
-              return Wrap(spacing:gap,runSpacing:gap,children:[
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Partners'),value:partnersAvailable?'${p['live']??0}':'—',note:partnersAvailable?uiLiteral('${p['total']??0} partner records'):uiLiteral('Loading authoritative value'),icon:Icons.groups_2_outlined,accent:const Color(0xFF0B5DA8),onTap:canNavigate(1)?()=>onNavigate(1):null)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Active Programs'),value:modulesAvailable?'${m['catalog_total']??0}':'—',note:modulesAvailable?uiLiteral('Available program modules'):uiLiteral('Loading authoritative value'),icon:Icons.description_outlined,accent:brandNavy,onTap:canNavigate(2)?()=>onNavigate(2):null)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('Revenue (YTD)'),value:revenueValue,note:revenueNote,icon:Icons.bar_chart_rounded,accent:brandGold,onTap:canNavigate(4)?()=>onNavigate(4):null)),
-                SizedBox(width:w,child:Kpi(label:uiLiteral('People Reached'),value:peopleValue,note:peopleNote,icon:Icons.groups_rounded,accent:brandNavy,onTap:canNavigate(5)?()=>onNavigate(5):null)),
-              ]);
-            }),
-            const SizedBox(height:18),
-            LayoutBuilder(builder:(context,c){
-              final monthlyTrend=items(<String,dynamic>{'items':impact['trend']});
-              final weeklyTrend=items(<String,dynamic>{'items':impact['weekly_trend']});
-              final activities=items(activity);
-              if(c.maxWidth<900)return Column(children:[
-                _ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized,hasData:impactHasData),
-                const SizedBox(height:16),
-                _ActivityPanel(items:activities),
-              ]);
-              return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Expanded(flex:7,child:_ImpactPanel(monthlyTrend:monthlyTrend,weeklyTrend:weeklyTrend,year:year,authorized:impactAuthorized,hasData:impactHasData)),
-                const SizedBox(width:16),
-                Expanded(flex:4,child:_ActivityPanel(items:activities)),
-              ]);
-            }),
-          ]),
-        );
-      },
-    ),
+        },
+      ),
+    );
+  }
+}
+
+class _DashboardUsMapCard extends StatelessWidget {
+  const _DashboardUsMapCard({
+    required this.states,
+    required this.activeStates,
+    required this.activePartners,
+    required this.available,
+  });
+  final List<Map<String, dynamic>> states;
+  final int activeStates;
+  final int activePartners;
+  final bool available;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 330,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(color: brandSteel.withOpacity(.08), borderRadius: BorderRadius.circular(11)),
+                    child: const Icon(Icons.location_on_outlined, color: brandSteel, size: 21),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        LText(uiLiteral('Partners in the United States'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                        LText(uiLiteral('Active partner distribution by state'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: !available
+                    ? Center(child: LText(uiLiteral('Partner geography is temporarily unavailable'), style: const TextStyle(color: brandTextSoft)))
+                    : Row(
+                        children: [
+                          Expanded(child: _DashboardUsMap(states: states)),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 92,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _DashboardMapStat(value: '$activeStates', label: uiLiteral('active states'), accent: brandGold),
+                                const SizedBox(height: 10),
+                                _DashboardMapStat(value: '$activePartners', label: uiLiteral('US partners'), accent: brandSteel),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Container(width: 9, height: 9, decoration: BoxDecoration(color: brandNavy, borderRadius: BorderRadius.circular(3))),
+                  const SizedBox(width: 6),
+                  LText(uiLiteral('Active state'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                  const SizedBox(width: 14),
+                  Container(width: 9, height: 9, decoration: BoxDecoration(color: const Color(0xFFD8DEE7), borderRadius: BorderRadius.circular(3))),
+                  const SizedBox(width: 6),
+                  LText(uiLiteral('Other state'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardMapStat extends StatelessWidget {
+  const _DashboardMapStat({required this.value, required this.label, required this.accent});
+  final String value, label;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            LText(value, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 26, fontWeight: FontWeight.w700, height: 1)),
+            const SizedBox(height: 4),
+            LText(label, textAlign: TextAlign.center, style: const TextStyle(color: brandTextSoft, fontSize: 9)),
+          ],
+        ),
+      );
+}
+
+class _DashboardUsMap extends StatelessWidget {
+  const _DashboardUsMap({required this.states});
+  final List<Map<String, dynamic>> states;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _DashboardUsMapPainter(states),
+        child: const SizedBox.expand(),
+      );
+}
+
+class _DashboardUsMapPainter extends CustomPainter {
+  _DashboardUsMapPainter(this.states);
+  final List<Map<String, dynamic>> states;
+
+  static const positions = <String, Offset>{
+    'Washington': Offset(.11,.16),'Oregon':Offset(.09,.28),'California':Offset(.10,.52),'Nevada':Offset(.18,.43),
+    'Idaho':Offset(.20,.25),'Montana':Offset(.29,.18),'Wyoming':Offset(.31,.32),'Utah':Offset(.25,.43),
+    'Arizona':Offset(.24,.59),'New Mexico':Offset(.34,.58),'Colorado':Offset(.37,.43),'North Dakota':Offset(.43,.20),
+    'South Dakota':Offset(.44,.31),'Nebraska':Offset(.46,.41),'Kansas':Offset(.47,.50),'Oklahoma':Offset(.49,.60),
+    'Texas':Offset(.46,.74),'Minnesota':Offset(.54,.23),'Iowa':Offset(.54,.39),'Missouri':Offset(.56,.50),
+    'Arkansas':Offset(.57,.61),'Louisiana':Offset(.59,.72),'Wisconsin':Offset(.62,.29),'Illinois':Offset(.63,.44),
+    'Michigan':Offset(.69,.29),'Indiana':Offset(.68,.45),'Ohio':Offset(.73,.43),'Kentucky':Offset(.70,.53),
+    'Tennessee':Offset(.69,.60),'Mississippi':Offset(.63,.69),'Alabama':Offset(.68,.70),'Georgia':Offset(.73,.68),
+    'Florida':Offset(.79,.82),'South Carolina':Offset(.77,.62),'North Carolina':Offset(.79,.56),'Virginia':Offset(.81,.49),
+    'West Virginia':Offset(.76,.49),'Pennsylvania':Offset(.81,.39),'New York':Offset(.86,.30),'Vermont':Offset(.88,.20),
+    'New Hampshire':Offset(.91,.21),'Maine':Offset(.95,.16),'Massachusetts':Offset(.92,.28),'Connecticut':Offset(.90,.32),
+    'Rhode Island':Offset(.93,.32),'New Jersey':Offset(.86,.39),'Delaware':Offset(.86,.45),'Maryland':Offset(.83,.46),
+    'District of Columbia':Offset(.82,.49),
+  };
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final mapRect = Rect.fromLTWH(5, 7, size.width - 10, size.height - 14);
+    final outline = Path()
+      ..moveTo(mapRect.left + mapRect.width*.04, mapRect.top + mapRect.height*.22)
+      ..lineTo(mapRect.left + mapRect.width*.18, mapRect.top + mapRect.height*.10)
+      ..lineTo(mapRect.left + mapRect.width*.34, mapRect.top + mapRect.height*.13)
+      ..lineTo(mapRect.left + mapRect.width*.48, mapRect.top + mapRect.height*.18)
+      ..lineTo(mapRect.left + mapRect.width*.61, mapRect.top + mapRect.height*.15)
+      ..lineTo(mapRect.left + mapRect.width*.75, mapRect.top + mapRect.height*.22)
+      ..lineTo(mapRect.left + mapRect.width*.88, mapRect.top + mapRect.height*.16)
+      ..lineTo(mapRect.left + mapRect.width*.96, mapRect.top + mapRect.height*.24)
+      ..lineTo(mapRect.left + mapRect.width*.90, mapRect.top + mapRect.height*.38)
+      ..lineTo(mapRect.left + mapRect.width*.84, mapRect.top + mapRect.height*.48)
+      ..lineTo(mapRect.left + mapRect.width*.82, mapRect.top + mapRect.height*.61)
+      ..lineTo(mapRect.left + mapRect.width*.88, mapRect.top + mapRect.height*.82)
+      ..lineTo(mapRect.left + mapRect.width*.80, mapRect.top + mapRect.height*.89)
+      ..lineTo(mapRect.left + mapRect.width*.72, mapRect.top + mapRect.height*.73)
+      ..lineTo(mapRect.left + mapRect.width*.63, mapRect.top + mapRect.height*.72)
+      ..lineTo(mapRect.left + mapRect.width*.53, mapRect.top + mapRect.height*.85)
+      ..lineTo(mapRect.left + mapRect.width*.43, mapRect.top + mapRect.height*.79)
+      ..lineTo(mapRect.left + mapRect.width*.34, mapRect.top + mapRect.height*.72)
+      ..lineTo(mapRect.left + mapRect.width*.23, mapRect.top + mapRect.height*.69)
+      ..lineTo(mapRect.left + mapRect.width*.16, mapRect.top + mapRect.height*.58)
+      ..lineTo(mapRect.left + mapRect.width*.08, mapRect.top + mapRect.height*.48)
+      ..close();
+    canvas.drawPath(outline, Paint()..color = const Color(0xFFE0E5EC));
+    canvas.drawPath(outline, Paint()..color = const Color(0xFFCAD2DD)..style = PaintingStyle.stroke..strokeWidth = 1);
+
+    final counts = <String,int>{};
+    for (final row in states) {
+      counts['${row['state'] ?? ''}'] = (row['count'] as num?)?.toInt() ?? 0;
+    }
+    final ranked = counts.entries.toList()..sort((a,b)=>b.value.compareTo(a.value));
+    final labelled = ranked.take(6).map((e)=>e.key).toSet();
+    for (final entry in counts.entries) {
+      final pos = positions[entry.key];
+      if (pos == null || entry.value <= 0) continue;
+      final point = Offset(mapRect.left + mapRect.width*pos.dx, mapRect.top + mapRect.height*pos.dy);
+      canvas.drawCircle(point, labelled.contains(entry.key) ? 5.2 : 4.1, Paint()..color = brandGold);
+      canvas.drawCircle(point, labelled.contains(entry.key) ? 3.0 : 2.2, Paint()..color = brandNavy);
+      if (labelled.contains(entry.key)) {
+        final tp = TextPainter(
+          text: TextSpan(text:'${entry.value}',style:GoogleFonts.inter(fontSize:8.5,fontWeight:FontWeight.w700,color:brandNavy)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset(point.dx + 6, point.dy - tp.height/2));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashboardUsMapPainter oldDelegate) => oldDelegate.states.toString() != states.toString();
+}
+
+class _DashboardPartnerReportPreview extends StatelessWidget {
+  const _DashboardPartnerReportPreview({required this.partners, this.onOpenPartners});
+  final List<Map<String, dynamic>> partners;
+  final VoidCallback? onOpenPartners;
+
+  String _shortDate(dynamic raw) {
+    final parsed = DateTime.tryParse('${raw ?? ''}');
+    if (parsed == null) return '—';
+    return '${parsed.year}.${parsed.month.toString().padLeft(2,'0')}.${parsed.day.toString().padLeft(2,'0')}.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = partners.take(5).toList();
+    return SizedBox(
+      height: 285,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.description_outlined, color: brandSteel, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(child: LText(uiLiteral('Partner reporting'), style: GoogleFonts.cormorantGaramond(color: brandNavy,fontSize:19,fontWeight:FontWeight.w700))),
+                  if (onOpenPartners != null)
+                    TextButton(onPressed: onOpenPartners, child: LText(uiLiteral('All partners'))),
+                ],
+              ),
+              LText(uiLiteral('Join date, state, active modules and lifecycle status from the Central read model.'), style: const TextStyle(color:brandTextSoft,fontSize:9.5)),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(color: const Color(0xFFF3F5F8), borderRadius: BorderRadius.circular(7)),
+                child: const Row(children:[
+                  Expanded(flex:3,child:LText('Partner',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                  Expanded(flex:2,child:LText('Joined',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                  Expanded(flex:2,child:LText('State',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                  Expanded(child:LText('Modules',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                  Expanded(child:LText('Status',style:TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                ]),
+              ),
+              if (rows.isEmpty)
+                Expanded(child: Center(child:LText(uiLiteral('No US partner records yet.'),style:const TextStyle(color:brandTextSoft,fontSize:10.5))))
+              else
+                Expanded(
+                  child: ListView.separated(
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context,index) {
+                      final row=rows[index];
+                      final lifecycle='${row['lifecycle'] ?? '—'}';
+                      final live=lifecycle=='LIVE';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal:10,vertical:7),
+                        child: Row(children:[
+                          Expanded(flex:3,child:LText('${row['name'] ?? row['id'] ?? '—'}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:brandNavy,fontSize:9.5,fontWeight:FontWeight.w600))),
+                          Expanded(flex:2,child:LText(_shortDate(row['joined_at']),style:const TextStyle(color:brandTextSoft,fontSize:9))),
+                          Expanded(flex:2,child:LText('${row['state'] ?? '—'}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:brandTextSoft,fontSize:9))),
+                          Expanded(child:LText('${row['active_modules'] ?? 0}',style:const TextStyle(color:brandNavy,fontSize:9,fontWeight:FontWeight.w700))),
+                          Expanded(child:Container(
+                            padding:const EdgeInsets.symmetric(horizontal:6,vertical:4),
+                            decoration:BoxDecoration(color:(live?brandSuccess:brandWarning).withOpacity(.10),borderRadius:BorderRadius.circular(99)),
+                            child:LText(live?uiLiteral('Active'):lifecycle,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(color:live?brandSuccess:brandWarning,fontSize:8,fontWeight:FontWeight.w700)),
+                          )),
+                        ]),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2807,12 +3154,15 @@ class _ImpactPanel extends StatefulWidget {
     required this.year,
     required this.authorized,
     required this.hasData,
+    this.title = 'Program Impact',
+    this.subtitle = '',
   });
   final List<Map<String,dynamic>> monthlyTrend;
   final List<Map<String,dynamic>> weeklyTrend;
   final int year;
   final bool authorized;
   final bool hasData;
+  final String title, subtitle;
 
   @override
   State<_ImpactPanel> createState()=>_ImpactPanelState();
@@ -2830,7 +3180,16 @@ class _ImpactPanelState extends State<_ImpactPanel> {
         padding:const EdgeInsets.fromLTRB(22,20,22,16),
         child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           Row(children:[
-            Expanded(child:LText(uiLiteral('Program Impact'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LText(widget.title, style: GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20)),
+                  if (widget.subtitle.isNotEmpty)
+                    LText(widget.subtitle, style: const TextStyle(color:brandTextSoft,fontSize:9.5)),
+                ],
+              ),
+            ),
             if(widget.authorized)
               Container(
                 height:34,
@@ -4027,9 +4386,8 @@ class _PartnersPageState extends State<PartnersPage> {
     final allRecords = (partnerKpis['partner_records'] as num?)?.toInt() ?? 0;
 
     return Content(
-      eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
       title: 'Partners',
-      subtitle: 'A single premium workspace for every organization connected to the HIMATE ecosystem.',
+      subtitle: 'Partner management, relationships and collaboration at a glance.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
@@ -4118,6 +4476,16 @@ class _PartnersPageState extends State<PartnersPage> {
                               lifecycle,
                               const SizedBox(height: 10),
                               health,
+                              const SizedBox(height: 4),
+                              SwitchListTile.adaptive(
+                                contentPadding: EdgeInsets.zero,
+                                value: referenceOnly,
+                                title: const LText('Reference partners'),
+                                onChanged: (value) {
+                                  setState(() => referenceOnly = value);
+                                  load(reset: true);
+                                },
+                              ),
                             ]);
                           }
                           return Row(children: [
@@ -4128,6 +4496,20 @@ class _PartnersPageState extends State<PartnersPage> {
                             Expanded(child: lifecycle),
                             const SizedBox(width: 10),
                             Expanded(child: health),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 190,
+                              child: SwitchListTile.adaptive(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                value: referenceOnly,
+                                title: const LText('Reference partners', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                onChanged: (value) {
+                                  setState(() => referenceOnly = value);
+                                  load(reset: true);
+                                },
+                              ),
+                            ),
                           ]);
                         },
                       ),
@@ -4162,7 +4544,13 @@ class _PartnersPageState extends State<PartnersPage> {
                     const SizedBox(height: 12),
                     LayoutBuilder(
                       builder: (context, c) {
-                        final width = c.maxWidth < 620 ? c.maxWidth : c.maxWidth < 1040 ? (c.maxWidth - 14) / 2 : (c.maxWidth - 28) / 3;
+                        final width = c.maxWidth < 620
+                            ? c.maxWidth
+                            : c.maxWidth < 980
+                                ? (c.maxWidth - 14) / 2
+                                : c.maxWidth < 1320
+                                    ? (c.maxWidth - 28) / 3
+                                    : (c.maxWidth - 42) / 4;
                         final cards = <Widget>[
                           if (filtered.isEmpty)
                             SizedBox(
@@ -6156,6 +6544,7 @@ class PackagesPage extends StatefulWidget {
 
 class _PackagesPageState extends State<PackagesPage> {
   bool loading = true;
+  bool packageReady = false;
   bool analyticsLoading = true;
   bool modulesLoading = true;
   String? error;
@@ -6183,14 +6572,15 @@ class _PackagesPageState extends State<PackagesPage> {
     void applyPrimary(Map<String, dynamic> model) {
       if (!mounted) return;
       if (model['ready'] != true) {
-        setState(() { loading = true; });
-        Future<void>.delayed(const Duration(milliseconds: 350), () {
-          if (mounted) unawaited(load());
+        setState(() {
+          loading = false;
+          packageReady = false;
         });
         return;
       }
       setState(() {
         plans = items(<String, dynamic>{'items': model['plans']});
+        packageReady = true;
         loading = false;
       });
     }
@@ -6227,11 +6617,10 @@ class _PackagesPageState extends State<PackagesPage> {
       if (!mounted) return;
       if (model['ready'] != true) {
         setState(() {
-          analyticsLoading = true;
-          modulesLoading = true;
-        });
-        Future<void>.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) unawaited(loadSupplementary());
+          analyticsLoading = false;
+          modulesLoading = false;
+          analyticsError = 'Package analytics snapshot is warming. Refresh when ready.';
+          modulesError = 'Module catalog snapshot is warming. Refresh when ready.';
         });
         return;
       }
@@ -6474,6 +6863,18 @@ class _PackagesPageState extends State<PackagesPage> {
         child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Packages could not be loaded', message: error!),
       );
     }
+    if (!loading && !packageReady && plans.isEmpty) {
+      return Content(
+        title: 'Packages',
+        subtitle: 'Subscription packages, module entitlements and configuration.',
+        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
+        child: const _MessageCard(
+          icon: Icons.hourglass_empty_rounded,
+          title: 'Package snapshot is warming',
+          message: 'No materialized package snapshot exists yet. This page does not start an infinite polling loop; refresh when backend preparation completes.',
+        ),
+      );
+    }
     final analyticsPackages = analytics['packages'] is List
         ? (analytics['packages'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
         : <Map<String,dynamic>>[];
@@ -6482,10 +6883,18 @@ class _PackagesPageState extends State<PackagesPage> {
         : <Map<String,dynamic>>[];
     final activityMeasured = analytics['portal_activity_measured'] == true;
 
+    final activeSubscriptions = analyticsPackages.fold<int>(
+      0,
+      (sum, row) => sum + ((row['active_partner_count'] as num?)?.toInt() ?? 0),
+    );
+    final customPackages = plans.where((plan) {
+      final key = '${plan['plan_key'] ?? ''}'.toUpperCase();
+      return key != 'STARTER' && key != 'BUSINESS' && key != 'FLEX' && key != 'PREMIUM';
+    }).length;
+
     return Content(
-      eyebrow: 'COMMERCIAL CONTROL PLANE',
       title: 'Packages',
-      subtitle: 'Starter, Business and Premium package control with usage and commercial analytics.',
+      subtitle: 'Subscription packages, module entitlements and configuration.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/billing/packages/export.pdf'),
@@ -6497,6 +6906,13 @@ class _PackagesPageState extends State<PackagesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ResponsiveKpiGrid(children: [
+            Kpi(label: 'All packages', value: '${plans.length}', note: 'Configured package definitions', icon: Icons.inventory_2_outlined, accent: brandSteel),
+            Kpi(label: 'Active subscriptions', value: '$activeSubscriptions', note: 'Partners with active package subscriptions', icon: Icons.groups_2_outlined, accent: brandSuccess),
+            Kpi(label: 'Module registry', value: '${modules.length}', note: 'Modules available for package entitlement', icon: Icons.widgets_outlined, accent: brandGold),
+            Kpi(label: 'Custom packages', value: '$customPackages', note: 'Non-canonical package definitions', icon: Icons.sell_outlined, accent: const Color(0xFF6C63D9)),
+          ]),
+          const SizedBox(height: 18),
           LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth < 720
@@ -7475,9 +7891,8 @@ class _FinancePageState extends State<FinancePage> {
     }
 
     return Content(
-      eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
       title: 'Licensing & Finance',
-      subtitle: 'Partner onboarding, invoice approval, payment status and auditable finance controls. A partner reaches Portal access only after final HIMATE approval.',
+      subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
@@ -7512,12 +7927,12 @@ class _FinancePageState extends State<FinancePage> {
                 ResponsiveKpiGrid(
                   children: [
                     Kpi(
-                      label: 'Draft invoices',
-                      value: '$draftCount',
-                      note: 'Awaiting Central approval',
-                      icon: Icons.edit_note_outlined,
+                      label: 'Invoices',
+                      value: '${invoices.length}',
+                      note: '$draftCount draft · $approvedCount approved',
+                      icon: Icons.receipt_long_outlined,
                       accent: brandSteel,
-                      onTap: () => applyInvoiceFilter('DRAFT'),
+                      onTap: () => applyInvoiceFilter('ALL'),
                     ),
                     Kpi(
                       label: 'Outstanding',
@@ -7528,7 +7943,7 @@ class _FinancePageState extends State<FinancePage> {
                       onTap: () => applyInvoiceFilter(sentCount > 0 ? 'SENT' : 'APPROVED'),
                     ),
                     Kpi(
-                      label: 'Paid YTD',
+                      label: 'Settled',
                       value: '${financeKpis['paid_ytd_label'] ?? r'$0.00'}',
                       note: '$paidCount paid invoices',
                       icon: Icons.payments_outlined,
@@ -7547,6 +7962,53 @@ class _FinancePageState extends State<FinancePage> {
                 ),
                 const SizedBox(height: 20),
                 financeChart(),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardWidth = constraints.maxWidth < 760
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 24) / 3;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'Invoice approval queue',
+                            subtitle: 'Review and approve generated invoice drafts before they can be sent.',
+                            footer: '$draftCount awaiting approval',
+                            icon: Icons.fact_check_outlined,
+                            accent: brandSteel,
+                            onTap: () => applyInvoiceFilter('DRAFT'),
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'Partner onboarding',
+                            subtitle: 'Registration, commercial approval, license activation and Portal access.',
+                            footer: '$pendingOnboarding active onboarding processes',
+                            icon: Icons.group_add_outlined,
+                            accent: brandGold,
+                            onTap: scrollToOnboarding,
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _CentralActionCard(
+                            title: 'New invoice',
+                            subtitle: 'Create a draft invoice from an approved partner and commercial context.',
+                            footer: 'Create invoice',
+                            icon: Icons.add_card_outlined,
+                            accent: brandSuccess,
+                            onTap: partners.isEmpty ? null : () => createManualInvoice(),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -7779,6 +8241,8 @@ class _ImpactPageState extends State<ImpactPage> {
   List<Map<String, dynamic>> summary = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> evidence = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> reports = <Map<String, dynamic>>[];
+  Map<String, dynamic> impactAnalytics = <String, dynamic>{};
+  Map<String, dynamic> impactKpis = <String, dynamic>{};
   int evidenceTotal = 0;
   int evidenceOffset = 0;
   static const int evidenceLimit = 12;
@@ -7831,11 +8295,8 @@ class _ImpactPageState extends State<ImpactPage> {
       if (!mounted || path != evidencePath()) return;
       if (model['ready'] != true) {
         setState(() {
-          loading = true;
+          loading = false;
           error = null;
-        });
-        Future<void>.delayed(const Duration(milliseconds: 400), () {
-          if (mounted && path == evidencePath()) unawaited(load());
         });
         return;
       }
@@ -7844,6 +8305,8 @@ class _ImpactPageState extends State<ImpactPage> {
         summary = items(<String, dynamic>{'items': model['summary']});
         evidence = items(<String, dynamic>{'items': model['evidence']});
         reports = items(<String, dynamic>{'items': model['reports']});
+        impactAnalytics = model['analytics'] is Map ? Map<String, dynamic>.from(model['analytics'] as Map) : <String, dynamic>{};
+        impactKpis = model['kpis'] is Map ? Map<String, dynamic>.from(model['kpis'] as Map) : <String, dynamic>{};
         evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
         loading = false;
       });
@@ -8389,21 +8852,79 @@ class _ImpactPageState extends State<ImpactPage> {
         child: _BrandLoading(),
       );
     }
+    if (!loading &&
+        error == null &&
+        definitions.isEmpty &&
+        summary.isEmpty &&
+        evidence.isEmpty &&
+        reports.isEmpty &&
+        impactKpis.isEmpty) {
+      return Content(
+        title: 'Impact & Reports',
+        subtitle: 'Real outcomes, transparent reports and evidence.',
+        actions: [
+          OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
+        ],
+        child: const _MessageCard(
+          icon: Icons.hourglass_empty_rounded,
+          title: 'Impact snapshot is warming',
+          message: 'No materialized Impact snapshot exists yet. The page is usable without an infinite loading loop; refresh when backend preparation completes.',
+        ),
+      );
+    }
     if (error != null) {
       return Content(
-        eyebrow: 'IMPACT CONTROL',
         title: 'Impact & Reports',
         subtitle: 'Metrics, Evidence and reproducible reports.',
         child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
       );
     }
+    final activeMetrics = (impactKpis['active_metrics'] as num?)?.toInt() ?? definitions.length;
+    final totalEvidence = (impactKpis['evidence_total'] as num?)?.toInt() ?? evidenceTotal;
+    final totalReports = (impactKpis['reports_total'] as num?)?.toInt() ?? reports.length;
+    final pendingEvidence = (impactKpis['pending_evidence'] as num?)?.toInt() ?? 0;
+    final monthlyTrend = items(<String,dynamic>{'items': impactAnalytics['trend']});
+    final weeklyTrend = items(<String,dynamic>{'items': impactAnalytics['weekly_trend']});
+    final impactHasData = impactAnalytics['has_data'] == true || monthlyTrend.isNotEmpty || weeklyTrend.isNotEmpty;
+
     return Content(
-      eyebrow: 'IMPACT CONTROL',
       title: 'Impact & Reports',
-      subtitle: 'Global and partner metrics, auditable Evidence and reproducible PDF reporting.',
+      subtitle: 'Real outcomes. Transparent reporting. Measurable impact.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ResponsiveKpiGrid(children: [
+            Kpi(label: 'Active metrics', value: '$activeMetrics', note: 'Configured impact definitions', icon: Icons.bar_chart_rounded, accent: brandSteel),
+            Kpi(label: 'Evidence', value: '$totalEvidence', note: 'Evidence records in the library', icon: Icons.description_outlined, accent: brandGold),
+            Kpi(label: 'Reports', value: '$totalReports', note: 'Generated report records', icon: Icons.pie_chart_outline_rounded, accent: brandSuccess),
+            Kpi(label: 'Pending review', value: '$pendingEvidence', note: 'Unverified evidence items', icon: Icons.shield_outlined, accent: brandSteel),
+          ]),
+          const SizedBox(height: 18),
+          _ImpactPanel(
+            monthlyTrend: monthlyTrend,
+            weeklyTrend: weeklyTrend,
+            year: DateTime.now().toUtc().year,
+            authorized: true,
+            hasData: impactHasData,
+            title: 'Impact trend',
+            subtitle: 'Verified social and environmental impact over time',
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth < 760 ? constraints.maxWidth : (constraints.maxWidth - 24) / 3;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(width: width, child: _CentralActionCard(title: 'Metrics', subtitle: 'Manage impact indicators, baselines and recorded results.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: addDefinition)),
+                  SizedBox(width: width, child: _CentralActionCard(title: 'Evidence', subtitle: 'Upload and verify documents, media and partner declarations.', icon: Icons.description_outlined, accent: brandGold, onTap: addEvidence)),
+                  SizedBox(width: width, child: _CentralActionCard(title: 'Report creation', subtitle: 'Generate reproducible partner and program reports.', icon: Icons.picture_as_pdf_outlined, accent: brandSuccess, onTap: generateReport)),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
           LayoutBuilder(
             builder: (context, constraints) {
               final actions = <Widget>[
@@ -8901,11 +9422,19 @@ class _SystemPageState extends State<SystemPage> {
               '${b['partner_id']}',
         }.toList()..sort();
         final overall = '${health['status'] ?? 'UNKNOWN'}';
+        bool isHealthyStatus(dynamic value) {
+          final status = '${value ?? 'UNKNOWN'}'.toUpperCase();
+          return const {'OK', 'HEALTHY', 'LIVE', 'READY', 'ACTIVE', 'DEPLOYED'}.contains(status);
+        }
+        final degradedServices = services.where((service) => !isHealthyStatus(service['status'])).length;
+        final degradedPartners = partners.where((partner) => !isHealthyStatus(partner['overall_status'])).length;
+        final issueCount = degradedServices + degradedPartners;
+        final deployedEnvironments = environments.where((environment) => '${environment['deployment_status'] ?? ''}'.toUpperCase() == 'DEPLOYED').length;
+        final healthyServices = services.where((service) => isHealthyStatus(service['status'])).length;
 
         return Content(
-          eyebrow: 'PLATFORM OPERATIONS',
           title: 'System & Operations',
-          subtitle: 'Provisioning, partner environments, connectors, backups and central health across the containerized HIMATE control plane.',
+          subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
           actions: [
             OutlinedButton.icon(
               onPressed: _openDeveloperDiagnostics,
@@ -8921,8 +9450,85 @@ class _SystemPageState extends State<SystemPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _OperationsHero(status: overall, environment: 'control plane', version: 'START-09–22'),
-              const SizedBox(height: 22),
+              ResponsiveKpiGrid(children: [
+                Kpi(
+                  label: 'System status',
+                  value: overall,
+                  note: '$healthyServices / ${services.length} services healthy',
+                  icon: Icons.dns_outlined,
+                  accent: issueCount == 0 ? brandSuccess : brandWarning,
+                ),
+                Kpi(
+                  label: 'Partner systems',
+                  value: '${partners.length}',
+                  note: 'Partner health aggregates',
+                  icon: Icons.hub_outlined,
+                  accent: brandSteel,
+                ),
+                Kpi(
+                  label: 'Deployments',
+                  value: '$deployedEnvironments',
+                  note: '${environments.length} managed environments',
+                  icon: Icons.inventory_2_outlined,
+                  accent: brandSuccess,
+                ),
+                Kpi(
+                  label: 'Issues',
+                  value: '$issueCount',
+                  note: '$degradedServices services · $degradedPartners partners',
+                  icon: Icons.warning_amber_rounded,
+                  accent: issueCount == 0 ? brandSuccess : brandDanger,
+                ),
+              ]),
+              const SizedBox(height: 18),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final healthCard = _SystemCurrentHealthCard(services: services, overall: overall);
+                  final infrastructure = _SystemInfrastructureSummary(
+                    environments: environments,
+                    backups: backupSummary,
+                    partnerCount: partners.length,
+                  );
+                  if (constraints.maxWidth < 940) {
+                    return Column(children: [healthCard, const SizedBox(height: 14), infrastructure]);
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 7, child: healthCard),
+                      const SizedBox(width: 14),
+                      Expanded(flex: 4, child: infrastructure),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 18),
+              _SectionHeader(
+                title: 'Main service status',
+                subtitle: 'Current authoritative status of critical microservices.',
+                trailing: OutlinedButton.icon(
+                  onPressed: _openDeveloperDiagnostics,
+                  icon: const Icon(Icons.code_rounded, size: 17),
+                  label: const LText('Developer diagnostics'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (services.isEmpty)
+                const _MessageCard(
+                  icon: Icons.dns_outlined,
+                  title: 'No service health data',
+                  message: 'No service-health snapshot is available yet.',
+                )
+              else
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final s in services.take(8))
+                      ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
+                  ],
+                ),
+              const SizedBox(height: 24),
               _SectionHeader(
                 title: 'Service Health',
                 subtitle: 'Readiness and liveness are monitored independently for each microservice.',
@@ -9055,6 +9661,107 @@ class _SystemPageState extends State<SystemPage> {
 }
 
 
+
+class _SystemCurrentHealthCard extends StatelessWidget {
+  const _SystemCurrentHealthCard({required this.services, required this.overall});
+  final List<Map<String, dynamic>> services;
+  final String overall;
+
+  bool healthy(dynamic raw) {
+    final status = '${raw ?? ''}'.toUpperCase();
+    return const {'OK','HEALTHY','LIVE','READY','ACTIVE','DEPLOYED'}.contains(status);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final good = services.where((service) => healthy(service['status'])).length;
+    final ratio = services.isEmpty ? 0.0 : good / services.length;
+    return SizedBox(
+      height: 255,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children:[
+                const Icon(Icons.bar_chart_rounded,color:brandSteel,size:21),
+                const SizedBox(width:9),
+                Expanded(child:LText('System health overview',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
+                _StatusPill(label: overall),
+              ]),
+              const SizedBox(height:5),
+              const LText('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.',style:TextStyle(color:brandTextSoft,fontSize:9.5)),
+              const Spacer(),
+              LinearProgressIndicator(
+                value: ratio,
+                minHeight: 12,
+                borderRadius: BorderRadius.circular(99),
+                color: ratio == 1 ? brandSuccess : brandWarning,
+                backgroundColor: brandMist,
+              ),
+              const SizedBox(height:10),
+              LText('$good / ${services.length} services healthy',style:const TextStyle(color:brandNavy,fontSize:11,fontWeight:FontWeight.w700)),
+              const SizedBox(height:14),
+              Wrap(
+                spacing:7,
+                runSpacing:7,
+                children:[
+                  for(final service in services.take(10))
+                    Container(
+                      padding:const EdgeInsets.symmetric(horizontal:9,vertical:6),
+                      decoration:BoxDecoration(color:(healthy(service['status'])?brandSuccess:brandWarning).withOpacity(.08),borderRadius:BorderRadius.circular(99)),
+                      child:Row(mainAxisSize:MainAxisSize.min,children:[
+                        Container(width:7,height:7,decoration:BoxDecoration(color:healthy(service['status'])?brandSuccess:brandWarning,shape:BoxShape.circle)),
+                        const SizedBox(width:6),
+                        LText(_humanize('${service['name'] ?? 'service'}'),style:const TextStyle(color:brandNavy,fontSize:8.5,fontWeight:FontWeight.w600)),
+                      ]),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SystemInfrastructureSummary extends StatelessWidget {
+  const _SystemInfrastructureSummary({required this.environments,required this.backups,required this.partnerCount});
+  final List<Map<String,dynamic>> environments;
+  final List<Map<String,dynamic>> backups;
+  final int partnerCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final production = environments.where((e)=>'${e['kind']}'=='PRODUCTION').length;
+    final live = environments.where((e)=>'${e['environment_status']}'=='LIVE').length;
+    return SizedBox(
+      height:255,
+      child:Card(
+        child:Padding(
+          padding:const EdgeInsets.all(18),
+          child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            LText('Infrastructure status',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+            const SizedBox(height:12),
+            _DefinitionRow(label:'Managed environments',value:'${environments.length}'),
+            _DefinitionRow(label:'Production environments',value:'$production'),
+            _DefinitionRow(label:'Live environments',value:'$live'),
+            _DefinitionRow(label:'Partner systems',value:'$partnerCount'),
+            _DefinitionRow(label:'Backup scopes',value:'${backups.length}'),
+            const Spacer(),
+            const Row(children:[
+              Icon(Icons.verified_outlined,color:brandSuccess,size:17),
+              SizedBox(width:7),
+              Expanded(child:LText('All values come from live operations endpoints.',style:TextStyle(color:brandTextSoft,fontSize:9.5))),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
 
 class AdministrationPage extends StatefulWidget {
   const AdministrationPage({required this.api, required this.user, this.onBack, super.key});
@@ -10607,46 +11314,6 @@ class CatalogModuleCard extends StatelessWidget {
   }
 }
 
-class _OperationsHero extends StatelessWidget {
-  const _OperationsHero({required this.status, required this.environment, required this.version});
-  final String status, environment, version;
-
-  @override
-  Widget build(BuildContext context) {
-    final healthy = status.toLowerCase() == 'ok' || status.toLowerCase() == 'healthy';
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [brandNavyDeep, brandNavy, brandNavySoft]),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: brandGold.withOpacity(.18)),
-      ),
-      child: LayoutBuilder(builder: (context, c) {
-        final content = [
-          BrandMark(size: 46),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              LText(healthy ? 'Platform operational' : 'Platform requires attention', style: const TextStyle(color: brandWhite, fontSize: 24, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 5),
-              LText('Environment: $environment · Version: $version', style: const TextStyle(color: Color(0xFFB8C6D6), fontSize: 11)),
-            ]),
-          ),
-          _StatusPill(label: status),
-        ];
-        if (c.maxWidth < 620) {
-          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [content[0], content[1], content[2]]),
-            const SizedBox(height: 14),
-            content[3],
-          ]);
-        }
-        return Row(children: content);
-      }),
-    );
-  }
-}
-
 class _ArchitectureCard extends StatelessWidget {
   const _ArchitectureCard();
 
@@ -10806,47 +11473,128 @@ class _KpiState extends State<Kpi> {
   bool hover = false;
   @override
   Widget build(BuildContext context) => MouseRegion(
-    cursor:widget.onTap==null?MouseCursor.defer:SystemMouseCursors.click,
+    cursor: widget.onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
     onEnter: (_) => setState(() => hover = true),
     onExit: (_) => setState(() => hover = false),
-    child:Semantics(
-      button:widget.onTap!=null,
-      label:widget.label,
-      child:GestureDetector(
-        behavior:HitTestBehavior.opaque,
-        onTap:widget.onTap,
-        child:AnimatedContainer(
+    child: Semantics(
+      button: widget.onTap != null,
+      label: widget.label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           width: double.infinity,
-          height: 132,
-          transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+          height: 126,
+          transform: Matrix4.translationValues(0, hover ? -2 : 0, 0),
           decoration: BoxDecoration(
-            color: brandSurfaceRaised,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: hover ? widget.accent.withOpacity(.72) : brandIonBlue.withOpacity(.22)),
-            boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .085 : .035), blurRadius: hover ? 22 : 12, offset: Offset(0, hover ? 9 : 5))],
+            color: brandWhite,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: hover ? widget.accent.withOpacity(.34) : brandMist),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF102642).withOpacity(hover ? .075 : .035),
+                blurRadius: hover ? 24 : 15,
+                offset: Offset(0, hover ? 8 : 5),
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.all(15),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Icon(widget.icon, color: widget.accent, size: 22),
-                const Spacer(),
-                if(widget.onTap!=null)Icon(Icons.arrow_forward_rounded,color:widget.accent,size:16)
-                else Container(width:5,height:5,decoration:BoxDecoration(color:widget.accent,shape:BoxShape.circle)),
-              ]),
-              const Spacer(),
-              LText(widget.label, style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: LText(widget.value, style: const TextStyle(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w600))),
-              LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.3)),
-            ]),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: widget.accent.withOpacity(.095),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(widget.icon, color: widget.accent, size: 22),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: LText(widget.label, style: const TextStyle(color: brandNavy, fontSize: 11.2, fontWeight: FontWeight.w700))),
+                          if (widget.onTap != null) Icon(Icons.arrow_forward_rounded, color: widget.accent, size: 15),
+                        ],
+                      ),
+                      const Spacer(),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: LText(widget.value, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                      ),
+                      const SizedBox(height: 4),
+                      LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     ),
   );
+}
+
+class _CentralActionCard extends StatelessWidget {
+  const _CentralActionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    this.footer,
+    this.onTap,
+  });
+  final String title, subtitle;
+  final IconData icon;
+  final Color accent;
+  final String? footer;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(13)),
+                    child: Icon(icon, color: accent, size: 23),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w700))),
+                  Icon(Icons.arrow_forward_rounded, color: accent, size: 19),
+                ]),
+                const SizedBox(height: 9),
+                LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.4)),
+                if (footer != null) ...[
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 10),
+                  LText(footer!, style: TextStyle(color: accent, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class ServiceCard extends StatelessWidget {

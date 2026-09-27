@@ -81,14 +81,16 @@ for token in (
 ):
     require(token in gateway, f"Gateway START-23.9 contract missing {token!r}")
 
+dashboard_snapshot_compact = "".join(dashboard_snapshot.split())
 for token in (
     "materializeDashboardActivity",
     "FROM identity.audit_events",
     "WHERE outcome='SUCCESS'",
-    '"activity": activityBlock',
 ):
     require(token in dashboard_snapshot,
             f"Dashboard snapshot START-23.9 activity contract missing {token!r}")
+require('"activity":activityBlock' in dashboard_snapshot_compact,
+        "Dashboard snapshot START-23.9 activity contract missing precomputed activity binding")
 
 for stale in (
     "Billing analytics upcoming",
@@ -112,12 +114,16 @@ for token in (
     "_dashboardMoney",
     "_ImpactChartPainter",
     "Live audit feed",
-    "billingAuthorized=billing['authorized']!=false",
-    "impactAuthorized=impact['authorized']!=false",
     "Billing permission required",
     "Impact permission required",
 ):
     require(token in frontend, f"Flutter START-23.9 wiring missing {token!r}")
+frontend_compact = "".join(frontend.split())
+for token in (
+    "billingAuthorized=billing['authorized']!=false",
+    "impactAuthorized=impact['authorized']!=false",
+):
+    require(token in frontend_compact, f"Flutter START-23.9 wiring missing {token!r}")
 
 completed = tuple(int(x) for x in str(matrix.get("completed_through", "0")).split("."))
 require(completed >= (23, 9), "functional matrix is not completed through START-23.9")

@@ -568,88 +568,58 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     );
   }
 
-  Widget hubOverview() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _RuleStrip(items: [
-            _RuleItem(Icons.web_outlined, 'Website', 'Content + brand system'),
-            _RuleItem(Icons.campaign_outlined, 'Marketing', 'SEO + customer inbox'),
-            _RuleItem(Icons.hub_outlined, 'Partner operations', 'Partner-first data connections'),
-            _RuleItem(Icons.visibility_outlined, 'Publishing', 'Draft → Preview → Active Brand'),
-          ]),
-          const SizedBox(height: 22),
-          const _SectionHeader(
-            title: 'Website & Brand',
-            subtitle: 'Design, public content and media are separate workspaces with one controlled publish boundary.',
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth < 700
-                  ? constraints.maxWidth
-                  : constraints.maxWidth < 1120
-                      ? (constraints.maxWidth - 12) / 2
-                      : (constraints.maxWidth - 24) / 3;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  if (widget.canCms)
-                    SizedBox(width: width, child: hubCard(key: 'design', title: 'Design Guide', subtitle: 'Brand assets, color system, typography, layout family, real viewport preview and Active Brand publish.', icon: Icons.palette_outlined, metric: 'BRAND')),
-                  if (widget.canCms)
-                    SizedBox(width: width, child: hubCard(key: 'pages', title: 'CMS Pages', subtitle: 'Versioned public page content with independent draft, preview, publish and rollback history.', icon: Icons.web_outlined, metric: '${pages.length} PAGES')),
-                  if (widget.canCms)
-                    SizedBox(width: width, child: hubCard(key: 'media', title: 'Media Library', subtitle: 'Checksum-backed images and story video assets referenced by stable CMS asset IDs.', icon: Icons.perm_media_outlined, metric: '${media.length} ASSETS')),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          const _SectionHeader(
-            title: 'Marketing',
-            subtitle: 'Audience-facing discovery and inbound customer operations without mixing them into CMS editing.',
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth < 700 ? constraints.maxWidth : (constraints.maxWidth - 12) / 2;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  if (widget.canCms)
-                    SizedBox(width: width, child: hubCard(key: 'seo', title: 'SEO & Keywords', subtitle: 'Bilingual metadata, page keyword coverage, Open Graph and structured discovery controls.', icon: Icons.travel_explore_outlined, metric: 'SEO')),
-                  if (widget.canContact)
-                    SizedBox(width: width, child: hubCard(key: 'leads', title: 'Customer Inbox', subtitle: 'Website contact inquiries and customer follow-up remain a dedicated marketing operations surface.', icon: Icons.mark_email_unread_outlined, metric: 'INBOX')),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          const _SectionHeader(
-            title: 'Partner Operations',
-            subtitle: 'Operational partner integrations are partner-first. Integration vendors appear only inside a partner when a real runtime record exists.',
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth < 700
-                  ? constraints.maxWidth
-                  : constraints.maxWidth < 1120
-                      ? (constraints.maxWidth - 12) / 2
-                      : (constraints.maxWidth - 24) / 3;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  if (widget.canConnections)
-                    SizedBox(width: width, child: hubCard(key: 'connections', title: 'Partner Data Connections', subtitle: 'Connection status, last successful sync, last error and real integrations for every partner.', icon: Icons.hub_outlined, metric: 'PARTNERS')),
-                ],
-              );
-            },
+  Widget hubOverview() {
+    final publishedPages = pages.where((page) {
+      final status = (page['status'] ?? page['publication_status'] ?? '').toString().toUpperCase();
+      return status == 'PUBLISHED' || status == 'ACTIVE' || page['published_version_id'] != null;
+    }).length;
+    final imageAssets = media.where((asset) => (asset['mime_type'] ?? '').toString().startsWith('image/')).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ResponsiveKpiGrid(children: [
+          Kpi(label: 'Pages', value: '${pages.length}', note: 'CMS page records', icon: Icons.description_outlined, accent: brandSteel),
+          Kpi(label: 'Media assets', value: '${media.length}', note: '$imageAssets image assets', icon: Icons.perm_media_outlined, accent: brandGold),
+          Kpi(label: 'Published pages', value: '$publishedPages', note: 'Published or active content', icon: Icons.public_outlined, accent: brandSuccess),
+          Kpi(label: 'Partner connections', value: widget.canConnections ? 'ON' : '—', note: widget.canConnections ? 'Connection workspace available' : 'Permission required', icon: Icons.hub_outlined, accent: const Color(0xFF6C63D9)),
+        ]),
+        const SizedBox(height: 18),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth < 700
+                ? constraints.maxWidth
+                : constraints.maxWidth < 1120
+                    ? (constraints.maxWidth - 12) / 2
+                    : (constraints.maxWidth - 24) / 3;
+            final cards = <Widget>[
+              if (widget.canCms)
+                SizedBox(width: width, child: _WebsiteHubCard(title: 'Design Guide', subtitle: 'Brand assets, colors, typography, layout and preview/publish workflow.', icon: Icons.brush_outlined, accent: brandSteel, onTap: () => setState(() => section = 'design'))),
+              if (widget.canCms)
+                SizedBox(width: width, child: _WebsiteHubCard(title: 'CMS', subtitle: 'Website pages and content editing with immutable draft, preview and publish history.', icon: Icons.description_outlined, accent: const Color(0xFF7557E8), onTap: () => setState(() => section = 'pages'))),
+              if (widget.canCms)
+                SizedBox(width: width, child: _WebsiteHubCard(title: 'SEO', subtitle: 'Metadata, page keywords, Open Graph and technical discovery controls.', icon: Icons.search_rounded, accent: brandGold, onTap: () => setState(() => section = 'seo'))),
+              SizedBox(width: width, child: _WebsiteHubCard(title: 'Domain & Deployment', subtitle: 'Production domains, TLS and deployment environment status.', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => setState(() => section = 'domains'))),
+              SizedBox(width: width, child: _WebsiteHubCard(title: 'Analytics', subtitle: 'Website measurement readiness and analytics integration status without invented traffic data.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: () => setState(() => section = 'analytics'))),
+              if (widget.canConnections)
+                SizedBox(width: width, child: _WebsiteHubCard(title: 'Partner Connections', subtitle: 'Partner website adapters, connector state and last successful synchronization.', icon: Icons.groups_2_outlined, accent: const Color(0xFFD84965), onTap: () => setState(() => section = 'connections'))),
+            ];
+            return Wrap(spacing: 12, runSpacing: 12, children: cards);
+          },
+        ),
+        if (widget.canContact) ...[
+          const SizedBox(height: 18),
+          _CentralActionCard(
+            title: 'Customer Inbox',
+            subtitle: 'Website inquiries and customer follow-up remain available as a focused marketing operations workspace.',
+            icon: Icons.mark_email_unread_outlined,
+            accent: brandGold,
+            onTap: () => setState(() => section = 'leads'),
           ),
         ],
-      );
+      ],
+    );
+  }
 
   Widget cmsPagesSection() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -750,6 +720,10 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
         return ContactLeadsPanel(api: widget.api);
       case 'connections':
         return PartnerConnectionsPanel(api: widget.api);
+      case 'domains':
+        return WebsiteDomainsPanel(api: widget.api);
+      case 'analytics':
+        return WebsiteAnalyticsPanel(pages: pages, media: media);
       default:
         return hubOverview();
     }
@@ -768,7 +742,6 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
     }
 
     return Content(
-      eyebrow: 'WEBSITE · MARKETING · PARTNER OPERATIONS',
       title: section == 'overview' ? 'Website & Marketing' : ({
         'design': 'Design Guide',
         'pages': 'CMS Pages',
@@ -776,9 +749,11 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
         'seo': 'SEO & Keywords',
         'leads': 'Customer Inbox',
         'connections': 'Partner Data Connections',
+        'domains': 'Domain & Deployment',
+        'analytics': 'Analytics',
       }[section] ?? 'Website & Marketing'),
       subtitle: section == 'overview'
-          ? 'A structured control center for public website, marketing and partner data operations.'
+          ? 'Website management, online presence, marketing tools and analytics in one place.'
           : 'Focused workspace · use Back to return to Website & Marketing.',
       actions: [
         if (section != 'overview')
@@ -793,6 +768,116 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
           FilledButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const LText('Upload media')),
       ],
       child: activeSection(),
+    );
+  }
+}
+
+class _WebsiteHubCard extends StatelessWidget {
+  const _WebsiteHubCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    required this.onTap,
+  });
+  final String title, subtitle;
+  final IconData icon;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(14)),
+                    child: Icon(icon, color: accent, size: 27),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 21, fontWeight: FontWeight.w700))),
+                ]),
+                const SizedBox(height: 14),
+                LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 10.5, height: 1.45)),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(10), border: Border.all(color: brandMist)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      LText(uiLiteral('Open'), style: const TextStyle(color: brandSteel, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded, color: brandSteel, size: 17),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class WebsiteDomainsPanel extends StatelessWidget {
+  const WebsiteDomainsPanel({required this.api, super.key});
+  final Api api;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
+        future: api.get('/api/v1/environments', maxAge: const Duration(seconds: 5)),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
+            return const _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Loading domain environments',
+              message: 'Domain and deployment state is loaded independently from the Website overview.',
+            );
+          }
+          if (snapshot.hasError || snapshot.data == null) {
+            return _MessageCard(icon: Icons.cloud_off_outlined, title: 'Domain & Deployment unavailable', message: '${snapshot.error ?? 'No environment data'}');
+          }
+          return DomainsDeploymentsPanel(api: api, initialEnvironments: items(snapshot.data!));
+        },
+      );
+}
+
+class WebsiteAnalyticsPanel extends StatelessWidget {
+  const WebsiteAnalyticsPanel({required this.pages, required this.media, super.key});
+  final List<Map<String, dynamic>> pages;
+  final List<Map<String, dynamic>> media;
+
+  @override
+  Widget build(BuildContext context) {
+    final published = pages.where((page) {
+      final status = (page['status'] ?? page['publication_status'] ?? '').toString().toUpperCase();
+      return status == 'PUBLISHED' || status == 'ACTIVE' || page['published_version_id'] != null;
+    }).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ResponsiveKpiGrid(children: [
+          Kpi(label: 'CMS pages', value: '${pages.length}', note: 'Tracked content records', icon: Icons.description_outlined, accent: brandSteel),
+          Kpi(label: 'Published', value: '$published', note: 'Published or active pages', icon: Icons.public_outlined, accent: brandSuccess),
+          Kpi(label: 'Media assets', value: '${media.length}', note: 'CMS media records', icon: Icons.perm_media_outlined, accent: brandGold),
+          const Kpi(label: 'Traffic analytics', value: '—', note: 'No authoritative traffic dataset connected', icon: Icons.query_stats_outlined, accent: Color(0xFF6C63D9)),
+        ]),
+        const SizedBox(height: 16),
+        const _MessageCard(
+          icon: Icons.analytics_outlined,
+          title: 'Traffic analytics connector is not reporting data yet',
+          message: 'HIMATE does not invent visits, behavior or conversion figures. When an authoritative analytics/heatmap provider is connected, this workspace can render those real measurements.',
+        ),
+      ],
     );
   }
 }

@@ -216,6 +216,14 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Partner-specific assignment, recurring price, activation fee and subscription state.': 'Partnerspecifikus hozzárendelés, ismétlődő díj, aktiválási díj és előfizetési állapot.',
+    'Module snapshot is warming': 'A modul-pillanatkép előkészítés alatt áll',
+    'The backend read model has no materialized module snapshot yet. This screen will never spin forever; refresh when the snapshot is ready.': 'A backend read model még nem rendelkezik materializált modul-pillanatképpel. A képernyő nem marad végtelen betöltésben; frissíts, amikor a pillanatkép elkészült.',
+    'Modules overview, organized by topic.': 'Modulok áttekintése, témák szerint rendezve.',
+    'Topics': 'Témák',
+    'Connections': 'Kapcsolatok',
+    'Partner management, relationships and collaboration at a glance.': 'Partnereink kezelése, kapcsolatok és együttműködések áttekintése.',
+    'Reference partners': 'Referenciapartnerek',
     'Administration Center': 'Adminisztrációs központ',
     'HIMATE Administration Center': 'HIMATE adminisztrációs központ',
     'Partner Administration Center': 'Partner adminisztrációs központ',
@@ -513,7 +521,6 @@ class HimateI18n {
     'All lifecycle states': 'Minden életciklus-állapot',
     'All health states': 'Minden egészségi állapot',
     'Reference partner': 'Referenciapartner',
-    'Reference partners': 'Referenciapartnerek',
     'Live partners': 'Élő partnerek',
     'Prospects': 'Érdeklődők',
     'Partner could not be opened': 'A partner nem nyitható meg',

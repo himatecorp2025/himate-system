@@ -8,6 +8,65 @@ class ModuleControlPlanePage extends StatefulWidget {
   State<ModuleControlPlanePage> createState() => _ModuleControlPlanePageState();
 }
 
+class _ModuleWorkspaceTabs extends StatelessWidget {
+  const _ModuleWorkspaceTabs({required this.selected, required this.onSelect});
+  final String selected;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    const specs = <(String, IconData, String)>[
+      ('TOPICS', Icons.grid_view_rounded, 'Topics'),
+      ('PARTNERS', Icons.groups_2_outlined, 'Partners'),
+      ('MODULES', Icons.inventory_2_outlined, 'Modules'),
+      ('CONNECTIONS', Icons.link_rounded, 'Connections'),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: brandMist),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Wrap(
+          spacing: 5,
+          runSpacing: 5,
+          children: [
+            for (final spec in specs)
+              SizedBox(
+                width: constraints.maxWidth < 680 ? (constraints.maxWidth - 5) / 2 : 150,
+                child: Material(
+                  color: selected == spec.$1 ? const Color(0xFFEAF2FF) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => onSelect(spec.$1),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(spec.$2, size: 17, color: selected == spec.$1 ? brandSteel : brandTextSoft),
+                          const SizedBox(width: 7),
+                          LText(uiLiteral(spec.$3), style: TextStyle(
+                            color: selected == spec.$1 ? brandSteel : brandNavy,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> modules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> registryModules = <Map<String, dynamic>>[];
@@ -20,6 +79,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   bool showSubscriptionPlans = false;
   bool showCommercialMatrix = false;
   bool loading = true;
+  bool registryReady = false;
   bool commercialLoading = true;
   bool commercialReady = false;
   String? error;
@@ -124,9 +184,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     void applyModel(Map<String, dynamic> model) {
       if (!mounted || path != _centralRegistryPath()) return;
       if (model['ready'] != true) {
-        setState(() { loading = true; });
-        Future<void>.delayed(const Duration(milliseconds: 350), () {
-          if (mounted && path == _centralRegistryPath()) unawaited(loadRegistry());
+        setState(() {
+          loading = false;
+          registryReady = false;
         });
         return;
       }
@@ -141,6 +201,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         registryKpis = registry['kpis'] is Map
             ? Map<String, dynamic>.from(registry['kpis'] as Map)
             : <String, dynamic>{};
+        registryReady = true;
         loading = false;
       });
     }
@@ -170,11 +231,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       if (!mounted || path != _centralCommercialPath()) return;
       if (model['ready'] != true) {
         setState(() {
-          commercialLoading = true;
+          commercialLoading = false;
           commercialReady = false;
-        });
-        Future<void>.delayed(const Duration(milliseconds: 500), () {
-          if (mounted && path == _centralCommercialPath()) unawaited(loadCommercial());
         });
         return;
       }
@@ -274,6 +332,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
 
   void showTopicOverview() {
     setState(() {
+      showCommercialMatrix = false;
       selectedGroupKey = null;
       registryPreset = 'TOPICS';
       groupFilter = 'ALL';
@@ -281,6 +340,32 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       query = '';
     });
     unawaited(loadRegistry());
+  }
+
+  String get workspaceView {
+    if (showCommercialMatrix) return 'PARTNERS';
+    if (registryPreset == 'RELATIONSHIPS') return 'CONNECTIONS';
+    if (selectedGroupKey != null || registryPreset != 'TOPICS') return 'MODULES';
+    return 'TOPICS';
+  }
+
+  void selectWorkspaceView(String view) {
+    if (view == 'PARTNERS') {
+      setState(() {
+        showCommercialMatrix = true;
+        commercialPerspective = 'PARTNER';
+      });
+      if (!commercialReady) unawaited(loadCommercial());
+      return;
+    }
+    setState(() => showCommercialMatrix = false);
+    if (view == 'CONNECTIONS') {
+      applyRegistryPreset('RELATIONSHIPS');
+    } else if (view == 'MODULES') {
+      applyRegistryPreset('ALL');
+    } else {
+      showTopicOverview();
+    }
   }
 
   void applyRegistryPreset(String preset) {
@@ -1696,6 +1781,31 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       );
     }
 
+    if (!registryReady &&
+        error == null &&
+        registryKpis.isEmpty &&
+        modules.isEmpty &&
+        registryModules.isEmpty &&
+        groups.isEmpty &&
+        topicRows.isEmpty) {
+      return Content(
+        title: uiLiteral('Modules'),
+        subtitle: uiLiteral('Modules overview, organized by topic.'),
+        actions: [
+          OutlinedButton.icon(
+            onPressed: loadRegistry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: LText(uiLiteral('Refresh')),
+          ),
+        ],
+        child: const _MessageCard(
+          icon: Icons.hourglass_empty_rounded,
+          title: 'Module snapshot is warming',
+          message: 'The backend read model has no materialized module snapshot yet. This screen will never spin forever; refresh when the snapshot is ready.',
+        ),
+      );
+    }
+
     final registryTotal = (registryKpis['module_registry'] as num?)?.toInt() ?? modules.length;
     final liveReady = (registryKpis['active_modules'] as num?)?.toInt() ?? 0;
     final linked = (registryKpis['source_linked'] as num?)?.toInt() ?? 0;
@@ -1721,9 +1831,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     return Content(
-      eyebrow: uiLiteral('MODULE CONTROL PLANE'),
       title: uiLiteral('Modules'),
-      subtitle: uiLiteral('Topic-driven module registry, partner usage and commercial control in one authoritative workspace.'),
+      subtitle: uiLiteral('Modules overview, organized by topic.'),
       actions: [
         OutlinedButton.icon(
           onPressed: () => setState(() => showSubscriptionPlans = true),
@@ -1787,7 +1896,12 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                   onTap: () => applyRegistryPreset('RELATIONSHIPS'),
                 ),
               ]),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              _ModuleWorkspaceTabs(
+                selected: workspaceView,
+                onSelect: selectWorkspaceView,
+              ),
+              const SizedBox(height: 18),
               Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                 if (!topicOverview) ...[
                   IconButton(
@@ -1902,21 +2016,17 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     );
                   }),
               ],
-              const SizedBox(height: 28),
-              _SectionHeader(
-                title: uiLiteral('Partner × Module Commercial Matrix'),
-                subtitle: uiLiteral('Partner-specific assignment, recurring price, activation fee and subscription state remain available without dominating the registry view.'),
-                trailing: OutlinedButton.icon(
-                  onPressed: () {
-            final opening = !showCommercialMatrix;
-            setState(() => showCommercialMatrix = opening);
-            if (opening && !commercialReady) unawaited(loadCommercial());
-          },
-                  icon: Icon(showCommercialMatrix ? Icons.expand_less_rounded : Icons.expand_more_rounded),
-                  label: LText(uiLiteral(showCommercialMatrix ? 'Hide matrix' : 'Open matrix')),
-                ),
-              ),
               if (showCommercialMatrix) ...[
+                const SizedBox(height: 8),
+                _SectionHeader(
+                  title: uiLiteral('Partner × Module Commercial Matrix'),
+                  subtitle: uiLiteral('Partner-specific assignment, recurring price, activation fee and subscription state.'),
+                  trailing: OutlinedButton.icon(
+                    onPressed: showTopicOverview,
+                    icon: const Icon(Icons.close_rounded),
+                    label: LText(uiLiteral('Close')),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 _FilterSurface(
                   child: LayoutBuilder(builder: (context, constraints) {

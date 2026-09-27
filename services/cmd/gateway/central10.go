@@ -1328,9 +1328,11 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 	summary := []map[string]any{}
 	evidenceAll := []map[string]any{}
 	reports := []map[string]any{}
+	analytics := map[string]any{}
 	if a.hasPermission(actor, "impact.read") {
 		definitions = step4Items(snapshot["definitions"])
 		summary = step4Items(snapshot["summary"])
+		analytics = step4Map(snapshot["analytics"])
 	}
 	if a.hasPermission(actor, "evidence.read") {
 		evidenceAll = step4Items(snapshot["evidence"])
@@ -1343,6 +1345,18 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 	for _, row := range evidenceAll {
 		if central10Step4EvidenceMatches(row, r) {
 			filteredEvidence = append(filteredEvidence, row)
+		}
+	}
+	pendingEvidence := 0
+	for _, row := range evidenceAll {
+		if strings.ToUpper(central10String(row["verification_status"])) == "UNVERIFIED" {
+			pendingEvidence++
+		}
+	}
+	readyReports := 0
+	for _, row := range reports {
+		if strings.ToUpper(central10String(row["status"])) == "READY" {
+			readyReports++
 		}
 	}
 	total := len(filteredEvidence)
@@ -1369,9 +1383,17 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 		"ready": true,
 		"definitions": definitions,
 		"summary": summary,
+		"analytics": analytics,
 		"evidence": filteredEvidence,
 		"evidence_total": total,
 		"reports": reports,
+		"kpis": map[string]any{
+			"active_metrics": len(definitions),
+			"evidence_total": len(evidenceAll),
+			"reports_total": len(reports),
+			"ready_reports": readyReports,
+			"pending_evidence": pendingEvidence,
+		},
 		"meta": centralStep4Meta(started, centralStep4ImpactKey, updatedAt, status, unavailable),
 	}
 	w.Header().Set("X-Himate-Cache", "hot-snapshot")
