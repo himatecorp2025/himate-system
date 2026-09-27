@@ -2140,7 +2140,15 @@ func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusServiceUnavailable, "CONTACT_UNAVAILABLE", "Contact service is unavailable")
 		return
 	}
-	proxy.ServeHTTP(w, r)
+	recorder := &auditResponseWriter{ResponseWriter: w}
+	proxy.ServeHTTP(recorder, r)
+	status := recorder.status
+	if status == 0 { status = http.StatusOK }
+	if status < http.StatusBadRequest {
+		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
+		a.enqueueReadModelRefresh(refreshCtx, r.URL.Path, "")
+		refreshCancel()
+	}
 }
 func (a *app) internalGET(ctx context.Context, host, path string, dst any) error {
 	if strings.TrimSpace(host) == "" {
