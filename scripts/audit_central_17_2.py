@@ -20,6 +20,7 @@ frontend = read("frontend/lib/main.dart")
 localization = read("frontend/lib/localization.dart")
 gateway = read("services/cmd/gateway/central10.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
+step3 = read("services/cmd/gateway/central_step3_snapshots.go")
 
 # Packages: authoritative data and reference interaction.
 for token in [
@@ -70,8 +71,6 @@ for token in [
     "impactSnapshotWarming",
     "_impactWarmRetryCount < 2",
     "_syncImpactMutation",
-    "impactStatus == 'unavailable'",
-    "impactStatus == 'partial'",
     "Some Impact sections are restricted",
     "canReadImpact",
     "canWriteImpact",
@@ -93,10 +92,12 @@ for token in [
 ]:
     check(token in gateway, f"CENTRAL-17.2 Impact permission read-model contract missing: {token}")
 
-check('if successful == 0 && previous == nil {\n\t\treturn' not in step4 and 'if successful == 0 {' in step4 and 'status = "unavailable"' in step4,
-      "CENTRAL-17.2 Impact materializer must persist an unavailable snapshot instead of warming forever")
-check('status = "partial"' in step4,
-      "CENTRAL-17.2 Impact materializer partial-state contract missing")
+check('centralStep3Store(persistCtx, centralStep4ImpactKey, payload)' in step4,
+      "CENTRAL-17.2 Impact materializer does not submit its background model to the LKG store")
+check('strings.EqualFold(central10String(payload["status"]), "healthy")' in step3,
+      "CENTRAL-17.2 Impact degraded refresh can bypass the global LKG persistence gate")
+check('central read-model refresh rejected; retaining last-known-good snapshot' in step3,
+      "CENTRAL-17.2 Impact background failure no longer retains Last-Known-Good data")
 
 # Shared shell: Round 2 pages use the same reference hierarchy as Round 1.
 for token in [
