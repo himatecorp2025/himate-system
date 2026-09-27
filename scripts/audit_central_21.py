@@ -295,6 +295,16 @@ for block, label in [(central_api, "Central"), (partner_api, "Partner")]:
 # Provider/webhook writes must participate in the same write-through contract.
 check('"partner_id":x.PartnerID' in payments,
       "Payment webhook acknowledgement no longer identifies the settled tenant")
+
+connector_proxy = func_block(main, "func (a *app) connectorPublicProxy")
+check(connector_proxy != "", "Gateway connector ingestion projection bridge is missing")
+check("enqueueReadModelRefresh" in connector_proxy and "writeThroughReadModels" in connector_proxy,
+      "Connector ingestion does not synchronously refresh durable tenant/Central projections")
+check('"partner_id"' in connector_proxy and 'reason += "/impact"' in connector_proxy,
+      "Connector write-through bridge does not scope tenant/impact projection refreshes")
+check('mux.HandleFunc("/connector/v1/", a.connectorPublicProxy)' in main,
+      "Connector public writes bypass the CQRS write-through bridge")
+
 webhook_proxy = func_block(main, "func (a *app) stripeWebhookProxy")
 check(webhook_proxy != "", "Gateway payment webhook projection bridge is missing")
 check("enqueueReadModelRefresh" in webhook_proxy and "writeThroughReadModels" in webhook_proxy,
