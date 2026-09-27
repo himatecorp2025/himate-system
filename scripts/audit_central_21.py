@@ -132,6 +132,31 @@ for source, signature in [
     for forbidden in ["internalGET", "internalGETWithHeaders", "serveProxy", "a.client.Do", "http.NewRequestWithContext"]:
         check(forbidden not in block, f"{signature} regressed to live fan-out: {forbidden}")
 
+# Successful browser read handlers can never emit degraded/warming screen states.
+for source, signature in [
+    (central10, "func (a *app) central10Partners"),
+    (central10, "func (a *app) central10Modules"),
+    (central10, "func (a *app) central10ModulesCommercial"),
+    (central10, "func (a *app) central10Packages"),
+    (central10, "func (a *app) central10PackagesSupplementary"),
+    (central10, "func (a *app) central10Finance"),
+    (central10, "func (a *app) central10Impact"),
+    (central10, "func (a *app) central10PartnerModules"),
+    (central10, "func (a *app) central10PartnerWorkspace"),
+    (central14, "func (a *app) central14Administration"),
+    (central17, "func (a *app) central17Website"),
+    (central17, "func (a *app) central17System"),
+]:
+    block = func_block(source, signature)
+    check(block != "", f"Critical healthy-only handler missing: {signature}")
+    for forbidden in ['"ready": false', '"warming"', '"partial"', '"unavailable"', 'X-Himate-Cache", "warming']:
+        check(forbidden not in block, f"{signature} can expose forbidden degraded UI state: {forbidden}")
+
+check('len(central10Step4Unavailable(raw)) > 0' in snapshots,
+      "Central LKG validation does not reject hidden unavailable dependencies")
+check('len(central10Step4Unavailable(raw)) > 0' in models,
+      "Tenant LKG validation does not reject hidden unavailable dependencies")
+
 # Partner login/access gating is a tenant projection read, not a Billing call.
 access = func_block(partner_portal, "func (a *app) partnerAccessAllowed")
 check("partnerWorkspaceForRead" in access and 'snapshot["portal_gate"]' in access,
