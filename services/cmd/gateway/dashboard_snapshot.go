@@ -196,9 +196,6 @@ func dashboardPartnerGeo(partners []map[string]any) map[string]any {
 	sort.Slice(rows, func(i, j int) bool {
 		return central10String(rows[i]["joined_at"]) > central10String(rows[j]["joined_at"])
 	})
-	if len(rows) > 50 {
-		rows = rows[:50]
-	}
 	return map[string]any{
 		"available":       true,
 		"status":          "healthy",
