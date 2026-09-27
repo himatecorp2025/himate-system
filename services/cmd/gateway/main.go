@@ -252,6 +252,10 @@ func main() {
 	}
 	a.bootstrapDashboardSnapshot()
 	a.bootstrapCentralStep3Snapshots()
+	// A Central route must never become Live before its critical read models
+	// are renderable. Persisted snapshots are reused immediately; only missing
+	// snapshots are synchronously materialized once during gateway startup.
+	a.warmMissingCentralSnapshots()
 	go a.runDashboardMaterializer()
 	go a.runCentralStep3Materializer()
 	go a.runCentralStep4Materializer()
