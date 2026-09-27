@@ -192,7 +192,7 @@ func (a *app) refreshCentralStep3Registry() {
 		page  central10ItemsPage
 		err   error
 	}
-	results := make(chan result, 2)
+	results := make(chan result, 3)
 	go func() {
 		var page central10ItemsPage
 		err := a.internalGET(ctx, a.hosts["catalog"], "/api/v1/modules", &page)
@@ -203,10 +203,16 @@ func (a *app) refreshCentralStep3Registry() {
 		err := a.internalGET(ctx, a.hosts["catalog"], "/api/v1/module-groups", &page)
 		results <- result{kind: "groups", page: page, err: err}
 	}()
+	go func() {
+		var page central10ItemsPage
+		year := time.Now().UTC().Year()
+		err := a.internalGET(ctx, a.hosts["catalog"], fmt.Sprintf("/internal/v1/module-usage-trend?year=%d", year), &page)
+		results <- result{kind: "trend", page: page, err: err}
+	}()
 
-	var modules, groups []map[string]any
+	var modules, groups, trend []map[string]any
 	var failed bool
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		res := <-results
 		if res.err != nil {
 			failed = true
@@ -214,8 +220,10 @@ func (a *app) refreshCentralStep3Registry() {
 		}
 		if res.kind == "modules" {
 			modules = res.page.Items
-		} else {
+		} else if res.kind == "groups" {
 			groups = res.page.Items
+		} else {
+			trend = res.page.Items
 		}
 	}
 	if failed {
@@ -226,6 +234,7 @@ func (a *app) refreshCentralStep3Registry() {
 	a.centralStep3Store(persistCtx, centralStep3RegistryKey, map[string]any{
 		"modules": modules,
 		"groups":  groups,
+		"trend":   trend,
 	})
 }
 
