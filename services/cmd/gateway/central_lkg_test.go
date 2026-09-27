@@ -302,3 +302,62 @@ func TestCentralStep3StoreRetainsLastKnownGood(t *testing.T) {
 		t.Fatalf("retained snapshot status = %q, want healthy", central10String(got["status"]))
 	}
 }
+
+
+func TestCentralColdStartBaselinesAreHealthyAndValid(t *testing.T) {
+	baselines := centralReadModelBaselines()
+	for _, key := range []string{
+		centralStep3RegistryKey,
+		centralStep3PlansKey,
+		centralStep3AnalyticsKey,
+		centralStep3CommercialKey,
+		centralStep4PartnersKey,
+		centralStep4FinanceKey,
+		centralStep4ImpactKey,
+		centralStep4AdministrationKey,
+		centralStep4SystemKey,
+		centralStep4WebsiteKey,
+		centralStep4ConnectionsKey,
+		centralStep4ComplianceKey,
+		centralStep4GlobalSearchKey,
+	} {
+		payload, ok := baselines[key]
+		if !ok {
+			t.Fatalf("missing cold-start baseline for %s", key)
+		}
+		if !readModelSeeded(payload) {
+			t.Fatalf("baseline %s is not marked seeded", key)
+		}
+		if !centralSnapshotValid(key, payload) {
+			t.Fatalf("baseline %s failed LKG validation: %#v", key, payload)
+		}
+	}
+}
+
+func TestPartnerColdStartBaselineIsValid(t *testing.T) {
+	payload := partnerWorkspaceBaseline(map[string]any{
+		"id": "partner_seed_1",
+		"display_name": "Seed Partner",
+		"lifecycle": "LIVE",
+	})
+	if !readModelSeeded(payload) {
+		t.Fatal("partner baseline is not marked seeded")
+	}
+	if !partnerWorkspaceSnapshotValid(payload) {
+		t.Fatalf("partner cold-start baseline failed validation: %#v", payload)
+	}
+	gate := step4Map(payload["portal_gate"])
+	if gate["allowed"] == true {
+		t.Fatal("cold-start baseline must not grant Partner Portal access before authoritative materialization")
+	}
+}
+
+func TestDashboardColdStartBaselineIsValid(t *testing.T) {
+	payload := dashboardReadModelBaseline(2026, "test", "test-version")
+	if !readModelSeeded(payload) {
+		t.Fatal("dashboard baseline is not marked seeded")
+	}
+	if !dashboardSnapshotValid(payload) {
+		t.Fatalf("dashboard cold-start baseline failed validation: %#v", payload)
+	}
+}
