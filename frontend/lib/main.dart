@@ -7049,23 +7049,6 @@ class _PackagesPageState extends State<PackagesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (impactStatus == 'unavailable') ...[
-            _MessageCard(
-              icon: Icons.cloud_off_outlined,
-              title: uiLiteral('Impact services are temporarily unavailable'),
-              message: impactUnavailable.isEmpty
-                  ? uiLiteral('Impact, Evidence and Reports could not be refreshed. No infinite loading state is used; retry when the services recover.')
-                  : '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
-            ),
-            const SizedBox(height: 14),
-          ] else if (impactStatus == 'partial' && impactUnavailable.isNotEmpty) ...[
-            _MessageCard(
-              icon: Icons.warning_amber_rounded,
-              title: uiLiteral('Impact data is partially available'),
-              message: '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
-            ),
-            const SizedBox(height: 14),
-          ],
           ResponsiveKpiGrid(children: [
             Kpi(label: 'All packages', value: '${plans.length}', note: 'Configured package definitions', icon: Icons.inventory_2_outlined, accent: brandSteel),
             Kpi(label: 'Active subscriptions', value: '$activeSubscriptions', note: 'Partners with active package subscriptions', icon: Icons.groups_2_outlined, accent: brandSuccess),
@@ -9066,6 +9049,23 @@ class _ImpactPageState extends State<ImpactPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (impactStatus == 'unavailable') ...[
+            _MessageCard(
+              icon: Icons.cloud_off_outlined,
+              title: uiLiteral('Impact services are temporarily unavailable'),
+              message: impactUnavailable.isEmpty
+                  ? uiLiteral('Impact, Evidence and Reports could not be refreshed. No infinite loading state is used; retry when the services recover.')
+                  : '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ] else if (impactStatus == 'partial' && impactUnavailable.isNotEmpty) ...[
+            _MessageCard(
+              icon: Icons.warning_amber_rounded,
+              title: uiLiteral('Impact data is partially available'),
+              message: '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ],
           ResponsiveKpiGrid(children: [
             Kpi(label: 'Active metrics', value: '$activeMetrics', note: 'Configured impact definitions', icon: Icons.bar_chart_rounded, accent: brandSteel),
             Kpi(label: 'Evidence', value: '$totalEvidence', note: 'Evidence records in the library', icon: Icons.description_outlined, accent: brandGold),
