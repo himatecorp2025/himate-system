@@ -13,6 +13,13 @@ func validRegistrySnapshot(label string) map[string]any {
 		"modules":     []map[string]any{{"key": "test.module", "label": label}},
 		"groups":      []map[string]any{},
 		"trend":       []map[string]any{},
+		"module_details": map[string]any{
+			"test.module": map[string]any{
+				"relationships": map[string]any{"items": []map[string]any{}, "count": 0},
+				"impact_metrics": map[string]any{"items": []map[string]any{}, "count": 0},
+				"usage": map[string]any{"items": []map[string]any{}, "count": 0, "usage_summary": map[string]any{}},
+			},
+		},
 	}
 }
 
@@ -104,6 +111,9 @@ func validPartnerWorkspaceSnapshot() map[string]any {
 		"partner_contacts":                []map[string]any{},
 		"partner_domains_deployments":     map[string]any{"items": []map[string]any{}, "count": 0},
 		"partner_permissions":             map[string]any{"users": []map[string]any{}, "module_policies": map[string]any{}},
+		"module_commercial_history":       map[string]any{"items": map[string]any{}, "count": 0},
+		"start22_summary":                  map[string]any{"ALL": map[string]any{}, "PRODUCTION": map[string]any{}, "STAGING": map[string]any{}},
+		"start22_retention":                map[string]any{},
 	}
 }
 
