@@ -1436,8 +1436,6 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.partnerOnboarding(w, r, u)
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
 		a.partnerPortfolioMetrics(w, r)
-	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
-		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
 		if r.URL.Path == "/api/v1/partners" && r.Method == http.MethodPost {
 			if !a.requireServiceReleases(w, r, "partners", "billing", "cms", "storage") {
