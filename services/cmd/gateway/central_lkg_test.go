@@ -20,9 +20,16 @@ func validAdministrationSnapshot() map[string]any {
 	return map[string]any{
 		"status":      "healthy",
 		"unavailable": []string{},
-		"company":     map[string]any{},
-		"items":       []map[string]any{},
-		"kpis":        map[string]any{},
+		"company":           map[string]any{},
+		"items":             []map[string]any{},
+		"kpis":              map[string]any{},
+		"admin_roles":       map[string]any{},
+		"admin_users":       map[string]any{},
+		"admin_secrets":     map[string]any{},
+		"audit_events":      map[string]any{},
+		"company_documents": map[string]any{},
+		"invoice_register":  map[string]any{},
+		"backup_api":        map[string]any{},
 	}
 }
 
@@ -66,6 +73,20 @@ func validPartnerWorkspaceSnapshot() map[string]any {
 		"website_adapter":                 map[string]any{},
 		"partner_design":                  map[string]any{},
 		"payment_profile":                 map[string]any{},
+		"portal_gate":                     map[string]any{},
+		"portal_modules":                  map[string]any{},
+		"portal_plans":                    map[string]any{},
+		"portal_plan":                     map[string]any{},
+		"portal_plan_modules":             map[string]any{},
+		"portal_charity":                  map[string]any{},
+		"portal_charity_modules":          map[string]any{},
+		"portal_design_media":             map[string]any{},
+		"portal_billing_subscriptions":    map[string]any{},
+		"portal_billing_invoices":         map[string]any{},
+		"portal_user_module_policies":     map[string]any{},
+		"portal_notifications":            map[string]any{},
+		"tenant_finance":                  map[string]any{},
+		"partner_audit_events":            []map[string]any{},
 	}
 }
 
