@@ -7891,7 +7891,10 @@ class _PackageOverviewCardState extends State<_PackageOverviewCard> {
               accent: packageAccent,
               label: widget.moduleLimit == null
                   ? uiLiteral('Every eligible current and future module')
-                  : uiLiteral('${widget.includedModuleCount} configured modules'),
+                  : uiBilingual(
+                      '${widget.moduleLimit} module entitlement capacity',
+                      '${widget.moduleLimit} modul jogosultsági keret',
+                    ),
             ),
             const SizedBox(height: 9),
             _PackageBenefitLine(
