@@ -44,6 +44,7 @@ central13 = read("services/cmd/gateway/central13.go")
 central14 = read("services/cmd/gateway/central14.go")
 central17 = read("services/cmd/gateway/central17_round3.go")
 readiness = read("services/cmd/gateway/read_model_readiness.go")
+health_service = read("services/cmd/health/main.go")
 
 # Persistent, indexed Central + tenant projections.
 for token in [
@@ -105,6 +106,20 @@ check("WHERE partner_id=$1" in models, "Tenant read path is not indexed by partn
 check('path == "/api/v1/system-health"' in central_reads and
       'centralSnapshotForRead(r.Context(), centralStep4SystemKey)' in central_reads,
       "Legacy system-health GET is not routed through the persistent System read model")
+check('mux.HandleFunc("/api/v1/system-health",a.systemHealthSnapshot)' in health_service,
+      "Health compatibility GET no longer serves its persistent snapshot")
+check('mux.HandleFunc("/internal/v1/system-health/refresh",a.systemHealthRefresh)' in health_service,
+      "Health background/write-through refresh endpoint is missing")
+health_snapshot_handler = func_block(health_service, "func (a *app)systemHealthSnapshot")
+for forbidden in ["checkServices(", "partnerHealth(", "http.NewRequest", "a.client.Do("]:
+    check(forbidden not in health_snapshot_handler,
+          f"Health snapshot GET regressed to live fan-out: {forbidden}")
+health_refresh_handler = func_block(health_service, "func (a *app)systemHealthRefresh")
+check("refreshSystemHealthSnapshots" in health_refresh_handler,
+      "Health write-through refresh no longer rebuilds persisted health state")
+check("refreshHealthSourceWriteThrough" in models and
+      "a.refreshHealthSourceWriteThrough()" in models,
+      "Gateway write-through does not refresh the health source projection before System CQRS rebuild")
 check('case path == "/api/v1/partner-categories":' in central_reads and
       'centralSnapshotForRead(r.Context(), centralStep4PartnersKey)' in central_reads,
       "Partner category GET is not routed through the persistent Partners read model")
