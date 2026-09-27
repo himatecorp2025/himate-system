@@ -166,8 +166,53 @@ func main() {
 	mux.HandleFunc("/internal/v1/module-price-quotes", a.internalModulePriceQuotes)
 	mux.HandleFunc("/internal/v1/partner-portal/", a.partnerPortal)
 	mux.HandleFunc("/internal/v1/module-usage-events", a.moduleUsageEvents)
+	mux.HandleFunc("/internal/v1/module-usage-trend", a.moduleUsageTrend)
 	mux.HandleFunc("/internal/v1/portfolio", a.portfolio)
 	common.Run(log, "catalog", common.Env("PORT", "10000"), common.InternalAuth(os.Getenv("HIMATE_INTERNAL_TOKEN"), mux))
+}
+
+func (a *app) moduleUsageTrend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
+		return
+	}
+	year := time.Now().UTC().Year()
+	if raw := strings.TrimSpace(r.URL.Query().Get("year")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 2000 || parsed > 2100 {
+			common.APIError(w, http.StatusBadRequest, "VALIDATION", "year must be between 2000 and 2100")
+			return
+		}
+		year = parsed
+	}
+	rows, err := a.db.Query(`
+		SELECT month_index,
+			COUNT(DISTINCT module_key) FILTER (WHERE activated_at < month_end) AS active_modules,
+			COUNT(DISTINCT partner_id) FILTER (WHERE activated_at < month_end) AS active_partners
+		FROM (
+			SELECT gs AS month_index,
+				(make_date($1, gs, 1) + INTERVAL '1 month') AS month_end,
+				pm.module_key, pm.partner_id, COALESCE(pm.activated_at, pm.updated_at) AS activated_at
+			FROM generate_series(1,12) gs
+			LEFT JOIN catalog.partner_modules pm ON pm.status='ACTIVE'
+		) q
+		GROUP BY month_index
+		ORDER BY month_index`, year)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate module usage trend")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var month, activeModules, activePartners int
+		if err := rows.Scan(&month, &activeModules, &activePartners); err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not read module usage trend")
+			return
+		}
+		items = append(items, map[string]any{"month": month, "active_modules": activeModules, "active_partners": activePartners})
+	}
+	common.JSON(w, http.StatusOK, map[string]any{"year": year, "items": items, "source": "CATALOG_ACTIVE_ASSIGNMENTS"})
 }
 
 func (a *app) migrate(ctx context.Context) error {
