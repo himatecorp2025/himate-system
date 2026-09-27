@@ -401,6 +401,10 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		}()
 	}
 	wg.Wait()
+
+	if partnerMutation || moduleMutation || websiteMutation || adminMutation {
+		a.refreshCentralStep4GlobalSearch()
+	}
 }
 
 func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time.Time) bool {
