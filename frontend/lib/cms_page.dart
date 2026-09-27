@@ -74,6 +74,7 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
   Map<String, dynamic> websiteKpis = <String, dynamic>{};
   Map<String, dynamic> websiteMeta = <String, dynamic>{};
+  Map<String, dynamic> websiteAccess = <String, dynamic>{};
   bool loading = true;
   String section = 'overview';
   String? error;
@@ -107,6 +108,9 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
         websiteMeta = model['meta'] is Map
             ? Map<String,dynamic>.from(model['meta'] as Map)
             : <String,dynamic>{};
+        websiteAccess = model['access'] is Map
+            ? Map<String,dynamic>.from(model['access'] as Map)
+            : <String,dynamic>{};
         loading = false;
       });
     } catch (e) {
@@ -117,6 +121,12 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
       });
     }
   }
+
+  bool get canCmsWrite => websiteAccess['cms_write'] == true;
+  bool get canCmsApprove => websiteAccess['cms_approve'] == true;
+  bool get canContactWrite => websiteAccess['contact_write'] == true;
+  bool get canEnvironmentWrite => websiteAccess['environments_write'] == true;
+  bool get canEnvironmentApprove => websiteAccess['environments_approve'] == true;
 
   Future<void> createPage() async {
     final key = TextEditingController();
@@ -502,21 +512,24 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  FilledButton.icon(
-                    onPressed: () => editDraft(page),
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const LText('Edit draft'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => createPreview(page),
-                    icon: const Icon(Icons.visibility_outlined),
-                    label: const LText('Preview'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => publish(page),
-                    icon: const Icon(Icons.publish_outlined),
-                    label: const LText('Publish'),
-                  ),
+                  if (canCmsWrite)
+                    FilledButton.icon(
+                      onPressed: () => editDraft(page),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const LText('Edit draft'),
+                    ),
+                  if (canCmsWrite)
+                    OutlinedButton.icon(
+                      onPressed: () => createPreview(page),
+                      icon: const Icon(Icons.visibility_outlined),
+                      label: const LText('Preview'),
+                    ),
+                  if (canCmsApprove)
+                    OutlinedButton.icon(
+                      onPressed: () => publish(page),
+                      icon: const Icon(Icons.publish_outlined),
+                      label: const LText('Publish'),
+                    ),
                   TextButton.icon(
                     onPressed: () => showVersions(page),
                     icon: const Icon(Icons.history_rounded),
@@ -527,6 +540,8 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
                     icon: const Icon(Icons.receipt_long_outlined),
                     label: const LText('Audit'),
                   ),
+                  if (!canCmsWrite && !canCmsApprove)
+                    _MiniCounter(label: uiLiteral('Read only')),
                 ],
               ),
             ],
@@ -735,19 +750,34 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
   Widget activeSection() {
     switch (section) {
       case 'design':
-        return DesignGuidePanel(api: widget.api, media: media);
+        return DesignGuidePanel(
+          api: widget.api,
+          media: media,
+          canWrite: canCmsWrite,
+          canApprove: canCmsApprove,
+        );
       case 'pages':
         return cmsPagesSection();
       case 'media':
         return mediaSection();
       case 'seo':
-        return SEOKeywordsPanel(api: widget.api, media: media);
+        return SEOKeywordsPanel(
+          api: widget.api,
+          media: media,
+          canWrite: canCmsWrite,
+          canApprove: canCmsApprove,
+        );
       case 'leads':
-        return ContactLeadsPanel(api: widget.api);
+        return ContactLeadsPanel(api: widget.api, canWrite: canContactWrite);
       case 'connections':
         return PartnerConnectionsPanel(api: widget.api);
       case 'domains':
-        return WebsiteDomainsPanel(api: widget.api, initialEnvironments: environments);
+        return WebsiteDomainsPanel(
+          api: widget.api,
+          initialEnvironments: environments,
+          canWrite: canEnvironmentWrite,
+          canApprove: canEnvironmentApprove,
+        );
       case 'analytics':
         return WebsiteAnalyticsPanel(pages: pages, media: media, kpis: websiteKpis);
       default:
@@ -802,9 +832,9 @@ class _WebsiteMarketingPageState extends State<WebsiteMarketingPage> {
             icon: const Icon(Icons.arrow_back_rounded),
             label: const LText('Back'),
           ),
-        if (section == 'pages')
+        if (section == 'pages' && canCmsWrite)
           FilledButton.icon(onPressed: createPage, icon: const Icon(Icons.add_rounded), label: const LText('New CMS page')),
-        if (section == 'media')
+        if (section == 'media' && canCmsWrite)
           FilledButton.icon(onPressed: uploadMedia, icon: const Icon(Icons.perm_media_outlined), label: const LText('Upload media')),
       ],
       child: Column(
@@ -940,15 +970,21 @@ class WebsiteDomainsPanel extends StatelessWidget {
   const WebsiteDomainsPanel({
     required this.api,
     required this.initialEnvironments,
+    required this.canWrite,
+    required this.canApprove,
     super.key,
   });
   final Api api;
   final List<Map<String,dynamic>> initialEnvironments;
+  final bool canWrite;
+  final bool canApprove;
 
   @override
   Widget build(BuildContext context) => DomainsDeploymentsPanel(
         api: api,
         initialEnvironments: initialEnvironments,
+        canWrite: canWrite,
+        canApprove: canApprove,
       );
 }
 
