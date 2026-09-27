@@ -1927,9 +1927,62 @@ func (a *app) dashboardAnalytics(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate billing analytics")
 		return
 	}
+
+	monthlyRows, err := a.db.Query(`
+		WITH revenue AS (
+			SELECT l.currency, l.paid_amount::numeric AS amount, l.payment_date::date AS occurred_on
+			FROM billing.initial_licenses l
+			JOIN partners.partners p ON p.id=l.partner_id
+			WHERE l.status='PAID'
+			  AND p.test_partner=FALSE
+			  AND l.provider_payment_id<>''
+			  AND l.payment_date >= make_date($1,1,1)
+			  AND l.payment_date < make_date($1+1,1,1)
+			UNION ALL
+			SELECT i.currency, i.total::numeric AS amount, i.paid_at::date AS occurred_on
+			FROM billing.invoices i
+			JOIN partners.partners p ON p.id=i.partner_id
+			WHERE i.status='PAID'
+			  AND p.test_partner=FALSE
+			  AND i.provider_status='SUCCEEDED'
+			  AND i.provider_payment_id<>''
+			  AND i.paid_at >= make_date($1,1,1)::timestamptz
+			  AND i.paid_at < make_date($1+1,1,1)::timestamptz
+		)
+		SELECT EXTRACT(MONTH FROM occurred_on)::int AS month, currency, COALESCE(SUM(amount),0)
+		FROM revenue
+		GROUP BY month,currency
+		ORDER BY month,currency`, year)
+	if err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate monthly billing analytics")
+		return
+	}
+	defer monthlyRows.Close()
+
+	monthly := []map[string]any{}
+	for monthlyRows.Next() {
+		var month int
+		var currency string
+		var amount float64
+		if err := monthlyRows.Scan(&month, &currency, &amount); err != nil {
+			common.APIError(w, http.StatusInternalServerError, "DB", "Could not read monthly billing analytics")
+			return
+		}
+		monthly = append(monthly, map[string]any{
+			"month": month,
+			"currency": currency,
+			"revenue": math.Round(amount*100) / 100,
+		})
+	}
+	if err := monthlyRows.Err(); err != nil {
+		common.APIError(w, http.StatusInternalServerError, "DB", "Could not calculate monthly billing analytics")
+		return
+	}
+
 	common.JSON(w, http.StatusOK, map[string]any{
 		"year": year,
 		"items": items,
+		"monthly": monthly,
 		"count": len(items),
 		"source": "BILLING_PAID_LEDGER",
 		"currency_policy": "NO_FX_CONVERSION",
