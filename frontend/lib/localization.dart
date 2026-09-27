@@ -216,6 +216,7 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Read only': 'Csak olvasható',
     'A HIMATE-defined module set for focused teams and first deployments.': 'HIMATE által meghatározott modulkészlet fókuszált csapatok és első bevezetések számára.',
     'A broader HIMATE-defined module set for operating workflows.': 'Bővebb, HIMATE által meghatározott modulkészlet az üzemi munkafolyamatokhoz.',
     'Unlimited access to every current and future eligible module.': 'Korlátlan hozzáférés minden jelenlegi és jövőbeli jogosult modulhoz.',
