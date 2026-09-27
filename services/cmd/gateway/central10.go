@@ -14,11 +14,12 @@ import (
 	"himate.local/services/internal/common"
 )
 
+const central10ReadBudget = 650 * time.Millisecond
+const central10PartnerWorkspaceBudget = 1500 * time.Millisecond
+
 const (
-	central10ReadBudget             = 650 * time.Millisecond
-	central10PartnerWorkspaceBudget = 1500 * time.Millisecond
-	central10FreshTTL               = 30 * time.Second
-	central10StaleTTL               = 10 * time.Minute
+	central10FreshTTL = 30 * time.Second
+	central10StaleTTL = 10 * time.Minute
 )
 
 type central10CacheEntry struct {
