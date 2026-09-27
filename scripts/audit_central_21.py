@@ -102,6 +102,9 @@ for signature in [
           f"{signature} regressed to downstream fan-out")
 check("WHERE snapshot_key=$1" in models, "Central read path is not indexed by snapshot primary key")
 check("WHERE partner_id=$1" in models, "Tenant read path is not indexed by partner primary key")
+check('path == "/api/v1/system-health"' in central_reads and
+      'centralSnapshotForRead(r.Context(), centralStep4SystemKey)' in central_reads,
+      "Legacy system-health GET is not routed through the persistent System read model")
 
 # Browser GET interception must happen before legacy owner-service proxy switches.
 check(main.find("a.serveCentralMaterializedGET(w, r, u)") <
