@@ -158,6 +158,37 @@ func validGlobalSearchSnapshot() map[string]any {
 	}
 }
 
+func TestPartnerPortalPlanModulesDerivedFromAuthoritativePlan(t *testing.T) {
+	configured := partnerPortalPlanModulesFromPlan("ptr_test", map[string]any{
+		"configured":        true,
+		"plan_key":          "BUSINESS",
+		"selection_mode":    "FIXED",
+		"entitlement_mode":  "FIXED",
+		"module_limit":      20,
+		"active_module_keys": []any{"module.z", "module.a"},
+		"unlimited_modules": false,
+	})
+	if central10String(configured["partner_id"]) != "ptr_test" ||
+		central10String(configured["plan_key"]) != "BUSINESS" ||
+		central10Int(configured["count"]) != 2 {
+		t.Fatalf("unexpected derived plan-module projection: %#v", configured)
+	}
+	keys, ok := configured["module_keys"].([]string)
+	if !ok || len(keys) != 2 || keys[0] != "module.a" || keys[1] != "module.z" {
+		t.Fatalf("derived module keys = %#v, want sorted authoritative set", configured["module_keys"])
+	}
+
+	unconfigured := partnerPortalPlanModulesFromPlan("ptr_empty", map[string]any{
+		"partner_id": "ptr_empty", "configured": false,
+	})
+	if central10Int(unconfigured["count"]) != 0 {
+		t.Fatalf("unconfigured partner should expose an empty stable module projection: %#v", unconfigured)
+	}
+	if unavailable := unconfigured["module_keys"]; unavailable == nil {
+		t.Fatalf("unconfigured partner must expose module_keys as an empty collection, not nil: %#v", unconfigured)
+	}
+}
+
 func TestCentralSnapshotValidRejectsDegraded(t *testing.T) {
 	for _, status := range []string{"partial", "unavailable", "warming", "stale", ""} {
 		payload := validRegistrySnapshot("LKG")
