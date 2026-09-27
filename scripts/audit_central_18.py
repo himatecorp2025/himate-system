@@ -26,6 +26,8 @@ modules = read("frontend/lib/module_control_plane.dart")
 usmap = read("frontend/lib/central17_round1.dart")
 backups = read("frontend/lib/backups_panel.dart")
 localization = read("frontend/lib/localization.dart")
+partner_fixture = read("services/cmd/partners/test_fixture.go")
+partners_main = read("services/cmd/partners/main.go")
 
 for token in [
     "Version: 21",
@@ -125,6 +127,17 @@ check("_applyPackageMutationImmediately(updated)" in frontend,
 check("_packageMutationMatches(refreshed, updated)" in frontend,
       "package mutation reconciliation contract missing")
 check("isExpanded: true" in frontend, "partner filter dropdown overflow guard missing")
+
+for token in [
+    "func (a *app) runGoldenTestFixtureReconciler()",
+    "func (a *app) reconcileGoldenTestFixtures(",
+    "HIMATE_GOLDEN_TEST_FIXTURE",
+    "WHERE test_partner=TRUE",
+    "fixtures := []monthFixture{",
+]:
+    check(token in partner_fixture, f"automatic Golden Test Partner fixture contract missing: {token}")
+check("go a.runGoldenTestFixtureReconciler()" in partners_main,
+      "Golden Test Partner fixture reconciler is not started by the Partners service")
 
 if failures:
     print(f"CENTRAL-18 FAIL: {len(failures)} issue(s)")
