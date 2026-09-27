@@ -110,6 +110,13 @@ func (a *app) loadCentralSnapshotDB(ctx context.Context, key string) (map[string
 // Normal operation is exactly one indexed PostgreSQL row read. Memory is only
 // a resilience fallback if the local read-model database itself is unavailable;
 // it never triggers a downstream service call.
+func (a *app) readModelInvariantFailure(w http.ResponseWriter, key string) {
+	if a.log != nil {
+		a.log.Error("materialized read-model invariant violated on live request", "snapshot_key", key)
+	}
+	common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_INVARIANT", "Authoritative read model invariant violated")
+}
+
 func (a *app) centralSnapshotForRead(ctx context.Context, key string) (map[string]any, time.Time, bool) {
 	payload, updated, err := a.loadCentralSnapshotDB(ctx, key)
 	if err == nil {
@@ -128,6 +135,9 @@ func (a *app) centralSnapshotForRead(ctx context.Context, key string) (map[strin
 
 func partnerWorkspaceSnapshotValid(payload map[string]any) bool {
 	if payload == nil || !strings.EqualFold(central10String(payload["status"]), "healthy") {
+		return false
+	}
+	if raw, exists := payload["unavailable"]; exists && len(central10Step4Unavailable(raw)) > 0 {
 		return false
 	}
 	required := []string{
