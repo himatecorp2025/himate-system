@@ -8975,7 +8975,7 @@ class _ImpactPageState extends State<ImpactPage> {
     return Uri(path: '/api/v1/central/impact', queryParameters: query).toString();
   }
 
-  Future<void> load() async {
+  Future<void> load({bool force = false}) async {
     final path = evidencePath();
     if (mounted) {
       setState(() {
@@ -9027,6 +9027,7 @@ class _ImpactPageState extends State<ImpactPage> {
     try {
       final model = await widget.api.get(
         path,
+        force: force,
         maxAge: const Duration(seconds: 5),
         onRefresh: applyModel,
       );
@@ -9039,6 +9040,13 @@ class _ImpactPageState extends State<ImpactPage> {
         error = e.toString();
       });
     }
+  }
+
+  Future<void> _syncImpactMutation() async {
+    await load(force: true);
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (mounted) await load(force: true);
   }
 
   Future<void> addDefinition() async {
@@ -9115,7 +9123,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'aggregation': aggregation,
         'scope': scope,
       });
-      await load();
+      await _syncImpactMutation();
     }
     for (final controller in [key, labelEN, labelHU, descriptionEN, descriptionHU, unit]) { controller.dispose(); }
   }
@@ -9177,7 +9185,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'provenance': 'MANUAL',
         'source_ref': source.text.trim(),
       });
-      await load();
+      await _syncImpactMutation();
     }
     for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
   }
@@ -9239,7 +9247,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'provenance': 'MANUAL',
         'source_ref': source.text.trim(),
       });
-      await load();
+      await _syncImpactMutation();
     }
     for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
   }
@@ -9381,14 +9389,14 @@ class _ImpactPageState extends State<ImpactPage> {
           'period_end': end.text.trim(),
         }, bytes, file.name);
       }
-      await load();
+      await _syncImpactMutation();
     }
     for (final controller in [partner, title, description, start, end, sourceUrl, declaration]) { controller.dispose(); }
   }
 
   Future<void> verifyEvidence(Map<String, dynamic> item) async {
     await widget.api.patch('/api/v1/evidence/${item['id']}', {'verification_status': 'VERIFIED'});
-    await load();
+    await _syncImpactMutation();
   }
 
   Future<void> recordVerifiedValue(Map<String, dynamic> item) async {
@@ -9433,7 +9441,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'provenance': 'VERIFIED_DOCUMENT',
         'evidence_id': '${item['id']}',
       });
-      await load();
+      await _syncImpactMutation();
     }
     numeric.dispose(); start.dispose(); end.dispose();
   }
@@ -9505,7 +9513,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'period_end': end.text.trim(),
       });
       await _waitReport('${created['id']}');
-      await load();
+      await _syncImpactMutation();
     }
     title.dispose(); partnerIds.dispose(); start.dispose(); end.dispose();
   }
@@ -9521,7 +9529,7 @@ class _ImpactPageState extends State<ImpactPage> {
 
   Future<void> regenerateReport(Map<String, dynamic> item) async {
     await widget.api.post('/api/v1/reports/${item['id']}/regenerate');
-    await load();
+    await _syncImpactMutation();
   }
 
   Future<void> checkEvidenceIntegrity(Map<String, dynamic> item) async {
