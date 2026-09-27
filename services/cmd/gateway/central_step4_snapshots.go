@@ -16,6 +16,8 @@ const (
 	centralStep4ImpactKey         = "impact_screen"
 	centralStep4AdministrationKey = "administration_screen"
 	centralStep4SystemKey         = "system_screen"
+	centralStep4WebsiteKey        = "website_screen"
+	centralStep4ConnectionsKey    = "connections_screen"
 	centralStep4RefreshInterval   = 10 * time.Second
 	centralStep4MaterializeBudget = 6 * time.Second
 )
@@ -57,6 +59,8 @@ func (a *app) refreshCentralStep4Snapshots() {
 		{centralStep4ImpactKey, a.refreshCentralStep4Impact},
 		{centralStep4AdministrationKey, a.refreshCentralStep4Administration},
 		{centralStep4SystemKey, a.refreshCentralStep4System},
+		{centralStep4WebsiteKey, a.refreshCentralStep4Website},
+		{centralStep4ConnectionsKey, a.refreshCentralStep4Connections},
 	}
 	for _, refresh := range refreshes {
 		refresh := refresh
@@ -528,4 +532,23 @@ func (a *app) refreshCentralStep4System() {
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer persistCancel()
 	a.centralStep3Store(persistCtx, centralStep4SystemKey, payload)
+}
+
+
+func (a *app) refreshCentralStep4Website() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+	payload := a.materializeCentralWebsite(ctx)
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4WebsiteKey, payload)
+}
+
+func (a *app) refreshCentralStep4Connections() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+	payload := a.materializeCentralConnections(ctx)
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4ConnectionsKey, payload)
 }
