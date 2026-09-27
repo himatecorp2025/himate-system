@@ -62,6 +62,12 @@ for state in ("Alabama","Alaska","Hawaii","New York","Texas","District of Columb
     assert state in names,(state,names)
 assert all(int(x.get("count",0))>=0 for x in rows),rows
 assert int(g["active_states"])==sum(1 for x in rows if int(x.get("count",0))>0),g
+partners=g.get("partners",[])
+klavier=[x for x in partners if str(x.get("id",""))=="ptr_000001" or str(x.get("name","")).lower()=="klavierhaus"]
+assert klavier,partners
+assert any(x.get("state")=="New York" for x in klavier),klavier
+ny=next(x for x in rows if x["state"]=="New York")
+assert int(ny.get("count",0))>=1,(ny,klavier)
 '
 echo ok
 
