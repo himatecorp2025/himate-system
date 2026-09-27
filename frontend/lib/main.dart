@@ -2199,7 +2199,7 @@ class _ShellState extends State<Shell> {
                 child: Column(
                   children: [
                     Container(
-                      height: referenceHeader ? 86 : 74,
+                      height: referenceHeader ? 82 : 74,
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       decoration: const BoxDecoration(color: brandSurface, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
@@ -2220,19 +2220,25 @@ class _ShellState extends State<Shell> {
                             const SizedBox(width: 22),
                             Expanded(
                               flex: 3,
-                              child: TextField(
-                                readOnly: true,
-                                onTap: () => unawaited(openGlobalSearch(context)),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  hintText: uiLiteral('Search partners, modules and reports...'),
-                                  prefixIcon: const Icon(Icons.search_rounded, size: 19),
-                                  suffixIcon: Container(
-                                    margin: const EdgeInsets.all(8),
-                                    alignment: Alignment.center,
-                                    width: 28,
-                                    decoration: BoxDecoration(color: const Color(0xFFF0F3F7), borderRadius: BorderRadius.circular(6)),
-                                    child: const LText('⌘ K', style: TextStyle(color: brandTextSoft, fontSize: 8.5, fontWeight: FontWeight.w700)),
+                              child: Align(
+                                alignment: Alignment.center,
+                                child: SizedBox(
+                                  height: 44,
+                                  child: TextField(
+                                    readOnly: true,
+                                    onTap: () => unawaited(openGlobalSearch(context)),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: uiLiteral('Search partners, modules and reports...'),
+                                      prefixIcon: const Icon(Icons.search_rounded, size: 19),
+                                      suffixIcon: Container(
+                                        margin: const EdgeInsets.all(6),
+                                        alignment: Alignment.center,
+                                        width: 34,
+                                        decoration: BoxDecoration(color: const Color(0xFFF0F3F7), borderRadius: BorderRadius.circular(6)),
+                                        child: const LText('⌘ K', style: TextStyle(color: brandTextSoft, fontSize: 8.5, fontWeight: FontWeight.w700)),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2279,12 +2285,25 @@ class _ShellState extends State<Shell> {
                                       _Avatar(name: '${widget.user['name'] ?? 'Admin User'}'),
                                       const SizedBox(width: 9),
                                       ConstrainedBox(
-                                        constraints: const BoxConstraints(maxWidth: 130),
-                                        child: LText(
-                                          '${widget.user['name'] ?? 'Admin User'}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12),
+                                        constraints: const BoxConstraints(maxWidth: 145),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            LText(
+                                              '${widget.user['name'] ?? 'Admin User'}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 11.5),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            LText(
+                                              '${widget.user['job_title'] ?? widget.user['role_label'] ?? uiLiteral('Administrator')}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandTextSoft, fontWeight: FontWeight.w500, fontSize: 8.8),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                       const SizedBox(width: 4),
