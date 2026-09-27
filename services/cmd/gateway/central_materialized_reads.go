@@ -118,6 +118,105 @@ func localizedAdministrationRoles(raw map[string]any, r *http.Request) map[strin
 	return map[string]any{"items": items, "count": len(items), "locale": locale}
 }
 
+func materializedEvidenceList(items []map[string]any, r *http.Request) (map[string]any, error) {
+	partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
+	metricKey := strings.TrimSpace(r.URL.Query().Get("metric_key"))
+	kind := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("evidence_type")))
+	verification := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("verification_status")))
+	reportID := strings.TrimSpace(r.URL.Query().Get("report_id"))
+	periodStartRaw := strings.TrimSpace(r.URL.Query().Get("period_start"))
+	periodEndRaw := strings.TrimSpace(r.URL.Query().Get("period_end"))
+	search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+
+	validKinds := map[string]bool{
+		"PDF": true, "IMAGE": true, "INVOICE": true, "CONTRACT": true,
+		"SCREENSHOT": true, "REPORT": true, "URL": true,
+		"PARTNER_DECLARATION": true, "OTHER": true,
+	}
+	validVerification := map[string]bool{"UNVERIFIED": true, "VERIFIED": true, "REJECTED": true}
+	if kind != "" && !validKinds[kind] {
+		return nil, fmt.Errorf("Invalid evidence_type")
+	}
+	if verification != "" && !validVerification[verification] {
+		return nil, fmt.Errorf("Invalid verification_status")
+	}
+
+	var periodStart, periodEnd time.Time
+	var err error
+	if periodStartRaw != "" {
+		periodStart, err = time.Parse("2006-01-02", periodStartRaw)
+		if err != nil {
+			return nil, fmt.Errorf("period_start must be YYYY-MM-DD")
+		}
+	}
+	if periodEndRaw != "" {
+		periodEnd, err = time.Parse("2006-01-02", periodEndRaw)
+		if err != nil {
+			return nil, fmt.Errorf("period_end must be YYYY-MM-DD")
+		}
+	}
+
+	filtered := make([]map[string]any, 0, len(items))
+	for _, raw := range items {
+		if partnerID != "" && central10String(raw["partner_id"]) != partnerID {
+			continue
+		}
+		if metricKey != "" && central10String(raw["metric_key"]) != metricKey {
+			continue
+		}
+		if kind != "" && strings.ToUpper(central10String(raw["evidence_type"])) != kind {
+			continue
+		}
+		if verification != "" && strings.ToUpper(central10String(raw["verification_status"])) != verification {
+			continue
+		}
+		if reportID != "" && !stringSetFromAny(raw["reports"])[reportID] {
+			continue
+		}
+		if !periodStart.IsZero() {
+			rawEnd := central10String(raw["period_end"])
+			if rawEnd != "" {
+				end, parseErr := time.Parse("2006-01-02", rawEnd)
+				if parseErr == nil && end.Before(periodStart) {
+					continue
+				}
+			}
+		}
+		if !periodEnd.IsZero() {
+			rawStart := central10String(raw["period_start"])
+			if rawStart != "" {
+				start, parseErr := time.Parse("2006-01-02", rawStart)
+				if parseErr == nil && start.After(periodEnd) {
+					continue
+				}
+			}
+		}
+		if search != "" && !searchContains(
+			search,
+			raw["title"], raw["description"], raw["original_filename"],
+			raw["source_url"], raw["declaration_text"], raw["partner_id"], raw["metric_key"],
+		) {
+			continue
+		}
+		filtered = append(filtered, central10CopyMap(raw))
+	}
+
+	limit := 50
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, parseErr := strconv.Atoi(raw); parseErr == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+	offset := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("offset")); raw != "" {
+		if parsed, parseErr := strconv.Atoi(raw); parseErr == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+	page := materializedPage(filtered, limit, offset)
+	return page, nil
+}
+
 func materializedImpactSummary(tenant map[string]any, r *http.Request) (map[string]any, error) {
 	partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
 	periodStartRaw := strings.TrimSpace(r.URL.Query().Get("period_start"))
@@ -686,17 +785,25 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		common.JSON(w,http.StatusOK,materializedItemsPage(items,r,len(items))); return true
 	}
 	if path == "/api/v1/evidence" {
+		var items []map[string]any
+		cacheHeader := "persistent-read-model"
 		if partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id")); partnerID != "" {
 			tenant, _, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
 			if !ok { common.APIError(w,http.StatusNotFound,"PARTNER_NOT_FOUND","Partner not found"); return true }
-			w.Header().Set("X-Himate-Cache","persistent-tenant-read-model")
-			common.JSON(w,http.StatusOK,partnerWorkspaceMap(tenant,"evidence_api")); return true
+			items = anyItems(partnerWorkspaceMap(tenant,"evidence_api")["items"])
+			cacheHeader = "persistent-tenant-read-model"
+		} else {
+			snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
+			if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","Impact read model is not ready"); return true }
+			items = step4Items(snapshot["evidence"])
 		}
-		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
-		if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","Impact read model is not ready"); return true }
-		items := step4Items(snapshot["evidence"])
-		w.Header().Set("X-Himate-Cache","persistent-read-model")
-		common.JSON(w,http.StatusOK,materializedItemsPage(items,r,100)); return true
+		out, err := materializedEvidenceList(items, r)
+		if err != nil {
+			common.APIError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+			return true
+		}
+		w.Header().Set("X-Himate-Cache", cacheHeader)
+		common.JSON(w,http.StatusOK,out); return true
 	}
 	if path == "/api/v1/reports" {
 		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
