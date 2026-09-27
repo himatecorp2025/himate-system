@@ -433,33 +433,34 @@ func (a *app) internalReadModelWriteThrough(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	// Central projection refresh once, then only the affected tenant rows.
-	a.writeThroughReadModels("", in.Reason)
+	// Refresh tenant projections first. Only publish the Central projection
+	// after every affected tenant LKG is durable, so background source jobs
+	// cannot expose a Central READY state before their tenant views are current.
 	for _, partnerID := range partnerIDs {
 		a.writeThroughCentralPartnerWorkspace(partnerID)
 	}
 
 	verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer verifyCancel()
-	ok := true
-	for _, key := range readModelVerificationKeys(in.Reason) {
-		_, updated, err := a.loadCentralSnapshotDB(verifyCtx, key)
-		if err != nil || updated.Before(started) {
-			ok = false
-			if a.log != nil { a.log.Error("internal write-through verification failed", "snapshot_key", key, "reason", in.Reason, "error", err) }
-		}
-	}
 	for _, partnerID := range partnerIDs {
 		_, updated, err := a.loadPartnerWorkspaceDB(verifyCtx, partnerID)
 		if err != nil || updated.Before(started) {
-			ok = false
 			if a.log != nil { a.log.Error("tenant write-through verification failed", "partner_id", partnerID, "reason", in.Reason, "error", err) }
+			wakeReadModelRefreshWorker()
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_SYNC", "Tenant materialized read-model refresh is pending")
+			return
 		}
 	}
-	if !ok {
-		wakeReadModelRefreshWorker()
-		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_SYNC", "Materialized read-model refresh is pending")
-		return
+
+	a.writeThroughReadModels("", in.Reason)
+	for _, key := range readModelVerificationKeys(in.Reason) {
+		_, updated, err := a.loadCentralSnapshotDB(verifyCtx, key)
+		if err != nil || updated.Before(started) {
+			if a.log != nil { a.log.Error("internal write-through verification failed", "snapshot_key", key, "reason", in.Reason, "error", err) }
+			wakeReadModelRefreshWorker()
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_SYNC", "Central materialized read-model refresh is pending")
+			return
+		}
 	}
 	for _, eventID := range eventIDs {
 		if _, err := a.db.ExecContext(verifyCtx, `UPDATE identity.read_model_refresh_queue SET processed_at=NOW() WHERE id=$1`, eventID); err != nil && a.log != nil {
