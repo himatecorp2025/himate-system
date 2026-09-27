@@ -78,12 +78,16 @@ for token in [
     "a.bootstrapPartnerWorkspaceSnapshots()",
     "a.warmMissingCentralSnapshots()",
     "a.warmMissingCentralPartnerWorkspaces()",
+    "a.processReadModelRefreshQueue()",
     "a.ensureMaterializedReadModelsReady(readinessCtx)",
 ]:
     check(token in main, f"Startup read-model gate missing: {token}")
 check(main.find("a.ensureMaterializedReadModelsReady(readinessCtx)") <
       main.find("common.Run(log,"),
       "Gateway binds public traffic before materialized read-model readiness")
+check(main.find("a.processReadModelRefreshQueue()") <
+      main.find("a.ensureMaterializedReadModelsReady(readinessCtx)"),
+      "Durable projection events are not replayed before the startup readiness gate")
 check("ensurePartnerReadModelsReady" in readiness and "loadPartnerWorkspaceDB" in readiness,
       "Startup gate does not validate every tenant workspace")
 
