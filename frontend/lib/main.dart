@@ -7302,10 +7302,11 @@ class _PackagesPageState extends State<PackagesPage> {
     final price = TextEditingController(text: number(plan['monthly_price']).toStringAsFixed(2));
     final effective = TextEditingController();
     final reason = TextEditingController();
-    final selected = <String>{
+    final originalSelected = <String>{
       for (final value in (plan['fixed_module_keys'] is List ? plan['fixed_module_keys'] as List : const []))
         '$value',
     };
+    final selected = <String>{...originalSelected};
 
     final ok = await showDialog<bool>(
       context: context,
@@ -7407,7 +7408,7 @@ class _PackagesPageState extends State<PackagesPage> {
               ),
             ],
           ),
-          primaryLabel: 'Save package',
+          primaryLabel: uiLiteral('Save package'),
           onPrimary: () => Navigator.pop(context, true),
         ),
       ),
@@ -7415,16 +7416,27 @@ class _PackagesPageState extends State<PackagesPage> {
 
     if (ok == true) {
       final monthly = double.tryParse(price.text.trim());
+      final moduleSetChanged = fixed &&
+          (selected.length != originalSelected.length || !selected.containsAll(originalSelected));
       if (monthly == null || monthly < 0) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: LText('Package price must be zero or greater.'), behavior: SnackBarBehavior.floating),
+            SnackBar(
+              content: LText(uiLiteral('Package price must be zero or greater.')),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
-      } else if (fixed && selected.length != limit) {
+      } else if (moduleSetChanged && selected.length != limit) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('Select exactly $limit modules for $key.'), behavior: SnackBarBehavior.floating),
+            SnackBar(
+              content: LText(uiBilingual(
+                'Select exactly $limit modules for $key.',
+                'Pontosan $limit modult válassz ki a(z) $key csomaghoz.',
+              )),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       } else {
@@ -7432,14 +7444,31 @@ class _PackagesPageState extends State<PackagesPage> {
           'monthly_price': monthly,
           'reason': reason.text.trim().isEmpty ? 'HIMATE administrator package update' : reason.text.trim(),
           if (effective.text.trim().isNotEmpty) 'effective_at': effective.text.trim(),
-          if (fixed) 'fixed_module_keys': selected.toList()..sort(),
+          if (moduleSetChanged) 'fixed_module_keys': selected.toList()..sort(),
         };
-        final updated = await widget.api.patch('/api/v1/billing/plans/$key', payload);
-        await _syncPackageMutation(updated);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('$key package updated.'), behavior: SnackBarBehavior.floating),
-          );
+        try {
+          final updated = await widget.api.patch('/api/v1/billing/plans/$key', payload);
+          await _syncPackageMutation(updated);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: LText(uiBilingual(
+                  '$key package updated.',
+                  'A(z) $key csomag frissítve.',
+                )),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: LText('${uiLiteral('Package update failed')}: $e'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         }
       }
     }
