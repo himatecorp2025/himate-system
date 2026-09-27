@@ -16,6 +16,99 @@ import (
 const testFixtureMarker = "HIMATE_GOLDEN_TEST_FIXTURE"
 
 var sqlIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+type fixtureReconcileWriter struct {
+	header http.Header
+	status int
+}
+
+func (w *fixtureReconcileWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *fixtureReconcileWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+
+func (w *fixtureReconcileWriter) Write(payload []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return len(payload), nil
+}
+
+func (a *app) reconcileGoldenTestFixtures(ctx context.Context) (int, error) {
+	rows, err := a.db.QueryContext(ctx, `SELECT p.id
+		FROM partners.partners p
+		WHERE p.test_partner=TRUE
+		  AND lower(trim(p.display_name))='test partner'
+		  AND NOT EXISTS (
+			SELECT 1 FROM billing.invoices i
+			WHERE i.partner_id=p.id AND i.source='TEST_FIXTURE'
+		  )
+		ORDER BY p.created_at,p.id`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	seeded := 0
+	for _, id := range ids {
+		seedCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		req, err := http.NewRequestWithContext(seedCtx, http.MethodPost, "http://partners.internal/seed-test-fixture", nil)
+		if err != nil {
+			cancel()
+			return seeded, err
+		}
+		req.Header.Set("X-Himate-User-ID", "system:golden-fixture-reconciler")
+		writer := &fixtureReconcileWriter{header: make(http.Header)}
+		a.seedTestPartnerFixture(writer, req, id)
+		cancel()
+		if writer.status < 200 || writer.status >= 300 {
+			return seeded, fmt.Errorf("golden fixture seed for %s returned HTTP %d", id, writer.status)
+		}
+		seeded++
+	}
+	return seeded, nil
+}
+
+func (a *app) runGoldenTestFixtureReconciler() {
+	log := common.Logger()
+	delay := 5 * time.Second
+	for {
+		timer := time.NewTimer(delay)
+		<-timer.C
+
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		seeded, err := a.reconcileGoldenTestFixtures(ctx)
+		cancel()
+		if err != nil {
+			log.Warn("golden test fixture reconciliation", "error", err)
+			delay = 30 * time.Second
+			continue
+		}
+		if seeded > 0 {
+			log.Info("golden test fixture reconciled", "partners", seeded)
+		}
+		delay = 5 * time.Minute
+	}
+}
 
 func monthBoundsUTC(now time.Time, monthsAgo int) (time.Time, time.Time) {
 	firstThisMonth := time.Date(now.UTC().Year(), now.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)

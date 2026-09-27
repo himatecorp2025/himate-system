@@ -60,8 +60,16 @@ type central8PackagePartner struct {
 	PortalLastSeen30D        sql.NullTime
 }
 
+func central8CanonicalPlanKey(key string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(key))
+	if normalized == "PREMIUM" {
+		return "FLEX"
+	}
+	return normalized
+}
+
 func central8PlanName(key string) string {
-	switch strings.ToUpper(strings.TrimSpace(key)) {
+	switch central8CanonicalPlanKey(key) {
 	case "STARTER":
 		return "Starter"
 	case "BUSINESS":
@@ -113,7 +121,6 @@ func (a *app) loadCentral8PackagePartners(ctx context.Context) ([]central8Packag
 		FROM catalog.module_usage_events
 		WHERE partner_id=s.partner_id
 	) u ON TRUE
-	WHERE s.plan_key IN ('STARTER','BUSINESS','FLEX')
 	ORDER BY lower(COALESCE(p.display_name,s.partner_id)),s.partner_id`)
 	if err != nil {
 		return nil, false, err
@@ -133,6 +140,7 @@ func (a *app) loadCentral8PackagePartners(ctx context.Context) ([]central8Packag
 		); err != nil {
 			return nil, false, err
 		}
+		row.PlanKey = central8CanonicalPlanKey(row.PlanKey)
 		row.PlanName = central8PlanName(row.PlanKey)
 		out = append(out, row)
 	}
@@ -282,7 +290,7 @@ func (a *app) packageAnalytics(w http.ResponseWriter, r *http.Request) {
 }
 
 func central9PlanPrice(planKey string) (string, string) {
-	switch strings.ToUpper(strings.TrimSpace(planKey)) {
+	switch central8CanonicalPlanKey(planKey) {
 	case "STARTER":
 		return "$990 + VAT", "10 modules"
 	case "BUSINESS":

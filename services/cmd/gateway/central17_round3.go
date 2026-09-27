@@ -342,6 +342,7 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 			"environments_write":   a.hasPermission(actor, "environments.write"),
 			"environments_approve": a.hasPermission(actor, "environments.approve"),
 			"backups":              canBackups,
+			"backups_write":        a.hasPermission(actor, "backups.write") || a.hasPermission(actor, "backups.approve"),
 			"backups_approve":      a.hasPermission(actor, "backups.approve"),
 			"audit":                canAudit,
 		},

@@ -104,6 +104,16 @@ func dashboardIsUnitedStates(raw string) bool {
 	}
 }
 
+var dashboardAllUSStates = []string{
+	"Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware",
+	"Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky",
+	"Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi",
+	"Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico",
+	"New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania",
+	"Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont",
+	"Virginia","Washington","West Virginia","Wisconsin","Wyoming","District of Columbia",
+}
+
 func dashboardPartnerTrend(partners []map[string]any, year int) []map[string]any {
 	counts := make([]int, 12)
 	for _, partner := range partners {
@@ -169,30 +179,28 @@ func dashboardPartnerGeo(partners []map[string]any) map[string]any {
 			"active_modules": activeModulesByPartner[id],
 		})
 	}
-	states := make([]map[string]any, 0, len(stateCounts))
+	states := make([]map[string]any, 0, len(dashboardAllUSStates))
 	activePartners := 0
-	for state, count := range stateCounts {
+	activeStates := 0
+	for _, state := range dashboardAllUSStates {
+		count := stateCounts[state]
 		activePartners += count
+		if count > 0 { activeStates++ }
 		states = append(states, map[string]any{"state": state, "count": count})
 	}
-	sort.Slice(states, func(i, j int) bool {
+	sort.SliceStable(states, func(i, j int) bool {
 		ci, cj := central10Int(states[i]["count"]), central10Int(states[j]["count"])
-		if ci != cj {
-			return ci > cj
-		}
+		if ci != cj { return ci > cj }
 		return central10String(states[i]["state"]) < central10String(states[j]["state"])
 	})
 	sort.Slice(rows, func(i, j int) bool {
 		return central10String(rows[i]["joined_at"]) > central10String(rows[j]["joined_at"])
 	})
-	if len(rows) > 50 {
-		rows = rows[:50]
-	}
 	return map[string]any{
 		"available":       true,
 		"status":          "healthy",
 		"country":         "US",
-		"active_states":   len(states),
+		"active_states":   activeStates,
 		"active_partners": activePartners,
 		"states":          states,
 		"partners":        rows,

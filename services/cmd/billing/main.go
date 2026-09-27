@@ -237,6 +237,7 @@ func (a *app) migrate(ctx context.Context) error {
 		central6BillingMigration(),
 		central8BillingMigration(),
 		central11BillingTestPurgeMigration(),
+		central18BillingPackageRecoveryMigration(),
 	}); err != nil {
 		return err
 	}

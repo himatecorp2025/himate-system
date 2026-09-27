@@ -32,7 +32,8 @@ acceptance=read("docs/CENTRAL-14_ACCEPTANCE.md")
 for token in [
     "'HIMATE Administration Center'",
     "'Partner Administration Center'",
-    "title: 'Administration Center'",
+    "title: 'Administration'",
+    "Administration data is loading",
     "section = 'root'",
     "title: 'Financial Administration'",
     "title: 'Corporate Documents'",

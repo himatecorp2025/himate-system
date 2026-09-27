@@ -9,6 +9,7 @@ class BackupsPanel extends StatefulWidget {
     this.partnerLabels = const <String, String>{},
     this.productionRestoreEligible = const <String, bool>{},
     this.canMutate = true,
+    this.canApproveRestore,
     this.scopeToPartnerIds = false,
     super.key,
   });
@@ -20,6 +21,7 @@ class BackupsPanel extends StatefulWidget {
   final Map<String, String> partnerLabels;
   final Map<String, bool> productionRestoreEligible;
   final bool canMutate;
+  final bool? canApproveRestore;
   final bool scopeToPartnerIds;
 
   @override
@@ -137,7 +139,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
   Future<String?> _choosePartner() async {
     final ids = _allPartnerIds;
     if (ids.isEmpty) {
-      _notify('Provision a partner before creating a restore point.', failure: true);
+      _notify(uiBilingual('Provision a partner before creating a restore point.', 'Visszaállítási pont létrehozása előtt provisionálj egy partnert.'), failure: true);
       return null;
     }
     String selected = ids.first;
@@ -145,10 +147,10 @@ class _BackupsPanelState extends State<BackupsPanel> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
-          title: 'Create restore point',
-          subtitle: 'Database, media and configuration are captured, encrypted and copied to the configured durable backup storage.',
+          title: uiLiteral('Create restore point'),
+          subtitle: uiLiteral('Database, media and configuration are captured, encrypted and copied to the configured durable backup storage.'),
           icon: Icons.backup_outlined,
-          primaryLabel: 'Start backup',
+          primaryLabel: uiLiteral('Start backup'),
           onPrimary: () => Navigator.pop(dialogContext, selected),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,7 +188,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       if (pointId.isEmpty) {
         throw StateError('Backup service did not return a restore-point identifier.');
       }
-      _notify('Restore point $pointId queued.');
+      _notify(uiBilingual('Restore point $pointId queued.', 'Visszaállítási pont sorba állítva: $pointId.'));
       await _pollRestorePoint(id, pointId);
     } catch (e) {
       _notify(e.toString(), failure: true);
@@ -200,7 +202,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
     final pointId = _value(summary['latest_restore_point_id'], fallback: '');
     final backupStatus = _value(summary['latest_backup_status'], fallback: 'NEVER');
     if (pointId.isEmpty || backupStatus != 'READY') {
-      _notify('A READY restore point is required before restore testing.', failure: true);
+      _notify(uiBilingual('A READY restore point is required before restore testing.', 'A visszaállítási teszthez READY állapotú visszaállítási pont szükséges.'), failure: true);
       return;
     }
     if (busy.contains(partnerId)) return;
@@ -211,7 +213,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       if (testId.isEmpty) {
         throw StateError('Backup service did not return a restore-test identifier.');
       }
-      _notify('Restore test $testId queued from the durable stored copy.');
+      _notify(uiBilingual('Restore test $testId queued from the durable stored copy.', 'A(z) $testId visszaállítási teszt sorba állítva a tartós mentett példányból.'));
       await _pollRestoreTest(partnerId, testId);
     } catch (e) {
       _notify(e.toString(), failure: true);
@@ -229,7 +231,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
         final backupStatus = _value(point['status'], fallback: 'UNKNOWN');
         if (backupStatus == 'FAILED') {
           await _refresh(quiet: true);
-          _notify('Backup failed. Open the audit log for diagnostics.', failure: true);
+          _notify(uiBilingual('Backup failed. Open the audit log for diagnostics.', 'A biztonsági mentés sikertelen. Nyisd meg az auditnaplót a diagnosztikához.'), failure: true);
           return;
         }
         if (backupStatus == 'READY') {
@@ -242,12 +244,12 @@ class _BackupsPanelState extends State<BackupsPanel> {
             final testStatus = _value(tests.first['status'], fallback: 'UNKNOWN');
             if (testStatus == 'FAILED') {
               await _refresh(quiet: true);
-              _notify('Restore verification failed. Recoverability is not verified.', failure: true);
+              _notify(uiBilingual('Restore verification failed. Recoverability is not verified.', 'A visszaállítás ellenőrzése sikertelen. A helyreállíthatóság nincs igazolva.'), failure: true);
               return;
             }
             if (testStatus == 'PASSED') {
               await _refresh(quiet: true);
-              _notify('Backup and restore verification passed.');
+              _notify(uiBilingual('Backup and restore verification passed.', 'A mentés és visszaállítás ellenőrzése sikeres.'));
               return;
             }
           }
@@ -258,7 +260,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       }
     }
     await _refresh(quiet: true);
-    _notify('Backup/restore is still running. Refresh the panel to see the latest state.');
+    _notify(uiBilingual('Backup/restore is still running. Refresh the panel to see the latest state.', 'A mentés/visszaállítás még fut. Frissítsd a panelt a legújabb állapotért.'));
   }
 
   Future<void> _pollRestoreTest(String partnerId, String testId) async {
@@ -270,12 +272,12 @@ class _BackupsPanelState extends State<BackupsPanel> {
         final status = _value(test['status'], fallback: 'UNKNOWN');
         if (status == 'FAILED') {
           await _refresh(quiet: true);
-          _notify('Restore verification failed. Recoverability is not verified.', failure: true);
+          _notify(uiBilingual('Restore verification failed. Recoverability is not verified.', 'A visszaállítás ellenőrzése sikertelen. A helyreállíthatóság nincs igazolva.'), failure: true);
           return;
         }
         if (status == 'PASSED') {
           await _refresh(quiet: true);
-          _notify('Restore verification passed.');
+          _notify(uiBilingual('Restore verification passed.', 'A visszaállítás ellenőrzése sikeres.'));
           return;
         }
         if (attempt % 3 == 0) await _refresh(quiet: true);
@@ -284,23 +286,27 @@ class _BackupsPanelState extends State<BackupsPanel> {
       }
     }
     await _refresh(quiet: true);
-    _notify('Restore verification is still running. Refresh the panel to see the latest state.');
+    _notify(uiBilingual('Restore verification is still running. Refresh the panel to see the latest state.', 'A visszaállítás ellenőrzése még fut. Frissítsd a panelt a legújabb állapotért.'));
   }
 
   Future<void> _restoreProduction(String partnerId) async {
+    if ((widget.canApproveRestore ?? widget.canMutate) != true) {
+      _notify(uiLiteral('Production restore approval permission is required.'), failure: true);
+      return;
+    }
     if (partnerId == '_platform') {
-      _notify('Platform production recovery is maintenance-only and cannot be executed from the live control plane.', failure: true);
+      _notify(uiBilingual('Platform production recovery is maintenance-only and cannot be executed from the live control plane.', 'A platform éles helyreállítása csak karbantartási módban végezhető, az élő vezérlősíkról nem indítható.'), failure: true);
       return;
     }
     final summary = _summaryFor(partnerId);
     final pointId = _value(summary['latest_restore_point_id'], fallback: '');
     final recoverability = _value(summary['recoverability_status'], fallback: 'UNVERIFIED');
     if (pointId.isEmpty || recoverability != 'VERIFIED') {
-      _notify('A VERIFIED restore point is required before production recovery.', failure: true);
+      _notify(uiBilingual('A VERIFIED restore point is required before production recovery.', 'Az éles helyreállításhoz VERIFIED állapotú visszaállítási pont szükséges.'), failure: true);
       return;
     }
     if (widget.productionRestoreEligible[partnerId] != true) {
-      _notify('Suspend the partner before production recovery. Test Partners are exempt from the suspension gate.', failure: true);
+      _notify(uiBilingual('Suspend the partner before production recovery. Test Partners are exempt from the suspension gate.', 'Éles helyreállítás előtt függeszd fel a partnert. A tesztpartnerek kivételt képeznek a felfüggesztési kapu alól.'), failure: true);
       return;
     }
     final reason = TextEditingController();
@@ -310,10 +316,10 @@ class _BackupsPanelState extends State<BackupsPanel> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
-          title: 'Restore verified partner backup',
-          subtitle: 'This is a production recovery operation. A fresh safety backup is created automatically before the verified restore point replaces the partner database, media and captured configuration.',
+          title: uiLiteral('Restore verified partner backup'),
+          subtitle: uiLiteral('This is a production recovery operation. A fresh safety backup is created automatically before the verified restore point replaces the partner database, media and captured configuration.'),
           icon: Icons.restore_rounded,
-          primaryLabel: 'Start production restore',
+          primaryLabel: uiLiteral('Start production restore'),
           onPrimary: () {
             if (reason.text.trim().length < 5) {
               setDialogState(() => dialogError = 'Enter a recovery reason of at least 5 characters.');
@@ -332,8 +338,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _DefinitionRow(label: 'Restore point', value: pointId),
-              _DefinitionRow(label: 'Recoverability', value: recoverability),
+              _DefinitionRow(label: uiLiteral('Restore point'), value: pointId),
+              _DefinitionRow(label: uiLiteral('Recoverability'), value: uiLiteral(_humanize(recoverability))),
               const SizedBox(height: 12),
               TextField(
                 controller: reason,
@@ -372,7 +378,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       final job = await widget.api.post('/api/v1/backups/restore-points/$pointId/restore?partner_id=$partnerId', payload);
       final jobId = _value(job['id'], fallback: '');
       if (jobId.isEmpty) throw StateError('Backup service did not return a restore-job identifier.');
-      _notify('Production restore $jobId queued. A safety backup will be created first.');
+      _notify(uiBilingual('Production restore $jobId queued. A safety backup will be created first.', 'Az éles visszaállítás sorba állítva ($jobId). Először biztonsági mentés készül.'));
       await _pollProductionRestore(partnerId, jobId);
     } catch (e) {
       _notify(e.toString(), failure: true);
@@ -390,18 +396,18 @@ class _BackupsPanelState extends State<BackupsPanel> {
         final status = _value(job['status'], fallback: 'UNKNOWN');
         if (status == 'FAILED') {
           await _refresh(quiet: true);
-          _notify('Production restore failed: ' + _value(job['error'], fallback: 'Open audit logs for diagnostics.'), failure: true);
+          _notify(uiBilingual('Production restore failed', 'Az éles visszaállítás sikertelen') + ': ' + _value(job['error'], fallback: uiBilingual('Open audit logs for diagnostics.', 'Nyisd meg az auditnaplót a diagnosztikához.')), failure: true);
           return;
         }
         if (status == 'COMPLETED') {
           await _refresh(quiet: true);
-          _notify('Production restore completed. Database, media and configuration recovery passed.');
+          _notify(uiBilingual('Production restore completed. Database, media and configuration recovery passed.', 'Az éles visszaállítás befejeződött. Az adatbázis, média és konfiguráció helyreállítása sikeres.'));
           return;
         }
       } catch (_) {}
     }
     await _refresh(quiet: true);
-    _notify('Production restore is still running. Refresh the recovery panel for the latest state.');
+    _notify(uiBilingual('Production restore is still running. Refresh the recovery panel for the latest state.', 'Az éles visszaállítás még fut. Frissítsd a helyreállítási panelt a legújabb állapotért.'));
   }
 
   Future<void> _editPolicy(String partnerId) async {
@@ -416,10 +422,10 @@ class _BackupsPanelState extends State<BackupsPanel> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
-          title: 'Backup policy',
-          subtitle: 'Retention and scheduling are partner-scoped. Expired restore points are removed from durable backup storage.',
+          title: uiLiteral('Backup policy'),
+          subtitle: uiLiteral('Retention and scheduling are partner-scoped. Expired restore points are removed from durable backup storage.'),
           icon: Icons.policy_outlined,
-          primaryLabel: 'Save policy',
+          primaryLabel: uiLiteral('Save policy'),
           onPrimary: () {
             final retentionDays = int.tryParse(retention.text.trim());
             final restorePoints = int.tryParse(maxPoints.text.trim());
@@ -468,8 +474,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: enabled,
-                title: const LText('Automatic backups enabled'),
-                subtitle: const LText('The durable scheduler queues a restore point when the interval is due.'),
+                title: LText(uiLiteral('Automatic backups enabled')),
+                subtitle: LText(uiLiteral('The durable scheduler queues a restore point when the interval is due.')),
                 onChanged: (value) => setDialogState(() => enabled = value),
               ),
               if (dialogError != null) ...[
@@ -491,7 +497,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
     try {
       await widget.api.put('/api/v1/backups/policies/$partnerId', payload);
       await _refresh(quiet: true);
-      _notify('Backup policy updated.');
+      _notify(uiBilingual('Backup policy updated.', 'A mentési szabályzat frissítve.'));
     } catch (e) {
       _notify(e.toString(), failure: true);
     } finally {
@@ -548,15 +554,15 @@ class _BackupsPanelState extends State<BackupsPanel> {
             const SizedBox(height: 14),
             const Divider(height: 1),
             const SizedBox(height: 7),
-            _DefinitionRow(label: 'Backup', value: backupStatus),
-            _DefinitionRow(label: 'Backup completed', value: _date(item['latest_backup_at'])),
-            _DefinitionRow(label: 'Restore test', value: restoreStatus),
-            _DefinitionRow(label: 'Restore tested', value: _date(item['latest_restore_test_at'])),
-            _DefinitionRow(label: 'Backup storage', value: _value(item['provider'], fallback: provider)),
-            _DefinitionRow(label: 'Retention', value: '${item['retention_days'] ?? 30} days'),
-            _DefinitionRow(label: 'Restore-point limit', value: '${item['max_restore_points'] ?? 30}'),
-            _DefinitionRow(label: 'Automatic interval', value: '${item['schedule_hours'] ?? 24} hours'),
-            _DefinitionRow(label: 'Automatic backups', value: item['enabled'] == false ? 'Disabled' : 'Enabled'),
+            _DefinitionRow(label: uiLiteral('Backup'), value: uiLiteral(_humanize(backupStatus))),
+            _DefinitionRow(label: uiLiteral('Backup completed'), value: _date(item['latest_backup_at'])),
+            _DefinitionRow(label: uiLiteral('Restore test'), value: uiLiteral(_humanize(restoreStatus))),
+            _DefinitionRow(label: uiLiteral('Restore tested'), value: _date(item['latest_restore_test_at'])),
+            _DefinitionRow(label: uiLiteral('Backup storage'), value: _value(item['provider'], fallback: provider)),
+            _DefinitionRow(label: uiLiteral('Retention'), value: uiBilingual('${item['retention_days'] ?? 30} days', '${item['retention_days'] ?? 30} nap')),
+            _DefinitionRow(label: uiLiteral('Restore-point limit'), value: '${item['max_restore_points'] ?? 30}'),
+            _DefinitionRow(label: uiLiteral('Automatic interval'), value: uiBilingual('${item['schedule_hours'] ?? 24} hours', '${item['schedule_hours'] ?? 24} óra')),
+            _DefinitionRow(label: uiLiteral('Automatic backups'), value: uiLiteral(item['enabled'] == false ? 'Disabled' : 'Enabled')),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -565,22 +571,22 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 OutlinedButton.icon(
                   onPressed: isBusy || !widget.canMutate ? null : () => _editPolicy(partnerId),
                   icon: const Icon(Icons.policy_outlined, size: 17),
-                  label: const LText('Policy'),
+                  label: LText(uiLiteral('Policy')),
                 ),
                 FilledButton.icon(
                   onPressed: isBusy || !widget.canMutate ? null : () => _createRestorePoint(partnerId),
                   icon: const Icon(Icons.backup_outlined, size: 17),
-                  label: const LText('Create restore point'),
+                  label: LText(uiLiteral('Create restore point')),
                 ),
                 OutlinedButton.icon(
                   onPressed: isBusy || !widget.canMutate || backupStatus != 'READY' || pointId.isEmpty ? null : () => _runRestoreTest(partnerId),
                   icon: const Icon(Icons.restore_page_outlined, size: 17),
-                  label: const LText('Run restore test'),
+                  label: LText(uiLiteral('Run restore test')),
                 ),
                 if (partnerId != '_platform')
                   FilledButton.icon(
                     onPressed: isBusy ||
-                            !widget.canMutate ||
+                            (widget.canApproveRestore ?? widget.canMutate) != true ||
                             recoverability != 'VERIFIED' ||
                             backupStatus != 'READY' ||
                             pointId.isEmpty ||
@@ -588,7 +594,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
                         ? null
                         : () => _restoreProduction(partnerId),
                     icon: const Icon(Icons.restore_rounded, size: 17),
-                    label: const LText('Restore verified backup'),
+                    label: LText(uiLiteral('Restore verified backup')),
                   ),
               ],
             ),
@@ -629,8 +635,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeader(
-          title: 'Backups & Recoverability',
-          subtitle: 'Encrypted partner database, media and configuration restore points with durable storage, retention and mandatory restore verification.',
+          title: uiLiteral('Backups & Recoverability'),
+          subtitle: uiLiteral('Encrypted partner database, media and configuration restore points with durable storage, retention and mandatory restore verification.'),
           trailing: Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -640,13 +646,13 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 icon: refreshing
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.refresh_rounded, size: 17),
-                label: const LText('Refresh'),
+                label: LText(uiLiteral('Refresh')),
               ),
               if (widget.canMutate)
                 FilledButton.icon(
                   onPressed: partnerIds.isEmpty ? null : () => _createRestorePoint(),
                   icon: const Icon(Icons.add_rounded),
-                  label: const LText('New restore point'),
+                  label: LText(uiLiteral('New restore point')),
                 )
               else
                 _MiniCounter(label: uiLiteral('Read only')),
@@ -655,17 +661,17 @@ class _BackupsPanelState extends State<BackupsPanel> {
         ),
         const SizedBox(height: 12),
         _RuleStrip(items: [
-          _RuleItem(Icons.storage_outlined, 'Partners', '${partnerIds.length} tracked'),
-          _RuleItem(Icons.cloud_done_outlined, 'Storage', provider.isEmpty ? 'not configured' : provider.toUpperCase()),
-          _RuleItem(Icons.verified_outlined, 'Recoverable', '$verified verified'),
-          _RuleItem(failed > 0 ? Icons.error_outline_rounded : Icons.sync_rounded, failed > 0 ? 'Failed' : 'In progress', failed > 0 ? '$failed failed' : '$active active'),
+          _RuleItem(Icons.storage_outlined, uiLiteral('Partners'), uiBilingual('${partnerIds.length} tracked', '${partnerIds.length} követve')),
+          _RuleItem(Icons.cloud_done_outlined, uiLiteral('Storage'), provider.isEmpty ? uiLiteral('Not configured') : provider.toUpperCase()),
+          _RuleItem(Icons.verified_outlined, uiLiteral('Recoverable'), uiBilingual('$verified verified', '$verified ellenőrzött')),
+          _RuleItem(failed > 0 ? Icons.error_outline_rounded : Icons.sync_rounded, uiLiteral(failed > 0 ? 'Failed' : 'In progress'), failed > 0 ? uiBilingual('$failed failed', '$failed sikertelen') : uiBilingual('$active active', '$active aktív')),
         ]),
         const SizedBox(height: 14),
         if (partnerIds.isEmpty)
-          const _MessageCard(
+          _MessageCard(
             icon: Icons.backup_outlined,
-            title: 'No provisioned partner available',
-            message: 'Provision a partner first. The backup service will then capture its isolated database, media namespace and configuration state.',
+            title: uiLiteral('No provisioned partner available'),
+            message: uiLiteral('Provision a partner first. The backup service will then capture its isolated database, media namespace and configuration state.'),
           )
         else
           LayoutBuilder(

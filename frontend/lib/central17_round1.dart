@@ -37,15 +37,25 @@ class _Central17UsMapState extends State<_Central17UsMap> {
     'North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK','Oregon':'OR','Pennsylvania':'PA',
     'Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD','Tennessee':'TN','Texas':'TX','Utah':'UT',
     'Vermont':'VT','Virginia':'VA','Washington':'WA','West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY',
-    'District of Columbia':'DC',
+    'District of Columbia':'DC','Alaska':'AK','Hawaii':'HI',
   };
 
+  // Approximate state centroids normalized to the bundled SVG. They are used
+  // for active pins and for resolving a click on the map to the nearest state.
   static const _positions = <String, Offset>{
-    'California':Offset(.105,.52),'Texas':Offset(.48,.73),'Florida':Offset(.80,.79),'New York':Offset(.86,.30),
-    'Delaware':Offset(.86,.46),'Washington':Offset(.10,.16),'Oregon':Offset(.10,.28),'Nevada':Offset(.18,.43),
-    'Arizona':Offset(.24,.59),'Colorado':Offset(.37,.43),'Illinois':Offset(.63,.44),'Georgia':Offset(.73,.68),
-    'Pennsylvania':Offset(.81,.39),'New Jersey':Offset(.86,.40),'North Carolina':Offset(.79,.56),
-    'Virginia':Offset(.81,.49),'Ohio':Offset(.73,.43),'Michigan':Offset(.69,.29),
+    'Alabama':Offset(.67,.67),'Alaska':Offset(.16,.87),'Arizona':Offset(.25,.60),'Arkansas':Offset(.55,.61),
+    'California':Offset(.105,.52),'Colorado':Offset(.37,.43),'Connecticut':Offset(.91,.35),'Delaware':Offset(.86,.46),
+    'District of Columbia':Offset(.84,.48),'Florida':Offset(.80,.79),'Georgia':Offset(.73,.68),'Hawaii':Offset(.31,.88),
+    'Idaho':Offset(.22,.30),'Illinois':Offset(.63,.44),'Indiana':Offset(.68,.45),'Iowa':Offset(.55,.39),
+    'Kansas':Offset(.47,.50),'Kentucky':Offset(.68,.52),'Louisiana':Offset(.56,.72),'Maine':Offset(.94,.19),
+    'Maryland':Offset(.83,.47),'Massachusetts':Offset(.92,.32),'Michigan':Offset(.69,.29),'Minnesota':Offset(.54,.27),
+    'Mississippi':Offset(.62,.67),'Missouri':Offset(.57,.51),'Montana':Offset(.34,.23),'Nebraska':Offset(.45,.41),
+    'Nevada':Offset(.18,.43),'New Hampshire':Offset(.91,.28),'New Jersey':Offset(.86,.40),'New Mexico':Offset(.34,.60),
+    'New York':Offset(.86,.30),'North Carolina':Offset(.79,.56),'North Dakota':Offset(.45,.25),'Ohio':Offset(.73,.43),
+    'Oklahoma':Offset(.48,.59),'Oregon':Offset(.10,.28),'Pennsylvania':Offset(.81,.39),'Rhode Island':Offset(.93,.36),
+    'South Carolina':Offset(.76,.62),'South Dakota':Offset(.45,.33),'Tennessee':Offset(.66,.58),'Texas':Offset(.48,.73),
+    'Utah':Offset(.28,.46),'Vermont':Offset(.89,.27),'Virginia':Offset(.81,.49),'Washington':Offset(.10,.16),
+    'West Virginia':Offset(.77,.48),'Wisconsin':Offset(.62,.32),'Wyoming':Offset(.34,.34),
   };
 
   @override
@@ -81,9 +91,27 @@ class _Central17UsMapState extends State<_Central17UsMap> {
       .map((p) => Map<String, dynamic>.from(p))
       .toList();
 
+  String? _nearestState(Offset point, Size size) {
+    if (size.width <= 0 || size.height <= 0) return null;
+    final normalized = Offset(point.dx / size.width, point.dy / size.height);
+    String? best;
+    var bestDistance = double.infinity;
+    for (final entry in _positions.entries) {
+      final dx = normalized.dx - entry.value.dx;
+      final dy = normalized.dy - entry.value.dy;
+      // Horizontal distance matters slightly more on the very wide US map.
+      final distance = dx * dx + dy * dy * .72;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = entry.key;
+      }
+    }
+    return best;
+  }
+
   void _openState(String state) {
     final partners = _partnersFor(state);
-    if (partners.isEmpty) return;
+    final activeCount = partners.where((p) => '${p['lifecycle'] ?? ''}'.toUpperCase() == 'LIVE').length;
     showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog(
@@ -104,35 +132,51 @@ class _Central17UsMapState extends State<_Central17UsMap> {
                   IconButton(onPressed:()=>Navigator.pop(dialogContext),icon:const Icon(Icons.close_rounded)),
                 ]),
                 const SizedBox(height:8),
-                LText('${partners.length} ${uiLiteral(partners.length == 1 ? 'active partner' : 'active partners')}',style:const TextStyle(color:brandTextSoft,fontSize:11)),
+                LText(
+                  uiBilingual(
+                    '$activeCount active · ${partners.length} partner record${partners.length == 1 ? '' : 's'}',
+                    '$activeCount aktív · ${partners.length} partnerrekord',
+                  ),
+                  style:const TextStyle(color:brandTextSoft,fontSize:11),
+                ),
                 const SizedBox(height:12),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 360),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        for (var i=0;i<partners.length;i++) ...[
-                          Container(
-                            width:double.infinity,
-                            padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),
-                            decoration:BoxDecoration(color:const Color(0xFFF8FAFD),borderRadius:BorderRadius.circular(11),border:Border.all(color:brandMist)),
-                            child:Row(children:[
-                              const Icon(Icons.apartment_rounded,color:brandNavy,size:18),
-                              const SizedBox(width:9),
-                              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                                LText('${partners[i]['name'] ?? '—'}',style:const TextStyle(color:brandNavy,fontSize:11.5,fontWeight:FontWeight.w700)),
-                                const SizedBox(height:2),
-                                LText('${partners[i]['city'] ?? ''}${('${partners[i]['city'] ?? ''}').isNotEmpty ? ', ' : ''}$state',style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
-                              ])),
-                              _StatusPill(label:'${partners[i]['lifecycle'] ?? 'LIVE'}'),
-                            ]),
-                          ),
-                          if (i != partners.length - 1) const SizedBox(height:7),
+                if (partners.isEmpty)
+                  _MessageCard(
+                    icon: Icons.location_off_outlined,
+                    title: uiLiteral('No partner records in this state'),
+                    message: uiBilingual(
+                      'There are currently no HIMATE partner records in $state.',
+                      'Jelenleg nincs HIMATE partnerrekord ebben az államban: $state.',
+                    ),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 360),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          for (var i=0;i<partners.length;i++) ...[
+                            Container(
+                              width:double.infinity,
+                              padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),
+                              decoration:BoxDecoration(color:const Color(0xFFF8FAFD),borderRadius:BorderRadius.circular(11),border:Border.all(color:brandMist)),
+                              child:Row(children:[
+                                const Icon(Icons.apartment_rounded,color:brandNavy,size:18),
+                                const SizedBox(width:9),
+                                Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                                  LText('${partners[i]['name'] ?? '—'}',style:const TextStyle(color:brandNavy,fontSize:11.5,fontWeight:FontWeight.w700)),
+                                  const SizedBox(height:2),
+                                  LText('${partners[i]['city'] ?? ''}${('${partners[i]['city'] ?? ''}').isNotEmpty ? ', ' : ''}$state',style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
+                                ])),
+                                _StatusPill(label:'${partners[i]['lifecycle'] ?? 'LIVE'}'),
+                              ]),
+                            ),
+                            if (i != partners.length - 1) const SizedBox(height:7),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -151,10 +195,18 @@ class _Central17UsMapState extends State<_Central17UsMap> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child:SizedBox(width:22,height:22,child:CircularProgressIndicator(strokeWidth:2)));
         return LayoutBuilder(
-          builder:(context,c)=>Stack(
-            clipBehavior:Clip.none,
-            children:[
-              Positioned.fill(child:SvgPicture.string(snapshot.data!,fit:BoxFit.contain,alignment:Alignment.center)),
+          builder:(context,c)=>MouseRegion(
+            cursor:SystemMouseCursors.click,
+            child:GestureDetector(
+              behavior:HitTestBehavior.opaque,
+              onTapUp:(details){
+                final state=_nearestState(details.localPosition,Size(c.maxWidth,c.maxHeight));
+                if(state!=null)_openState(state);
+              },
+              child:Stack(
+                clipBehavior:Clip.none,
+                children:[
+                  Positioned.fill(child:SvgPicture.string(snapshot.data!,fit:BoxFit.contain,alignment:Alignment.center)),
               for(final row in activeRows)
                 if(_positions['${row['state'] ?? ''}'] case final Offset pos)
                   Positioned(
@@ -189,7 +241,9 @@ class _Central17UsMapState extends State<_Central17UsMap> {
                       ),
                     ),
                   ),
-            ],
+                ],
+              ),
+            ),
           ),
         );
       },

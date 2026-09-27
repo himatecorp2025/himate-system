@@ -92,18 +92,7 @@ func (a *app) refreshCentralStep4Partners() {
 	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
 	defer cancel()
 
-	type partnerPage struct {
-		Items           []map[string]any `json:"items"`
-		Count           int              `json:"count"`
-		Total           int              `json:"total"`
-		Limit           int              `json:"limit"`
-		Offset          int              `json:"offset"`
-		HasMore         bool             `json:"has_more"`
-		LifecycleCounts map[string]int   `json:"lifecycle_counts"`
-		ReferenceCount  int              `json:"reference_count"`
-	}
-
-	var partners partnerPage
+	var partners []map[string]any
 	var categories, catalogPortfolio, billingPortfolio, healthPortfolio central10ItemsPage
 	var partnerErr, categoriesErr, catalogErr, billingErr, healthErr error
 
@@ -111,7 +100,7 @@ func (a *app) refreshCentralStep4Partners() {
 	first.Add(2)
 	go func() {
 		defer first.Done()
-		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners?include_stats=true&limit=24&offset=0", &partners)
+		partners, partnerErr = a.central10AllPartners(ctx)
 	}()
 	go func() {
 		defer first.Done()
@@ -125,8 +114,8 @@ func (a *app) refreshCentralStep4Partners() {
 		return
 	}
 
-	ids := make([]string, 0, len(partners.Items))
-	for _, item := range partners.Items {
+	ids := make([]string, 0, len(partners))
+	for _, item := range partners {
 		if id := central10String(item["id"]); id != "" {
 			ids = append(ids, id)
 		}
@@ -163,7 +152,7 @@ func (a *app) refreshCentralStep4Partners() {
 		healthByID[central10String(item["partner_id"])] = item
 	}
 
-	for _, partner := range partners.Items {
+	for _, partner := range partners {
 		id := central10String(partner["id"])
 		if cat := catalogByID[id]; cat != nil {
 			partner["active_modules"] = central10Int(cat["active_modules"])
@@ -201,27 +190,38 @@ func (a *app) refreshCentralStep4Partners() {
 		status = "partial"
 	}
 
-	recordTotal := 0
-	for _, value := range partners.LifecycleCounts {
-		recordTotal += value
+	lifecycleCounts := map[string]int{}
+	referenceCount := 0
+	for _, partner := range partners {
+		lifecycle := strings.ToUpper(central10String(partner["lifecycle"]))
+		if lifecycle != "" {
+			lifecycleCounts[lifecycle]++
+		}
+		if partner["reference_partner"] == true {
+			referenceCount++
+		}
 	}
-	if recordTotal == 0 && partners.Total > 0 {
-		recordTotal = partners.Total
+	recordTotal := len(partners)
+	defaultCount := recordTotal
+	if defaultCount > 24 {
+		defaultCount = 24
 	}
 
 	payload := map[string]any{
-		"items":          partners.Items,
+		// Keep the complete enriched portfolio in the private materialized
+		// snapshot. HTTP pagination/search is applied when the snapshot is read.
+		"items":          partners,
 		"categories_raw": categories.Items,
 		"pagination": map[string]any{
-			"count": partners.Count, "total": partners.Total, "limit": partners.Limit,
-			"offset": partners.Offset, "has_more": partners.HasMore,
+			"count": defaultCount, "total": recordTotal, "limit": 24,
+			"offset": 0, "has_more": recordTotal > defaultCount,
 		},
 		"kpis": map[string]any{
 			"partner_records":    recordTotal,
-			"live_partners":      partners.LifecycleCounts["LIVE"],
-			"prospects":          partners.LifecycleCounts["PROSPECT"],
-			"reference_partners": partners.ReferenceCount,
-			"lifecycle_counts":   partners.LifecycleCounts,
+			"live_partners":      lifecycleCounts["LIVE"],
+			"prospects":          lifecycleCounts["PROSPECT"],
+			"reference_partners": referenceCount,
+			"lifecycle_counts":   lifecycleCounts,
 		},
 		"status":      status,
 		"unavailable": unavailable,

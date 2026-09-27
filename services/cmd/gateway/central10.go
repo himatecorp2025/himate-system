@@ -476,58 +476,93 @@ func central10PartnerCategories(locale string, remote []map[string]any) []map[st
 func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor user, cacheKey string) {
 	started := time.Now()
 
-	// The default first page is the most common navigation target. Serve it
-	// from the persistent materialized snapshot so the request path never
-	// waits for downstream enrichment fan-out. Filtered/search/paginated views
-	// retain the live read-model path below.
+	// CENTRAL-18: every Partners view is served from the complete enriched
+	// materialized portfolio. Search/filter/pagination must never re-enter the
+	// live multi-service fan-out path and spin while one downstream is slow.
 	q := r.URL.Query()
-	defaultView := strings.TrimSpace(q.Get("q")) == "" &&
-		strings.TrimSpace(q.Get("category")) == "" &&
-		strings.TrimSpace(q.Get("lifecycle")) == "" &&
-		strings.TrimSpace(q.Get("health")) == "" &&
-		strings.TrimSpace(q.Get("reference")) == "" &&
-		strings.TrimSpace(q.Get("include_archived")) == "" &&
-		(strings.TrimSpace(q.Get("limit")) == "" || strings.TrimSpace(q.Get("limit")) == "24") &&
-		(strings.TrimSpace(q.Get("offset")) == "" || strings.TrimSpace(q.Get("offset")) == "0")
-	if defaultView {
-		if snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
-			rawCategories := step4Items(snapshot["categories_raw"])
-			snapshotItems := step4Items(snapshot["items"])
-			visibleItems := make([]map[string]any, 0, len(snapshotItems))
-			for _, raw := range snapshotItems {
-				row := central10CopyMap(raw)
-				if !a.hasPermission(actor, "catalog.read") {
-					delete(row, "active_modules")
-					delete(row, "extra_module_fee")
-				}
-				if !a.hasPermission(actor, "billing.read") {
-					delete(row, "base_service_fee")
-					delete(row, "service_value_30d")
-					delete(row, "currency")
-				}
-				if !a.hasPermission(actor, "health.read") {
-					delete(row, "system_health")
-					delete(row, "platform_version")
-					delete(row, "connector_health")
-					delete(row, "environment_status")
-					delete(row, "provisioning_status")
-				}
-				visibleItems = append(visibleItems, row)
-			}
-			payload := map[string]any{
-				"items":      visibleItems,
-				"categories": central10PartnerCategories(common.RequestLocale(r), rawCategories),
-				"pagination": step4Map(snapshot["pagination"]),
-				"kpis":       step4Map(snapshot["kpis"]),
-				"meta":       centralStep4Meta(started, centralStep4PartnersKey, updatedAt, central10String(snapshot["status"]), central10Step4Unavailable(snapshot["unavailable"])),
-			}
-			w.Header().Set("X-Himate-Cache", "hot-snapshot")
-			w.Header().Set("Server-Timing", fmt.Sprintf("central-partners-snapshot;dur=%d", time.Since(started).Milliseconds()))
-			common.JSON(w, http.StatusOK, payload)
-			return
+	if snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
+		rawCategories := step4Items(snapshot["categories_raw"])
+		snapshotItems := step4Items(snapshot["items"])
+		needle := strings.ToLower(strings.TrimSpace(q.Get("q")))
+		category := strings.TrimSpace(q.Get("category"))
+		lifecycle := strings.ToUpper(strings.TrimSpace(q.Get("lifecycle")))
+		health := strings.ToUpper(strings.TrimSpace(q.Get("health")))
+		referenceOnly := strings.EqualFold(strings.TrimSpace(q.Get("reference")), "true")
+		limit := central10QueryLimit(q.Get("limit"), 24, 200)
+		offset := 0
+		if parsed, err := strconv.Atoi(strings.TrimSpace(q.Get("offset"))); err == nil && parsed > 0 {
+			offset = parsed
 		}
-		a.requestCentralStep4Refresh()
+
+		filtered := make([]map[string]any, 0, len(snapshotItems))
+		for _, raw := range snapshotItems {
+			if needle != "" && !searchContains(
+				needle,
+				raw["id"], raw["display_name"], raw["legal_name"], raw["brand_name"],
+				raw["category_id"], raw["category_key"], raw["category_name"],
+				raw["country"], raw["state_region"], raw["city"],
+				raw["contact_name"], raw["contact_email"],
+			) {
+				continue
+			}
+			if category != "" && category != "ALL" &&
+				!strings.EqualFold(category, central10String(raw["category_id"])) &&
+				!strings.EqualFold(category, central10String(raw["category_key"])) {
+				continue
+			}
+			if lifecycle != "" && lifecycle != "ALL" &&
+				!strings.EqualFold(lifecycle, central10String(raw["lifecycle"])) {
+				continue
+			}
+			if health != "" && health != "ALL" {
+				rowHealth := strings.ToUpper(central10String(raw["system_health"]))
+				if rowHealth == "" { rowHealth = "UNKNOWN" }
+				if rowHealth != health { continue }
+			}
+			if referenceOnly && raw["reference_partner"] != true {
+				continue
+			}
+			row := central10CopyMap(raw)
+			if !a.hasPermission(actor, "catalog.read") {
+				delete(row, "active_modules")
+				delete(row, "extra_module_fee")
+			}
+			if !a.hasPermission(actor, "billing.read") {
+				delete(row, "base_service_fee")
+				delete(row, "service_value_30d")
+				delete(row, "currency")
+			}
+			if !a.hasPermission(actor, "health.read") {
+				delete(row, "system_health")
+				delete(row, "platform_version")
+				delete(row, "connector_health")
+				delete(row, "environment_status")
+				delete(row, "provisioning_status")
+			}
+			filtered = append(filtered, row)
+		}
+
+		total := len(filtered)
+		if offset > total { offset = total }
+		end := offset + limit
+		if end > total { end = total }
+		visibleItems := filtered[offset:end]
+		payload := map[string]any{
+			"items":      visibleItems,
+			"categories": central10PartnerCategories(common.RequestLocale(r), rawCategories),
+			"pagination": map[string]any{
+				"count": len(visibleItems), "total": total, "limit": limit,
+				"offset": offset, "has_more": end < total,
+			},
+			"kpis": step4Map(snapshot["kpis"]),
+			"meta": centralStep4Meta(started, centralStep4PartnersKey, updatedAt, central10String(snapshot["status"]), central10Step4Unavailable(snapshot["unavailable"])),
+		}
+		w.Header().Set("X-Himate-Cache", "hot-snapshot")
+		w.Header().Set("Server-Timing", fmt.Sprintf("central-partners-snapshot;dur=%d", time.Since(started).Milliseconds()))
+		common.JSON(w, http.StatusOK, payload)
+		return
 	}
+	a.requestCentralStep4Refresh()
 
 	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
 	defer cancel()
@@ -1663,8 +1698,8 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	defer cancel()
 
 	type page struct{ Items []map[string]any `json:"items"` }
-	var partner, billing, terms, license, agreement, commercialStatus, paymentProfile, websiteAdapter map[string]any
-	var modules, documents, invoices, subscriptions, environments, provisioningJobs, impactSummary, connectorCredentials, billingEvents page
+	var partner, billing, terms, license, agreement, commercialStatus, paymentProfile, websiteAdapter, partnerDesign map[string]any
+	var modules, documents, invoices, subscriptions, environments, provisioningJobs, impactSummary, evidenceItems, connectorCredentials, billingEvents page
 	portalUsers := []map[string]any{}
 	unavailable := []string{}
 	var unavailableMu sync.Mutex
@@ -1707,9 +1742,15 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	if a.hasPermission(actor, "impact.read") {
 		runPage("impact", "impact", "/api/v1/impact/summary?partner_id="+url.QueryEscape(partnerID), &impactSummary)
 	}
+	if a.hasPermission(actor, "evidence.read") {
+		runPage("evidence", "evidence", "/api/v1/evidence?partner_id="+url.QueryEscape(partnerID)+"&limit=50&offset=0", &evidenceItems)
+	}
 	if a.hasPermission(actor, "connectors.read") {
 		runPage("connector_credentials", "connector", "/api/v1/connectors/"+url.PathEscape(partnerID)+"/credential", &connectorCredentials)
 		runMap("website_adapter", "connector", "/api/v1/connectors/"+url.PathEscape(partnerID)+"/website-adapter?environment=PRODUCTION", &websiteAdapter)
+	}
+	if a.hasPermission(actor, "cms.read") {
+		runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"+url.PathEscape(partnerID), &partnerDesign)
 	}
 	if a.hasPermission(actor, "billing.read") {
 		runMap("payment_profile", "payments", "/api/v1/payments/partners/"+url.PathEscape(partnerID)+"/profile", &paymentProfile)
@@ -1757,12 +1798,14 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		"environments": environments.Items,
 		"provisioning_jobs": provisioningJobs.Items,
 		"impact_summary": impactSummary.Items,
+		"evidence": evidenceItems.Items,
 		"connector_credentials": connectorCredentials.Items,
 		"portal_users": portalUsers,
 		"agreement": agreement,
 		"commercial_status": commercialStatus,
 		"billing_events": billingEvents.Items,
 		"website_adapter": websiteAdapter,
+		"partner_design": partnerDesign,
 		"payment_profile": paymentProfile,
 		"meta": central10Meta(started, status, unavailable),
 	}

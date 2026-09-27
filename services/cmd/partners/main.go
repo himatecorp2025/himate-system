@@ -83,6 +83,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// CENTRAL-18: Golden Test Partner data is reconciled asynchronously because
+	// its fixture spans Catalog, Billing, Impact, Evidence and Reports schemas.
+	// Other microservices migrate those schemas concurrently, so this must never
+	// block Partners startup.
+	go a.runGoldenTestFixtureReconciler()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		common.JSON(w, 200, map[string]any{"status": "ok", "service": "partners", "time": time.Now().UTC()})
@@ -216,13 +222,18 @@ func (a *app) migrate(ctx context.Context) error {
 		}
 	}
 	_, err := a.db.ExecContext(ctx,
-		`INSERT INTO partners.partners(
+		`INSERT INTO partners.partners AS p(
 			id,slug,display_name,legal_name,brand_name,category_id,lifecycle,existing_partner,reference_partner,
-			primary_domain,country,platform_version,system_health,notes
+			primary_domain,country,state_region,city,platform_version,system_health,notes
 		)
 		VALUES('ptr_000001','klavierhaus','Klavierhaus','Klavierhaus','Klavierhaus','cat_001','LIVE',TRUE,TRUE,
-			'klavierhaus.com','United States','reference','UNKNOWN','Reference partner; activation fee not applicable.')
-		ON CONFLICT(id) DO UPDATE SET reference_partner=TRUE,existing_partner=TRUE`)
+			'klavierhaus.com','United States','NY','New York','reference','UNKNOWN','Reference partner; activation fee not applicable.')
+		ON CONFLICT(id) DO UPDATE SET
+			reference_partner=TRUE,
+			existing_partner=TRUE,
+			country=CASE WHEN trim(COALESCE(p.country,''))='' THEN EXCLUDED.country ELSE p.country END,
+			state_region=CASE WHEN trim(COALESCE(p.state_region,''))='' THEN EXCLUDED.state_region ELSE p.state_region END,
+			city=CASE WHEN trim(COALESCE(p.city,''))='' THEN EXCLUDED.city ELSE p.city END`)
 	return err
 }
 
@@ -791,6 +802,20 @@ func (a *app) partnerByID(w http.ResponseWriter, r *http.Request) {
 		if err = tx.Commit(); err != nil {
 			common.APIError(w, 500, "DB", "Could not commit partner update")
 			return
+		}
+		if goldenActivation && strings.EqualFold(strings.TrimSpace(p.DisplayName), "Test Partner") {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+				defer cancel()
+				seeded, reconcileErr := a.reconcileGoldenTestFixtures(ctx)
+				if reconcileErr != nil {
+					common.Logger().Warn("golden test fixture activation reconcile", "partner_id", id, "error", reconcileErr)
+					return
+				}
+				if seeded > 0 {
+					common.Logger().Info("golden test fixture activated", "partner_id", id, "seeded_partners", seeded)
+				}
+			}()
 		}
 		p, _ = a.get(id)
 		common.JSON(w, 200, partnerMap(p))

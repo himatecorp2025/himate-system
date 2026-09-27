@@ -1026,7 +1026,15 @@ class _HimateAppState extends State<HimateApp> {
               ? loadingScreen()
               : user == null
                   ? loginPage()
-                  : PartnerRouteLoader(api: api, partnerId: partnerId, initialSection: section),
+                  : Shell(
+                      api: api,
+                      user: user!,
+                      onUserChanged: updateSignedInUser,
+                      onLogout: logout,
+                      initialSelected: 1,
+                      initialPartnerId: partnerId,
+                      initialPartnerSection: section,
+                    ),
         );
       },
       onUnknownRoute: (_) => MaterialPageRoute(
@@ -1049,19 +1057,21 @@ class PartnerRouteLoader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final path = '/api/v1/central/partners/$partnerId';
     return FutureBuilder<Map<String, dynamic>>(
-      future: api.get('/api/v1/central/partners/$partnerId', maxAge: const Duration(seconds: 5)),
+      future: api.get(path, maxAge: const Duration(seconds: 5)),
+      initialData: api.peek(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
-          return const Content(
+          return Content(
             showHeader: false,
-            eyebrow: 'PLATFORM OPERATIONS',
-            title: 'System & Operations',
-            subtitle: 'Independent services behind one authenticated public gateway.',
-            child: _MessageCard(
+            eyebrow: uiLiteral('PARTNER WORKSPACE'),
+            title: uiLiteral('Partner workspace'),
+            subtitle: uiLiteral('Loading partner data and operational context.'),
+            child: const _MessageCard(
               icon: Icons.sync_rounded,
-              title: 'Refreshing operations data',
-              message: 'No cached operations snapshot is available yet. The page is ready and data will appear automatically.',
+              title: 'Loading partner workspace',
+              message: 'The partner route is active. Authoritative partner data is loading without leaving the Central shell.',
             ),
           );
         }
@@ -1890,6 +1900,8 @@ class Shell extends StatefulWidget {
     required this.onUserChanged,
     required this.onLogout,
     this.initialSelected = 0,
+    this.initialPartnerId,
+    this.initialPartnerSection,
     super.key,
   });
   final Api api;
@@ -1897,6 +1909,8 @@ class Shell extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>> onUserChanged;
   final Future<void> Function() onLogout;
   final int initialSelected;
+  final String? initialPartnerId;
+  final String? initialPartnerSection;
 
   @override
   State<Shell> createState() => _ShellState();
@@ -2042,7 +2056,14 @@ class _ShellState extends State<Shell> {
           _selectNav(index);
         },
       );
-      case 1: return PartnersPage(api: widget.api);
+      case 1:
+        return widget.initialPartnerId == null
+            ? PartnersPage(api: widget.api)
+            : PartnerRouteLoader(
+                api: widget.api,
+                partnerId: widget.initialPartnerId!,
+                initialSection: widget.initialPartnerSection,
+              );
       case 2: return ModuleControlPlanePage(api: widget.api);
       case 3: return PackagesPage(api: widget.api);
       case 4: return FinancePage(api: widget.api);
@@ -2064,6 +2085,7 @@ class _ShellState extends State<Shell> {
                 canBillingRead: can('billing.read'),
                 canBillingWrite: can('billing.write') || can('billing.approve'),
                 canBackupsRead: can('backups.read'),
+                canBackupsWrite: can('backups.write') || can('backups.approve'),
                 canBackupsApprove: can('backups.approve'),
                 canAuditRead: can('audit.read'),
               )
@@ -4478,12 +4500,9 @@ class _PartnersPageState extends State<PartnersPage> {
       final partnerId = '${createdResult['id']}';
       unawaited(load(reset: true));
       success('Partner master data, Portal Owner, logo and commercial defaults were saved.');
-      Navigator.push(
+      Navigator.pushNamed(
         context,
-        MaterialPageRoute(
-          settings: RouteSettings(name: '/app/partners/$partnerId'),
-          builder: (_) => PartnerWorkspace(api: widget.api, partner: createdResult),
-        ),
+        '/app/partners/${Uri.encodeComponent(partnerId)}',
       );
     }
 
@@ -4533,15 +4552,6 @@ class _PartnersPageState extends State<PartnersPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && !statsReady && partners.isEmpty && partnerKpis.isEmpty) {
-      return const Content(
-        showHeader: false,
-        eyebrow: 'PEOPLE  |  PROGRAMS  |  IMPACT',
-        title: 'Partners',
-        subtitle: 'Loading the latest partner portfolio snapshot.',
-        child: _BrandLoading(),
-      );
-    }
     final live = (partnerKpis['live_partners'] as num?)?.toInt() ?? 0;
     final prospects = (partnerKpis['prospects'] as num?)?.toInt() ?? 0;
     final reference = (partnerKpis['reference_partners'] as num?)?.toInt() ?? 0;
@@ -4552,12 +4562,26 @@ class _PartnersPageState extends State<PartnersPage> {
       title: 'Partners',
       subtitle: 'Partner management, relationships and collaboration at a glance.',
       actions: const [],
-      child: error != null
-          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partners could not be loaded', message: error!)
-          : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ResponsiveKpiGrid(
+      child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (loading && !statsReady) ...[
+                  _MessageCard(
+                    icon: Icons.sync_rounded,
+                    title: uiLiteral('Partner data is loading'),
+                    message: uiLiteral('The partner workspace is already available while the latest materialized portfolio is loaded.'),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                if (error != null) ...[
+                  _MessageCard(
+                    icon: Icons.cloud_off_outlined,
+                    title: uiLiteral('Partner data is partially unavailable'),
+                    message: error!,
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                ResponsiveKpiGrid(
                       children: [
                         Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy, onTap: () => applyPortfolioPreset()),
                         Kpi(label: 'Live partners', value: '$live', note: 'Operational partner environments', icon: Icons.public_outlined, accent: brandSuccess, onTap: () => applyPortfolioPreset(lifecycle: 'LIVE')),
@@ -4580,10 +4604,11 @@ class _PartnersPageState extends State<PartnersPage> {
                           );
                           final category = DropdownButtonFormField<String>(
                             value: categoryFilter,
+                            isExpanded: true,
                             decoration: InputDecoration(labelText: uiLiteral('Category')),
                             items: [
-                              const DropdownMenuItem(value: 'ALL', child: LText('All categories')),
-                              for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: LText('${c['name']}')),
+                              DropdownMenuItem(value: 'ALL', child: LText(uiLiteral('All categories'), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              for (final c in categories) DropdownMenuItem(value: '${c['id']}', child: LText('${c['name']}', maxLines: 1, overflow: TextOverflow.ellipsis)),
                             ],
                             onChanged: (v) {
                               setState(() => categoryFilter = v ?? 'ALL');
@@ -4592,6 +4617,7 @@ class _PartnersPageState extends State<PartnersPage> {
                           );
                           final lifecycle = DropdownButtonFormField<String>(
                             value: lifecycleFilter,
+                            isExpanded: true,
                             decoration: InputDecoration(labelText: uiLiteral('Lifecycle')),
                             items: [
                               const DropdownMenuItem(value: 'ALL', child: LText('All lifecycle states')),
@@ -4604,6 +4630,7 @@ class _PartnersPageState extends State<PartnersPage> {
                           );
                           final health = DropdownButtonFormField<String>(
                             value: healthFilter,
+                            isExpanded: true,
                             decoration: InputDecoration(labelText: uiLiteral('Health')),
                             items: const [
                               DropdownMenuItem(value: 'ALL', child: LText('All health states')),
@@ -4781,12 +4808,9 @@ class _PartnersPageState extends State<PartnersPage> {
                               width: width,
                               child: PartnerCard(
                                 partner: p,
-                                onTap: () => Navigator.push(
+                                onTap: () => Navigator.pushNamed(
                                   context,
-                                  MaterialPageRoute(
-                                    settings: RouteSettings(name: "/app/partners/${p['id']}"),
-                                    builder: (_) => PartnerWorkspace(api: widget.api, partner: p),
-                                  ),
+                                  "/app/partners/${Uri.encodeComponent('${p['id']}')}",
                                 ),
                               ),
                             ),
@@ -4824,8 +4848,8 @@ class _PartnersPageState extends State<PartnersPage> {
                         );
                       },
                     ),
-                  ],
-                ),
+              ],
+            ),
     );
   }
 }
@@ -4859,6 +4883,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   List<Map<String, dynamic>> environments = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> provisioningJobs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> impactSummary = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> evidence = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> connectorCredentials = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> portalUsers = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> billingEvents = <Map<String, dynamic>>[];
@@ -4869,6 +4894,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? commercialStatus;
   Map<String, dynamic>? paymentProfile;
   Map<String, dynamic>? websiteAdapter;
+  Map<String, dynamic>? partnerDesign;
   Map<String, dynamic>? productionEnvironment;
   String preferredConnectorEnvironment = 'STAGING';
   bool loading = true;
@@ -4886,6 +4912,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   final GlobalKey _modulesKey = GlobalKey();
   final GlobalKey _financeKey = GlobalKey();
   final GlobalKey _statisticsKey = GlobalKey();
+  final GlobalKey _evidenceKey = GlobalKey();
+  final GlobalKey _brandingKey = GlobalKey();
   final GlobalKey _usersKey = GlobalKey();
   final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
@@ -4898,8 +4926,8 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     _WorkspaceSpec('Pricing & Subscription', Icons.payments_outlined, 'Activation fee and recurring terms', true),
     _WorkspaceSpec('Finance & Documents', Icons.folder_copy_outlined, 'Invoices and commercial evidence', true),
     _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics and provenance', true),
-    _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', false),
-    _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', false),
+    _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', true),
+    _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', true),
     _WorkspaceSpec('Users & Contacts', Icons.group_outlined, 'Partner Portal users and organization contacts', true),
     _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Secure connector identities and credentials', true),
     _WorkspaceSpec('Audit History', Icons.history_rounded, 'Immutable administrative history', false),
@@ -4966,6 +4994,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         environments = items(<String, dynamic>{'items': model['environments']});
         provisioningJobs = items(<String, dynamic>{'items': model['provisioning_jobs']});
         impactSummary = items(<String, dynamic>{'items': model['impact_summary']});
+        evidence = items(<String, dynamic>{'items': model['evidence']});
         connectorCredentials = items(<String, dynamic>{'items': model['connector_credentials']});
         portalUsers = items(<String, dynamic>{'items': model['portal_users']});
         billingEvents = items(<String, dynamic>{'items': model['billing_events']});
@@ -4981,6 +5010,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             : null;
         websiteAdapter = model['website_adapter'] is Map
             ? Map<String, dynamic>.from(model['website_adapter'] as Map)
+            : null;
+        partnerDesign = model['partner_design'] is Map
+            ? Map<String, dynamic>.from(model['partner_design'] as Map)
             : null;
         productionEnvironment = model['production_environment'] is Map
             ? Map<String, dynamic>.from(model['production_environment'] as Map)
@@ -5162,28 +5194,42 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     unawaited(_loadModuleView());
   }
 
-  void _scrollToInitialSection() {
-    if (_initialSectionHandled || widget.initialSection == null) return;
-    _initialSectionHandled = true;
-    final slug = widget.initialSection!;
-    final key = switch (slug) {
-      'overview' => _overviewKey,
-      'company-data' => _companyKey,
-      'system-and-environment' => _environmentKey,
-      'pricing-and-subscription' => _pricingKey,
-      'modules' => _modulesKey,
-      'finance-and-documents' => _financeKey,
-      'statistics' => _statisticsKey,
-      'users-and-contacts' => _usersKey,
-      'integrations' => _integrationsKey,
-      _ => _overviewKey,
-    };
+  GlobalKey _workspaceKeyForSlug(String slug) => switch (slug) {
+    'overview' => _overviewKey,
+    'company-data' => _companyKey,
+    'system-and-environment' => _environmentKey,
+    'pricing-and-subscription' => _pricingKey,
+    'modules' => _modulesKey,
+    'finance-and-documents' => _financeKey,
+    'statistics' => _statisticsKey,
+    'evidence' => _evidenceKey,
+    'branding-and-website' => _brandingKey,
+    'users-and-contacts' => _usersKey,
+    'integrations' => _integrationsKey,
+    _ => _overviewKey,
+  };
+
+  void _scrollWorkspaceSlug(String slug) {
+    final key = _workspaceKeyForSlug(slug);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = key.currentContext;
       if (target != null) {
         Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic, alignment: .04);
       }
     });
+  }
+
+  void _scrollToInitialSection() {
+    if (_initialSectionHandled || widget.initialSection == null) return;
+    _initialSectionHandled = true;
+    _scrollWorkspaceSlug(widget.initialSection!);
+  }
+
+  void _openWorkspaceSection(_WorkspaceSpec spec) {
+    final slug = workspaceRouteSlug(spec.title);
+    final id = Uri.encodeComponent('${partner['id'] ?? ''}');
+    replaceBrowserHistory('', '/app/partners/$id/$slug');
+    _scrollWorkspaceSlug(slug);
   }
 
   void success(String message) {
@@ -6397,12 +6443,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                   width: width,
                                   child: WorkspaceCard(
                                     spec: spec,
-                                    onTap: spec.active
-                                        ? () => Navigator.pushNamed(
-                                              context,
-                                              "/app/partners/${partner['id']}/${workspaceRouteSlug(spec.title)}",
-                                            )
-                                        : null,
+                                    onTap: spec.active ? () => _openWorkspaceSection(spec) : null,
                                   ),
                                 ),
                             ],
@@ -6458,7 +6499,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                           if (job != null) {
                             cards.add(
                               _InfoCard(
-                                title: 'Provisioning Engine',
+                                title: uiLiteral('Provisioning Engine'),
                                 icon: Icons.precision_manufacturing_outlined,
                                 children: [
                                   _DefinitionRow(label: 'Status', value: '${job['status'] ?? 'UNKNOWN'}'),
@@ -6646,6 +6687,164 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                             ),
                       const SizedBox(height: 26),
                       KeyedSubtree(
+                        key: _evidenceKey,
+                        child: _SectionHeader(
+                          title: uiLiteral('Evidence'),
+                          subtitle: uiLiteral('Partner-scoped impact evidence from the authoritative Evidence service.'),
+                          trailing: _MiniCounter(label: '${evidence.length} ${uiLiteral('records')}'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      evidence.isEmpty
+                          ? _MessageCard(
+                              icon: Icons.verified_outlined,
+                              title: uiLiteral('No evidence recorded yet'),
+                              message: uiLiteral('Evidence added under Impact & Reports for this partner will appear here automatically.'),
+                            )
+                          : LayoutBuilder(
+                              builder: (context, c) {
+                                final width = c.maxWidth < 620
+                                    ? c.maxWidth
+                                    : c.maxWidth < 1000
+                                        ? (c.maxWidth - 12) / 2
+                                        : (c.maxWidth - 24) / 3;
+                                return Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    for (final item in evidence)
+                                      SizedBox(
+                                        width: width,
+                                        child: _InfoCard(
+                                          title: '${item['title'] ?? item['id'] ?? uiLiteral('Evidence')}',
+                                          icon: Icons.verified_outlined,
+                                          children: [
+                                            _DefinitionRow(label: uiLiteral('Type'), value: uiLiteral(_humanize('${item['evidence_type'] ?? '—'}'))),
+                                            _DefinitionRow(label: uiLiteral('Verification'), value: uiLiteral(_humanize('${item['verification_status'] ?? '—'}'))),
+                                            _DefinitionRow(label: uiLiteral('Metric'), value: '${item['metric_key'] ?? '—'}'),
+                                            _DefinitionRow(label: uiLiteral('Period end'), value: '${item['period_end'] ?? '—'}'),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
+                        key: _brandingKey,
+                        child: _SectionHeader(
+                          title: uiLiteral('Branding & Website'),
+                          subtitle: uiLiteral('Partner-specific design profile, workspace branding and production website adapter.'),
+                          trailing: _StatusPill(
+                            label: partnerDesign != null || websiteAdapter?['configured'] == true
+                                ? uiLiteral('Configured')
+                                : uiLiteral('Not configured'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (context) {
+                          final design = partnerDesign ?? <String,dynamic>{};
+                          final profile = design['active_profile'] is Map
+                              ? Map<String,dynamic>.from(design['active_profile'] as Map)
+                              : <String,dynamic>{};
+                          final workspace = design['workspace'] is Map
+                              ? Map<String,dynamic>.from(design['workspace'] as Map)
+                              : <String,dynamic>{};
+                          final theme = design['effective_theme'] is Map
+                              ? Map<String,dynamic>.from(design['effective_theme'] as Map)
+                              : <String,dynamic>{};
+                          final adapter = websiteAdapter ?? <String,dynamic>{};
+                          final hasDesign = design.isNotEmpty;
+                          final hasAdapter = adapter.isNotEmpty;
+
+                          if (!hasDesign && !hasAdapter) {
+                            return _MessageCard(
+                              icon: Icons.palette_outlined,
+                              title: uiLiteral('No partner design data yet'),
+                              message: uiLiteral('Partner design settings will appear here when CMS personalization is available.'),
+                            );
+                          }
+
+                          return LayoutBuilder(
+                            builder: (context, c) {
+                              final width = c.maxWidth < 760 ? c.maxWidth : (c.maxWidth - 12) / 2;
+                              return Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  SizedBox(
+                                    width: width,
+                                    child: _InfoCard(
+                                      title: uiLiteral('Partner design'),
+                                      icon: Icons.palette_outlined,
+                                      children: [
+                                        _DefinitionRow(
+                                          label: uiLiteral('Active design profile'),
+                                          value: '${profile['name'] ?? design['active_profile_id'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Workspace name'),
+                                          value: '${workspace['workspace_name'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Primary color'),
+                                          value: '${workspace['primary_color'] ?? theme['navy'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Accent color'),
+                                          value: '${workspace['accent_color'] ?? theme['gold'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Background color'),
+                                          value: '${workspace['background_color'] ?? theme['background'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Default module'),
+                                          value: '${workspace['default_module_key'] ?? '—'}',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: width,
+                                    child: _InfoCard(
+                                      title: uiLiteral('Website adapter'),
+                                      icon: Icons.public_outlined,
+                                      children: [
+                                        _DefinitionRow(
+                                          label: uiLiteral('Configured'),
+                                          value: uiLiteral(adapter['configured'] == true ? 'Yes' : 'No'),
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Enabled'),
+                                          value: uiLiteral(adapter['enabled'] == true ? 'Yes' : 'No'),
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Environment'),
+                                          value: '${adapter['environment'] ?? 'PRODUCTION'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Adapter type'),
+                                          value: '${adapter['adapter_type'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Site URL'),
+                                          value: '${adapter['site_base_url'] ?? '—'}',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
                         key: _usersKey,
                         child: _SectionHeader(
                           title: 'Partner Portal Access',
@@ -6686,7 +6885,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                             _DefinitionRow(label: 'Email', value: '${portalUser['email'] ?? '—'}'),
                                             _DefinitionRow(label: 'Portal role', value: _humanize('${portalUser['role'] ?? 'viewer'}')),
                                             _DefinitionRow(label: 'Status', value: portalUser['active'] == true ? 'Active' : 'Inactive'),
-                                            _DefinitionRow(label: 'Portal URL', value: '/partner/login'),
+                                            _DefinitionRow(label: uiLiteral('Portal URL'), value: '/partner/login'),
                                           ],
                                         ),
                                       ),
@@ -6698,12 +6897,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       KeyedSubtree(
                         key: _integrationsKey,
                         child: _SectionHeader(
-                          title: 'Integrations',
-                          subtitle: 'Partner-scoped Connector Protocol credentials. Raw secrets are never stored by HIMATE.',
+                          title: uiLiteral('Integrations'),
+                          subtitle: uiLiteral('Partner-scoped Connector Protocol credentials. Raw secrets are never stored by HIMATE.'),
                           trailing: FilledButton.icon(
                             onPressed: rotateConnectorCredential,
                             icon: const Icon(Icons.key_outlined),
-                            label: const LText('Generate / rotate credential'),
+                            label: LText(uiLiteral('Generate / rotate credential')),
                           ),
                         ),
                       ),
@@ -6711,10 +6910,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       start223WebsiteAdapterPanel(),
                       const SizedBox(height: 12),
                       connectorCredentials.isEmpty
-                          ? const _MessageCard(
+                          ? _MessageCard(
                               icon: Icons.hub_outlined,
-                              title: 'No connector credential yet',
-                              message: 'Provisioning creates the staging connector identity automatically. You can also generate or rotate it here.',
+                              title: uiLiteral('No connector credential yet'),
+                              message: uiLiteral('Provisioning creates the staging connector identity automatically. You can also generate or rotate it here.'),
                             )
                           : LayoutBuilder(
                               builder: (context, c) {
@@ -6727,13 +6926,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                       SizedBox(
                                         width: width,
                                         child: _InfoCard(
-                                          title: '${credential['environment']} Connector',
+                                          title: '${credential['environment']} ${uiLiteral('Connector')}',
                                           icon: Icons.hub_outlined,
                                           children: [
-                                            _DefinitionRow(label: 'Credential ID', value: '${credential['credential_id'] ?? '—'}'),
-                                            _DefinitionRow(label: 'Active', value: credential['active'] == true ? 'Yes' : 'No'),
-                                            _DefinitionRow(label: 'Rotated', value: '${credential['rotated_at'] ?? '—'}'),
-                                            _DefinitionRow(label: 'Last used', value: '${credential['last_used_at'] ?? 'Never'}'),
+                                            _DefinitionRow(label: uiLiteral('Credential ID'), value: '${credential['credential_id'] ?? '—'}'),
+                                            _DefinitionRow(label: uiLiteral('Active'), value: uiLiteral(credential['active'] == true ? 'Yes' : 'No')),
+                                            _DefinitionRow(label: uiLiteral('Rotated'), value: '${credential['rotated_at'] ?? '—'}'),
+                                            _DefinitionRow(label: uiLiteral('Last used'), value: credential['last_used_at'] == null ? uiLiteral('Never') : '${credential['last_used_at']}'),
                                           ],
                                         ),
                                       ),
@@ -6817,16 +7016,16 @@ class _PackagesPageState extends State<PackagesPage> {
     }
   }
 
-  bool _packageMutationVisible(Map<String,dynamic> updated) {
-    final key = '${updated['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
-        ? 'FLEX'
-        : '${updated['plan_key'] ?? ''}'.toUpperCase();
+  String _normalizedPackageKey(dynamic raw) {
+    final key = '$raw'.toUpperCase();
+    return key == 'PREMIUM' ? 'FLEX' : key;
+  }
+
+  bool _packageMutationMatches(List<Map<String,dynamic>> source, Map<String,dynamic> updated) {
+    final key = _normalizedPackageKey(updated['plan_key'] ?? '');
     Map<String,dynamic>? current;
-    for (final plan in plans) {
-      final currentKey = '${plan['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
-          ? 'FLEX'
-          : '${plan['plan_key'] ?? ''}'.toUpperCase();
-      if (currentKey == key) {
+    for (final plan in source) {
+      if (_normalizedPackageKey(plan['plan_key'] ?? '') == key) {
         current = plan;
         break;
       }
@@ -6844,11 +7043,91 @@ class _PackagesPageState extends State<PackagesPage> {
     return expected.length == actual.length && expected.containsAll(actual);
   }
 
+  String _packageDisplayPrice(Map<String,dynamic> plan) {
+    final currency = '${plan['currency'] ?? 'USD'}'.toUpperCase();
+    final amount = number(plan['monthly_price']);
+    final formatted = intl.NumberFormat('#,##0.##').format(amount);
+    final prefix = switch (currency) {
+      'USD' => r'$',
+      'EUR' => '€',
+      'GBP' => '£',
+      _ => '$currency ',
+    };
+    return '$prefix$formatted + VAT';
+  }
+
+  void _applyPackageMutationImmediately(Map<String,dynamic> updated) {
+    if (!mounted) return;
+    final key = _normalizedPackageKey(updated['plan_key'] ?? '');
+    final index = plans.indexWhere((plan) => _normalizedPackageKey(plan['plan_key'] ?? '') == key);
+    if (index < 0) return;
+
+    final merged = <String,dynamic>{...plans[index], ...updated};
+    if (key == 'FLEX') {
+      merged['plan_key'] = 'FLEX';
+      merged['display_name'] = 'Premium';
+      merged['module_limit'] = null;
+      merged['entitlement'] = 'Unlimited';
+    } else {
+      final limit = (merged['module_limit'] as num?)?.toInt() ?? 0;
+      merged['entitlement'] = '$limit modules';
+    }
+    merged['display_price'] = _packageDisplayPrice(merged);
+
+    final fixedKeys = merged['fixed_module_keys'] is List
+        ? (merged['fixed_module_keys'] as List).map((e) => '$e').toList()
+        : <String>[];
+    merged['included_modules'] = [
+      for (final moduleKey in fixedKeys)
+        () {
+          Map<String,dynamic>? match;
+          for (final module in modules) {
+            if ('${module['key'] ?? ''}' == moduleKey) {
+              match = module;
+              break;
+            }
+          }
+          return <String,dynamic>{
+            'key': moduleKey,
+            'label': match == null ? moduleKey : moduleLabel(match),
+            if (match != null) 'group_key': match['group_key'],
+            if (match != null) 'group_label': match['group_label'],
+          };
+        }(),
+    ];
+
+    setState(() => plans[index] = merged);
+  }
+
   Future<void> _syncPackageMutation(Map<String,dynamic> updated) async {
-    await load(force: true);
-    if (!mounted || _packageMutationVisible(updated)) return;
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    if (mounted) await load(force: true);
+    _applyPackageMutationImmediately(updated);
+    unawaited(loadSupplementary());
+
+    for (var attempt = 0; attempt < 6 && mounted; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      try {
+        final model = await widget.api.get(
+          centralPackagesInitialPath(),
+          force: true,
+          maxAge: Duration.zero,
+        );
+        if (!mounted || model['ready'] != true) continue;
+        final refreshed = items(<String,dynamic>{'items': model['plans']});
+        if (_packageMutationMatches(refreshed, updated)) {
+          setState(() {
+            plans = refreshed;
+            packageReady = true;
+            loading = false;
+          });
+          return;
+        }
+      } catch (_) {
+        // Keep the authoritative mutation response visible until the hot
+        // snapshot catches up on the next refresh.
+      }
+    }
   }
 
   Future<void> loadSupplementary() async {
@@ -7028,10 +7307,11 @@ class _PackagesPageState extends State<PackagesPage> {
     final price = TextEditingController(text: number(plan['monthly_price']).toStringAsFixed(2));
     final effective = TextEditingController();
     final reason = TextEditingController();
-    final selected = <String>{
+    final originalSelected = <String>{
       for (final value in (plan['fixed_module_keys'] is List ? plan['fixed_module_keys'] as List : const []))
         '$value',
     };
+    final selected = <String>{...originalSelected};
 
     final ok = await showDialog<bool>(
       context: context,
@@ -7133,7 +7413,7 @@ class _PackagesPageState extends State<PackagesPage> {
               ),
             ],
           ),
-          primaryLabel: 'Save package',
+          primaryLabel: uiLiteral('Save package'),
           onPrimary: () => Navigator.pop(context, true),
         ),
       ),
@@ -7141,16 +7421,27 @@ class _PackagesPageState extends State<PackagesPage> {
 
     if (ok == true) {
       final monthly = double.tryParse(price.text.trim());
+      final moduleSetChanged = fixed &&
+          (selected.length != originalSelected.length || !selected.containsAll(originalSelected));
       if (monthly == null || monthly < 0) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: LText('Package price must be zero or greater.'), behavior: SnackBarBehavior.floating),
+            SnackBar(
+              content: LText(uiLiteral('Package price must be zero or greater.')),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
-      } else if (fixed && selected.length != limit) {
+      } else if (moduleSetChanged && selected.length != limit) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('Select exactly $limit modules for $key.'), behavior: SnackBarBehavior.floating),
+            SnackBar(
+              content: LText(uiBilingual(
+                'Select exactly $limit modules for $key.',
+                'Pontosan $limit modult válassz ki a(z) $key csomaghoz.',
+              )),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       } else {
@@ -7158,14 +7449,31 @@ class _PackagesPageState extends State<PackagesPage> {
           'monthly_price': monthly,
           'reason': reason.text.trim().isEmpty ? 'HIMATE administrator package update' : reason.text.trim(),
           if (effective.text.trim().isNotEmpty) 'effective_at': effective.text.trim(),
-          if (fixed) 'fixed_module_keys': selected.toList()..sort(),
+          if (moduleSetChanged) 'fixed_module_keys': selected.toList()..sort(),
         };
-        final updated = await widget.api.patch('/api/v1/billing/plans/$key', payload);
-        await _syncPackageMutation(updated);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: LText('$key package updated.'), behavior: SnackBarBehavior.floating),
-          );
+        try {
+          final updated = await widget.api.patch('/api/v1/billing/plans/$key', payload);
+          await _syncPackageMutation(updated);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: LText(uiBilingual(
+                  '$key package updated.',
+                  'A(z) $key csomag frissítve.',
+                )),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: LText('${uiLiteral('Package update failed')}: $e'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         }
       }
     }
@@ -7235,6 +7543,16 @@ class _PackagesPageState extends State<PackagesPage> {
         return (order['${a['plan_key'] ?? ''}'.toUpperCase()] ?? 99)
             .compareTo(order['${b['plan_key'] ?? ''}'.toUpperCase()] ?? 99);
       });
+    final canonicalPlansWithAnalytics = <Map<String,dynamic>>[
+      for (final plan in canonicalPlans)
+        <String,dynamic>{
+          ...plan,
+          if (analyticsByPlan[_normalizedPackageKey(plan['plan_key'] ?? '')] case final Map<String,dynamic> row)
+            ...row,
+          'plan_key': _normalizedPackageKey(plan['plan_key'] ?? ''),
+          'display_name': '${plan['display_name'] ?? plan['plan_key']}',
+        },
+    ];
     final customPackages = plans.length - canonicalPlans.length;
 
     return Content(
@@ -7260,7 +7578,7 @@ class _PackagesPageState extends State<PackagesPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  for (final plan in canonicalPlans)
+                  for (final plan in canonicalPlansWithAnalytics)
                     SizedBox(
                       width: width,
                       child: _PackageOverviewCard(
@@ -7272,7 +7590,9 @@ class _PackagesPageState extends State<PackagesPage> {
                         active: plan['active'] == true,
                         moduleLimit: (plan['module_limit'] as num?)?.toInt(),
                         includedModuleCount: (plan['included_modules'] is List) ? (plan['included_modules'] as List).length : 0,
-                        activePartnerCount: (analyticsByPlan['${plan['plan_key'] ?? ''}'.toUpperCase()]?['active_partner_count'] as num?)?.toInt() ?? 0,
+                        activePartnerCount: (analyticsByPlan['${plan['plan_key'] ?? ''}'.toUpperCase()]?['active_partner_count'] as num?)?.toInt()
+                            ?? (plan['active_partner_count'] as num?)?.toInt()
+                            ?? 0,
                         onTap: () => unawaited(showPackageDetails(plan)),
                         onEdit: () => unawaited(editPackage(plan)),
                       ),
@@ -7294,7 +7614,7 @@ class _PackagesPageState extends State<PackagesPage> {
           ],
           const SizedBox(height: 18),
           _PackageComparisonTable(
-            plans: canonicalPlans,
+            plans: canonicalPlansWithAnalytics,
             onExport: () => openPdfExportIfAvailable(
               context,
               widget.api,
@@ -7581,7 +7901,10 @@ class _PackageOverviewCardState extends State<_PackageOverviewCard> {
               accent: packageAccent,
               label: widget.moduleLimit == null
                   ? uiLiteral('Every eligible current and future module')
-                  : uiLiteral('${widget.includedModuleCount} configured modules'),
+                  : uiBilingual(
+                      '${widget.moduleLimit} module entitlement capacity',
+                      '${widget.moduleLimit} modul jogosultsági keret',
+                    ),
             ),
             const SizedBox(height: 9),
             _PackageBenefitLine(
@@ -7706,14 +8029,17 @@ class _PackageComparisonTable extends StatelessWidget {
       (uiLiteral('Entitlement'), (plan) => '${plan['entitlement'] ?? '—'}'),
       (uiLiteral('Selection mode'), _mode),
       (
-        uiLiteral('Configured modules'),
+        uiLiteral('Module capacity'),
         (plan) {
           final unlimited = '${plan['selection_mode'] ?? ''}'.toUpperCase() == 'UNLIMITED';
-          if (unlimited) return uiLiteral('Automatic');
-          final included = plan['included_modules'] is List ? (plan['included_modules'] as List).length : 0;
-          final limit = (plan['module_limit'] as num?)?.toInt();
-          return limit == null ? '$included' : '$included / $limit';
+          if (unlimited) return uiLiteral('Unlimited');
+          final limit = (plan['module_limit'] as num?)?.toInt() ?? 0;
+          return '$limit';
         },
+      ),
+      (
+        uiLiteral('Active partners'),
+        (plan) => '${(plan['active_partner_count'] as num?)?.toInt() ?? 0}',
       ),
       (uiLiteral('Status'), (plan) => uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
     ];
@@ -10286,8 +10612,8 @@ class _SystemPageState extends State<SystemPage> {
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => BrandDialog(
-          title: 'Developer diagnostics',
-          subtitle: 'Current degraded services and the latest failed protected operations.',
+          title: uiLiteral('Developer diagnostics'),
+          subtitle: uiLiteral('Current degraded services and the latest failed protected operations.'),
           icon: Icons.bug_report_outlined,
           width: 820,
           child: Column(
@@ -10295,15 +10621,15 @@ class _SystemPageState extends State<SystemPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _RuleStrip(items: [
-                _RuleItem(Icons.monitor_heart_outlined, 'Control plane', '${health['status'] ?? 'UNKNOWN'}'),
-                _RuleItem(Icons.warning_amber_rounded, 'Degraded services', '${unhealthy.length}'),
-                _RuleItem(Icons.error_outline_rounded, 'Recent failed operations', '${failures.length}'),
+                _RuleItem(Icons.monitor_heart_outlined, uiLiteral('Control plane'), '${health['status'] ?? 'UNKNOWN'}'),
+                _RuleItem(Icons.warning_amber_rounded, uiLiteral('Degraded services'), '${unhealthy.length}'),
+                _RuleItem(Icons.error_outline_rounded, uiLiteral('Recent failed operations'), '${failures.length}'),
               ]),
               const SizedBox(height: 16),
-              const _DialogSectionLabel('DEGRADED SERVICES'),
+              _DialogSectionLabel(uiLiteral('DEGRADED SERVICES')),
               const SizedBox(height: 8),
               if (unhealthy.isEmpty)
-                const LText('No degraded service is present in the current health snapshot.')
+                LText(uiLiteral('No degraded service is present in the current health snapshot.'))
               else
                 Wrap(
                   spacing: 8,
@@ -10317,10 +10643,10 @@ class _SystemPageState extends State<SystemPage> {
                   ],
                 ),
               const SizedBox(height: 18),
-              const _DialogSectionLabel('LATEST FAILED OPERATIONS'),
+              _DialogSectionLabel(uiLiteral('LATEST FAILED OPERATIONS')),
               const SizedBox(height: 8),
               if (failures.isEmpty)
-                const LText('No failed protected operation was recorded in the latest audit window.')
+                LText(uiLiteral('No failed protected operation was recorded in the latest audit window.'))
               else
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 360),
@@ -10395,6 +10721,7 @@ class _SystemPageState extends State<SystemPage> {
         final canEnvironmentsWrite = access['environments_write'] == true;
         final canEnvironmentsApprove = access['environments_approve'] == true;
         final canBackups = provisional || access['backups'] == true;
+        final canBackupsWrite = access['backups_write'] == true;
         final canBackupsApprove = access['backups_approve'] == true;
         final canAudit = access['audit'] == true;
         final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
@@ -10402,6 +10729,7 @@ class _SystemPageState extends State<SystemPage> {
             ? (meta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
             : <String>[];
         final backupPartnerIds = <String>{
+          if (canBackups) '_platform',
           for (final p in partners)
             if ('${p['partner_id'] ?? ''}'.trim().isNotEmpty &&
                 '${p['database_health'] ?? ''}' == 'OK' &&
@@ -10432,8 +10760,8 @@ class _SystemPageState extends State<SystemPage> {
 
         return Content(
           showHeader: false,
-          title: 'System & Operations',
-          subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
+          title: uiLiteral('System & Operations'),
+          subtitle: uiLiteral('System health, partner runtime state, deployments and technical diagnostics.'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -10457,7 +10785,7 @@ class _SystemPageState extends State<SystemPage> {
               ],
               ResponsiveKpiGrid(children: [
                 Kpi(
-                  label: 'System status',
+                  label: uiLiteral('System status'),
                   value: canHealth ? overall : '—',
                   note: canHealth
                       ? uiBilingual('$healthyServices / $serviceCount services healthy', '$healthyServices / $serviceCount szolgáltatás egészséges')
@@ -10466,14 +10794,14 @@ class _SystemPageState extends State<SystemPage> {
                   accent: issueCount == 0 ? brandSuccess : brandWarning,
                 ),
                 Kpi(
-                  label: 'Partner systems',
+                  label: uiLiteral('Partner systems'),
                   value: canHealth ? '$partnerSystems' : '—',
                   note: canHealth ? 'Partner health aggregates' : uiLiteral('Permission required'),
                   icon: Icons.hub_outlined,
                   accent: brandSteel,
                 ),
                 Kpi(
-                  label: 'Deployments',
+                  label: uiLiteral('Deployments'),
                   value: canEnvironments ? '$deployedEnvironments' : '—',
                   note: canEnvironments
                       ? uiBilingual('$environmentCount managed environments', '$environmentCount kezelt környezet')
@@ -10482,7 +10810,7 @@ class _SystemPageState extends State<SystemPage> {
                   accent: brandSuccess,
                 ),
                 Kpi(
-                  label: 'Issues',
+                  label: uiLiteral('Issues'),
                   value: canHealth ? '$issueCount' : '—',
                   note: canHealth
                       ? uiBilingual('$degradedServices services · $degradedPartners partners', '$degradedServices szolgáltatás · $degradedPartners partner')
@@ -10529,22 +10857,22 @@ class _SystemPageState extends State<SystemPage> {
               const SizedBox(height: 18),
               if (canHealth) ...[
                 _SectionHeader(
-                  title: 'Main service status',
-                  subtitle: 'Current authoritative status of critical microservices.',
+                  title: uiLiteral('Main service status'),
+                  subtitle: uiLiteral('Current authoritative status of critical microservices.'),
                   trailing: canAudit
                       ? OutlinedButton.icon(
                           onPressed: _openDeveloperDiagnostics,
                           icon: const Icon(Icons.code_rounded, size: 17),
-                          label: const LText('Developer diagnostics'),
+                          label: LText(uiLiteral('Developer diagnostics')),
                         )
                       : _MiniCounter(label: uiBilingual('$serviceCount services', '$serviceCount szolgáltatás')),
                 ),
                 const SizedBox(height: 12),
                 if (services.isEmpty)
-                  const _MessageCard(
+                  _MessageCard(
                     icon: Icons.dns_outlined,
-                    title: 'No service health data',
-                    message: 'No service-health snapshot is available yet.',
+                    title: uiLiteral('No service health data'),
+                    message: uiLiteral('No service-health snapshot is available yet.'),
                   )
                 else
                   Wrap(
@@ -10556,16 +10884,16 @@ class _SystemPageState extends State<SystemPage> {
                     ],
                   ),
                 _SectionHeader(
-                  title: 'Partner Health',
-                  subtitle: 'Connector, environment, provisioning and platform-version state aggregated per partner.',
+                  title: uiLiteral('Partner Health'),
+                  subtitle: uiLiteral('Connector, environment, provisioning and platform-version state aggregated per partner.'),
                   trailing: _MiniCounter(label: uiBilingual('${partners.length} partners', '${partners.length} partner')),
                 ),
                 const SizedBox(height: 12),
                 if (partners.isEmpty)
-                  const _MessageCard(
+                  _MessageCard(
                     icon: Icons.monitor_heart_outlined,
-                    title: 'No partner health data',
-                    message: 'No partner health aggregate is available in the current snapshot.',
+                    title: uiLiteral('No partner health data'),
+                    message: uiLiteral('No partner health aggregate is available in the current snapshot.'),
                   )
                 else
                   LayoutBuilder(
@@ -10586,16 +10914,16 @@ class _SystemPageState extends State<SystemPage> {
                                 title: '${p['partner_id']}',
                                 icon: Icons.monitor_heart_outlined,
                                 children: [
-                                  _DefinitionRow(label: 'Overall', value: '${p['overall_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Connector', value: '${p['connector_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Environment', value: '${p['environment_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Partner DB', value: '${p['database_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Storage', value: '${p['storage_health'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Hostname / runtime', value: '${p['hostname_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Data sync', value: '${p['sync_status'] ?? 'NEVER'}'),
-                                  _DefinitionRow(label: 'Last sync', value: '${p['last_sync_at'] ?? '—'}'),
-                                  _DefinitionRow(label: 'Provisioning', value: '${p['provisioning_status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Version', value: '${p['platform_version'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Overall'), value: uiLiteral(_humanize('${p['overall_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Connector'), value: uiLiteral(_humanize('${p['connector_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Environment'), value: uiLiteral(_humanize('${p['environment_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Partner DB'), value: uiLiteral(_humanize('${p['database_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Storage'), value: uiLiteral(_humanize('${p['storage_health'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Hostname / runtime'), value: uiLiteral(_humanize('${p['hostname_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Data sync'), value: uiLiteral(_humanize('${p['sync_status'] ?? 'NEVER'}'))),
+                                  _DefinitionRow(label: uiLiteral('Last sync'), value: '${p['last_sync_at'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Provisioning'), value: uiLiteral(_humanize('${p['provisioning_status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Version'), value: '${p['platform_version'] ?? '—'}'),
                                 ],
                               ),
                             ),
@@ -10607,16 +10935,16 @@ class _SystemPageState extends State<SystemPage> {
               ],
               if (canProvisioning) ...[
                 _SectionHeader(
-                  title: 'Provisioning Engine',
-                  subtitle: 'Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.',
+                  title: uiLiteral('Provisioning Engine'),
+                  subtitle: uiLiteral('Idempotent jobs can resume after interruption without creating duplicate partner infrastructure.'),
                   trailing: _MiniCounter(label: uiBilingual('${provisioning.length} jobs', '${provisioning.length} feladat')),
                 ),
                 const SizedBox(height: 12),
                 if (provisioning.isEmpty)
-                  const _MessageCard(
+                  _MessageCard(
                     icon: Icons.precision_manufacturing_outlined,
-                    title: 'No provisioning jobs',
-                    message: 'No provisioning job is present in the current operations snapshot.',
+                    title: uiLiteral('No provisioning jobs'),
+                    message: uiLiteral('No provisioning job is present in the current operations snapshot.'),
                   )
                 else
                   LayoutBuilder(
@@ -10637,10 +10965,10 @@ class _SystemPageState extends State<SystemPage> {
                                 title: '${j['partner_id']}',
                                 icon: Icons.precision_manufacturing_outlined,
                                 children: [
-                                  _DefinitionRow(label: 'Status', value: '${j['status'] ?? 'UNKNOWN'}'),
-                                  _DefinitionRow(label: 'Current step', value: '${j['current_step'] ?? '—'}'),
-                                  _DefinitionRow(label: 'System', value: '${j['system_name'] ?? '—'}'),
-                                  _DefinitionRow(label: 'Release', value: '${j['desired_release'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Status'), value: uiLiteral(_humanize('${j['status'] ?? 'UNKNOWN'}'))),
+                                  _DefinitionRow(label: uiLiteral('Current step'), value: '${j['current_step'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('System'), value: '${j['system_name'] ?? '—'}'),
+                                  _DefinitionRow(label: uiLiteral('Release'), value: '${j['desired_release'] ?? '—'}'),
                                 ],
                               ),
                             ),
@@ -10665,22 +10993,23 @@ class _SystemPageState extends State<SystemPage> {
                   initialSummary: backupSummary,
                   partnerIds: backupPartnerIds,
                   initialProvider: backupProvider,
-                  canMutate: canBackupsApprove,
+                  canMutate: canBackupsWrite,
+                  canApproveRestore: canBackupsApprove,
                 ),
                 const SizedBox(height: 24),
               ],
               if (canAudit) ...[
                 _SectionHeader(
-                  title: 'Recent protected events',
-                  subtitle: 'Latest authenticated operations from the immutable central audit trail.',
+                  title: uiLiteral('Recent protected events'),
+                  subtitle: uiLiteral('Latest authenticated operations from the immutable central audit trail.'),
                   trailing: _MiniCounter(label: uiBilingual('${recentEvents.length} events', '${recentEvents.length} esemény')),
                 ),
                 const SizedBox(height: 12),
                 if (recentEvents.isEmpty)
-                  const _MessageCard(
+                  _MessageCard(
                     icon: Icons.event_note_outlined,
-                    title: 'No recent protected events',
-                    message: 'The current audit window does not contain protected operations.',
+                    title: uiLiteral('No recent protected events'),
+                    message: uiLiteral('The current audit window does not contain protected operations.'),
                   )
                 else
                   Card(
@@ -10801,11 +11130,11 @@ class _SystemCurrentHealthCard extends StatelessWidget {
               Row(children:[
                 const Icon(Icons.bar_chart_rounded,color:brandSteel,size:21),
                 const SizedBox(width:9),
-                Expanded(child:LText('System health overview',style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
+                Expanded(child:LText(uiLiteral('System health overview'),style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
                 _StatusPill(label: overall),
               ]),
               const SizedBox(height:5),
-              const LText('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.',style:TextStyle(color:brandTextSoft,fontSize:9.5)),
+              LText(uiLiteral('Current service availability from the authoritative health snapshot. Historical trend is not invented when no time-series source exists.'),style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
               const Spacer(),
               LinearProgressIndicator(
                 value: ratio,
@@ -10873,13 +11202,13 @@ class _SystemInfrastructureSummary extends StatelessWidget {
         child:Padding(
           padding:const EdgeInsets.all(18),
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            LText('Infrastructure status',style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+            LText(uiLiteral('Infrastructure status'),style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
-            _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
-            _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
-            _DefinitionRow(label:'Live environments',value:canEnvironments?'$live':'—'),
-            _DefinitionRow(label:'Partner systems',value:canHealth?'$partnerCount':'—'),
-            _DefinitionRow(label:'Backup scopes',value:canBackups?'${backups.length}':'—'),
+            _DefinitionRow(label:uiLiteral('Managed environments'),value:canEnvironments?'${environments.length}':'—'),
+            _DefinitionRow(label:uiLiteral('Production environments'),value:canEnvironments?'$production':'—'),
+            _DefinitionRow(label:uiLiteral('Live environments'),value:canEnvironments?'$live':'—'),
+            _DefinitionRow(label:uiLiteral('Partner systems'),value:canHealth?'$partnerCount':'—'),
+            _DefinitionRow(label:uiLiteral('Backup scopes'),value:canBackups?'${backups.length}':'—'),
             const Spacer(),
             Row(children:[
               Icon(
@@ -12548,16 +12877,16 @@ class _ArchitectureCard extends StatelessWidget {
   const _ArchitectureCard();
 
   @override
-  Widget build(BuildContext context) => const _InfoCard(
-    title: 'Architecture',
+  Widget build(BuildContext context) => _InfoCard(
+    title: uiLiteral('Architecture'),
     icon: Icons.account_tree_outlined,
     children: [
-      _DefinitionRow(label: 'Public ingress', value: 'HIMATE API Gateway'),
-      _DefinitionRow(label: 'Identity boundary', value: 'Gateway session service'),
-      _DefinitionRow(label: 'Partner domain', value: 'Independent Go service'),
-      _DefinitionRow(label: 'Catalog domain', value: 'Independent Go service'),
-      _DefinitionRow(label: 'Billing domain', value: 'Independent Go service'),
-      _DefinitionRow(label: 'Persistence', value: 'PostgreSQL · service-owned schemas'),
+      _DefinitionRow(label: uiLiteral('Public ingress'), value: 'HIMATE API Gateway'),
+      _DefinitionRow(label: uiLiteral('Identity boundary'), value: uiLiteral('Gateway session service')),
+      _DefinitionRow(label: uiLiteral('Partner domain'), value: uiLiteral('Independent Go service')),
+      _DefinitionRow(label: uiLiteral('Catalog domain'), value: uiLiteral('Independent Go service')),
+      _DefinitionRow(label: uiLiteral('Billing domain'), value: uiLiteral('Independent Go service')),
+      _DefinitionRow(label: uiLiteral('Persistence'), value: uiLiteral('PostgreSQL · service-owned schemas')),
     ],
   );
 }
@@ -12566,16 +12895,16 @@ class _OperationsControlsCard extends StatelessWidget {
   const _OperationsControlsCard();
 
   @override
-  Widget build(BuildContext context) => const _InfoCard(
-    title: 'Operational Controls',
+  Widget build(BuildContext context) => _InfoCard(
+    title: uiLiteral('Operational Controls'),
     icon: Icons.shield_outlined,
     children: [
-      _DefinitionRow(label: 'Containerization', value: 'Enabled'),
-      _DefinitionRow(label: 'Horizontal scaling', value: 'Stateless service design'),
-      _DefinitionRow(label: 'Private services', value: 'Internal network only'),
-      _DefinitionRow(label: 'Partner databases', value: 'Separate from HIMATE control plane'),
-      _DefinitionRow(label: 'Connector model', value: 'Pre-defined API exchange'),
-      _DefinitionRow(label: 'Backups / restore', value: 'Encrypted · restore verified'),
+      _DefinitionRow(label: uiLiteral('Containerization'), value: uiLiteral('Enabled')),
+      _DefinitionRow(label: uiLiteral('Horizontal scaling'), value: uiLiteral('Stateless service design')),
+      _DefinitionRow(label: uiLiteral('Private services'), value: uiLiteral('Internal network only')),
+      _DefinitionRow(label: uiLiteral('Partner databases'), value: uiLiteral('Separate from HIMATE control plane')),
+      _DefinitionRow(label: uiLiteral('Connector model'), value: uiLiteral('Pre-defined API exchange')),
+      _DefinitionRow(label: uiLiteral('Backups / restore'), value: uiLiteral('Encrypted · restore verified')),
     ],
   );
 }
@@ -12864,7 +13193,7 @@ class ServiceCard extends StatelessWidget {
             const Spacer(),
             LText(name, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 14)),
             const SizedBox(height: 3),
-            LText(ok ? 'Service responding normally' : 'Awaiting healthy response', style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+            LText(uiLiteral(ok ? 'Service responding normally' : 'Awaiting healthy response'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
           ]),
         ),
       ),

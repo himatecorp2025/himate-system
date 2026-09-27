@@ -17,6 +17,7 @@ class AdministrationCenterPage extends StatefulWidget {
     required this.canBillingRead,
     required this.canBillingWrite,
     required this.canBackupsRead,
+    required this.canBackupsWrite,
     required this.canBackupsApprove,
     required this.canAuditRead,
     super.key,
@@ -28,6 +29,7 @@ class AdministrationCenterPage extends StatefulWidget {
   final bool canBillingRead;
   final bool canBillingWrite;
   final bool canBackupsRead;
+  final bool canBackupsWrite;
   final bool canBackupsApprove;
   final bool canAuditRead;
 
@@ -71,7 +73,9 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
   Future<void> load({bool quiet = false, bool force = false}) async {
     if (!quiet && mounted) setState(() { loading = true; error = null; });
     try {
-      final model = await widget.api.get(administrationPath(), force: force, maxAge: const Duration(seconds: 20));
+      final model = await widget.api
+          .get(administrationPath(), force: force, maxAge: const Duration(seconds: 5))
+          .timeout(const Duration(seconds: 6));
       if (!mounted) return;
       setState(() {
         company = model['company'] is Map ? Map<String, dynamic>.from(model['company'] as Map) : <String, dynamic>{};
@@ -229,6 +233,22 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (loading && company.isEmpty && partners.isEmpty) ...[
+            _MessageCard(
+              icon: Icons.sync_rounded,
+              title: uiLiteral('Administration data is loading'),
+              message: uiLiteral('The Administration workspace is available while the latest central read model is loaded.'),
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (error != null) ...[
+            _MessageCard(
+              icon: Icons.cloud_off_outlined,
+              title: uiLiteral('Administration data is partially unavailable'),
+              message: error!,
+            ),
+            const SizedBox(height: 14),
+          ],
           ResponsiveKpiGrid(children: [
             Kpi(label: 'Administrators', value: '$admins', note: 'Active HIMATE administrators', icon: Icons.groups_2_outlined, accent: brandSteel),
             Kpi(label: 'Documents', value: '$documents', note: 'Corporate document records', icon: Icons.folder_outlined, accent: brandGold),
@@ -618,24 +638,6 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && company.isEmpty && partners.isEmpty) {
-      return const Content(
-        showHeader: false,
-        title: 'Administration',
-        subtitle: 'Central management of HIMATE, partner administration, documents, access and recovery.',
-        child: _BrandLoading(),
-      );
-    }
-    if (error != null && company.isEmpty && partners.isEmpty) {
-      return Content(
-        showHeader: false,
-        eyebrow: 'CENTRAL-14 · ADMINISTRATION',
-        title: 'Administration Center',
-        subtitle: 'Corporate and partner administration read model.',
-        child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Administration unavailable', message: error!),
-      );
-    }
-
     switch (section) {
       case 'company':
         return companyView();
@@ -673,7 +675,8 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
             api: widget.api,
             partnerRows: partners,
             ids: const <String>['_platform'],
-            canMutate: widget.canBackupsApprove,
+            canMutate: widget.canBackupsWrite,
+            canApproveRestore: widget.canBackupsApprove,
           ),
         );
       case 'partner_documents':
@@ -723,7 +726,8 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
             api: widget.api,
             partnerRows: <Map<String, dynamic>>[partner],
             ids: <String>[id],
-            canMutate: widget.canBackupsApprove,
+            canMutate: widget.canBackupsWrite,
+            canApproveRestore: widget.canBackupsApprove,
           ),
         );
       default:
@@ -1330,12 +1334,14 @@ class AdministrationRecoveryPanel extends StatefulWidget {
     required this.partnerRows,
     required this.ids,
     required this.canMutate,
+    required this.canApproveRestore,
     super.key,
   });
   final Api api;
   final List<Map<String, dynamic>> partnerRows;
   final List<String> ids;
   final bool canMutate;
+  final bool canApproveRestore;
 
   @override
   State<AdministrationRecoveryPanel> createState() => _AdministrationRecoveryPanelState();
@@ -1387,6 +1393,7 @@ class _AdministrationRecoveryPanelState extends State<AdministrationRecoveryPane
       partnerLabels: labels,
       productionRestoreEligible: eligible,
       canMutate: widget.canMutate,
+      canApproveRestore: widget.canApproveRestore,
       scopeToPartnerIds: true,
     );
   }
