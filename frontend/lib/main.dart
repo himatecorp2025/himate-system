@@ -136,7 +136,7 @@ ThemeData buildBrandTheme() {
     error: brandDanger,
   );
   final base = GoogleFonts.interTextTheme(ThemeData.light().textTheme);
-  final display = GoogleFonts.cormorantGaramondTextTheme(ThemeData.light().textTheme);
+  final display = GoogleFonts.loraTextTheme(ThemeData.light().textTheme);
   const inputBorder = OutlineInputBorder(
     borderRadius: BorderRadius.all(Radius.circular(12)),
     borderSide: BorderSide(color: brandMist),
@@ -154,9 +154,9 @@ ThemeData buildBrandTheme() {
       headlineLarge: display.headlineLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.45, height: 1.03),
       headlineMedium: display.headlineMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.3, height: 1.05),
       headlineSmall: display.headlineSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700, letterSpacing: -.15, height: 1.08),
-      titleLarge: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
-      titleMedium: base.titleMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
-      titleSmall: base.titleSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w700),
+      titleLarge: display.titleLarge?.copyWith(color: brandNavy, fontWeight: FontWeight.w600),
+      titleMedium: display.titleMedium?.copyWith(color: brandNavy, fontWeight: FontWeight.w600),
+      titleSmall: base.titleSmall?.copyWith(color: brandNavy, fontWeight: FontWeight.w600),
       bodyLarge: base.bodyLarge?.copyWith(color: brandCharcoal),
       bodyMedium: base.bodyMedium?.copyWith(color: brandCharcoal),
       bodySmall: base.bodySmall?.copyWith(color: brandTextSoft),
@@ -1459,7 +1459,7 @@ class _DesktopLoginComposition extends StatelessWidget {
                 const Spacer(),
                 LText(
                   'Culture\nConnects\nPeople',
-                  style: GoogleFonts.cormorantGaramond(
+                  style: GoogleFonts.lora(
                     color: brandWhite,
                     fontSize: headlineSize,
                     height: .88,
@@ -1546,7 +1546,7 @@ class _CompactLoginComposition extends StatelessWidget {
           SizedBox(height: narrow ? 58 : 90),
           LText(
             'Culture Connects People',
-            style: GoogleFonts.cormorantGaramond(
+            style: GoogleFonts.lora(
               color: brandWhite,
               fontSize: narrow ? 38 : 47,
               height: .95,
@@ -1637,7 +1637,7 @@ class _LoginCard extends StatelessWidget {
           LText(
             tr(context, 'welcomeBack'),
             textAlign: TextAlign.center,
-            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 39, fontWeight: FontWeight.w700, height: 1),
+            style: GoogleFonts.lora(color: brandNavy, fontSize: 39, fontWeight: FontWeight.w700, height: 1),
           ),
           const SizedBox(height: 8),
           LText(tr(context, 'signInSubtitle'), textAlign: TextAlign.center, style: GoogleFonts.inter(color: brandSteel, fontSize: 15.5)),
@@ -2199,7 +2199,7 @@ class _ShellState extends State<Shell> {
                 child: Column(
                   children: [
                     Container(
-                      height: referenceHeader ? 86 : 74,
+                      height: referenceHeader ? 82 : 74,
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       decoration: const BoxDecoration(color: brandSurface, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
@@ -2211,7 +2211,7 @@ class _ShellState extends State<Shell> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  LText(referenceTitle, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                                  LText(referenceTitle, style: GoogleFonts.lora(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
                                   const SizedBox(height: 4),
                                   LText(referenceSubtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
                                 ],
@@ -2220,19 +2220,25 @@ class _ShellState extends State<Shell> {
                             const SizedBox(width: 22),
                             Expanded(
                               flex: 3,
-                              child: TextField(
-                                readOnly: true,
-                                onTap: () => unawaited(openGlobalSearch(context)),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  hintText: uiLiteral('Search partners, modules and reports...'),
-                                  prefixIcon: const Icon(Icons.search_rounded, size: 19),
-                                  suffixIcon: Container(
-                                    margin: const EdgeInsets.all(8),
-                                    alignment: Alignment.center,
-                                    width: 28,
-                                    decoration: BoxDecoration(color: const Color(0xFFF0F3F7), borderRadius: BorderRadius.circular(6)),
-                                    child: const LText('⌘ K', style: TextStyle(color: brandTextSoft, fontSize: 8.5, fontWeight: FontWeight.w700)),
+                              child: Align(
+                                alignment: Alignment.center,
+                                child: SizedBox(
+                                  height: 44,
+                                  child: TextField(
+                                    readOnly: true,
+                                    onTap: () => unawaited(openGlobalSearch(context)),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: uiLiteral('Search partners, modules and reports...'),
+                                      prefixIcon: const Icon(Icons.search_rounded, size: 19),
+                                      suffixIcon: Container(
+                                        margin: const EdgeInsets.all(6),
+                                        alignment: Alignment.center,
+                                        width: 34,
+                                        decoration: BoxDecoration(color: const Color(0xFFF0F3F7), borderRadius: BorderRadius.circular(6)),
+                                        child: const LText('⌘ K', style: TextStyle(color: brandTextSoft, fontSize: 8.5, fontWeight: FontWeight.w700)),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2279,12 +2285,25 @@ class _ShellState extends State<Shell> {
                                       _Avatar(name: '${widget.user['name'] ?? 'Admin User'}'),
                                       const SizedBox(width: 9),
                                       ConstrainedBox(
-                                        constraints: const BoxConstraints(maxWidth: 130),
-                                        child: LText(
-                                          '${widget.user['name'] ?? 'Admin User'}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 12),
+                                        constraints: const BoxConstraints(maxWidth: 145),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            LText(
+                                              '${widget.user['name'] ?? 'Admin User'}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w700, fontSize: 11.5),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            LText(
+                                              '${widget.user['job_title'] ?? widget.user['role_label'] ?? uiLiteral('Administrator')}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: brandTextSoft, fontWeight: FontWeight.w500, fontSize: 8.8),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                       const SizedBox(width: 4),
@@ -2383,7 +2402,7 @@ class _SidebarContent extends StatelessWidget {
                     const Divider(color: Color(0x22FFFFFF), height: 1),
                     const SizedBox(height: 18),
                     LText('Greater impact.\nStronger communities.\nA sustainable future.',
-                        style: GoogleFonts.cormorantGaramond(
+                        style: GoogleFonts.lora(
                           color: const Color(0xFFD9E2EC),
                           fontSize: 16,
                           height: 1.35,
@@ -2651,7 +2670,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
                   Expanded(
                     child: LText(
                       uiLiteral('Global search'),
-                      style: GoogleFonts.cormorantGaramond(fontSize: 24, fontWeight: FontWeight.w700, color: brandNavy),
+                      style: GoogleFonts.lora(fontSize: 24, fontWeight: FontWeight.w700, color: brandNavy),
                     ),
                   ),
                   IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
@@ -2861,13 +2880,6 @@ class DashboardPage extends StatelessWidget {
               showHeader: false,
             title: uiLiteral('Dashboard'),
             subtitle: uiLiteral('Partners, modules and impact in one executive overview.'),
-            actions: [
-              OutlinedButton.icon(
-                onPressed: () => openPdfExportIfAvailable(context, api, '/api/v1/partners/export.pdf'),
-                icon: const Icon(Icons.download_outlined),
-                label: LText(uiLiteral('PDF export')),
-              ),
-            ],
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2941,6 +2953,7 @@ class DashboardPage extends StatelessWidget {
                     final report = _DashboardPartnerReportPreview(
                       partners: geoPartners,
                       onOpenPartners: canNavigate(1) ? () => onNavigate(1) : null,
+                      onExport: () => openPdfExportIfAvailable(context, api, '/api/v1/partners/export.pdf'),
                     );
                     if (constraints.maxWidth < 980) {
                       return Column(children: [activityPanel, const SizedBox(height: 16), report]);
@@ -2993,7 +3006,7 @@ class _DashboardUsMapCard extends StatelessWidget {
                 Row(children: [
                   const Icon(Icons.location_on_rounded, color: brandSteel, size: 22),
                   const SizedBox(width: 8),
-                  Expanded(child: LText(uiLiteral('Partners in the United States'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w700))),
+                  Expanded(child: LText(uiLiteral('Partners in the United States'), style: GoogleFonts.lora(color: brandNavy, fontSize: 25, fontWeight: FontWeight.w700))),
                   IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
                 ]),
                 const SizedBox(height: 12),
@@ -3035,7 +3048,7 @@ class _DashboardUsMapCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        LText(uiLiteral('Partners in the United States'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                        LText(uiLiteral('Partners in the United States'), style: GoogleFonts.lora(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
                         LText(uiLiteral('Active partner distribution by state'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
                       ],
                     ),
@@ -3102,7 +3115,7 @@ class _DashboardMapStat extends StatelessWidget {
         decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(12)),
         child: Column(
           children: [
-            LText(value, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 26, fontWeight: FontWeight.w700, height: 1)),
+            LText(value, style: GoogleFonts.lora(color: brandNavy, fontSize: 26, fontWeight: FontWeight.w700, height: 1)),
             const SizedBox(height: 4),
             LText(label, textAlign: TextAlign.center, style: const TextStyle(color: brandTextSoft, fontSize: 9)),
           ],
@@ -3198,9 +3211,10 @@ class _DashboardUsMapPainter extends CustomPainter {
 }
 
 class _DashboardPartnerReportPreview extends StatelessWidget {
-  const _DashboardPartnerReportPreview({required this.partners, this.onOpenPartners});
+  const _DashboardPartnerReportPreview({required this.partners, this.onOpenPartners, this.onExport});
   final List<Map<String, dynamic>> partners;
   final VoidCallback? onOpenPartners;
+  final VoidCallback? onExport;
 
   String _shortDate(dynamic raw) {
     final parsed = DateTime.tryParse('${raw ?? ''}');
@@ -3223,9 +3237,15 @@ class _DashboardPartnerReportPreview extends StatelessWidget {
                 children: [
                   const Icon(Icons.description_outlined, color: brandSteel, size: 20),
                   const SizedBox(width: 8),
-                  Expanded(child: LText(uiLiteral('Partner reporting'), style: GoogleFonts.cormorantGaramond(color: brandNavy,fontSize:19,fontWeight:FontWeight.w700))),
+                  Expanded(child: LText(uiLiteral('Partner reporting'), style: GoogleFonts.lora(color: brandNavy,fontSize:19,fontWeight:FontWeight.w700))),
                   if (onOpenPartners != null)
                     TextButton(onPressed: onOpenPartners, child: LText(uiLiteral('All partners'))),
+                  if (onExport != null)
+                    OutlinedButton.icon(
+                      onPressed: onExport,
+                      icon: const Icon(Icons.download_outlined, size: 16),
+                      label: LText(uiLiteral('PDF export')),
+                    ),
                 ],
               ),
               LText(uiLiteral('Join date, state, active modules and lifecycle status from the Central read model.'), style: const TextStyle(color:brandTextSoft,fontSize:9.5)),
@@ -3315,7 +3335,7 @@ class _ImpactPanelState extends State<_ImpactPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  LText(widget.title, style: GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20)),
+                  LText(widget.title, style: GoogleFonts.lora(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20)),
                   if (widget.subtitle.isNotEmpty)
                     LText(widget.subtitle, style: const TextStyle(color:brandTextSoft,fontSize:9.5)),
                 ],
@@ -3495,7 +3515,7 @@ class _ActivityPanel extends StatelessWidget {
       padding:const EdgeInsets.fromLTRB(20,20,20,16),
       child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         Row(children:[
-          Expanded(child:LText(uiLiteral('Recent Activity'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
+          Expanded(child:LText(uiLiteral('Recent Activity'),style:GoogleFonts.lora(color:brandNavy,fontWeight:FontWeight.w700,fontSize:20))),
           LText(uiLiteral('Live audit feed'),style:GoogleFonts.inter(color:brandSteel,fontSize:9.5,fontWeight:FontWeight.w600)),
         ]),
         const SizedBox(height:10),
@@ -4628,47 +4648,68 @@ class _PartnersPageState extends State<PartnersPage> {
                             Expanded(child: health),
                             const SizedBox(width: 10),
                             SizedBox(
-                              width: 190,
+                              width: 168,
                               child: SwitchListTile.adaptive(
                                 dense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 6),
                                 value: referenceOnly,
-                                title: const LText('Reference partners', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                title: const LText('Reference partners', style: TextStyle(fontSize: 10.2, fontWeight: FontWeight.w600)),
                                 onChanged: (value) {
                                   setState(() => referenceOnly = value);
                                   load(reset: true);
                                 },
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
+                              icon: const Icon(Icons.download_outlined, size: 16),
+                              label: LText(uiLiteral('Export PDF')),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: addCategory,
+                              icon: const Icon(Icons.create_new_folder_outlined, size: 16),
+                              label: LText(uiLiteral('Add category')),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              key: const Key('partners-new-partner-button'),
+                              onPressed: addPartner,
+                              icon: const Icon(Icons.add_rounded, size: 17),
+                              label: LText(uiLiteral('New Partner')),
+                              style: FilledButton.styleFrom(backgroundColor: brandGold, foregroundColor: brandNavy),
+                            ),
                           ]);
                         },
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Wrap(
-                      alignment: WrapAlignment.end,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
-                          icon: const Icon(Icons.download_outlined, size: 17),
-                          label: LText(uiLiteral('Export PDF')),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: addCategory,
-                          icon: const Icon(Icons.create_new_folder_outlined, size: 17),
-                          label: LText(uiLiteral('Add category')),
-                        ),
-                        FilledButton.icon(
-                          key: const Key('partners-new-partner-button'),
-                          onPressed: addPartner,
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: LText(uiLiteral('New Partner')),
-                          style: FilledButton.styleFrom(backgroundColor: brandGold, foregroundColor: brandNavy),
-                        ),
-                      ],
-                    ),
+                    if (MediaQuery.sizeOf(context).width < 1200)
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
+                            icon: const Icon(Icons.download_outlined, size: 17),
+                            label: LText(uiLiteral('Export PDF')),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: addCategory,
+                            icon: const Icon(Icons.create_new_folder_outlined, size: 17),
+                            label: LText(uiLiteral('Add category')),
+                          ),
+                          FilledButton.icon(
+                            key: const Key('partners-new-partner-button-compact'),
+                            onPressed: addPartner,
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: LText(uiLiteral('New Partner')),
+                            style: FilledButton.styleFrom(backgroundColor: brandGold, foregroundColor: brandNavy),
+                          ),
+                        ],
+                      ),
                     if (referenceOnly) ...[
                       const SizedBox(height: 8),
                       Align(
@@ -4690,7 +4731,7 @@ class _PartnersPageState extends State<PartnersPage> {
                         Expanded(
                           child: LText(
                             '${uiLiteral('Partners')} ($total)',
-                            style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 24, fontWeight: FontWeight.w700),
+                            style: GoogleFonts.lora(color: brandNavy, fontSize: 24, fontWeight: FontWeight.w700),
                           ),
                         ),
                         SizedBox(
@@ -4749,7 +4790,6 @@ class _PartnersPageState extends State<PartnersPage> {
                                 ),
                               ),
                             ),
-                          SizedBox(width: width, child: NewPartnerCard(onTap: addPartner)),
                         ];
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -7201,14 +7241,6 @@ class _PackagesPageState extends State<PackagesPage> {
       showHeader: false,
       title: 'Packages',
       subtitle: 'Subscription packages, module entitlements and configuration.',
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => openPdfExportIfAvailable(context, widget.api, '/api/v1/billing/packages/export.pdf'),
-          icon: const Icon(Icons.download_outlined),
-          label: const LText('Export PDF'),
-        ),
-        OutlinedButton.icon(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
-      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -7261,7 +7293,14 @@ class _PackagesPageState extends State<PackagesPage> {
             ),
           ],
           const SizedBox(height: 18),
-          _PackageComparisonTable(plans: canonicalPlans),
+          _PackageComparisonTable(
+            plans: canonicalPlans,
+            onExport: () => openPdfExportIfAvailable(
+              context,
+              widget.api,
+              '/api/v1/billing/packages/export.pdf',
+            ),
+          ),
           const SizedBox(height: 24),
           _SectionHeader(
             title: 'Package Analytics',
@@ -7411,168 +7450,245 @@ class _PackageOverviewCardState extends State<_PackageOverviewCard> {
     _ => Icons.inventory_2_outlined,
   };
 
+  Color get packageAccent => switch (widget.planKey.toUpperCase()) {
+    'BUSINESS' => brandGold,
+    'FLEX' || 'PREMIUM' => const Color(0xFF6C63D9),
+    _ => brandSteel,
+  };
+
   @override
   Widget build(BuildContext context) => MouseRegion(
     onEnter: (_) => setState(() => hover = true),
     onExit: (_) => setState(() => hover = false),
     child: AnimatedContainer(
       duration: const Duration(milliseconds: 170),
-      transform: Matrix4.translationValues(0, hover ? -4 : highlighted ? -2 : 0, 0),
-      constraints: const BoxConstraints(minHeight: 360),
+      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      constraints: const BoxConstraints(minHeight: 420),
       decoration: BoxDecoration(
         color: brandWhite,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: highlighted
               ? brandGold
               : hover
-                  ? brandGold.withOpacity(.68)
+                  ? packageAccent.withOpacity(.55)
                   : brandMist,
-          width: highlighted ? 1.8 : hover ? 1.3 : 1,
+          width: highlighted ? 1.4 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: brandNavy.withOpacity(highlighted ? .11 : hover ? .09 : .05),
-            blurRadius: highlighted ? 26 : hover ? 22 : 14,
-            offset: Offset(0, highlighted ? 10 : hover ? 8 : 5),
+            color: brandNavy.withOpacity(hover ? .075 : .035),
+            blurRadius: hover ? 20 : 12,
+            offset: Offset(0, hover ? 7 : 4),
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 17),
-            child: Column(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: highlighted ? brandGold.withOpacity(.14) : brandSteel.withOpacity(.08),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(packageIcon, color: highlighted ? brandGold : brandNavy, size: 25),
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: packageAccent.withOpacity(.10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  const Spacer(),
-                  if (highlighted)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(color: brandGold.withOpacity(.14), borderRadius: BorderRadius.circular(99)),
-                      child: LText(uiLiteral('Most popular'), style: const TextStyle(color: Color(0xFF8B6508), fontSize: 9, fontWeight: FontWeight.w800)),
-                    ),
-                  const SizedBox(width: 6),
-                  IconButton(
-                    tooltip: uiLiteral('Edit package'),
-                    onPressed: widget.onEdit,
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                  ),
-                ]),
-                const SizedBox(height: 18),
-                LText(
-                  widget.name,
-                  style: GoogleFonts.cormorantGaramond(
-                    color: brandNavy,
-                    fontSize: 31,
-                    fontWeight: FontWeight.w700,
-                    height: 1.0,
-                  ),
+                  child: Icon(packageIcon, color: packageAccent, size: 25),
                 ),
-                const SizedBox(height: 8),
-                LText(
-                  widget.price,
-                  style: const TextStyle(color: brandTextSoft, fontSize: 13, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 13),
-                LText(widget.description, style: const TextStyle(color: brandCharcoal, fontSize: 11.3, height: 1.48)),
-                const SizedBox(height: 16),
-                const Divider(height: 1),
-                const SizedBox(height: 14),
-                _PackageFeatureRow(
-                  icon: Icons.widgets_outlined,
-                  label: uiLiteral('Included modules'),
-                  value: widget.moduleLimit == null ? uiLiteral('Unlimited') : '${widget.moduleLimit}',
-                ),
-                const SizedBox(height: 9),
-                _PackageFeatureRow(
-                  icon: Icons.checklist_rounded,
-                  label: uiLiteral('Configured modules'),
-                  value: widget.moduleLimit == null ? uiLiteral('Automatic') : '${widget.includedModuleCount} / ${widget.moduleLimit}',
-                ),
-                const SizedBox(height: 9),
-                _PackageFeatureRow(
-                  icon: Icons.groups_2_outlined,
-                  label: uiLiteral('Active partners'),
-                  value: '${widget.activePartnerCount}',
-                ),
-                const SizedBox(height: 9),
-                _PackageFeatureRow(
-                  icon: Icons.verified_outlined,
-                  label: uiLiteral('Status'),
-                  value: uiLiteral(widget.active ? 'Active' : 'Inactive'),
-                ),
-                const Spacer(),
-                const SizedBox(height: 16),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: widget.onTap,
-                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                      label: LText(uiLiteral('Package details')),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Material(
-                    color: highlighted ? brandGold : const Color(0xFFF1F5FA),
-                    borderRadius: BorderRadius.circular(9),
-                    child: InkWell(
-                      onTap: widget.onTap,
-                      borderRadius: BorderRadius.circular(9),
-                      child: SizedBox(
-                        width: 40,
-                        height: 40,
-                        child: Icon(Icons.arrow_forward_rounded, color: highlighted ? brandNavy : brandSteel, size: 19),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LText(
+                        widget.name,
+                        style: GoogleFonts.lora(
+                          color: brandNavy,
+                          fontSize: 27,
+                          fontWeight: FontWeight.w600,
+                          height: 1.05,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      LText(
+                        widget.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: brandTextSoft, fontSize: 10.2, height: 1.35),
+                      ),
+                    ],
                   ),
-                ]),
+                ),
+                if (highlighted)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    decoration: BoxDecoration(color: brandGold.withOpacity(.14), borderRadius: BorderRadius.circular(99)),
+                    child: LText(
+                      uiLiteral('Most popular'),
+                      style: const TextStyle(color: Color(0xFF8B6508), fontSize: 8.7, fontWeight: FontWeight.w700),
+                    ),
+                  )
+                else
+                  _StatusPill(label: uiLiteral(widget.active ? 'Active' : 'Inactive')),
               ],
             ),
-          ),
+            const SizedBox(height: 18),
+            LText(
+              widget.price,
+              style: GoogleFonts.lora(
+                color: brandNavy,
+                fontSize: 31,
+                fontWeight: FontWeight.w600,
+                height: 1,
+              ),
+            ),
+            const SizedBox(height: 6),
+            LText(
+              uiLiteral(widget.moduleLimit == null ? 'Unlimited module access' : 'Authoritative monthly package price'),
+              style: const TextStyle(color: brandTextSoft, fontSize: 10),
+            ),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _PackageFeatureSummary(
+                    icon: Icons.widgets_outlined,
+                    accent: packageAccent,
+                    value: widget.moduleLimit == null ? uiLiteral('All modules') : '${widget.moduleLimit}',
+                    label: uiLiteral(widget.moduleLimit == null ? 'unlimited access' : 'modules in package'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _PackageFeatureSummary(
+                    icon: Icons.groups_2_outlined,
+                    accent: packageAccent,
+                    value: '${widget.activePartnerCount}',
+                    label: uiLiteral('active partners'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _PackageBenefitLine(
+              accent: packageAccent,
+              label: widget.moduleLimit == null
+                  ? uiLiteral('Every eligible current and future module')
+                  : uiLiteral('${widget.includedModuleCount} configured modules'),
+            ),
+            const SizedBox(height: 9),
+            _PackageBenefitLine(
+              accent: packageAccent,
+              label: uiLiteral(widget.active ? 'Package is active and assignable' : 'Package is currently inactive'),
+            ),
+            const SizedBox(height: 9),
+            _PackageBenefitLine(
+              accent: packageAccent,
+              label: widget.moduleLimit == null
+                  ? uiLiteral('Automatic entitlement')
+                  : uiLiteral('Controlled module entitlement'),
+            ),
+            const SizedBox(height: 9),
+            _PackageBenefitLine(
+              accent: packageAccent,
+              label: uiLiteral(widget.entitlement.isEmpty ? 'Package entitlement configured' : widget.entitlement),
+            ),
+            const Spacer(),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: widget.onTap,
+                    style: FilledButton.styleFrom(backgroundColor: brandNavy),
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                    label: LText(uiLiteral('Details')),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: widget.onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: LText(uiLiteral('Edit')),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     ),
   );
 }
 
-class _PackageFeatureRow extends StatelessWidget {
-  const _PackageFeatureRow({required this.icon, required this.label, required this.value});
+class _PackageFeatureSummary extends StatelessWidget {
+  const _PackageFeatureSummary({
+    required this.icon,
+    required this.accent,
+    required this.value,
+    required this.label,
+  });
   final IconData icon;
-  final String label;
+  final Color accent;
   final String value;
+  final String label;
 
   @override
-  Widget build(BuildContext context) => Row(children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, color: brandSteel, size: 15),
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(color: accent.withOpacity(.09), borderRadius: BorderRadius.circular(9)),
+        child: Icon(icon, color: accent, size: 18),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            LText(value, style: const TextStyle(color: brandNavy, fontSize: 10.8, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 8.8, height: 1.25)),
+          ],
         ),
-        const SizedBox(width: 8),
-        Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
-        const SizedBox(width: 8),
-        LText(value, style: const TextStyle(color: brandNavy, fontSize: 9.8, fontWeight: FontWeight.w800)),
-      ]);
+      ),
+    ],
+  );
 }
 
+class _PackageBenefitLine extends StatelessWidget {
+  const _PackageBenefitLine({required this.accent, required this.label});
+  final Color accent;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(color: accent.withOpacity(.10), shape: BoxShape.circle),
+        child: Icon(Icons.check_rounded, color: accent, size: 13),
+      ),
+      const SizedBox(width: 9),
+      Expanded(child: LText(label, style: const TextStyle(color: brandCharcoal, fontSize: 9.8))),
+    ],
+  );
+}
 class _PackageComparisonTable extends StatelessWidget {
-  const _PackageComparisonTable({required this.plans});
+  const _PackageComparisonTable({required this.plans, required this.onExport});
   final List<Map<String,dynamic>> plans;
+  final VoidCallback onExport;
 
   String _mode(Map<String,dynamic> plan) {
     final value = '${plan['selection_mode'] ?? ''}'.toUpperCase();
@@ -7607,14 +7723,31 @@ class _PackageComparisonTable extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            LText(
-              uiLiteral('Package comparison'),
-              style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            LText(
-              uiLiteral('Compare the current authoritative Billing plan values.'),
-              style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LText(
+                        uiLiteral('Package comparison'),
+                        style: GoogleFonts.lora(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      LText(
+                        uiLiteral('Compare the current authoritative Billing plan values.'),
+                        style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onExport,
+                  icon: const Icon(Icons.download_outlined, size: 16),
+                  label: LText(uiLiteral('Export PDF')),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             SingleChildScrollView(
@@ -7740,9 +7873,10 @@ class _PackageAnalyticsChart extends StatelessWidget {
 }
 
 class _FinanceInvoicePreview extends StatelessWidget {
-  const _FinanceInvoicePreview({required this.invoices, required this.onViewAll});
+  const _FinanceInvoicePreview({required this.invoices, required this.onViewAll, required this.onExport});
   final List<Map<String,dynamic>> invoices;
   final VoidCallback onViewAll;
+  final VoidCallback onExport;
 
   @override
   Widget build(BuildContext context) {
@@ -7763,10 +7897,16 @@ class _FinanceInvoicePreview extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  LText(uiLiteral('Invoices'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                  LText(uiLiteral('Invoices'), style: GoogleFonts.lora(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
                   LText(uiLiteral('Recent invoice activity'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
                 ]),
               ),
+              TextButton.icon(
+                onPressed: onExport,
+                icon: const Icon(Icons.download_outlined, size: 15),
+                label: LText(uiLiteral('Export PDF')),
+              ),
+              const SizedBox(width: 4),
               TextButton(onPressed: onViewAll, child: LText(uiLiteral('View all'))),
             ]),
             const SizedBox(height: 12),
@@ -8376,10 +8516,52 @@ class _FinancePageState extends State<FinancePage> {
           }),
           const SizedBox(height: 18),
           if (rows.isEmpty)
-            const _MessageCard(
-              icon: Icons.bar_chart_outlined,
-              title: 'No paid revenue in this view',
-              message: 'There is no ledger data for the selected period/package. The chart stays empty instead of retrying indefinitely.',
+            SizedBox(
+              height: 205,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          for (var i = 0; i < 5; i++)
+                            const Divider(height: 1, color: Color(0xFFE5EAF1)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 2,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        for (final label in revenuePeriod == 'WEEKLY'
+                            ? const ['W1', 'W2', 'W3', 'W4']
+                            : const ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'])
+                          LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 8.2)),
+                      ],
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: brandWhite.withOpacity(.90),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: brandMist),
+                      ),
+                      child: LText(
+                        uiLiteral('No paid revenue in this view'),
+                        style: const TextStyle(color: brandTextSoft, fontSize: 9.5, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             )
           else
             SizedBox(
@@ -8581,23 +8763,6 @@ class _FinancePageState extends State<FinancePage> {
       showHeader: false,
       title: 'Licensing & Finance',
       subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
-          icon: const Icon(Icons.download_outlined),
-          label: const LText('Export PDF'),
-        ),
-        OutlinedButton.icon(
-          onPressed: editProfile,
-          icon: const Icon(Icons.account_balance_outlined),
-          label: const LText('Billing profile'),
-        ),
-        FilledButton.icon(
-          onPressed: partners.isEmpty ? null : () => createManualInvoice(),
-          icon: const Icon(Icons.add_card_outlined),
-          label: const LText('New invoice'),
-        ),
-      ],
       child: error != null
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
           : Column(
@@ -8657,6 +8822,7 @@ class _FinancePageState extends State<FinancePage> {
                     final invoicePreview = _FinanceInvoicePreview(
                       invoices: visibleInvoices,
                       onViewAll: scrollToInvoices,
+                      onExport: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
                     );
                     if (constraints.maxWidth < 980) {
                       return Column(
@@ -9597,48 +9763,6 @@ class _ImpactPageState extends State<ImpactPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading &&
-        definitions.isEmpty &&
-        summary.isEmpty &&
-        evidence.isEmpty &&
-        reports.isEmpty) {
-      return const Content(
-        showHeader: false,
-        eyebrow: 'IMPACT CONTROL',
-        title: 'Impact & Reports',
-        subtitle: 'Loading the latest impact and evidence snapshot.',
-        child: _BrandLoading(),
-      );
-    }
-    if (!loading &&
-        error == null &&
-        impactSnapshotWarming &&
-        definitions.isEmpty &&
-        summary.isEmpty &&
-        evidence.isEmpty &&
-        reports.isEmpty) {
-      return Content(
-        showHeader: false,
-        title: 'Impact & Reports',
-        subtitle: 'Real outcomes, transparent reports and evidence.',
-        actions: [
-          OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh')),
-        ],
-        child: const _MessageCard(
-          icon: Icons.hourglass_empty_rounded,
-          title: 'Impact snapshot is warming',
-          message: 'No materialized Impact snapshot exists yet. The page is usable without an infinite loading loop; refresh when backend preparation completes.',
-        ),
-      );
-    }
-    if (error != null) {
-      return Content(
-        showHeader: false,
-        title: 'Impact & Reports',
-        subtitle: 'Metrics, Evidence and reproducible reports.',
-        child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
-      );
-    }
     final canReadImpact = impactAccess['impact'] != false;
     final canWriteImpact = impactAccess['impact_write'] == true;
     final canReadEvidence = impactAccess['evidence'] != false;
@@ -9664,6 +9788,30 @@ class _ImpactPageState extends State<ImpactPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (loading) ...[
+            const _MessageCard(
+              icon: Icons.sync_rounded,
+              title: 'Impact data is loading',
+              message: 'The workspace remains available while the latest metrics, evidence and reports are refreshed.',
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (impactSnapshotWarming) ...[
+            _MessageCard(
+              icon: Icons.hourglass_empty_rounded,
+              title: uiLiteral('Impact snapshot is warming'),
+              message: uiLiteral('No materialized snapshot is ready yet. Empty states stay visible and the backend continues preparation without blocking this workspace.'),
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (error != null) ...[
+            _MessageCard(
+              icon: Icons.warning_amber_rounded,
+              title: uiLiteral('Impact data is partially unavailable'),
+              message: error!,
+            ),
+            const SizedBox(height: 14),
+          ],
           if (!canReadImpact || !canReadEvidence || !canReadReports) ...[
             _MessageCard(
               icon: Icons.lock_outline_rounded,
@@ -10120,10 +10268,6 @@ class _SystemPageState extends State<SystemPage> {
         maxAge: const Duration(seconds: 15),
       );
 
-  void _refresh() {
-    setState(() => _future = _load(force: true));
-  }
-
   Future<void> _openDeveloperDiagnostics() async {
     try {
       final responses = await Future.wait([
@@ -10221,29 +10365,8 @@ class _SystemPageState extends State<SystemPage> {
     return FutureBuilder<Map<String, dynamic>>(
       future: _future,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
-          return const Content(
-            eyebrow: 'PLATFORM OPERATIONS',
-            title: 'System & Operations',
-            subtitle: 'Independent services behind one authenticated public gateway.',
-            child: _MessageCard(
-              icon: Icons.storage_outlined,
-              title: 'No cached operations data yet',
-              message: 'The workspace is ready. The latest background health snapshot will appear automatically when available.',
-            ),
-          );
-        }
-        if (snapshot.hasError || snapshot.data == null) {
-          return Content(
-            showHeader: false,
-            eyebrow: 'PLATFORM OPERATIONS',
-            title: 'System & Operations',
-            subtitle: 'Independent services behind one authenticated public gateway.',
-            child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Operations data unavailable', message: '${snapshot.error}'),
-          );
-        }
-
-        final model = snapshot.data!;
+        final provisional = snapshot.data == null;
+        final model = snapshot.data ?? <String, dynamic>{};
         final access = model['access'] is Map
             ? Map<String,dynamic>.from(model['access'] as Map)
             : <String,dynamic>{};
@@ -10266,12 +10389,12 @@ class _SystemPageState extends State<SystemPage> {
         final backupProvider = '${backupResponse['provider'] ?? 'unknown'}';
         final services = items(<String,dynamic>{'items': health['services']});
         final partners = items(<String,dynamic>{'items': health['partners']});
-        final canHealth = access['health'] == true;
-        final canProvisioning = access['provisioning'] == true;
-        final canEnvironments = access['environments'] == true;
+        final canHealth = provisional || access['health'] == true;
+        final canProvisioning = provisional || access['provisioning'] == true;
+        final canEnvironments = provisional || access['environments'] == true;
         final canEnvironmentsWrite = access['environments_write'] == true;
         final canEnvironmentsApprove = access['environments_approve'] == true;
-        final canBackups = access['backups'] == true;
+        final canBackups = provisional || access['backups'] == true;
         final canBackupsApprove = access['backups_approve'] == true;
         final canAudit = access['audit'] == true;
         final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
@@ -10311,22 +10434,19 @@ class _SystemPageState extends State<SystemPage> {
           showHeader: false,
           title: 'System & Operations',
           subtitle: 'System health, partner runtime state, deployments and technical diagnostics.',
-          actions: [
-            if (canHealth && canAudit)
-              OutlinedButton.icon(
-                onPressed: _openDeveloperDiagnostics,
-                icon: const Icon(Icons.bug_report_outlined),
-                label: const LText('Developer diagnostics'),
-              ),
-            OutlinedButton.icon(
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const LText('Refresh diagnostics'),
-            ),
-          ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (provisional) ...[
+                _MessageCard(
+                  icon: snapshot.hasError ? Icons.cloud_off_outlined : Icons.sync_rounded,
+                  title: uiLiteral(snapshot.hasError ? 'Operations data is temporarily unavailable' : 'Operations data is loading'),
+                  message: snapshot.hasError
+                      ? '${snapshot.error}'
+                      : uiLiteral('The complete System & Operations layout remains visible while the latest health snapshot is prepared.'),
+                ),
+                const SizedBox(height: 14),
+              ],
               if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
                 _MessageCard(
                   icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
@@ -10681,7 +10801,7 @@ class _SystemCurrentHealthCard extends StatelessWidget {
               Row(children:[
                 const Icon(Icons.bar_chart_rounded,color:brandSteel,size:21),
                 const SizedBox(width:9),
-                Expanded(child:LText('System health overview',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
+                Expanded(child:LText('System health overview',style:GoogleFonts.lora(color:brandNavy,fontSize:21,fontWeight:FontWeight.w700))),
                 _StatusPill(label: overall),
               ]),
               const SizedBox(height:5),
@@ -10753,7 +10873,7 @@ class _SystemInfrastructureSummary extends StatelessWidget {
         child:Padding(
           padding:const EdgeInsets.all(18),
           child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            LText('Infrastructure status',style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+            LText('Infrastructure status',style:GoogleFonts.lora(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
             const SizedBox(height:12),
             _DefinitionRow(label:'Managed environments',value:canEnvironments?'${environments.length}':'—'),
             _DefinitionRow(label:'Production environments',value:canEnvironments?'$production':'—'),
@@ -11679,7 +11799,7 @@ class _PartnerCardState extends State<PartnerCard> {
                     Expanded(
                       child: RichText(
                         text: TextSpan(children: [
-                          TextSpan(text: amountLabel, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w700)),
+                          TextSpan(text: amountLabel, style: GoogleFonts.lora(color: brandNavy, fontSize: 18, fontWeight: FontWeight.w700)),
                           TextSpan(text: ' / ${uiLiteral('month')}', style: GoogleFonts.inter(color: brandTextSoft, fontSize: 8.8)),
                         ]),
                       ),
@@ -12479,10 +12599,10 @@ class Content extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (eyebrow != null) ...[
-              LText(eyebrow!, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w600)),
+              LText(eyebrow!, style: GoogleFonts.lora(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
             ],
-            LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: narrow ? 36 : 42, fontWeight: FontWeight.w600, height: .98)),
+            LText(title, style: GoogleFonts.lora(color: brandNavy, fontSize: narrow ? 36 : 42, fontWeight: FontWeight.w600, height: .98)),
             const SizedBox(height: 6),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: LText(subtitle, style: const TextStyle(color: brandTextSoft, fontSize: 12.5, height: 1.45))),
           ],
@@ -12654,7 +12774,7 @@ class _KpiState extends State<Kpi> {
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
-                        child: LText(widget.value, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                        child: LText(widget.value, style: GoogleFonts.lora(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
                       ),
                       const SizedBox(height: 4),
                       LText(widget.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
@@ -12703,7 +12823,7 @@ class _CentralActionCard extends StatelessWidget {
                     child: Icon(icon, color: accent, size: 23),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(child: LText(title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w700))),
+                  Expanded(child: LText(title, style: GoogleFonts.lora(color: brandNavy, fontSize: 19, fontWeight: FontWeight.w700))),
                   Icon(Icons.arrow_forward_rounded, color: accent, size: 19),
                 ]),
                 const SizedBox(height: 9),

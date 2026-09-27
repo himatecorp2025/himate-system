@@ -33,7 +33,7 @@ for token in [
     "const brandIvory = Color(0xFFF6F8FC)",
     "brightness: Brightness.light",
     "scaffoldBackgroundColor: brandIvory",
-    "GoogleFonts.cormorantGaramond",
+    "GoogleFonts.lora",
     "Greater impact.",
     "Stronger communities.",
     "A sustainable future.",

@@ -82,7 +82,7 @@ for token in [
     "'availability': '1'",
     "No exportable data",
     "openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString())",
-    "openPdfExportIfAvailable(context, widget.api, '/api/v1/billing/packages/export.pdf')",
+    "'/api/v1/billing/packages/export.pdf'",
     "openPdfExportIfAvailable(context, widget.api, financeExportPath)",
     "openPdfExportIfAvailable(context, widget.api, '/api/v1/impact/export.pdf')",
 ]:

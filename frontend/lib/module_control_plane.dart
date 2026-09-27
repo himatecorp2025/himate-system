@@ -1321,7 +1321,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     groupLabel(group),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700),
+                    style: GoogleFonts.lora(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 2),
                   LText(
@@ -1898,32 +1898,6 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       showHeader: false,
       title: uiLiteral('Modules'),
       subtitle: uiLiteral('Modules overview, organized by topic.'),
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => setState(() => showSubscriptionPlans = true),
-          icon: const Icon(Icons.workspace_premium_outlined),
-          label: LText(uiLiteral('Packages')),
-        ),
-        OutlinedButton.icon(
-          onPressed: () {
-            final opening = !showCommercialMatrix;
-            setState(() => showCommercialMatrix = opening);
-            if (opening && !commercialReady) unawaited(loadCommercial());
-          },
-          icon: Icon(showCommercialMatrix ? Icons.expand_less_rounded : Icons.price_change_outlined),
-          label: LText(uiLiteral(showCommercialMatrix ? 'Hide Commercial Matrix' : 'Commercial Matrix')),
-        ),
-        OutlinedButton.icon(
-          onPressed: loading ? null : addGroup,
-          icon: const Icon(Icons.category_outlined),
-          label: LText(uiLiteral('Add group')),
-        ),
-        FilledButton.icon(
-          onPressed: loading || groups.isEmpty ? null : addModule,
-          icon: const Icon(Icons.add_box_outlined),
-          label: LText(uiLiteral('Add module')),
-        ),
-      ],
       child: error != null && modules.isEmpty
           ? _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Module Control Plane unavailable'), message: error!)
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

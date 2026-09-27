@@ -226,13 +226,6 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
       showHeader: false,
       title: 'Administration',
       subtitle: 'Central management of HIMATE, partner administration, documents, access and recovery.',
-      actions: [
-        OutlinedButton.icon(
-          onPressed: loading ? null : () => load(force: true),
-          icon: const Icon(Icons.refresh_rounded),
-          label: const LText('Refresh'),
-        ),
-      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -827,7 +820,7 @@ class _AdministrationCenterHeroCardState extends State<_AdministrationCenterHero
                               children:[
                                 LText(
                                   widget.title,
-                                  style:GoogleFonts.cormorantGaramond(
+                                  style:GoogleFonts.lora(
                                     color:brandNavy,
                                     fontSize:26,
                                     fontWeight:FontWeight.w700,

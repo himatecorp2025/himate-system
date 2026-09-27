@@ -440,12 +440,14 @@ func (a *app) refreshCentralStep4Impact() {
 		unavailable = append(unavailable, "impact_analytics")
 		analytics = step4Map(step4Unavailable(previous, "analytics"))
 	}
-	if successful == 0 && previous == nil {
-		return
-	}
-
+	// A first-run total upstream outage must still materialize a degraded
+	// snapshot. Otherwise /api/v1/central/impact can remain in WARMING forever
+	// even though the UI is capable of rendering explicit empty/unavailable
+	// states. Previous data is retained per-source above when it exists.
 	status := "healthy"
-	if len(unavailable) > 0 {
+	if successful == 0 {
+		status = "unavailable"
+	} else if len(unavailable) > 0 {
 		status = "partial"
 	}
 	payload := map[string]any{

@@ -24,7 +24,8 @@ step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 # Packages: authoritative data and reference interaction.
 for token in [
     "for (final plan in canonicalPlans)",
-    "class _PackageFeatureRow",
+    "class _PackageFeatureSummary",
+    "class _PackageBenefitLine",
     "class _PackageComparisonTable",
     "Package comparison",
     "Most popular",
@@ -91,7 +92,7 @@ for token in [
 ]:
     check(token in gateway, f"CENTRAL-17.2 Impact permission read-model contract missing: {token}")
 
-check('successful == 0 && previous == nil' in step4 and 'status = "unavailable"' in step4,
+check('if successful == 0 && previous == nil {\n\t\treturn' not in step4 and 'if successful == 0 {' in step4 and 'status = "unavailable"' in step4,
       "CENTRAL-17.2 Impact materializer must persist an unavailable snapshot instead of warming forever")
 check('status = "partial"' in step4,
       "CENTRAL-17.2 Impact materializer partial-state contract missing")
