@@ -550,14 +550,7 @@ func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor us
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4PartnersKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
-		common.JSON(w, http.StatusOK, map[string]any{
-			"ready":      false,
-			"items":      []map[string]any{},
-			"categories": central10PartnerCategories(common.RequestLocale(r), nil),
-			"pagination": map[string]any{"count": 0, "total": 0, "limit": 24, "offset": 0, "has_more": false},
-			"kpis":       map[string]any{},
-			"meta":       centralStep4Meta(started, centralStep4PartnersKey, time.Time{}, "warming", []string{}),
-		})
+		a.readModelInvariantFailure(w, centralStep4PartnersKey)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
@@ -746,16 +739,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
 	if !ok {
 		a.requestCentralStep3Refresh()
-		payload := map[string]any{
-			"ready": false,
-			"module_options": []any{},
-			"registry": map[string]any{
-				"modules": []any{}, "groups": []any{}, "topics": []any{}, "kpis": map[string]any{},
-			},
-			"meta": centralStep3Meta(started, centralStep3RegistryKey, time.Time{}, "warming", []string{"catalog"}),
-		}
-		w.Header().Set("X-Himate-Cache", "warming")
-		common.JSON(w, http.StatusOK, payload)
+		a.readModelInvariantFailure(w, centralStep3RegistryKey)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralStep3RefreshInterval {
@@ -848,17 +832,9 @@ func (a *app) central10ModulesCommercial(w http.ResponseWriter, r *http.Request,
 	commercialSnapshot, commercialUpdatedAt, commercialOK := a.centralSnapshotForRead(r.Context(), centralStep3CommercialKey)
 	registrySnapshot, _, registryOK := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
 	plansSnapshot, plansUpdatedAt, plansOK := a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)
-	if !commercialOK {
+	if !commercialOK || !registryOK || !plansOK {
 		a.requestCentralStep3Refresh()
-		payload := map[string]any{
-			"ready": false,
-			"partners": []any{},
-			"commercial": map[string]any{"available": false, "groups": []any{}},
-			"plans": []any{},
-			"meta": centralStep3Meta(started, centralStep3CommercialKey, time.Time{}, "warming", []string{"commercial_matrix"}),
-		}
-		w.Header().Set("X-Himate-Cache", "warming")
-		common.JSON(w, http.StatusOK, payload)
+		a.readModelInvariantFailure(w, centralStep3CommercialKey)
 		return
 	}
 	if time.Since(commercialUpdatedAt) > 2*centralStep3RefreshInterval || (plansOK && time.Since(plansUpdatedAt) > 2*centralStep3RefreshInterval) {
@@ -1001,13 +977,7 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 	plansSnapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)
 	if !ok {
 		a.requestCentralStep3Refresh()
-		payload := map[string]any{
-			"ready": false,
-			"plans": []any{},
-			"meta": centralStep3Meta(started, centralStep3PlansKey, time.Time{}, "warming", []string{"plans"}),
-		}
-		w.Header().Set("X-Himate-Cache", "warming")
-		common.JSON(w, http.StatusOK, payload)
+		a.readModelInvariantFailure(w, centralStep3PlansKey)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralStep3RefreshInterval { a.requestCentralStep3Refresh() }
@@ -1199,12 +1169,7 @@ func (a *app) central10Finance(w http.ResponseWriter, r *http.Request, actor use
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4FinanceKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
-		payload := map[string]any{
-			"ready": false,
-			"meta": centralStep4Meta(started, centralStep4FinanceKey, time.Time{}, "warming", []string{"finance_snapshot"}),
-		}
-		w.Header().Set("X-Himate-Cache", "warming")
-		common.JSON(w, http.StatusOK, payload)
+		a.readModelInvariantFailure(w, centralStep4FinanceKey)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
@@ -1347,12 +1312,7 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
-		payload := map[string]any{
-			"ready": false,
-			"meta": centralStep4Meta(started, centralStep4ImpactKey, time.Time{}, "warming", []string{"impact_snapshot"}),
-		}
-		w.Header().Set("X-Himate-Cache", "warming")
-		common.JSON(w, http.StatusOK, payload)
+		a.readModelInvariantFailure(w, centralStep4ImpactKey)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralStep4RefreshInterval {
@@ -1590,10 +1550,7 @@ func (a *app) central10PartnerModules(w http.ResponseWriter, r *http.Request, ac
 	snapshot, updatedAt, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
 	if !ok {
 		a.requestCentralPartnerWorkspaceRefresh(partnerID)
-		view := central10PartnerModuleView(nil, nil, r.URL.Query().Get("q"), r.URL.Query().Get("state"))
-		view["ready"] = false
-		view["meta"] = centralStep4Meta(started, key, time.Time{}, "warming", []string{})
-		common.JSON(w, http.StatusOK, view)
+		a.readModelInvariantFailure(w, key)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralPartnerWorkspaceRefreshInterval {
@@ -1625,30 +1582,7 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	snapshot, updatedAt, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
 	if !ok {
 		a.requestCentralPartnerWorkspaceRefresh(partnerID)
-		partner := a.partnerWorkspaceBasePartner(partnerID)
-		if partner == nil {
-			common.APIError(w, http.StatusNotFound, "PARTNER_NOT_FOUND", "Partner workspace not found")
-			return
-		}
-		common.JSON(w, http.StatusOK, map[string]any{
-			"ready":                          false,
-			"partner":                        partner,
-			"modules":                        []map[string]any{},
-			"module_view":                    central10PartnerModuleView(nil, nil, "", "ALL"),
-			"production_environment":         nil,
-			"preferred_connector_environment":"STAGING",
-			"documents":                      []map[string]any{},
-			"invoices":                       []map[string]any{},
-			"subscriptions":                  []map[string]any{},
-			"environments":                   []map[string]any{},
-			"provisioning_jobs":              []map[string]any{},
-			"impact_summary":                 []map[string]any{},
-			"evidence":                       []map[string]any{},
-			"connector_credentials":          []map[string]any{},
-			"portal_users":                   []map[string]any{},
-			"billing_events":                 []map[string]any{},
-			"meta":                           centralStep4Meta(started, key, time.Time{}, "warming", []string{}),
-		})
+		a.readModelInvariantFailure(w, key)
 		return
 	}
 	if time.Since(updatedAt) > 2*centralPartnerWorkspaceRefreshInterval {
