@@ -7685,27 +7685,6 @@ class _PackageBenefitLine extends StatelessWidget {
     ],
   );
 }
-class _PackageFeatureRow extends StatelessWidget {
-  const _PackageFeatureRow({required this.icon, required this.label, required this.value});
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Row(children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, color: brandSteel, size: 15),
-        ),
-        const SizedBox(width: 8),
-        Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
-        const SizedBox(width: 8),
-        LText(value, style: const TextStyle(color: brandNavy, fontSize: 9.8, fontWeight: FontWeight.w800)),
-      ]);
-}
-
 class _PackageComparisonTable extends StatelessWidget {
   const _PackageComparisonTable({required this.plans, required this.onExport});
   final List<Map<String,dynamic>> plans;
@@ -10280,10 +10259,6 @@ class _SystemPageState extends State<SystemPage> {
         force: force,
         maxAge: const Duration(seconds: 15),
       );
-
-  void _refresh() {
-    setState(() => _future = _load(force: true));
-  }
 
   Future<void> _openDeveloperDiagnostics() async {
     try {
