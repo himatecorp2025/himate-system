@@ -12,8 +12,8 @@ func TestCentral10CanonicalPlansPreserveBillingAuthority(t *testing.T) {
 		inputLimit                    int
 		outputLimit                   any
 	}{
-		{"STARTER", "Starter", "$1,111 + VAT", "10 modules", 1111, 10, 10},
-		{"BUSINESS", "Business", "$2,222 + VAT", "20 modules", 2222, 20, 20},
+		{"STARTER", "Starter", "$1,111 + VAT", "10 modules", 1111, 3, 10},
+		{"BUSINESS", "Business", "$2,222 + VAT", "20 modules", 2222, 10, 20},
 		{"FLEX", "Premium", "$3,333 + VAT", "Unlimited", 3333, 0, nil},
 	}
 	for _, tc := range cases {
@@ -39,9 +39,55 @@ func TestCentral10CanonicalPlansPreserveBillingAuthority(t *testing.T) {
 			if got["module_limit"] != nil {
 				t.Fatalf("%s module limit = %v, want nil", tc.key, got["module_limit"])
 			}
-		} else if central10Int(got["module_limit"]) != tc.inputLimit {
-			t.Fatalf("%s module limit = %v, want authoritative %v", tc.key, got["module_limit"], tc.inputLimit)
+		} else if central10Int(got["module_limit"]) != tc.outputLimit {
+			t.Fatalf("%s module limit = %v, want canonical %v", tc.key, got["module_limit"], tc.outputLimit)
 		}
+	}
+}
+
+func TestCentral10PackageEligibleModuleIncludesActivatedCustomModules(t *testing.T) {
+	readyCustom := map[string]any{
+		"key": "custom.balance",
+		"system": false,
+		"availability": "ACTIVE",
+		"publication_status": "PUBLISHED",
+		"implementation_state": "READY",
+	}
+	if !central10PackageEligibleModule(readyCustom) {
+		t.Fatal("activated custom module must be selectable in package configuration")
+	}
+	notReady := central10CopyMap(readyCustom)
+	notReady["implementation_state"] = "IN_DEVELOPMENT"
+	if central10PackageEligibleModule(notReady) {
+		t.Fatal("in-development module must not be selectable in package configuration")
+	}
+}
+
+func TestCentral10MergeModuleSnapshotAppliesMutationImmediately(t *testing.T) {
+	snapshot := map[string]any{
+		"modules": []map[string]any{
+			{
+				"key": "custom.balance",
+				"availability": "ACTIVE",
+				"publication_status": "UNPUBLISHED",
+				"implementation_state": "IN_DEVELOPMENT",
+			},
+		},
+	}
+	merged, changed := central10MergeModuleSnapshot(snapshot, map[string]any{
+		"key": "custom.balance",
+		"availability": "ACTIVE",
+		"publication_status": "PUBLISHED",
+		"implementation_state": "READY",
+	})
+	if !changed {
+		t.Fatal("module mutation was not merged into the registry snapshot")
+	}
+	rows := anyItems(merged["modules"])
+	if len(rows) != 1 ||
+		central10String(rows[0]["publication_status"]) != "PUBLISHED" ||
+		central10String(rows[0]["implementation_state"]) != "READY" {
+		t.Fatalf("unexpected merged snapshot: %#v", merged)
 	}
 }
 

@@ -95,6 +95,12 @@ func (a *app) central14Administration(w http.ResponseWriter,r *http.Request,acto
 		return
 	}
 
+	// Downstream fan-out is intentionally bounded above. Local identity reads
+	// must use a fresh context: reusing the exhausted fan-out deadline can turn
+	// a healthy administrator count into the zero value after browser refresh.
+	localCtx,localCancel:=context.WithTimeout(r.Context(),1500*time.Millisecond)
+	defer localCancel()
+
 	unavailable:=[]string{}
 	if !canPartners{unavailable=append(unavailable,"partners_permission")}
 	if !canBilling{unavailable=append(unavailable,"billing_permission")}
@@ -110,7 +116,7 @@ func (a *app) central14Administration(w http.ResponseWriter,r *http.Request,acto
 	type auditAggregate struct{Count int;Latest any}
 	audits:=map[string]auditAggregate{}
 	if canAudit {
-		rows,err:=a.db.QueryContext(ctx,`SELECT partner_id,COUNT(*),MAX(created_at)
+		rows,err:=a.db.QueryContext(localCtx,`SELECT partner_id,COUNT(*),MAX(created_at)
 			FROM identity.audit_events WHERE partner_id<>'' GROUP BY partner_id`)
 		if err==nil{
 			defer rows.Close()
@@ -129,11 +135,13 @@ func (a *app) central14Administration(w http.ResponseWriter,r *http.Request,acto
 	var latestAudit any
 	var latestAuditTime sql.NullTime
 	if canAudit {
-		if err:=a.db.QueryRowContext(ctx,`SELECT COUNT(*),MAX(created_at) FROM identity.audit_events`).Scan(&auditTotal,&latestAuditTime);err==nil&&latestAuditTime.Valid{
+		if err:=a.db.QueryRowContext(localCtx,`SELECT COUNT(*),MAX(created_at) FROM identity.audit_events`).Scan(&auditTotal,&latestAuditTime);err==nil&&latestAuditTime.Valid{
 			latestAudit=latestAuditTime.Time.UTC()
 		}
 	}
-	_ = a.db.QueryRowContext(ctx,`SELECT COUNT(*) FROM identity.users WHERE active=TRUE`).Scan(&activeAdmins)
+	if err:=a.db.QueryRowContext(localCtx,`SELECT COUNT(*) FROM identity.users WHERE active=TRUE`).Scan(&activeAdmins);err!=nil{
+		unavailable=append(unavailable,"administrators")
+	}
 
 	q:=strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	lifecycle:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("lifecycle")))
@@ -219,7 +227,9 @@ func (a *app) central14Administration(w http.ResponseWriter,r *http.Request,acto
 			"generated_at":time.Now().UTC(),
 		},
 	}
-	central10Store(cacheKey,payload)
+	if status=="healthy" {
+		central10Store(cacheKey,payload)
+	}
 	common.JSON(w,http.StatusOK,payload)
 }
 

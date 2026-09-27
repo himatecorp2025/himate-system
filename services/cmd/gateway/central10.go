@@ -105,6 +105,65 @@ func (a *app) invalidateCentral10Caches(path string) {
 	}
 }
 
+func central10MergeModuleSnapshot(snapshot, state map[string]any) (map[string]any, bool) {
+	if snapshot == nil || state == nil {
+		return snapshot, false
+	}
+	key := central10String(state["key"])
+	if key == "" {
+		return snapshot, false
+	}
+	rows := anyItems(snapshot["modules"])
+	found := false
+	for i, row := range rows {
+		if central10String(row["key"]) != key {
+			continue
+		}
+		merged := central10CopyMap(row)
+		for field, value := range state {
+			merged[field] = value
+		}
+		rows[i] = merged
+		found = true
+		break
+	}
+	if !found {
+		return snapshot, false
+	}
+	out := central10CopyMap(snapshot)
+	out["modules"] = rows
+	return out, true
+}
+
+func (a *app) applyCentralModuleMutationSnapshot(path string, state map[string]any) {
+	normalized := strings.Trim(strings.ToLower(strings.TrimSpace(path)), "/")
+	const prefix = "api/v1/modules/"
+	if !strings.HasPrefix(normalized, prefix) {
+		return
+	}
+	tail := strings.TrimPrefix(normalized, prefix)
+	if tail == "" || strings.Contains(tail, "/") {
+		return
+	}
+	snapshot, _, ok := centralStep3SnapshotGet(centralStep3RegistryKey)
+	if !ok {
+		return
+	}
+	merged, changed := central10MergeModuleSnapshot(snapshot, state)
+	if !changed {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	a.centralStep3Store(ctx, centralStep3RegistryKey, merged)
+}
+
+func central10PackageEligibleModule(module map[string]any) bool {
+	return strings.EqualFold(central10String(module["availability"]), "ACTIVE") &&
+		strings.EqualFold(central10String(module["publication_status"]), "PUBLISHED") &&
+		strings.EqualFold(central10String(module["implementation_state"]), "READY")
+}
+
 func central10CacheKey(actor user, r *http.Request) string {
 	locale := common.RequestLocale(r)
 	return actor.ID + "|" + locale + "|" + r.URL.Path + "?" + r.URL.RawQuery
@@ -782,14 +841,19 @@ func central10CanonicalPlan(plan map[string]any, moduleByKey map[string]map[stri
 	switch key {
 	case "STARTER":
 		out["display_name"] = "Starter"
-		out["entitlement"] = fmt.Sprintf("%d modules", central10Int(plan["module_limit"]))
+		out["module_limit"] = 10
+		out["selection_mode"] = "FIXED"
+		out["entitlement"] = "10 modules"
 	case "BUSINESS":
 		out["display_name"] = "Business"
-		out["entitlement"] = fmt.Sprintf("%d modules", central10Int(plan["module_limit"]))
+		out["module_limit"] = 20
+		out["selection_mode"] = "FIXED"
+		out["entitlement"] = "20 modules"
 	case "FLEX", "PREMIUM":
 		out["plan_key"] = "FLEX"
 		out["display_name"] = "Premium"
 		out["module_limit"] = nil
+		out["selection_mode"] = "UNLIMITED"
 		out["entitlement"] = "Unlimited"
 	}
 	out["display_price"] = central10PlanDisplayPrice(
@@ -1125,7 +1189,9 @@ func (a *app) central10PackagesSupplementary(w http.ResponseWriter, r *http.Requ
 	eligibleModules := []map[string]any{}
 	if registryOK && a.hasPermission(actor, "catalog.read") {
 		for _, module := range anyItems(registrySnapshot["modules"]) {
-			if module["system"] == true { eligibleModules = append(eligibleModules, module) }
+			if central10PackageEligibleModule(module) {
+				eligibleModules = append(eligibleModules, module)
+			}
 		}
 	}
 	analytics := map[string]any{}
