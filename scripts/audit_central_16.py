@@ -72,14 +72,21 @@ for token in [
 ]:
     check(token in dashboard, f"CENTRAL-16 Dashboard backend contract missing: {token}")
 
-# Existing business truth must not be replaced by mockup sample pricing.
+# Existing business truth must come from the authoritative Billing plan snapshot,
+# not be replaced by mockup/sample pricing in the gateway presentation read model.
 for token in [
-    'out["display_price"] = "$990 + VAT"',
-    'out["display_price"] = "$1,490 + VAT"',
-    'out["display_price"] = "$2,490 + VAT"',
+    "central10PlanDisplayPrice(",
+    'central10Float(plan["monthly_price"])',
+    'central10Int(plan["module_limit"])',
     'out["entitlement"] = "Unlimited"',
 ]:
     check(token in central10, f"CENTRAL-16 canonical package contract missing: {token}")
+for forbidden in [
+    'out["monthly_price"] = 990',
+    'out["monthly_price"] = 1490',
+    'out["monthly_price"] = 2490',
+]:
+    check(forbidden not in central10, f"CENTRAL-16 gateway still overrides authoritative package pricing: {forbidden}")
 
 # Partners and overview-first navigation.
 for token in [
@@ -169,7 +176,8 @@ for token in [
     check(token in frontend, f"CENTRAL-16 System & Operations contract missing: {token}")
 
 # No fixed card-count acceptance. Responsive/dynamic collection rendering stays data driven.
-check("for (final plan in plans)" in frontend, "CENTRAL-16 package rendering is not dynamic")
+check("for (final plan in canonicalPlans)" in frontend or "for (final plan in plans)" in frontend,
+      "CENTRAL-16 package rendering is not dynamic")
 check("for (final p in filtered)" in frontend, "CENTRAL-16 partner rendering is not dynamic")
 
 if errors:

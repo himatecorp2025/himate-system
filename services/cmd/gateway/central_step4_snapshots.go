@@ -289,12 +289,14 @@ func (a *app) refreshCentralStep4Finance() {
 		unavailable = append(unavailable, "partners")
 		partners = step4Items(step4Unavailable(previous, "partners"))
 	}
-	if successful == 0 && previous == nil {
-		return
-	}
-
 	status := "healthy"
-	if len(unavailable) > 0 {
+	if successful == 0 && previous == nil {
+		// Persist an explicit unavailable snapshot instead of leaving the screen
+		// in a permanent warming state when every dependency is down or
+		// misconfigured. The frontend can then render a deterministic error/
+		// empty state and still offer a manual refresh.
+		status = "unavailable"
+	} else if len(unavailable) > 0 {
 		status = "partial"
 	}
 	payload := map[string]any{

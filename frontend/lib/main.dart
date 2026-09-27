@@ -2086,13 +2086,25 @@ class _ShellState extends State<Shell> {
         final allNav = navFor(context);
         final visibleNav = <NavSpec>[for (final index in visibleIndexes) allNav[index]];
         final visibleSelected = visibleIndexes.indexOf(selected).clamp(0, visibleIndexes.length - 1);
-        final round1Header = selected >= 0 && selected <= 2;
-        final round1Title = selected == 0 ? uiLiteral('Dashboard') : selected == 1 ? uiLiteral('Partners') : uiLiteral('Modules');
-        final round1Subtitle = selected == 0
-            ? uiLiteral('Partners, modules and impact at a glance.')
-            : selected == 1
-                ? uiLiteral('Partner management, relationships and collaboration at a glance.')
-                : uiLiteral('Modules overview, organized by topic.');
+        final referenceHeader = selected >= 0 && selected <= 5;
+        final referenceTitle = switch (selected) {
+          0 => uiLiteral('Dashboard'),
+          1 => uiLiteral('Partners'),
+          2 => uiLiteral('Modules'),
+          3 => uiLiteral('Packages'),
+          4 => uiLiteral('Licensing & Finance'),
+          5 => uiLiteral('Impact & Reports'),
+          _ => '',
+        };
+        final referenceSubtitle = switch (selected) {
+          0 => uiLiteral('Partners, modules and impact at a glance.'),
+          1 => uiLiteral('Partner management, relationships and collaboration at a glance.'),
+          2 => uiLiteral('Modules overview, organized by topic.'),
+          3 => uiLiteral('Subscription packages, module entitlements and configuration.'),
+          4 => uiLiteral('Invoicing, receivables, licenses and partner onboarding overview.'),
+          5 => uiLiteral('Real outcomes. Transparent reporting. Measurable impact.'),
+          _ => '',
+        };
         if (mobile) {
           return Scaffold(
             appBar: AppBar(
@@ -2168,21 +2180,21 @@ class _ShellState extends State<Shell> {
                 child: Column(
                   children: [
                     Container(
-                      height: round1Header ? 86 : 74,
+                      height: referenceHeader ? 86 : 74,
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       decoration: const BoxDecoration(color: brandSurface, border: Border(bottom: BorderSide(color: brandMist))),
                       child: Row(
                         children: [
-                          if (round1Header && !tablet) ...[
+                          if (referenceHeader && !tablet) ...[
                             Expanded(
                               flex: 4,
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  LText(round1Title, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
+                                  LText(referenceTitle, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 31, fontWeight: FontWeight.w700, height: 1)),
                                   const SizedBox(height: 4),
-                                  LText(round1Subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                                  LText(referenceSubtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
                                 ],
                               ),
                             ),
@@ -6703,7 +6715,7 @@ class _PackagesPageState extends State<PackagesPage> {
     unawaited(load());
   }
 
-  Future<void> load() async {
+  Future<void> load({bool force = false}) async {
     if (mounted) {
       setState(() {
         loading = true;
@@ -6731,6 +6743,7 @@ class _PackagesPageState extends State<PackagesPage> {
     try {
       final model = await widget.api.get(
         path,
+        force: force,
         maxAge: const Duration(seconds: 5),
         onRefresh: applyPrimary,
       );
@@ -6743,6 +6756,40 @@ class _PackagesPageState extends State<PackagesPage> {
         error = e.toString();
       });
     }
+  }
+
+  bool _packageMutationVisible(Map<String,dynamic> updated) {
+    final key = '${updated['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
+        ? 'FLEX'
+        : '${updated['plan_key'] ?? ''}'.toUpperCase();
+    Map<String,dynamic>? current;
+    for (final plan in plans) {
+      final currentKey = '${plan['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
+          ? 'FLEX'
+          : '${plan['plan_key'] ?? ''}'.toUpperCase();
+      if (currentKey == key) {
+        current = plan;
+        break;
+      }
+    }
+    if (current == null) return false;
+    if (number(current['monthly_price']) != number(updated['monthly_price'])) return false;
+    final expected = <String>{
+      for (final value in (updated['fixed_module_keys'] is List ? updated['fixed_module_keys'] as List : const []))
+        '$value',
+    };
+    final actual = <String>{
+      for (final value in (current['fixed_module_keys'] is List ? current['fixed_module_keys'] as List : const []))
+        '$value',
+    };
+    return expected.length == actual.length && expected.containsAll(actual);
+  }
+
+  Future<void> _syncPackageMutation(Map<String,dynamic> updated) async {
+    await load(force: true);
+    if (!mounted || _packageMutationVisible(updated)) return;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (mounted) await load(force: true);
   }
 
   Future<void> loadSupplementary() async {
@@ -6809,9 +6856,9 @@ class _PackagesPageState extends State<PackagesPage> {
 
   String _packageDescription(Map<String,dynamic> plan) {
     return switch ('${plan['plan_key']}') {
-      'STARTER' => '10 HIMATE-defined modules for focused teams and first deployments.',
-      'BUSINESS' => '20 HIMATE-defined modules for broader operating workflows.',
-      'FLEX' => 'Unlimited access to every current and future eligible module.',
+      'STARTER' => uiLiteral('A HIMATE-defined module set for focused teams and first deployments.'),
+      'BUSINESS' => uiLiteral('A broader HIMATE-defined module set for operating workflows.'),
+      'FLEX' || 'PREMIUM' => uiLiteral('Unlimited access to every current and future eligible module.'),
       _ => '',
     };
   }
@@ -6825,6 +6872,81 @@ class _PackagesPageState extends State<PackagesPage> {
   bool moduleReady(Map<String, dynamic> module) =>
       '${module['publication_status'] ?? ''}' == 'PUBLISHED' &&
       '${module['implementation_state'] ?? ''}' == 'READY';
+
+  Future<void> showPackageDetails(Map<String, dynamic> plan) async {
+    final included = plan['included_modules'] is List
+        ? (plan['included_modules'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
+        : <Map<String,dynamic>>[];
+    final unlimited = '${plan['plan_key'] ?? ''}'.toUpperCase() == 'FLEX' ||
+        '${plan['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: '${plan['display_name'] ?? plan['plan_key']}',
+        subtitle: _packageDescription(plan),
+        icon: unlimited ? Icons.workspace_premium_outlined : Icons.inventory_2_outlined,
+        width: 760,
+        primaryLabel: uiLiteral('Close'),
+        onPrimary: () => Navigator.pop(dialogContext),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ResponsiveFieldPair(
+              first: _InfoCard(
+                title: uiLiteral('Commercial'),
+                icon: Icons.payments_outlined,
+                children: [
+                  _DefinitionRow(label: uiLiteral('Monthly package price'), value: '${plan['display_price'] ?? '—'}'),
+                  _DefinitionRow(label: uiLiteral('Entitlement'), value: _packageEntitlement(plan)),
+                  _DefinitionRow(label: uiLiteral('Status'), value: uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
+                ],
+              ),
+              second: _InfoCard(
+                title: uiLiteral('Module entitlement'),
+                icon: Icons.widgets_outlined,
+                children: [
+                  _DefinitionRow(label: uiLiteral('Module limit'), value: unlimited ? uiLiteral('Unlimited') : '${plan['module_limit'] ?? '—'}'),
+                  _DefinitionRow(label: uiLiteral('Configured modules'), value: unlimited ? uiLiteral('Automatic') : '${included.length}'),
+                  _DefinitionRow(label: uiLiteral('Selection mode'), value: '${plan['selection_mode'] ?? '—'}'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _SectionHeader(
+              title: uiLiteral('Included modules'),
+              subtitle: unlimited
+                  ? uiLiteral('Every current and future eligible module is included automatically.')
+                  : uiLiteral('Authoritative modules included in this package.'),
+              trailing: _MiniCounter(label: unlimited ? uiLiteral('Unlimited') : '${included.length}'),
+            ),
+            const SizedBox(height: 10),
+            if (unlimited)
+              const _MessageCard(
+                icon: Icons.all_inclusive_rounded,
+                title: 'Automatic Unlimited entitlement',
+                message: 'Premium includes all current and future eligible modules automatically.',
+              )
+            else if (included.isEmpty)
+              _MessageCard(
+                icon: Icons.inventory_2_outlined,
+                title: uiLiteral('No configured modules'),
+                message: uiLiteral('This package does not have a configured module set yet.'),
+              )
+            else
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  for (final module in included)
+                    Chip(label: LText('${module['label'] ?? module['key'] ?? '—'}')),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> editPackage(Map<String, dynamic> plan) async {
     final key = '${plan['plan_key']}';
@@ -6856,12 +6978,12 @@ class _PackagesPageState extends State<PackagesPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
-          title: '${plan['display_name']} package',
+          title: uiBilingual('${plan['display_name']} package', '${plan['display_name']} csomag'),
           subtitle: fixed
-              ? 'HIMATE defines exactly $limit included modules. Price changes apply to all active customers from the effective date.'
+              ? uiLiteral('HIMATE controls the included module set. Price changes apply to active customers from the effective date.')
               : unlimited
-                  ? 'Premium is Unlimited: every current and future eligible module is included automatically. Price changes apply to all active customers from the effective date.'
-                  : 'Partner-selectable package. Price changes apply to all active customers from the effective date.',
+                  ? uiLiteral('Premium is Unlimited: every current and future eligible module is included automatically. Price changes apply from the effective date.')
+                  : uiLiteral('Partner-selectable package. Price changes apply from the effective date.'),
           icon: Icons.inventory_2_outlined,
           width: 820,
           child: Column(
@@ -6882,25 +7004,31 @@ class _PackagesPageState extends State<PackagesPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              const _RuleStrip(items: [
-                _RuleItem(Icons.trending_up_rounded, 'Annual uplift', '5% every January 1'),
-                _RuleItem(Icons.history_rounded, 'Pricing', 'Effective-dated · audited'),
-                _RuleItem(Icons.receipt_long_outlined, 'Existing invoices', 'Never rewritten'),
+              _RuleStrip(items: [
+                _RuleItem(Icons.trending_up_rounded, uiLiteral('Annual uplift'), '${plan['annual_increase_percent'] ?? 0}% · Jan 1'),
+                _RuleItem(Icons.history_rounded, uiLiteral('Pricing'), uiLiteral('Effective-dated · audited')),
+                _RuleItem(Icons.receipt_long_outlined, uiLiteral('Existing invoices'), uiLiteral('Never rewritten')),
               ]),
               const SizedBox(height: 12),
-              _DefinitionRow(label: 'Module limit', value: unlimited ? 'Unlimited' : '$limit'),
-              _DefinitionRow(label: 'Selection mode', value: fixed ? 'HIMATE fixed package' : unlimited ? 'Automatic Unlimited entitlement' : 'Partner selectable'),
-              _DefinitionRow(label: 'Annual uplift', value: '${plan['annual_increase_percent'] ?? 5}% · January 1'),
+              _DefinitionRow(label: uiLiteral('Module limit'), value: unlimited ? uiLiteral('Unlimited') : '$limit'),
+              _DefinitionRow(label: uiLiteral('Selection mode'), value: fixed ? uiLiteral('HIMATE fixed package') : unlimited ? uiLiteral('Automatic Unlimited entitlement') : uiLiteral('Partner selectable')),
+              _DefinitionRow(
+                label: uiLiteral('Annual uplift'),
+                value: uiBilingual(
+                  '${plan['annual_increase_percent'] ?? 0}% · Jan 1',
+                  '${plan['annual_increase_percent'] ?? 0}% · jan. 1.',
+                ),
+              ),
               if (fixed) ...[
                 const SizedBox(height: 16),
                 _SectionHeader(
-                  title: 'Included modules',
-                  subtitle: 'Select exactly $limit published and implementation-ready modules.',
+                  title: uiLiteral('Included modules'),
+                  subtitle: uiLiteral('Select the required number of published and implementation-ready modules.'),
                 ),
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: _MiniCounter(label: '${selected.length} / $limit SELECTED'),
+                  child: _MiniCounter(label: uiBilingual('${selected.length} / $limit SELECTED', '${selected.length} / $limit KIVÁLASZTVA')),
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
@@ -6973,8 +7101,8 @@ class _PackagesPageState extends State<PackagesPage> {
           if (effective.text.trim().isNotEmpty) 'effective_at': effective.text.trim(),
           if (fixed) 'fixed_module_keys': selected.toList()..sort(),
         };
-        await widget.api.patch('/api/v1/billing/plans/$key', payload);
-        await load();
+        final updated = await widget.api.patch('/api/v1/billing/plans/$key', payload);
+        await _syncPackageMutation(updated);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: LText('$key package updated.'), behavior: SnackBarBehavior.floating),
@@ -6991,6 +7119,7 @@ class _PackagesPageState extends State<PackagesPage> {
   Widget build(BuildContext context) {
     if (loading && plans.isEmpty) {
       return const Content(
+        showHeader: false,
         eyebrow: 'COMMERCIAL CONTROL PLANE',
         title: 'Packages',
         subtitle: 'Central subscription packages, prices and module entitlements.',
@@ -6999,6 +7128,7 @@ class _PackagesPageState extends State<PackagesPage> {
     }
     if (error != null && plans.isEmpty) {
       return Content(
+        showHeader: false,
         eyebrow: 'COMMERCIAL CONTROL PLANE',
         title: 'Packages',
         subtitle: 'Central subscription packages, prices and module entitlements.',
@@ -7008,6 +7138,7 @@ class _PackagesPageState extends State<PackagesPage> {
     }
     if (!loading && !packageReady && plans.isEmpty) {
       return Content(
+        showHeader: false,
         title: 'Packages',
         subtitle: 'Subscription packages, module entitlements and configuration.',
         actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
@@ -7024,18 +7155,31 @@ class _PackagesPageState extends State<PackagesPage> {
     final analyticsPartners = analytics['partners'] is List
         ? (analytics['partners'] as List).whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList()
         : <Map<String,dynamic>>[];
+    final analyticsByPlan = <String,Map<String,dynamic>>{
+      for (final row in analyticsPackages)
+        '${row['plan_key'] ?? ''}'.toUpperCase() == 'PREMIUM'
+            ? 'FLEX'
+            : '${row['plan_key'] ?? ''}'.toUpperCase(): row,
+    };
     final activityMeasured = analytics['portal_activity_measured'] == true;
 
     final activeSubscriptions = analyticsPackages.fold<int>(
       0,
       (sum, row) => sum + ((row['active_partner_count'] as num?)?.toInt() ?? 0),
     );
-    final customPackages = plans.where((plan) {
+    final canonicalPlans = plans.where((plan) {
       final key = '${plan['plan_key'] ?? ''}'.toUpperCase();
-      return key != 'STARTER' && key != 'BUSINESS' && key != 'FLEX' && key != 'PREMIUM';
-    }).length;
+      return key == 'STARTER' || key == 'BUSINESS' || key == 'FLEX' || key == 'PREMIUM';
+    }).toList()
+      ..sort((a, b) {
+        const order = <String,int>{'STARTER': 0, 'BUSINESS': 1, 'FLEX': 2, 'PREMIUM': 2};
+        return (order['${a['plan_key'] ?? ''}'.toUpperCase()] ?? 99)
+            .compareTo(order['${b['plan_key'] ?? ''}'.toUpperCase()] ?? 99);
+      });
+    final customPackages = plans.length - canonicalPlans.length;
 
     return Content(
+      showHeader: false,
       title: 'Packages',
       subtitle: 'Subscription packages, module entitlements and configuration.',
       actions: [
@@ -7065,16 +7209,20 @@ class _PackagesPageState extends State<PackagesPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  for (final plan in plans)
+                  for (final plan in canonicalPlans)
                     SizedBox(
                       width: width,
                       child: _PackageOverviewCard(
+                        planKey: '${plan['plan_key'] ?? ''}',
                         name: '${plan['display_name'] ?? plan['plan_key']}',
                         price: '${plan['display_price'] ?? '—'}',
                         description: _packageDescription(plan),
                         entitlement: _packageEntitlement(plan),
                         active: plan['active'] == true,
-                        onTap: () => unawaited(editPackage(plan)),
+                        moduleLimit: (plan['module_limit'] as num?)?.toInt(),
+                        includedModuleCount: (plan['included_modules'] is List) ? (plan['included_modules'] as List).length : 0,
+                        activePartnerCount: (analyticsByPlan['${plan['plan_key'] ?? ''}'.toUpperCase()]?['active_partner_count'] as num?)?.toInt() ?? 0,
+                        onTap: () => unawaited(showPackageDetails(plan)),
                         onEdit: () => unawaited(editPackage(plan)),
                       ),
                     ),
@@ -7093,11 +7241,15 @@ class _PackagesPageState extends State<PackagesPage> {
               message: modulesError!,
             ),
           ],
+          const SizedBox(height: 18),
+          _PackageComparisonTable(plans: canonicalPlans),
           const SizedBox(height: 24),
           _SectionHeader(
             title: 'Package Analytics',
             subtitle: 'Partner distribution, package usage, Portal activity and current commercial context from authoritative runtime data.',
-            trailing: analyticsLoading ? const _MiniCounter(label: 'REFRESHING') : _MiniCounter(label: '${analyticsPartners.length} PARTNERS'),
+            trailing: analyticsLoading
+                ? _MiniCounter(label: uiBilingual('REFRESHING', 'FRISSÍTÉS'))
+                : _MiniCounter(label: uiBilingual('${analyticsPartners.length} PARTNERS', '${analyticsPartners.length} PARTNER')),
           ),
           const SizedBox(height: 12),
           if (analyticsError != null && analytics.isEmpty)
@@ -7159,14 +7311,20 @@ class _PackagesPageState extends State<PackagesPage> {
                                 spacing: 7,
                                 runSpacing: 7,
                                 children: [
-                                  _MiniCounter(label: '${partner['billing_frequency'] ?? '—'}'),
-                                  _MiniCounter(label: '${partner['classification'] ?? '—'}'),
-                                  _MiniCounter(label: '${partner['onboarding_state'] ?? '—'}'),
-                                  _MiniCounter(label: '${partner['module_usage_events_30d'] ?? 0} MODULE USES / 30D'),
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['billing_frequency'] ?? '—'}'))),
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['classification'] ?? '—'}'))),
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['onboarding_state'] ?? '—'}'))),
+                                  _MiniCounter(label: uiBilingual(
+                                    '${partner['module_usage_events_30d'] ?? 0} MODULE USES / 30D',
+                                    '${partner['module_usage_events_30d'] ?? 0} MODULHASZNÁLAT / 30 NAP',
+                                  )),
                                   _MiniCounter(
                                     label: partner['portal_activity_measured'] == true && number(partner['portal_active_hours_30d']) > 0
-                                        ? '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTAL HOURS / 30D'
-                                        : 'NO PORTAL ACTIVITY RECORDED',
+                                        ? uiBilingual(
+                                            '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTAL HOURS / 30D',
+                                            '${number(partner['portal_active_hours_30d']).toStringAsFixed(1)} PORTÁLÓRA / 30 NAP',
+                                          )
+                                        : uiBilingual('NO PORTAL ACTIVITY RECORDED', 'NINCS RÖGZÍTETT PORTÁLAKTIVITÁS'),
                                   ),
                                 ],
                               ),
@@ -7194,19 +7352,27 @@ class _PackagesPageState extends State<PackagesPage> {
 
 class _PackageOverviewCard extends StatefulWidget {
   const _PackageOverviewCard({
+    required this.planKey,
     required this.name,
     required this.price,
     required this.description,
     required this.entitlement,
     required this.active,
+    required this.moduleLimit,
+    required this.includedModuleCount,
+    required this.activePartnerCount,
     required this.onTap,
     required this.onEdit,
   });
+  final String planKey;
   final String name;
   final String price;
   final String description;
   final String entitlement;
   final bool active;
+  final int? moduleLimit;
+  final int includedModuleCount;
+  final int activePartnerCount;
   final VoidCallback onTap;
   final VoidCallback onEdit;
 
@@ -7217,62 +7383,142 @@ class _PackageOverviewCard extends StatefulWidget {
 class _PackageOverviewCardState extends State<_PackageOverviewCard> {
   bool hover = false;
 
+  bool get highlighted => widget.planKey.toUpperCase() == 'BUSINESS';
+
+  IconData get packageIcon => switch (widget.planKey.toUpperCase()) {
+    'STARTER' => Icons.rocket_launch_outlined,
+    'BUSINESS' => Icons.business_center_outlined,
+    'FLEX' || 'PREMIUM' => Icons.workspace_premium_outlined,
+    _ => Icons.inventory_2_outlined,
+  };
+
   @override
   Widget build(BuildContext context) => MouseRegion(
     onEnter: (_) => setState(() => hover = true),
     onExit: (_) => setState(() => hover = false),
     child: AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+      duration: const Duration(milliseconds: 170),
+      transform: Matrix4.translationValues(0, hover ? -4 : highlighted ? -2 : 0, 0),
+      constraints: const BoxConstraints(minHeight: 360),
       decoration: BoxDecoration(
-        color: brandSurfaceRaised,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: hover ? brandGold.withOpacity(.85) : brandIonBlue.withOpacity(.30), width: hover ? 1.5 : 1.0),
-        boxShadow: [BoxShadow(color: brandNavy.withOpacity(hover ? .14 : .075), blurRadius: hover ? 24 : 15, offset: Offset(0, hover ? 10 : 6))],
+        color: brandWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: highlighted
+              ? brandGold
+              : hover
+                  ? brandGold.withOpacity(.68)
+                  : brandMist,
+          width: highlighted ? 1.8 : hover ? 1.3 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: brandNavy.withOpacity(highlighted ? .11 : hover ? .09 : .05),
+            blurRadius: highlighted ? 26 : hover ? 22 : 14,
+            offset: Offset(0, highlighted ? 10 : hover ? 8 : 5),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 17),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(11)),
-                    child: const Icon(Icons.inventory_2_outlined, color: brandNavy, size: 23),
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: highlighted ? brandGold.withOpacity(.14) : brandSteel.withOpacity(.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(packageIcon, color: highlighted ? brandGold : brandNavy, size: 25),
                   ),
                   const Spacer(),
+                  if (highlighted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(color: brandGold.withOpacity(.14), borderRadius: BorderRadius.circular(99)),
+                      child: LText(uiLiteral('Most popular'), style: const TextStyle(color: Color(0xFF8B6508), fontSize: 9, fontWeight: FontWeight.w800)),
+                    ),
+                  const SizedBox(width: 6),
                   IconButton(
                     tooltip: uiLiteral('Edit package'),
                     onPressed: widget.onEdit,
-                    icon: const Icon(Icons.edit_outlined, size: 19),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
                   ),
                 ]),
                 const SizedBox(height: 18),
-                LText(widget.name, style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 28, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                LText(widget.price, style: const TextStyle(color: brandTextSoft, fontSize: 13, fontWeight: FontWeight.w600)),
+                LText(
+                  widget.name,
+                  style: GoogleFonts.cormorantGaramond(
+                    color: brandNavy,
+                    fontSize: 31,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                LText(
+                  widget.price,
+                  style: const TextStyle(color: brandTextSoft, fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 13),
+                LText(widget.description, style: const TextStyle(color: brandCharcoal, fontSize: 11.3, height: 1.48)),
+                const SizedBox(height: 16),
+                const Divider(height: 1),
                 const SizedBox(height: 14),
-                LText(widget.description, style: const TextStyle(color: brandCharcoal, fontSize: 11.5, height: 1.45)),
-                const SizedBox(height: 14),
-                _RuleStrip(items: [
-                  _RuleItem(Icons.widgets_outlined, 'Included', widget.entitlement),
-                  _RuleItem(Icons.circle, 'Status', widget.active ? 'ACTIVE' : 'INACTIVE'),
-                ]),
-                const SizedBox(height: 18),
+                _PackageFeatureRow(
+                  icon: Icons.widgets_outlined,
+                  label: uiLiteral('Included modules'),
+                  value: widget.moduleLimit == null ? uiLiteral('Unlimited') : '${widget.moduleLimit}',
+                ),
+                const SizedBox(height: 9),
+                _PackageFeatureRow(
+                  icon: Icons.checklist_rounded,
+                  label: uiLiteral('Configured modules'),
+                  value: widget.moduleLimit == null ? uiLiteral('Automatic') : '${widget.includedModuleCount} / ${widget.moduleLimit}',
+                ),
+                const SizedBox(height: 9),
+                _PackageFeatureRow(
+                  icon: Icons.groups_2_outlined,
+                  label: uiLiteral('Active partners'),
+                  value: '${widget.activePartnerCount}',
+                ),
+                const SizedBox(height: 9),
+                _PackageFeatureRow(
+                  icon: Icons.verified_outlined,
+                  label: uiLiteral('Status'),
+                  value: uiLiteral(widget.active ? 'Active' : 'Inactive'),
+                ),
+                const Spacer(),
+                const SizedBox(height: 16),
                 Row(children: [
-                  const LText('Package details', style: TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w800)),
-                  const Spacer(),
-                  AnimatedSlide(
-                    offset: hover ? const Offset(.14, 0) : Offset.zero,
-                    duration: const Duration(milliseconds: 150),
-                    child: const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 20),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: widget.onTap,
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                      label: LText(uiLiteral('Package details')),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Material(
+                    color: highlighted ? brandGold : const Color(0xFFF1F5FA),
+                    borderRadius: BorderRadius.circular(9),
+                    child: InkWell(
+                      onTap: widget.onTap,
+                      borderRadius: BorderRadius.circular(9),
+                      child: SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: Icon(Icons.arrow_forward_rounded, color: highlighted ? brandNavy : brandSteel, size: 19),
+                      ),
+                    ),
                   ),
                 ]),
               ],
@@ -7282,6 +7528,132 @@ class _PackageOverviewCardState extends State<_PackageOverviewCard> {
       ),
     ),
   );
+}
+
+class _PackageFeatureRow extends StatelessWidget {
+  const _PackageFeatureRow({required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, color: brandSteel, size: 15),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: LText(label, style: const TextStyle(color: brandTextSoft, fontSize: 9.5))),
+        const SizedBox(width: 8),
+        LText(value, style: const TextStyle(color: brandNavy, fontSize: 9.8, fontWeight: FontWeight.w800)),
+      ]);
+}
+
+class _PackageComparisonTable extends StatelessWidget {
+  const _PackageComparisonTable({required this.plans});
+  final List<Map<String,dynamic>> plans;
+
+  String _mode(Map<String,dynamic> plan) {
+    final value = '${plan['selection_mode'] ?? ''}'.toUpperCase();
+    return switch (value) {
+      'FIXED' => uiLiteral('HIMATE fixed package'),
+      'UNLIMITED' => uiLiteral('Unlimited'),
+      _ => value.isEmpty ? '—' : value,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <(String, String Function(Map<String,dynamic>))>[
+      (uiLiteral('Monthly net price'), (plan) => '${plan['display_price'] ?? '—'}'),
+      (uiLiteral('Entitlement'), (plan) => '${plan['entitlement'] ?? '—'}'),
+      (uiLiteral('Selection mode'), _mode),
+      (
+        uiLiteral('Configured modules'),
+        (plan) {
+          final unlimited = '${plan['selection_mode'] ?? ''}'.toUpperCase() == 'UNLIMITED';
+          if (unlimited) return uiLiteral('Automatic');
+          final included = plan['included_modules'] is List ? (plan['included_modules'] as List).length : 0;
+          final limit = (plan['module_limit'] as num?)?.toInt();
+          return limit == null ? '$included' : '$included / $limit';
+        },
+      ),
+      (uiLiteral('Status'), (plan) => uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            LText(
+              uiLiteral('Package comparison'),
+              style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            LText(
+              uiLiteral('Compare the current authoritative Billing plan values.'),
+              style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+            ),
+            const SizedBox(height: 14),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 720),
+                child: Table(
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                  columnWidths: {
+                    0: const FixedColumnWidth(180),
+                    for (var index = 0; index < plans.length; index++)
+                      index + 1: const FixedColumnWidth(180),
+                  },
+                  border: const TableBorder(
+                    horizontalInside: BorderSide(color: brandMist),
+                  ),
+                  children: [
+                    TableRow(
+                      children: [
+                        const SizedBox(height: 44),
+                        for (final plan in plans)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            child: LText(
+                              '${plan['display_name'] ?? plan['plan_key'] ?? '—'}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 11),
+                            ),
+                          ),
+                      ],
+                    ),
+                    for (final row in rows)
+                      TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                            child: LText(row.$1, style: const TextStyle(color: brandTextSoft, fontSize: 10, fontWeight: FontWeight.w600)),
+                          ),
+                          for (final plan in plans)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              child: LText(
+                                row.$2(plan),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PackageAnalyticsChart extends StatelessWidget {
@@ -7319,7 +7691,10 @@ class _PackageAnalyticsChart extends StatelessWidget {
                       ),
                       const SizedBox(height: 5),
                       LText(
-                        '${package['active_partner_count'] ?? 0} active partners · ${package['module_usage_events_30d'] ?? 0} module uses / 30d · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} Portal hours / 30d',
+                        uiBilingual(
+                          '${package['active_partner_count'] ?? 0} active partners · ${package['module_usage_events_30d'] ?? 0} module uses / 30d · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} Portal hours / 30d',
+                          '${package['active_partner_count'] ?? 0} aktív partner · ${package['module_usage_events_30d'] ?? 0} modulhasználat / 30 nap · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} portálóra / 30 nap',
+                        ),
                         style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
                       ),
                       if (maxUsage > 0) ...[
@@ -7338,6 +7713,90 @@ class _PackageAnalyticsChart extends StatelessWidget {
               ]),
               const SizedBox(height: 16),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FinanceInvoicePreview extends StatelessWidget {
+  const _FinanceInvoicePreview({required this.invoices, required this.onViewAll});
+  final List<Map<String,dynamic>> invoices;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = invoices.take(4).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 17, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(color: brandGold.withOpacity(.12), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.receipt_long_outlined, color: brandGold, size: 19),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  LText(uiLiteral('Invoices'), style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700)),
+                  LText(uiLiteral('Recent invoice activity'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
+                ]),
+              ),
+              TextButton(onPressed: onViewAll, child: LText(uiLiteral('View all'))),
+            ]),
+            const SizedBox(height: 12),
+            if (recent.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 36),
+                child: Center(
+                  child: LText(uiLiteral('No invoices yet'), style: const TextStyle(color: brandTextSoft, fontSize: 10.5)),
+                ),
+              )
+            else
+              for (var i=0;i<recent.length;i++) ...[
+                Builder(builder: (context) {
+                  final invoice=recent[i];
+                  final status='${invoice['workflow_status'] ?? invoice['status'] ?? 'DRAFT'}';
+                  final currency='${invoice['currency'] ?? 'USD'}';
+                  final amount=number(invoice['gross_total'] ?? invoice['total']);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(9)),
+                        child: const Icon(Icons.description_outlined, color: brandSteel, size: 17),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          LText(
+                            '${invoice['partner_name'] ?? invoice['partner_id'] ?? '—'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 2),
+                          LText(
+                            '$currency ${amount.toStringAsFixed(2)}',
+                            style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                          ),
+                        ]),
+                      ),
+                      const SizedBox(width: 7),
+                      _StatusPill(label: uiLiteral(_humanize(status))),
+                    ]),
+                  );
+                }),
+                if (i != recent.length-1) const Divider(height: 1),
+              ],
           ],
         ),
       ),
@@ -7366,6 +7825,7 @@ class _FinancePageState extends State<FinancePage> {
   String revenuePeriod = 'MONTHLY';
   String revenuePlan = 'ALL';
   final GlobalKey onboardingKey = GlobalKey();
+  final GlobalKey invoiceKey = GlobalKey();
   bool loading = true;
   bool warming = false;
   int _warmRetryCount = 0;
@@ -7470,6 +7930,48 @@ class _FinancePageState extends State<FinancePage> {
     }
   }
 
+  bool _invoiceMutationVisible(Map<String,dynamic> updated) {
+    final id = '${updated['id'] ?? ''}';
+    if (id.isEmpty) return false;
+    final expected = '${updated['workflow_status'] ?? updated['status'] ?? ''}'.toUpperCase();
+    Map<String,dynamic>? current;
+    for (final invoice in invoices) {
+      if ('${invoice['id'] ?? ''}' == id) {
+        current = invoice;
+        break;
+      }
+    }
+    if (invoiceFilter != 'ALL' && expected.isNotEmpty && invoiceFilter != expected) {
+      return current == null;
+    }
+    if (current == null) return false;
+    final actual = '${current['workflow_status'] ?? current['status'] ?? ''}'.toUpperCase();
+    return expected.isEmpty || actual == expected;
+  }
+
+  bool _onboardingMutationVisible(String partnerID, String expectedState) {
+    Map<String,dynamic>? current;
+    for (final row in onboardingRows) {
+      if ('${row['partner_id'] ?? ''}' == partnerID) {
+        current = row;
+        break;
+      }
+    }
+    if (expectedState == 'ACTIVE') return current == null;
+    return current != null && '${current['state'] ?? ''}'.toUpperCase() == expectedState;
+  }
+
+  Future<void> _syncFinanceMutation(bool Function() isVisible) async {
+    await load(force: true);
+    if (!mounted || isVisible()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    await load(force: true);
+    if (isVisible()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (mounted) await load(force: true);
+  }
+
   void success(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
@@ -7483,10 +7985,10 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   String get revenuePlanLabel => switch (revenuePlan) {
-    'STARTER' => 'Starter',
-    'BUSINESS' => 'Business',
-    'FLEX' => 'Premium',
-    _ => 'All revenue',
+    'STARTER' => uiLiteral('Starter'),
+    'BUSINESS' => uiLiteral('Business'),
+    'FLEX' => uiLiteral('Premium'),
+    _ => uiLiteral('All revenue'),
   };
 
   void applyInvoiceFilter(String status) {
@@ -7579,7 +8081,7 @@ class _FinancePageState extends State<FinancePage> {
         failure('Partner, description and a positive net amount are required.');
       } else {
         try {
-          await widget.api.post('/api/v1/billing/invoices', {
+          final created = await widget.api.post('/api/v1/billing/invoices', {
             'partner_id': selectedPartner,
             'currency': currency.text.trim().toUpperCase(),
             'description': description.text.trim(),
@@ -7590,7 +8092,7 @@ class _FinancePageState extends State<FinancePage> {
             'notes': notes.text.trim(),
           });
           invoiceFilter = 'DRAFT';
-          await load();
+          await _syncFinanceMutation(() => _invoiceMutationVisible(created));
           if (mounted) success('Invoice draft created.');
         } catch (e) {
           if (mounted) failure(e.toString());
@@ -7633,11 +8135,11 @@ class _FinancePageState extends State<FinancePage> {
     );
     if (ok == true) {
       try {
-        await widget.api.post('/api/v1/billing/invoices/${invoice['id']}/$action', {
+        final updated = await widget.api.post('/api/v1/billing/invoices/${invoice['id']}/$action', {
           'reason': reason.text.trim(),
           'payment_reference': paymentReference.text.trim(),
         });
-        await load();
+        await _syncFinanceMutation(() => _invoiceMutationVisible(updated));
         if (mounted) success('$label completed.');
       } catch (e) {
         if (mounted) failure(e.toString());
@@ -7654,7 +8156,9 @@ class _FinancePageState extends State<FinancePage> {
         'classification': '${row['classification'] ?? 'UNCLASSIFIED'}',
         'reason': reason ?? 'Central-6 administrator onboarding workflow',
       });
-      await load();
+      await _syncFinanceMutation(
+        () => _onboardingMutationVisible('${row['partner_id']}', nextState),
+      );
       if (mounted) success('Onboarding moved to ${_humanize(nextState)}.');
     } catch (e) {
       if (mounted) failure(e.toString());
@@ -7729,7 +8233,9 @@ class _FinancePageState extends State<FinancePage> {
             'currency': currency.text.trim().toUpperCase(),
             'evidence_reference': evidence.text.trim(),
           });
-          await load();
+          await _syncFinanceMutation(
+            () => _onboardingMutationVisible('${row['partner_id']}', 'CLASSIFIED'),
+          );
           if (mounted) success('Partner classification saved.');
         } catch (e) {
           if (mounted) failure(e.toString());
@@ -7784,8 +8290,14 @@ class _FinancePageState extends State<FinancePage> {
 
   Widget financeChart() {
     final rows = chartRows;
-    final windowLabel = revenuePeriod == 'WEEKLY' ? 'last 4 weeks' : 'last 12 months';
+    final windowLabel = revenuePeriod == 'WEEKLY'
+        ? uiBilingual('last 4 weeks', 'elmúlt 4 hét')
+        : uiBilingual('last 12 months', 'elmúlt 12 hónap');
     final planLabel = revenuePlanLabel;
+    final revenueTitle = uiBilingual(
+      'Paid revenue · $windowLabel · $planLabel',
+      'Fizetett bevétel · $windowLabel · $planLabel',
+    );
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -7800,7 +8312,7 @@ class _FinancePageState extends State<FinancePage> {
                   child: DropdownButtonFormField<String>(
                     value: revenuePeriod,
                     isDense: true,
-                    decoration: const InputDecoration(labelText: 'Period'),
+                    decoration: InputDecoration(labelText: uiLiteral('Period')),
                     items: const [
                       DropdownMenuItem(value: 'WEEKLY', child: LText('Weekly')),
                       DropdownMenuItem(value: 'MONTHLY', child: LText('Monthly')),
@@ -7815,7 +8327,7 @@ class _FinancePageState extends State<FinancePage> {
                   child: DropdownButtonFormField<String>(
                     value: revenuePlan,
                     isDense: true,
-                    decoration: const InputDecoration(labelText: 'Package'),
+                    decoration: InputDecoration(labelText: uiLiteral('Package')),
                     items: const [
                       DropdownMenuItem(value: 'ALL', child: LText('All')),
                       DropdownMenuItem(value: 'STARTER', child: LText('Starter')),
@@ -7831,13 +8343,13 @@ class _FinancePageState extends State<FinancePage> {
             );
             if (constraints.maxWidth < 720) {
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                LText('Paid revenue · $windowLabel · $planLabel', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14)),
+                LText(revenueTitle, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14)),
                 const SizedBox(height: 12),
                 controls,
               ]);
             }
             return Row(children: [
-              Expanded(child: LText('Paid revenue · $windowLabel · $planLabel', style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
+              Expanded(child: LText(revenueTitle, style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 14))),
               controls,
               const SizedBox(width: 8),
               _MiniCounter(label: chartCurrency),
@@ -7975,8 +8487,10 @@ class _FinancePageState extends State<FinancePage> {
     );
 
     if (ok == true) {
+      final expectedLegalName = legal.text.trim();
+      final expectedRegistration = registration.text.trim();
       await widget.api.put('/api/v1/billing/profile', {
-        'legal_name': legal.text.trim(),
+        'legal_name': expectedLegalName,
         'registration_number': registration.text.trim(),
         'address': address.text.trim(),
         'tax_id': tax.text.trim(),
@@ -7992,7 +8506,10 @@ class _FinancePageState extends State<FinancePage> {
         'vat_jurisdiction': vatJurisdiction.text.trim(),
         'tax_label': taxLabel.text.trim(),
       });
-      await load();
+      await _syncFinanceMutation(
+        () => '${profile?['legal_name'] ?? ''}' == expectedLegalName &&
+            '${profile?['registration_number'] ?? ''}' == expectedRegistration,
+      );
       if (mounted) success('Billing profile updated.');
     }
 
@@ -8011,6 +8528,7 @@ class _FinancePageState extends State<FinancePage> {
         onboardingRows.isEmpty &&
         chartRows.isEmpty) {
       return Content(
+        showHeader: false,
         eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
         title: 'Licensing & Finance',
         subtitle: warming
@@ -8033,7 +8551,15 @@ class _FinancePageState extends State<FinancePage> {
       }
     }
 
+    void scrollToInvoices() {
+      final target = invoiceKey.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
+      }
+    }
+
     return Content(
+      showHeader: false,
       title: 'Licensing & Finance',
       subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
       actions: [
@@ -8072,7 +8598,7 @@ class _FinancePageState extends State<FinancePage> {
                     Kpi(
                       label: 'Invoices',
                       value: '${invoices.length}',
-                      note: '$draftCount draft · $approvedCount approved',
+                      note: uiBilingual('$draftCount draft · $approvedCount approved', '$draftCount piszkozat · $approvedCount jóváhagyva'),
                       icon: Icons.receipt_long_outlined,
                       accent: brandSteel,
                       onTap: () => applyInvoiceFilter('ALL'),
@@ -8080,7 +8606,10 @@ class _FinancePageState extends State<FinancePage> {
                     Kpi(
                       label: 'Outstanding',
                       value: '${financeKpis['outstanding_label'] ?? r'$0.00'}',
-                      note: '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} approved / sent invoices',
+                      note: uiBilingual(
+                        '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} approved / sent invoices',
+                        '${financeKpis['outstanding_invoice_count'] ?? approvedCount + sentCount} jóváhagyott / elküldött számla',
+                      ),
                       icon: Icons.outbox_outlined,
                       accent: brandGold,
                       onTap: () => applyInvoiceFilter(sentCount > 0 ? 'SENT' : 'APPROVED'),
@@ -8088,7 +8617,7 @@ class _FinancePageState extends State<FinancePage> {
                     Kpi(
                       label: 'Settled',
                       value: '${financeKpis['paid_ytd_label'] ?? r'$0.00'}',
-                      note: '$paidCount paid invoices',
+                      note: uiBilingual('$paidCount paid invoices', '$paidCount fizetett számla'),
                       icon: Icons.payments_outlined,
                       accent: brandSuccess,
                       onTap: () => applyInvoiceFilter('PAID'),
@@ -8104,7 +8633,31 @@ class _FinancePageState extends State<FinancePage> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                financeChart(),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final invoicePreview = _FinanceInvoicePreview(
+                      invoices: visibleInvoices,
+                      onViewAll: scrollToInvoices,
+                    );
+                    if (constraints.maxWidth < 980) {
+                      return Column(
+                        children: [
+                          financeChart(),
+                          const SizedBox(height: 12),
+                          invoicePreview,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 3, child: financeChart()),
+                        const SizedBox(width: 12),
+                        Expanded(flex: 2, child: invoicePreview),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 16),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -8120,7 +8673,7 @@ class _FinancePageState extends State<FinancePage> {
                           child: _CentralActionCard(
                             title: 'Invoice approval queue',
                             subtitle: 'Review and approve generated invoice drafts before they can be sent.',
-                            footer: '$draftCount awaiting approval',
+                            footer: uiBilingual('$draftCount awaiting approval', '$draftCount jóváhagyásra vár'),
                             icon: Icons.fact_check_outlined,
                             accent: brandSteel,
                             onTap: () => applyInvoiceFilter('DRAFT'),
@@ -8131,7 +8684,7 @@ class _FinancePageState extends State<FinancePage> {
                           child: _CentralActionCard(
                             title: 'Partner onboarding',
                             subtitle: 'Registration, commercial approval, license activation and Portal access.',
-                            footer: '$pendingOnboarding active onboarding processes',
+                            footer: uiBilingual('$pendingOnboarding active onboarding processes', '$pendingOnboarding aktív onboarding folyamat'),
                             icon: Icons.group_add_outlined,
                             accent: brandGold,
                             onTap: scrollToOnboarding,
@@ -8153,7 +8706,9 @@ class _FinancePageState extends State<FinancePage> {
                   },
                 ),
                 const SizedBox(height: 24),
-                Row(
+                Container(
+                  key: invoiceKey,
+                  child: Row(
                   children: [
                     const Expanded(
                       child: _SectionHeader(
@@ -8161,8 +8716,9 @@ class _FinancePageState extends State<FinancePage> {
                         subtitle: 'Draft → Approved → Sent → Paid / Cancelled. Collection is blocked until the invoice is Sent.',
                       ),
                     ),
-                    _MiniCounter(label: '${visibleInvoices.length} shown'),
+                    _MiniCounter(label: uiBilingual('${visibleInvoices.length} shown', '${visibleInvoices.length} megjelenítve')),
                   ],
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
@@ -8237,7 +8793,7 @@ class _FinancePageState extends State<FinancePage> {
                                     runSpacing: 7,
                                     alignment: WrapAlignment.end,
                                     children: [
-                                      _StatusPill(label: workflow),
+                                      _StatusPill(label: uiLiteral(_humanize(workflow))),
                                       if (workflow == 'DRAFT')
                                         FilledButton.tonalIcon(
                                           onPressed: () => invoiceAction(invoice, 'approve'),
@@ -8304,7 +8860,7 @@ class _FinancePageState extends State<FinancePage> {
                           subtitle: 'Registered → Pending Review → Classified → invoice/payment or documented support → Admin Approval → Active.',
                         ),
                       ),
-                      _MiniCounter(label: '$pendingOnboarding pending'),
+                      _MiniCounter(label: uiBilingual('$pendingOnboarding pending', '$pendingOnboarding függőben')),
                     ],
                   ),
                 ),
@@ -8334,10 +8890,10 @@ class _FinancePageState extends State<FinancePage> {
                                       style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13),
                                     ),
                                   ),
-                                  _StatusPill(label: '${row['state'] ?? 'REGISTERED'}'),
+                                  _StatusPill(label: uiLiteral(_humanize('${row['state'] ?? 'REGISTERED'}'))),
                                 ]),
                                 const SizedBox(height: 10),
-                                _DefinitionRow(label: 'Classification', value: _humanize('${row['classification'] ?? 'UNCLASSIFIED'}')),
+                                _DefinitionRow(label: 'Classification', value: uiLiteral(_humanize('${row['classification'] ?? 'UNCLASSIFIED'}'))),
                                 _DefinitionRow(label: 'Portal access', value: row['portal_enabled'] == true ? 'Enabled' : 'Blocked until Active'),
                                 _DefinitionRow(label: 'Partner ID', value: '${row['partner_id'] ?? ''}'),
                                 const SizedBox(height: 12),
@@ -8386,6 +8942,11 @@ class _ImpactPageState extends State<ImpactPage> {
   List<Map<String, dynamic>> reports = <Map<String, dynamic>>[];
   Map<String, dynamic> impactAnalytics = <String, dynamic>{};
   Map<String, dynamic> impactKpis = <String, dynamic>{};
+  Map<String, dynamic> impactMeta = <String, dynamic>{};
+  Map<String, dynamic> impactAccess = <String, dynamic>{};
+  bool impactSnapshotWarming = false;
+  int _impactWarmRetryCount = 0;
+  Timer? _impactWarmRetry;
   int evidenceTotal = 0;
   int evidenceOffset = 0;
   static const int evidenceLimit = 12;
@@ -8401,6 +8962,12 @@ class _ImpactPageState extends State<ImpactPage> {
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void dispose() {
+    _impactWarmRetry?.cancel();
+    super.dispose();
   }
 
   String evidencePath() {
@@ -8425,7 +8992,7 @@ class _ImpactPageState extends State<ImpactPage> {
     return Uri(path: '/api/v1/central/impact', queryParameters: query).toString();
   }
 
-  Future<void> load() async {
+  Future<void> load({bool force = false}) async {
     final path = evidencePath();
     if (mounted) {
       setState(() {
@@ -8436,13 +9003,29 @@ class _ImpactPageState extends State<ImpactPage> {
 
     void applyModel(Map<String, dynamic> model) {
       if (!mounted || path != evidencePath()) return;
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
       if (model['ready'] != true) {
         setState(() {
           loading = false;
           error = null;
+          impactSnapshotWarming = true;
+          impactMeta = meta;
         });
+        _impactWarmRetry?.cancel();
+        if (_impactWarmRetryCount < 2) {
+          _impactWarmRetryCount += 1;
+          _impactWarmRetry = Timer(Duration(milliseconds: 900 * _impactWarmRetryCount), () {
+            if (mounted && path == evidencePath()) {
+              unawaited(load(force: true));
+            }
+          });
+        }
         return;
       }
+      _impactWarmRetry?.cancel();
+      _impactWarmRetryCount = 0;
       setState(() {
         definitions = items(<String, dynamic>{'items': model['definitions']});
         summary = items(<String, dynamic>{'items': model['summary']});
@@ -8450,6 +9033,9 @@ class _ImpactPageState extends State<ImpactPage> {
         reports = items(<String, dynamic>{'items': model['reports']});
         impactAnalytics = model['analytics'] is Map ? Map<String, dynamic>.from(model['analytics'] as Map) : <String, dynamic>{};
         impactKpis = model['kpis'] is Map ? Map<String, dynamic>.from(model['kpis'] as Map) : <String, dynamic>{};
+        impactMeta = meta;
+        impactAccess = model['access'] is Map ? Map<String, dynamic>.from(model['access'] as Map) : <String, dynamic>{};
+        impactSnapshotWarming = false;
         evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
         loading = false;
       });
@@ -8458,17 +9044,26 @@ class _ImpactPageState extends State<ImpactPage> {
     try {
       final model = await widget.api.get(
         path,
+        force: force,
         maxAge: const Duration(seconds: 5),
         onRefresh: applyModel,
       );
       applyModel(model);
     } catch (e) {
+      _impactWarmRetry?.cancel();
       if (!mounted) return;
       setState(() {
         loading = false;
         error = e.toString();
       });
     }
+  }
+
+  Future<void> _syncImpactMutation() async {
+    await load(force: true);
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (mounted) await load(force: true);
   }
 
   Future<void> addDefinition() async {
@@ -8545,7 +9140,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'aggregation': aggregation,
         'scope': scope,
       });
-      await load();
+      await _syncImpactMutation();
     }
     for (final controller in [key, labelEN, labelHU, descriptionEN, descriptionHU, unit]) { controller.dispose(); }
   }
@@ -8607,7 +9202,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'provenance': 'MANUAL',
         'source_ref': source.text.trim(),
       });
-      await load();
+      await _syncImpactMutation();
     }
     for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
   }
@@ -8669,7 +9264,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'provenance': 'MANUAL',
         'source_ref': source.text.trim(),
       });
-      await load();
+      await _syncImpactMutation();
     }
     for (final controller in [partner, start, end, numeric, source]) { controller.dispose(); }
   }
@@ -8811,14 +9406,14 @@ class _ImpactPageState extends State<ImpactPage> {
           'period_end': end.text.trim(),
         }, bytes, file.name);
       }
-      await load();
+      await _syncImpactMutation();
     }
     for (final controller in [partner, title, description, start, end, sourceUrl, declaration]) { controller.dispose(); }
   }
 
   Future<void> verifyEvidence(Map<String, dynamic> item) async {
     await widget.api.patch('/api/v1/evidence/${item['id']}', {'verification_status': 'VERIFIED'});
-    await load();
+    await _syncImpactMutation();
   }
 
   Future<void> recordVerifiedValue(Map<String, dynamic> item) async {
@@ -8863,7 +9458,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'provenance': 'VERIFIED_DOCUMENT',
         'evidence_id': '${item['id']}',
       });
-      await load();
+      await _syncImpactMutation();
     }
     numeric.dispose(); start.dispose(); end.dispose();
   }
@@ -8903,7 +9498,7 @@ class _ImpactPageState extends State<ImpactPage> {
                 TextField(
                   controller: partnerIds,
                   decoration: InputDecoration(
-                    labelText: reportType == 'PARTNER_IMPACT' ? 'Partner ID *' : 'Partner IDs *',
+                    labelText: reportType == 'PARTNER_IMPACT' ? uiLiteral('Partner ID *') : uiLiteral('Partner IDs *'),
                     hintText: reportType == 'MULTI_PARTNER' ? 'ptr_000001, ptr_000002' : 'ptr_000001',
                   ),
                 ),
@@ -8935,7 +9530,7 @@ class _ImpactPageState extends State<ImpactPage> {
         'period_end': end.text.trim(),
       });
       await _waitReport('${created['id']}');
-      await load();
+      await _syncImpactMutation();
     }
     title.dispose(); partnerIds.dispose(); start.dispose(); end.dispose();
   }
@@ -8951,7 +9546,7 @@ class _ImpactPageState extends State<ImpactPage> {
 
   Future<void> regenerateReport(Map<String, dynamic> item) async {
     await widget.api.post('/api/v1/reports/${item['id']}/regenerate');
-    await load();
+    await _syncImpactMutation();
   }
 
   Future<void> checkEvidenceIntegrity(Map<String, dynamic> item) async {
@@ -8989,6 +9584,7 @@ class _ImpactPageState extends State<ImpactPage> {
         evidence.isEmpty &&
         reports.isEmpty) {
       return const Content(
+        showHeader: false,
         eyebrow: 'IMPACT CONTROL',
         title: 'Impact & Reports',
         subtitle: 'Loading the latest impact and evidence snapshot.',
@@ -8997,12 +9593,13 @@ class _ImpactPageState extends State<ImpactPage> {
     }
     if (!loading &&
         error == null &&
+        impactSnapshotWarming &&
         definitions.isEmpty &&
         summary.isEmpty &&
         evidence.isEmpty &&
-        reports.isEmpty &&
-        impactKpis.isEmpty) {
+        reports.isEmpty) {
       return Content(
+        showHeader: false,
         title: 'Impact & Reports',
         subtitle: 'Real outcomes, transparent reports and evidence.',
         actions: [
@@ -9017,11 +9614,22 @@ class _ImpactPageState extends State<ImpactPage> {
     }
     if (error != null) {
       return Content(
+        showHeader: false,
         title: 'Impact & Reports',
         subtitle: 'Metrics, Evidence and reproducible reports.',
         child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
       );
     }
+    final canReadImpact = impactAccess['impact'] != false;
+    final canWriteImpact = impactAccess['impact_write'] == true;
+    final canReadEvidence = impactAccess['evidence'] != false;
+    final canWriteEvidence = impactAccess['evidence_write'] == true;
+    final canReadReports = impactAccess['reports'] != false;
+    final canWriteReports = impactAccess['reports_write'] == true;
+    final impactStatus = '${impactMeta['status'] ?? ''}'.toLowerCase();
+    final impactUnavailable = impactMeta['unavailable'] is List
+        ? (impactMeta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
+        : <String>[];
     final activeMetrics = (impactKpis['active_metrics'] as num?)?.toInt() ?? definitions.length;
     final totalEvidence = (impactKpis['evidence_total'] as num?)?.toInt() ?? evidenceTotal;
     final totalReports = (impactKpis['reports_total'] as num?)?.toInt() ?? reports.length;
@@ -9031,11 +9639,41 @@ class _ImpactPageState extends State<ImpactPage> {
     final impactHasData = impactAnalytics['has_data'] == true || monthlyTrend.isNotEmpty || weeklyTrend.isNotEmpty;
 
     return Content(
+      showHeader: false,
       title: 'Impact & Reports',
       subtitle: 'Real outcomes. Transparent reporting. Measurable impact.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (!canReadImpact || !canReadEvidence || !canReadReports) ...[
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Some Impact sections are restricted'),
+              message: [
+                if (!canReadImpact) uiLiteral('Metrics'),
+                if (!canReadEvidence) uiLiteral('Evidence'),
+                if (!canReadReports) uiLiteral('Reports'),
+              ].join(' · '),
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (impactStatus == 'unavailable') ...[
+            _MessageCard(
+              icon: Icons.cloud_off_outlined,
+              title: uiLiteral('Impact services are temporarily unavailable'),
+              message: impactUnavailable.isEmpty
+                  ? uiLiteral('Impact, Evidence and Reports could not be refreshed. No infinite loading state is used; retry when the services recover.')
+                  : '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ] else if (impactStatus == 'partial' && impactUnavailable.isNotEmpty) ...[
+            _MessageCard(
+              icon: Icons.warning_amber_rounded,
+              title: uiLiteral('Impact data is partially available'),
+              message: '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ],
           ResponsiveKpiGrid(children: [
             Kpi(label: 'Active metrics', value: '$activeMetrics', note: 'Configured impact definitions', icon: Icons.bar_chart_rounded, accent: brandSteel),
             Kpi(label: 'Evidence', value: '$totalEvidence', note: 'Evidence records in the library', icon: Icons.description_outlined, accent: brandGold),
@@ -9060,9 +9698,30 @@ class _ImpactPageState extends State<ImpactPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  SizedBox(width: width, child: _CentralActionCard(title: 'Metrics', subtitle: 'Manage impact indicators, baselines and recorded results.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: addDefinition)),
-                  SizedBox(width: width, child: _CentralActionCard(title: 'Evidence', subtitle: 'Upload and verify documents, media and partner declarations.', icon: Icons.description_outlined, accent: brandGold, onTap: addEvidence)),
-                  SizedBox(width: width, child: _CentralActionCard(title: 'Report creation', subtitle: 'Generate reproducible partner and program reports.', icon: Icons.picture_as_pdf_outlined, accent: brandSuccess, onTap: generateReport)),
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Metrics',
+                    subtitle: 'Manage impact indicators, baselines and recorded results.',
+                    footer: canWriteImpact ? null : uiLiteral('Read only'),
+                    icon: Icons.bar_chart_rounded,
+                    accent: brandSteel,
+                    onTap: canWriteImpact ? addDefinition : null,
+                  )),
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Evidence',
+                    subtitle: 'Upload and verify documents, media and partner declarations.',
+                    footer: canWriteEvidence ? null : uiLiteral('Read only'),
+                    icon: Icons.description_outlined,
+                    accent: brandGold,
+                    onTap: canWriteEvidence ? addEvidence : null,
+                  )),
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Report creation',
+                    subtitle: 'Generate reproducible partner and program reports.',
+                    footer: canWriteReports ? null : uiLiteral('Read only'),
+                    icon: Icons.picture_as_pdf_outlined,
+                    accent: brandSuccess,
+                    onTap: canWriteReports ? generateReport : null,
+                  )),
                 ],
               );
             },
@@ -9076,11 +9735,11 @@ class _ImpactPageState extends State<ImpactPage> {
                   icon: const Icon(Icons.download_outlined),
                   label: const LText('Export PDF'),
                 ),
-                OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
-                OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
-                OutlinedButton.icon(onPressed: addEvidence, icon: const Icon(Icons.verified_outlined), label: const LText('Upload Evidence')),
-                OutlinedButton.icon(onPressed: generateReport, icon: const Icon(Icons.picture_as_pdf_outlined), label: const LText('Generate Report')),
-                FilledButton.icon(onPressed: definitions.isEmpty ? null : addValue, icon: const Icon(Icons.add_rounded), label: const LText('Record value')),
+                OutlinedButton.icon(onPressed: canWriteImpact ? addDefinition : null, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
+                OutlinedButton.icon(onPressed: canWriteImpact && definitions.isNotEmpty ? addBaseline : null, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
+                OutlinedButton.icon(onPressed: canWriteEvidence ? addEvidence : null, icon: const Icon(Icons.verified_outlined), label: const LText('Upload Evidence')),
+                OutlinedButton.icon(onPressed: canWriteReports ? generateReport : null, icon: const Icon(Icons.picture_as_pdf_outlined), label: const LText('Generate Report')),
+                FilledButton.icon(onPressed: canWriteImpact && definitions.isNotEmpty ? addValue : null, icon: const Icon(Icons.add_rounded), label: const LText('Record value')),
               ];
               return Wrap(
                 alignment: WrapAlignment.end,
@@ -9091,7 +9750,7 @@ class _ImpactPageState extends State<ImpactPage> {
             },
           ),
           const SizedBox(height: 18),
-          _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: '${summary.length} metrics')),
+          _SectionHeader(title: 'Impact Summary', subtitle: 'Aggregated values follow each metric definition’s SUM, LATEST or AVERAGE rule.', trailing: _MiniCounter(label: uiBilingual('${summary.length} metrics', '${summary.length} mérőszám'))),
           const SizedBox(height: 12),
           if (summary.isEmpty)
             const _MessageCard(
@@ -9127,7 +9786,7 @@ class _ImpactPageState extends State<ImpactPage> {
               },
             ),
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: '$evidenceTotal records')),
+          _SectionHeader(title: 'Evidence Library', subtitle: 'Partner-scoped proof with metric/period linkage, verification state and SHA-256 integrity.', trailing: _MiniCounter(label: uiBilingual('$evidenceTotal records', '$evidenceTotal rekord'))),
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -9187,7 +9846,13 @@ class _ImpactPageState extends State<ImpactPage> {
             },
           ),
           const SizedBox(height: 12),
-          if (evidence.isEmpty)
+          if (!canReadEvidence)
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Evidence access restricted'),
+              message: uiLiteral('Your current role does not include Evidence read access.'),
+            )
+          else if (evidence.isEmpty)
             const _MessageCard(icon: Icons.verified_outlined, title: 'No Evidence yet', message: 'Upload a PDF, image, invoice, contract, screenshot, URL or partner declaration.')
           else
             LayoutBuilder(
@@ -9216,7 +9881,7 @@ class _ImpactPageState extends State<ImpactPage> {
                                 _DefinitionRow(label: 'Type', value: '${item['evidence_type']}'),
                                 _DefinitionRow(label: 'Metric', value: '${item['metric_key'] == '' ? '—' : item['metric_key']}'),
                                 _DefinitionRow(label: 'Period', value: '${item['period_start'] ?? '—'} → ${item['period_end'] ?? '—'}'),
-                                _DefinitionRow(label: 'Verification', value: '${item['verification_status']}'),
+                                _DefinitionRow(label: 'Verification', value: uiLiteral(_humanize('${item['verification_status']}'))),
                                 _DefinitionRow(label: 'Uploaded by', value: '${item['uploaded_by'] == '' ? '—' : item['uploaded_by']}'),
                                 _DefinitionRow(label: 'Uploaded', value: '${item['created_at'] ?? '—'}'),
                                 _DefinitionRow(label: 'Reports', value: (item['report_ids'] is List && (item['report_ids'] as List).isNotEmpty) ? (item['report_ids'] as List).join(', ') : '—'),
@@ -9250,13 +9915,13 @@ class _ImpactPageState extends State<ImpactPage> {
                                         icon: const Icon(Icons.open_in_new_rounded),
                                         label: const LText('Open URL'),
                                       ),
-                                    if (item['verification_status'] != 'VERIFIED')
+                                    if (canWriteEvidence && item['verification_status'] != 'VERIFIED')
                                       FilledButton.icon(
                                         onPressed: () => verifyEvidence(item),
                                         icon: const Icon(Icons.fact_check_outlined),
                                         label: const LText('Verify'),
                                       ),
-                                    if (item['verification_status'] == 'VERIFIED' && '${item['metric_key'] ?? ''}'.isNotEmpty)
+                                    if (canWriteImpact && item['verification_status'] == 'VERIFIED' && '${item['metric_key'] ?? ''}'.isNotEmpty)
                                       FilledButton.icon(
                                         onPressed: () => recordVerifiedValue(item),
                                         icon: const Icon(Icons.add_chart_rounded),
@@ -9279,7 +9944,10 @@ class _ImpactPageState extends State<ImpactPage> {
               children: [
                 Expanded(
                   child: LText(
-                    'Showing ${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} of $evidenceTotal',
+                    uiBilingual(
+                      'Showing ${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} of $evidenceTotal',
+                      '${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} / $evidenceTotal megjelenítve',
+                    ),
                     style: const TextStyle(color: brandTextSoft, fontSize: 11.5, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -9296,9 +9964,15 @@ class _ImpactPageState extends State<ImpactPage> {
             ),
           ],
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Reports', subtitle: 'Partner, multi-partner and HIMATE Global PDFs generated from frozen, auditable snapshots.', trailing: _MiniCounter(label: '${reports.length} reports')),
+          _SectionHeader(title: 'Reports', subtitle: 'Partner, multi-partner and HIMATE Global PDFs generated from frozen, auditable snapshots.', trailing: _MiniCounter(label: uiBilingual('${reports.length} reports', '${reports.length} jelentés'))),
           const SizedBox(height: 12),
-          if (reports.isEmpty)
+          if (!canReadReports)
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Report access restricted'),
+              message: uiLiteral('Your current role does not include Reports read access.'),
+            )
+          else if (reports.isEmpty)
             const _MessageCard(icon: Icons.picture_as_pdf_outlined, title: 'No reports yet', message: 'Generate a report to freeze impact metrics, data sources and Evidence references into a reproducible snapshot.')
           else
             LayoutBuilder(
@@ -9326,10 +10000,16 @@ class _ImpactPageState extends State<ImpactPage> {
                                 _DefinitionRow(label: 'Report ID', value: '${item['id']}'),
                                 _DefinitionRow(label: 'Type', value: '${item['report_type']}'),
                                 _DefinitionRow(label: 'Period', value: '${item['period_start']} → ${item['period_end']}'),
-                                _DefinitionRow(label: 'Status', value: '${item['status']}'),
+                                _DefinitionRow(label: 'Status', value: uiLiteral(_humanize('${item['status']}'))),
                                 _DefinitionRow(label: 'Template', value: '${item['template_version'] ?? '—'}'),
                                 _DefinitionRow(label: 'Snapshot', value: shortHash(item['snapshot_sha256'])),
-                                _DefinitionRow(label: 'Evidence', value: '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} linked'),
+                                _DefinitionRow(
+                                  label: 'Evidence',
+                                  value: uiBilingual(
+                                    '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} linked',
+                                    '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} kapcsolva',
+                                  ),
+                                ),
                                 _DefinitionRow(label: 'PDF SHA-256', value: shortHash(item['pdf_sha256'])),
                                 if ('${item['last_error'] ?? ''}'.isNotEmpty)
                                   _DefinitionRow(label: 'Error', value: '${item['last_error']}'),
@@ -9344,7 +10024,7 @@ class _ImpactPageState extends State<ImpactPage> {
                                         icon: const Icon(Icons.download_outlined),
                                         label: const LText('Download PDF'),
                                       ),
-                                    if (item['download_ready'] == true)
+                                    if (canWriteReports && item['download_ready'] == true)
                                       OutlinedButton.icon(
                                         onPressed: () => regenerateReport(item),
                                         icon: const Icon(Icons.replay_outlined),
@@ -9362,7 +10042,7 @@ class _ImpactPageState extends State<ImpactPage> {
               },
             ),
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions reused by manual entry, connectors and verified-document workflows.', trailing: _MiniCounter(label: '${definitions.length} definitions')),
+          _SectionHeader(title: 'Metric Definitions', subtitle: 'Stable definitions reused by manual entry, connectors and verified-document workflows.', trailing: _MiniCounter(label: uiBilingual('${definitions.length} definitions', '${definitions.length} definíció'))),
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -9381,7 +10061,7 @@ class _ImpactPageState extends State<ImpactPage> {
                           _DefinitionRow(label: 'Unit', value: '${d['unit']}'),
                           _DefinitionRow(label: 'Aggregation', value: '${d['aggregation']}'),
                           _DefinitionRow(label: 'Scope', value: '${d['scope']}'),
-                          _DefinitionRow(label: 'Status', value: d['active'] == true ? 'Active' : 'Inactive'),
+                          _DefinitionRow(label: 'Status', value: uiLiteral(d['active'] == true ? 'Active' : 'Inactive')),
                         ],
                       ),
                     ),
