@@ -10449,7 +10449,7 @@ class _SystemPageState extends State<SystemPage> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final s in services.take(8))
+                      for (final s in services)
                         ServiceCard(name: _humanize('${s['name'] ?? 'service'}'), status: '${s['status'] ?? 'UNKNOWN'}'),
                     ],
                   ),
