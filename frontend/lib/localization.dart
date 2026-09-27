@@ -219,6 +219,8 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Package comparison': 'Csomag-összehasonlítás',
+    'Compare the current authoritative Billing plan values.': 'Az aktuális, hiteles számlázási csomagértékek összehasonlítása.',
     'All revenue': 'Minden bevétel',
     'Partner IDs *': 'Partnerazonosítók *',
     'Evidence access restricted': 'A bizonyítékokhoz való hozzáférés korlátozott',
