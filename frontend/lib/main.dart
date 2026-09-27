@@ -10506,10 +10506,6 @@ class _SystemPageState extends State<SystemPage> {
                   ),
                 const SizedBox(height: 24),
               ],
-              if (canConnections) ...[
-                Start22ConnectorPanel(api: api),
-                const SizedBox(height: 24),
-              ],
               if (canProvisioning) ...[
                 _SectionHeader(
                   title: 'Provisioning Engine',
