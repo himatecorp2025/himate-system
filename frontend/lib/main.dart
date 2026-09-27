@@ -10526,9 +10526,6 @@ class _SystemPageState extends State<SystemPage> {
         final access = model['access'] is Map
             ? Map<String,dynamic>.from(model['access'] as Map)
             : <String,dynamic>{};
-        final meta = model['meta'] is Map
-            ? Map<String,dynamic>.from(model['meta'] as Map)
-            : <String,dynamic>{};
         final kpis = model['kpis'] is Map
             ? Map<String,dynamic>.from(model['kpis'] as Map)
             : <String,dynamic>{};
