@@ -59,6 +59,9 @@ func (a *app) partnerWorkspaceBasePartner(partnerID string) map[string]any {
 
 func partnerPortalModulesWithPlanContext(source, plans, current map[string]any) map[string]any {
 	out := central10CopyMap(source)
+	if out == nil {
+		out = map[string]any{}
+	}
 	configured := current["configured"] == true
 	currentKey := strings.ToUpper(central10String(current["plan_key"]))
 	currentModules := stringSetFromAny(current["active_module_keys"])
@@ -125,6 +128,9 @@ func partnerPortalModulesWithPlanContext(source, plans, current map[string]any) 
 
 func partnerPortalSelectablePlans(source map[string]any) map[string]any {
 	out := central10CopyMap(source)
+	if out == nil {
+		out = map[string]any{}
+	}
 	filtered := []map[string]any{}
 	for _, item := range anyItems(source["items"]) {
 		if item["customer_selectable"] == true && item["active"] == true {
