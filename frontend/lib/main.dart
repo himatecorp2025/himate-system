@@ -9394,8 +9394,11 @@ class _ImpactPageState extends State<ImpactPage> {
       );
     }
     final canReadImpact = impactAccess['impact'] != false;
+    final canWriteImpact = impactAccess['impact_write'] == true;
     final canReadEvidence = impactAccess['evidence'] != false;
+    final canWriteEvidence = impactAccess['evidence_write'] == true;
     final canReadReports = impactAccess['reports'] != false;
+    final canWriteReports = impactAccess['reports_write'] == true;
     final impactStatus = '${impactMeta['status'] ?? ''}'.toLowerCase();
     final impactUnavailable = impactMeta['unavailable'] is List
         ? (impactMeta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
@@ -9468,9 +9471,30 @@ class _ImpactPageState extends State<ImpactPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  SizedBox(width: width, child: _CentralActionCard(title: 'Metrics', subtitle: 'Manage impact indicators, baselines and recorded results.', icon: Icons.bar_chart_rounded, accent: brandSteel, onTap: addDefinition)),
-                  SizedBox(width: width, child: _CentralActionCard(title: 'Evidence', subtitle: 'Upload and verify documents, media and partner declarations.', icon: Icons.description_outlined, accent: brandGold, onTap: addEvidence)),
-                  SizedBox(width: width, child: _CentralActionCard(title: 'Report creation', subtitle: 'Generate reproducible partner and program reports.', icon: Icons.picture_as_pdf_outlined, accent: brandSuccess, onTap: generateReport)),
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Metrics',
+                    subtitle: 'Manage impact indicators, baselines and recorded results.',
+                    footer: canWriteImpact ? null : uiLiteral('Read only'),
+                    icon: Icons.bar_chart_rounded,
+                    accent: brandSteel,
+                    onTap: canWriteImpact ? addDefinition : null,
+                  )),
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Evidence',
+                    subtitle: 'Upload and verify documents, media and partner declarations.',
+                    footer: canWriteEvidence ? null : uiLiteral('Read only'),
+                    icon: Icons.description_outlined,
+                    accent: brandGold,
+                    onTap: canWriteEvidence ? addEvidence : null,
+                  )),
+                  SizedBox(width: width, child: _CentralActionCard(
+                    title: 'Report creation',
+                    subtitle: 'Generate reproducible partner and program reports.',
+                    footer: canWriteReports ? null : uiLiteral('Read only'),
+                    icon: Icons.picture_as_pdf_outlined,
+                    accent: brandSuccess,
+                    onTap: canWriteReports ? generateReport : null,
+                  )),
                 ],
               );
             },
@@ -9484,11 +9508,11 @@ class _ImpactPageState extends State<ImpactPage> {
                   icon: const Icon(Icons.download_outlined),
                   label: const LText('Export PDF'),
                 ),
-                OutlinedButton.icon(onPressed: addDefinition, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
-                OutlinedButton.icon(onPressed: definitions.isEmpty ? null : addBaseline, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
-                OutlinedButton.icon(onPressed: addEvidence, icon: const Icon(Icons.verified_outlined), label: const LText('Upload Evidence')),
-                OutlinedButton.icon(onPressed: generateReport, icon: const Icon(Icons.picture_as_pdf_outlined), label: const LText('Generate Report')),
-                FilledButton.icon(onPressed: definitions.isEmpty ? null : addValue, icon: const Icon(Icons.add_rounded), label: const LText('Record value')),
+                OutlinedButton.icon(onPressed: canWriteImpact ? addDefinition : null, icon: const Icon(Icons.add_chart_outlined), label: const LText('New metric')),
+                OutlinedButton.icon(onPressed: canWriteImpact && definitions.isNotEmpty ? addBaseline : null, icon: const Icon(Icons.flag_outlined), label: const LText('Set baseline')),
+                OutlinedButton.icon(onPressed: canWriteEvidence ? addEvidence : null, icon: const Icon(Icons.verified_outlined), label: const LText('Upload Evidence')),
+                OutlinedButton.icon(onPressed: canWriteReports ? generateReport : null, icon: const Icon(Icons.picture_as_pdf_outlined), label: const LText('Generate Report')),
+                FilledButton.icon(onPressed: canWriteImpact && definitions.isNotEmpty ? addValue : null, icon: const Icon(Icons.add_rounded), label: const LText('Record value')),
               ];
               return Wrap(
                 alignment: WrapAlignment.end,
