@@ -114,12 +114,16 @@ for token in (
     "_dashboardMoney",
     "_ImpactChartPainter",
     "Live audit feed",
-    "billingAuthorized=billing['authorized']!=false",
-    "impactAuthorized=impact['authorized']!=false",
     "Billing permission required",
     "Impact permission required",
 ):
     require(token in frontend, f"Flutter START-23.9 wiring missing {token!r}")
+frontend_compact = "".join(frontend.split())
+for token in (
+    "billingAuthorized=billing['authorized']!=false",
+    "impactAuthorized=impact['authorized']!=false",
+):
+    require(token in frontend_compact, f"Flutter START-23.9 wiring missing {token!r}")
 
 completed = tuple(int(x) for x in str(matrix.get("completed_through", "0")).split("."))
 require(completed >= (23, 9), "functional matrix is not completed through START-23.9")
