@@ -6978,7 +6978,7 @@ class _PackagesPageState extends State<PackagesPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => BrandDialog(
-          title: '${plan['display_name']} package',
+          title: uiBilingual('${plan['display_name']} package', '${plan['display_name']} csomag'),
           subtitle: fixed
               ? uiLiteral('HIMATE controls the included module set. Price changes apply to active customers from the effective date.')
               : unlimited
@@ -7012,7 +7012,13 @@ class _PackagesPageState extends State<PackagesPage> {
               const SizedBox(height: 12),
               _DefinitionRow(label: uiLiteral('Module limit'), value: unlimited ? uiLiteral('Unlimited') : '$limit'),
               _DefinitionRow(label: uiLiteral('Selection mode'), value: fixed ? uiLiteral('HIMATE fixed package') : unlimited ? uiLiteral('Automatic Unlimited entitlement') : uiLiteral('Partner selectable')),
-              _DefinitionRow(label: uiLiteral('Annual uplift'), value: '${plan['annual_increase_percent'] ?? 0}% · Jan 1'),
+              _DefinitionRow(
+                label: uiLiteral('Annual uplift'),
+                value: uiBilingual(
+                  '${plan['annual_increase_percent'] ?? 0}% · Jan 1',
+                  '${plan['annual_increase_percent'] ?? 0}% · jan. 1.',
+                ),
+              ),
               if (fixed) ...[
                 const SizedBox(height: 16),
                 _SectionHeader(
@@ -7305,9 +7311,9 @@ class _PackagesPageState extends State<PackagesPage> {
                                 spacing: 7,
                                 runSpacing: 7,
                                 children: [
-                                  _MiniCounter(label: '${partner['billing_frequency'] ?? '—'}'),
-                                  _MiniCounter(label: '${partner['classification'] ?? '—'}'),
-                                  _MiniCounter(label: '${partner['onboarding_state'] ?? '—'}'),
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['billing_frequency'] ?? '—'}'))),
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['classification'] ?? '—'}'))),
+                                  _MiniCounter(label: uiLiteral(_humanize('${partner['onboarding_state'] ?? '—'}'))),
                                   _MiniCounter(label: uiBilingual(
                                     '${partner['module_usage_events_30d'] ?? 0} MODULE USES / 30D',
                                     '${partner['module_usage_events_30d'] ?? 0} MODULHASZNÁLAT / 30 NAP',
@@ -7685,7 +7691,10 @@ class _PackageAnalyticsChart extends StatelessWidget {
                       ),
                       const SizedBox(height: 5),
                       LText(
-                        '${package['active_partner_count'] ?? 0} active partners · ${package['module_usage_events_30d'] ?? 0} module uses / 30d · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} Portal hours / 30d',
+                        uiBilingual(
+                          '${package['active_partner_count'] ?? 0} active partners · ${package['module_usage_events_30d'] ?? 0} module uses / 30d · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} Portal hours / 30d',
+                          '${package['active_partner_count'] ?? 0} aktív partner · ${package['module_usage_events_30d'] ?? 0} modulhasználat / 30 nap · ${number(package['portal_active_hours_30d']).toStringAsFixed(1)} portálóra / 30 nap',
+                        ),
                         style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
                       ),
                       if (maxUsage > 0) ...[
@@ -7782,7 +7791,7 @@ class _FinanceInvoicePreview extends StatelessWidget {
                         ]),
                       ),
                       const SizedBox(width: 7),
-                      _StatusPill(label: status),
+                      _StatusPill(label: uiLiteral(_humanize(status))),
                     ]),
                   );
                 }),
@@ -8784,7 +8793,7 @@ class _FinancePageState extends State<FinancePage> {
                                     runSpacing: 7,
                                     alignment: WrapAlignment.end,
                                     children: [
-                                      _StatusPill(label: workflow),
+                                      _StatusPill(label: uiLiteral(_humanize(workflow))),
                                       if (workflow == 'DRAFT')
                                         FilledButton.tonalIcon(
                                           onPressed: () => invoiceAction(invoice, 'approve'),
@@ -8881,10 +8890,10 @@ class _FinancePageState extends State<FinancePage> {
                                       style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 13),
                                     ),
                                   ),
-                                  _StatusPill(label: '${row['state'] ?? 'REGISTERED'}'),
+                                  _StatusPill(label: uiLiteral(_humanize('${row['state'] ?? 'REGISTERED'}'))),
                                 ]),
                                 const SizedBox(height: 10),
-                                _DefinitionRow(label: 'Classification', value: _humanize('${row['classification'] ?? 'UNCLASSIFIED'}')),
+                                _DefinitionRow(label: 'Classification', value: uiLiteral(_humanize('${row['classification'] ?? 'UNCLASSIFIED'}'))),
                                 _DefinitionRow(label: 'Portal access', value: row['portal_enabled'] == true ? 'Enabled' : 'Blocked until Active'),
                                 _DefinitionRow(label: 'Partner ID', value: '${row['partner_id'] ?? ''}'),
                                 const SizedBox(height: 12),
@@ -9872,7 +9881,7 @@ class _ImpactPageState extends State<ImpactPage> {
                                 _DefinitionRow(label: 'Type', value: '${item['evidence_type']}'),
                                 _DefinitionRow(label: 'Metric', value: '${item['metric_key'] == '' ? '—' : item['metric_key']}'),
                                 _DefinitionRow(label: 'Period', value: '${item['period_start'] ?? '—'} → ${item['period_end'] ?? '—'}'),
-                                _DefinitionRow(label: 'Verification', value: '${item['verification_status']}'),
+                                _DefinitionRow(label: 'Verification', value: uiLiteral(_humanize('${item['verification_status']}'))),
                                 _DefinitionRow(label: 'Uploaded by', value: '${item['uploaded_by'] == '' ? '—' : item['uploaded_by']}'),
                                 _DefinitionRow(label: 'Uploaded', value: '${item['created_at'] ?? '—'}'),
                                 _DefinitionRow(label: 'Reports', value: (item['report_ids'] is List && (item['report_ids'] as List).isNotEmpty) ? (item['report_ids'] as List).join(', ') : '—'),
@@ -9991,7 +10000,7 @@ class _ImpactPageState extends State<ImpactPage> {
                                 _DefinitionRow(label: 'Report ID', value: '${item['id']}'),
                                 _DefinitionRow(label: 'Type', value: '${item['report_type']}'),
                                 _DefinitionRow(label: 'Period', value: '${item['period_start']} → ${item['period_end']}'),
-                                _DefinitionRow(label: 'Status', value: '${item['status']}'),
+                                _DefinitionRow(label: 'Status', value: uiLiteral(_humanize('${item['status']}'))),
                                 _DefinitionRow(label: 'Template', value: '${item['template_version'] ?? '—'}'),
                                 _DefinitionRow(label: 'Snapshot', value: shortHash(item['snapshot_sha256'])),
                                 _DefinitionRow(
@@ -10052,7 +10061,7 @@ class _ImpactPageState extends State<ImpactPage> {
                           _DefinitionRow(label: 'Unit', value: '${d['unit']}'),
                           _DefinitionRow(label: 'Aggregation', value: '${d['aggregation']}'),
                           _DefinitionRow(label: 'Scope', value: '${d['scope']}'),
-                          _DefinitionRow(label: 'Status', value: d['active'] == true ? 'Active' : 'Inactive'),
+                          _DefinitionRow(label: 'Status', value: uiLiteral(d['active'] == true ? 'Active' : 'Inactive')),
                         ],
                       ),
                     ),
