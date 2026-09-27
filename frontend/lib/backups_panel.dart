@@ -147,8 +147,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
-          title: 'Create restore point',
-          subtitle: 'Database, media and configuration are captured, encrypted and copied to the configured durable backup storage.',
+          title: uiLiteral('Create restore point'),
+          subtitle: uiLiteral('Database, media and configuration are captured, encrypted and copied to the configured durable backup storage.'),
           icon: Icons.backup_outlined,
           primaryLabel: 'Start backup',
           onPrimary: () => Navigator.pop(dialogContext, selected),
@@ -316,8 +316,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
-          title: 'Restore verified partner backup',
-          subtitle: 'This is a production recovery operation. A fresh safety backup is created automatically before the verified restore point replaces the partner database, media and captured configuration.',
+          title: uiLiteral('Restore verified partner backup'),
+          subtitle: uiLiteral('This is a production recovery operation. A fresh safety backup is created automatically before the verified restore point replaces the partner database, media and captured configuration.'),
           icon: Icons.restore_rounded,
           primaryLabel: 'Start production restore',
           onPrimary: () {
@@ -338,8 +338,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _DefinitionRow(label: 'Restore point', value: pointId),
-              _DefinitionRow(label: 'Recoverability', value: recoverability),
+              _DefinitionRow(label: uiLiteral('Restore point'), value: pointId),
+              _DefinitionRow(label: uiLiteral('Recoverability'), value: uiLiteral(_humanize(recoverability))),
               const SizedBox(height: 12),
               TextField(
                 controller: reason,
@@ -422,8 +422,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => BrandDialog(
-          title: 'Backup policy',
-          subtitle: 'Retention and scheduling are partner-scoped. Expired restore points are removed from durable backup storage.',
+          title: uiLiteral('Backup policy'),
+          subtitle: uiLiteral('Retention and scheduling are partner-scoped. Expired restore points are removed from durable backup storage.'),
           icon: Icons.policy_outlined,
           primaryLabel: 'Save policy',
           onPrimary: () {
@@ -474,8 +474,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: enabled,
-                title: const LText('Automatic backups enabled'),
-                subtitle: const LText('The durable scheduler queues a restore point when the interval is due.'),
+                title: LText(uiLiteral('Automatic backups enabled')),
+                subtitle: LText(uiLiteral('The durable scheduler queues a restore point when the interval is due.')),
                 onChanged: (value) => setDialogState(() => enabled = value),
               ),
               if (dialogError != null) ...[
@@ -554,15 +554,15 @@ class _BackupsPanelState extends State<BackupsPanel> {
             const SizedBox(height: 14),
             const Divider(height: 1),
             const SizedBox(height: 7),
-            _DefinitionRow(label: 'Backup', value: backupStatus),
-            _DefinitionRow(label: 'Backup completed', value: _date(item['latest_backup_at'])),
-            _DefinitionRow(label: 'Restore test', value: restoreStatus),
-            _DefinitionRow(label: 'Restore tested', value: _date(item['latest_restore_test_at'])),
-            _DefinitionRow(label: 'Backup storage', value: _value(item['provider'], fallback: provider)),
-            _DefinitionRow(label: 'Retention', value: '${item['retention_days'] ?? 30} days'),
-            _DefinitionRow(label: 'Restore-point limit', value: '${item['max_restore_points'] ?? 30}'),
-            _DefinitionRow(label: 'Automatic interval', value: '${item['schedule_hours'] ?? 24} hours'),
-            _DefinitionRow(label: 'Automatic backups', value: item['enabled'] == false ? 'Disabled' : 'Enabled'),
+            _DefinitionRow(label: uiLiteral('Backup'), value: uiLiteral(_humanize(backupStatus))),
+            _DefinitionRow(label: uiLiteral('Backup completed'), value: _date(item['latest_backup_at'])),
+            _DefinitionRow(label: uiLiteral('Restore test'), value: uiLiteral(_humanize(restoreStatus))),
+            _DefinitionRow(label: uiLiteral('Restore tested'), value: _date(item['latest_restore_test_at'])),
+            _DefinitionRow(label: uiLiteral('Backup storage'), value: _value(item['provider'], fallback: provider)),
+            _DefinitionRow(label: uiLiteral('Retention'), value: uiBilingual('${item['retention_days'] ?? 30} days', '${item['retention_days'] ?? 30} nap')),
+            _DefinitionRow(label: uiLiteral('Restore-point limit'), value: '${item['max_restore_points'] ?? 30}'),
+            _DefinitionRow(label: uiLiteral('Automatic interval'), value: uiBilingual('${item['schedule_hours'] ?? 24} hours', '${item['schedule_hours'] ?? 24} óra')),
+            _DefinitionRow(label: uiLiteral('Automatic backups'), value: uiLiteral(item['enabled'] == false ? 'Disabled' : 'Enabled')),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -661,17 +661,17 @@ class _BackupsPanelState extends State<BackupsPanel> {
         ),
         const SizedBox(height: 12),
         _RuleStrip(items: [
-          _RuleItem(Icons.storage_outlined, 'Partners', '${partnerIds.length} tracked'),
-          _RuleItem(Icons.cloud_done_outlined, 'Storage', provider.isEmpty ? 'not configured' : provider.toUpperCase()),
-          _RuleItem(Icons.verified_outlined, 'Recoverable', '$verified verified'),
-          _RuleItem(failed > 0 ? Icons.error_outline_rounded : Icons.sync_rounded, failed > 0 ? 'Failed' : 'In progress', failed > 0 ? '$failed failed' : '$active active'),
+          _RuleItem(Icons.storage_outlined, uiLiteral('Partners'), uiBilingual('${partnerIds.length} tracked', '${partnerIds.length} követve')),
+          _RuleItem(Icons.cloud_done_outlined, uiLiteral('Storage'), provider.isEmpty ? uiLiteral('Not configured') : provider.toUpperCase()),
+          _RuleItem(Icons.verified_outlined, uiLiteral('Recoverable'), uiBilingual('$verified verified', '$verified ellenőrzött')),
+          _RuleItem(failed > 0 ? Icons.error_outline_rounded : Icons.sync_rounded, uiLiteral(failed > 0 ? 'Failed' : 'In progress'), failed > 0 ? uiBilingual('$failed failed', '$failed sikertelen') : uiBilingual('$active active', '$active aktív')),
         ]),
         const SizedBox(height: 14),
         if (partnerIds.isEmpty)
           const _MessageCard(
             icon: Icons.backup_outlined,
-            title: 'No provisioned partner available',
-            message: 'Provision a partner first. The backup service will then capture its isolated database, media namespace and configuration state.',
+            title: uiLiteral('No provisioned partner available'),
+            message: uiLiteral('Provision a partner first. The backup service will then capture its isolated database, media namespace and configuration state.'),
           )
         else
           LayoutBuilder(
