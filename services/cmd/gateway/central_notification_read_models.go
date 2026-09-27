@@ -245,7 +245,7 @@ func centralNotificationFeedForRequest(feed map[string]any, r *http.Request) map
 }
 
 func (a *app) serveCentralNotificationGET(w http.ResponseWriter, r *http.Request, actor user) bool {
-	if r.Method != http.MethodGet || r.URL.Path != "/api/v1/notifications" {
+	if !centralBrowserMaterializedRead(r) || r.URL.Path != "/api/v1/notifications" {
 		return false
 	}
 	feed, _, err := a.loadCentralUserNotifications(r.Context(), actor.ID)
