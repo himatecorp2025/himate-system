@@ -1386,6 +1386,11 @@ func (a *app) central10Impact(w http.ResponseWriter, r *http.Request, actor user
 	}
 	payload := map[string]any{
 		"ready": true,
+		"access": map[string]any{
+			"impact": a.hasPermission(actor, "impact.read"),
+			"evidence": a.hasPermission(actor, "evidence.read"),
+			"reports": a.hasPermission(actor, "reports.read"),
+		},
 		"definitions": definitions,
 		"summary": summary,
 		"analytics": analytics,
