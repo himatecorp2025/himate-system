@@ -1098,7 +1098,7 @@ class PartnerRouteLoader extends StatelessWidget {
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
       future: _loadPrimaryPartner(),
-      initialData: api.peek(path),
+      initialData: api.peek('/api/v1/central/partners/$partnerId'),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
           return Content(
