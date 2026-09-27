@@ -487,7 +487,7 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			a.refreshDashboardSnapshot(time.Now().UTC().Year())
+			a.refreshDashboardSerialized()
 		}()
 	}
 	wg.Wait()
