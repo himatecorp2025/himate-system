@@ -26,21 +26,63 @@ func centralPartnerWorkspaceID(key string) string {
 	return strings.TrimSpace(strings.TrimPrefix(key, centralPartnerWorkspacePrefix))
 }
 
-func centralPartnerIDsFromSnapshot() []string {
-	snapshot, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey)
-	if !ok {
-		return nil
-	}
-	ids := make([]string, 0, len(step4Items(snapshot["items"])))
+func (a *app) centralPartnerIDsForMaterialization(ctx context.Context) []string {
 	seen := map[string]bool{}
-	for _, partner := range step4Items(snapshot["items"]) {
-		id := central10String(partner["id"])
-		if id == "" || seen[id] {
-			continue
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			seen[id] = true
 		}
-		seen[id] = true
+	}
+
+	// Active/current tenants come from the already materialized Partners screen.
+	if snapshot, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
+		for _, partner := range step4Items(snapshot["items"]) {
+			add(central10String(partner["id"]))
+		}
+	}
+
+	// Persisted workspaces keep historical/archived tenants in the refresh set
+	// even if they no longer appear in the active Central portfolio.
+	if rows, err := a.db.QueryContext(ctx, `SELECT partner_id FROM identity.partner_workspace_snapshots ORDER BY partner_id`); err == nil {
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				add(id)
+			}
+		}
+		rows.Close()
+	}
+
+	// During background materialization (never a browser read path), reconcile
+	// the directory against the authoritative Partners owner including archives.
+	// A dependency failure only skips discovery; existing LKG tenant rows remain.
+	const pageSize = 200
+	for offset := 0; ; offset += pageSize {
+		var page central10ItemsPage
+		path := fmt.Sprintf(
+			"/api/v1/partners?limit=%d&offset=%d&include_archived=true&include_stats=false",
+			pageSize, offset,
+		)
+		if err := a.internalGET(ctx, a.hosts["partners"], path, &page); err != nil {
+			if a.log != nil {
+				a.log.Warn("tenant materialization directory reconciliation failed; retaining persisted IDs", "error", err)
+			}
+			break
+		}
+		for _, partner := range page.Items {
+			add(central10String(partner["id"]))
+		}
+		if !page.HasMore || len(page.Items) == 0 || (page.Total > 0 && offset+len(page.Items) >= page.Total) {
+			break
+		}
+	}
+
+	ids := make([]string, 0, len(seen))
+	for id := range seen {
 		ids = append(ids, id)
 	}
+	sort.Strings(ids)
 	return ids
 }
 
@@ -620,7 +662,7 @@ func (a *app) requestCentralPartnerWorkspaceRefresh(partnerID string) {
 }
 
 func (a *app) refreshCentralPartnerWorkspaceSnapshots(ctx context.Context, missingOnly bool) {
-	ids := centralPartnerIDsFromSnapshot()
+	ids := a.centralPartnerIDsForMaterialization(ctx)
 	if len(ids) == 0 {
 		return
 	}
