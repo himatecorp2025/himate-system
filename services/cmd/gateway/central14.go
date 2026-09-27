@@ -66,8 +66,17 @@ func (a *app) central14Administration(w http.ResponseWriter,r *http.Request,acto
 	canBilling:=a.hasPermission(actor,"billing.read")
 	canBackups:=a.hasPermission(actor,"backups.read")
 	canAudit:=a.hasPermission(actor,"audit.read")
-	var wg sync.WaitGroup
+
+	// CENTRAL-18: browser refresh must not make Administration depend on a fresh
+	// full Partner-service crawl. Reuse the complete enriched Partners snapshot
+	// and fall back to the live service only while the first snapshot is absent.
 	if canPartners {
+		if snapshot,_,ok:=centralStep3SnapshotGet(centralStep4PartnersKey);ok {
+			partners=step4Items(snapshot["items"])
+		}
+	}
+	var wg sync.WaitGroup
+	if canPartners && len(partners)==0 {
 		wg.Add(1)
 		go func(){defer wg.Done();partners,partnerErr=a.central13AllPartners(ctx)}()
 	}
@@ -81,7 +90,7 @@ func (a *app) central14Administration(w http.ResponseWriter,r *http.Request,acto
 		go func(){defer wg.Done();backupErr=a.internalGET(ctx,a.hosts["backups"],"/internal/v1/backups/summary",&backups)}()
 	}
 	wg.Wait()
-	if canPartners && partnerErr!=nil{
+	if canPartners && partnerErr!=nil && len(partners)==0 {
 		common.APIError(w,http.StatusBadGateway,"ADMINISTRATION_UNAVAILABLE","Partner registry is temporarily unavailable")
 		return
 	}
