@@ -257,7 +257,7 @@ func (a *app) materializePartnerUserPolicies(ctx context.Context, partnerID stri
 func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID string) map[string]any {
 	partner := a.partnerWorkspaceBasePartner(partnerID)
 	var livePartner, billing, terms, license, agreement, commercialStatus map[string]any
-	var paymentProfile, websiteAdapter, partnerDesign map[string]any
+	var companyProfile, paymentProfile, websiteAdapter, partnerDesign map[string]any
 	var modules, documents, invoices, subscriptions, environments, provisioningJobs map[string]any
 	var impactSummary, evidenceItems, connectorCredentials, billingEvents map[string]any
 	var moduleCommercialHistory map[string]any
@@ -302,6 +302,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 
 	base := "/api/v1/billing/partners/" + escapedID
 	runMap("billing_summary", "billing", base+"/summary", &billing)
+	runMap("company_profile", "billing", "/api/v1/billing/profile", &companyProfile)
 	runMap("billing_terms", "billing", base+"/terms", &terms)
 	runMap("license", "billing", base+"/license", &license)
 	runMap("documents", "billing", base+"/documents", &documents)
@@ -499,6 +500,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 		"production_environment":          productionEnvironment,
 		"preferred_connector_environment": preferredConnectorEnvironment,
 		"billing":                         billing,
+		"company_profile":                 companyProfile,
 		"terms":                           terms,
 		"license":                         license,
 		"documents":                       anyItems(documents["items"]),
