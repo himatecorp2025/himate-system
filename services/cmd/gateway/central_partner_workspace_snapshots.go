@@ -481,6 +481,13 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	}
 }
 
+func (a *app) refreshCentralPartnerWorkspaceLocked(ctx context.Context, partnerID string) {
+	payload := a.materializeCentralPartnerWorkspace(ctx, partnerID)
+	persistCtx, cancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+	defer cancel()
+	a.centralStep3Store(persistCtx, centralPartnerWorkspaceKey(partnerID), payload)
+}
+
 func (a *app) refreshCentralPartnerWorkspace(ctx context.Context, partnerID string) {
 	partnerID = strings.TrimSpace(partnerID)
 	if partnerID == "" {
@@ -491,11 +498,28 @@ func (a *app) refreshCentralPartnerWorkspace(ctx context.Context, partnerID stri
 		return
 	}
 	defer centralStep3EndRefresh(key)
+	a.refreshCentralPartnerWorkspaceLocked(ctx, partnerID)
+}
 
-	payload := a.materializeCentralPartnerWorkspace(ctx, partnerID)
-	persistCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	a.centralStep3Store(persistCtx, key, payload)
+func (a *app) writeThroughCentralPartnerWorkspace(partnerID string) {
+	partnerID = strings.TrimSpace(partnerID)
+	if partnerID == "" {
+		return
+	}
+	key := centralPartnerWorkspaceKey(partnerID)
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*centralPartnerWorkspaceMaterializeBudget)
+	defer waitCancel()
+	if !centralStep3WaitBeginRefresh(waitCtx, key) {
+		if a.log != nil {
+			a.log.Error("tenant write-through could not acquire projection lock", "partner_id", partnerID)
+		}
+		return
+	}
+	defer centralStep3EndRefresh(key)
+
+	refreshCtx, refreshCancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
+	defer refreshCancel()
+	a.refreshCentralPartnerWorkspaceLocked(refreshCtx, partnerID)
 }
 
 func (a *app) requestCentralPartnerWorkspaceRefresh(partnerID string) {
