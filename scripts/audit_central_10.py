@@ -257,7 +257,8 @@ for target in [
     check(target in dashboard_loading_compact,
           f"Central-10.1 Dashboard loading card lost navigation callback: {target}")
 
-# CENTRAL-10.1 Step 3: Modules & Packages must be hot-snapshot/progressive surfaces.
+# CENTRAL-10.1 Step 3: Modules & Packages must be single-read materialized surfaces.
+# CENTRAL-21 moved refresh work entirely off the browser request path.
 for route in [
     "/api/v1/central/modules/commercial",
     "/api/v1/central/packages/supplementary",
@@ -294,12 +295,18 @@ for forbidden in ["PACKAGES_UNAVAILABLE", "http.StatusBadGateway", "http.StatusS
           f"Central-10.1 Packages primary path can still fail as a blocking availability error: {forbidden}")
 for required in [
     "a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)",
-    "a.requestCentralStep3Refresh()",
     "common.JSON(w, http.StatusOK, payload)",
     '"X-Himate-Cache", "hot-snapshot"',
 ]:
     check(required in packages_primary,
-          f"Central-10.1 Packages progressive snapshot contract missing: {required}")
+          f"Central-10.1 Packages materialized snapshot contract missing: {required}")
+for forbidden in [
+    "a.requestCentralStep3Refresh()",
+    "a.requestCentralStep4Refresh()",
+    "a.requestDashboardRefresh()",
+]:
+    check(forbidden not in packages_primary,
+          f"Central-10.1 Packages browser read still triggers background work: {forbidden}")
 
 packages_supplementary = gateway[packages_supp_start:money_start]
 for required in [
@@ -323,9 +330,14 @@ for token in [
     "refreshCentralStep3Plans",
     "refreshCentralStep3Analytics",
     "refreshCentralStep3Commercial",
+    "runCentralStep3Materializer",
+    "requestCentralStep3Refresh",
     '"delivery"] = "MATERIALIZED_HOT_SNAPSHOT"',
 ]:
-    check(token in step3_snapshots, f"Step 3 materialized snapshot contract missing: {token}")
+    check(token in step3_snapshots, f"Step 3 background materializer contract missing: {token}")
+
+check("a.requestCentralStep3Refresh()" in gateway,
+      "Step 3 write-path invalidation no longer triggers the background materializer")
 
 for token in [
     "Future<void> loadRegistry()",
