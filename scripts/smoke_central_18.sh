@@ -97,4 +97,50 @@ assert "company" in d and "kpis" in d and "meta" in d,d
 '
 echo ok
 
+printf 'CENTRAL-18 persistent Test Partner auto-seeds six-month fixture... '
+STAMP="$(date +%s)"
+TEST_PARTNER_PAYLOAD="$(python3 - "$STAMP" <<'PY'
+import json,sys
+stamp=sys.argv[1]
+print(json.dumps({
+  "display_name":"Test Partner",
+  "legal_name":"Test Partner QA LLC",
+  "brand_name":"Test Partner",
+  "category_id":"cat_001",
+  "lifecycle":"PROSPECT",
+  "contact_name":"CENTRAL-18 QA",
+  "contact_email":"central18.test."+stamp+"@himate.test",
+  "registration_number":"CENTRAL18-TEST-"+stamp,
+  "tax_id":"CENTRAL18-TAX-"+stamp,
+  "country":"United States",
+  "state_region":"NY",
+  "city":"New York",
+  "primary_domain":"central18-test-"+stamp+".example.invalid",
+  "notes":"CENTRAL-18 automatic Golden Test Partner fixture acceptance"
+}))
+PY
+)"
+TEST_PARTNER="$(curl -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$TEST_PARTNER_PAYLOAD" "$BASE_URL/api/v1/partners")"
+TEST_PARTNER_ID="$(printf '%s' "$TEST_PARTNER" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+curl -fsS -b "$COOKIE" -X PATCH -H 'Content-Type: application/json'   -d '{"test_partner":true,"reason":"CENTRAL-18 automatic fixture acceptance"}'   "$BASE_URL/api/v1/partners/$TEST_PARTNER_ID" >/dev/null
+
+i=0
+AUTO_COUNTS=""
+while [ "$i" -lt 30 ]; do
+  AUTO_COUNTS="$(docker compose exec -T postgres psql -U himate -d himate -At -F '|' -v partner_id="$TEST_PARTNER_ID" <<'SQL'
+SELECT
+  (SELECT COUNT(*) FROM billing.invoices WHERE partner_id=:'partner_id' AND source='TEST_FIXTURE'),
+  (SELECT COUNT(*) FROM impact.metric_values WHERE partner_id=:'partner_id' AND provenance='TEST_FIXTURE'),
+  (SELECT COUNT(*) FROM evidence.items WHERE partner_id=:'partner_id' AND description LIKE 'HIMATE_GOLDEN_TEST_FIXTURE%');
+SQL
+)"
+  if [ "$AUTO_COUNTS" = "6|18|6" ]; then
+    break
+  fi
+  i=$((i+1))
+  sleep 1
+done
+test "$AUTO_COUNTS" = "6|18|6"
+echo ok
+
 echo 'CENTRAL-18 data/runtime/module lifecycle runtime acceptance passed'
