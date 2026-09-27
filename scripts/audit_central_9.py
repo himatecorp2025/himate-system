@@ -43,21 +43,26 @@ for token in [
 ]:
     check(token in frontend, f"Central-16 visual contract missing while running Central-9 regression: {token}")
 
-# Canonical package display remains exact. Central-10 moves display authority
-# out of Flutter and into the Go read model.
-legacy_frontend_packages = all(token in frontend for token in [
-    "'STARTER' => <String,dynamic>{'name':'Starter','price':990,'entitlement':'10 modules'}",
-    "'BUSINESS' => <String,dynamic>{'name':'Business','price':1490,'entitlement':'20 modules'}",
-    "'FLEX' => <String,dynamic>{'name':'Premium','price':2490,'entitlement':'Unlimited'}",
-])
+# Canonical package identity remains stable, while current commercial values
+# come from the authoritative Billing snapshot instead of gateway literals.
 backend_readmodel_packages = all(token in gateway_c10 for token in [
-    'out["display_price"] = "$990 + VAT"',
-    'out["display_price"] = "$1,490 + VAT"',
-    'out["display_price"] = "$2,490 + VAT"',
+    "central10PlanDisplayPrice(",
+    'central10Float(plan["monthly_price"])',
+    'central10Int(plan["module_limit"])',
+    'out["display_name"] = "Starter"',
+    'out["display_name"] = "Business"',
+    'out["display_name"] = "Premium"',
     'out["entitlement"] = "Unlimited"',
 ])
-check(legacy_frontend_packages or backend_readmodel_packages,
-      "Central-9 canonical package display contract missing")
+check(backend_readmodel_packages,
+      "Central-9 canonical package display/read-model contract missing")
+for forbidden in [
+    'out["monthly_price"] = 990',
+    'out["monthly_price"] = 1490',
+    'out["monthly_price"] = 2490',
+]:
+    check(forbidden not in gateway_c10,
+          f"Central-9 gateway overrides authoritative Billing price: {forbidden}")
 for token in [
     "display_name='Starter',monthly_price=990",
     "module_limit=10,selection_mode='FIXED'",
