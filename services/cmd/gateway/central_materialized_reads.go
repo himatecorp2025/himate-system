@@ -269,6 +269,43 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		common.JSON(w, http.StatusOK, item)
 		return true
 
+	case strings.HasPrefix(path, "/api/v1/modules/"):
+		raw := strings.Trim(strings.TrimPrefix(path, "/api/v1/modules/"), "/")
+		parts := strings.Split(raw, "/")
+		if len(parts) == 2 && parts[0] != "" {
+			snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)
+			if !ok {
+				common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Module registry is not ready")
+				return true
+			}
+			details := partnerWorkspaceMap(snapshot, "module_details")
+			rawDetail, exists := details[parts[0]]
+			if !exists {
+				common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Module not found")
+				return true
+			}
+			detail, _ := rawDetail.(map[string]any)
+			if detail == nil {
+				common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Module detail projection not found")
+				return true
+			}
+			key := ""
+			switch parts[1] {
+			case "relationships":
+				key = "relationships"
+			case "impact-metrics":
+				key = "impact_metrics"
+			case "usage":
+				key = "usage"
+			default:
+				return false
+			}
+			w.Header().Set("X-Himate-Cache", "persistent-read-model")
+			common.JSON(w, http.StatusOK, partnerWorkspaceMap(detail, key))
+			return true
+		}
+		return false
+
 	case path == "/api/v1/module-commercial-matrix":
 		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep3CommercialKey)
 		if !ok {
@@ -314,6 +351,34 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		return true
 	}
 
+	if strings.HasPrefix(path, "/api/v1/partners/") && strings.HasSuffix(path, "/commercial-history") {
+		raw := strings.Trim(strings.TrimPrefix(path, "/api/v1/partners/"), "/")
+		parts := strings.Split(raw, "/")
+		if len(parts) == 4 && parts[0] != "" && parts[1] == "modules" && parts[2] != "" && parts[3] == "commercial-history" {
+			partnerID, moduleKey := parts[0], parts[2]
+			tenant, _, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
+			if !ok {
+				common.APIError(w, http.StatusNotFound, "PARTNER_NOT_FOUND", "Partner not found")
+				return true
+			}
+			historyRoot := partnerWorkspaceMap(tenant, "module_commercial_history")
+			historyItems := partnerWorkspaceMap(historyRoot, "items")
+			if rawHistory, exists := historyItems[moduleKey]; exists {
+				if history, ok := rawHistory.(map[string]any); ok {
+					w.Header().Set("X-Himate-Cache", "persistent-tenant-read-model")
+					common.JSON(w, http.StatusOK, history)
+					return true
+				}
+			}
+			w.Header().Set("X-Himate-Cache", "persistent-tenant-read-model")
+			common.JSON(w, http.StatusOK, map[string]any{
+				"partner_id": partnerID, "module_key": moduleKey,
+				"items": []map[string]any{}, "count": 0,
+			})
+			return true
+		}
+	}
+
 	if strings.HasPrefix(path, "/api/v1/partners/") {
 		raw := strings.Trim(strings.TrimPrefix(path, "/api/v1/partners/"), "/")
 		parts := strings.Split(raw, "/")
@@ -344,6 +409,57 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","System read model is not ready"); return true }
 		w.Header().Set("X-Himate-Cache","persistent-read-model")
 		common.JSON(w,http.StatusOK,partnerWorkspaceMap(snapshot,"provisioning_api")); return true
+	}
+
+	if path == "/api/v1/connectors/start22/mapping" {
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4ConnectionsKey)
+		if !ok {
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Connections read model is not ready")
+			return true
+		}
+		w.Header().Set("X-Himate-Cache", "persistent-read-model")
+		common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "start22_mapping"))
+		return true
+	}
+	if path == "/api/v1/connectors/start22/summary" {
+		partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
+		environment := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("environment")))
+		if environment != "PRODUCTION" && environment != "STAGING" { environment = "ALL" }
+		if partnerID != "" {
+			tenant, _, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
+			if !ok {
+				common.APIError(w, http.StatusNotFound, "PARTNER_NOT_FOUND", "Partner not found")
+				return true
+			}
+			summaries := partnerWorkspaceMap(tenant, "start22_summary")
+			w.Header().Set("X-Himate-Cache", "persistent-tenant-read-model")
+			common.JSON(w, http.StatusOK, partnerWorkspaceMap(summaries, environment))
+			return true
+		}
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4ConnectionsKey)
+		if !ok {
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Connections read model is not ready")
+			return true
+		}
+		summaries := partnerWorkspaceMap(snapshot, "start22_summary")
+		w.Header().Set("X-Himate-Cache", "persistent-read-model")
+		common.JSON(w, http.StatusOK, partnerWorkspaceMap(summaries, environment))
+		return true
+	}
+	if path == "/api/v1/connectors/start22/retention" {
+		partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
+		if partnerID == "" {
+			common.APIError(w, http.StatusBadRequest, "VALIDATION", "partner_id is required")
+			return true
+		}
+		tenant, _, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
+		if !ok {
+			common.APIError(w, http.StatusNotFound, "PARTNER_NOT_FOUND", "Partner not found")
+			return true
+		}
+		w.Header().Set("X-Himate-Cache", "persistent-tenant-read-model")
+		common.JSON(w, http.StatusOK, partnerWorkspaceMap(tenant, "start22_retention"))
+		return true
 	}
 
 	if strings.HasPrefix(path, "/api/v1/connectors/") {
