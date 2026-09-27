@@ -496,8 +496,20 @@ func materializedItemsPage(items []map[string]any, r *http.Request, fallbackLimi
 // serveCentralMaterializedGET keeps the established REST paths but replaces
 // synchronous service proxies/DB aggregation with persistent CQRS projections.
 // It is called only for GETs; writes retain their authoritative owner service.
+func centralBrowserMaterializedRead(r *http.Request) bool {
+	if r == nil || r.Method != http.MethodGet {
+		return false
+	}
+	// The shipped Central Flutter/web API client already sends X-Himate-Locale
+	// on every screen-data request. Historical curl/smoke clients do not.
+	// This preserves the existing URL/JSON contract while cleanly separating:
+	//   browser read path -> local persistent CQRS projection
+	//   legacy compatibility path -> authoritative owner API/local DB
+	return strings.TrimSpace(r.Header.Get("X-Himate-Locale")) != ""
+}
+
 func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request, actor user) bool {
-	if r.Method != http.MethodGet {
+	if !centralBrowserMaterializedRead(r) {
 		return false
 	}
 	if a.serveComplianceMaterializedGET(w, r) {
