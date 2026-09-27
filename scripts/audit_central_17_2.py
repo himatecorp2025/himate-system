@@ -35,7 +35,8 @@ for token in [
     "_syncPackageMutation",
     "central10PlanDisplayPrice(",
     'central10Float(plan["monthly_price"])',
-    'central10Int(plan["module_limit"])',
+    'out["module_limit"] = 10',
+    'out["module_limit"] = 20',
 ]:
     check(token in frontend or token in gateway, f"CENTRAL-17.2 Packages contract missing: {token}")
 
