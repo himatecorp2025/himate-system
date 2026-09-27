@@ -228,6 +228,8 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	var paymentProfile, websiteAdapter, partnerDesign map[string]any
 	var modules, documents, invoices, subscriptions, environments, provisioningJobs map[string]any
 	var impactSummary, evidenceItems, connectorCredentials, billingEvents map[string]any
+	var moduleCommercialHistory map[string]any
+	var start22SummaryAll, start22SummaryProduction, start22SummaryStaging, start22Retention map[string]any
 	var portalGate, portalModulesEN, portalModulesHU, portalPlansRaw, portalPlan map[string]any
 	var portalPlanModules, portalCharity, portalCharityModules, portalDesignMedia map[string]any
 	var portalInvoices map[string]any
@@ -264,6 +266,7 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	escapedID := url.PathEscape(partnerID)
 	runMap("partner", "partners", "/api/v1/partners/"+escapedID, &livePartner)
 	runMap("modules", "catalog", "/api/v1/partners/"+escapedID+"/modules", &modules)
+	runMap("module_commercial_history", "catalog", "/internal/v1/read-model/partner-module-history/"+escapedID, &moduleCommercialHistory)
 
 	base := "/api/v1/billing/partners/" + escapedID
 	runMap("billing_summary", "billing", base+"/summary", &billing)
@@ -289,6 +292,10 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 	runMap("evidence", "evidence", "/api/v1/evidence?partner_id="+url.QueryEscape(partnerID)+"&limit=200&offset=0", &evidenceItems)
 	runMap("connector_credentials", "connector", "/api/v1/connectors/"+escapedID+"/credential", &connectorCredentials)
 	runMap("website_adapter", "connector", "/api/v1/connectors/"+escapedID+"/website-adapter?environment=PRODUCTION", &websiteAdapter)
+	runMap("start22_summary", "connector", "/api/v1/connectors/start22/summary?partner_id="+url.QueryEscape(partnerID), &start22SummaryAll)
+	runMap("start22_summary_production", "connector", "/api/v1/connectors/start22/summary?partner_id="+url.QueryEscape(partnerID)+"&environment=PRODUCTION", &start22SummaryProduction)
+	runMap("start22_summary_staging", "connector", "/api/v1/connectors/start22/summary?partner_id="+url.QueryEscape(partnerID)+"&environment=STAGING", &start22SummaryStaging)
+	runMap("start22_retention", "connector", "/api/v1/connectors/start22/retention?partner_id="+url.QueryEscape(partnerID), &start22Retention)
 	runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"+escapedID, &partnerDesign)
 	runMap("portal_design_media", "cms", "/internal/v1/cms/partner-media/"+escapedID, &portalDesignMedia)
 	runMap("payment_profile", "payments", "/api/v1/payments/partners/"+escapedID+"/profile", &paymentProfile)
@@ -510,6 +517,13 @@ func (a *app) materializeCentralPartnerWorkspace(ctx context.Context, partnerID 
 			"users": portalUsers,
 			"module_policies": userPolicies,
 		},
+		"module_commercial_history": moduleCommercialHistory,
+		"start22_summary": map[string]any{
+			"ALL": start22SummaryAll,
+			"PRODUCTION": start22SummaryProduction,
+			"STAGING": start22SummaryStaging,
+		},
+		"start22_retention": start22Retention,
 	}
 }
 
