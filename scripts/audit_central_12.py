@@ -22,20 +22,23 @@ for token in [
     'centralStep4PartnersKey       = "partners_screen"',
     "{centralStep4PartnersKey, a.refreshCentralStep4Partners}",
     "func (a *app) refreshCentralStep4Partners()",
-    '"/api/v1/partners?include_stats=true&limit=24&offset=0"',
+    "partners, partnerErr = a.central10AllPartners(ctx)",
+    '"items":          partners',
     'a.centralStep3Store(persistCtx, centralStep4PartnersKey, payload)',
 ]:
     check(token in step4, f"Partners materialization contract missing: {token}")
 
 for token in [
-    "defaultView :=",
     "centralStep3SnapshotGet(centralStep4PartnersKey)",
+    "snapshotItems := step4Items(snapshot[\"items\"])",
+    "searchContains(",
     '"X-Himate-Cache", "hot-snapshot"',
     'delete(row, "base_service_fee")',
     'delete(row, "active_modules")',
     'delete(row, "system_health")',
+    '"pagination": map[string]any{',
 ]:
-    check(token in gateway, f"Partners hot-read/RBAC contract missing: {token}")
+    check(token in gateway, f"Partners hot-read/filter/RBAC contract missing: {token}")
 
 check('case strings.Contains(path, "module"), strings.Contains(path, "catalog"):' in gateway,
       "catalog invalidation path is missing")
