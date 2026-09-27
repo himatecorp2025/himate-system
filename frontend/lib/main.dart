@@ -10203,29 +10203,8 @@ class _SystemPageState extends State<SystemPage> {
     return FutureBuilder<Map<String, dynamic>>(
       future: _future,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
-          return const Content(
-            eyebrow: 'PLATFORM OPERATIONS',
-            title: 'System & Operations',
-            subtitle: 'Independent services behind one authenticated public gateway.',
-            child: _MessageCard(
-              icon: Icons.storage_outlined,
-              title: 'No cached operations data yet',
-              message: 'The workspace is ready. The latest background health snapshot will appear automatically when available.',
-            ),
-          );
-        }
-        if (snapshot.hasError || snapshot.data == null) {
-          return Content(
-            showHeader: false,
-            eyebrow: 'PLATFORM OPERATIONS',
-            title: 'System & Operations',
-            subtitle: 'Independent services behind one authenticated public gateway.',
-            child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Operations data unavailable', message: '${snapshot.error}'),
-          );
-        }
-
-        final model = snapshot.data!;
+        final provisional = snapshot.data == null;
+        final model = snapshot.data ?? <String, dynamic>{};
         final access = model['access'] is Map
             ? Map<String,dynamic>.from(model['access'] as Map)
             : <String,dynamic>{};
@@ -10248,12 +10227,12 @@ class _SystemPageState extends State<SystemPage> {
         final backupProvider = '${backupResponse['provider'] ?? 'unknown'}';
         final services = items(<String,dynamic>{'items': health['services']});
         final partners = items(<String,dynamic>{'items': health['partners']});
-        final canHealth = access['health'] == true;
-        final canProvisioning = access['provisioning'] == true;
-        final canEnvironments = access['environments'] == true;
+        final canHealth = provisional || access['health'] == true;
+        final canProvisioning = provisional || access['provisioning'] == true;
+        final canEnvironments = provisional || access['environments'] == true;
         final canEnvironmentsWrite = access['environments_write'] == true;
         final canEnvironmentsApprove = access['environments_approve'] == true;
-        final canBackups = access['backups'] == true;
+        final canBackups = provisional || access['backups'] == true;
         final canBackupsApprove = access['backups_approve'] == true;
         final canAudit = access['audit'] == true;
         final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
@@ -10309,6 +10288,16 @@ class _SystemPageState extends State<SystemPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (provisional) ...[
+                _MessageCard(
+                  icon: snapshot.hasError ? Icons.cloud_off_outlined : Icons.sync_rounded,
+                  title: uiLiteral(snapshot.hasError ? 'Operations data is temporarily unavailable' : 'Operations data is loading'),
+                  message: snapshot.hasError
+                      ? '${snapshot.error}'
+                      : uiLiteral('The complete System & Operations layout remains visible while the latest health snapshot is prepared.'),
+                ),
+                const SizedBox(height: 14),
+              ],
               if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
                 _MessageCard(
                   icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
