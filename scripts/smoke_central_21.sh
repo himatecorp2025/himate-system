@@ -5,7 +5,7 @@ BASE_URL="${1:-http://127.0.0.1:8080}"
 COOKIE="/tmp/himate-central21-owner.txt"
 PARTNER_COOKIE="/tmp/himate-central21-partner.txt"
 HEADERS="/tmp/himate-central21-headers.txt"
-BODY="/tmp/himate-central21-body.json"
+BODY="/tmp/himate-central21-body.bin"
 PAUSED="partners catalog billing payments backups evidence impact reports cms environments connector provisioning tenantfinance health"
 
 cleanup() {
@@ -29,28 +29,25 @@ TEST_PARTNER_ID="$(docker compose exec -T postgres psql -U himate -d himate -At 
 test -n "$TEST_PARTNER_ID"
 MODULE_KEY="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT module_key FROM catalog.modules ORDER BY module_key LIMIT 1")"
 test -n "$MODULE_KEY"
+PARTNER_INVOICE_ID="$(docker compose exec -T postgres psql -U himate -d himate -At -c "SELECT id FROM billing.invoices WHERE partner_id='$TEST_PARTNER_ID' AND workflow_status IN ('SENT','PAID','CANCELLED') ORDER BY invoice_date DESC,id DESC LIMIT 1")"
+test -n "$PARTNER_INVOICE_ID"
 
 printf 'CENTRAL-21 create isolated Golden Test Partner portal owner... '
 PARTNER_PASSWORD="$(python3 -c 'import secrets; print("Cq21!"+secrets.token_urlsafe(24))')"
 PARTNER_EMAIL="central21-portal-owner@example.com"
 PARTNER_PAYLOAD="$(python3 - "$PARTNER_PASSWORD" "$PARTNER_EMAIL" <<'PY'
 import json,sys
-print(json.dumps({
-  "name":"CENTRAL-21 Portal Owner",
-  "email":sys.argv[2],
-  "password":sys.argv[1],
-  "role":"owner"
-},separators=(",",":")))
+print(json.dumps({"name":"CENTRAL-21 Portal Owner","email":sys.argv[2],"password":sys.argv[1],"role":"owner"},separators=(",",":")))
 PY
 )"
-curl --max-time 5 -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$PARTNER_PAYLOAD"   "$BASE_URL/api/v1/partners/$TEST_PARTNER_ID/portal-users" >/dev/null
+curl --max-time 5 -fsS -b "$COOKIE" -H 'Content-Type: application/json' -d "$PARTNER_PAYLOAD" "$BASE_URL/api/v1/partners/$TEST_PARTNER_ID/portal-users" >/dev/null
 PARTNER_LOGIN="$(python3 - "$PARTNER_EMAIL" "$PARTNER_PASSWORD" <<'PY'
 import json,sys
 print(json.dumps({"email":sys.argv[1],"password":sys.argv[2],"remember":False},separators=(",",":")))
 PY
 )"
-curl --max-time 3 -fsS -c "$PARTNER_COOKIE" -H 'Content-Type: application/json' -d "$PARTNER_LOGIN"   "$BASE_URL/partner/api/v1/auth/login" >/dev/null
-curl --max-time 2 -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/auth/me" |   python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["partner_id"]==sys.argv[1]' "$TEST_PARTNER_ID"
+curl --max-time 3 -fsS -c "$PARTNER_COOKIE" -H 'Content-Type: application/json' -d "$PARTNER_LOGIN" "$BASE_URL/partner/api/v1/auth/login" >/dev/null
+curl --max-time 2 -fsS -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/auth/me" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["partner_id"]==sys.argv[1]' "$TEST_PARTNER_ID"
 echo ok
 
 printf 'CENTRAL-21 persistent LKG database coverage... '
@@ -70,6 +67,7 @@ SELECT
      AND payload ? 'module_commercial_history'
      AND payload ? 'start22_summary'
      AND payload ? 'start22_retention'
+     AND payload ? 'company_profile'
    ));
 SQL
 )"
@@ -114,7 +112,43 @@ check_partner_read() {
   path="$1"
   enforce_slo="${2:-false}"
   TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$PARTNER_COOKIE" "$BASE_URL$path")"
-  grep -Eiq '^X-Himate-Cache: persistent-tenant-read-model\r?
+  grep -Eiq "^X-Himate-Cache: persistent-tenant-read-model\r?$" "$HEADERS" || {
+    echo "Unexpected Partner Portal read-model cache header for $path"
+    cat "$HEADERS"
+    exit 1
+  }
+  python3 - "$BODY" "$TTFB" "$enforce_slo" <<'PY'
+import json,sys
+with open(sys.argv[1],encoding="utf-8") as f:
+    data=json.load(f)
+if isinstance(data,dict):
+    status=str(data.get("status","")).lower()
+    meta=data.get("meta") if isinstance(data.get("meta"),dict) else {}
+    meta_status=str(meta.get("status","")).lower()
+    assert status not in {"partial","unavailable","warming"},data
+    assert meta_status not in {"partial","unavailable","warming"},data
+if sys.argv[3].lower()=="true":
+    ttfb=float(sys.argv[2])
+    assert ttfb <= 0.020, f"partner materialized GET TTFB {ttfb*1000:.3f}ms exceeds 20ms SLO"
+PY
+}
+
+check_partner_pdf() {
+  enforce_slo="${1:-false}"
+  TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/billing/invoices/$PARTNER_INVOICE_ID/pdf")"
+  grep -Eiq "^X-Himate-Cache: persistent-tenant-read-model\r?$" "$HEADERS"
+  grep -Eiq "^Content-Type: application/pdf\r?$" "$HEADERS"
+  python3 - "$BODY" "$TTFB" "$enforce_slo" <<'PY'
+import sys
+with open(sys.argv[1],"rb") as f:
+    assert f.read(5)==b"%PDF-", "materialized invoice response is not a PDF"
+if sys.argv[3].lower()=="true":
+    ttfb=float(sys.argv[2])
+    assert ttfb <= 0.020, f"materialized invoice PDF TTFB {ttfb*1000:.3f}ms exceeds 20ms SLO"
+PY
+}
+
+printf 'CENTRAL-21 baseline materialized REST reads and <=20ms local SLO... '
 check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model" "true"
 check_read "/api/v1/modules" "persistent-read-model" "true"
 check_read "/api/v1/modules/$MODULE_KEY/relationships" "persistent-read-model" "true"
@@ -138,8 +172,9 @@ check_read "/api/v1/partners/$TEST_PARTNER_ID/portal-users" "persistent-tenant-r
 check_read "/api/v1/provisioning/jobs?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
 check_read "/api/v1/impact/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
 check_read "/api/v1/evidence?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
+echo ok
 
-# Explicit Control Plane screens: same persistent CQRS model, historical headers preserved.
+printf 'CENTRAL-21 Control Plane screen read coverage... '
 check_read "/api/v1/central/partners?limit=24&offset=0" "hot-snapshot" "true"
 check_read "/api/v1/central/modules" "hot-snapshot" "true"
 check_read "/api/v1/central/packages" "hot-snapshot" "true"
@@ -163,6 +198,7 @@ check_partner_read "/partner/api/v1/users" "true"
 check_partner_read "/partner/api/v1/audit" "true"
 check_partner_read "/partner/api/v1/permissions" "true"
 check_partner_read "/partner/api/v1/design" "true"
+check_partner_pdf "true"
 echo ok
 
 printf 'CENTRAL-21 pause transactional/upstream services... '
@@ -170,8 +206,6 @@ docker compose pause $PAUSED >/dev/null
 echo ok
 
 printf 'CENTRAL-21 zero-fan-out reads survive dependency outage... '
-# Repeat every critical read with owner services frozen. Any synchronous fan-out
-# would now hit the 2s curl deadline or return a 5xx.
 check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model"
 check_read "/api/v1/modules" "persistent-read-model"
 check_read "/api/v1/modules/$MODULE_KEY/relationships" "persistent-read-model"
@@ -217,87 +251,7 @@ check_partner_read "/partner/api/v1/users"
 check_partner_read "/partner/api/v1/audit"
 check_partner_read "/partner/api/v1/permissions"
 check_partner_read "/partner/api/v1/design"
-echo ok
-
-docker compose unpause $PAUSED >/dev/null
-echo 'CENTRAL-21 zero-fan-out persistent CQRS runtime acceptance passed'
- "$HEADERS" || {
-    echo "Unexpected Partner Portal read-model cache header for $path"
-    cat "$HEADERS"
-    exit 1
-  }
-  python3 - "$BODY" "$TTFB" "$enforce_slo" <<'PY'
-import json,sys
-with open(sys.argv[1],encoding="utf-8") as f:
-    data=json.load(f)
-if isinstance(data,dict):
-    status=str(data.get("status","")).lower()
-    meta=data.get("meta") if isinstance(data.get("meta"),dict) else {}
-    meta_status=str(meta.get("status","")).lower()
-    assert status not in {"partial","unavailable","warming"},data
-    assert meta_status not in {"partial","unavailable","warming"},data
-if sys.argv[3].lower()=="true":
-    ttfb=float(sys.argv[2])
-    assert ttfb <= 0.020, f"partner materialized GET TTFB {ttfb*1000:.3f}ms exceeds 20ms SLO"
-PY
-}
-
-printf 'CENTRAL-21 baseline materialized REST reads and <=20ms local SLO... '
-check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model" "true"
-check_read "/api/v1/modules" "persistent-read-model" "true"
-check_read "/api/v1/modules/$MODULE_KEY/relationships" "persistent-read-model" "true"
-check_read "/api/v1/modules/$MODULE_KEY/impact-metrics" "persistent-read-model" "true"
-check_read "/api/v1/modules/$MODULE_KEY/usage" "persistent-read-model" "true"
-check_read "/api/v1/connectors/start22/mapping" "persistent-read-model" "true"
-check_read "/api/v1/billing/plans" "persistent-read-model" "true"
-check_read "/api/v1/billing/finance/overview" "persistent-read-model" "true"
-check_read "/api/v1/system-health/snapshot" "persistent-read-model" "true"
-check_read "/api/v1/backups/restore-tests?limit=1" "persistent-read-model" "true"
-check_read "/api/v1/backups/restores" "persistent-read-model" "true"
-check_read "/api/v1/cms/pages" "persistent-read-model" "true"
-check_read "/api/v1/impact/summary" "persistent-read-model" "true"
-check_read "/api/v1/reports" "persistent-read-model" "true"
-check_read "/api/v1/partners/$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
-check_read "/api/v1/partners/$TEST_PARTNER_ID/modules" "persistent-tenant-read-model" "true"
-check_read "/api/v1/partners/$TEST_PARTNER_ID/modules/$MODULE_KEY/commercial-history" "persistent-tenant-read-model" "true"
-check_read "/api/v1/connectors/start22/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
-check_read "/api/v1/connectors/start22/retention?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
-check_read "/api/v1/partners/$TEST_PARTNER_ID/portal-users" "persistent-tenant-read-model" "true"
-check_read "/api/v1/provisioning/jobs?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
-check_read "/api/v1/impact/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
-check_read "/api/v1/evidence?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
-echo ok
-
-printf 'CENTRAL-21 pause transactional/upstream services... '
-docker compose pause $PAUSED >/dev/null
-echo ok
-
-printf 'CENTRAL-21 zero-fan-out reads survive dependency outage... '
-# Repeat every critical read with owner services frozen. Any synchronous fan-out
-# would now hit the 2s curl deadline or return a 5xx.
-check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model"
-check_read "/api/v1/modules" "persistent-read-model"
-check_read "/api/v1/modules/$MODULE_KEY/relationships" "persistent-read-model"
-check_read "/api/v1/modules/$MODULE_KEY/impact-metrics" "persistent-read-model"
-check_read "/api/v1/modules/$MODULE_KEY/usage" "persistent-read-model"
-check_read "/api/v1/connectors/start22/mapping" "persistent-read-model"
-check_read "/api/v1/billing/plans" "persistent-read-model"
-check_read "/api/v1/billing/finance/overview" "persistent-read-model"
-check_read "/api/v1/system-health/snapshot" "persistent-read-model"
-check_read "/api/v1/backups/restore-tests?limit=1" "persistent-read-model"
-check_read "/api/v1/backups/restores" "persistent-read-model"
-check_read "/api/v1/cms/pages" "persistent-read-model"
-check_read "/api/v1/impact/summary" "persistent-read-model"
-check_read "/api/v1/reports" "persistent-read-model"
-check_read "/api/v1/partners/$TEST_PARTNER_ID" "persistent-tenant-read-model"
-check_read "/api/v1/partners/$TEST_PARTNER_ID/modules" "persistent-tenant-read-model"
-check_read "/api/v1/partners/$TEST_PARTNER_ID/modules/$MODULE_KEY/commercial-history" "persistent-tenant-read-model"
-check_read "/api/v1/connectors/start22/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
-check_read "/api/v1/connectors/start22/retention?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
-check_read "/api/v1/partners/$TEST_PARTNER_ID/portal-users" "persistent-tenant-read-model"
-check_read "/api/v1/provisioning/jobs?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
-check_read "/api/v1/impact/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
-check_read "/api/v1/evidence?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
+check_partner_pdf
 echo ok
 
 docker compose unpause $PAUSED >/dev/null
