@@ -130,7 +130,20 @@ func (a *app) centralSnapshotForRead(ctx context.Context, key string) (map[strin
 	if a.log != nil {
 		a.log.Error("central materialized read failed; using in-memory LKG fallback", "snapshot_key", key, "error", err)
 	}
-	return centralStep3SnapshotGet(key)
+	if memory, memoryUpdated, ok := centralStep3SnapshotGet(key); ok {
+		return memory, memoryUpdated, true
+	}
+	// The startup seeder normally guarantees a persisted row before bind.
+	// This final structural baseline is deliberately read-only and is used only
+	// if both PostgreSQL and the in-process LKG mirror are simultaneously
+	// unavailable. Never expose partial/unavailable/warming UI state.
+	if baseline, ok := centralReadModelBaselines()[key]; ok && centralSnapshotValid(key, baseline) {
+		if a.log != nil {
+			a.log.Error("central read fell back to structural healthy baseline", "snapshot_key", key)
+		}
+		return centralStep3CopyMap(baseline), time.Time{}, true
+	}
+	return nil, time.Time{}, false
 }
 
 func partnerWorkspaceSnapshotValid(payload map[string]any) bool {
