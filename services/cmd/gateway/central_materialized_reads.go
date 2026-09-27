@@ -209,6 +209,31 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 	path := r.URL.Path
 
 	switch {
+	case path == "/api/v1/partner-categories":
+		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4PartnersKey)
+		if !ok {
+			common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Partners read model is not ready")
+			return true
+		}
+		locale := common.RequestLocale(r)
+		rawItems := step4Items(snapshot["categories_raw"])
+		items := make([]map[string]any, 0, len(rawItems))
+		for _, raw := range rawItems {
+			nameEN := central10String(raw["name_en"])
+			nameHU := central10String(raw["name_hu"])
+			items = append(items, map[string]any{
+				"id": raw["id"],
+				"name": common.Localized(nameEN, nameHU, locale),
+				"name_en": nameEN,
+				"name_hu": nameHU,
+				"slug": raw["slug"],
+				"system": raw["system"],
+			})
+		}
+		w.Header().Set("X-Himate-Cache", "persistent-read-model")
+		common.JSON(w, http.StatusOK, map[string]any{"items": items, "locale": locale})
+		return true
+
 	case path == "/api/v1/partners" || path == "/api/v1/partners/portfolio":
 		out, ok := a.materializedPartnerList(r)
 		if !ok {
