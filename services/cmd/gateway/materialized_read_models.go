@@ -155,7 +155,8 @@ func partnerWorkspaceSnapshotValid(payload map[string]any) bool {
 		"portal_billing_subscriptions", "portal_billing_invoices",
 		"portal_user_module_policies", "portal_notifications", "tenant_finance",
 		"partner_audit_events", "partner_contacts", "partner_domains_deployments",
-		"partner_permissions",
+		"partner_permissions", "module_commercial_history",
+		"start22_summary", "start22_retention",
 	}
 	for _, field := range required {
 		if _, ok := payload[field]; !ok {
