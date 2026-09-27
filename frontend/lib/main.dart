@@ -2788,7 +2788,6 @@ class DashboardPage extends StatelessWidget {
           final impactAvailable = impact['available'] != false;
           final billingAuthorized = billing['authorized'] != false;
           final impactAuthorized = impact['authorized'] != false;
-          final impactHasData = impact['has_data'] == true;
           final revenueRows = items(billing);
 
           String revenueValue = !billingAvailable ? '—' : billingAuthorized ? '0' : uiLiteral('Restricted');
@@ -2818,8 +2817,6 @@ class DashboardPage extends StatelessWidget {
                   ? uiLiteral('Verified people reached · YTD')
                   : uiLiteral('Impact permission required');
 
-          final monthlyTrend = items(<String, dynamic>{'items': impact['trend']});
-          final weeklyTrend = items(<String, dynamic>{'items': impact['weekly_trend']});
           final partnerTrend = items(<String, dynamic>{'items': p['trend']});
           final billingMonthly = items(<String, dynamic>{'items': billing['monthly']});
           final billingCurrencies = billingMonthly.map((row) => '${row['currency'] ?? ''}').where((value) => value.isNotEmpty).toSet();
@@ -3082,6 +3079,7 @@ class _DashboardMapStat extends StatelessWidget {
       );
 }
 
+// ignore: unused_element
 class _DashboardUsMap extends StatelessWidget {
   const _DashboardUsMap({required this.states});
   final List<Map<String, dynamic>> states;
@@ -10828,6 +10826,7 @@ class _PartnerCardState extends State<PartnerCard> {
   }
 }
 
+// ignore: unused_element
 class _PartnerLogo extends StatelessWidget {
   const _PartnerLogo({required this.url});
   final String url;
@@ -10871,6 +10870,7 @@ class _PartnerLogo extends StatelessWidget {
 }
 
 
+// ignore: unused_element
 class _PartnerMetric extends StatelessWidget {
   const _PartnerMetric({required this.label, required this.value});
   final String label, value;
