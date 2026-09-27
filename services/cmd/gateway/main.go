@@ -1976,7 +1976,10 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 	refreshRequested := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")), "true")
 	payload, updatedAt, stale := a.dashboardSnapshotForReadContext(r.Context(), year)
 	if payload == nil {
-		payload = dashboardWarmingSnapshot(year, a.env, a.version)
+		// Startup seeding normally makes this unreachable. Preserve the
+		// Dashboard JSON contract with a healthy structural baseline rather
+		// than surfacing a warming/unavailable state to the browser.
+		payload = dashboardReadModelBaseline(year, a.env, a.version)
 		stale = true
 	}
 	if year == time.Now().UTC().Year() && (refreshRequested || stale) {
