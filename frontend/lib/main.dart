@@ -7873,9 +7873,10 @@ class _PackageAnalyticsChart extends StatelessWidget {
 }
 
 class _FinanceInvoicePreview extends StatelessWidget {
-  const _FinanceInvoicePreview({required this.invoices, required this.onViewAll});
+  const _FinanceInvoicePreview({required this.invoices, required this.onViewAll, required this.onExport});
   final List<Map<String,dynamic>> invoices;
   final VoidCallback onViewAll;
+  final VoidCallback onExport;
 
   @override
   Widget build(BuildContext context) {
@@ -7900,6 +7901,12 @@ class _FinanceInvoicePreview extends StatelessWidget {
                   LText(uiLiteral('Recent invoice activity'), style: const TextStyle(color: brandTextSoft, fontSize: 9.5)),
                 ]),
               ),
+              TextButton.icon(
+                onPressed: onExport,
+                icon: const Icon(Icons.download_outlined, size: 15),
+                label: LText(uiLiteral('Export PDF')),
+              ),
+              const SizedBox(width: 4),
               TextButton(onPressed: onViewAll, child: LText(uiLiteral('View all'))),
             ]),
             const SizedBox(height: 12),
@@ -8815,6 +8822,7 @@ class _FinancePageState extends State<FinancePage> {
                     final invoicePreview = _FinanceInvoicePreview(
                       invoices: visibleInvoices,
                       onViewAll: scrollToInvoices,
+                      onExport: () => openPdfExportIfAvailable(context, widget.api, financeExportPath),
                     );
                     if (constraints.maxWidth < 980) {
                       return Column(
