@@ -11494,11 +11494,12 @@ class _OperationsControlsCard extends StatelessWidget {
 }
 
 class Content extends StatelessWidget {
-  const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, super.key});
+  const Content({required this.title, required this.subtitle, required this.child, this.actions = const [], this.eyebrow, this.showHeader = true, super.key});
   final String title, subtitle;
   final String? eyebrow;
   final Widget child;
   final List<Widget> actions;
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -11534,34 +11535,35 @@ class Content extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (narrow || stackActions)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      header,
-                      if (actions.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        Wrap(spacing: 9, runSpacing: 9, children: actions),
+                if (showHeader)
+                  if (narrow || stackActions)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        header,
+                        if (actions.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Wrap(spacing: 9, runSpacing: 9, children: actions),
+                        ],
                       ],
-                    ],
-                  )
-                else
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: header),
-                      if (actions.isNotEmpty) ...[
-                        const SizedBox(width: 20),
-                        Flexible(
-                          child: Align(
-                            alignment: Alignment.topRight,
-                            child: Wrap(alignment: WrapAlignment.end, spacing: 9, runSpacing: 9, children: actions),
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: header),
+                        if (actions.isNotEmpty) ...[
+                          const SizedBox(width: 20),
+                          Flexible(
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: Wrap(alignment: WrapAlignment.end, spacing: 9, runSpacing: 9, children: actions),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
-                const SizedBox(height: 22),
+                    ),
+                if (showHeader) const SizedBox(height: 22),
                 child,
               ],
             ),
