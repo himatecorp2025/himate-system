@@ -216,6 +216,15 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Module usage growth': 'Modulhasználat növekedése',
+    'Active module count by month': 'Aktív modulok száma havi bontásban',
+    'No module usage history is available yet.': 'Még nem érhető el modulhasználati előzmény.',
+    'No module connections found': 'Nem található modulkapcsolat',
+    'No dependency, integration, extension, conflict or replacement connections are configured yet.': 'Még nincs beállítva függőségi, integrációs, kiterjesztési, ütközési vagy helyettesítési kapcsolat.',
+    'Name (A–Z)': 'Név (A–Z)',
+    'Name (Z–A)': 'Név (Z–A)',
+    'No package': 'Nincs csomag',
+    'month': 'hó',
     '12 month trend': '12 havi trend',
     'Partner count and settled amounts': 'Partnerek száma és rendezett összegek',
     'Settled amount': 'Rendezett összeg',
