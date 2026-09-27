@@ -1892,26 +1892,9 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     selected = widget.initialSelected.clamp(0, navCount - 1);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_prebuildPriorityPages());
-    });
-  }
-
-  Future<void> _prebuildPriorityPages() async {
-    // API warmup makes the data hot; prebuilding the most frequently switched
-    // workspaces removes the remaining first-widget-mount penalty. Stagger the
-    // work so login/first paint stays responsive.
-    for (final index in const [1, 4, 5, 6, 7]) {
-      if (!mounted) return;
-      if (index == selected || !visibleNavIndexes().contains(index) || _pageCache.containsKey(index)) {
-        continue;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 90));
-      if (!mounted) return;
-      setState(() {
-        _pageCache.putIfAbsent(index, () => _pageForIndex(index));
-      });
-    }
+    // CENTRAL-21: do not pre-mount hidden workspaces. Mounting a page executes
+    // its initState and would recreate a browser request wave on hard refresh.
+    // The Gateway materializers are the only read-model warmup authority.
   }
 
   static const int navCount = 10;
