@@ -81,14 +81,16 @@ for token in (
 ):
     require(token in gateway, f"Gateway START-23.9 contract missing {token!r}")
 
+dashboard_snapshot_compact = "".join(dashboard_snapshot.split())
 for token in (
     "materializeDashboardActivity",
     "FROM identity.audit_events",
     "WHERE outcome='SUCCESS'",
-    '"activity": activityBlock',
 ):
     require(token in dashboard_snapshot,
             f"Dashboard snapshot START-23.9 activity contract missing {token!r}")
+require('"activity":activityBlock' in dashboard_snapshot_compact,
+        "Dashboard snapshot START-23.9 activity contract missing precomputed activity binding")
 
 for stale in (
     "Billing analytics upcoming",
