@@ -325,9 +325,7 @@ func main() {
 	})
 	mux.HandleFunc("/cms-preview/", a.cmsPagePreview)
 	mux.HandleFunc("/design-preview", a.designPreview)
-	mux.HandleFunc("/connector/v1/", func(w http.ResponseWriter, r *http.Request) {
-		a.serveProxy(w, r, "connector")
-	})
+	mux.HandleFunc("/connector/v1/", a.connectorPublicProxy)
 	mux.HandleFunc("/webhooks/stripe", a.stripeWebhookProxy)
 	mux.HandleFunc("/api/", a.api)
 	mux.Handle("/", a.web())
@@ -2081,6 +2079,41 @@ func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
 		"query":q,"items":results,"count":len(results),"limit_per_resource":limit,
 		"permission_scoped":true,
 	})
+}
+
+func (a *app) connectorPublicProxy(w http.ResponseWriter, r *http.Request) {
+	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
+	if !mutating {
+		a.serveProxy(w, r, "connector")
+		return
+	}
+
+	recorder := &auditResponseWriter{ResponseWriter: w, deferred: true}
+	a.serveProxy(recorder, r, "connector")
+	status := recorder.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		var ack map[string]any
+		if json.Unmarshal(recorder.body.Bytes(), &ack) == nil {
+			partnerID := strings.TrimSpace(central10String(ack["partner_id"]))
+			if partnerID != "" {
+				reason := r.URL.Path
+				if strings.HasSuffix(r.URL.Path, "/metrics") || strings.Contains(r.URL.Path, "/data/batches") {
+					reason += "/impact"
+				}
+				refreshCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+				a.enqueueReadModelRefresh(refreshCtx, reason, partnerID)
+				cancel()
+				// External connector ingestion is a write path too. Hold the ACK until
+				// the tenant/Central LKG projections reflect the committed source write,
+				// closing the connector-write -> immediate GET/F5 consistency window.
+				a.writeThroughReadModels(partnerID, reason)
+			}
+		}
+	}
+	recorder.flushDeferred()
 }
 
 func (a *app) stripeWebhookProxy(w http.ResponseWriter, r *http.Request) {
