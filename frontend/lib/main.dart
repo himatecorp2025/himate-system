@@ -4629,47 +4629,68 @@ class _PartnersPageState extends State<PartnersPage> {
                             Expanded(child: health),
                             const SizedBox(width: 10),
                             SizedBox(
-                              width: 190,
+                              width: 168,
                               child: SwitchListTile.adaptive(
                                 dense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 6),
                                 value: referenceOnly,
-                                title: const LText('Reference partners', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                title: const LText('Reference partners', style: TextStyle(fontSize: 10.2, fontWeight: FontWeight.w600)),
                                 onChanged: (value) {
                                   setState(() => referenceOnly = value);
                                   load(reset: true);
                                 },
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
+                              icon: const Icon(Icons.download_outlined, size: 16),
+                              label: LText(uiLiteral('Export PDF')),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: addCategory,
+                              icon: const Icon(Icons.create_new_folder_outlined, size: 16),
+                              label: LText(uiLiteral('Add category')),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              key: const Key('partners-new-partner-button'),
+                              onPressed: addPartner,
+                              icon: const Icon(Icons.add_rounded, size: 17),
+                              label: LText(uiLiteral('New Partner')),
+                              style: FilledButton.styleFrom(backgroundColor: brandGold, foregroundColor: brandNavy),
+                            ),
                           ]);
                         },
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Wrap(
-                      alignment: WrapAlignment.end,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
-                          icon: const Icon(Icons.download_outlined, size: 17),
-                          label: LText(uiLiteral('Export PDF')),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: addCategory,
-                          icon: const Icon(Icons.create_new_folder_outlined, size: 17),
-                          label: LText(uiLiteral('Add category')),
-                        ),
-                        FilledButton.icon(
-                          key: const Key('partners-new-partner-button'),
-                          onPressed: addPartner,
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: LText(uiLiteral('New Partner')),
-                          style: FilledButton.styleFrom(backgroundColor: brandGold, foregroundColor: brandNavy),
-                        ),
-                      ],
-                    ),
+                    if (MediaQuery.sizeOf(context).width < 1200)
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => openPdfExportIfAvailable(context, widget.api, _partnerExportUri().toString()),
+                            icon: const Icon(Icons.download_outlined, size: 17),
+                            label: LText(uiLiteral('Export PDF')),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: addCategory,
+                            icon: const Icon(Icons.create_new_folder_outlined, size: 17),
+                            label: LText(uiLiteral('Add category')),
+                          ),
+                          FilledButton.icon(
+                            key: const Key('partners-new-partner-button-compact'),
+                            onPressed: addPartner,
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: LText(uiLiteral('New Partner')),
+                            style: FilledButton.styleFrom(backgroundColor: brandGold, foregroundColor: brandNavy),
+                          ),
+                        ],
+                      ),
                     if (referenceOnly) ...[
                       const SizedBox(height: 8),
                       Align(
@@ -4750,7 +4771,6 @@ class _PartnersPageState extends State<PartnersPage> {
                                 ),
                               ),
                             ),
-                          SizedBox(width: width, child: NewPartnerCard(onTap: addPartner)),
                         ];
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
