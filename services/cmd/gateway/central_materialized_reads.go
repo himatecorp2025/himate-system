@@ -325,6 +325,7 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 
 	websiteNeeded := path == "/api/v1/cms/pages" ||
 		path == "/api/v1/cms/media" ||
+		path == "/api/v1/cms/design" ||
 		path == "/api/v1/cms/seo" ||
 		path == "/api/v1/cms/seo/audit" ||
 		path == "/api/v1/contact/inquiries" ||
@@ -345,6 +346,8 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		case path == "/api/v1/cms/media":
 			items := step4Items(snapshot["media"])
 			common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
+		case path == "/api/v1/cms/design":
+			common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "cms_design"))
 		case path == "/api/v1/cms/seo":
 			common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "seo"))
 		case path == "/api/v1/cms/seo/audit":
