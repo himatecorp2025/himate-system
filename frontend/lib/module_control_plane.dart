@@ -72,6 +72,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
   List<Map<String, dynamic>> registryModules = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> groups = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> topicRows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> moduleTrend = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> commercialGroups = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> subscriptionPlans = <Map<String, dynamic>>[];
@@ -198,6 +199,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         registryModules = items(<String, dynamic>{'items': registry['modules']});
         groups = items(<String, dynamic>{'items': registry['groups']});
         topicRows = items(<String, dynamic>{'items': registry['topics']});
+        moduleTrend = items(<String, dynamic>{'items': registry['trend']});
         registryKpis = registry['kpis'] is Map
             ? Map<String, dynamic>.from(registry['kpis'] as Map)
             : <String, dynamic>{};
@@ -1901,6 +1903,8 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                   onTap: () => applyRegistryPreset('RELATIONSHIPS'),
                 ),
               ]),
+              const SizedBox(height: 16),
+              _Central17ModuleTrendCard(trend: moduleTrend),
               const SizedBox(height: 16),
               _ModuleWorkspaceTabs(
                 selected: workspaceView,
