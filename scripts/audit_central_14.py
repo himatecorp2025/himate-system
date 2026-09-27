@@ -17,6 +17,7 @@ localization=read("frontend/lib/localization.dart")
 gateway=read("services/cmd/gateway/main.go")
 gateway10=read("services/cmd/gateway/central10.go")
 gateway14=read("services/cmd/gateway/central14.go")
+step4=read("services/cmd/gateway/central_step4_snapshots.go")
 backups_main=read("services/cmd/backups/main.go")
 backups_api=read("services/cmd/backups/api.go")
 backups_artifact=read("services/cmd/backups/artifact.go")
@@ -33,7 +34,7 @@ for token in [
     "'HIMATE Administration Center'",
     "'Partner Administration Center'",
     "title: 'Administration'",
-    "Administration data is loading",
+    "const LinearProgressIndicator(",
     "section = 'root'",
     "title: 'Financial Administration'",
     "title: 'Corporate Documents'",
@@ -50,15 +51,21 @@ check("part 'administration_center.dart';" in frontend,
       "Administration Center frontend part is not registered")
 
 for token in [
+    "func (a *app) materializeCentralAdministration(ctx context.Context)",
     "func (a *app) central14Administration(",
-    'a.hasPermission(actor,"partners.read")',
-    'a.hasPermission(actor,"billing.read")',
-    'a.hasPermission(actor,"backups.read")',
-    'a.hasPermission(actor,"audit.read")',
-    '"architecture":"GO_BACKEND_READ_MODEL"',
-    '"frontend_role":"PRESENTATION_ONLY"',
+    'a.hasPermission(actor, "partners.read")',
+    'a.hasPermission(actor, "billing.read")',
+    'a.hasPermission(actor, "backups.read")',
+    'a.hasPermission(actor, "audit.read")',
+    "centralStep3SnapshotGet(centralStep4AdministrationKey)",
+    'centralStep4Meta(started, centralStep4AdministrationKey, updatedAt, "healthy", []string{})',
 ]:
-    check(token in gateway14, f"Administration backend/RBAC contract missing: {token}")
+    check(token in gateway14, f"Administration authoritative read-model/RBAC contract missing: {token}")
+for token in [
+    'centralStep4AdministrationKey = "administration_screen"',
+    "refreshCentralStep4Administration",
+]:
+    check(token in step4, f"Administration materializer contract missing: {token}")
 check('case path == "/api/v1/central/administration":' in gateway and 'return "administration"' in gateway,
       "Administration read model is not protected by administration RBAC")
 check('a.central14Administration(w, r, u)' in gateway,
@@ -151,12 +158,15 @@ check('"BACKUP_PRODUCTION_RESTORE_QUEUED"' in gateway,
       "production restore audit action missing")
 check('strings.Contains(lowerKey, "/api/v1/central/administration?")' in gateway10,
       "Administration server cache invalidation missing")
-for token in [
-    "String centralAdministrationInitialPath()",
-    "deferredTargets.add(centralAdministrationInitialPath())",
-    "add('/api/v1/central/administration')",
-]:
-    check(token in frontend, f"Administration prewarm/invalidation contract missing: {token}")
+check("String centralAdministrationInitialPath()" in frontend,
+      "Administration canonical Central path helper missing")
+check("add('/api/v1/central/administration')" in frontend,
+      "Administration browser cache invalidation contract missing")
+warm_start=frontend.find("void _warmControlPlane()")
+warm_end=frontend.find("Future<void> _loadPublishedBrandAssets",warm_start)
+warm=frontend[warm_start:warm_end] if warm_start>=0 and warm_end>warm_start else ""
+check("centralAdministrationInitialPath()" not in warm and "api.prefetch(" not in warm,
+      "Administration hard refresh must not launch browser prewarm/fan-out")
 
 for token in [
     "Future<void> _restoreProduction(",
