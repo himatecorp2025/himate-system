@@ -23,6 +23,7 @@ step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 modules_ui = read("frontend/lib/module_control_plane.dart")
 website_ui = read("frontend/lib/cms_page.dart")
 administration_ui = read("frontend/lib/administration_center.dart")
+localization = read("frontend/lib/localization.dart")
 
 # Shared approved visual system.
 for token in [
@@ -32,11 +33,13 @@ for token in [
     "brightness: Brightness.light",
     "scaffoldBackgroundColor: brandIvory",
     "GoogleFonts.cormorantGaramond",
-    "Nagyobb hatás.",
-    "Erősebb közösségek.",
-    "Fenntartható jövő.",
+    "Greater impact.",
+    "Stronger communities.",
+    "A sustainable future.",
 ]:
     check(token in frontend, f"CENTRAL-16 shared design contract missing: {token}")
+check("'Greater impact.\\nStronger communities.\\nA sustainable future.': 'Nagyobb hatás.\\nErősebb közösségek.\\nFenntartható jövő.'" in localization,
+      "CENTRAL-17.1 locale-safe sidebar slogan mapping missing")
 
 # Backend-first architecture remains authoritative.
 for token in [
