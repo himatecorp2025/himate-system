@@ -6821,9 +6821,9 @@ class _PackagesPageState extends State<PackagesPage> {
 
   String _packageDescription(Map<String,dynamic> plan) {
     return switch ('${plan['plan_key']}') {
-      'STARTER' => '10 HIMATE-defined modules for focused teams and first deployments.',
-      'BUSINESS' => '20 HIMATE-defined modules for broader operating workflows.',
-      'FLEX' => 'Unlimited access to every current and future eligible module.',
+      'STARTER' => uiLiteral('A HIMATE-defined module set for focused teams and first deployments.'),
+      'BUSINESS' => uiLiteral('A broader HIMATE-defined module set for operating workflows.'),
+      'FLEX' || 'PREMIUM' => uiLiteral('Unlimited access to every current and future eligible module.'),
       _ => '',
     };
   }
@@ -6945,10 +6945,10 @@ class _PackagesPageState extends State<PackagesPage> {
         builder: (context, setLocal) => BrandDialog(
           title: '${plan['display_name']} package',
           subtitle: fixed
-              ? 'HIMATE defines exactly $limit included modules. Price changes apply to all active customers from the effective date.'
+              ? uiLiteral('HIMATE controls the included module set. Price changes apply to active customers from the effective date.')
               : unlimited
-                  ? 'Premium is Unlimited: every current and future eligible module is included automatically. Price changes apply to all active customers from the effective date.'
-                  : 'Partner-selectable package. Price changes apply to all active customers from the effective date.',
+                  ? uiLiteral('Premium is Unlimited: every current and future eligible module is included automatically. Price changes apply from the effective date.')
+                  : uiLiteral('Partner-selectable package. Price changes apply from the effective date.'),
           icon: Icons.inventory_2_outlined,
           width: 820,
           child: Column(
@@ -6969,20 +6969,20 @@ class _PackagesPageState extends State<PackagesPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              const _RuleStrip(items: [
-                _RuleItem(Icons.trending_up_rounded, 'Annual uplift', '5% every January 1'),
-                _RuleItem(Icons.history_rounded, 'Pricing', 'Effective-dated · audited'),
-                _RuleItem(Icons.receipt_long_outlined, 'Existing invoices', 'Never rewritten'),
+              _RuleStrip(items: [
+                _RuleItem(Icons.trending_up_rounded, uiLiteral('Annual uplift'), '${plan['annual_increase_percent'] ?? 0}% · Jan 1'),
+                _RuleItem(Icons.history_rounded, uiLiteral('Pricing'), uiLiteral('Effective-dated · audited')),
+                _RuleItem(Icons.receipt_long_outlined, uiLiteral('Existing invoices'), uiLiteral('Never rewritten')),
               ]),
               const SizedBox(height: 12),
-              _DefinitionRow(label: 'Module limit', value: unlimited ? 'Unlimited' : '$limit'),
-              _DefinitionRow(label: 'Selection mode', value: fixed ? 'HIMATE fixed package' : unlimited ? 'Automatic Unlimited entitlement' : 'Partner selectable'),
-              _DefinitionRow(label: 'Annual uplift', value: '${plan['annual_increase_percent'] ?? 5}% · January 1'),
+              _DefinitionRow(label: uiLiteral('Module limit'), value: unlimited ? uiLiteral('Unlimited') : '$limit'),
+              _DefinitionRow(label: uiLiteral('Selection mode'), value: fixed ? uiLiteral('HIMATE fixed package') : unlimited ? uiLiteral('Automatic Unlimited entitlement') : uiLiteral('Partner selectable')),
+              _DefinitionRow(label: uiLiteral('Annual uplift'), value: '${plan['annual_increase_percent'] ?? 0}% · Jan 1'),
               if (fixed) ...[
                 const SizedBox(height: 16),
                 _SectionHeader(
-                  title: 'Included modules',
-                  subtitle: 'Select exactly $limit published and implementation-ready modules.',
+                  title: uiLiteral('Included modules'),
+                  subtitle: uiLiteral('Select the required number of published and implementation-ready modules.'),
                 ),
                 const SizedBox(height: 10),
                 Align(
