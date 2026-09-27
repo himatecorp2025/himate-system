@@ -139,7 +139,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
   Future<String?> _choosePartner() async {
     final ids = _allPartnerIds;
     if (ids.isEmpty) {
-      _notify('Provision a partner before creating a restore point.', failure: true);
+      _notify(uiBilingual('Provision a partner before creating a restore point.', 'Visszaállítási pont létrehozása előtt provisionálj egy partnert.'), failure: true);
       return null;
     }
     String selected = ids.first;
@@ -188,7 +188,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       if (pointId.isEmpty) {
         throw StateError('Backup service did not return a restore-point identifier.');
       }
-      _notify('Restore point $pointId queued.');
+      _notify(uiBilingual('Restore point $pointId queued.', 'Visszaállítási pont sorba állítva: $pointId.'));
       await _pollRestorePoint(id, pointId);
     } catch (e) {
       _notify(e.toString(), failure: true);
@@ -202,7 +202,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
     final pointId = _value(summary['latest_restore_point_id'], fallback: '');
     final backupStatus = _value(summary['latest_backup_status'], fallback: 'NEVER');
     if (pointId.isEmpty || backupStatus != 'READY') {
-      _notify('A READY restore point is required before restore testing.', failure: true);
+      _notify(uiBilingual('A READY restore point is required before restore testing.', 'A visszaállítási teszthez READY állapotú visszaállítási pont szükséges.'), failure: true);
       return;
     }
     if (busy.contains(partnerId)) return;
@@ -213,7 +213,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       if (testId.isEmpty) {
         throw StateError('Backup service did not return a restore-test identifier.');
       }
-      _notify('Restore test $testId queued from the durable stored copy.');
+      _notify(uiBilingual('Restore test $testId queued from the durable stored copy.', 'A(z) $testId visszaállítási teszt sorba állítva a tartós mentett példányból.'));
       await _pollRestoreTest(partnerId, testId);
     } catch (e) {
       _notify(e.toString(), failure: true);
@@ -231,7 +231,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
         final backupStatus = _value(point['status'], fallback: 'UNKNOWN');
         if (backupStatus == 'FAILED') {
           await _refresh(quiet: true);
-          _notify('Backup failed. Open the audit log for diagnostics.', failure: true);
+          _notify(uiBilingual('Backup failed. Open the audit log for diagnostics.', 'A biztonsági mentés sikertelen. Nyisd meg az auditnaplót a diagnosztikához.'), failure: true);
           return;
         }
         if (backupStatus == 'READY') {
@@ -244,12 +244,12 @@ class _BackupsPanelState extends State<BackupsPanel> {
             final testStatus = _value(tests.first['status'], fallback: 'UNKNOWN');
             if (testStatus == 'FAILED') {
               await _refresh(quiet: true);
-              _notify('Restore verification failed. Recoverability is not verified.', failure: true);
+              _notify(uiBilingual('Restore verification failed. Recoverability is not verified.', 'A visszaállítás ellenőrzése sikertelen. A helyreállíthatóság nincs igazolva.'), failure: true);
               return;
             }
             if (testStatus == 'PASSED') {
               await _refresh(quiet: true);
-              _notify('Backup and restore verification passed.');
+              _notify(uiBilingual('Backup and restore verification passed.', 'A mentés és visszaállítás ellenőrzése sikeres.'));
               return;
             }
           }
@@ -260,7 +260,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       }
     }
     await _refresh(quiet: true);
-    _notify('Backup/restore is still running. Refresh the panel to see the latest state.');
+    _notify(uiBilingual('Backup/restore is still running. Refresh the panel to see the latest state.', 'A mentés/visszaállítás még fut. Frissítsd a panelt a legújabb állapotért.'));
   }
 
   Future<void> _pollRestoreTest(String partnerId, String testId) async {
@@ -272,12 +272,12 @@ class _BackupsPanelState extends State<BackupsPanel> {
         final status = _value(test['status'], fallback: 'UNKNOWN');
         if (status == 'FAILED') {
           await _refresh(quiet: true);
-          _notify('Restore verification failed. Recoverability is not verified.', failure: true);
+          _notify(uiBilingual('Restore verification failed. Recoverability is not verified.', 'A visszaállítás ellenőrzése sikertelen. A helyreállíthatóság nincs igazolva.'), failure: true);
           return;
         }
         if (status == 'PASSED') {
           await _refresh(quiet: true);
-          _notify('Restore verification passed.');
+          _notify(uiBilingual('Restore verification passed.', 'A visszaállítás ellenőrzése sikeres.'));
           return;
         }
         if (attempt % 3 == 0) await _refresh(quiet: true);
@@ -286,7 +286,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       }
     }
     await _refresh(quiet: true);
-    _notify('Restore verification is still running. Refresh the panel to see the latest state.');
+    _notify(uiBilingual('Restore verification is still running. Refresh the panel to see the latest state.', 'A visszaállítás ellenőrzése még fut. Frissítsd a panelt a legújabb állapotért.'));
   }
 
   Future<void> _restoreProduction(String partnerId) async {
@@ -295,18 +295,18 @@ class _BackupsPanelState extends State<BackupsPanel> {
       return;
     }
     if (partnerId == '_platform') {
-      _notify('Platform production recovery is maintenance-only and cannot be executed from the live control plane.', failure: true);
+      _notify(uiBilingual('Platform production recovery is maintenance-only and cannot be executed from the live control plane.', 'A platform éles helyreállítása csak karbantartási módban végezhető, az élő vezérlősíkról nem indítható.'), failure: true);
       return;
     }
     final summary = _summaryFor(partnerId);
     final pointId = _value(summary['latest_restore_point_id'], fallback: '');
     final recoverability = _value(summary['recoverability_status'], fallback: 'UNVERIFIED');
     if (pointId.isEmpty || recoverability != 'VERIFIED') {
-      _notify('A VERIFIED restore point is required before production recovery.', failure: true);
+      _notify(uiBilingual('A VERIFIED restore point is required before production recovery.', 'Az éles helyreállításhoz VERIFIED állapotú visszaállítási pont szükséges.'), failure: true);
       return;
     }
     if (widget.productionRestoreEligible[partnerId] != true) {
-      _notify('Suspend the partner before production recovery. Test Partners are exempt from the suspension gate.', failure: true);
+      _notify(uiBilingual('Suspend the partner before production recovery. Test Partners are exempt from the suspension gate.', 'Éles helyreállítás előtt függeszd fel a partnert. A tesztpartnerek kivételt képeznek a felfüggesztési kapu alól.'), failure: true);
       return;
     }
     final reason = TextEditingController();
@@ -378,7 +378,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
       final job = await widget.api.post('/api/v1/backups/restore-points/$pointId/restore?partner_id=$partnerId', payload);
       final jobId = _value(job['id'], fallback: '');
       if (jobId.isEmpty) throw StateError('Backup service did not return a restore-job identifier.');
-      _notify('Production restore $jobId queued. A safety backup will be created first.');
+      _notify(uiBilingual('Production restore $jobId queued. A safety backup will be created first.', 'Az éles visszaállítás sorba állítva ($jobId). Először biztonsági mentés készül.'));
       await _pollProductionRestore(partnerId, jobId);
     } catch (e) {
       _notify(e.toString(), failure: true);
@@ -396,18 +396,18 @@ class _BackupsPanelState extends State<BackupsPanel> {
         final status = _value(job['status'], fallback: 'UNKNOWN');
         if (status == 'FAILED') {
           await _refresh(quiet: true);
-          _notify('Production restore failed: ' + _value(job['error'], fallback: 'Open audit logs for diagnostics.'), failure: true);
+          _notify(uiBilingual('Production restore failed', 'Az éles visszaállítás sikertelen') + ': ' + _value(job['error'], fallback: uiBilingual('Open audit logs for diagnostics.', 'Nyisd meg az auditnaplót a diagnosztikához.')), failure: true);
           return;
         }
         if (status == 'COMPLETED') {
           await _refresh(quiet: true);
-          _notify('Production restore completed. Database, media and configuration recovery passed.');
+          _notify(uiBilingual('Production restore completed. Database, media and configuration recovery passed.', 'Az éles visszaállítás befejeződött. Az adatbázis, média és konfiguráció helyreállítása sikeres.'));
           return;
         }
       } catch (_) {}
     }
     await _refresh(quiet: true);
-    _notify('Production restore is still running. Refresh the recovery panel for the latest state.');
+    _notify(uiBilingual('Production restore is still running. Refresh the recovery panel for the latest state.', 'Az éles visszaállítás még fut. Frissítsd a helyreállítási panelt a legújabb állapotért.'));
   }
 
   Future<void> _editPolicy(String partnerId) async {
@@ -497,7 +497,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
     try {
       await widget.api.put('/api/v1/backups/policies/$partnerId', payload);
       await _refresh(quiet: true);
-      _notify('Backup policy updated.');
+      _notify(uiBilingual('Backup policy updated.', 'A mentési szabályzat frissítve.'));
     } catch (e) {
       _notify(e.toString(), failure: true);
     } finally {
