@@ -185,23 +185,37 @@ central_router = func_block(central10, "func (a *app) central10ReadModel")
 check("central10Cached(" not in central_router,
       "Central browser read router can bypass the persistent DB projection through legacy response cache")
 
-# Critical screen handlers must only read materialized projections.
+# Critical screen handlers must only read materialized projections. A browser
+# GET may not even *schedule* a refresh; projection freshness belongs to
+# periodic workers, durable events and mutation write-through.
 for source, signature in [
     (central10, "func (a *app) central10Partners"),
     (central10, "func (a *app) central10Modules"),
+    (central10, "func (a *app) central10ModulesCommercial"),
     (central10, "func (a *app) central10Packages"),
+    (central10, "func (a *app) central10PackagesSupplementary"),
     (central10, "func (a *app) central10Finance"),
+    (central10, "func (a *app) central10Impact"),
+    (central10, "func (a *app) central10PartnerModules"),
+    (central10, "func (a *app) central10PartnerWorkspace"),
     (central13, "func (a *app) central13Connections"),
     (central14, "func (a *app) central14Administration"),
     (central17, "func (a *app) central17Website"),
     (central17, "func (a *app) central17System"),
+    (main, "func (a *app) dashboard(w http.ResponseWriter"),
     (main, "func (a *app) partnerPortfolio"),
     (main, "func (a *app) partnerPortfolioMetrics"),
 ]:
     block = func_block(source, signature)
     check(block != "", f"Critical read handler missing: {signature}")
-    for forbidden in ["internalGET", "internalGETWithHeaders", "serveProxy", "a.client.Do", "http.NewRequestWithContext"]:
-        check(forbidden not in block, f"{signature} regressed to live fan-out: {forbidden}")
+    for forbidden in [
+        "internalGET", "internalGETWithHeaders", "serveProxy", "a.client.Do",
+        "http.NewRequestWithContext", "requestDashboardRefresh(",
+        "requestCentralStep3Refresh(", "requestCentralStep4Refresh(",
+        "requestCentralPartnerWorkspaceRefresh(",
+        "requestAllCentralPartnerWorkspaceRefreshes(",
+    ]:
+        check(forbidden not in block, f"{signature} regressed to read-triggered I/O: {forbidden}")
 
 # Successful browser read handlers can never emit degraded/warming screen states.
 for source, signature in [
