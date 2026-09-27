@@ -104,8 +104,8 @@ for token in [
 workspace_start = gateway.find('func (a *app) central10PartnerWorkspace(')
 workspace_end = gateway.find('func central10NormalizeDashboardImpact', workspace_start)
 workspace = gateway[workspace_start:workspace_end] if workspace_start >= 0 and workspace_end > workspace_start else ''
-check('centralStep3SnapshotGet(key)' in workspace,
-      'Partner workspace does not read the per-partner authoritative snapshot')
+check('partnerWorkspaceForRead(r.Context(), partnerID)' in workspace,
+      'Partner workspace does not perform the one indexed persistent tenant read')
 for forbidden in ['internalGET(', 'WaitGroup', 'context.WithTimeout(r.Context()', 'central10PartnerWorkspaceBudget']:
     check(forbidden not in workspace,
           f'Partner workspace request path still performs live orchestration: {forbidden}')
