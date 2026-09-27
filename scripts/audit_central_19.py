@@ -34,7 +34,7 @@ check("a.applyCentralModuleMutationSnapshot(r.URL.Path, state)" in gateway_main,
 
 for token in [
     "func (a *app) materializeCentralAdministration(ctx context.Context)",
-    "centralStep3SnapshotGet(centralStep4AdministrationKey)",
+    "centralSnapshotForRead(r.Context(), centralStep4AdministrationKey)",
     'centralStep4Meta(started, centralStep4AdministrationKey, updatedAt, "healthy", []string{})',
 ]:
     check(token in admin, f"Administration authoritative snapshot contract missing: {token}")
