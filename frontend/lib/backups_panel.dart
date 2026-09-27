@@ -571,17 +571,17 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 OutlinedButton.icon(
                   onPressed: isBusy || !widget.canMutate ? null : () => _editPolicy(partnerId),
                   icon: const Icon(Icons.policy_outlined, size: 17),
-                  label: const LText('Policy'),
+                  label: LText(uiLiteral('Policy')),
                 ),
                 FilledButton.icon(
                   onPressed: isBusy || !widget.canMutate ? null : () => _createRestorePoint(partnerId),
                   icon: const Icon(Icons.backup_outlined, size: 17),
-                  label: const LText('Create restore point'),
+                  label: LText(uiLiteral('Create restore point')),
                 ),
                 OutlinedButton.icon(
                   onPressed: isBusy || !widget.canMutate || backupStatus != 'READY' || pointId.isEmpty ? null : () => _runRestoreTest(partnerId),
                   icon: const Icon(Icons.restore_page_outlined, size: 17),
-                  label: const LText('Run restore test'),
+                  label: LText(uiLiteral('Run restore test')),
                 ),
                 if (partnerId != '_platform')
                   FilledButton.icon(
@@ -594,7 +594,7 @@ class _BackupsPanelState extends State<BackupsPanel> {
                         ? null
                         : () => _restoreProduction(partnerId),
                     icon: const Icon(Icons.restore_rounded, size: 17),
-                    label: const LText('Restore verified backup'),
+                    label: LText(uiLiteral('Restore verified backup')),
                   ),
               ],
             ),
@@ -635,8 +635,8 @@ class _BackupsPanelState extends State<BackupsPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeader(
-          title: 'Backups & Recoverability',
-          subtitle: 'Encrypted partner database, media and configuration restore points with durable storage, retention and mandatory restore verification.',
+          title: uiLiteral('Backups & Recoverability'),
+          subtitle: uiLiteral('Encrypted partner database, media and configuration restore points with durable storage, retention and mandatory restore verification.'),
           trailing: Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -646,13 +646,13 @@ class _BackupsPanelState extends State<BackupsPanel> {
                 icon: refreshing
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.refresh_rounded, size: 17),
-                label: const LText('Refresh'),
+                label: LText(uiLiteral('Refresh')),
               ),
               if (widget.canMutate)
                 FilledButton.icon(
                   onPressed: partnerIds.isEmpty ? null : () => _createRestorePoint(),
                   icon: const Icon(Icons.add_rounded),
-                  label: const LText('New restore point'),
+                  label: LText(uiLiteral('New restore point')),
                 )
               else
                 _MiniCounter(label: uiLiteral('Read only')),
