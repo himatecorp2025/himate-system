@@ -1213,12 +1213,17 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
             controller.dispose();
           }
 
+          final marketplaceActive =
+              s(module['availability']) == 'ACTIVE' &&
+              s(module['publication_status']) == 'PUBLISHED' &&
+              s(module['implementation_state']) == 'READY';
+
           return BrandDialog(
             title: s(module['label']),
             subtitle: uiLiteral('Relationships, impact mapping and partner usage for') + ' ' + key + '.',
             icon: Icons.hub_outlined,
             width: 920,
-            primaryLabel: 'Close',
+            primaryLabel: uiLiteral('Close'),
             onPrimary: () => Navigator.pop(dialogContext),
             child: detailLoading
                 ? const SizedBox(height: 220, child: Center(child: CircularProgressIndicator()))
@@ -1231,6 +1236,26 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                           _RuleItem(Icons.business_outlined, 'Partner records', usage.length.toString()),
                           _RuleItem(Icons.code_outlined, 'Source', s(module['source_repository']).isEmpty ? 'Not linked' : s(module['source_repository'])),
                         ]),
+                        const SizedBox(height: 16),
+                        _SectionHeader(
+                          title: uiLiteral(marketplaceActive ? 'Marketplace active' : 'Marketplace activation'),
+                          subtitle: marketplaceActive
+                              ? uiLiteral('This module is READY, PUBLISHED and available for package and partner assignment.')
+                              : uiLiteral('Activate this module to publish it for package and partner assignment.'),
+                          trailing: marketplaceActive
+                              ? const _StatusPill(label: 'ACTIVE')
+                              : FilledButton.icon(
+                                  key: const Key('module-detail-activate-button'),
+                                  onPressed: () {
+                                    Navigator.pop(dialogContext);
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      if (mounted) unawaited(activateModule(module));
+                                    });
+                                  },
+                                  icon: const Icon(Icons.rocket_launch_outlined, size: 17),
+                                  label: LText(uiLiteral('Activate module')),
+                                ),
+                        ),
                         const SizedBox(height: 18),
                         _SectionHeader(
                           title: 'Relationship Graph',
