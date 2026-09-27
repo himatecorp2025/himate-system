@@ -262,6 +262,17 @@ func (a *app) centralStep3Store(ctx context.Context, key string, payload map[str
 	)
 }
 
+func (a *app) logCentralRefreshFailure(key string, unavailable []string) {
+	if a.log == nil {
+		return
+	}
+	a.log.Warn(
+		"central background refresh failed; serving last-known-good snapshot",
+		"snapshot_key", key,
+		"unavailable", unavailable,
+	)
+}
+
 func (a *app) requestCentralStep3Refresh() {
 	select {
 	case centralStep3Snapshots.refreshCh <- struct{}{}:
@@ -365,6 +376,7 @@ func (a *app) refreshCentralStep3Registry() {
 		}
 	}
 	if failed {
+		a.logCentralRefreshFailure(centralStep3RegistryKey, []string{"catalog"})
 		if _, _, ok := centralStep3SnapshotGet(centralStep3RegistryKey); ok {
 			return
 		}
@@ -395,6 +407,7 @@ func (a *app) refreshCentralStep3Plans() {
 	defer cancel()
 	var page central10ItemsPage
 	if err := a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/plans", &page); err != nil {
+		a.logCentralRefreshFailure(centralStep3PlansKey, []string{"billing_plans"})
 		if _, _, ok := centralStep3SnapshotGet(centralStep3PlansKey); ok {
 			return
 		}
@@ -417,6 +430,7 @@ func (a *app) refreshCentralStep3Analytics() {
 	defer cancel()
 	var analytics map[string]any
 	if err := a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/packages/analytics", &analytics); err != nil {
+		a.logCentralRefreshFailure(centralStep3AnalyticsKey, []string{"package_analytics"})
 		if _, _, ok := centralStep3SnapshotGet(centralStep3AnalyticsKey); ok {
 			return
 		}
@@ -440,6 +454,7 @@ func (a *app) refreshCentralStep3Commercial() {
 
 	partners, partnerErr := a.central10AllPartners(ctx)
 	if partnerErr != nil {
+		a.logCentralRefreshFailure(centralStep3CommercialKey, []string{"partners"})
 		if _, _, ok := centralStep3SnapshotGet(centralStep3CommercialKey); ok {
 			return
 		}
