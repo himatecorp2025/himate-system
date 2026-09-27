@@ -79,7 +79,7 @@ func centralSnapshotValid(key string, payload map[string]any) bool {
 	required := []string{}
 	switch key {
 	case centralStep3RegistryKey:
-		required = []string{"modules", "groups", "trend"}
+		required = []string{"modules", "groups", "trend", "module_details"}
 	case centralStep3PlansKey:
 		required = []string{"plans", "modules"}
 	case centralStep3AnalyticsKey:
@@ -405,6 +405,15 @@ func (a *app) refreshCentralStep3Registry() {
 		results <- result{kind: "trend", page: page, err: err}
 	}()
 
+	var moduleDetails map[string]any
+	var detailErr error
+	var detailWG sync.WaitGroup
+	detailWG.Add(1)
+	go func() {
+		defer detailWG.Done()
+		detailErr = a.internalGET(ctx, a.hosts["catalog"], "/internal/v1/read-model/module-details", &moduleDetails)
+	}()
+
 	var modules, groups, trend []map[string]any
 	var failed bool
 	for i := 0; i < 3; i++ {
@@ -421,18 +430,28 @@ func (a *app) refreshCentralStep3Registry() {
 			trend = res.page.Items
 		}
 	}
+	detailWG.Wait()
+	if detailErr != nil {
+		failed = true
+	}
 	if failed {
 		a.logCentralRefreshFailure(centralStep3RegistryKey, []string{"catalog"})
+		return
+	}
+	detailItems, _ := moduleDetails["items"].(map[string]any)
+	if detailItems == nil {
+		a.logCentralRefreshFailure(centralStep3RegistryKey, []string{"catalog_module_details"})
 		return
 	}
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer persistCancel()
 	a.centralStep3Store(persistCtx, centralStep3RegistryKey, map[string]any{
-		"modules": modules,
-		"groups":  groups,
-		"trend":   trend,
-		"status": "healthy",
-		"unavailable": []string{},
+		"modules":        modules,
+		"groups":         groups,
+		"trend":          trend,
+		"module_details": detailItems,
+		"status":         "healthy",
+		"unavailable":    []string{},
 	})
 }
 
