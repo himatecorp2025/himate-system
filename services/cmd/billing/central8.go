@@ -113,7 +113,6 @@ func (a *app) loadCentral8PackagePartners(ctx context.Context) ([]central8Packag
 		FROM catalog.module_usage_events
 		WHERE partner_id=s.partner_id
 	) u ON TRUE
-	WHERE s.plan_key IN ('STARTER','BUSINESS','FLEX')
 	ORDER BY lower(COALESCE(p.display_name,s.partner_id)),s.partner_id`)
 	if err != nil {
 		return nil, false, err
