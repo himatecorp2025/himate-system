@@ -305,6 +305,20 @@ func readModelReasonRefreshesAllTenants(reason string) bool {
 		strings.Contains(reason, "/cms/design")
 }
 
+func (a *app) refreshCentralProjectionSerialized(key string, refresh func()) bool {
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*centralPartnerWorkspaceMaterializeBudget)
+	defer waitCancel()
+	if !centralStep3WaitBeginRefresh(waitCtx, key) {
+		if a.log != nil {
+			a.log.Error("Central write-through could not acquire projection lock", "snapshot_key", key)
+		}
+		return false
+	}
+	defer centralStep3EndRefresh(key)
+	refresh()
+	return true
+}
+
 func (a *app) writeThroughReadModels(partnerID, reason string) {
 	reason = strings.ToLower(strings.TrimSpace(reason))
 	jobsByKey := map[string]func(){}
@@ -366,19 +380,21 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
 	}
 
-	if len(jobsByKey) == 0 {
+	refreshAll := len(jobsByKey) == 0
+	if refreshAll {
 		for _, job := range a.centralReadinessJobs() {
 			add(job.key, job.refresh)
 		}
 	}
+	delete(jobsByKey, centralStep4GlobalSearchKey)
 
 	var wg sync.WaitGroup
-	for _, refresh := range jobsByKey {
-		refresh := refresh
+	for key, refresh := range jobsByKey {
+		key, refresh := key, refresh
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			refresh()
+			a.refreshCentralProjectionSerialized(key, refresh)
 		}()
 	}
 
@@ -386,13 +402,11 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
-			defer cancel()
-			a.refreshCentralPartnerWorkspace(ctx, partnerID)
+			a.writeThroughCentralPartnerWorkspace(partnerID)
 		}()
 	}
 
-	refreshDashboard := partnerMutation || moduleMutation || billingMutation || impactMutation
+	refreshDashboard := partnerMutation || moduleMutation || billingMutation || impactMutation || refreshAll
 	if refreshDashboard {
 		wg.Add(1)
 		go func() {
@@ -402,8 +416,8 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	}
 	wg.Wait()
 
-	if partnerMutation || moduleMutation || websiteMutation || adminMutation {
-		a.refreshCentralStep4GlobalSearch()
+	if refreshAll || partnerMutation || moduleMutation || websiteMutation || adminMutation {
+		a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch)
 	}
 }
 
@@ -412,10 +426,13 @@ func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time
 	var wg sync.WaitGroup
 	for _, job := range a.centralReadinessJobs() {
 		job := job
+		if job.key == centralStep4GlobalSearchKey {
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			job.refresh()
+			a.refreshCentralProjectionSerialized(job.key, job.refresh)
 		}()
 	}
 	wg.Add(1)
@@ -427,9 +444,7 @@ func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
-			defer cancel()
-			a.refreshCentralPartnerWorkspace(ctx, partnerID)
+			a.writeThroughCentralPartnerWorkspace(partnerID)
 		}()
 	}
 	if readModelReasonRefreshesAllTenants(reason) {
@@ -449,6 +464,7 @@ func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time
 		a.refreshCentralUserNotificationSnapshots(ctx)
 	}()
 	wg.Wait()
+	a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch)
 
 	verifyCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
