@@ -7200,6 +7200,8 @@ class _PackagesPageState extends State<PackagesPage> {
               message: modulesError!,
             ),
           ],
+          const SizedBox(height: 18),
+          _PackageComparisonTable(plans: canonicalPlans),
           const SizedBox(height: 24),
           _SectionHeader(
             title: 'Package Analytics',
@@ -7506,6 +7508,111 @@ class _PackageFeatureRow extends StatelessWidget {
         const SizedBox(width: 8),
         LText(value, style: const TextStyle(color: brandNavy, fontSize: 9.8, fontWeight: FontWeight.w800)),
       ]);
+}
+
+class _PackageComparisonTable extends StatelessWidget {
+  const _PackageComparisonTable({required this.plans});
+  final List<Map<String,dynamic>> plans;
+
+  String _mode(Map<String,dynamic> plan) {
+    final value = '${plan['selection_mode'] ?? ''}'.toUpperCase();
+    return switch (value) {
+      'FIXED' => uiLiteral('HIMATE fixed package'),
+      'UNLIMITED' => uiLiteral('Unlimited'),
+      _ => value.isEmpty ? '—' : value,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <(String, String Function(Map<String,dynamic>))>[
+      (uiLiteral('Monthly net price'), (plan) => '${plan['display_price'] ?? '—'}'),
+      (uiLiteral('Entitlement'), (plan) => '${plan['entitlement'] ?? '—'}'),
+      (uiLiteral('Selection mode'), _mode),
+      (
+        uiLiteral('Configured modules'),
+        (plan) {
+          final unlimited = '${plan['selection_mode'] ?? ''}'.toUpperCase() == 'UNLIMITED';
+          if (unlimited) return uiLiteral('Automatic');
+          final included = plan['included_modules'] is List ? (plan['included_modules'] as List).length : 0;
+          final limit = (plan['module_limit'] as num?)?.toInt();
+          return limit == null ? '$included' : '$included / $limit';
+        },
+      ),
+      (uiLiteral('Status'), (plan) => uiLiteral(plan['active'] == true ? 'Active' : 'Inactive')),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            LText(
+              uiLiteral('Package comparison'),
+              style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 22, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            LText(
+              uiLiteral('Compare the current authoritative Billing plan values.'),
+              style: const TextStyle(color: brandTextSoft, fontSize: 10.5),
+            ),
+            const SizedBox(height: 14),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 720),
+                child: Table(
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                  columnWidths: {
+                    0: const FixedColumnWidth(180),
+                    for (var index = 0; index < plans.length; index++)
+                      index + 1: const FixedColumnWidth(180),
+                  },
+                  border: const TableBorder(
+                    horizontalInside: BorderSide(color: brandMist),
+                  ),
+                  children: [
+                    TableRow(
+                      children: [
+                        const SizedBox(height: 44),
+                        for (final plan in plans)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            child: LText(
+                              '${plan['display_name'] ?? plan['plan_key'] ?? '—'}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: brandNavy, fontWeight: FontWeight.w800, fontSize: 11),
+                            ),
+                          ),
+                      ],
+                    ),
+                    for (final row in rows)
+                      TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                            child: LText(row.$1, style: const TextStyle(color: brandTextSoft, fontSize: 10, fontWeight: FontWeight.w600)),
+                          ),
+                          for (final plan in plans)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              child: LText(
+                                row.$2(plan),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PackageAnalyticsChart extends StatelessWidget {
