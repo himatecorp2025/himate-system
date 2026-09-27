@@ -7049,6 +7049,23 @@ class _PackagesPageState extends State<PackagesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (impactStatus == 'unavailable') ...[
+            _MessageCard(
+              icon: Icons.cloud_off_outlined,
+              title: uiLiteral('Impact services are temporarily unavailable'),
+              message: impactUnavailable.isEmpty
+                  ? uiLiteral('Impact, Evidence and Reports could not be refreshed. No infinite loading state is used; retry when the services recover.')
+                  : '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ] else if (impactStatus == 'partial' && impactUnavailable.isNotEmpty) ...[
+            _MessageCard(
+              icon: Icons.warning_amber_rounded,
+              title: uiLiteral('Impact data is partially available'),
+              message: '${uiLiteral('Unavailable services')}: ${impactUnavailable.join(', ')}',
+            ),
+            const SizedBox(height: 14),
+          ],
           ResponsiveKpiGrid(children: [
             Kpi(label: 'All packages', value: '${plans.length}', note: 'Configured package definitions', icon: Icons.inventory_2_outlined, accent: brandSteel),
             Kpi(label: 'Active subscriptions', value: '$activeSubscriptions', note: 'Partners with active package subscriptions', icon: Icons.groups_2_outlined, accent: brandSuccess),
@@ -8386,6 +8403,8 @@ class _ImpactPageState extends State<ImpactPage> {
   List<Map<String, dynamic>> reports = <Map<String, dynamic>>[];
   Map<String, dynamic> impactAnalytics = <String, dynamic>{};
   Map<String, dynamic> impactKpis = <String, dynamic>{};
+  Map<String, dynamic> impactMeta = <String, dynamic>{};
+  bool impactSnapshotWarming = false;
   int evidenceTotal = 0;
   int evidenceOffset = 0;
   static const int evidenceLimit = 12;
@@ -8436,10 +8455,15 @@ class _ImpactPageState extends State<ImpactPage> {
 
     void applyModel(Map<String, dynamic> model) {
       if (!mounted || path != evidencePath()) return;
+      final meta = model['meta'] is Map
+          ? Map<String, dynamic>.from(model['meta'] as Map)
+          : <String, dynamic>{};
       if (model['ready'] != true) {
         setState(() {
           loading = false;
           error = null;
+          impactSnapshotWarming = true;
+          impactMeta = meta;
         });
         return;
       }
@@ -8450,6 +8474,8 @@ class _ImpactPageState extends State<ImpactPage> {
         reports = items(<String, dynamic>{'items': model['reports']});
         impactAnalytics = model['analytics'] is Map ? Map<String, dynamic>.from(model['analytics'] as Map) : <String, dynamic>{};
         impactKpis = model['kpis'] is Map ? Map<String, dynamic>.from(model['kpis'] as Map) : <String, dynamic>{};
+        impactMeta = meta;
+        impactSnapshotWarming = false;
         evidenceTotal = (model['evidence_total'] as num?)?.toInt() ?? evidence.length;
         loading = false;
       });
@@ -8997,11 +9023,11 @@ class _ImpactPageState extends State<ImpactPage> {
     }
     if (!loading &&
         error == null &&
+        impactSnapshotWarming &&
         definitions.isEmpty &&
         summary.isEmpty &&
         evidence.isEmpty &&
-        reports.isEmpty &&
-        impactKpis.isEmpty) {
+        reports.isEmpty) {
       return Content(
         title: 'Impact & Reports',
         subtitle: 'Real outcomes, transparent reports and evidence.',
@@ -9022,6 +9048,10 @@ class _ImpactPageState extends State<ImpactPage> {
         child: _MessageCard(icon: Icons.error_outline_rounded, title: 'Impact data unavailable', message: error!),
       );
     }
+    final impactStatus = '${impactMeta['status'] ?? ''}'.toLowerCase();
+    final impactUnavailable = impactMeta['unavailable'] is List
+        ? (impactMeta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
+        : <String>[];
     final activeMetrics = (impactKpis['active_metrics'] as num?)?.toInt() ?? definitions.length;
     final totalEvidence = (impactKpis['evidence_total'] as num?)?.toInt() ?? evidenceTotal;
     final totalReports = (impactKpis['reports_total'] as num?)?.toInt() ?? reports.length;
