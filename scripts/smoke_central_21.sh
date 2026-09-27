@@ -34,16 +34,24 @@ SELECT
   (SELECT COUNT(*) FROM identity.central_screen_snapshots WHERE COALESCE(payload->>'status','')<>'healthy'),
   (SELECT COUNT(*) FROM identity.partner_workspace_snapshots WHERE payload->>'status'='healthy'),
   (SELECT COUNT(*) FROM identity.partner_workspace_snapshots WHERE COALESCE(payload->>'status','')<>'healthy'),
-  (SELECT COUNT(*) FROM partners.partners);
+  (SELECT COUNT(*) FROM partners.partners),
+  (SELECT COUNT(*) FROM identity.partner_workspace_snapshots
+   WHERE NOT (
+     payload ? 'partner_contacts'
+     AND payload ? 'partner_domains_deployments'
+     AND payload ? 'partner_audit_events'
+     AND payload ? 'partner_permissions'
+   ));
 SQL
 )"
 printf '%s' "$STATE" | python3 -c '
 import sys
-healthy_c,bad_c,healthy_t,bad_t,partners=map(int,sys.stdin.read().strip().split("|"))
+healthy_c,bad_c,healthy_t,bad_t,partners,incomplete_t=map(int,sys.stdin.read().strip().split("|"))
 assert healthy_c >= 12,(healthy_c,bad_c)
 assert bad_c == 0,(healthy_c,bad_c)
 assert bad_t == 0,(healthy_t,bad_t)
 assert healthy_t >= partners,(healthy_t,partners)
+assert incomplete_t == 0,incomplete_t
 '
 echo ok
 
