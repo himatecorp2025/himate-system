@@ -10269,7 +10269,10 @@ class _SystemPageState extends State<SystemPage> {
         final canHealth = access['health'] == true;
         final canProvisioning = access['provisioning'] == true;
         final canEnvironments = access['environments'] == true;
+        final canEnvironmentsWrite = access['environments_write'] == true;
+        final canEnvironmentsApprove = access['environments_approve'] == true;
         final canBackups = access['backups'] == true;
+        final canBackupsApprove = access['backups_approve'] == true;
         final canAudit = access['audit'] == true;
         final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
         final unavailable = meta['unavailable'] is List
@@ -10531,6 +10534,8 @@ class _SystemPageState extends State<SystemPage> {
                 DomainsDeploymentsPanel(
                   api: api,
                   initialEnvironments: environments,
+                  canWrite: canEnvironmentsWrite,
+                  canApprove: canEnvironmentsApprove,
                 ),
                 const SizedBox(height: 24),
               ],
@@ -10540,6 +10545,7 @@ class _SystemPageState extends State<SystemPage> {
                   initialSummary: backupSummary,
                   partnerIds: backupPartnerIds,
                   initialProvider: backupProvider,
+                  canMutate: canBackupsApprove,
                 ),
                 const SizedBox(height: 24),
               ],
