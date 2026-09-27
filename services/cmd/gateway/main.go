@@ -2013,6 +2013,11 @@ func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
 	if len([]rune(q))<2 { common.APIError(w,http.StatusBadRequest,"VALIDATION","Search query must contain at least 2 characters");return }
 	if len([]rune(q))>100 { common.APIError(w,http.StatusBadRequest,"VALIDATION","Search query is too long");return }
 	limit:=auditLimit(r.URL.Query().Get("limit"),5,10)
+	snapshot,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep4GlobalSearchKey)
+	if !ok {
+		a.readModelInvariantFailure(w,centralStep4GlobalSearchKey)
+		return
+	}
 	results:=[]map[string]any{}
 	appendResult:=func(resource,id,title,subtitle,deepLink string) {
 		results=append(results,map[string]any{
@@ -2021,64 +2026,56 @@ func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
 	}
 
 	if a.hasPermission(actor,"partners.read") {
-		if snapshot,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep4PartnersKey);ok {
-			count:=0
-			for _,item:=range step4Items(snapshot["items"]) {
-				if !searchContains(q,item["id"],item["display_name"],item["legal_name"],item["brand_name"],item["contact_email"]){continue}
-				id:=central10String(item["id"]);name:=central10String(item["display_name"]);if name==""{name=id}
-				appendResult("partners",id,name,central10String(item["lifecycle"]),"/app/partners/"+url.PathEscape(id))
-				count++;if count>=limit{break}
-			}
+		count:=0
+		for _,item:=range step4Items(snapshot["partners"]) {
+			if !searchContains(q,item["id"],item["display_name"],item["legal_name"],item["brand_name"],item["contact_email"]){continue}
+			id:=central10String(item["id"]);name:=central10String(item["display_name"]);if name==""{name=id}
+			appendResult("partners",id,name,central10String(item["lifecycle"]),"/app/partners/"+url.PathEscape(id))
+			count++;if count>=limit{break}
 		}
 	}
 	if a.hasPermission(actor,"catalog.read") {
-		if snapshot,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep3RegistryKey);ok {
-			count:=0
-			for _,item:=range anyItems(snapshot["modules"]) {
-				if !searchContains(q,item["key"],item["label"],item["label_en"],item["label_hu"],item["description"],item["description_en"],item["description_hu"]){continue}
-				id:=central10String(item["key"]);title:=central10String(item["label"]);if title==""{title=id}
-				appendResult("catalog",id,title,"Module · "+id,"/app")
-				count++;if count>=limit{break}
-			}
+		count:=0
+		for _,item:=range anyItems(snapshot["modules"]) {
+			if !searchContains(q,item["key"],item["label"],item["label_en"],item["label_hu"],item["description"],item["description_en"],item["description_hu"]){continue}
+			id:=central10String(item["key"]);title:=central10String(item["label"]);if title==""{title=id}
+			appendResult("catalog",id,title,"Module · "+id,"/app")
+			count++;if count>=limit{break}
 		}
 	}
-	if website,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep4WebsiteKey);ok {
-		if a.hasPermission(actor,"contact.read") {
-			count:=0
-			for _,item:=range anyItems(partnerWorkspaceMap(website,"contact_inquiries")["items"]) {
-				if !searchContains(q,item["id"],item["name"],item["organization"],item["email"],item["message"]){continue}
-				id:=central10String(item["id"]);title:=central10String(item["name"]);subtitle:=central10String(item["organization"]);if subtitle==""{subtitle=central10String(item["email"])}
-				appendResult("contact",id,title,subtitle,"/app")
-				count++;if count>=limit{break}
-			}
-		}
-		if a.hasPermission(actor,"cms.read") {
-			count:=0
-			for _,item:=range step4Items(website["pages"]) {
-				if !searchContains(q,item["id"],item["page_key"],item["name"],item["locale"]){continue}
-				id:=central10String(item["id"]);title:=central10String(item["name"])
-				appendResult("cms",id,title,"CMS · "+central10String(item["locale"]),"/app")
-				count++;if count>=limit{break}
-			}
+	if a.hasPermission(actor,"contact.read") {
+		count:=0
+		for _,item:=range anyItems(snapshot["contact_inquiries"]) {
+			if !searchContains(q,item["id"],item["name"],item["organization"],item["email"],item["message"]){continue}
+			id:=central10String(item["id"]);title:=central10String(item["name"]);subtitle:=central10String(item["organization"]);if subtitle==""{subtitle=central10String(item["email"])}
+			appendResult("contact",id,title,subtitle,"/app")
+			count++;if count>=limit{break}
 		}
 	}
-	if administration,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep4AdministrationKey);ok {
-		if a.hasPermission(actor,"administration.read") {
-			count:=0
-			for _,item:=range anyItems(partnerWorkspaceMap(administration,"admin_users")["items"]) {
-				if !searchContains(q,item["id"],item["name"],item["email"]){continue}
-				appendResult("administration",central10String(item["id"]),central10String(item["name"]),central10String(item["email"]),"/app")
-				count++;if count>=limit{break}
-			}
+	if a.hasPermission(actor,"cms.read") {
+		count:=0
+		for _,item:=range step4Items(snapshot["cms_pages"]) {
+			if !searchContains(q,item["id"],item["page_key"],item["name"],item["locale"]){continue}
+			id:=central10String(item["id"]);title:=central10String(item["name"])
+			appendResult("cms",id,title,"CMS · "+central10String(item["locale"]),"/app")
+			count++;if count>=limit{break}
 		}
-		if a.hasPermission(actor,"audit.read") {
-			count:=0
-			for _,item:=range anyItems(partnerWorkspaceMap(administration,"audit_events")["items"]) {
-				if !searchContains(q,item["action"],item["actor_name"],item["resource"],item["partner_id"]){continue}
-				id:=fmt.Sprint(item["id"])
-				appendResult("audit",id,strings.ReplaceAll(central10String(item["action"]),"_"," "),central10String(item["actor_name"])+" · "+central10String(item["resource"]),"/app")
-				count++;if count>=limit{break}
-			}
+	}
+	if a.hasPermission(actor,"administration.read") {
+		count:=0
+		for _,item:=range anyItems(snapshot["admin_users"]) {
+			if !searchContains(q,item["id"],item["name"],item["email"]){continue}
+			appendResult("administration",central10String(item["id"]),central10String(item["name"]),central10String(item["email"]),"/app")
+			count++;if count>=limit{break}
+		}
+	}
+	if a.hasPermission(actor,"audit.read") {
+		count:=0
+		for _,item:=range anyItems(snapshot["audit_events"]) {
+			if !searchContains(q,item["action"],item["actor_name"],item["resource"],item["partner_id"]){continue}
+			id:=fmt.Sprint(item["id"])
+			appendResult("audit",id,strings.ReplaceAll(central10String(item["action"]),"_"," "),central10String(item["actor_name"])+" · "+central10String(item["resource"]),"/app")
+			count++;if count>=limit{break}
 		}
 	}
 	w.Header().Set("X-Himate-Cache","persistent-read-model")
@@ -2192,36 +2189,10 @@ func (a *app) serveComplianceArchives(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusMethodNotAllowed, "READ_ONLY", "Compliance Archives are read-only")
 		return
 	}
-	host := strings.TrimSpace(a.hosts["partners"])
-	if host == "" {
-		common.APIError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "partners service is temporarily unavailable")
+	if a.serveComplianceMaterializedGET(w, r) {
 		return
 	}
-	internalPath := strings.Replace(r.URL.Path, "/api/v1/archives", "/internal/v1/archives", 1)
-	target := "http://" + host + internalPath
-	if r.URL.RawQuery != "" {
-		target += "?" + r.URL.RawQuery
-	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
-	if err != nil {
-		common.APIError(w, http.StatusInternalServerError, "ARCHIVE_REQUEST", "Could not prepare Compliance Archive request")
-		return
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Himate-User-ID", strings.TrimSpace(r.Header.Get("X-Himate-User-ID")))
-	common.BindInternalRequest(req, a.internalToken)
-	resp, err := common.DoInternal(a.client, req)
-	if err != nil {
-		common.APIError(w, http.StatusServiceUnavailable, "ARCHIVE_UNAVAILABLE", "Compliance Archive service is temporarily unavailable")
-		return
-	}
-	defer resp.Body.Close()
-	if contentType := strings.TrimSpace(resp.Header.Get("Content-Type")); contentType != "" {
-		w.Header().Set("Content-Type", contentType)
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Compliance Archive read model route not found")
 }
 
 func (a *app) serveProxy(w http.ResponseWriter, r *http.Request, service string) {
