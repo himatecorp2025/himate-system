@@ -345,3 +345,51 @@ class _Central17LegendDot extends StatelessWidget {
     LText(label,style:const TextStyle(color:brandTextSoft,fontSize:8.7,fontWeight:FontWeight.w600)),
   ]);
 }
+
+
+class _Central17ModuleTrendCard extends StatelessWidget {
+  const _Central17ModuleTrendCard({required this.trend});
+  final List<Map<String,dynamic>> trend;
+
+  @override
+  Widget build(BuildContext context) {
+    final year=DateTime.now().toUtc().year;
+    final locale=himateLocaleCode(Localizations.localeOf(context));
+    final modules=List<double>.filled(12,0);
+    final partners=List<double>.filled(12,0);
+    for(final row in trend){
+      final month=(row['month'] as num?)?.toInt() ?? 0;
+      if(month<1||month>12)continue;
+      modules[month-1]=number(row['active_modules']);
+      partners[month-1]=number(row['active_partners']);
+    }
+    final labels=List<String>.generate(12,(i)=>intl.DateFormat.MMM(locale).format(DateTime(year,i+1)).replaceAll('.', ''));
+    return SizedBox(
+      height:250,
+      child:Card(
+        child:Padding(
+          padding:const EdgeInsets.fromLTRB(20,16,18,14),
+          child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Row(children:[
+              Container(width:34,height:34,decoration:BoxDecoration(color:brandSteel.withOpacity(.08),borderRadius:BorderRadius.circular(10)),child:const Icon(Icons.bar_chart_rounded,color:brandSteel,size:20)),
+              const SizedBox(width:10),
+              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                LText(uiLiteral('Module usage growth'),style:GoogleFonts.cormorantGaramond(color:brandNavy,fontSize:20,fontWeight:FontWeight.w700)),
+                LText(uiLiteral('Active module count by month'),style:const TextStyle(color:brandTextSoft,fontSize:9.5)),
+              ])),
+              _Central17LegendDot(color:brandSteel,label:uiLiteral('Active modules')),
+              const SizedBox(width:14),
+              _Central17LegendDot(color:brandGold,label:uiLiteral('Active partners')),
+            ]),
+            const SizedBox(height:8),
+            Expanded(
+              child: trend.isEmpty
+                ? Center(child:LText(uiLiteral('No module usage history is available yet.'),style:const TextStyle(color:brandTextSoft,fontSize:10.5)))
+                : _Central17TrendChart(partnerValues:modules,moneyValues:partners,labels:labels),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
