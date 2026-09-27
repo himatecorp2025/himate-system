@@ -328,9 +328,7 @@ func main() {
 	mux.HandleFunc("/connector/v1/", func(w http.ResponseWriter, r *http.Request) {
 		a.serveProxy(w, r, "connector")
 	})
-	mux.HandleFunc("/webhooks/stripe", func(w http.ResponseWriter, r *http.Request) {
-		a.serveProxy(w, r, "payments")
-	})
+	mux.HandleFunc("/webhooks/stripe", a.stripeWebhookProxy)
 	mux.HandleFunc("/api/", a.api)
 	mux.Handle("/", a.web())
 	common.Run(log, "gateway", common.Env("PORT", "10000"), securityHeaders(mux))
@@ -2083,6 +2081,32 @@ func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
 		"query":q,"items":results,"count":len(results),"limit_per_resource":limit,
 		"permission_scoped":true,
 	})
+}
+
+func (a *app) stripeWebhookProxy(w http.ResponseWriter, r *http.Request) {
+	recorder := &auditResponseWriter{ResponseWriter: w, deferred: true}
+	a.serveProxy(recorder, r, "payments")
+	status := recorder.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		var ack map[string]any
+		if json.Unmarshal(recorder.body.Bytes(), &ack) == nil &&
+			strings.EqualFold(central10String(ack["status"]), "processed") {
+			partnerID := strings.TrimSpace(central10String(ack["partner_id"]))
+			if partnerID != "" {
+				refreshCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+				a.enqueueReadModelRefresh(refreshCtx, "/webhooks/stripe/payment", partnerID)
+				cancel()
+				// Billing settlement is complete before the payment service ACK.
+				// Refresh the tenant + finance projections before releasing that
+				// ACK so the immediately following zero-fan-out GET/F5 sees PAID.
+				a.writeThroughReadModels(partnerID, "/webhooks/stripe/payment")
+			}
+		}
+	}
+	recorder.flushDeferred()
 }
 
 func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
