@@ -38,6 +38,7 @@ models = read("services/cmd/gateway/materialized_read_models.go")
 central_reads = read("services/cmd/gateway/central_materialized_reads.go")
 partner_reads = read("services/cmd/gateway/partner_materialized_reads.go")
 partner_portal = read("services/cmd/gateway/partner_portal.go")
+payments = read("services/cmd/payments/main.go")
 central10 = read("services/cmd/gateway/central10.go")
 central13 = read("services/cmd/gateway/central13.go")
 central14 = read("services/cmd/gateway/central14.go")
@@ -280,6 +281,16 @@ for block, label in [(central_api, "Central"), (partner_api, "Partner")]:
     check("writeThroughReadModels" in block, f"{label} mutation path does not perform write-through")
     check("enqueueReadModelRefresh" in block, f"{label} mutation path does not persist durable refresh event")
     check("flushDeferred" in block, f"{label} mutation response is not held until write-through completes")
+
+# Provider/webhook writes must participate in the same write-through contract.
+check('"partner_id":x.PartnerID' in payments,
+      "Payment webhook acknowledgement no longer identifies the settled tenant")
+webhook_proxy = func_block(main, "func (a *app) stripeWebhookProxy")
+check(webhook_proxy != "", "Gateway payment webhook projection bridge is missing")
+check("enqueueReadModelRefresh" in webhook_proxy and "writeThroughReadModels" in webhook_proxy,
+      "Payment settlement does not synchronously refresh durable tenant/Central projections")
+check('mux.HandleFunc("/webhooks/stripe", a.stripeWebhookProxy)' in main,
+      "Stripe webhook bypasses the CQRS write-through bridge")
 
 if failures:
     print(f"CENTRAL-21 FAIL: {len(failures)} issue(s)")
