@@ -149,6 +149,7 @@ PY
 }
 
 printf 'CENTRAL-21 baseline materialized REST reads and <=20ms local SLO... '
+check_read "/api/v1/partner-categories" "persistent-read-model" "true"
 check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model" "true"
 check_read "/api/v1/modules" "persistent-read-model" "true"
 check_read "/api/v1/modules/$MODULE_KEY/relationships" "persistent-read-model" "true"
@@ -207,6 +208,7 @@ docker compose pause $PAUSED >/dev/null
 echo ok
 
 printf 'CENTRAL-21 zero-fan-out reads survive dependency outage... '
+check_read "/api/v1/partner-categories" "persistent-read-model"
 check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model"
 check_read "/api/v1/modules" "persistent-read-model"
 check_read "/api/v1/modules/$MODULE_KEY/relationships" "persistent-read-model"
