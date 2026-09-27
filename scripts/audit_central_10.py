@@ -457,19 +457,25 @@ for marker in [
     check("unawaited(load())" in body,
           f"Finance filter handler changes UI state without reloading the Go read model: {marker}")
 
-# Canonical package authority is backend-only and exact.
+# Canonical package identity is backend-owned, while live commercial values
+# come from the Billing snapshot. The gateway must never shadow Billing edits.
 for token in [
-    'out["monthly_price"] = 990',
-    'out["display_price"] = "$990 + VAT"',
-    'out["module_limit"] = 10',
-    'out["monthly_price"] = 1490',
-    'out["display_price"] = "$1,490 + VAT"',
-    'out["module_limit"] = 20',
-    'out["monthly_price"] = 2490',
-    'out["display_price"] = "$2,490 + VAT"',
+    "central10PlanDisplayPrice(",
+    'central10Float(plan["monthly_price"])',
+    'central10Int(plan["module_limit"])',
+    'out["display_name"] = "Starter"',
+    'out["display_name"] = "Business"',
+    'out["display_name"] = "Premium"',
     'out["entitlement"] = "Unlimited"',
 ]:
     check(token in gateway, f"Central-10 Go package authority missing: {token}")
+for forbidden in [
+    'out["monthly_price"] = 990',
+    'out["monthly_price"] = 1490',
+    'out["monthly_price"] = 2490',
+]:
+    check(forbidden not in gateway,
+          f"Central-10 gateway shadows authoritative Billing pricing: {forbidden}")
 for token in [
     "display_name='Starter',monthly_price=990",
     "display_name='Business',monthly_price=1490",
