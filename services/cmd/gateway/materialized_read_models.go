@@ -295,6 +295,104 @@ func readModelReasonRefreshesAllTenants(reason string) bool {
 		strings.Contains(reason, "/cms/design")
 }
 
+func (a *app) writeThroughReadModels(partnerID, reason string) {
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	jobsByKey := map[string]func(){}
+	add := func(key string, fn func()) { jobsByKey[key] = fn }
+
+	partnerMutation := strings.Contains(reason, "partner")
+	moduleMutation := strings.Contains(reason, "module") || strings.Contains(reason, "catalog")
+	billingMutation := strings.Contains(reason, "billing") || strings.Contains(reason, "invoice") ||
+		strings.Contains(reason, "subscription") || strings.Contains(reason, "plan") ||
+		strings.Contains(reason, "license") || strings.Contains(reason, "payment")
+	impactMutation := strings.Contains(reason, "impact") || strings.Contains(reason, "evidence") || strings.Contains(reason, "report")
+	websiteMutation := strings.Contains(reason, "cms") || strings.Contains(reason, "seo") ||
+		strings.Contains(reason, "contact") || strings.Contains(reason, "domain")
+	systemMutation := strings.Contains(reason, "environment") || strings.Contains(reason, "provision") ||
+		strings.Contains(reason, "health") || strings.Contains(reason, "backup") || strings.Contains(reason, "connector")
+	adminMutation := strings.Contains(reason, "admin") || strings.Contains(reason, "audit") ||
+		strings.Contains(reason, "role") || strings.Contains(reason, "secret")
+
+	if partnerMutation {
+		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		add(centralStep4FinanceKey, a.refreshCentralStep4Finance)
+		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
+		add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections)
+		add(centralStep4ComplianceKey, a.refreshCentralStep4Compliance)
+	}
+	if moduleMutation {
+		add(centralStep3RegistryKey, a.refreshCentralStep3Registry)
+		add(centralStep3CommercialKey, a.refreshCentralStep3Commercial)
+		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+	}
+	if billingMutation {
+		add(centralStep3PlansKey, a.refreshCentralStep3Plans)
+		add(centralStep3AnalyticsKey, a.refreshCentralStep3Analytics)
+		add(centralStep3CommercialKey, a.refreshCentralStep3Commercial)
+		add(centralStep4FinanceKey, a.refreshCentralStep4Finance)
+		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
+	}
+	if impactMutation {
+		add(centralStep4ImpactKey, a.refreshCentralStep4Impact)
+	}
+	if websiteMutation {
+		add(centralStep4WebsiteKey, a.refreshCentralStep4Website)
+	}
+	if systemMutation {
+		add(centralStep4SystemKey, a.refreshCentralStep4System)
+		if strings.Contains(reason, "environment") {
+			add(centralStep4WebsiteKey, a.refreshCentralStep4Website)
+		}
+		if strings.Contains(reason, "connector") {
+			add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections)
+			add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		}
+		if strings.Contains(reason, "backup") {
+			add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
+		}
+	}
+	if adminMutation {
+		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
+	}
+
+	if len(jobsByKey) == 0 {
+		for _, job := range a.centralReadinessJobs() {
+			add(job.key, job.refresh)
+		}
+	}
+
+	var wg sync.WaitGroup
+	for _, refresh := range jobsByKey {
+		refresh := refresh
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			refresh()
+		}()
+	}
+
+	if partnerID != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceMaterializeBudget)
+			defer cancel()
+			a.refreshCentralPartnerWorkspace(ctx, partnerID)
+		}()
+	}
+
+	refreshDashboard := partnerMutation || moduleMutation || billingMutation || impactMutation
+	if refreshDashboard {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a.refreshDashboardSnapshot(time.Now().UTC().Year())
+		}()
+	}
+	wg.Wait()
+}
+
 func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time.Time) bool {
 	partnerID = strings.TrimSpace(partnerID)
 	var wg sync.WaitGroup
@@ -346,8 +444,8 @@ func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time
 			return false
 		}
 	}
-	_, dashboardUpdated, err := a.loadDashboardSnapshotContext(verifyCtx, time.Now().UTC().Year())
-	if err != nil || dashboardUpdated.Before(createdAt) {
+	dashboardPayload, _, err := a.loadDashboardSnapshotContext(verifyCtx, time.Now().UTC().Year())
+	if err != nil || !dashboardSnapshotValid(dashboardPayload) {
 		return false
 	}
 	if partnerID != "" {
