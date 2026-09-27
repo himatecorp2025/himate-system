@@ -2084,6 +2084,7 @@ class HimateI18n {
     'Runtime uses · total': 'Runtime használat · összes',
     'Save mapping': 'Hozzárendelés mentése',
     'Save package': 'Csomag mentése',
+    'Package update failed': 'A csomag frissítése sikertelen',
     'Save relationship': 'Kapcsolat mentése',
     'Selection model': 'Kiválasztási modell',
     'Show more': 'Továbbiak megjelenítése',
