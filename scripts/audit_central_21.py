@@ -248,10 +248,18 @@ check("serveComplianceMaterializedGET" in compliance_fallback and
 
 # Partner login/access gating is a tenant projection read, not a Billing call.
 access = func_block(partner_portal, "func (a *app) partnerAccessAllowed")
-check("partnerWorkspaceForRead" in access and 'snapshot["portal_gate"]' in access,
+access_snapshot = func_block(partner_portal, "func (a *app) partnerAccessSnapshot")
+check("partnerAccessSnapshot" in access and
+      "partnerWorkspaceForRead" in access_snapshot and
+      'snapshot["portal_gate"]' in access_snapshot,
       "Partner Portal access gate is not sourced from tenant LKG")
-check("internalGET" not in access and 'a.hosts["billing"]' not in access,
-      "Partner Portal login regressed to synchronous Billing fan-out")
+for block in [access, access_snapshot]:
+    check("internalGET" not in block and 'a.hosts["billing"]' not in block,
+          "Partner Portal login regressed to synchronous Billing fan-out")
+check("partnerWorkspaceContextKey" in partner_portal and
+      "context.WithValue" in partner_api and
+      "r.Context().Value(partnerWorkspaceContextKey{})" in partner_portal,
+      "Partner Portal request does not reuse the access-gate tenant snapshot")
 
 # Remaining deep screen reads must also be projected; none may fall through
 # to Catalog/Connector/Partner live proxies.
