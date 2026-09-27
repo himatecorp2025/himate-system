@@ -273,10 +273,18 @@ packages_supp_start = gateway.find("func (a *app) central10PackagesSupplementary
 money_start = gateway.find("func central10MoneyLabel(", packages_supp_start)
 modules_primary = gateway[modules_start:modules_commercial_start]
 packages_primary = gateway[packages_start:packages_supp_start]
+modules_commercial = gateway[modules_commercial_start:packages_start]
+check(modules_commercial.count("centralSnapshotForRead(") == 1,
+      "Step 3 Modules commercial no longer uses one indexed materialized read")
 
 for forbidden in ["internalGET(", "central10AllPartners(", "central10CommercialSources(", "WaitGroup", "wg.Wait()"]:
     check(forbidden not in modules_primary,
           f"Step 3 Modules primary request still blocks on live fan-out: {forbidden}")
+check(modules_primary.count("centralSnapshotForRead(") == 1,
+      "Step 3 Modules primary no longer uses one indexed materialized read")
+check(packages_primary.count("centralSnapshotForRead(") == 1,
+      "Step 3 Packages primary no longer uses one indexed materialized read")
+
 for forbidden in ["internalGET(", "WaitGroup", "wg.Wait()"]:
     check(forbidden not in packages_primary,
           f"Step 3 Packages primary request still blocks on live fan-out: {forbidden}")
@@ -295,13 +303,15 @@ for required in [
 
 packages_supplementary = gateway[packages_supp_start:money_start]
 for required in [
-    "a.centralSnapshotForRead(r.Context(), centralStep3RegistryKey)",
     "a.centralSnapshotForRead(r.Context(), centralStep3AnalyticsKey)",
+    'anyItems(analyticsSnapshot["modules"])',
     '"modules_ready"',
     '"analytics_ready"',
 ]:
     check(required in packages_supplementary,
           f"Central-10.1 Packages supplementary snapshot contract missing: {required}")
+check(packages_supplementary.count("centralSnapshotForRead(") == 1,
+      "Central-10.1 Packages supplementary no longer uses one indexed materialized read")
 for forbidden in ["internalGET(", "WaitGroup", "wg.Wait()", "http.StatusBadGateway"]:
     check(forbidden not in packages_supplementary,
           f"Central-10.1 Packages supplementary request still blocks on live fan-out: {forbidden}")
