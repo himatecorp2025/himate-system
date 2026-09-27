@@ -198,6 +198,21 @@ check('case path == "/api/v1/partner-categories":' in central_reads and
 check(main.find("a.serveCentralMaterializedGET(w, r, u)") <
       main.find("switch {", main.find("a.serveCentralMaterializedGET(w, r, u)")),
       "Central materialized GET interceptor does not precede legacy routing")
+check("func centralBrowserMaterializedRead" in central_reads and
+      'r.Header.Get("X-Himate-Locale")' in central_reads,
+      "Browser/legacy compatibility discriminator is missing")
+central_materialized = func_block(central_reads, "func (a *app) serveCentralMaterializedGET")
+check("centralBrowserMaterializedRead(r)" in central_materialized,
+      "Central materialized GET no longer requires browser read-model identity")
+check('case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":' in main and
+      'case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:' not in main,
+      "Legacy Partners GET is still intercepted by a stale materialized compatibility handler")
+check('case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, "/api/v1/environments/"):' in main and
+      'a.serveProxy(w, r, "environments")' in main,
+      "Legacy environment compatibility path no longer reaches the authoritative environment service")
+check('case strings.HasPrefix(r.URL.Path, "/api/v1/system-health"):' in main and
+      'a.serveProxy(w, r, "health")' in main,
+      "Legacy system-health compatibility path no longer reaches the authoritative health snapshot service")
 check(partner_portal.find("a.servePartnerMaterializedGET(w,r,u,path)") <
       partner_portal.find("switch{", partner_portal.find("a.servePartnerMaterializedGET(w,r,u,path)")),
       "Partner materialized GET interceptor does not precede legacy routing")
