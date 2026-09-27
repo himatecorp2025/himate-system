@@ -132,8 +132,10 @@ func addTaxQuote(out map[string]any, monthly, annual float64, policy billingTaxP
 
 func (a *app) activePlanPartnerCount(ctx context.Context, planKey string) (int, error) {
 	var count int
+	canonical := central8CanonicalPlanKey(planKey)
 	err := a.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM billing.partner_plan_subscriptions
-		WHERE plan_key=$1 AND status='ACTIVE'`, planKey).Scan(&count)
+		WHERE (CASE WHEN plan_key='PREMIUM' THEN 'FLEX' ELSE plan_key END)=$1
+		  AND status='ACTIVE'`, canonical).Scan(&count)
 	return count, err
 }
 
