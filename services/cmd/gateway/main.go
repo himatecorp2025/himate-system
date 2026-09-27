@@ -261,6 +261,13 @@ func main() {
 	// the browser request path.
 	a.warmMissingCentralSnapshots()
 	a.warmMissingCentralPartnerWorkspaces()
+	readinessCtx, readinessCancel := context.WithTimeout(context.Background(), 45*time.Second)
+	if err := a.ensureMaterializedReadModelsReady(readinessCtx); err != nil {
+		readinessCancel()
+		log.Error("materialized read-model startup gate failed", "error", err)
+		os.Exit(1)
+	}
+	readinessCancel()
 	go a.runDashboardMaterializer()
 	go a.runCentralStep3Materializer()
 	go a.runCentralStep4Materializer()
