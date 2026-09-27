@@ -216,6 +216,8 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'Recent invoice activity': 'Legutóbbi számlatevékenység',
+    'No invoices yet': 'Még nincs számla',
     'Most popular': 'Legnépszerűbb',
     'Automatic': 'Automatikus',
     'Commercial': 'Kereskedelmi',
