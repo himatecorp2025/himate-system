@@ -99,9 +99,13 @@ check("seedCentralReadModelBaselines" in seeds,
       "Cold-start Central/Dashboard baseline seeder missing")
 check("seedPartnerWorkspaceBaseline" in seeds,
       "Cold-start tenant workspace baseline seeder missing")
-check("ON CONFLICT(snapshot_key) DO NOTHING" in seeds and
-      "ON CONFLICT(partner_id) DO NOTHING" in seeds,
-      "Baseline seeding can overwrite an existing Last-Known-Good projection")
+check("centralSnapshotValid(key, existing)" in seeds and
+      "partnerWorkspaceSnapshotValid(existing)" in seeds,
+      "Baseline repair does not protect existing Last-Known-Good projections")
+check("err != sql.ErrNoRows" in seeds and
+      "ON CONFLICT(snapshot_key) DO UPDATE" in seeds and
+      "ON CONFLICT(partner_id) DO UPDATE" in seeds,
+      "Cold-start baseline repair contract missing for absent/corrupt projections")
 check("a.seedCentralReadModelBaselines(ctx)" in main and
       main.find("a.seedCentralReadModelBaselines(ctx)") < main.find("a.bootstrapCentralStep3Snapshots()"),
       "Cold-start baseline seeding does not happen before snapshot bootstrap")
