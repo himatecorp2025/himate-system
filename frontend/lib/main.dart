@@ -3741,48 +3741,6 @@ class _PartnersPageState extends State<PartnersPage> {
     unawaited(load());
   }
 
-  bool _invoiceMutationVisible(Map<String,dynamic> updated) {
-    final id = '${updated['id'] ?? ''}';
-    if (id.isEmpty) return false;
-    final expected = '${updated['workflow_status'] ?? updated['status'] ?? ''}'.toUpperCase();
-    Map<String,dynamic>? current;
-    for (final invoice in invoices) {
-      if ('${invoice['id'] ?? ''}' == id) {
-        current = invoice;
-        break;
-      }
-    }
-    if (invoiceFilter != 'ALL' && expected.isNotEmpty && invoiceFilter != expected) {
-      return current == null;
-    }
-    if (current == null) return false;
-    final actual = '${current['workflow_status'] ?? current['status'] ?? ''}'.toUpperCase();
-    return expected.isEmpty || actual == expected;
-  }
-
-  bool _onboardingMutationVisible(String partnerID, String expectedState) {
-    Map<String,dynamic>? current;
-    for (final row in onboardingRows) {
-      if ('${row['partner_id'] ?? ''}' == partnerID) {
-        current = row;
-        break;
-      }
-    }
-    if (expectedState == 'ACTIVE') return current == null;
-    return current != null && '${current['state'] ?? ''}'.toUpperCase() == expectedState;
-  }
-
-  Future<void> _syncFinanceMutation(bool Function() isVisible) async {
-    await load(force: true);
-    if (!mounted || isVisible()) return;
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    await load(force: true);
-    if (isVisible()) return;
-    await Future<void>.delayed(const Duration(milliseconds: 1200));
-    if (mounted) await load(force: true);
-  }
-
   void success(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
@@ -6757,7 +6715,7 @@ class _PackagesPageState extends State<PackagesPage> {
     unawaited(load());
   }
 
-  Future<void> load() async {
+  Future<void> load({bool force = false}) async {
     if (mounted) {
       setState(() {
         loading = true;
@@ -7963,6 +7921,48 @@ class _FinancePageState extends State<FinancePage> {
     }
   }
 
+  bool _invoiceMutationVisible(Map<String,dynamic> updated) {
+    final id = '${updated['id'] ?? ''}';
+    if (id.isEmpty) return false;
+    final expected = '${updated['workflow_status'] ?? updated['status'] ?? ''}'.toUpperCase();
+    Map<String,dynamic>? current;
+    for (final invoice in invoices) {
+      if ('${invoice['id'] ?? ''}' == id) {
+        current = invoice;
+        break;
+      }
+    }
+    if (invoiceFilter != 'ALL' && expected.isNotEmpty && invoiceFilter != expected) {
+      return current == null;
+    }
+    if (current == null) return false;
+    final actual = '${current['workflow_status'] ?? current['status'] ?? ''}'.toUpperCase();
+    return expected.isEmpty || actual == expected;
+  }
+
+  bool _onboardingMutationVisible(String partnerID, String expectedState) {
+    Map<String,dynamic>? current;
+    for (final row in onboardingRows) {
+      if ('${row['partner_id'] ?? ''}' == partnerID) {
+        current = row;
+        break;
+      }
+    }
+    if (expectedState == 'ACTIVE') return current == null;
+    return current != null && '${current['state'] ?? ''}'.toUpperCase() == expectedState;
+  }
+
+  Future<void> _syncFinanceMutation(bool Function() isVisible) async {
+    await load(force: true);
+    if (!mounted || isVisible()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    await load(force: true);
+    if (isVisible()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (mounted) await load(force: true);
+  }
+
   void success(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: LText(message), behavior: SnackBarBehavior.floating, backgroundColor: brandSuccess),
@@ -9009,7 +9009,7 @@ class _ImpactPageState extends State<ImpactPage> {
           _impactWarmRetryCount += 1;
           _impactWarmRetry = Timer(Duration(milliseconds: 900 * _impactWarmRetryCount), () {
             if (mounted && path == evidencePath()) {
-              unawaited(load());
+              unawaited(load(force: true));
             }
           });
         }
