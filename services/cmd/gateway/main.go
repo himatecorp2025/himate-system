@@ -2055,9 +2055,6 @@ func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
 	if len([]rune(q))<2 { common.APIError(w,http.StatusBadRequest,"VALIDATION","Search query must contain at least 2 characters");return }
 	if len([]rune(q))>100 { common.APIError(w,http.StatusBadRequest,"VALIDATION","Search query is too long");return }
 	limit:=auditLimit(r.URL.Query().Get("limit"),5,10)
-	ctx,cancel:=context.WithTimeout(r.Context(),3*time.Second)
-	defer cancel()
-
 	results:=[]map[string]any{}
 	appendResult:=func(resource,id,title,subtitle,deepLink string) {
 		results=append(results,map[string]any{
@@ -2066,90 +2063,67 @@ func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
 	}
 
 	if a.hasPermission(actor,"partners.read") {
-		var response struct{ Items []map[string]any `json:"items"` }
-		path:="/api/v1/partners?limit="+strconv.Itoa(limit)+"&offset=0&core_only=true&include_stats=false&q="+url.QueryEscape(q)
-		if a.internalGET(ctx,a.hosts["partners"],path,&response)==nil {
-			for _,item:=range response.Items {
-				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
-				name:=strings.TrimSpace(fmt.Sprint(item["name"]))
-				if name=="" { name=id }
-				appendResult("partners",id,name,strings.TrimSpace(fmt.Sprint(item["lifecycle"])), "/app/partners/"+url.PathEscape(id))
+		if snapshot,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep4PartnersKey);ok {
+			count:=0
+			for _,item:=range step4Items(snapshot["items"]) {
+				if !searchContains(q,item["id"],item["display_name"],item["legal_name"],item["brand_name"],item["contact_email"]){continue}
+				id:=central10String(item["id"]);name:=central10String(item["display_name"]);if name==""{name=id}
+				appendResult("partners",id,name,central10String(item["lifecycle"]),"/app/partners/"+url.PathEscape(id))
+				count++;if count>=limit{break}
 			}
 		}
 	}
-
 	if a.hasPermission(actor,"catalog.read") {
-		var response struct{ Items []map[string]any `json:"items"` }
-		if a.internalGET(ctx,a.hosts["catalog"],"/api/v1/modules",&response)==nil {
+		if snapshot,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep3RegistryKey);ok {
 			count:=0
-			for _,item:=range response.Items {
-				if !searchContains(q,item["key"],item["label"],item["label_en"],item["label_hu"],item["description"],item["description_en"],item["description_hu"]) { continue }
-				id:=strings.TrimSpace(fmt.Sprint(item["key"]))
-				title:=strings.TrimSpace(fmt.Sprint(item["label"]))
-				if title=="" { title=id }
+			for _,item:=range anyItems(snapshot["modules"]) {
+				if !searchContains(q,item["key"],item["label"],item["label_en"],item["label_hu"],item["description"],item["description_en"],item["description_hu"]){continue}
+				id:=central10String(item["key"]);title:=central10String(item["label"]);if title==""{title=id}
 				appendResult("catalog",id,title,"Module · "+id,"/app")
-				count++;if count>=limit { break }
+				count++;if count>=limit{break}
 			}
 		}
 	}
-
-	if a.hasPermission(actor,"contact.read") {
-		var response struct{ Items []map[string]any `json:"items"` }
-		path:="/api/v1/contact/inquiries?limit="+strconv.Itoa(limit)+"&offset=0&q="+url.QueryEscape(q)
-		if a.internalGET(ctx,a.hosts["contact"],path,&response)==nil {
-			for _,item:=range response.Items {
-				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
-				title:=strings.TrimSpace(fmt.Sprint(item["name"]))
-				subtitle:=strings.TrimSpace(fmt.Sprint(item["organization"]))
-				if subtitle=="" { subtitle=strings.TrimSpace(fmt.Sprint(item["email"])) }
-				appendResult("contact",id,title,subtitle,"/app")
-			}
-		}
-	}
-
-	if a.hasPermission(actor,"cms.read") {
-		var response struct{ Items []map[string]any `json:"items"` }
-		if a.internalGET(ctx,a.hosts["cms"],"/api/v1/cms/pages",&response)==nil {
+	if website,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep4WebsiteKey);ok {
+		if a.hasPermission(actor,"contact.read") {
 			count:=0
-			for _,item:=range response.Items {
-				if !searchContains(q,item["id"],item["page_key"],item["name"],item["locale"]) { continue }
-				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
-				title:=strings.TrimSpace(fmt.Sprint(item["name"]))
-				appendResult("cms",id,title,"CMS · "+strings.TrimSpace(fmt.Sprint(item["locale"])),"/app")
-				count++;if count>=limit { break }
+			for _,item:=range anyItems(partnerWorkspaceMap(website,"contact_inquiries")["items"]) {
+				if !searchContains(q,item["id"],item["name"],item["organization"],item["email"],item["message"]){continue}
+				id:=central10String(item["id"]);title:=central10String(item["name"]);subtitle:=central10String(item["organization"]);if subtitle==""{subtitle=central10String(item["email"])}
+				appendResult("contact",id,title,subtitle,"/app")
+				count++;if count>=limit{break}
+			}
+		}
+		if a.hasPermission(actor,"cms.read") {
+			count:=0
+			for _,item:=range step4Items(website["pages"]) {
+				if !searchContains(q,item["id"],item["page_key"],item["name"],item["locale"]){continue}
+				id:=central10String(item["id"]);title:=central10String(item["name"])
+				appendResult("cms",id,title,"CMS · "+central10String(item["locale"]),"/app")
+				count++;if count>=limit{break}
 			}
 		}
 	}
-
-	if a.hasPermission(actor,"administration.read") {
-		like:="%"+q+"%"
-		rows,err:=a.db.QueryContext(ctx,`SELECT id,name,email FROM identity.users
-			WHERE name ILIKE $1 OR email ILIKE $1 ORDER BY system_owner DESC,active DESC,lower(name) LIMIT $2`,like,limit)
-		if err==nil {
-			for rows.Next() {
-				var id,name,email string
-				if rows.Scan(&id,&name,&email)==nil { appendResult("administration",id,name,email,"/app") }
+	if administration,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep4AdministrationKey);ok {
+		if a.hasPermission(actor,"administration.read") {
+			count:=0
+			for _,item:=range anyItems(partnerWorkspaceMap(administration,"admin_users")["items"]) {
+				if !searchContains(q,item["id"],item["name"],item["email"]){continue}
+				appendResult("administration",central10String(item["id"]),central10String(item["name"]),central10String(item["email"]),"/app")
+				count++;if count>=limit{break}
 			}
-			rows.Close()
+		}
+		if a.hasPermission(actor,"audit.read") {
+			count:=0
+			for _,item:=range anyItems(partnerWorkspaceMap(administration,"audit_events")["items"]) {
+				if !searchContains(q,item["action"],item["actor_name"],item["resource"],item["partner_id"]){continue}
+				id:=fmt.Sprint(item["id"])
+				appendResult("audit",id,strings.ReplaceAll(central10String(item["action"]),"_"," "),central10String(item["actor_name"])+" · "+central10String(item["resource"]),"/app")
+				count++;if count>=limit{break}
+			}
 		}
 	}
-
-	if a.hasPermission(actor,"audit.read") {
-		like:="%"+q+"%"
-		rows,err:=a.db.QueryContext(ctx,`SELECT id,action,actor_name,resource,created_at FROM identity.audit_events
-			WHERE action ILIKE $1 OR actor_name ILIKE $1 OR resource ILIKE $1 OR partner_id ILIKE $1
-			ORDER BY created_at DESC,id DESC LIMIT $2`,like,limit)
-		if err==nil {
-			for rows.Next() {
-				var id int64;var action,actorName,resource string;var created time.Time
-				if rows.Scan(&id,&action,&actorName,&resource,&created)==nil {
-					appendResult("audit",strconv.FormatInt(id,10),strings.ReplaceAll(action,"_"," "),actorName+" · "+resource,"/app")
-				}
-			}
-			rows.Close()
-		}
-	}
-
+	w.Header().Set("X-Himate-Cache","persistent-read-model")
 	common.JSON(w,http.StatusOK,map[string]any{
 		"query":q,"items":results,"count":len(results),"limit_per_resource":limit,
 		"permission_scoped":true,
