@@ -24,7 +24,8 @@ step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 # Packages: authoritative data and reference interaction.
 for token in [
     "for (final plan in canonicalPlans)",
-    "class _PackageFeatureRow",
+    "class _PackageFeatureSummary",
+    "class _PackageBenefitLine",
     "class _PackageComparisonTable",
     "Package comparison",
     "Most popular",
