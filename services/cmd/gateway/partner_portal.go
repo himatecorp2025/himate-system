@@ -177,13 +177,19 @@ func (a *app) partnerAuth(r *http.Request)(partnerUser,error){
 var errPartnerPortalAccessDisabled = errors.New("partner portal access is disabled")
 
 func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error {
-	var partner map[string]any
-	if err:=a.internalGET(ctx,a.hosts["partners"],"/api/v1/partners/"+url.PathEscape(partnerID),&partner);err!=nil{return err}
-	lifecycle:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(partner["lifecycle"])))
-	if lifecycle=="SUSPENDED"||lifecycle=="ARCHIVED"{return errPartnerPortalAccessDisabled}
-	var gate map[string]any
-	if err:=a.internalGET(ctx,a.hosts["billing"],"/internal/v1/partners/"+url.PathEscape(partnerID)+"/portal-gate",&gate);err!=nil{return err}
-	if gate["allowed"]!=true{return errPartnerPortalAccessDisabled}
+	snapshot, _, ok := a.partnerWorkspaceForRead(ctx, partnerID)
+	if !ok {
+		return fmt.Errorf("partner materialized workspace is not ready")
+	}
+	partner := step4Map(snapshot["partner"])
+	lifecycle := strings.ToUpper(central10String(partner["lifecycle"]))
+	if lifecycle == "SUSPENDED" || lifecycle == "ARCHIVED" {
+		return errPartnerPortalAccessDisabled
+	}
+	gate := step4Map(snapshot["portal_gate"])
+	if gate["allowed"] != true {
+		return errPartnerPortalAccessDisabled
+	}
 	return nil
 }
 
@@ -290,6 +296,71 @@ func writeInternalError(w http.ResponseWriter,err error,fallback string){
 		if len(typed.Body)>0{_,_=w.Write(typed.Body);return}
 	}
 	common.APIError(w,502,"UPSTREAM",fallback)
+}
+
+func partnerWorkspaceMap(snapshot map[string]any, key string) map[string]any {
+	if value, ok := snapshot[key].(map[string]any); ok {
+		return central10CopyMap(value)
+	}
+	return map[string]any{}
+}
+
+func partnerWorkspaceItems(snapshot map[string]any, key string) []map[string]any {
+	items := anyItems(snapshot[key])
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, central10CopyMap(item))
+	}
+	return out
+}
+
+func partnerWorkspaceLocaleMap(snapshot map[string]any, key, locale string) map[string]any {
+	root := partnerWorkspaceMap(snapshot, key)
+	if value, ok := root[normalizedLocale(locale)].(map[string]any); ok {
+		return central10CopyMap(value)
+	}
+	if value, ok := root["en_US"].(map[string]any); ok {
+		return central10CopyMap(value)
+	}
+	return map[string]any{}
+}
+
+func partnerWorkspacePolicy(snapshot map[string]any, userID string) map[string]any {
+	policies := partnerWorkspaceMap(snapshot, "portal_user_module_policies")
+	if value, ok := policies[userID].(map[string]any); ok {
+		return central10CopyMap(value)
+	}
+	return map[string]any{}
+}
+
+func partnerWorkspaceModulesForUser(snapshot map[string]any, u partnerUser) map[string]any {
+	out := partnerWorkspaceLocaleMap(snapshot, "portal_modules", u.PreferredLocale)
+	policy := partnerWorkspacePolicy(snapshot, u.ID)
+	effective := stringSetFromAny(policy["effective_module_keys"])
+	for _, item := range anyItems(out["items"]) {
+		key := central10String(item["key"])
+		orgOwned := strings.EqualFold(central10String(item["access_state"]), "ACTIVE") && item["executable"] == true
+		granted := orgOwned && effective[key]
+		switch {
+		case !orgOwned:
+			item["user_access_state"] = "ORGANIZATION_LOCKED"
+		case granted:
+			item["user_access_state"] = "GRANTED"
+		default:
+			item["user_access_state"] = "NOT_ASSIGNED"
+		}
+		item["user_executable"] = granted
+	}
+	out["user_module_access"] = map[string]any{
+		"access_mode":   policy["access_mode"],
+		"security_rule": "PARTNER_ENTITLEMENT_INTERSECT_USER_ASSIGNMENT",
+	}
+	return out
+}
+
+func (a *app) partnerWorkspaceRequest(r *http.Request, u partnerUser) (map[string]any, bool) {
+	snapshot, _, ok := a.partnerWorkspaceForRead(r.Context(), u.PartnerID)
+	return snapshot, ok
 }
 
 func (a *app) requirePartnerPermission(w http.ResponseWriter,u partnerUser,permission string)bool{
