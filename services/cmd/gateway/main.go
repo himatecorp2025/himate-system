@@ -253,6 +253,13 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	// Cold-start invariant: every Central/Dashboard read key has a structurally
+	// complete healthy DB row before bootstrap. Existing Last-Known-Good rows
+	// are never overwritten (ON CONFLICT DO NOTHING).
+	if err := a.seedCentralReadModelBaselines(ctx); err != nil {
+		log.Error("materialized read-model baseline seeding", "error", err)
+		os.Exit(1)
+	}
 	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	if err := a.recoverAuditOutbox(recoveryCtx); err != nil {
 		recoveryCancel()
