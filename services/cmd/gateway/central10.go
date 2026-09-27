@@ -631,6 +631,9 @@ func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor us
 			if currency := central10String(bill["currency"]); currency != "" {
 				partner["currency"] = currency
 			}
+			partner["plan_key"] = central10String(bill["plan_key"])
+			partner["plan_name"] = central10String(bill["plan_name"])
+			partner["plan_status"] = central10String(bill["plan_status"])
 		}
 		if health := healthByID[id]; health != nil {
 			if value := central10String(health["overall_status"]); value != "" {
