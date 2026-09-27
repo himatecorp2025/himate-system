@@ -39,8 +39,8 @@ require('"reference_partners": referenceCount' in gateway_snapshots,
         "Central Partners materializer does not persist authoritative reference KPI count")
 require('"kpis": step4Map(snapshot["kpis"])' in gateway_c10,
         "Central Partners request path does not serve KPIs from the authoritative hot snapshot")
-require('centralStep3SnapshotGet(centralStep4PartnersKey)' in gateway_c10,
-        "Central Partners request path is not bound to the authoritative Partners snapshot")
+require('centralSnapshotForRead(r.Context(), centralStep4PartnersKey)' in gateway_c10,
+        "Central Partners request path is not DB-first on the authoritative Partners snapshot")
 
 require('referenceOnly, _ := strconv.ParseBool(r.URL.Query().Get("reference"))' in partners,
         "Partners API does not parse reference filter")
