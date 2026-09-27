@@ -1781,6 +1781,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         groups.isEmpty &&
         topicRows.isEmpty) {
       return const Content(
+        showHeader: false,
         eyebrow: 'MODULE CONTROL PLANE',
         title: 'Modules',
         subtitle: 'Loading the latest module registry snapshot.',
@@ -1796,6 +1797,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
         groups.isEmpty &&
         topicRows.isEmpty) {
       return Content(
+        showHeader: false,
         title: uiLiteral('Modules'),
         subtitle: uiLiteral('Modules overview, organized by topic.'),
         actions: [
@@ -1838,6 +1840,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     return Content(
+      showHeader: false,
       title: uiLiteral('Modules'),
       subtitle: uiLiteral('Modules overview, organized by topic.'),
       actions: [
