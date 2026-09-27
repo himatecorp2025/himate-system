@@ -1279,6 +1279,15 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
   }
 
+  Color _topicTone(String key) {
+    if (key.contains('finance')) return brandSuccess;
+    if (key.contains('operation') || key.contains('client')) return brandGold;
+    if (key.contains('marketing')) return brandSteel;
+    if (key.contains('website') || key.contains('event')) return const Color(0xFF7C4DDA);
+    if (key.contains('security')) return const Color(0xFF5D6B7A);
+    return brandNavy;
+  }
+
   Widget topicGroupCard(Map<String, dynamic> group) {
     final key = s(group['group_key']);
     final meta = topicByKey(key) ?? group;
@@ -1286,49 +1295,69 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final liveReady = (meta['live_ready'] as num?)?.toInt() ?? 0;
     final inDevelopment = (meta['in_development'] as num?)?.toInt() ?? 0;
     final assignments = (meta['active_partner_assignments'] as num?)?.toInt() ?? 0;
+    final tone = _topicTone(key);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => openTopic(key),
         child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 72,
+                height: 72,
                 decoration: BoxDecoration(
-                  color: brandNavy.withOpacity(.07),
+                  color: tone.withOpacity(.09),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: Icon(groupIcon(key), color: brandNavy, size: 23),
+                child: Icon(groupIcon(key), color: tone, size: 34),
               ),
-              const Spacer(),
-              const Icon(Icons.arrow_forward_rounded, color: brandGold, size: 19),
-            ]),
-            const SizedBox(height: 18),
-            LText(
-              groupLabel(group),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: brandNavy, fontSize: 17, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            LText(
-              '$moduleCount ${uiLiteral('modules')}',
-              style: const TextStyle(color: brandTextSoft, fontSize: 10.5, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 16),
-            Wrap(spacing: 7, runSpacing: 7, children: [
-              _StatusPill(label: '$liveReady ${uiLiteral('live ready')}'),
-              if (inDevelopment > 0) _StatusPill(label: '$inDevelopment ${uiLiteral('in development')}'),
-            ]),
-            const SizedBox(height: 12),
-            LText(
-              '$assignments ${uiLiteral('active partner assignments')}',
-              style: const TextStyle(color: brandTextSoft, fontSize: 9.5),
-            ),
-          ]),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  LText(
+                    groupLabel(group),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.cormorantGaramond(color: brandNavy, fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  LText(
+                    '$moduleCount ${uiLiteral('modules')}',
+                    style: const TextStyle(color: brandNavy, fontSize: 10.5, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  LText(
+                    '$liveReady ${uiLiteral('live ready')} · $assignments ${uiLiteral('active partner assignments')}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brandTextSoft, fontSize: 9.2),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 6, runSpacing: 5, children: [
+                    _Central17SoftChip(label: '$liveReady ${uiLiteral('active')}'),
+                    if (inDevelopment > 0) _Central17SoftChip(label: '$inDevelopment ${uiLiteral('in development')}'),
+                  ]),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const Icon(Icons.chevron_right_rounded, color: brandNavy, size: 20),
+                const SizedBox(height: 9),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                  decoration: BoxDecoration(color: const Color(0xFFEAF2FF), borderRadius: BorderRadius.circular(8)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    LText(uiLiteral('Open'), style: const TextStyle(color: brandSteel, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_rounded, color: brandSteel, size: 14),
+                  ]),
+                ),
+              ]),
+            ],
+          ),
         ),
       ),
     );
@@ -2009,7 +2038,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                     subtitle: registrySubtitle,
                     trailing: _MiniCounter(
                       label: topicOverview
-                          ? '${topicRows.length} ${uiLiteral('topics')} · $registryTotal ${uiLiteral('modules')}'
+                          ? '${visibleTopics.length} ${uiLiteral('topics')} · $registryTotal ${uiLiteral('modules')}'
                           : '${filtered.length} ${uiLiteral('modules')}',
                     ),
                   ),
@@ -2018,11 +2047,9 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               const SizedBox(height: 12),
               if (topicOverview)
                 LayoutBuilder(builder: (context, constraints) {
-                  final width = constraints.maxWidth < 640
+                  final width = constraints.maxWidth < 720
                       ? constraints.maxWidth
-                      : constraints.maxWidth < 1060
-                          ? (constraints.maxWidth - 12) / 2
-                          : (constraints.maxWidth - 24) / 3;
+                      : (constraints.maxWidth - 12) / 2;
                   return Wrap(
                     spacing: 12,
                     runSpacing: 12,
