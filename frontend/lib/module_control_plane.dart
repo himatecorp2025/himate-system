@@ -1871,20 +1871,20 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ResponsiveKpiGrid(children: [
                 Kpi(
-                  label: uiLiteral('Module registry'),
-                  value: registryTotal.toString(),
-                  note: uiLiteral('Canonical + custom modules'),
-                  icon: Icons.hub_outlined,
-                  accent: brandNavy,
-                  onTap: showTopicOverview,
-                ),
-                Kpi(
                   label: uiLiteral('Active modules'),
                   value: liveReady.toString(),
                   note: uiLiteral('READY + PUBLISHED for live assignment'),
-                  icon: Icons.check_circle_outline_rounded,
-                  accent: brandSuccess,
+                  icon: Icons.inventory_2_outlined,
+                  accent: brandSteel,
                   onTap: () => applyRegistryPreset('ACTIVE'),
+                ),
+                Kpi(
+                  label: uiLiteral('Module registry'),
+                  value: registryTotal.toString(),
+                  note: uiLiteral('Canonical + custom modules'),
+                  icon: Icons.storage_rounded,
+                  accent: brandGold,
+                  onTap: showTopicOverview,
                 ),
                 Kpi(
                   label: uiLiteral('Source linked'),
