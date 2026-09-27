@@ -454,20 +454,11 @@ func (a *app) central10ReadModel(w http.ResponseWriter, r *http.Request, actor u
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
 		return
 	}
+	// CENTRAL-21: every browser read reaches the persistent materialized
+	// projection. The legacy process-memory response cache may only remain as
+	// an implementation detail for non-screen code; it must never bypass the
+	// indexed DB-first read path.
 	key := central10CacheKey(actor, r)
-	hotSnapshotRoute := r.URL.Path == "/api/v1/central/modules" ||
-		r.URL.Path == "/api/v1/central/modules/commercial" ||
-		r.URL.Path == "/api/v1/central/packages" ||
-		r.URL.Path == "/api/v1/central/packages/supplementary" ||
-		r.URL.Path == "/api/v1/central/finance" ||
-		r.URL.Path == "/api/v1/central/impact"
-	if !hotSnapshotRoute {
-		if payload, ok, _ := central10Cached(key, true); ok {
-			w.Header().Set("X-Himate-Cache", "hit")
-			common.JSON(w, http.StatusOK, payload)
-			return
-		}
-	}
 	switch {
 	case r.URL.Path == "/api/v1/central/partners":
 		a.central10Partners(w, r, actor, key)
