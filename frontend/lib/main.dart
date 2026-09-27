@@ -13,6 +13,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart' as intl;
 import 'package:intl/date_symbol_data_local.dart' show initializeDateFormatting;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'browser_platform.dart';
 
 part 'cms_page.dart';
@@ -35,6 +36,7 @@ part 'partner_design.dart';
 part 'partner_connections.dart';
 part 'commercial_automation_ui.dart';
 part 'compliance_archives.dart';
+part 'central17_round1.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -2132,12 +2134,17 @@ class _ShellState extends State<Shell> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 230),
                 curve: Curves.easeOutCubic,
-                width: tablet || collapsed ? 82 : 258,
+                width: tablet || collapsed ? 82 : 244,
                 decoration: const BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF061426), brandNavy, Color(0xFF0A2C4C)]),
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF071A2E), Color(0xFF0B2744), Color(0xFF071C32)]),
                 ),
-                child: SafeArea(
-                  child: _SidebarContent(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (!(tablet || collapsed))
+                      const Positioned(left: 0, right: 0, bottom: 82, height: 320, child: _SidebarMountainArt()),
+                    SafeArea(
+                      child: _SidebarContent(
                     nav: visibleNav,
                     selected: visibleSelected,
                     collapsed: tablet || collapsed,
@@ -2145,7 +2152,9 @@ class _ShellState extends State<Shell> {
                     onSelect: (i) => _selectNav(visibleIndexes[i]),
                     onToggle: tablet ? null : () => setState(() => collapsed = !collapsed),
                     onLogout: widget.onLogout,
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -2366,25 +2375,30 @@ class _NavItemState extends State<_NavItem> {
                 constraints: const BoxConstraints(minHeight: 52),
                 padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 12, vertical: 9),
                 decoration: BoxDecoration(
-                  color: active ? brandGold.withOpacity(.09) : hover ? Colors.white.withOpacity(.055) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: active ? brandGold.withOpacity(.70) : Colors.transparent),
+                  color: active ? brandGold.withOpacity(.16) : hover ? Colors.white.withOpacity(.055) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
                 ),
                 child: widget.collapsed
                     ? Center(child: Icon(widget.spec.icon, color: active ? brandGold : const Color(0xFFA8B7C7), size: 21))
-                    : Row(
+                    : Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          Icon(widget.spec.icon, color: active ? brandGold : const Color(0xFFA8B7C7), size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: LText(
-                              widget.spec.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: active ? const Color(0xFFF2D79F) : const Color(0xFFD9E2EC), fontWeight: active ? FontWeight.w700 : FontWeight.w500, fontSize: 12.5),
-                            ),
+                          Row(
+                            children: [
+                              Icon(widget.spec.icon, color: active ? brandGold : const Color(0xFFB6C3D0), size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: LText(
+                                  widget.spec.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: active ? const Color(0xFFF0D58E) : const Color(0xFFD9E2EC), fontWeight: active ? FontWeight.w700 : FontWeight.w500, fontSize: 12.5),
+                                ),
+                              ),
+                            ],
                           ),
-                          if (active) Container(width: 3, height: 18, decoration: BoxDecoration(color: brandGold, borderRadius: BorderRadius.circular(99))),
+                          if (active)
+                            Positioned(left: -13, top: 7, child: Container(width: 4, height: 22, decoration: BoxDecoration(color: brandGold, borderRadius: BorderRadius.circular(99)))),
                         ],
                       ),
               ),
@@ -2831,6 +2845,7 @@ class DashboardPage extends StatelessWidget {
                       states: geoStates,
                       activeStates: (geo['active_states'] as num?)?.toInt() ?? 0,
                       activePartners: (geo['active_partners'] as num?)?.toInt() ?? 0,
+                      partners: geoPartners,
                       available: geo['available'] != false,
                     );
                     if (constraints.maxWidth < 980) {
@@ -2881,9 +2896,11 @@ class _DashboardUsMapCard extends StatelessWidget {
     required this.states,
     required this.activeStates,
     required this.activePartners,
+    required this.partners,
     required this.available,
   });
   final List<Map<String, dynamic>> states;
+  final List<Map<String, dynamic>> partners;
   final int activeStates;
   final int activePartners;
   final bool available;
@@ -2924,7 +2941,7 @@ class _DashboardUsMapCard extends StatelessWidget {
                     ? Center(child: LText(uiLiteral('Partner geography is temporarily unavailable'), style: const TextStyle(color: brandTextSoft)))
                     : Row(
                         children: [
-                          Expanded(child: _DashboardUsMap(states: states)),
+                          Expanded(child: _Central17UsMap(states: states, partners: partners)),
                           const SizedBox(width: 10),
                           SizedBox(
                             width: 92,
