@@ -2021,7 +2021,7 @@ class _ShellState extends State<Shell> {
     if (can('billing.read')) indexes.add(3);
     if (can('billing.read')) indexes.add(4);
     if (can('impact.read') || can('reports.read') || can('evidence.read')) indexes.add(5);
-    if (can('cms.read') || can('contact.read') || can('connectors.read')) indexes.add(6);
+    if (can('cms.read') || can('contact.read') || can('connectors.read') || can('environments.read')) indexes.add(6);
     // The approved CENTRAL-16 information architecture places Administration
     // before technical System & Operations. Compliance archives remain
     // addressable by deep-link and from Administration, but are no longer a
