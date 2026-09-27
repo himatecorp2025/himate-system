@@ -58,13 +58,14 @@ echo ok
 check_read() {
   path="$1"
   expected_cache="$2"
-  curl --max-time 2 -fsS -D "$HEADERS" -o "$BODY" -b "$COOKIE" "$BASE_URL$path"
+  enforce_slo="${3:-false}"
+  TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$COOKIE" "$BASE_URL$path")"
   grep -Eiq "^X-Himate-Cache: ($expected_cache)\r?$" "$HEADERS" || {
     echo "Unexpected read-model cache header for $path"
     cat "$HEADERS"
     exit 1
   }
-  python3 - "$BODY" <<'PY'
+  python3 - "$BODY" "$TTFB" "$enforce_slo" <<'PY'
 import json,sys
 with open(sys.argv[1],encoding="utf-8") as f:
     data=json.load(f)
@@ -74,26 +75,29 @@ if isinstance(data,dict):
     meta_status=str(meta.get("status","")).lower()
     assert status not in {"partial","unavailable","warming"},data
     assert meta_status not in {"partial","unavailable","warming"},data
+if sys.argv[3].lower()=="true":
+    ttfb=float(sys.argv[2])
+    assert ttfb <= 0.020, f"materialized GET TTFB {ttfb*1000:.3f}ms exceeds 20ms SLO"
 PY
 }
 
-printf 'CENTRAL-21 baseline materialized REST reads... '
-check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model"
-check_read "/api/v1/modules" "persistent-read-model"
-check_read "/api/v1/billing/plans" "persistent-read-model"
-check_read "/api/v1/billing/finance/overview" "persistent-read-model"
-check_read "/api/v1/system-health/snapshot" "persistent-read-model"
-check_read "/api/v1/backups/restore-tests?limit=1" "persistent-read-model"
-check_read "/api/v1/backups/restores" "persistent-read-model"
-check_read "/api/v1/cms/pages" "persistent-read-model"
-check_read "/api/v1/impact/summary" "persistent-read-model"
-check_read "/api/v1/reports" "persistent-read-model"
-check_read "/api/v1/partners/$TEST_PARTNER_ID" "persistent-tenant-read-model"
-check_read "/api/v1/partners/$TEST_PARTNER_ID/modules" "persistent-tenant-read-model"
-check_read "/api/v1/partners/$TEST_PARTNER_ID/portal-users" "persistent-tenant-read-model"
-check_read "/api/v1/provisioning/jobs?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
-check_read "/api/v1/impact/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
-check_read "/api/v1/evidence?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model"
+printf 'CENTRAL-21 baseline materialized REST reads and <=20ms local SLO... '
+check_read "/api/v1/partners?limit=5&offset=0" "persistent-read-model" "true"
+check_read "/api/v1/modules" "persistent-read-model" "true"
+check_read "/api/v1/billing/plans" "persistent-read-model" "true"
+check_read "/api/v1/billing/finance/overview" "persistent-read-model" "true"
+check_read "/api/v1/system-health/snapshot" "persistent-read-model" "true"
+check_read "/api/v1/backups/restore-tests?limit=1" "persistent-read-model" "true"
+check_read "/api/v1/backups/restores" "persistent-read-model" "true"
+check_read "/api/v1/cms/pages" "persistent-read-model" "true"
+check_read "/api/v1/impact/summary" "persistent-read-model" "true"
+check_read "/api/v1/reports" "persistent-read-model" "true"
+check_read "/api/v1/partners/$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
+check_read "/api/v1/partners/$TEST_PARTNER_ID/modules" "persistent-tenant-read-model" "true"
+check_read "/api/v1/partners/$TEST_PARTNER_ID/portal-users" "persistent-tenant-read-model" "true"
+check_read "/api/v1/provisioning/jobs?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
+check_read "/api/v1/impact/summary?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
+check_read "/api/v1/evidence?partner_id=$TEST_PARTNER_ID" "persistent-tenant-read-model" "true"
 echo ok
 
 printf 'CENTRAL-21 pause transactional/upstream services... '
