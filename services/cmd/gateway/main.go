@@ -1973,7 +1973,6 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 		return
 	}
 
-	refreshRequested := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")), "true")
 	payload, updatedAt, stale := a.dashboardSnapshotForReadContext(r.Context(), year)
 	if payload == nil {
 		// Startup seeding normally makes this unreachable. Preserve the
@@ -1982,12 +1981,8 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 		payload = dashboardReadModelBaseline(year, a.env, a.version)
 		stale = true
 	}
-	if year == time.Now().UTC().Year() && (refreshRequested || stale) {
-		a.requestDashboardRefresh()
-		if refreshRequested {
-			w.Header().Set("X-Himate-Snapshot-Refresh", "queued")
-		}
-	}
+	// CENTRAL-21: reads never trigger materialization. Periodic workers and
+	// mutation/write-through events own projection freshness.
 
 	out := a.dashboardPayloadForActor(payload, actor)
 	if meta, ok := out["meta"].(map[string]any); ok {
