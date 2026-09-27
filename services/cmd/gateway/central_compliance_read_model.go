@@ -40,7 +40,7 @@ func (a *app) materializeCentralCompliance(ctx context.Context) map[string]any {
 		if partnerID == "" {
 			continue
 		}
-		partnerID := partnerID
+		id := partnerID
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -49,7 +49,7 @@ func (a *app) materializeCentralCompliance(ctx context.Context) map[string]any {
 				defer func() { <-sem }()
 			case <-ctx.Done():
 				mu.Lock()
-				unavailable = append(unavailable, "archive:"+partnerID)
+				unavailable = append(unavailable, "archive:"+id)
 				mu.Unlock()
 				return
 			}
@@ -57,16 +57,16 @@ func (a *app) materializeCentralCompliance(ctx context.Context) map[string]any {
 			if err := a.internalGET(
 				ctx,
 				a.hosts["partners"],
-				"/internal/v1/archives/"+url.PathEscape(partnerID),
+				"/internal/v1/archives/"+url.PathEscape(id),
 				&detail,
 			); err != nil {
 				mu.Lock()
-				unavailable = append(unavailable, "archive:"+partnerID)
+				unavailable = append(unavailable, "archive:"+id)
 				mu.Unlock()
 				return
 			}
 			mu.Lock()
-			details[partnerID] = detail
+			details[id] = detail
 			mu.Unlock()
 		}()
 	}
