@@ -1075,6 +1075,28 @@ paths:
         - {name: evidence_offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
       responses:
         "200": {description: Materialized Impact snapshot; ready=false only while a first-ever snapshot is warming}
+  /api/v1/central/website:
+    get:
+      tags: [CMS]
+      summary: CENTRAL-17.3 backend-first Website & Marketing read model
+      description: >
+        Aggregates permission-scoped CMS pages, media and deployment environments in parallel
+        behind one Central request. Returns explicit healthy, partial, unavailable or stale metadata
+        and never invents website traffic analytics.
+      responses:
+        "200": {description: Website & Marketing overview data, access flags, KPIs and source availability metadata}
+        "403": {description: No Website & Marketing read capability is available}
+  /api/v1/central/system:
+    get:
+      tags: [System]
+      summary: CENTRAL-17.3 backend-first System & Operations read model
+      description: >
+        Aggregates authorized system health, provisioning, environments, backup summary and recent
+        protected audit events concurrently within the Central read-model latency budget. Fields for
+        unauthorized domains are omitted or empty and explicit access flags drive the UI.
+      responses:
+        "200": {description: System & Operations overview with four KPI inputs, services, partner health, deployments, backups and recent events}
+        "403": {description: No System & Operations read capability is available}
   /api/v1/central/administration:
     get:
       tags: [Administration]
