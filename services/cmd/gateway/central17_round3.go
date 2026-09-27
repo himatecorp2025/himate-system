@@ -39,7 +39,6 @@ func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor use
 	started := time.Now()
 	canCMS := a.hasPermission(actor, "cms.read")
 	canContact := a.hasPermission(actor, "contact.read")
-	canConnections := a.hasPermission(actor, "connectors.read")
 	canEnvironments := a.hasPermission(actor, "environments.read")
 	if !canCMS && !canContact && !canConnections && !canEnvironments {
 		common.APIError(w, http.StatusForbidden, "FORBIDDEN", "Website & Marketing read permission required")
@@ -138,7 +137,6 @@ func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor use
 		"access": map[string]any{
 			"cms":          canCMS,
 			"contact":      canContact,
-			"connections":  canConnections,
 			"environments": canEnvironments,
 		},
 		"pages":        pages,
@@ -168,7 +166,7 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 	canConnections := a.hasPermission(actor, "connectors.read")
 	canBackups := a.hasPermission(actor, "backups.read")
 	canAudit := a.hasPermission(actor, "audit.read")
-	if !canHealth && !canProvisioning && !canEnvironments && !canConnections && !canBackups {
+	if !canHealth && !canProvisioning && !canEnvironments && !canBackups {
 		common.APIError(w, http.StatusForbidden, "FORBIDDEN", "System & Operations read permission required")
 		return
 	}
