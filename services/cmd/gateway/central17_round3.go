@@ -37,10 +37,10 @@ func central17Status(unavailable []string, successful int) string {
 
 func (a *app) materializeCentralWebsite(ctx context.Context) map[string]any {
 	var pagesPayload, mediaPayload, environmentsPayload map[string]any
-	var seoPayload, seoAuditPayload, contactPayload map[string]any
-	var pagesErr, mediaErr, environmentsErr, seoErr, seoAuditErr, contactErr error
+	var seoPayload, seoAuditPayload, contactPayload, designPayload map[string]any
+	var pagesErr, mediaErr, environmentsErr, seoErr, seoAuditErr, contactErr, designErr error
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(7)
 	go func() {
 		defer wg.Done()
 		pagesErr = a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/pages", &pagesPayload)
@@ -65,6 +65,10 @@ func (a *app) materializeCentralWebsite(ctx context.Context) map[string]any {
 		defer wg.Done()
 		contactErr = a.internalGET(ctx, a.hosts["contact"], "/api/v1/contact/inquiries?limit=200&offset=0", &contactPayload)
 	}()
+	go func() {
+		defer wg.Done()
+		designErr = a.internalGET(ctx, a.hosts["cms"], "/api/v1/cms/design", &designPayload)
+	}()
 	wg.Wait()
 
 	unavailable := []string{}
@@ -74,6 +78,7 @@ func (a *app) materializeCentralWebsite(ctx context.Context) map[string]any {
 	if seoErr != nil { unavailable = append(unavailable, "seo") }
 	if seoAuditErr != nil { unavailable = append(unavailable, "seo_audit") }
 	if contactErr != nil { unavailable = append(unavailable, "contact_inquiries") }
+	if designErr != nil { unavailable = append(unavailable, "cms_design") }
 
 	pages := central17Items(pagesPayload)
 	media := central17Items(mediaPayload)
@@ -153,6 +158,7 @@ func (a *app) materializeCentralWebsite(ctx context.Context) map[string]any {
 		"seo": seoPayload,
 		"seo_audit": seoAuditPayload,
 		"contact_inquiries": contactPayload,
+		"cms_design": designPayload,
 		"cms_page_details": pageDetails,
 		"cms_page_versions": pageVersions,
 		"cms_page_audits": pageAudits,
