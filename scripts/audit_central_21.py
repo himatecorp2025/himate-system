@@ -157,6 +157,35 @@ check('len(central10Step4Unavailable(raw)) > 0' in snapshots,
 check('len(central10Step4Unavailable(raw)) > 0' in models,
       "Tenant LKG validation does not reject hidden unavailable dependencies")
 
+# Every screen/search browser handler uses one indexed projection read.
+for source, signature, read_token in [
+    (central10, "func (a *app) central10Partners", "centralSnapshotForRead("),
+    (central10, "func (a *app) central10Modules", "centralSnapshotForRead("),
+    (central10, "func (a *app) central10ModulesCommercial", "centralSnapshotForRead("),
+    (central10, "func (a *app) central10Packages", "centralSnapshotForRead("),
+    (central10, "func (a *app) central10PackagesSupplementary", "centralSnapshotForRead("),
+    (central10, "func (a *app) central10Finance", "centralSnapshotForRead("),
+    (central10, "func (a *app) central10Impact", "centralSnapshotForRead("),
+    (central10, "func (a *app) central10PartnerModules", "partnerWorkspaceForRead("),
+    (central10, "func (a *app) central10PartnerWorkspace", "partnerWorkspaceForRead("),
+    (central14, "func (a *app) central14Administration", "centralSnapshotForRead("),
+    (central17, "func (a *app) central17Website", "centralSnapshotForRead("),
+    (central17, "func (a *app) central17System", "centralSnapshotForRead("),
+    (main, "func (a *app) globalSearch", "centralSnapshotForRead("),
+]:
+    block = func_block(source, signature)
+    check(block.count(read_token) == 1,
+          f"{signature} must use exactly one indexed materialized read")
+
+check("centralStep4GlobalSearchKey" in snapshots,
+      "Global search persistent read-model key is missing")
+check("refreshCentralStep4GlobalSearch" in read("services/cmd/gateway/central_global_search_read_model.go"),
+      "Global search background projector is missing")
+compliance_fallback = func_block(main, "func (a *app) serveComplianceArchives")
+check("serveComplianceMaterializedGET" in compliance_fallback and
+      "http.NewRequestWithContext" not in compliance_fallback and "a.client.Do" not in compliance_fallback,
+      "Compliance Archive fallback regressed to live Partners I/O")
+
 # Partner login/access gating is a tenant projection read, not a Billing call.
 access = func_block(partner_portal, "func (a *app) partnerAccessAllowed")
 check("partnerWorkspaceForRead" in access and 'snapshot["portal_gate"]' in access,
@@ -180,6 +209,10 @@ check("identity.read_model_refresh_queue" in models and "enqueueReadModelRefresh
       "Durable asynchronous refresh queue missing")
 check("func (a *app) writeThroughReadModels" in models,
       "Synchronous mutation write-through projection refresh missing")
+check("centralStep3WaitBeginRefresh" in snapshots and
+      "refreshCentralProjectionSerialized" in models and
+      "writeThroughCentralPartnerWorkspace" in tenant_snapshots,
+      "Write-through projections are not serialized against background refreshes")
 check("deferred bool" in main and "flushDeferred" in main,
       "Mutation response buffering contract missing")
 central_api = func_block(main, "func (a *app) api")
