@@ -155,10 +155,10 @@
   --brandbook-gold-light:#F3D79A;
   --brandbook-ivory:#F4E2BA;
   --brandbook-deep:#06172C;
-  --public-inset:clamp(64px,5.1vw,92px);
+  --public-inset:24px;
 }
 body{background:#F8F9FB}
-.wrap{width:min(1510px,calc(100% - (var(--public-inset)*2)));margin-inline:auto}
+.wrap{width:min(1540px,calc(100% - 48px));margin-inline:auto}
 
 /* Exact supplied HIMATE master artwork; no CSS-redrawn wordmark. */
 .brand-logo{display:flex;align-items:center;flex:0 0 auto;width:208px;height:132px;overflow:visible}
@@ -574,7 +574,7 @@ body{background:#F8F9FB}
   min-height:100svh;
 }
 .page-hero .inner{
-  width:min(1510px,calc(100% - (var(--public-inset)*2)))!important;
+  width:min(1540px,calc(100% - 48px))!important;
   margin-inline:auto!important;
   min-height:0!important;
   flex:1 1 auto;
