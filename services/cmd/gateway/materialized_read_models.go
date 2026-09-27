@@ -139,6 +139,7 @@ func partnerWorkspaceSnapshotValid(payload map[string]any) bool {
 		"partner_design", "payment_profile", "portal_gate",
 		"portal_modules", "portal_plans", "portal_plan", "portal_plan_modules",
 		"portal_charity", "portal_charity_modules", "portal_design_media",
+		"portal_billing_subscriptions", "portal_billing_invoices",
 		"portal_user_module_policies", "portal_notifications", "tenant_finance",
 		"partner_audit_events",
 	}
