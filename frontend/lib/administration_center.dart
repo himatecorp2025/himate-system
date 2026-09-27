@@ -68,10 +68,10 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
     return Uri(path: '/api/v1/central/administration', queryParameters: params).toString();
   }
 
-  Future<void> load({bool quiet = false}) async {
+  Future<void> load({bool quiet = false, bool force = false}) async {
     if (!quiet && mounted) setState(() { loading = true; error = null; });
     try {
-      final model = await widget.api.get(administrationPath(), force: true, maxAge: const Duration(seconds: 20));
+      final model = await widget.api.get(administrationPath(), force: force, maxAge: const Duration(seconds: 20));
       if (!mounted) return;
       setState(() {
         company = model['company'] is Map ? Map<String, dynamic>.from(model['company'] as Map) : <String, dynamic>{};
@@ -223,11 +223,12 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
     final recoverability = (company['recoverability_status'] ?? 'UNVERIFIED').toString();
 
     return Content(
+      showHeader: false,
       title: 'Administration',
       subtitle: 'Central management of HIMATE, partner administration, documents, access and recovery.',
       actions: [
         OutlinedButton.icon(
-          onPressed: loading ? null : () => load(),
+          onPressed: loading ? null : () => load(force: true),
           icon: const Icon(Icons.refresh_rounded),
           label: const LText('Refresh'),
         ),
@@ -621,9 +622,17 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && company.isEmpty && partners.isEmpty) return const _BrandLoading();
+    if (loading && company.isEmpty && partners.isEmpty) {
+      return const Content(
+        showHeader: false,
+        title: 'Administration',
+        subtitle: 'Central management of HIMATE, partner administration, documents, access and recovery.',
+        child: _BrandLoading(),
+      );
+    }
     if (error != null && company.isEmpty && partners.isEmpty) {
       return Content(
+        showHeader: false,
         eyebrow: 'CENTRAL-14 · ADMINISTRATION',
         title: 'Administration Center',
         subtitle: 'Corporate and partner administration read model.',
