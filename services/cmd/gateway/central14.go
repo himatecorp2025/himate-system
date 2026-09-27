@@ -210,7 +210,7 @@ func (a *app) central14Administration(w http.ResponseWriter, r *http.Request, ac
 		return
 	}
 	started := time.Now()
-	snapshot, updatedAt, ok := centralStep3SnapshotGet(centralStep4AdministrationKey)
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4AdministrationKey)
 	if !ok {
 		a.requestCentralStep4Refresh()
 		common.JSON(w, http.StatusOK, map[string]any{
