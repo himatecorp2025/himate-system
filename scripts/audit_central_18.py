@@ -129,6 +129,27 @@ check("_packageMutationMatches(refreshed, updated)" in frontend,
 check("isExpanded: true" in frontend, "partner filter dropdown overflow guard missing")
 
 for token in [
+    "func central8CanonicalPlanKey(key string) string",
+    'if normalized == "PREMIUM"',
+    "row.PlanKey = central8CanonicalPlanKey(row.PlanKey)",
+]:
+    check(token in billing8, f"Premium package canonicalization missing: {token}")
+
+for token in [
+    'runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"',
+    '"partner_design": partnerDesign',
+]:
+    check(token in gateway10, f"partner Branding & Website read-model contract missing: {token}")
+
+for token in [
+    "_WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', true)",
+    "'branding-and-website' => _brandingKey",
+    "partnerDesign = model['partner_design'] is Map",
+    "title: uiLiteral('Website adapter')",
+]:
+    check(token in frontend, f"partner Branding & Website frontend contract missing: {token}")
+
+for token in [
     "func (a *app) runGoldenTestFixtureReconciler()",
     "func (a *app) reconcileGoldenTestFixtures(",
     "HIMATE_GOLDEN_TEST_FIXTURE",

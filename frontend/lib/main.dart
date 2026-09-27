@@ -4889,6 +4889,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   Map<String, dynamic>? commercialStatus;
   Map<String, dynamic>? paymentProfile;
   Map<String, dynamic>? websiteAdapter;
+  Map<String, dynamic>? partnerDesign;
   Map<String, dynamic>? productionEnvironment;
   String preferredConnectorEnvironment = 'STAGING';
   bool loading = true;
@@ -4907,6 +4908,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
   final GlobalKey _financeKey = GlobalKey();
   final GlobalKey _statisticsKey = GlobalKey();
   final GlobalKey _evidenceKey = GlobalKey();
+  final GlobalKey _brandingKey = GlobalKey();
   final GlobalKey _usersKey = GlobalKey();
   final GlobalKey _integrationsKey = GlobalKey();
   bool _initialSectionHandled = false;
@@ -4920,7 +4922,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     _WorkspaceSpec('Finance & Documents', Icons.folder_copy_outlined, 'Invoices and commercial evidence', true),
     _WorkspaceSpec('Statistics', Icons.insights_outlined, 'Partner performance metrics and provenance', true),
     _WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', true),
-    _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', false),
+    _WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', true),
     _WorkspaceSpec('Users & Contacts', Icons.group_outlined, 'Partner Portal users and organization contacts', true),
     _WorkspaceSpec('Integrations', Icons.hub_outlined, 'Secure connector identities and credentials', true),
     _WorkspaceSpec('Audit History', Icons.history_rounded, 'Immutable administrative history', false),
@@ -5003,6 +5005,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             : null;
         websiteAdapter = model['website_adapter'] is Map
             ? Map<String, dynamic>.from(model['website_adapter'] as Map)
+            : null;
+        partnerDesign = model['partner_design'] is Map
+            ? Map<String, dynamic>.from(model['partner_design'] as Map)
             : null;
         productionEnvironment = model['production_environment'] is Map
             ? Map<String, dynamic>.from(model['production_environment'] as Map)
@@ -5193,6 +5198,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
     'finance-and-documents' => _financeKey,
     'statistics' => _statisticsKey,
     'evidence' => _evidenceKey,
+    'branding-and-website' => _brandingKey,
     'users-and-contacts' => _usersKey,
     'integrations' => _integrationsKey,
     _ => _overviewKey,
@@ -6719,6 +6725,119 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                 );
                               },
                             ),
+                      const SizedBox(height: 26),
+                      KeyedSubtree(
+                        key: _brandingKey,
+                        child: _SectionHeader(
+                          title: uiLiteral('Branding & Website'),
+                          subtitle: uiLiteral('Partner-specific design profile, workspace branding and production website adapter.'),
+                          trailing: _StatusPill(
+                            label: partnerDesign != null || websiteAdapter?['configured'] == true
+                                ? uiLiteral('Configured')
+                                : uiLiteral('Not configured'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (context) {
+                          final design = partnerDesign ?? <String,dynamic>{};
+                          final profile = design['active_profile'] is Map
+                              ? Map<String,dynamic>.from(design['active_profile'] as Map)
+                              : <String,dynamic>{};
+                          final workspace = design['workspace'] is Map
+                              ? Map<String,dynamic>.from(design['workspace'] as Map)
+                              : <String,dynamic>{};
+                          final theme = design['effective_theme'] is Map
+                              ? Map<String,dynamic>.from(design['effective_theme'] as Map)
+                              : <String,dynamic>{};
+                          final adapter = websiteAdapter ?? <String,dynamic>{};
+                          final hasDesign = design.isNotEmpty;
+                          final hasAdapter = adapter.isNotEmpty;
+
+                          if (!hasDesign && !hasAdapter) {
+                            return _MessageCard(
+                              icon: Icons.palette_outlined,
+                              title: uiLiteral('No partner design data yet'),
+                              message: uiLiteral('Partner design settings will appear here when CMS personalization is available.'),
+                            );
+                          }
+
+                          return LayoutBuilder(
+                            builder: (context, c) {
+                              final width = c.maxWidth < 760 ? c.maxWidth : (c.maxWidth - 12) / 2;
+                              return Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  SizedBox(
+                                    width: width,
+                                    child: _InfoCard(
+                                      title: uiLiteral('Partner design'),
+                                      icon: Icons.palette_outlined,
+                                      children: [
+                                        _DefinitionRow(
+                                          label: uiLiteral('Active design profile'),
+                                          value: '${profile['name'] ?? design['active_profile_id'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Workspace name'),
+                                          value: '${workspace['workspace_name'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Primary color'),
+                                          value: '${workspace['primary_color'] ?? theme['navy'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Accent color'),
+                                          value: '${workspace['accent_color'] ?? theme['gold'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Background color'),
+                                          value: '${workspace['background_color'] ?? theme['background'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Default module'),
+                                          value: '${workspace['default_module_key'] ?? '—'}',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: width,
+                                    child: _InfoCard(
+                                      title: uiLiteral('Website adapter'),
+                                      icon: Icons.public_outlined,
+                                      children: [
+                                        _DefinitionRow(
+                                          label: uiLiteral('Configured'),
+                                          value: uiLiteral(adapter['configured'] == true ? 'Yes' : 'No'),
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Enabled'),
+                                          value: uiLiteral(adapter['enabled'] == true ? 'Yes' : 'No'),
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Environment'),
+                                          value: '${adapter['environment'] ?? 'PRODUCTION'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Adapter type'),
+                                          value: '${adapter['adapter_type'] ?? '—'}',
+                                        ),
+                                        _DefinitionRow(
+                                          label: uiLiteral('Site URL'),
+                                          value: '${adapter['site_base_url'] ?? '—'}',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      ),
                       const SizedBox(height: 26),
                       KeyedSubtree(
                         key: _usersKey,

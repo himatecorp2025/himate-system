@@ -1698,7 +1698,7 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	defer cancel()
 
 	type page struct{ Items []map[string]any `json:"items"` }
-	var partner, billing, terms, license, agreement, commercialStatus, paymentProfile, websiteAdapter map[string]any
+	var partner, billing, terms, license, agreement, commercialStatus, paymentProfile, websiteAdapter, partnerDesign map[string]any
 	var modules, documents, invoices, subscriptions, environments, provisioningJobs, impactSummary, evidenceItems, connectorCredentials, billingEvents page
 	portalUsers := []map[string]any{}
 	unavailable := []string{}
@@ -1748,6 +1748,9 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	if a.hasPermission(actor, "connectors.read") {
 		runPage("connector_credentials", "connector", "/api/v1/connectors/"+url.PathEscape(partnerID)+"/credential", &connectorCredentials)
 		runMap("website_adapter", "connector", "/api/v1/connectors/"+url.PathEscape(partnerID)+"/website-adapter?environment=PRODUCTION", &websiteAdapter)
+	}
+	if a.hasPermission(actor, "cms.read") {
+		runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"+url.PathEscape(partnerID), &partnerDesign)
 	}
 	if a.hasPermission(actor, "billing.read") {
 		runMap("payment_profile", "payments", "/api/v1/payments/partners/"+url.PathEscape(partnerID)+"/profile", &paymentProfile)
@@ -1802,6 +1805,7 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		"commercial_status": commercialStatus,
 		"billing_events": billingEvents.Items,
 		"website_adapter": websiteAdapter,
+		"partner_design": partnerDesign,
 		"payment_profile": paymentProfile,
 		"meta": central10Meta(started, status, unavailable),
 	}
