@@ -2972,9 +2972,9 @@ class _DashboardUsMapCard extends StatelessWidget {
                 Expanded(child: _Central17UsMap(states: states, partners: partners)),
                 const SizedBox(height: 10),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  _DashboardMapStat(value: '$activeStates', label: uiLiteral('active states'), accent: brandGold),
+                  SizedBox(width: 122, child: _DashboardMapStat(value: '$activeStates', label: uiLiteral('active states'), accent: brandGold)),
                   const SizedBox(width: 12),
-                  _DashboardMapStat(value: '$activePartners', label: uiLiteral('US partners'), accent: brandSteel),
+                  SizedBox(width: 122, child: _DashboardMapStat(value: '$activePartners', label: uiLiteral('US partners'), accent: brandSteel)),
                 ]),
               ],
             ),
