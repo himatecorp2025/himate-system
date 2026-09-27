@@ -992,11 +992,76 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     final payload = await moduleDialog(module: module);
     if (payload == null) return;
     try {
-      await widget.api.patch('/api/v1/modules/' + s(module['key']), payload);
-      await load();
-      if (mounted) notify('Module registry updated.');
+      final updated = await widget.api.patch('/api/v1/modules/' + s(module['key']), payload);
+      if (mounted) _mergeModuleLocally(updated);
+      unawaited(load());
+      if (mounted) notify(uiLiteral('Module registry updated.'));
     } catch (e) {
       if (mounted) notify(e.toString(), failure: true);
+    }
+  }
+
+  void _mergeModuleLocally(Map<String,dynamic> updated) {
+    final key = s(updated['key']).isEmpty ? s(updated['module_key']) : s(updated['key']);
+    if (key.isEmpty) return;
+    Map<String,dynamic> mergeOne(Map<String,dynamic> row) =>
+        s(row['key']) == key ? <String,dynamic>{...row, ...updated, 'key': key} : row;
+    setState(() {
+      modules = modules.map(mergeOne).toList();
+      registryModules = registryModules.map(mergeOne).toList();
+    });
+  }
+
+  Future<void> activateModule(Map<String,dynamic> module) async {
+    final key = s(module['key']);
+    if (key.isEmpty) return;
+    final alreadyLive =
+        s(module['availability']) == 'ACTIVE' &&
+        s(module['publication_status']) == 'PUBLISHED' &&
+        s(module['implementation_state']) == 'READY';
+    if (alreadyLive) {
+      notify(uiLiteral('This module is already active in the marketplace.'));
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => BrandDialog(
+        title: uiLiteral('Activate module'),
+        subtitle: uiLiteral('Publish this module for package and partner assignment.'),
+        icon: Icons.rocket_launch_outlined,
+        width: 620,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DefinitionRow(label: uiLiteral('Module'), value: moduleLabelForLocale(module)),
+            _DefinitionRow(label: uiLiteral('Stable module key'), value: key),
+            _DefinitionRow(label: uiLiteral('Current implementation state'), value: uiLiteral(_humanize(s(module['implementation_state'])))),
+            const SizedBox(height: 12),
+            _MessageCard(
+              icon: Icons.verified_outlined,
+              title: uiLiteral('Marketplace activation'),
+              message: uiLiteral('Activation marks the module READY, PUBLISHED and operationally ACTIVE. It then becomes eligible for package configuration and partner entitlement.'),
+            ),
+          ],
+        ),
+        primaryLabel: uiLiteral('Activate module'),
+        onPrimary: () => Navigator.pop(dialogContext, true),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final updated = await widget.api.patch('/api/v1/modules/$key', const <String,dynamic>{
+        'availability': 'ACTIVE',
+        'implementation_state': 'READY',
+        'publication_status': 'PUBLISHED',
+      });
+      if (!mounted) return;
+      _mergeModuleLocally(updated);
+      notify(uiLiteral('Module activated and published.'));
+      unawaited(load());
+    } catch (e) {
+      if (mounted) notify('${uiLiteral('Module activation failed')}: $e', failure: true);
     }
   }
 
@@ -1435,6 +1500,21 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
               _StatusPill(label: publication),
               if (implementation != 'READY') _StatusPill(label: implementation),
             ]),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ready
+                  ? OutlinedButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.verified_rounded, size: 16),
+                      label: LText(uiLiteral('Marketplace active')),
+                    )
+                  : FilledButton.icon(
+                      onPressed: () => unawaited(activateModule(module)),
+                      icon: const Icon(Icons.rocket_launch_outlined, size: 16),
+                      label: LText(uiLiteral('Activate module')),
+                    ),
+            ),
             const SizedBox(height: 14),
             Row(children: [
               const Icon(Icons.business_outlined, size: 16, color: brandSteel),
@@ -1935,6 +2015,27 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                   onTap: () => applyRegistryPreset('RELATIONSHIPS'),
                 ),
               ]),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: loading ? null : () => setState(() => showSubscriptionPlans = true),
+                      icon: const Icon(Icons.workspace_premium_outlined, size: 17),
+                      label: LText(uiLiteral('Manage packages')),
+                    ),
+                    FilledButton.icon(
+                      key: const Key('modules-add-module-button'),
+                      onPressed: loading || groups.isEmpty ? null : () => unawaited(addModule()),
+                      icon: const Icon(Icons.add_box_outlined, size: 17),
+                      label: LText(uiLiteral('Add module')),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
               _Central17ModuleTrendCard(trend: moduleTrend),
               const SizedBox(height: 16),
