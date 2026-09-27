@@ -63,14 +63,51 @@ func filterMaterializedDocuments(items []map[string]any, q string) []map[string]
 	return out
 }
 
-func filterMaterializedAudit(items []map[string]any, r *http.Request) []map[string]any {
+func materializedAuditCreatedAt(raw any) (time.Time, bool) {
+	switch value := raw.(type) {
+	case time.Time:
+		return value.UTC(), true
+	case string:
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+		if err == nil {
+			return parsed.UTC(), true
+		}
+		// PostgreSQL JSON timestamps may contain sub-second precision/offsets
+		// that still parse under RFC3339Nano.
+		parsed, err = time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
+		if err == nil {
+			return parsed.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
+
+func filterMaterializedAudit(items []map[string]any, r *http.Request) ([]map[string]any, error) {
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
 	actorID := strings.TrimSpace(r.URL.Query().Get("actor_id"))
 	resource := strings.TrimSpace(r.URL.Query().Get("resource"))
 	action := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("action")))
+	correlationID := strings.TrimSpace(r.URL.Query().Get("correlation_id"))
 	method := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("method")))
 	outcome := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("outcome")))
+
+	var from, to time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("from")); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, fmt.Errorf("from must be RFC3339")
+		}
+		from = parsed.UTC()
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("to")); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, fmt.Errorf("to must be RFC3339")
+		}
+		to = parsed.UTC()
+	}
+
 	out := []map[string]any{}
 	for _, row := range items {
 		if partnerID != "" && central10String(row["partner_id"]) != partnerID {
@@ -85,11 +122,26 @@ func filterMaterializedAudit(items []map[string]any, r *http.Request) []map[stri
 		if action != "" && strings.ToUpper(central10String(row["action"])) != action {
 			continue
 		}
+		if correlationID != "" && central10String(row["correlation_id"]) != correlationID {
+			continue
+		}
 		if method != "" && strings.ToUpper(central10String(row["method"])) != method {
 			continue
 		}
 		if outcome != "" && strings.ToUpper(central10String(row["outcome"])) != outcome {
 			continue
+		}
+		if !from.IsZero() || !to.IsZero() {
+			created, ok := materializedAuditCreatedAt(row["created_at"])
+			if !ok {
+				continue
+			}
+			if !from.IsZero() && created.Before(from) {
+				continue
+			}
+			if !to.IsZero() && created.After(to) {
+				continue
+			}
 		}
 		if q != "" && !searchContains(q,
 			row["actor_name"], row["actor_id"], row["path"], row["resource"],
@@ -99,7 +151,7 @@ func filterMaterializedAudit(items []map[string]any, r *http.Request) []map[stri
 		}
 		out = append(out, central10CopyMap(row))
 	}
-	return out
+	return out, nil
 }
 
 func localizedAdministrationRoles(raw map[string]any, r *http.Request) map[string]any {
@@ -1064,8 +1116,12 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 			common.JSON(w, http.StatusOK, partnerWorkspaceMap(snapshot, "admin_secrets"))
 		case path == "/api/v1/audit/events":
 			audit := partnerWorkspaceMap(snapshot, "audit_events")
-			filtered := filterMaterializedAudit(anyItems(audit["items"]), r)
-			limit := queryInt(r.URL.Query().Get("limit"), 50, 200)
+			filtered, err := filterMaterializedAudit(anyItems(audit["items"]), r)
+			if err != nil {
+				common.APIError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+				return true
+			}
+			limit := auditLimit(r.URL.Query().Get("limit"), 50, 200)
 			offset := queryInt(r.URL.Query().Get("offset"), 0, 1_000_000)
 			common.JSON(w, http.StatusOK, materializedPage(filtered, limit, offset))
 		case path == "/api/v1/billing/profile":
