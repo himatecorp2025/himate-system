@@ -1622,7 +1622,7 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 	}
 	partnerID := raw
 	key := centralPartnerWorkspaceKey(partnerID)
-	snapshot, updatedAt, ok := centralStep3SnapshotGet(key)
+	snapshot, updatedAt, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
 	if !ok {
 		a.requestCentralPartnerWorkspaceRefresh(partnerID)
 		partner := a.partnerWorkspaceBasePartner(partnerID)
