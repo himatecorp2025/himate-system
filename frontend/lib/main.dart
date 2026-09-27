@@ -6885,7 +6885,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                             _DefinitionRow(label: 'Email', value: '${portalUser['email'] ?? '—'}'),
                                             _DefinitionRow(label: 'Portal role', value: _humanize('${portalUser['role'] ?? 'viewer'}')),
                                             _DefinitionRow(label: 'Status', value: portalUser['active'] == true ? 'Active' : 'Inactive'),
-                                            _DefinitionRow(label: 'Portal URL', value: '/partner/login'),
+                                            _DefinitionRow(label: uiLiteral('Portal URL'), value: '/partner/login'),
                                           ],
                                         ),
                                       ),
@@ -6897,12 +6897,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       KeyedSubtree(
                         key: _integrationsKey,
                         child: _SectionHeader(
-                          title: 'Integrations',
-                          subtitle: 'Partner-scoped Connector Protocol credentials. Raw secrets are never stored by HIMATE.',
+                          title: uiLiteral('Integrations'),
+                          subtitle: uiLiteral('Partner-scoped Connector Protocol credentials. Raw secrets are never stored by HIMATE.'),
                           trailing: FilledButton.icon(
                             onPressed: rotateConnectorCredential,
                             icon: const Icon(Icons.key_outlined),
-                            label: const LText('Generate / rotate credential'),
+                            label: LText(uiLiteral('Generate / rotate credential')),
                           ),
                         ),
                       ),
@@ -6910,10 +6910,10 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                       start223WebsiteAdapterPanel(),
                       const SizedBox(height: 12),
                       connectorCredentials.isEmpty
-                          ? const _MessageCard(
+                          ? _MessageCard(
                               icon: Icons.hub_outlined,
-                              title: 'No connector credential yet',
-                              message: 'Provisioning creates the staging connector identity automatically. You can also generate or rotate it here.',
+                              title: uiLiteral('No connector credential yet'),
+                              message: uiLiteral('Provisioning creates the staging connector identity automatically. You can also generate or rotate it here.'),
                             )
                           : LayoutBuilder(
                               builder: (context, c) {
@@ -6926,13 +6926,13 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                                       SizedBox(
                                         width: width,
                                         child: _InfoCard(
-                                          title: '${credential['environment']} Connector',
+                                          title: '${credential['environment']} ${uiLiteral('Connector')}',
                                           icon: Icons.hub_outlined,
                                           children: [
-                                            _DefinitionRow(label: 'Credential ID', value: '${credential['credential_id'] ?? '—'}'),
-                                            _DefinitionRow(label: 'Active', value: credential['active'] == true ? 'Yes' : 'No'),
-                                            _DefinitionRow(label: 'Rotated', value: '${credential['rotated_at'] ?? '—'}'),
-                                            _DefinitionRow(label: 'Last used', value: '${credential['last_used_at'] ?? 'Never'}'),
+                                            _DefinitionRow(label: uiLiteral('Credential ID'), value: '${credential['credential_id'] ?? '—'}'),
+                                            _DefinitionRow(label: uiLiteral('Active'), value: uiLiteral(credential['active'] == true ? 'Yes' : 'No')),
+                                            _DefinitionRow(label: uiLiteral('Rotated'), value: '${credential['rotated_at'] ?? '—'}'),
+                                            _DefinitionRow(label: uiLiteral('Last used'), value: credential['last_used_at'] == null ? uiLiteral('Never') : '${credential['last_used_at']}'),
                                           ],
                                         ),
                                       ),
