@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"himate.local/services/internal/common"
 )
@@ -113,6 +116,149 @@ func localizedAdministrationRoles(raw map[string]any, r *http.Request) map[strin
 		items = append(items, item)
 	}
 	return map[string]any{"items": items, "count": len(items), "locale": locale}
+}
+
+func materializedImpactSummary(tenant map[string]any, r *http.Request) (map[string]any, error) {
+	partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id"))
+	periodStartRaw := strings.TrimSpace(r.URL.Query().Get("period_start"))
+	periodEndRaw := strings.TrimSpace(r.URL.Query().Get("period_end"))
+	var periodStart, periodEnd time.Time
+	var err error
+	if periodStartRaw != "" {
+		periodStart, err = time.Parse("2006-01-02", periodStartRaw)
+		if err != nil {
+			return nil, fmt.Errorf("period_start must be YYYY-MM-DD")
+		}
+	}
+	if periodEndRaw != "" {
+		periodEnd, err = time.Parse("2006-01-02", periodEndRaw)
+		if err != nil {
+			return nil, fmt.Errorf("period_end must be YYYY-MM-DD")
+		}
+	}
+
+	metaByKey := map[string]map[string]any{}
+	for _, raw := range anyItems(partnerWorkspaceMap(tenant, "impact_api")["items"]) {
+		key := central10String(raw["metric_key"])
+		if key != "" {
+			metaByKey[key] = central10CopyMap(raw)
+		}
+	}
+
+	groups := map[string][]map[string]any{}
+	for _, raw := range anyItems(partnerWorkspaceMap(tenant, "impact_values_api")["items"]) {
+		key := central10String(raw["metric_key"])
+		if key == "" {
+			continue
+		}
+		start, startErr := time.Parse("2006-01-02", central10String(raw["period_start"]))
+		end, endErr := time.Parse("2006-01-02", central10String(raw["period_end"]))
+		if startErr != nil || endErr != nil {
+			continue
+		}
+		if !periodStart.IsZero() && end.Before(periodStart) {
+			continue
+		}
+		if !periodEnd.IsZero() && start.After(periodEnd) {
+			continue
+		}
+		groups[key] = append(groups[key], raw)
+	}
+
+	items := make([]map[string]any, 0, len(groups))
+	for key, rows := range groups {
+		meta := central10CopyMap(metaByKey[key])
+		if meta == nil {
+			meta = map[string]any{
+				"metric_key": key,
+				"label":      central10String(rows[0]["label"]),
+				"label_en":   central10String(rows[0]["label"]),
+				"label_hu":   central10String(rows[0]["label"]),
+				"unit":       central10String(rows[0]["unit"]),
+				"aggregation": "SUM",
+			}
+		}
+		aggregation := strings.ToUpper(central10String(meta["aggregation"]))
+		if aggregation == "" {
+			aggregation = "SUM"
+			meta["aggregation"] = aggregation
+		}
+
+		var sum float64
+		numericCount := 0
+		var latestNumeric any
+		var latestEnd time.Time
+		latestID := -1
+		for _, row := range rows {
+			end, err := time.Parse("2006-01-02", central10String(row["period_end"]))
+			if err == nil && end.After(latestEnd) {
+				latestEnd = end
+			}
+			numeric, ok := row["numeric_value"].(float64)
+			if !ok {
+				continue
+			}
+			sum += numeric
+			numericCount++
+			id := central10Int(row["id"])
+			if latestNumeric == nil || end.After(latestEnd) || (end.Equal(latestEnd) && id > latestID) {
+				latestNumeric = numeric
+				latestID = id
+			}
+		}
+		// LATEST follows the Impact SQL ordering by period_end DESC,id DESC.
+		if aggregation == "LATEST" {
+			var chosen map[string]any
+			for _, row := range rows {
+				if _, ok := row["numeric_value"].(float64); !ok {
+					continue
+				}
+				if chosen == nil {
+					chosen = row
+					continue
+				}
+				rowEnd, _ := time.Parse("2006-01-02", central10String(row["period_end"]))
+				chosenEnd, _ := time.Parse("2006-01-02", central10String(chosen["period_end"]))
+				if rowEnd.After(chosenEnd) || (rowEnd.Equal(chosenEnd) && central10Int(row["id"]) > central10Int(chosen["id"])) {
+					chosen = row
+				}
+			}
+			if chosen != nil {
+				latestNumeric = chosen["numeric_value"]
+			}
+		}
+
+		var value any
+		switch aggregation {
+		case "LATEST":
+			value = latestNumeric
+		case "AVERAGE":
+			if numericCount > 0 {
+				value = sum / float64(numericCount)
+			}
+		default:
+			if numericCount > 0 {
+				value = sum
+			}
+		}
+		meta["numeric_value"] = value
+		meta["observations"] = len(rows)
+		if !latestEnd.IsZero() {
+			meta["latest_period_end"] = latestEnd.Format("2006-01-02")
+		} else {
+			meta["latest_period_end"] = ""
+		}
+		items = append(items, meta)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		left := strings.ToLower(central10String(items[i]["label_en"]))
+		right := strings.ToLower(central10String(items[j]["label_en"]))
+		if left == right {
+			return central10String(items[i]["metric_key"]) < central10String(items[j]["metric_key"])
+		}
+		return left < right
+	})
+	return map[string]any{"partner_id": partnerID, "items": items, "count": len(items)}, nil
 }
 
 func (a *app) materializedPartnerList(r *http.Request) (map[string]any, bool) {
@@ -525,8 +671,13 @@ func (a *app) serveCentralMaterializedGET(w http.ResponseWriter, r *http.Request
 		if partnerID := strings.TrimSpace(r.URL.Query().Get("partner_id")); partnerID != "" {
 			tenant, _, ok := a.partnerWorkspaceForRead(r.Context(), partnerID)
 			if !ok { common.APIError(w,http.StatusNotFound,"PARTNER_NOT_FOUND","Partner not found"); return true }
+			out, err := materializedImpactSummary(tenant, r)
+			if err != nil {
+				common.APIError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+				return true
+			}
 			w.Header().Set("X-Himate-Cache","persistent-tenant-read-model")
-			common.JSON(w,http.StatusOK,partnerWorkspaceMap(tenant,"impact_api")); return true
+			common.JSON(w,http.StatusOK,out); return true
 		}
 		snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4ImpactKey)
 		if !ok { common.APIError(w,http.StatusServiceUnavailable,"READ_MODEL_NOT_READY","Impact read model is not ready"); return true }
