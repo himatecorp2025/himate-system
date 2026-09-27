@@ -261,8 +261,9 @@ check("partnerAccessSnapshot" in access and
 for block in [access, access_snapshot]:
     check("internalGET" not in block and 'a.hosts["billing"]' not in block,
           "Partner Portal login regressed to synchronous Billing fan-out")
+partner_api_access = func_block(partner_portal, "func (a *app) partnerAPI")
 check("partnerWorkspaceContextKey" in partner_portal and
-      "context.WithValue" in partner_api and
+      "context.WithValue" in partner_api_access and
       "r.Context().Value(partnerWorkspaceContextKey{})" in partner_portal,
       "Partner Portal request does not reuse the access-gate tenant snapshot")
 
