@@ -9285,7 +9285,7 @@ class _ImpactPageState extends State<ImpactPage> {
                 TextField(
                   controller: partnerIds,
                   decoration: InputDecoration(
-                    labelText: reportType == 'PARTNER_IMPACT' ? 'Partner ID *' : 'Partner IDs *',
+                    labelText: reportType == 'PARTNER_IMPACT' ? uiLiteral('Partner ID *') : uiLiteral('Partner IDs *'),
                     hintText: reportType == 'MULTI_PARTNER' ? 'ptr_000001, ptr_000002' : 'ptr_000001',
                   ),
                 ),
@@ -9633,7 +9633,13 @@ class _ImpactPageState extends State<ImpactPage> {
             },
           ),
           const SizedBox(height: 12),
-          if (evidence.isEmpty)
+          if (!canReadEvidence)
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Evidence access restricted'),
+              message: uiLiteral('Your current role does not include Evidence read access.'),
+            )
+          else if (evidence.isEmpty)
             const _MessageCard(icon: Icons.verified_outlined, title: 'No Evidence yet', message: 'Upload a PDF, image, invoice, contract, screenshot, URL or partner declaration.')
           else
             LayoutBuilder(
@@ -9696,13 +9702,13 @@ class _ImpactPageState extends State<ImpactPage> {
                                         icon: const Icon(Icons.open_in_new_rounded),
                                         label: const LText('Open URL'),
                                       ),
-                                    if (item['verification_status'] != 'VERIFIED')
+                                    if (canWriteEvidence && item['verification_status'] != 'VERIFIED')
                                       FilledButton.icon(
                                         onPressed: () => verifyEvidence(item),
                                         icon: const Icon(Icons.fact_check_outlined),
                                         label: const LText('Verify'),
                                       ),
-                                    if (item['verification_status'] == 'VERIFIED' && '${item['metric_key'] ?? ''}'.isNotEmpty)
+                                    if (canWriteImpact && item['verification_status'] == 'VERIFIED' && '${item['metric_key'] ?? ''}'.isNotEmpty)
                                       FilledButton.icon(
                                         onPressed: () => recordVerifiedValue(item),
                                         icon: const Icon(Icons.add_chart_rounded),
@@ -9725,7 +9731,10 @@ class _ImpactPageState extends State<ImpactPage> {
               children: [
                 Expanded(
                   child: LText(
-                    'Showing ${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} of $evidenceTotal',
+                    uiBilingual(
+                      'Showing ${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} of $evidenceTotal',
+                      '${evidenceOffset + 1}–${(evidenceOffset + evidence.length) > evidenceTotal ? evidenceTotal : evidenceOffset + evidence.length} / $evidenceTotal megjelenítve',
+                    ),
                     style: const TextStyle(color: brandTextSoft, fontSize: 11.5, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -9744,7 +9753,13 @@ class _ImpactPageState extends State<ImpactPage> {
           const SizedBox(height: 24),
           _SectionHeader(title: 'Reports', subtitle: 'Partner, multi-partner and HIMATE Global PDFs generated from frozen, auditable snapshots.', trailing: _MiniCounter(label: uiBilingual('${reports.length} reports', '${reports.length} jelentés'))),
           const SizedBox(height: 12),
-          if (reports.isEmpty)
+          if (!canReadReports)
+            _MessageCard(
+              icon: Icons.lock_outline_rounded,
+              title: uiLiteral('Report access restricted'),
+              message: uiLiteral('Your current role does not include Reports read access.'),
+            )
+          else if (reports.isEmpty)
             const _MessageCard(icon: Icons.picture_as_pdf_outlined, title: 'No reports yet', message: 'Generate a report to freeze impact metrics, data sources and Evidence references into a reproducible snapshot.')
           else
             LayoutBuilder(
@@ -9775,7 +9790,13 @@ class _ImpactPageState extends State<ImpactPage> {
                                 _DefinitionRow(label: 'Status', value: '${item['status']}'),
                                 _DefinitionRow(label: 'Template', value: '${item['template_version'] ?? '—'}'),
                                 _DefinitionRow(label: 'Snapshot', value: shortHash(item['snapshot_sha256'])),
-                                _DefinitionRow(label: 'Evidence', value: '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} linked'),
+                                _DefinitionRow(
+                                  label: 'Evidence',
+                                  value: uiBilingual(
+                                    '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} linked',
+                                    '${(item['evidence_ids'] is List) ? (item['evidence_ids'] as List).length : 0} kapcsolva',
+                                  ),
+                                ),
                                 _DefinitionRow(label: 'PDF SHA-256', value: shortHash(item['pdf_sha256'])),
                                 if ('${item['last_error'] ?? ''}'.isNotEmpty)
                                   _DefinitionRow(label: 'Error', value: '${item['last_error']}'),
@@ -9790,7 +9811,7 @@ class _ImpactPageState extends State<ImpactPage> {
                                         icon: const Icon(Icons.download_outlined),
                                         label: const LText('Download PDF'),
                                       ),
-                                    if (item['download_ready'] == true)
+                                    if (canWriteReports && item['download_ready'] == true)
                                       OutlinedButton.icon(
                                         onPressed: () => regenerateReport(item),
                                         icon: const Icon(Icons.replay_outlined),
