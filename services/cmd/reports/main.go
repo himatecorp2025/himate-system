@@ -32,7 +32,6 @@ type app struct{
 	evidenceHost string
 	partnersHost string
 	storageHost string
-	gatewayHost string
 	client *http.Client
 }
 
@@ -51,8 +50,7 @@ func main(){
 	a:=&app{
 		db:db,token:os.Getenv("HIMATE_INTERNAL_TOKEN"),impactHost:os.Getenv("IMPACT_HOSTPORT"),
 		evidenceHost:os.Getenv("EVIDENCE_HOSTPORT"),partnersHost:os.Getenv("PARTNERS_HOSTPORT"),
-		storageHost:os.Getenv("STORAGE_HOSTPORT"),gatewayHost:os.Getenv("GATEWAY_HOSTPORT"),
-		client:&http.Client{Timeout:45*time.Second},
+		storageHost:os.Getenv("STORAGE_HOSTPORT"),client:&http.Client{Timeout:20*time.Second},
 	}
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
 	if err:=a.migrate(ctx);err!=nil{log.Error("migration","error",err);os.Exit(1)}
@@ -307,25 +305,48 @@ func reportSnapshotPartnerIDs(snapshot map[string]any) []string {
 }
 
 func (a *app) synchronizeReadModels(ctx context.Context, partnerIDs []string) error {
-	host := strings.TrimSpace(a.gatewayHost)
-	if host == "" { return fmt.Errorf("GATEWAY_HOSTPORT is required for report projection synchronization") }
-	body, _ := json.Marshal(map[string]any{
-		"reason": "/internal/reports/background-complete/evidence/report",
-		"partner_ids": uniqueStrings(partnerIDs),
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/internal/v1/read-model/write-through", bytes.NewReader(body))
-	if err != nil { return err }
-	req.Header.Set("Content-Type", "application/json")
-	common.BindInternalRequest(req, a.token)
-	resp, err := common.DoInternal(a.client, req)
-	if err != nil { return err }
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var payload map[string]any
-		_ = json.NewDecoder(resp.Body).Decode(&payload)
-		return fmt.Errorf("Gateway read-model synchronization returned %d: %v", resp.StatusCode, payload)
+	ids := uniqueStrings(partnerIDs)
+	if len(ids) == 0 { ids = []string{""} }
+	eventIDs := make([]int64, 0, len(ids))
+	for _, partnerID := range ids {
+		var eventID int64
+		if err := a.db.QueryRowContext(ctx,
+			`INSERT INTO identity.read_model_refresh_queue(scope,partner_id,reason)
+			 VALUES('all',$1,'/internal/reports/background-complete/evidence/report')
+			 RETURNING id`,
+			strings.TrimSpace(partnerID),
+		).Scan(&eventID); err != nil {
+			return fmt.Errorf("persist report projection event: %w", err)
+		}
+		eventIDs = append(eventIDs, eventID)
 	}
-	return nil
+
+	waitCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		allProcessed := true
+		for _, eventID := range eventIDs {
+			var processed sql.NullTime
+			if err := a.db.QueryRowContext(waitCtx,
+				`SELECT processed_at FROM identity.read_model_refresh_queue WHERE id=$1`,
+				eventID,
+			).Scan(&processed); err != nil {
+				return fmt.Errorf("read report projection event %d: %w", eventID, err)
+			}
+			if !processed.Valid {
+				allProcessed = false
+				break
+			}
+		}
+		if allProcessed { return nil }
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("report projection synchronization timed out: %w", waitCtx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 func (a *app) requeueProjectionSync(id string, err error) {
