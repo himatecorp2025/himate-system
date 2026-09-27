@@ -685,30 +685,64 @@ func (a *app) central10Partners(w http.ResponseWriter, r *http.Request, actor us
 	common.JSON(w, http.StatusOK, payload)
 }
 
+func central10GroupedInt(value int64) string {
+	raw := strconv.FormatInt(value, 10)
+	if len(raw) <= 3 {
+		return raw
+	}
+	first := len(raw) % 3
+	if first == 0 {
+		first = 3
+	}
+	var b strings.Builder
+	b.WriteString(raw[:first])
+	for index := first; index < len(raw); index += 3 {
+		b.WriteByte(',')
+		b.WriteString(raw[index:index+3])
+	}
+	return b.String()
+}
+
+func central10PlanDisplayPrice(currency string, amount float64) string {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	prefix := currency + " "
+	switch currency {
+	case "USD":
+		prefix = "$"
+	case "EUR":
+		prefix = "€"
+	case "GBP":
+		prefix = "£"
+	}
+	var value string
+	if amount == float64(int64(amount)) {
+		value = central10GroupedInt(int64(amount))
+	} else {
+		value = fmt.Sprintf("%.2f", amount)
+	}
+	return prefix + value + " + VAT"
+}
+
 func central10CanonicalPlan(plan map[string]any, moduleByKey map[string]map[string]any) map[string]any {
 	out := central10CopyMap(plan)
 	key := strings.ToUpper(central10String(plan["plan_key"]))
 	switch key {
 	case "STARTER":
 		out["display_name"] = "Starter"
-		out["monthly_price"] = 990
-		out["display_price"] = "$990 + VAT"
-		out["module_limit"] = 10
-		out["entitlement"] = "10 modules"
+		out["entitlement"] = fmt.Sprintf("%d modules", central10Int(plan["module_limit"]))
 	case "BUSINESS":
 		out["display_name"] = "Business"
-		out["monthly_price"] = 1490
-		out["display_price"] = "$1,490 + VAT"
-		out["module_limit"] = 20
-		out["entitlement"] = "20 modules"
+		out["entitlement"] = fmt.Sprintf("%d modules", central10Int(plan["module_limit"]))
 	case "FLEX", "PREMIUM":
 		out["plan_key"] = "FLEX"
 		out["display_name"] = "Premium"
-		out["monthly_price"] = 2490
-		out["display_price"] = "$2,490 + VAT"
 		out["module_limit"] = nil
 		out["entitlement"] = "Unlimited"
 	}
+	out["display_price"] = central10PlanDisplayPrice(
+		central10String(plan["currency"]),
+		central10Float(plan["monthly_price"]),
+	)
 	keys := []string{}
 	switch raw := plan["fixed_module_keys"].(type) {
 	case []any:
