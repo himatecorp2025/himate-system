@@ -259,14 +259,10 @@ func (a *app) serveCentralNotificationGET(w http.ResponseWriter, r *http.Request
 }
 
 func (a *app) runCentralUserNotificationMaterializer() {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	a.refreshCentralUserNotificationSnapshots(ctx)
-	cancel()
+	a.refreshNotificationsSerialized()
 	ticker := time.NewTicker(centralNotificationRefreshInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-		a.refreshCentralUserNotificationSnapshots(ctx)
-		cancel()
+		a.refreshNotificationsSerialized()
 	}
 }
