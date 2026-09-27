@@ -2051,17 +2051,10 @@ class _ShellState extends State<Shell> {
         api: widget.api,
         canCms: can('cms.read'),
         canContact: can('contact.read'),
-        canEnvironments: can('environments.read'),
-      );
-      case 7: return SystemPage(
-        api: widget.api,
-        canHealth: can('health.read'),
-        canProvisioning: can('provisioning.read'),
-        canEnvironments: can('environments.read'),
         canConnections: can('connectors.read'),
-        canBackups: can('backups.read'),
-        canAudit: can('audit.read'),
+        canEnvironments: can('environments.read'),
       );
+      case 7: return SystemPage(api: widget.api);
       case 8:
         return can('administration.read')
             ? AdministrationCenterPage(
@@ -10102,21 +10095,8 @@ class _ImpactPageState extends State<ImpactPage> {
 }
 
 class SystemPage extends StatefulWidget {
-  const SystemPage({
-    required this.api,
-    required this.canHealth,
-    required this.canProvisioning,
-    required this.canEnvironments,
-    required this.canBackups,
-    required this.canAudit,
-    super.key,
-  });
+  const SystemPage({required this.api, super.key});
   final Api api;
-  final bool canHealth;
-  final bool canProvisioning;
-  final bool canEnvironments;
-  final bool canBackups;
-  final bool canAudit;
 
   @override
   State<SystemPage> createState() => _SystemPageState();
@@ -10289,7 +10269,6 @@ class _SystemPageState extends State<SystemPage> {
         final canHealth = access['health'] == true;
         final canProvisioning = access['provisioning'] == true;
         final canEnvironments = access['environments'] == true;
-        final canConnections = access['connections'] == true;
         final canBackups = access['backups'] == true;
         final canAudit = access['audit'] == true;
         final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
