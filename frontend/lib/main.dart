@@ -1069,7 +1069,9 @@ class PartnerRouteLoader extends StatelessWidget {
   Widget build(BuildContext context) {
     final path = '/api/v1/central/partners/$partnerId';
     return FutureBuilder<Map<String, dynamic>>(
-      future: api.get(path, maxAge: const Duration(seconds: 5)),
+      future: api
+          .get(path, maxAge: const Duration(seconds: 5))
+          .timeout(const Duration(seconds: 3)),
       initialData: api.peek(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done && snapshot.data == null) {
@@ -1078,10 +1080,22 @@ class PartnerRouteLoader extends StatelessWidget {
             eyebrow: uiLiteral('PARTNER WORKSPACE'),
             title: uiLiteral('Partner workspace'),
             subtitle: uiLiteral('Loading partner data and operational context.'),
-            child: const _MessageCard(
-              icon: Icons.sync_rounded,
-              title: 'Loading partner workspace',
-              message: 'The partner route is active. Authoritative partner data is loading without leaving the Central shell.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                OutlinedButton.icon(
+                  key: const Key('partner-workspace-loading-back'),
+                  onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil('/app/partners', (route) => false),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: LText(uiLiteral('Back to Partners')),
+                ),
+                const SizedBox(height: 14),
+                const _MessageCard(
+                  icon: Icons.sync_rounded,
+                  title: 'Loading partner workspace',
+                  message: 'The partner route is active. Authoritative partner data is loading without leaving the Central shell.',
+                ),
+              ],
             ),
           );
         }
@@ -3755,11 +3769,13 @@ class _PartnersPageState extends State<PartnersPage> {
     }
 
     try {
-      final model = await widget.api.get(
-        path,
-        maxAge: const Duration(seconds: 5),
-        onRefresh: applyModel,
-      );
+      final model = await widget.api
+          .get(
+            path,
+            maxAge: const Duration(seconds: 5),
+            onRefresh: applyModel,
+          )
+          .timeout(const Duration(seconds: 3));
       applyModel(model);
     } catch (e) {
       if (mounted && generation == _loadGeneration) {
@@ -7009,12 +7025,14 @@ class _PackagesPageState extends State<PackagesPage> {
     }
 
     try {
-      final model = await widget.api.get(
-        path,
-        force: force,
-        maxAge: const Duration(seconds: 5),
-        onRefresh: applyPrimary,
-      );
+      final model = await widget.api
+          .get(
+            path,
+            force: force,
+            maxAge: const Duration(seconds: 5),
+            onRefresh: applyPrimary,
+          )
+          .timeout(const Duration(seconds: 3));
       applyPrimary(model);
       if (model['ready'] == true) unawaited(loadSupplementary());
     } catch (e) {
@@ -7185,11 +7203,13 @@ class _PackagesPageState extends State<PackagesPage> {
     }
 
     try {
-      final model = await widget.api.get(
-        path,
-        maxAge: const Duration(seconds: 5),
-        onRefresh: applySupplementary,
-      );
+      final model = await widget.api
+          .get(
+            path,
+            maxAge: const Duration(seconds: 5),
+            onRefresh: applySupplementary,
+          )
+          .timeout(const Duration(seconds: 3));
       applySupplementary(model);
     } catch (e) {
       if (!mounted) return;
@@ -8409,12 +8429,14 @@ class _FinancePageState extends State<FinancePage> {
     }
 
     try {
-      final model = await widget.api.get(
-        path,
-        force: force,
-        maxAge: const Duration(seconds: 5),
-        onRefresh: applyModel,
-      );
+      final model = await widget.api
+          .get(
+            path,
+            force: force,
+            maxAge: const Duration(seconds: 5),
+            onRefresh: applyModel,
+          )
+          .timeout(const Duration(seconds: 3));
       applyModel(model);
     } catch (e) {
       if (!mounted) return;
