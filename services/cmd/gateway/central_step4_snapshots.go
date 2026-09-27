@@ -117,6 +117,7 @@ func (a *app) refreshCentralStep4Partners() {
 	// explicit unavailable model so the Partners route can render immediately
 	// instead of remaining in a permanent warming state.
 	if partnerErr != nil {
+		a.logCentralRefreshFailure(centralStep4PartnersKey, []string{"partners"})
 		if _, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
 			return
 		}
