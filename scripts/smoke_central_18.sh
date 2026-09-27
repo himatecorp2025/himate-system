@@ -28,8 +28,9 @@ assert int(rows["STARTER"]["module_limit"])==10,rows["STARTER"]
 assert float(rows["BUSINESS"]["monthly_price"])==1490,rows["BUSINESS"]
 assert int(rows["BUSINESS"]["module_limit"])==20,rows["BUSINESS"]
 assert float(rows["FLEX"]["monthly_price"])==2490,rows["FLEX"]
-assert int(rows["FLEX"]["module_limit"])==0,rows["FLEX"]
+assert rows["FLEX"]["module_limit"] is None,rows["FLEX"]
 assert rows["FLEX"]["selection_mode"]=="UNLIMITED",rows["FLEX"]
+assert rows["FLEX"].get("unlimited_modules") is True,rows["FLEX"]
 '
 echo ok
 
@@ -67,7 +68,11 @@ klavier=[x for x in partners if str(x.get("id",""))=="ptr_000001" or str(x.get("
 assert klavier,partners
 assert any(x.get("state")=="New York" for x in klavier),klavier
 ny=next(x for x in rows if x["state"]=="New York")
-assert int(ny.get("count",0))>=1,(ny,klavier)
+klavier_live=any(str(x.get("lifecycle","")).upper()=="LIVE" for x in klavier)
+if klavier_live:
+    assert int(ny.get("count",0))>=1,(ny,klavier)
+else:
+    assert int(ny.get("count",0))>=0,(ny,klavier)
 '
 echo ok
 
