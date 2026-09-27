@@ -99,6 +99,51 @@ func centralStep3SnapshotGet(key string) (map[string]any, time.Time, bool) {
 	return centralStep3CopyMap(entry.payload), entry.updatedAt, true
 }
 
+func (a *app) warmMissingCentralSnapshots() {
+	step3 := []struct {
+		key string
+		fn  func()
+	}{
+		{centralStep3RegistryKey, a.refreshCentralStep3Registry},
+		{centralStep3PlansKey, a.refreshCentralStep3Plans},
+		{centralStep3AnalyticsKey, a.refreshCentralStep3Analytics},
+		{centralStep3CommercialKey, a.refreshCentralStep3Commercial},
+	}
+	var first sync.WaitGroup
+	for _, job := range step3 {
+		if _, _, ok := centralStep3SnapshotGet(job.key); ok {
+			continue
+		}
+		first.Add(1)
+		go func(fn func()) {
+			defer first.Done()
+			fn()
+		}(job.fn)
+	}
+	first.Wait()
+
+	step4 := []struct {
+		key string
+		fn  func()
+	}{
+		{centralStep4PartnersKey, a.refreshCentralStep4Partners},
+		{centralStep4FinanceKey, a.refreshCentralStep4Finance},
+		{centralStep4ImpactKey, a.refreshCentralStep4Impact},
+	}
+	var second sync.WaitGroup
+	for _, job := range step4 {
+		if _, _, ok := centralStep3SnapshotGet(job.key); ok {
+			continue
+		}
+		second.Add(1)
+		go func(fn func()) {
+			defer second.Done()
+			fn()
+		}(job.fn)
+	}
+	second.Wait()
+}
+
 func (a *app) centralStep3Store(ctx context.Context, key string, payload map[string]any) {
 	if payload == nil {
 		return
@@ -228,6 +273,18 @@ func (a *app) refreshCentralStep3Registry() {
 		}
 	}
 	if failed {
+		if _, _, ok := centralStep3SnapshotGet(centralStep3RegistryKey); ok {
+			return
+		}
+		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer persistCancel()
+		a.centralStep3Store(persistCtx, centralStep3RegistryKey, map[string]any{
+			"modules": []map[string]any{},
+			"groups":  []map[string]any{},
+			"trend":   []map[string]any{},
+			"status": "unavailable",
+			"unavailable": []string{"catalog"},
+		})
 		return
 	}
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -236,6 +293,8 @@ func (a *app) refreshCentralStep3Registry() {
 		"modules": modules,
 		"groups":  groups,
 		"trend":   trend,
+		"status": "healthy",
+		"unavailable": []string{},
 	})
 }
 
@@ -244,11 +303,21 @@ func (a *app) refreshCentralStep3Plans() {
 	defer cancel()
 	var page central10ItemsPage
 	if err := a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/plans", &page); err != nil {
+		if _, _, ok := centralStep3SnapshotGet(centralStep3PlansKey); ok {
+			return
+		}
+		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer persistCancel()
+		a.centralStep3Store(persistCtx, centralStep3PlansKey, map[string]any{
+			"plans": []map[string]any{}, "status": "unavailable", "unavailable": []string{"billing_plans"},
+		})
 		return
 	}
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer persistCancel()
-	a.centralStep3Store(persistCtx, centralStep3PlansKey, map[string]any{"plans": page.Items})
+	a.centralStep3Store(persistCtx, centralStep3PlansKey, map[string]any{
+		"plans": page.Items, "status": "healthy", "unavailable": []string{},
+	})
 }
 
 func (a *app) refreshCentralStep3Analytics() {
@@ -256,11 +325,21 @@ func (a *app) refreshCentralStep3Analytics() {
 	defer cancel()
 	var analytics map[string]any
 	if err := a.internalGET(ctx, a.hosts["billing"], "/api/v1/billing/packages/analytics", &analytics); err != nil {
+		if _, _, ok := centralStep3SnapshotGet(centralStep3AnalyticsKey); ok {
+			return
+		}
+		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer persistCancel()
+		a.centralStep3Store(persistCtx, centralStep3AnalyticsKey, map[string]any{
+			"analytics": map[string]any{}, "status": "unavailable", "unavailable": []string{"package_analytics"},
+		})
 		return
 	}
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer persistCancel()
-	a.centralStep3Store(persistCtx, centralStep3AnalyticsKey, map[string]any{"analytics": analytics})
+	a.centralStep3Store(persistCtx, centralStep3AnalyticsKey, map[string]any{
+		"analytics": analytics, "status": "healthy", "unavailable": []string{},
+	})
 }
 
 func (a *app) refreshCentralStep3Commercial() {
@@ -269,6 +348,20 @@ func (a *app) refreshCentralStep3Commercial() {
 
 	partners, partnerErr := a.central10AllPartners(ctx)
 	if partnerErr != nil {
+		if _, _, ok := centralStep3SnapshotGet(centralStep3CommercialKey); ok {
+			return
+		}
+		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer persistCancel()
+		a.centralStep3Store(persistCtx, centralStep3CommercialKey, map[string]any{
+			"partners": []map[string]any{},
+			"matrix_items": []map[string]any{},
+			"subscription_items": []map[string]any{},
+			"matrix_available": false,
+			"subscriptions_available": false,
+			"status": "unavailable",
+			"unavailable": []string{"partners"},
+		})
 		return
 	}
 	partnerIDs := make([]string, 0, len(partners))
@@ -287,12 +380,19 @@ func (a *app) refreshCentralStep3Commercial() {
 	if subscriptionsErr != nil {
 		subscriptionItems = anyItems(previous["subscription_items"])
 	}
+	unavailable := []string{}
+	if matrixErr != nil { unavailable = append(unavailable, "commercial_matrix") }
+	if subscriptionsErr != nil { unavailable = append(unavailable, "subscription_matrix") }
+	status := "healthy"
+	if len(unavailable) > 0 { status = "partial" }
 	payload := map[string]any{
 		"partners":            partners,
 		"matrix_items":        matrixItems,
 		"subscription_items":  subscriptionItems,
 		"matrix_available":    matrixErr == nil || len(matrixItems) > 0,
 		"subscriptions_available": subscriptionsErr == nil || len(subscriptionItems) > 0,
+		"status": status,
+		"unavailable": unavailable,
 	}
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer persistCancel()

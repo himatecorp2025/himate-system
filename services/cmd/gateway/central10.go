@@ -20,6 +20,8 @@ const (
 	central10StaleTTL   = 10 * time.Minute
 )
 
+const central10PartnerWorkspaceBudget = 1500 * time.Millisecond
+
 type central10CacheEntry struct {
 	payload    map[string]any
 	expiresAt  time.Time
@@ -962,6 +964,9 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 		activeAssignments += central10Int(module["active_partner_count"])
 	}
 
+	snapshotStatus := central10String(snapshot["status"])
+	if snapshotStatus == "" { snapshotStatus = "healthy" }
+	snapshotUnavailable := central10Step4Unavailable(snapshot["unavailable"])
 	payload := map[string]any{
 		"ready": true,
 		"module_options": modules,
@@ -975,7 +980,7 @@ func (a *app) central10Modules(w http.ResponseWriter, r *http.Request, actor use
 				"relationships": relationshipCount, "active_partner_assignments": activeAssignments,
 			},
 		},
-		"meta": centralStep3Meta(started, centralStep3RegistryKey, updatedAt, "healthy", nil),
+		"meta": centralStep3Meta(started, centralStep3RegistryKey, updatedAt, snapshotStatus, snapshotUnavailable),
 	}
 	w.Header().Set("X-Himate-Cache", "hot-snapshot")
 	w.Header().Set("Server-Timing", fmt.Sprintf("central-modules-registry;dur=%d", time.Since(started).Milliseconds()))
@@ -1168,10 +1173,13 @@ func (a *app) central10Packages(w http.ResponseWriter, r *http.Request, actor us
 		order := map[string]int{"STARTER": 1, "BUSINESS": 2, "FLEX": 3}
 		return order[central10String(canonical[i]["plan_key"])] < order[central10String(canonical[j]["plan_key"])]
 	})
+	snapshotStatus := central10String(plansSnapshot["status"])
+	if snapshotStatus == "" { snapshotStatus = "healthy" }
+	snapshotUnavailable := central10Step4Unavailable(plansSnapshot["unavailable"])
 	payload := map[string]any{
 		"ready": true,
 		"plans": canonical,
-		"meta": centralStep3Meta(started, centralStep3PlansKey, updatedAt, "healthy", nil),
+		"meta": centralStep3Meta(started, centralStep3PlansKey, updatedAt, snapshotStatus, snapshotUnavailable),
 	}
 	w.Header().Set("X-Himate-Cache", "hot-snapshot")
 	w.Header().Set("Server-Timing", fmt.Sprintf("central-packages-plans;dur=%d", time.Since(started).Milliseconds()))
@@ -1202,10 +1210,23 @@ func (a *app) central10PackagesSupplementary(w http.ResponseWriter, r *http.Requ
 	}
 
 	unavailable := []string{}
-	if !registryOK { unavailable = append(unavailable, "catalog") }
-	if !analyticsOK { unavailable = append(unavailable, "analytics") }
+	if !registryOK {
+		unavailable = append(unavailable, "catalog")
+	} else {
+		unavailable = append(unavailable, central10Step4Unavailable(registrySnapshot["unavailable"])...)
+	}
+	if !analyticsOK {
+		unavailable = append(unavailable, "analytics")
+	} else {
+		unavailable = append(unavailable, central10Step4Unavailable(analyticsSnapshot["unavailable"])...)
+	}
 	status := "healthy"
-	if len(unavailable) == 2 { status = "warming" } else if len(unavailable) > 0 { status = "partial" }
+	if registryOK && strings.EqualFold(central10String(registrySnapshot["status"]), "unavailable") &&
+		analyticsOK && strings.EqualFold(central10String(analyticsSnapshot["status"]), "unavailable") {
+		status = "unavailable"
+	} else if len(unavailable) > 0 {
+		status = "partial"
+	}
 	updatedAt := registryUpdatedAt
 	if analyticsUpdatedAt.After(updatedAt) { updatedAt = analyticsUpdatedAt }
 
@@ -1760,12 +1781,20 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	partnerID := raw
-	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
+	ctx, cancel := context.WithTimeout(r.Context(), central10PartnerWorkspaceBudget)
 	defer cancel()
 
 	type page struct{ Items []map[string]any `json:"items"` }
-	var partner, billing, terms, license, agreement, commercialStatus, paymentProfile, websiteAdapter, partnerDesign map[string]any
+	var partner, livePartner, billing, terms, license, agreement, commercialStatus, paymentProfile, websiteAdapter, partnerDesign map[string]any
 	var modules, documents, invoices, subscriptions, environments, provisioningJobs, impactSummary, evidenceItems, connectorCredentials, billingEvents page
+	if snapshot, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
+		for _, item := range anyItems(snapshot["items"]) {
+			if central10String(item["id"]) == partnerID {
+				partner = central10CopyMap(item)
+				break
+			}
+		}
+	}
 	portalUsers := []map[string]any{}
 	unavailable := []string{}
 	var unavailableMu sync.Mutex
@@ -1783,7 +1812,7 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		wg.Add(1)
 		go func(){ defer wg.Done(); err := a.internalGET(ctx, a.hosts[service], path, dst); mark(name, err) }()
 	}
-	runMap("partner", "partners", "/api/v1/partners/"+url.PathEscape(partnerID), &partner)
+	runMap("partner", "partners", "/api/v1/partners/"+url.PathEscape(partnerID), &livePartner)
 	if a.hasPermission(actor, "catalog.read") {
 		runPage("modules", "catalog", "/api/v1/partners/"+url.PathEscape(partnerID)+"/modules", &modules)
 	}
@@ -1831,6 +1860,9 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		}()
 	}
 	wg.Wait()
+	if livePartner != nil {
+		partner = livePartner
+	}
 
 	moduleView := central10PartnerModuleView(modules.Items, subscriptions.Items, "", "ALL")
 	productionEnvironment := central10ProductionEnvironment(environments.Items)
@@ -1875,7 +1907,9 @@ func (a *app) central10PartnerWorkspace(w http.ResponseWriter, r *http.Request, 
 		"payment_profile": paymentProfile,
 		"meta": central10Meta(started, status, unavailable),
 	}
-	central10Store(cacheKey, payload)
+	if status == "healthy" {
+		central10Store(cacheKey, payload)
+	}
 	w.Header().Set("X-Himate-Cache", "miss")
 	w.Header().Set("Server-Timing", fmt.Sprintf("central-partner-workspace;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)

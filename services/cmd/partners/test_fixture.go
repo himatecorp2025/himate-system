@@ -46,9 +46,16 @@ func (a *app) reconcileGoldenTestFixtures(ctx context.Context) (int, error) {
 		FROM partners.partners p
 		WHERE p.test_partner=TRUE
 		  AND lower(trim(p.display_name))='test partner'
-		  AND NOT EXISTS (
-			SELECT 1 FROM billing.invoices i
-			WHERE i.partner_id=p.id AND i.source='TEST_FIXTURE'
+		  AND (
+			(
+				SELECT COUNT(DISTINCT date_trunc('month',i.service_period_start))
+				FROM billing.invoices i
+				WHERE i.partner_id=p.id AND i.source='TEST_FIXTURE'
+			) < 6
+			OR NOT EXISTS (
+				SELECT 1 FROM billing.partner_plan_subscriptions s
+				WHERE s.partner_id=p.id AND s.status='ACTIVE'
+			)
 		  )
 		ORDER BY p.created_at,p.id`)
 	if err != nil {
@@ -216,6 +223,50 @@ func (a *app) seedTestPartnerFixture(w http.ResponseWriter, r *http.Request, id 
 		common.APIError(w, 500, "DB", "Could not seed Test Partner commercial terms")
 		return
 	}
+
+	// Keep a real recurring subscription state alongside the six completed
+	// monthly billing periods. CUSTOM isolates the Golden Test Partner from the
+	// production Starter/Business/Premium package analytics while exercising the
+	// same subscription lifecycle and workspace read models.
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO billing.partner_plan_subscriptions(
+		partner_id,plan_key,billing_frequency,status,current_period_start,current_period_end,next_billing_at,
+		monthly_price_snapshot,annual_list_price_snapshot,annual_price_snapshot,
+		next_plan_key,next_billing_frequency,change_effective_at,
+		custom_monthly_price,custom_annual_list_price,custom_annual_price,custom_module_limit,custom_selection_mode,updated_at
+	) VALUES(
+		$1,'CUSTOM','MONTHLY','ACTIVE',
+		date_trunc('month',CURRENT_DATE)::date,
+		(date_trunc('month',CURRENT_DATE)+INTERVAL '1 month')::date,
+		(date_trunc('month',CURRENT_DATE)+INTERVAL '1 month')::date,
+		1850,22200,22200,'','',NULL,1850,22200,22200,0,'CUSTOM',NOW()
+	)
+	ON CONFLICT(partner_id) DO UPDATE SET
+		plan_key='CUSTOM',billing_frequency='MONTHLY',status='ACTIVE',
+		current_period_start=EXCLUDED.current_period_start,current_period_end=EXCLUDED.current_period_end,
+		next_billing_at=EXCLUDED.next_billing_at,monthly_price_snapshot=1850,
+		annual_list_price_snapshot=22200,annual_price_snapshot=22200,
+		next_plan_key='',next_billing_frequency='',change_effective_at=NULL,
+		custom_monthly_price=1850,custom_annual_list_price=22200,custom_annual_price=22200,
+		custom_module_limit=0,custom_selection_mode='CUSTOM',updated_at=NOW()`, id)
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not seed Test Partner recurring subscription")
+		return
+	}
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO billing.plan_change_history(
+		partner_id,old_plan_key,new_plan_key,old_billing_frequency,new_billing_frequency,
+		change_type,effective_at,upgrade_charge,actor,reason
+	)
+	SELECT $1,'','CUSTOM','','MONTHLY','TEST_FIXTURE_STARTED',
+		(CURRENT_DATE-INTERVAL '6 months')::date,0,$2,$3
+	WHERE NOT EXISTS (
+		SELECT 1 FROM billing.plan_change_history h
+		WHERE h.partner_id=$1 AND h.change_type='TEST_FIXTURE_STARTED'
+	)`, id, actor, testFixtureMarker+" · fictional subscription started six months ago")
+	if err != nil {
+		common.APIError(w, 500, "DB", "Could not seed Test Partner subscription history")
+		return
+	}
+
 	_, err = tx.ExecContext(r.Context(), `INSERT INTO billing.initial_licenses(
 		partner_id,currency,required_amount,paid_amount,status,payment_date,payment_reference,verified_by,note,waived,waiver_reason,updated_at
 	) VALUES($1,'USD',13000,13000,'PAID',(CURRENT_DATE-INTERVAL '6 months')::date,'TEST-LICENSE-PAID',$2,$3,FALSE,'',NOW())
