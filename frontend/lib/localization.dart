@@ -216,6 +216,17 @@ class HimateI18n {
 
 
   static const Map<String, String> _literalHu = <String, String>{
+    'A HIMATE-defined module set for focused teams and first deployments.': 'HIMATE által meghatározott modulkészlet fókuszált csapatok és első bevezetések számára.',
+    'A broader HIMATE-defined module set for operating workflows.': 'Bővebb, HIMATE által meghatározott modulkészlet az üzemi munkafolyamatokhoz.',
+    'Unlimited access to every current and future eligible module.': 'Korlátlan hozzáférés minden jelenlegi és jövőbeli jogosult modulhoz.',
+    'HIMATE controls the included module set. Price changes apply to active customers from the effective date.': 'A csomagban foglalt modulkészletet a HIMATE határozza meg. Az árváltozások a hatálybalépés napjától érvényesek az aktív ügyfelekre.',
+    'Premium is Unlimited: every current and future eligible module is included automatically. Price changes apply from the effective date.': 'A Premium korlátlan: minden jelenlegi és jövőbeli jogosult modul automatikusan része. Az árváltozás a hatálybalépés napjától érvényes.',
+    'Partner-selectable package. Price changes apply from the effective date.': 'Partner által választható csomag. Az árváltozás a hatálybalépés napjától érvényes.',
+    'Effective-dated · audited': 'Hatálybalépéshez kötött · auditált',
+    'Never rewritten': 'Soha nem kerül felülírásra',
+    'HIMATE fixed package': 'HIMATE által rögzített csomag',
+    'Partner selectable': 'Partner által választható',
+    'Select the required number of published and implementation-ready modules.': 'Válaszd ki az előírt számú publikált és implementációra kész modult.',
     'Subscription packages, module entitlements and configuration.': 'Előfizetési csomagok, moduljogosultságok és konfiguráció.',
     'Invoicing, receivables, licenses and partner onboarding overview.': 'Számlázás, követelések, licencek és partner-onboarding áttekintése.',
     'Real outcomes. Transparent reporting. Measurable impact.': 'Valós eredmények. Átlátható jelentések. Mérhető hatás.',
