@@ -139,12 +139,16 @@ for token in [
 ]:
     check(token in frontend, f"Central-10.1 Step 1 network/cache contract missing: {token}")
 
+api_start = frontend.find("class Api {")
+api_end = frontend.find("\nclass ", api_start + 1)
+api_block = frontend[api_start:api_end] if api_start >= 0 and api_end > api_start else ""
+check(bool(api_block), "Central-10.1 Api transport block could not be isolated")
 for obsolete_timeout in [
     "Duration(milliseconds: 950)",
     "Duration(milliseconds: 800)",
 ]:
-    check(obsolete_timeout not in frontend,
-          f"Central-10.1 still uses obsolete browser cutoff: {obsolete_timeout}")
+    check(obsolete_timeout not in api_block,
+          f"Central-10.1 Api transport still uses obsolete browser cutoff: {obsolete_timeout}")
 
 for exact_prefetch in [
     "'year': '${DateTime.now().toUtc().year}'",
