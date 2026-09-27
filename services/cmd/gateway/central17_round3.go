@@ -46,7 +46,7 @@ func (a *app) central17Website(w http.ResponseWriter, r *http.Request, actor use
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 900*time.Millisecond)
+	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
 	defer cancel()
 
 	var pagesPayload, mediaPayload, environmentsPayload map[string]any
@@ -173,7 +173,7 @@ func (a *app) central17System(w http.ResponseWriter, r *http.Request, actor user
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 1100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(r.Context(), central10ReadBudget)
 	defer cancel()
 	var healthPayload, provisioningPayload, environmentsPayload, backupsPayload map[string]any
 	var healthErr, provisioningErr, environmentsErr, backupsErr, auditErr error
