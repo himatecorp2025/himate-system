@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,6 +34,21 @@ func Env(key, fallback string) string {
 	return fallback
 }
 
+func dbPoolInt(key string, fallback, minValue, maxValue int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < minValue {
+		return fallback
+	}
+	if parsed > maxValue {
+		return maxValue
+	}
+	return parsed
+}
+
 func OpenDB() (*sql.DB, error) {
 	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if dsn == "" {
@@ -42,15 +58,29 @@ func OpenDB() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// HIMATE runs many DB-backed microservices against the same PostgreSQL
+	// cluster. The pool budget must be safe for the whole topology, not only
+	// for one process. With 20 DB consumers in Compose, the previous 12-open
+	// default allowed 240 concurrent clients and exhausted PostgreSQL under
+	// CQRS materializer load. Four connections per service keeps the aggregate
+	// default at 80, leaving headroom for migrations, health checks and ops.
+	maxOpen := dbPoolInt("HIMATE_DB_MAX_OPEN_CONNS", 4, 1, 16)
+	maxIdle := dbPoolInt("HIMATE_DB_MAX_IDLE_CONNS", 2, 0, maxOpen)
+	if maxIdle > maxOpen {
+		maxIdle = maxOpen
+	}
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	db.SetMaxOpenConns(12)
-	db.SetMaxIdleConns(6)
-	db.SetConnMaxLifetime(30 * time.Minute)
 	return db, nil
 }
 

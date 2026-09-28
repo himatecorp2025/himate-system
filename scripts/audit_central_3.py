@@ -16,6 +16,7 @@ def require(ok: bool, message: str) -> None:
 frontend = read("frontend/lib/main.dart")
 partners = read("services/cmd/partners/main.go")
 gateway_c10 = read("services/cmd/gateway/central10.go")
+gateway_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
 localization = read("frontend/lib/localization.dart")
 
 for token in [
@@ -32,12 +33,14 @@ for token in [
 ]:
     require(token in frontend, f"Partners KPI/filter contract missing: {token}")
 
-require('"lifecycle_counts": partners.LifecycleCounts' in gateway_c10,
-        "Central-10 Partners read model does not expose authoritative lifecycle KPI counts")
-require('"reference_partners": partners.ReferenceCount' in gateway_c10,
-        "Central-10 Partners read model does not expose authoritative reference KPI count")
-require('"kpis": map[string]any{' in gateway_c10,
-        "Central-10 Partners read model does not assemble backend KPIs")
+require('"lifecycle_counts":   lifecycleCounts' in gateway_snapshots or '"lifecycle_counts": lifecycleCounts' in gateway_snapshots,
+        "Central Partners materializer does not persist authoritative lifecycle KPI counts")
+require('"reference_partners": referenceCount' in gateway_snapshots,
+        "Central Partners materializer does not persist authoritative reference KPI count")
+require('"kpis": step4Map(snapshot["kpis"])' in gateway_c10,
+        "Central Partners request path does not serve KPIs from the authoritative hot snapshot")
+require('centralSnapshotForRead(r.Context(), centralStep4PartnersKey)' in gateway_c10,
+        "Central Partners request path is not DB-first on the authoritative Partners snapshot")
 
 require('referenceOnly, _ := strconv.ParseBool(r.URL.Query().Get("reference"))' in partners,
         "Partners API does not parse reference filter")

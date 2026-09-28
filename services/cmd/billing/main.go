@@ -929,9 +929,16 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request, id string) {
 	now := time.Now().UTC()
 	base := effectiveBaseFee(t, now)
 	start, end := cycleWindow(t.ServiceAnchorDate, now)
-	if err := a.syncSubscriptions(r.Context(), id, t.Currency, rawMods, now); err != nil {
-		common.APIError(w, 500, "DB", "Could not synchronize module subscriptions")
-		return
+	readModelSource := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("read_model_source")), "1") ||
+		strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("read_model_source")), "true")
+	// Read-model builders are observers. They must never advance subscription
+	// lifecycle state, create immutable period snapshots, or emit billing events.
+	// Historical/API summary reads keep the authoritative synchronization behavior.
+	if !readModelSource {
+		if err := a.syncSubscriptions(r.Context(), id, t.Currency, rawMods, now); err != nil {
+			common.APIError(w, 500, "DB", "Could not synchronize module subscriptions")
+			return
+		}
 	}
 	extra, mods, err := a.effectiveModuleFees(r.Context(), id, rawMods, now)
 	if err != nil {

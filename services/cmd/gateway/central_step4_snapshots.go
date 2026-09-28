@@ -14,6 +14,12 @@ const (
 	centralStep4PartnersKey       = "partners_screen"
 	centralStep4FinanceKey        = "finance_screen"
 	centralStep4ImpactKey         = "impact_screen"
+	centralStep4AdministrationKey = "administration_screen"
+	centralStep4SystemKey         = "system_screen"
+	centralStep4WebsiteKey        = "website_screen"
+	centralStep4ConnectionsKey    = "connections_screen"
+	centralStep4ComplianceKey     = "compliance_screen"
+	centralStep4GlobalSearchKey   = "global_search"
 	centralStep4RefreshInterval   = 10 * time.Second
 	centralStep4MaterializeBudget = 6 * time.Second
 )
@@ -53,17 +59,26 @@ func (a *app) refreshCentralStep4Snapshots() {
 		{centralStep4PartnersKey, a.refreshCentralStep4Partners},
 		{centralStep4FinanceKey, a.refreshCentralStep4Finance},
 		{centralStep4ImpactKey, a.refreshCentralStep4Impact},
+		{centralStep4AdministrationKey, a.refreshCentralStep4Administration},
+		{centralStep4SystemKey, a.refreshCentralStep4System},
+		{centralStep4WebsiteKey, a.refreshCentralStep4Website},
+		{centralStep4ConnectionsKey, a.refreshCentralStep4Connections},
+		{centralStep4ComplianceKey, a.refreshCentralStep4Compliance},
 	}
+	var wg sync.WaitGroup
 	for _, refresh := range refreshes {
 		refresh := refresh
-		if !centralStep3BeginRefresh(refresh.key) {
-			continue
-		}
+		wg.Add(1)
 		go func() {
-			defer centralStep3EndRefresh(refresh.key)
-			refresh.fn()
+			defer wg.Done()
+			a.refreshCentralProjectionSerialized(refresh.key, refresh.fn)
 		}()
 	}
+	wg.Wait()
+
+	// Global search is a derived projection over Partners, Registry, Website and
+	// Administration. Build it only after its source LKG projections settle.
+	a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch)
 }
 
 func step4Map(raw any) map[string]any {
@@ -113,6 +128,7 @@ func (a *app) refreshCentralStep4Partners() {
 	// explicit unavailable model so the Partners route can render immediately
 	// instead of remaining in a permanent warming state.
 	if partnerErr != nil {
+		a.logCentralRefreshFailure(centralStep4PartnersKey, []string{"partners"})
 		if _, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
 			return
 		}
@@ -451,6 +467,51 @@ func (a *app) refreshCentralStep4Impact() {
 		unavailable = append(unavailable, "evidence")
 		evidence = step4Items(step4Unavailable(previous, "evidence"))
 	}
+
+	integrityByID := map[string]any{}
+	integrityErr := false
+	if evidenceErr == nil {
+		previousIntegrity := step4Map(step4Unavailable(previous, "evidence_integrity"))
+		var integrityWG sync.WaitGroup
+		var integrityMu sync.Mutex
+		sem := make(chan struct{}, 8)
+		for _, raw := range evidence {
+			item := raw
+			id := central10String(item["id"])
+			if id == "" || item["has_file"] != true {
+				continue
+			}
+			expectedSHA := central10String(item["sha256"])
+			if old, ok := previousIntegrity[id].(map[string]any); ok &&
+				old["valid"] == true && central10String(old["sha256"]) == expectedSHA {
+				integrityByID[id] = central10CopyMap(old)
+				continue
+			}
+			integrityWG.Add(1)
+			go func() {
+				defer integrityWG.Done()
+				select {
+				case sem <- struct{}{}:
+					defer func(){ <-sem }()
+				case <-ctx.Done():
+					integrityMu.Lock(); integrityErr = true; integrityMu.Unlock(); return
+				}
+				var result map[string]any
+				if err := a.internalGET(ctx, a.hosts["evidence"], "/api/v1/evidence/"+id+"/integrity", &result); err != nil {
+					integrityMu.Lock(); integrityErr = true; integrityMu.Unlock(); return
+				}
+				integrityMu.Lock()
+				integrityByID[id] = result
+				integrityMu.Unlock()
+			}()
+		}
+		integrityWG.Wait()
+		if integrityErr {
+			unavailable = append(unavailable, "evidence_integrity")
+		}
+	} else if previous != nil {
+		integrityByID = step4Map(previous["evidence_integrity"])
+	}
 	if reportsErr == nil {
 		successful++
 	} else {
@@ -478,6 +539,7 @@ func (a *app) refreshCentralStep4Impact() {
 		"definitions": definitions.Items,
 		"summary":     summary.Items,
 		"evidence":    evidence,
+		"evidence_integrity": integrityByID,
 		"reports":     reports.Items,
 		"analytics":   analytics,
 		"status":      status,
@@ -504,4 +566,52 @@ func centralStep4Meta(
 		meta["snapshot_age_ms"] = time.Since(updatedAt).Milliseconds()
 	}
 	return meta
+}
+
+
+func (a *app) refreshCentralStep4Administration() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+	payload := a.materializeCentralAdministration(ctx)
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4AdministrationKey, payload)
+}
+
+func (a *app) refreshCentralStep4System() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+	payload := a.materializeCentralSystem(ctx)
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4SystemKey, payload)
+}
+
+
+func (a *app) refreshCentralStep4Website() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+	payload := a.materializeCentralWebsite(ctx)
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4WebsiteKey, payload)
+}
+
+func (a *app) refreshCentralStep4Connections() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+	payload := a.materializeCentralConnections(ctx)
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4ConnectionsKey, payload)
+}
+
+
+func (a *app) refreshCentralStep4Compliance() {
+	ctx, cancel := context.WithTimeout(context.Background(), centralStep4MaterializeBudget)
+	defer cancel()
+	payload := a.materializeCentralCompliance(ctx)
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+	defer persistCancel()
+	a.centralStep3Store(persistCtx, centralStep4ComplianceKey, payload)
 }

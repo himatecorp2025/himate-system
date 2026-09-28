@@ -428,6 +428,8 @@ jobs:
           python3 scripts/audit_central_18.py
           python3 scripts/audit_central_19.py
           python3 scripts/audit_central_20.py
+          python3 scripts/audit_central_21.py
+          python3 scripts/audit_smoke_cqrs_compat.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
@@ -442,6 +444,14 @@ jobs:
           docker compose ps
           docker compose logs --no-color
           exit 1
+      - name: Configure bounded smoke HTTP clients
+        run: |
+          mkdir -p "$RUNNER_TEMP/himate-curl"
+          cat > "$RUNNER_TEMP/himate-curl/.curlrc" <<'EOF'
+          connect-timeout = 5
+          max-time = 90
+          EOF
+          echo "CURL_HOME=$RUNNER_TEMP/himate-curl" >> "$GITHUB_ENV"
       - name: Run START-01-08 backend smoke
         run: |
           # START-01–08 predates the explicit START-22.3 agreement/invoice gate.
@@ -594,6 +604,8 @@ jobs:
         run: sh scripts/smoke_central_18.sh http://127.0.0.1:8080
       - name: Run Central-20 hard-refresh, Test Partner and module consistency acceptance
         run: sh scripts/smoke_central_20.sh http://127.0.0.1:8080
+      - name: Run Central-21 persistent CQRS zero-fan-out outage acceptance
+        run: sh scripts/smoke_central_21.sh http://127.0.0.1:8080
       - name: Dump Phase 4/5/closure runtime diagnostics on failure
         if: failure()
         run: docker compose logs --no-color --tail=260 gateway partners catalog billing payments evidence storage backups environments runtime connector notifications automation tenantfinance

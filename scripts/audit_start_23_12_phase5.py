@@ -15,6 +15,8 @@ def require(ok: bool, message: str) -> None:
 partner = read("services/cmd/partners/main.go")
 archive = read("services/cmd/partners/compliance_archive.go")
 gateway = read("services/cmd/gateway/main.go")
+compliance_reads = read("services/cmd/gateway/compliance_materialized_reads.go")
+compliance_projector = read("services/cmd/gateway/central_compliance_read_model.go")
 main_dart = read("frontend/lib/main.dart")
 archive_dart = read("frontend/lib/compliance_archives.dart")
 worker = read("frontend/web/service-worker.js")
@@ -66,10 +68,16 @@ for forbidden in [
 # Phase 4 service identity and Gateway authorization remain authoritative.
 require('path == "/api/v1/archives"' in gateway and 'return "audit"' in gateway,
         "public archive API is not protected by audit.read permission")
-require("serveComplianceArchives" in gateway and '"/internal/v1/archives"' in gateway,
-        "archive reads do not cross the signed internal Phase 4 boundary")
+require("serveComplianceMaterializedGET" in compliance_reads
+        and "centralSnapshotForRead" in compliance_reads
+        and 'X-Himate-Cache", "persistent-read-model"' in compliance_reads,
+        "browser archive reads are not served from the persistent Compliance read model")
+require("materializeCentralCompliance" in compliance_projector
+        and '"/internal/v1/archives' in compliance_projector
+        and "a.internalGET(" in compliance_projector,
+        "Compliance background projector does not use the signed Phase 4 internal boundary")
 require("common.DoInternal(a.client, req)" in gateway,
-        "archive internal calls bypass the Phase 4 service-signing transport")
+        "Gateway internal transport no longer uses Phase 4 service signing")
 require('mux.HandleFunc("/internal/v1/archives"' in partner,
         "Partners service exposes no signed internal archive endpoint")
 require('mux.HandleFunc("/api/v1/archives"' not in partner,

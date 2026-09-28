@@ -514,7 +514,7 @@ func (a *app) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if _,err:=a.db.Exec(`UPDATE payments.webhook_events SET status='PROCESSED',processed_at=NOW() WHERE provider_event_id=$1`,event.ID);err!=nil{
 		common.APIError(w,500,"DB","Could not finalize webhook processing state");return
 	}
-	common.JSON(w, 200, map[string]any{"status":"processed","event_id":event.ID,"attempt_id":x.ID,"payment_status":status})
+	common.JSON(w, 200, map[string]any{"status":"processed","event_id":event.ID,"attempt_id":x.ID,"partner_id":x.PartnerID,"payment_status":status})
 }
 
 func verifyStripeSignature(body []byte, header, secret string, now time.Time, tolerance time.Duration) error {

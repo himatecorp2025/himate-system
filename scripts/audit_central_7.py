@@ -28,6 +28,8 @@ billing_plans = read("services/cmd/billing/plans.go")
 dunning = read("services/cmd/billing/dunning.go")
 central6_backend = read("services/cmd/billing/central6.go")
 partner_gateway = read("services/cmd/gateway/partner_portal.go")
+partner_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
+materialized_reads = read("services/cmd/gateway/materialized_read_models.go")
 gateway_security = read("services/cmd/gateway/security_phase4.go")
 partners = read("services/cmd/partners/main.go")
 impact = read("services/cmd/impact/main.go")
@@ -100,8 +102,16 @@ check("workflow_status IN ('SENT','PAID')" in dunning,
 check("Only SENT invoices can be marked paid" in central6_backend,
       "CENTRAL-6 allows payment before invoice distribution")
 
-check('"/internal/v1/partners/"+url.PathEscape(partnerID)+"/portal-gate"' in partner_gateway,
-      "Partner Portal login no longer calls the billing onboarding gate")
+check('gate := step4Map(snapshot["portal_gate"])' in partner_gateway
+      and 'a.partnerWorkspaceForRead(ctx, partnerID)' in partner_gateway,
+      "Partner Portal login is not enforcing the persisted tenant portal gate")
+check('runMap("portal_gate", "billing", "/internal/v1/partners/"+escapedID+"/portal-gate", &portalGate)' in partner_snapshots,
+      "Partner workspace materializer no longer refreshes the Billing onboarding gate")
+check('"portal_gate":                     portalGate' in partner_snapshots
+      and '"portal_gate"' in materialized_reads,
+      "Partner Portal gate is not part of the persistent LKG tenant read model")
+check('a.internalGET(ctx,a.hosts["billing"]' not in partner_gateway[partner_gateway.find("func (a *app) partnerAccessAllowed"):partner_gateway.find("func writePartnerAccessError")],
+      "Partner Portal login access check regressed to synchronous Billing fan-out")
 check("state.State == onboardingActive && state.PortalEnabled" in central6_backend,
       "CENTRAL-6 Portal gate is no longer ACTIVE + portal_enabled")
 

@@ -73,9 +73,11 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
   Future<void> load({bool quiet = false, bool force = false}) async {
     if (!quiet && mounted) setState(() { loading = true; error = null; });
     try {
-      final model = await widget.api
-          .get(administrationPath(), force: force, maxAge: const Duration(seconds: 5))
-          .timeout(const Duration(seconds: 6));
+      final model = await widget.api.get(
+        administrationPath(),
+        force: force,
+        maxAge: const Duration(seconds: 5),
+      );
       if (!mounted) return;
       setState(() {
         company = model['company'] is Map ? Map<String, dynamic>.from(model['company'] as Map) : <String, dynamic>{};
@@ -89,9 +91,17 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
         error = null;
       });
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) {
+        final hasLastKnownGood = company.isNotEmpty || partners.isNotEmpty || kpis.isNotEmpty;
+        setState(() {
+          error = e.toString();
+          loading = !hasLastKnownGood;
+        });
+      }
     } finally {
-      if (!quiet && mounted) setState(() => loading = false);
+      if (!quiet && mounted && (company.isNotEmpty || partners.isNotEmpty || kpis.isNotEmpty)) {
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -234,18 +244,10 @@ class _AdministrationCenterPageState extends State<AdministrationCenterPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (loading && company.isEmpty && partners.isEmpty) ...[
-            _MessageCard(
-              icon: Icons.sync_rounded,
-              title: uiLiteral('Administration data is loading'),
-              message: uiLiteral('The Administration workspace is available while the latest central read model is loaded.'),
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (error != null) ...[
-            _MessageCard(
-              icon: Icons.cloud_off_outlined,
-              title: uiLiteral('Administration data is partially unavailable'),
-              message: error!,
+            const LinearProgressIndicator(
+              minHeight: 2,
+              color: brandGold,
+              backgroundColor: brandMist,
             ),
             const SizedBox(height: 14),
           ],

@@ -9,6 +9,9 @@ portal = (root / "services/cmd/catalog/partner_portal.go").read_text(encoding="u
 billing = (root / "services/cmd/billing/main.go").read_text(encoding="utf-8")
 impact = (root / "services/cmd/impact/main.go").read_text(encoding="utf-8")
 frontend = (root / "frontend/lib/main.dart").read_text(encoding="utf-8")
+gateway_reads = (root / "services/cmd/gateway/materialized_read_models.go").read_text(encoding="utf-8")
+partner_reads = (root / "services/cmd/gateway/partner_materialized_reads.go").read_text(encoding="utf-8")
+partner_snapshots = (root / "services/cmd/gateway/central_partner_workspace_snapshots.go").read_text(encoding="utf-8")
 openapi = (root / "docs/openapi.yaml").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
@@ -58,10 +61,13 @@ checks = [
         and 'if partnerID!="" {' in impact,
     ),
     (
-        "partner workspace secondary loading is bounded",
-        ".timeout(const Duration(seconds: 8))" in frontend
-        and "timed out after 8 seconds" in frontend
-        and "_supplementalLoadGeneration" in frontend,
+        "partner workspace reads are persistent CQRS and never browser-timeout bounded",
+        "partnerWorkspaceForRead(ctx context.Context, partnerID string)" in gateway_reads
+        and "loadPartnerWorkspaceDB(ctx, partnerID)" in gateway_reads
+        and "servePartnerMaterializedGET" in partner_reads
+        and "materializeCentralPartnerWorkspace" in partner_snapshots
+        and ".timeout(const Duration(seconds: 8))" not in frontend
+        and "timed out after 8 seconds" not in frontend,
     ),
     (
         "admin can mark and clearly identify Golden Test Partner",
