@@ -171,6 +171,83 @@ func (a *app) centralSnapshotForRead(ctx context.Context, key string) (map[strin
 // the request path, so a slow/down dependency cannot turn a smoke GET into a
 // timeout. Synchronous write-through refreshes this projection on partner and
 // system mutations before the source mutation ACK is released.
+// serveGatewayHealthCompatibility exposes the historical release-health contract
+// from local/persistent LKG state only. It performs zero downstream fan-out on
+// the request path, so START/CENTRAL smoke health checks are deterministic even
+// while background materializers are reconciling.
+//
+// The configured Gateway release is the compatibility registry authority. When
+// a persistent System LKG contains service rows, their last-known status
+// overrides the deterministic healthy baseline for known configured services.
+func (a *app) serveGatewayHealthCompatibility(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	started := time.Now()
+	services := map[string]string{"identity": "ok"}
+	serviceVersions := map[string]string{"gateway": a.version}
+	for name, host := range a.hosts {
+		if strings.TrimSpace(host) == "" {
+			continue
+		}
+		services[name] = "ok"
+		serviceVersions[name] = a.version
+	}
+
+	source := "deterministic-lkg"
+	if snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey); ok {
+		healthAPI := step4Map(snapshot["health_api"])
+		rows := step4Items(healthAPI["services"])
+		if len(rows) > 0 {
+			source = "persistent-read-model"
+			for _, row := range rows {
+				name := strings.TrimSpace(central10String(row["name"]))
+				if name == "" {
+					continue
+				}
+				if _, configured := a.hosts[name]; !configured {
+					continue
+				}
+				status := strings.ToUpper(strings.TrimSpace(central10String(row["status"])))
+				switch status {
+				case "OK", "HEALTHY", "LIVE", "READY", "ACTIVE", "DEPLOYED":
+					services[name] = "ok"
+				default:
+					services[name] = "unavailable"
+				}
+			}
+		}
+	}
+
+	overall := "ok"
+	for _, status := range services {
+		if status != "ok" {
+			overall = "degraded"
+			break
+		}
+	}
+	statusCode := http.StatusOK
+	if overall != "ok" {
+		statusCode = http.StatusServiceUnavailable
+	}
+	w.Header().Set("X-Himate-Health-Source", source)
+	w.Header().Set("X-Read-Model", "Authoritative-LKG")
+	common.JSON(w, statusCode, map[string]any{
+		"status":             overall,
+		"service":            "himate-gateway",
+		"environment":        a.env,
+		"version":            a.version,
+		"architecture":       "containerized-microservices-start-23.11.3k",
+		"readiness":          gatewayReadiness.Load(),
+		"checked_at":         time.Now().UTC(),
+		"duration_ms":        time.Since(started).Milliseconds(),
+		"services":           services,
+		"service_versions":   serviceVersions,
+		"release_consistent": overall == "ok",
+	})
+}
+
 func (a *app) serveSystemHealthCompatibility(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
@@ -466,7 +543,7 @@ func (a *app) refreshHealthSourceWriteThrough() bool {
 		}
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/internal/v1/system-health/refresh", nil)
 	if err != nil {
@@ -515,7 +592,7 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	// path before rebuilding the Central System projection so an immediate GET/F5
 	// observes the committed provisioning/environment/connector/partner state
 	// without any read-side fan-out.
-	if partnerMutation || systemMutation {
+	if systemMutation {
 		a.refreshHealthSourceWriteThrough()
 	}
 

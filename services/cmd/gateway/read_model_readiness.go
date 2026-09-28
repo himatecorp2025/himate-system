@@ -25,7 +25,7 @@ func gatewayReadinessGate(next http.Handler) http.Handler {
 		if r != nil && r.URL != nil {
 			path = r.URL.Path
 		}
-		if gatewayReadiness.Load() || path == "/healthz" || path == "/api/v1/live" {
+		if gatewayReadiness.Load() || path == "/healthz" {
 			next.ServeHTTP(w, r)
 			return
 		}
