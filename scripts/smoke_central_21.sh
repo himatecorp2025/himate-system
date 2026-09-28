@@ -97,7 +97,7 @@ check_read() {
   expected_cache="$2"
   enforce_slo="${3:-false}"
   TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$COOKIE" -H 'X-Himate-Locale: en' -H 'X-Himate-Read-Model: browser' "$BASE_URL$path")"
-  grep -Eiq "^X-Himate-Cache: ($expected_cache)\r?$" "$HEADERS" || {
+  tr -d '\r' < "$HEADERS" | grep -Eiq "^X-Himate-Cache: ($expected_cache)$" || {
     echo "Unexpected read-model cache header for $path"
     cat "$HEADERS"
     exit 1
@@ -122,7 +122,7 @@ check_partner_read() {
   path="$1"
   enforce_slo="${2:-false}"
   TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$PARTNER_COOKIE" "$BASE_URL$path")"
-  grep -Eiq "^X-Himate-Cache: persistent-tenant-read-model\r?$" "$HEADERS" || {
+  tr -d '\r' < "$HEADERS" | grep -Eiq "^X-Himate-Cache: persistent-tenant-read-model$" || {
     echo "Unexpected Partner Portal read-model cache header for $path"
     cat "$HEADERS"
     exit 1
@@ -146,8 +146,8 @@ PY
 check_partner_pdf() {
   enforce_slo="${1:-false}"
   TTFB="$(curl --max-time 2 -fsS -w '%{time_starttransfer}' -D "$HEADERS" -o "$BODY" -b "$PARTNER_COOKIE" "$BASE_URL/partner/api/v1/billing/invoices/$PARTNER_INVOICE_ID/pdf")"
-  grep -Eiq "^X-Himate-Cache: persistent-tenant-read-model\r?$" "$HEADERS"
-  grep -Eiq "^Content-Type: application/pdf\r?$" "$HEADERS"
+  tr -d '\r' < "$HEADERS" | grep -Eiq "^X-Himate-Cache: persistent-tenant-read-model$"
+  tr -d '\r' < "$HEADERS" | grep -Eiq "^Content-Type: application/pdf$"
   python3 - "$BODY" "$TTFB" "$enforce_slo" <<'PY'
 import sys
 with open(sys.argv[1],"rb") as f:

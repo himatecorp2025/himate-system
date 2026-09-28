@@ -51,6 +51,10 @@ common_go = read("services/internal/common/common.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
 dashboard_snapshots = read("services/cmd/gateway/dashboard_snapshot.go")
 hot_responses = read("services/cmd/gateway/central_hot_response_cache.go")
+central21_smoke = read("scripts/smoke_central_21.sh")
+
+check("tr -d \'\\r\' < \"$HEADERS\"" in central21_smoke and "\\r?$" not in central21_smoke,
+      "CENTRAL-21 smoke header assertions are not CRLF-normalized")
 
 # Shared database capacity and background materializer concurrency are part of
 # the CQRS contract. A zero-fan-out read path is not production-safe if the
