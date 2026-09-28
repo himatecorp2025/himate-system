@@ -121,6 +121,8 @@ check("if !partnerWorkspaceSnapshotValid(payload)" in models,
       "Tenant store no longer rejects partial/unavailable payloads")
 check("func (a *app) buildPartnerWorkspaceLocalLKG" in models
       and "func (a *app) refreshPartnerWorkspaceLocalLKG" in models
+      and "func (a *app) ensurePartnerWorkspaceLocalLKG" in models
+      and "Preserve every already-materialized field" in models
       and 'payload["local_lkg"] = true' in models
       and "internalGET(" not in func_block(models, "func (a *app) buildPartnerWorkspaceLocalLKG"),
       "Tenant direct-route fallback is not a local zero-fan-out PostgreSQL LKG")

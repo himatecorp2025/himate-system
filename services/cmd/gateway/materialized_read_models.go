@@ -366,6 +366,29 @@ func (a *app) buildPartnerWorkspaceLocalLKG(ctx context.Context, partnerID strin
 		return nil, err
 	}
 
+	// Preserve every already-materialized field. The local PostgreSQL fallback
+	// is a repair/seed layer, never a downgrade from a rich tenant LKG to an
+	// empty structural baseline.
+	payload := partnerWorkspaceBaseline(partner)
+	newLocalLKG := true
+	var existingRaw []byte
+	if err := a.db.QueryRowContext(ctx,
+		`SELECT COALESCE(
+			(SELECT payload FROM identity.partner_workspace_snapshots WHERE partner_id=$1),
+			'null'::jsonb
+		)`,
+		partnerID,
+	).Scan(&existingRaw); err != nil {
+		return nil, err
+	}
+	if len(existingRaw) > 0 && string(existingRaw) != "null" {
+		var existing map[string]any
+		if json.Unmarshal(existingRaw, &existing) == nil && partnerWorkspaceSnapshotValid(existing) {
+			payload = centralStep3CopyMap(existing)
+			newLocalLKG = existing["local_lkg"] == true
+		}
+	}
+
 	loadRows := func(query string) ([]map[string]any, error) {
 		var raw []byte
 		if err := a.db.QueryRowContext(ctx, query, partnerID).Scan(&raw); err != nil {
@@ -406,10 +429,7 @@ func (a *app) buildPartnerWorkspaceLocalLKG(ctx context.Context, partnerID strin
 		FROM evidence.items x WHERE x.partner_id=$1`)
 	if err != nil { return nil, err }
 
-	payload := partnerWorkspaceBaseline(partner)
-	payload["seeded"] = false
-	payload["local_lkg"] = true
-	payload["local_lkg_source"] = "postgres"
+	payload["partner"] = central10CopyMap(partner)
 	payload["invoices"] = invoices
 	payload["subscriptions"] = subscriptions
 	payload["impact_summary"] = impactRows
@@ -419,6 +439,11 @@ func (a *app) buildPartnerWorkspaceLocalLKG(ctx context.Context, partnerID strin
 	payload["portal_impact"] = page(impactRows, 100)
 	payload["impact_values_api"] = page(impactRows, 500)
 	payload["evidence_api"] = page(evidenceRows, 100)
+	if newLocalLKG {
+		payload["seeded"] = false
+		payload["local_lkg"] = true
+		payload["local_lkg_source"] = "postgres"
+	}
 	return payload, nil
 }
 
@@ -437,6 +462,26 @@ func (a *app) refreshPartnerWorkspaceLocalLKG(ctx context.Context, partnerID str
 		return memory, updated, true
 	}
 	return payload, time.Now().UTC(), true
+}
+
+func (a *app) ensurePartnerWorkspaceLocalLKG(ctx context.Context, partnerID string) (map[string]any, time.Time, bool) {
+	partnerID = strings.TrimSpace(partnerID)
+	if partnerID == "" {
+		return nil, time.Time{}, false
+	}
+	key := centralPartnerWorkspaceKey(partnerID)
+	if memory, updated, ok := centralStep3SnapshotGet(key); ok {
+		return memory, updated, true
+	}
+	if payload, updated, err := a.loadPartnerWorkspaceDB(ctx, partnerID); err == nil {
+		centralStep3Snapshots.Lock()
+		centralStep3Snapshots.items[key] = centralStep3SnapshotEntry{
+			payload: centralStep3CopyMap(payload), updatedAt: updated,
+		}
+		centralStep3Snapshots.Unlock()
+		return payload, updated, true
+	}
+	return a.refreshPartnerWorkspaceLocalLKG(ctx, partnerID)
 }
 
 func (a *app) partnerWorkspaceForRead(ctx context.Context, partnerID string) (map[string]any, time.Time, bool) {
@@ -845,7 +890,7 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	// 503 until the periodic full materializer happens to catch up.
 	if strings.TrimSpace(partnerID) != "" {
 		localCtx, localCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
-		a.refreshPartnerWorkspaceLocalLKG(localCtx, partnerID)
+		a.ensurePartnerWorkspaceLocalLKG(localCtx, partnerID)
 		localCancel()
 	}
 

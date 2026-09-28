@@ -140,12 +140,14 @@ for token in [
     'FROM impact.metric_values x WHERE x.partner_id=$1',
     'FROM evidence.items x WHERE x.partner_id=$1',
     'func (a *app) refreshPartnerWorkspaceLocalLKG',
+    'func (a *app) ensurePartnerWorkspaceLocalLKG',
+    'Preserve every already-materialized field',
     'partner materialized cache miss; rebuilding local PostgreSQL LKG',
 ]:
     check(token in read_models, f'Central-20 local tenant LKG fallback missing: {token}')
-check(read_models.find('refreshPartnerWorkspaceLocalLKG(localCtx, partnerID)') <
+check(read_models.find('ensurePartnerWorkspaceLocalLKG(localCtx, partnerID)') <
       read_models.find('a.refreshGlobalTenantReadModelSlice(ctx, partnerID'),
-      'Tenant mutation does not persist a local LKG before narrow slice refresh')
+      'Tenant mutation does not ensure a local LKG before narrow slice refresh')
 
 # 5. Golden Test Partner represents six distinct historical months plus an active subscription.
 for token in [
