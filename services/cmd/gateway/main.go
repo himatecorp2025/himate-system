@@ -1365,7 +1365,11 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 				refreshCancel()
 				// Persist the durable trigger first, but do not let its worker race the
 				// foreground write-through for the same projection locks.
-				a.writeThroughReadModels(finalPartnerID, refreshReason)
+				foregroundReason := refreshReason
+				if readModelForegroundModuleDelta(r.Method, r.URL.Path) {
+					foregroundReason += foregroundModuleDeltaMarker
+				}
+				a.writeThroughReadModels(finalPartnerID, foregroundReason)
 				if stagedRefresh {
 					wakeReadModelRefreshWorker()
 				}

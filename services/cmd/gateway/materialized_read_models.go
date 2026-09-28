@@ -18,8 +18,10 @@ const (
 	readModelRefreshPoll          = 2 * time.Second
 	readModelRefreshBatch         = 100
 	readModelPersistBudget        = 2 * time.Second
-	readModelRefreshConcurrency   = 3
-	readModelRefreshAcquireBudget = 8 * time.Second
+	readModelRefreshConcurrency    = 3
+	readModelRefreshAcquireBudget  = 8 * time.Second
+	readModelGlobalBurstQuiet      = 3 * time.Second
+	readModelGlobalBurstMaxDeferral = 12 * time.Second
 )
 
 var (
@@ -522,6 +524,51 @@ func readModelReasonRefreshesAllTenants(reason string) bool {
 	return modules || plans || design
 }
 
+const foregroundModuleDeltaMarker = "/foreground-module-delta"
+
+func readModelForegroundModuleDelta(method, path string) bool {
+	if method != http.MethodPatch {
+		return false
+	}
+	path = strings.Trim(strings.ToLower(strings.TrimSpace(path)), "/")
+	const prefix = "api/v1/modules/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	tail := strings.TrimPrefix(path, prefix)
+	return tail != "" && !strings.Contains(tail, "/")
+}
+
+func stripForegroundReadModelMarker(reason string) string {
+	return strings.ReplaceAll(reason, foregroundModuleDeltaMarker, "")
+}
+
+func readModelGlobalBurstShouldDefer(events []readModelRefreshEvent, now time.Time) bool {
+	var oldest, latest time.Time
+	global := false
+	for _, event := range events {
+		modules, plans, design := readModelGlobalTenantScopes(event.reason)
+		if !modules && !plans && !design {
+			continue
+		}
+		global = true
+		at := event.createdAt.UTC()
+		if oldest.IsZero() || at.Before(oldest) {
+			oldest = at
+		}
+		if latest.IsZero() || at.After(latest) {
+			latest = at
+		}
+	}
+	if !global || oldest.IsZero() || latest.IsZero() {
+		return false
+	}
+	if now.Sub(oldest) >= readModelGlobalBurstMaxDeferral {
+		return false
+	}
+	return now.Sub(latest) < readModelGlobalBurstQuiet
+}
+
 func (a *app) refreshCentralProjectionSerialized(key string, refresh func()) bool {
 	waitCtx, waitCancel := context.WithTimeout(context.Background(), readModelRefreshAcquireBudget)
 	defer waitCancel()
@@ -572,6 +619,17 @@ func (a *app) refreshHealthSourceWriteThrough() bool {
 
 func (a *app) writeThroughReadModels(partnerID, reason string) {
 	reason = strings.ToLower(strings.TrimSpace(reason))
+	foregroundModuleDelta := strings.Contains(reason, foregroundModuleDeltaMarker)
+	reason = stripForegroundReadModelMarker(reason)
+
+	// PATCH /api/v1/modules/:key is synchronously applied to the persistent
+	// registry snapshot by applyCentralModuleMutationSnapshot before this call.
+	// Do not rebuild every derived projection 80 times during a canonical
+	// portfolio publish burst; the durable queue coalesces those derived reads.
+	if foregroundModuleDelta {
+		return
+	}
+
 	jobsByKey := map[string]func(){}
 	add := func(key string, fn func()) { jobsByKey[key] = fn }
 
@@ -892,6 +950,15 @@ func (a *app) processReadModelRefreshQueue() {
 	}
 	rows.Close()
 	if len(events) == 0 {
+		return
+	}
+
+	// Global definition writes often arrive as a burst (for example publishing
+	// the 40 canonical modules performs 80 PATCHes). Foreground delta write-through
+	// already protects immediate consistency. Let the durable worker wait for a
+	// short quiet window so the entire burst is reconciled once instead of racing
+	// every following mutation for the same projection locks.
+	if readModelGlobalBurstShouldDefer(events, time.Now().UTC()) {
 		return
 	}
 

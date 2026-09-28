@@ -220,8 +220,19 @@ check('if moduleScope {' in global_slice
 check("read-model refresh batch remains pending" not in models
       and "read-model refresh batch consumed after bounded LKG reconciliation attempt" in models,
       "Durable read-model queue can still head-of-line replay a failed batch forever")
-check("readModelRefreshAcquireBudget = 8 * time.Second" in models,
+check("readModelRefreshAcquireBudget  = 8 * time.Second" in models
+      or "readModelRefreshAcquireBudget = 8 * time.Second" in models,
       "Foreground read-model lock acquisition is no longer bounded to the accepted budget")
+check("foregroundModuleDeltaMarker" in models
+      and "readModelForegroundModuleDelta" in models
+      and "applyCentralModuleMutationSnapshot" in main
+      and "foregroundReason += foregroundModuleDeltaMarker" in main,
+      "Canonical module PATCHes no longer use persistent registry delta write-through")
+check("readModelGlobalBurstShouldDefer" in models
+      and "readModelGlobalBurstQuiet" in models
+      and "readModelGlobalBurstMaxDeferral" in models
+      and "if readModelGlobalBurstShouldDefer(events, time.Now().UTC())" in models,
+      "Global definition durable reconciliation can still race every mutation in a burst")
 check("Configure bounded smoke HTTP clients" in workflow
       and "CURL_HOME=" in workflow
       and "max-time = 90" in workflow,
