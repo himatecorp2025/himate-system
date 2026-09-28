@@ -27,6 +27,9 @@ billing_main = read("services/cmd/billing/main.go")
 impact = read("services/cmd/impact/central8.go")
 impact_main = read("services/cmd/impact/main.go")
 gateway_c10 = read("services/cmd/gateway/central10.go")
+gateway_main = read("services/cmd/gateway/main.go")
+readiness = read("services/cmd/gateway/read_model_readiness.go")
+step3 = read("services/cmd/gateway/central_step3_snapshots.go")
 openapi = read("docs/openapi.yaml")
 
 # CENTRAL-16 intentionally supersedes the Central-9 dark presentation layer
@@ -89,27 +92,22 @@ backend_weekly = all(token in gateway_c10 for token in [
 check(legacy_weekly or backend_weekly,
       "Central-9 four-week elapsed-window contract missing")
 
-# Central-10.1 keeps widgets lazily mounted while prewarming every permission-
-# visible materialized screen read model before the first menu click.
-legacy_prefetch = all(token in frontend for token in [
-    "final Map<String, _ApiCacheEntry> _cache",
-    "final Map<String, Future<Map<String, dynamic>>> _inflight",
-    "paths.add('/api/v1/billing/plans')",
-    "paths.add('/api/v1/billing/packages/analytics')",
+# CENTRAL-21 supersedes browser prewarming: persistent LKG materializers are
+# warmed by the Gateway before normal Central traffic, so the first screen read
+# does not race a browser prefetch storm.
+warm_start = frontend.find("void _warmControlPlane()")
+warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
+warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
+authoritative_warmup = all([
+    "final Map<int, Widget> _pageCache" in frontend,
+    "Gateway owns authoritative read-model warming" in warm,
+    "api.prefetch(" not in warm,
+    "a.warmMissingCentralSnapshots()" in readiness,
+    "func centralSnapshotValid(key string, payload map[string]any) bool" in step3,
+    "central read-model refresh rejected; retaining last-known-good snapshot" in step3,
 ])
-backend_first_prefetch = all(token in frontend for token in [
-    "final Map<int, Widget> _pageCache",
-    "final primaryTargets = <String>{};",
-    "final deferredTargets = <String>{};",
-    "primaryTargets.add(centralModulesInitialPath())",
-    "primaryTargets.add(centralPackagesInitialPath())",
-    "primaryTargets.add(centralFinanceInitialPath())",
-    "deferredTargets.add(centralImpactInitialPath())",
-    "api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30))",
-    "api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30))",
-])
-check(legacy_prefetch or backend_first_prefetch,
-      "Central-9/10 performance contract missing")
+check(authoritative_warmup,
+      "Central-9/10 authoritative LKG performance contract missing")
 
 # PDF only: no CSV export route remains on Central surfaces.
 routes = {

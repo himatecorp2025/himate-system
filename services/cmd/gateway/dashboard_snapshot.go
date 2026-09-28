@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -207,10 +208,30 @@ func dashboardPartnerGeo(partners []map[string]any) map[string]any {
 	}
 }
 
-func (a *app) loadDashboardSnapshot(year int) (map[string]any, time.Time, error) {
+func dashboardSnapshotValid(payload map[string]any) bool {
+	if payload == nil {
+		return false
+	}
+	meta := dashboardCopyBlock(payload["meta"])
+	if !strings.EqualFold(central10String(meta["status"]), "healthy") {
+		return false
+	}
+	for _, key := range []string{"partners", "modules", "billing", "impact", "partner_geo"} {
+		block := dashboardCopyBlock(payload[key])
+		if block["available"] != true || !strings.EqualFold(central10String(block["status"]), "healthy") {
+			return false
+		}
+	}
+	activity := dashboardCopyBlock(payload["activity"])
+	return strings.EqualFold(central10String(activity["status"]), "healthy")
+}
+
+func (a *app) loadDashboardSnapshotContext(ctx context.Context, year int) (map[string]any, time.Time, error) {
+	started := time.Now()
 	var raw []byte
 	var updated time.Time
-	err := a.db.QueryRow(
+	err := a.db.QueryRowContext(
+		ctx,
 		`SELECT payload,updated_at FROM identity.dashboard_snapshots WHERE year=$1`,
 		year,
 	).Scan(&raw, &updated)
@@ -221,7 +242,17 @@ func (a *app) loadDashboardSnapshot(year int) (map[string]any, time.Time, error)
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, time.Time{}, err
 	}
+	if !dashboardSnapshotValid(payload) {
+		return nil, time.Time{}, fmt.Errorf("dashboard snapshot for %d failed LKG validation", year)
+	}
+	if elapsed := time.Since(started); elapsed > readModelTargetLatency && a.log != nil {
+		a.log.Warn("dashboard materialized read exceeded target", "year", year, "duration_ms", elapsed.Milliseconds())
+	}
 	return payload, updated.UTC(), nil
+}
+
+func (a *app) loadDashboardSnapshot(year int) (map[string]any, time.Time, error) {
+	return a.loadDashboardSnapshotContext(context.Background(), year)
 }
 
 func (a *app) materializeDashboardActivity(ctx context.Context) ([]map[string]any, error) {
@@ -294,15 +325,15 @@ func (a *app) requestDashboardRefresh() {
 }
 
 func (a *app) runDashboardMaterializer() {
-	a.refreshDashboardSnapshot(time.Now().UTC().Year())
+	a.refreshDashboardSerialized()
 	ticker := time.NewTicker(dashboardSnapshotRefreshInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			a.refreshDashboardSnapshot(time.Now().UTC().Year())
+			a.refreshDashboardSerialized()
 		case <-a.dashboardRefreshCh:
-			a.refreshDashboardSnapshot(time.Now().UTC().Year())
+			a.refreshDashboardSerialized()
 		}
 	}
 }
@@ -313,24 +344,29 @@ func (a *app) refreshDashboardSnapshot(year int) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), dashboardMaterializeBudget)
 	defer cancel()
-
-	payload, changed := a.materializeDashboardSnapshot(ctx, year)
-	if payload == nil {
+	payload, _ := a.materializeDashboardSnapshot(ctx, year)
+	if !dashboardSnapshotValid(payload) {
+		if a.log != nil {
+			a.log.Warn("dashboard refresh rejected; retaining last-known-good snapshot", "year", year)
+		}
 		return
 	}
 
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+	err := a.persistDashboardSnapshot(persistCtx, year, payload)
+	persistCancel()
+	if err != nil {
+		if a.log != nil {
+			a.log.Error("dashboard persistence failed; retaining prior LKG", "year", year, "error", err)
+		}
+		return
+	}
 	now := time.Now().UTC()
 	a.dashboardMu.Lock()
 	a.dashboardPayload = payload
 	a.dashboardUpdatedAt = now
 	a.dashboardExpires = now.Add(dashboardSnapshotFreshTTL)
 	a.dashboardMu.Unlock()
-
-	if changed {
-		persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_ = a.persistDashboardSnapshot(persistCtx, year, payload)
-		persistCancel()
-	}
 }
 
 func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[string]any, bool) {
@@ -491,50 +527,58 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 	return payload, successful > 0
 }
 
+func (a *app) dashboardSnapshotForReadContext(ctx context.Context, year int) (map[string]any, time.Time, bool) {
+	// The current-year dashboard is bootstrapped before readiness and updated
+	// only after persistence succeeds, so its committed in-memory LKG is the hot
+	// browser path. Historical years remain indexed DB reads.
+	if year == time.Now().UTC().Year() {
+		a.dashboardMu.RLock()
+		memory := copyDashboardPayload(a.dashboardPayload)
+		memoryUpdated := a.dashboardUpdatedAt
+		a.dashboardMu.RUnlock()
+		if dashboardSnapshotValid(memory) {
+			return memory, memoryUpdated, time.Since(memoryUpdated) > dashboardSnapshotFreshTTL
+		}
+	}
+
+	payload, updated, err := a.loadDashboardSnapshotContext(ctx, year)
+	if err == nil {
+		if year == time.Now().UTC().Year() {
+			a.dashboardMu.Lock()
+			a.dashboardPayload = copyDashboardPayload(payload)
+			a.dashboardUpdatedAt = updated
+			a.dashboardExpires = updated.Add(dashboardSnapshotFreshTTL)
+			a.dashboardMu.Unlock()
+		}
+		return payload, updated, time.Since(updated) > dashboardSnapshotFreshTTL
+	}
+	if year == time.Now().UTC().Year() {
+		// A concurrent refresh may have populated the LKG while the DB recovery
+		// attempt was in flight.
+		a.dashboardMu.RLock()
+		memory := copyDashboardPayload(a.dashboardPayload)
+		memoryUpdated := a.dashboardUpdatedAt
+		a.dashboardMu.RUnlock()
+		if dashboardSnapshotValid(memory) {
+			return memory, memoryUpdated, true
+		}
+	}
+	return nil, time.Time{}, true
+}
+
 func (a *app) dashboardSnapshotForRead(year int) (map[string]any, time.Time, bool) {
-	currentYear := time.Now().UTC().Year()
-	if year == currentYear {
+	if a.db == nil && year == time.Now().UTC().Year() {
 		a.dashboardMu.RLock()
 		payload := copyDashboardPayload(a.dashboardPayload)
 		updated := a.dashboardUpdatedAt
 		expires := a.dashboardExpires
 		a.dashboardMu.RUnlock()
-		if len(payload) > 0 {
-			return payload, updated, time.Now().After(expires)
+		if len(payload) == 0 {
+			return nil, time.Time{}, true
 		}
-		// bootstrapDashboardSnapshot already attempted the persisted snapshot before
-		// the HTTP server started. A current-year request must therefore never fall
-		// back to synchronous database I/O: return the warming contract immediately
-		// while the background materializer builds the first hot snapshot.
-		return nil, time.Time{}, true
+		return payload, updated, time.Now().After(expires)
 	}
-	payload, updated, err := a.loadDashboardSnapshot(year)
-	if err != nil {
-		return nil, time.Time{}, true
-	}
-	return payload, updated, time.Since(updated) > dashboardSnapshotFreshTTL
+	return a.dashboardSnapshotForReadContext(context.Background(), year)
 }
 
-func dashboardWarmingSnapshot(year int, env, version string) map[string]any {
-	return map[string]any{
-		"year":     year,
-		"partners": dashboardUnavailableBlock(),
-		"modules":  dashboardUnavailableBlock(),
-		"billing":  dashboardUnavailableBlock(),
-		"impact":      dashboardUnavailableBlock(),
-		"partner_geo": dashboardUnavailableBlock(),
-		"activity":    map[string]any{"items": []any{}, "count": 0, "source": "IDENTITY_APPEND_ONLY_AUDIT", "status": "warming"},
-		"system": map[string]any{
-			"status":       "warming",
-			"environment":  env,
-			"version":      version,
-			"architecture": "materialized-dashboard-snapshot",
-		},
-		"meta": map[string]any{
-			"architecture": "MATERIALIZED_DASHBOARD_SNAPSHOT",
-			"status":       "warming",
-			"unavailable":  []string{"activity", "billing", "impact", "modules", "partner_geo", "partners"},
-			"generated_at": time.Now().UTC(),
-		},
-	}
-}
+

@@ -22,6 +22,7 @@ admin = read("frontend/lib/administration_center.dart")
 modules = read("frontend/lib/module_control_plane.dart")
 round1 = read("frontend/lib/central17_round1.dart")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
+step3 = read("services/cmd/gateway/central_step3_snapshots.go")
 
 # Typography: admin control-plane serif = Lora, functional UI = Inter.
 check("GoogleFonts.interTextTheme" in main, "Inter global text theme missing")
@@ -35,13 +36,16 @@ for name, source in {
 }.items():
     check("GoogleFonts.cormorantGaramond" not in source, f"legacy Cormorant survived in {name}")
 
-# Impact: first-run total outage must produce a renderable unavailable snapshot.
-check('if successful == 0 && previous == nil {\n\t\treturn' not in step4,
-      "Impact materializer still has first-run warming deadlock")
-check('if successful == 0 {' in step4 and 'status = "unavailable"' in step4,
-      "Impact degraded snapshot state missing")
+# Impact: degraded refreshes are never allowed to overwrite a healthy screen
+# snapshot. Existing LKG data remains visible while materialization retries.
+check('centralStep3Store(persistCtx, centralStep4ImpactKey, payload)' in step4,
+      "Impact materializer is not routed through the authoritative snapshot store")
+check('strings.EqualFold(central10String(payload["status"]), "healthy")' in step3,
+      "Impact degraded refresh can bypass the Last-Known-Good gate")
+check('central read-model refresh rejected; retaining last-known-good snapshot' in step3,
+      "Impact failed refresh does not retain Last-Known-Good data")
 check("Impact data is loading" in main and "Impact snapshot is warming" in main,
-      "Impact non-blocking availability UI missing")
+      "Impact non-blocking first-snapshot UI missing")
 check("Loading the latest impact and evidence snapshot." not in main,
       "Impact full-page blocking loader survived")
 

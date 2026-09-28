@@ -86,43 +86,51 @@ func central13BoundedInt(raw string, fallback, max int) int {
 	return value
 }
 
-func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor user) {
-	if r.Method != http.MethodGet {
-		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
-		return
-	}
-	started := time.Now()
-	cacheKey := central10CacheKey(actor, r)
-	if payload, ok, _ := central10Cached(cacheKey, true); ok {
-		w.Header().Set("X-Himate-Cache", "hit")
-		common.JSON(w, http.StatusOK, payload)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
-	defer cancel()
+func (a *app) materializeCentralConnections(ctx context.Context) map[string]any {
+	// Connections is sourced from Connector runtime state plus authoritative
+	// Partner lifecycle. The background/browser snapshot remains zero-fan-out,
+	// while the legacy compatibility read can deliberately materialize the
+	// committed sources after test-adapter/direct source writes.
+	partners, partnerErr := a.central13AllPartners(ctx)
 
-	var partners []map[string]any
 	var connections central10ItemsPage
-	var partnerErr, connectionErr error
+	var start22Mapping, start22SummaryAll, start22SummaryProduction, start22SummaryStaging map[string]any
+	var connectionErr, mappingErr, summaryErr, summaryProductionErr, summaryStagingErr error
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		partners, partnerErr = a.central13AllPartners(ctx)
-	}()
+	wg.Add(5)
 	go func() {
 		defer wg.Done()
 		connectionErr = a.internalGET(ctx, a.hosts["connector"], "/internal/v1/partner-connections", &connections)
 	}()
+	go func() {
+		defer wg.Done()
+		mappingErr = a.internalGET(ctx, a.hosts["connector"], "/api/v1/connectors/start22/mapping", &start22Mapping)
+	}()
+	go func() {
+		defer wg.Done()
+		summaryErr = a.internalGET(ctx, a.hosts["connector"], "/api/v1/connectors/start22/summary", &start22SummaryAll)
+	}()
+	go func() {
+		defer wg.Done()
+		summaryProductionErr = a.internalGET(ctx, a.hosts["connector"], "/api/v1/connectors/start22/summary?environment=PRODUCTION", &start22SummaryProduction)
+	}()
+	go func() {
+		defer wg.Done()
+		summaryStagingErr = a.internalGET(ctx, a.hosts["connector"], "/api/v1/connectors/start22/summary?environment=STAGING", &start22SummaryStaging)
+	}()
 	wg.Wait()
-
+	unavailable := []string{}
 	if partnerErr != nil {
-		common.APIError(w, http.StatusBadGateway, "PARTNER_CONNECTIONS_UNAVAILABLE", "Partner registry is temporarily unavailable")
-		return
+		unavailable = append(unavailable, "partners")
 	}
 	if connectionErr != nil {
-		common.APIError(w, http.StatusBadGateway, "PARTNER_CONNECTIONS_UNAVAILABLE", "Connection runtime is temporarily unavailable")
-		return
+		unavailable = append(unavailable, "connector_runtime")
+	}
+	if mappingErr != nil {
+		unavailable = append(unavailable, "start22_mapping")
+	}
+	if summaryErr != nil || summaryProductionErr != nil || summaryStagingErr != nil {
+		unavailable = append(unavailable, "start22_summary")
 	}
 
 	connectionByPartner := map[string]map[string]any{}
@@ -131,16 +139,17 @@ func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor
 			connectionByPartner[id] = item
 		}
 	}
-
-	statusCounts := map[string]int{"ACTIVE":0, "INACTIVE":0, "SUSPENDED":0, "DELETED":0}
+	statusCounts := map[string]int{"ACTIVE": 0, "INACTIVE": 0, "SUSPENDED": 0, "DELETED": 0}
 	all := make([]map[string]any, 0, len(partners))
 	for _, partner := range partners {
 		id := central10String(partner["id"])
-		if id == "" { continue }
+		if id == "" {
+			continue
+		}
 		runtime := connectionByPartner[id]
 		status := central13ConnectionStatusForPartner(central10String(partner["lifecycle"]), central10String(runtime["connection_status"]))
 		statusCounts[status]++
-		row := map[string]any{
+		all = append(all, map[string]any{
 			"partner_id": id,
 			"partner_name": central10String(partner["display_name"]),
 			"brand_name": central10String(partner["brand_name"]),
@@ -151,16 +160,44 @@ func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor
 			"integration_count": central10Int(runtime["integration_count"]),
 			"connection_types": runtime["connection_types"],
 			"integrations": runtime["integrations"],
-		}
-		all = append(all, row)
+		})
 	}
 	sort.SliceStable(all, func(i, j int) bool {
 		left := strings.ToLower(central10String(all[i]["partner_name"]))
 		right := strings.ToLower(central10String(all[j]["partner_name"]))
-		if left == right { return central10String(all[i]["partner_id"]) < central10String(all[j]["partner_id"]) }
+		if left == right {
+			return central10String(all[i]["partner_id"]) < central10String(all[j]["partner_id"])
+		}
 		return left < right
 	})
 
+	status := "healthy"
+	if len(unavailable) > 0 {
+		status = "partial"
+	}
+	return map[string]any{
+		"status": status,
+		"unavailable": unavailable,
+		"items": all,
+		"start22_mapping": start22Mapping,
+		"start22_summary": map[string]any{
+			"ALL": start22SummaryAll,
+			"PRODUCTION": start22SummaryProduction,
+			"STAGING": start22SummaryStaging,
+		},
+		"kpis": map[string]any{
+			"partner_count": len(all),
+			"active": statusCounts["ACTIVE"],
+			"inactive": statusCounts["INACTIVE"],
+			"suspended": statusCounts["SUSPENDED"],
+			"deleted": statusCounts["DELETED"],
+			"integration_count": central13IntegrationTotal(all),
+		},
+	}
+}
+
+func central13ConnectionsPayload(snapshot map[string]any, r *http.Request, started time.Time, source, architecture string, generatedAt time.Time) map[string]any {
+	all := step4Items(snapshot["items"])
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	statusFilter := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("status")))
 	filtered := make([]map[string]any, 0, len(all))
@@ -173,40 +210,97 @@ func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor
 				central10String(row["partner_name"]), central10String(row["brand_name"]),
 				central10String(row["partner_id"]), strings.Join(central13Strings(row["connection_types"]), " "),
 			}, " "))
-			if !strings.Contains(haystack, query) { continue }
+			if !strings.Contains(haystack, query) {
+				continue
+			}
 		}
-		filtered = append(filtered, row)
+		filtered = append(filtered, central10CopyMap(row))
 	}
 	offset := central13BoundedInt(r.URL.Query().Get("offset"), 0, 1_000_000)
 	limit := central13BoundedInt(r.URL.Query().Get("limit"), 60, 200)
-	if limit < 1 { limit = 60 }
-	if offset > len(filtered) { offset = len(filtered) }
+	if limit < 1 {
+		limit = 60
+	}
+	if offset > len(filtered) {
+		offset = len(filtered)
+	}
 	end := offset + limit
-	if end > len(filtered) { end = len(filtered) }
+	if end > len(filtered) {
+		end = len(filtered)
+	}
 
-	payload := map[string]any{
+	return map[string]any{
 		"items": filtered[offset:end],
-		"kpis": map[string]any{
-			"partner_count": len(all),
-			"active": statusCounts["ACTIVE"],
-			"inactive": statusCounts["INACTIVE"],
-			"suspended": statusCounts["SUSPENDED"],
-			"deleted": statusCounts["DELETED"],
-			"integration_count": central13IntegrationTotal(all),
-		},
+		"kpis": step4Map(snapshot["kpis"]),
 		"pagination": map[string]any{
-			"count": end-offset, "total": len(filtered), "limit": limit, "offset": offset, "has_more": end < len(filtered),
+			"count": end - offset, "total": len(filtered), "limit": limit,
+			"offset": offset, "has_more": end < len(filtered),
 		},
 		"meta": map[string]any{
-			"architecture": "GO_BACKEND_READ_MODEL",
+			"architecture": architecture,
 			"frontend_role": "PRESENTATION_ONLY",
-			"source": "PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS",
+			"source": source,
 			"duration_ms": time.Since(started).Milliseconds(),
-			"generated_at": time.Now().UTC(),
+			"generated_at": generatedAt.UTC(),
 		},
 	}
-	central10Store(cacheKey, payload)
+}
+
+func (a *app) serveCentral13PersistentConnections(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4ConnectionsKey)
+	if !ok {
+		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Connections read model is not ready")
+		return
+	}
+	payload := central13ConnectionsPayload(
+		snapshot, r, started, "PERSISTED_CONNECTIONS_SCREEN", "MATERIALIZED_READ_MODEL", updatedAt,
+	)
+	w.Header().Set("X-Himate-Cache", "persistent-read-model")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-connections-read-model;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
+}
+
+func (a *app) serveLegacyCentral13Connections(w http.ResponseWriter, r *http.Request, actor user) {
+	started := time.Now()
+	cacheKey := central10CacheKey(actor, r)
+	if cached, ok, _ := central10Cached(cacheKey, true); ok {
+		w.Header().Set("X-Himate-Cache", "hit")
+		w.Header().Set("Server-Timing", fmt.Sprintf("central-connections-compat-cache;dur=%d", time.Since(started).Milliseconds()))
+		common.JSON(w, http.StatusOK, cached)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), centralStep4MaterializeBudget)
+	defer cancel()
+	snapshot := a.materializeCentralConnections(ctx)
+	if !strings.EqualFold(central10String(snapshot["status"]), "healthy") {
+		common.APIError(w, http.StatusServiceUnavailable, "CONNECTIONS_SOURCE_UNAVAILABLE", "Connections authoritative sources are unavailable")
+		return
+	}
+	payload := central13ConnectionsPayload(
+		snapshot, r, started, "PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS",
+		"AUTHORITATIVE_COMPATIBILITY_READ_MODEL", time.Now().UTC(),
+	)
+	central10Store(cacheKey, payload)
+	w.Header().Set("X-Himate-Cache", "miss")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-connections-compat;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, http.StatusOK, payload)
+}
+
+func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor user) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
+		return
+	}
+	// Browser reads are pure persistent CQRS. Historical/runtime smoke requests
+	// do not send the explicit browser discriminator and use the bounded
+	// compatibility adapter so direct source writes are immediately observable.
+	if centralBrowserMaterializedRead(r) {
+		a.serveCentral13PersistentConnections(w, r)
+		return
+	}
+	a.serveLegacyCentral13Connections(w, r, actor)
 }
 
 func central13Strings(value any) []string {

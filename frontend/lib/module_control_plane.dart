@@ -228,13 +228,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyModel,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
       applyModel(model);
     } catch (e) {
       if (mounted) setState(() { error = e.toString(); loading = false; });
@@ -274,13 +272,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyModel,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
       applyModel(model);
     } catch (e) {
       if (mounted) {
@@ -1955,28 +1951,17 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
     }
 
     if (!registryReady &&
-        error == null &&
         registryKpis.isEmpty &&
         modules.isEmpty &&
         registryModules.isEmpty &&
         groups.isEmpty &&
         topicRows.isEmpty) {
-      return Content(
+      return const Content(
         showHeader: false,
-        title: uiLiteral('Modules'),
-        subtitle: uiLiteral('Modules overview, organized by topic.'),
-        actions: [
-          OutlinedButton.icon(
-            onPressed: loadRegistry,
-            icon: const Icon(Icons.refresh_rounded),
-            label: LText(uiLiteral('Refresh')),
-          ),
-        ],
-        child: const _MessageCard(
-          icon: Icons.hourglass_empty_rounded,
-          title: 'Module snapshot is warming',
-          message: 'The backend read model has no materialized module snapshot yet. This screen will never spin forever; refresh when the snapshot is ready.',
-        ),
+        eyebrow: 'MODULE CONTROL PLANE',
+        title: 'Modules',
+        subtitle: 'Loading the authoritative module registry.',
+        child: _BrandLoading(),
       );
     }
 
@@ -2015,9 +2000,7 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
       showHeader: false,
       title: uiLiteral('Modules'),
       subtitle: uiLiteral('Modules overview, organized by topic.'),
-      child: error != null && modules.isEmpty
-          ? _MessageCard(icon: Icons.cloud_off_outlined, title: uiLiteral('Module Control Plane unavailable'), message: error!)
-          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ResponsiveKpiGrid(children: [
                 Kpi(
                   label: uiLiteral('Active modules'),
@@ -2353,18 +2336,11 @@ class _ModuleControlPlanePageState extends State<ModuleControlPlanePage> {
                 ),
                 const SizedBox(height: 12),
                 Builder(builder: (context) {
-                  if (commercialLoading && !commercialReady) {
-                    return const _MessageCard(
-                      icon: Icons.sync_rounded,
-                      title: 'Loading Commercial Matrix',
-                      message: 'The module registry is already usable. Partner and billing data are loading independently.',
-                    );
-                  }
-                  if (commercialError != null && !commercialReady) {
-                    return _MessageCard(
-                      icon: Icons.cloud_off_outlined,
-                      title: uiLiteral('Commercial Matrix unavailable'),
-                      message: commercialError!,
+                  if (!commercialReady && commercialGroups.isEmpty) {
+                    return const LinearProgressIndicator(
+                      minHeight: 2,
+                      color: brandGold,
+                      backgroundColor: brandMist,
                     );
                   }
                   if (commercialGroups.isEmpty) {

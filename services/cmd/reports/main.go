@@ -291,6 +291,72 @@ func (a *app)buildSnapshot(ctx context.Context,rec reportRecord)(map[string]any,
 
 func contains(values []string,target string)bool{for _,v:=range values{if v==target{return true}};return false}
 
+func reportSnapshotPartnerIDs(snapshot map[string]any) []string {
+	raw, ok := snapshot["partner_ids"]
+	if !ok { return []string{} }
+	out := []string{}
+	switch values := raw.(type) {
+	case []string:
+		out = append(out, values...)
+	case []any:
+		for _, value := range values { out = append(out, strings.TrimSpace(fmt.Sprint(value))) }
+	}
+	return uniqueStrings(out)
+}
+
+func (a *app) synchronizeReadModels(ctx context.Context, partnerIDs []string) error {
+	ids := uniqueStrings(partnerIDs)
+	if len(ids) == 0 { ids = []string{""} }
+	eventIDs := make([]int64, 0, len(ids))
+	for _, partnerID := range ids {
+		var eventID int64
+		if err := a.db.QueryRowContext(ctx,
+			`INSERT INTO identity.read_model_refresh_queue(scope,partner_id,reason)
+			 VALUES('all',$1,'/internal/reports/background-complete/evidence/report')
+			 RETURNING id`,
+			strings.TrimSpace(partnerID),
+		).Scan(&eventID); err != nil {
+			return fmt.Errorf("persist report projection event: %w", err)
+		}
+		eventIDs = append(eventIDs, eventID)
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		allProcessed := true
+		for _, eventID := range eventIDs {
+			var processed sql.NullTime
+			if err := a.db.QueryRowContext(waitCtx,
+				`SELECT processed_at FROM identity.read_model_refresh_queue WHERE id=$1`,
+				eventID,
+			).Scan(&processed); err != nil {
+				return fmt.Errorf("read report projection event %d: %w", eventID, err)
+			}
+			if !processed.Valid {
+				allProcessed = false
+				break
+			}
+		}
+		if allProcessed { return nil }
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("report projection synchronization timed out: %w", waitCtx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func (a *app) requeueProjectionSync(id string, err error) {
+	message := "Read-model synchronization pending"
+	if err != nil { message = truncate(err.Error(), 500) }
+	_, _ = a.db.Exec(`UPDATE reports.jobs
+		SET status='QUEUED',last_error=$2,started_at=NULL,completed_at=NULL,updated_at=NOW()
+		WHERE id=$1`, id, message)
+}
+
 func (a *app)process(id string){
 	ctx,cancel:=context.WithTimeout(context.Background(),90*time.Second);defer cancel()
 	rec,err:=a.get(id);if err!=nil{return}
@@ -302,25 +368,56 @@ func (a *app)process(id string){
 	snapshotSum:=sha256.Sum256(rawSnapshot);snapshotSHA:=hex.EncodeToString(snapshotSum[:])
 	if _,err=a.db.ExecContext(ctx,`UPDATE reports.jobs SET snapshot=$2::jsonb,snapshot_sha256=$3,evidence_ids=$4::jsonb,updated_at=NOW() WHERE id=$1`,id,string(rawSnapshot),snapshotSHA,string(rawEvidence));err!=nil{a.fail(id,err);return}
 	rec.Snapshot=rawSnapshot;rec.SnapshotSHA256=snapshotSHA;rec.EvidenceIDs=rawEvidence
-	if err=a.renderFromStoredSnapshot(ctx,rec);err!=nil{a.fail(id,err);return}
+
+	artifact,err:=a.renderStoredSnapshotArtifact(ctx,rec)
+	if err!=nil{a.fail(id,err);return}
 	if len(evidenceIDs)>0{
-		_ = a.internalPOST(ctx,a.evidenceHost,"/internal/v1/evidence/report-links",map[string]any{"report_id":id,"evidence_ids":evidenceIDs},nil)
+		if err=a.internalPOST(ctx,a.evidenceHost,"/internal/v1/evidence/report-links",map[string]any{"report_id":id,"evidence_ids":evidenceIDs},nil);err!=nil{
+			a.fail(id,fmt.Errorf("link report evidence: %w",err));return
+		}
+	}
+	// The transaction owner becomes READY first, but all browser reads are
+	// served from the Gateway CQRS projection. Therefore READY is externally
+	// visible only after this synchronous source-event write-through completes.
+	if err=a.markReportReady(ctx,id,artifact);err!=nil{a.fail(id,err);return}
+	partnerIDs:=reportSnapshotPartnerIDs(snapshot)
+	if err=a.synchronizeReadModels(ctx,partnerIDs);err!=nil{
+		a.requeueProjectionSync(id,fmt.Errorf("synchronize report read models: %w",err))
+		return
 	}
 }
 
 func (a *app)fail(id string,err error){_,_=a.db.Exec(`UPDATE reports.jobs SET status='FAILED',last_error=$2,completed_at=NOW(),updated_at=NOW() WHERE id=$1`,id,truncate(err.Error(),500))}
 
-func (a *app)renderFromStoredSnapshot(ctx context.Context,rec reportRecord)error{
+type reportArtifact struct{
+	Namespace string
+	ObjectKey string
+	SHA256 string
+	SizeBytes int
+}
+
+func (a *app)renderStoredSnapshotArtifact(ctx context.Context,rec reportRecord)(reportArtifact,error){
 	var snapshot map[string]any
-	if err:=json.Unmarshal(rec.Snapshot,&snapshot);err!=nil{return fmt.Errorf("snapshot: %w",err)}
+	if err:=json.Unmarshal(rec.Snapshot,&snapshot);err!=nil{return reportArtifact{},fmt.Errorf("snapshot: %w",err)}
 	pdf:=renderPDF(snapshot)
 	sum:=sha256.Sum256(pdf);checksum:=hex.EncodeToString(sum[:])
 	namespace:="_reports";key:="reports/"+rec.ID+".pdf"
-	if err:=a.ensureStorageNamespace(ctx,namespace);err!=nil{return err}
-	stored,err:=a.putObject(ctx,namespace,key,pdf);if err!=nil{return err}
-	if got:=strings.TrimSpace(fmt.Sprint(stored["sha256"]));got!=""&&got!=checksum{return fmt.Errorf("stored report checksum mismatch")}
-	_,err=a.db.ExecContext(ctx,`UPDATE reports.jobs SET status='READY',pdf_namespace=$2,pdf_object_key=$3,pdf_sha256=$4,pdf_size_bytes=$5,last_error='',completed_at=NOW(),updated_at=NOW() WHERE id=$1`,rec.ID,namespace,key,checksum,len(pdf))
+	if err:=a.ensureStorageNamespace(ctx,namespace);err!=nil{return reportArtifact{},err}
+	stored,err:=a.putObject(ctx,namespace,key,pdf);if err!=nil{return reportArtifact{},err}
+	if got:=strings.TrimSpace(fmt.Sprint(stored["sha256"]));got!=""&&got!=checksum{return reportArtifact{},fmt.Errorf("stored report checksum mismatch")}
+	return reportArtifact{Namespace:namespace,ObjectKey:key,SHA256:checksum,SizeBytes:len(pdf)},nil
+}
+
+func (a *app)markReportReady(ctx context.Context,id string,artifact reportArtifact)error{
+	_,err:=a.db.ExecContext(ctx,`UPDATE reports.jobs SET status='READY',pdf_namespace=$2,pdf_object_key=$3,pdf_sha256=$4,pdf_size_bytes=$5,last_error='',completed_at=NOW(),updated_at=NOW() WHERE id=$1`,
+		id,artifact.Namespace,artifact.ObjectKey,artifact.SHA256,artifact.SizeBytes)
 	return err
+}
+
+func (a *app)renderFromStoredSnapshot(ctx context.Context,rec reportRecord)error{
+	artifact,err:=a.renderStoredSnapshotArtifact(ctx,rec)
+	if err!=nil{return err}
+	return a.markReportReady(ctx,rec.ID,artifact)
 }
 
 func truncate(v string,n int)string{if len(v)<=n{return v};return v[:n]}

@@ -558,24 +558,24 @@ class Api {
     final headers = <String, String>{
       'Accept': 'application/json',
       'X-Himate-Locale': HimateI18n.activeLocale,
+      'X-Himate-Read-Model': 'browser',
     };
     if (body != null) headers['Content-Type'] = 'application/json';
     late http.Response response;
     final uri = Uri.parse(path);
-    // Central performance is an API/SLO concern, not a browser-abort policy.
-    // Keep one transport safety timeout so a temporary >800 ms response cannot
-    // be converted into a false client failure while hot snapshots recover.
-    const timeout = Duration(seconds: 4);
+    const mutationTimeout = Duration(seconds: 4);
     if (method == 'POST') {
-      response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(timeout);
+      response = await client.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{})).timeout(mutationTimeout);
     } else if (method == 'PUT') {
-      response = await client.put(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
+      response = await client.put(uri, headers: headers, body: jsonEncode(body)).timeout(mutationTimeout);
     } else if (method == 'PATCH') {
-      response = await client.patch(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
+      response = await client.patch(uri, headers: headers, body: jsonEncode(body)).timeout(mutationTimeout);
     } else if (method == 'DELETE') {
-      response = await client.delete(uri, headers: headers).timeout(timeout);
+      response = await client.delete(uri, headers: headers).timeout(mutationTimeout);
     } else {
-      response = await client.get(uri, headers: headers).timeout(timeout);
+      // Central read performance is enforced by the Gateway read-model SLO.
+      // Never convert a transient backend delay into a browser TimeoutException.
+      response = await client.get(uri, headers: headers);
     }
     if (response.statusCode == 204) return <String, dynamic>{};
     Map<String, dynamic> data = <String, dynamic>{};
@@ -668,7 +668,6 @@ class _HimateAppState extends State<HimateApp> {
   bool loading = true;
   String anonymousLocale = 'en_US';
 
-  Timer? _restoreFallback;
   String? _pendingDeepLink;
   bool _deepLinkHandled = false;
 
@@ -683,11 +682,6 @@ class _HimateAppState extends State<HimateApp> {
     final path = Uri.base.path;
     if (path == '/app' || path.startsWith('/app/')) {
       if (path != '/app') _pendingDeepLink = path;
-      _restoreFallback = Timer(const Duration(seconds: 3), () {
-        if (mounted && loading) {
-          setState(() => loading = false);
-        }
-      });
       restore();
     } else if (path == '/login') {
       // Paint the login form immediately, then reuse any valid HttpOnly
@@ -700,84 +694,10 @@ class _HimateAppState extends State<HimateApp> {
     }
   }
 
-  @override
-  void dispose() {
-    _restoreFallback?.cancel();
-    super.dispose();
-  }
-
-
-  bool _can(String permission) {
-    final current = user;
-    if (current == null) return false;
-    final roles = current['roles'];
-    if (roles is List && roles.map((e) => e.toString()).contains('platform_admin')) return true;
-    final permissions = current['permissions'];
-    if (permissions is! List) return false;
-    final values = permissions.map((e) => e.toString()).toSet();
-    return values.contains('*') || values.contains(permission);
-  }
-
   void _warmControlPlane() {
-    if (user == null) return;
-
-    // Keep login/navigation responsive by warming only the first screen keys
-    // immediately. Preset/status variants are useful, but firing all of them
-    // at once competes with the user's first real navigation request.
-    final primaryTargets = <String>{};
-    final deferredTargets = <String>{};
-    if (_can('dashboard.read')) {
-      primaryTargets.add(centralDashboardInitialPath());
-    }
-    if (_can('partners.read')) {
-      primaryTargets.add(centralPartnersInitialPath());
-      deferredTargets.add(centralPartnersPresetPath(lifecycle: 'LIVE'));
-      deferredTargets.add(centralPartnersPresetPath(lifecycle: 'PROSPECT'));
-      deferredTargets.add(centralPartnersPresetPath(reference: true));
-    }
-    if (_can('catalog.read')) {
-      primaryTargets.add(centralModulesInitialPath());
-      deferredTargets.add(centralModulesCommercialInitialPath());
-    }
-    if (_can('billing.read')) {
-      primaryTargets.add(centralPackagesInitialPath());
-      deferredTargets.add(centralPackagesSupplementaryInitialPath());
-      primaryTargets.add(centralFinanceInitialPath());
-      for (final status in const ['DRAFT', 'APPROVED', 'SENT', 'PAID']) {
-        deferredTargets.add(centralFinancePath(invoiceStatus: status));
-      }
-    }
-    if (_can('impact.read') || _can('evidence.read') || _can('reports.read')) {
-      deferredTargets.add(centralImpactInitialPath());
-    }
-    if (_can('connectors.read')) {
-      deferredTargets.add(centralConnectionsInitialPath());
-    }
-    if (_can('administration.read')) {
-      deferredTargets.add(centralAdministrationInitialPath());
-    }
-    if (_can('health.read') || _can('provisioning.read') || _can('environments.read') || _can('backups.read')) {
-      deferredTargets.add('/api/v1/system-health/snapshot');
-      deferredTargets.add('/api/v1/provisioning/jobs');
-      deferredTargets.add('/api/v1/environments');
-      deferredTargets.add('/api/v1/backups/summary');
-    }
-
-    final path = Uri.base.path;
-    if (_can('partners.read') && path.startsWith('/app/partners/')) {
-      final id = path.substring('/app/partners/'.length).split('/').first;
-      if (id.isNotEmpty) primaryTargets.add('/api/v1/central/partners/$id');
-    }
-
-    if (primaryTargets.isNotEmpty) {
-      api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30));
-    }
-    if (deferredTargets.isNotEmpty) {
-      Timer(const Duration(milliseconds: 1500), () {
-        if (!mounted || user == null) return;
-        api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30));
-      });
-    }
+    // CENTRAL-21: the Gateway owns authoritative read-model warming. The
+    // browser must not issue a parallel prefetch storm after auth/session
+    // restore because those requests can race with the page's own first read.
   }
 
   Future<void> _loadPublishedBrandAssets() async {
@@ -797,9 +717,7 @@ class _HimateAppState extends State<HimateApp> {
 
   Future<void> _restoreLoginSession() async {
     try {
-      final restored = await api
-          .get('/api/v1/auth/me', force: true)
-          .timeout(const Duration(seconds: 2));
+      final restored = await api.get('/api/v1/auth/me', force: true);
       if (!mounted) return;
       user = restored;
       _warmControlPlane();
@@ -816,16 +734,13 @@ class _HimateAppState extends State<HimateApp> {
 
   Future<void> restore() async {
     try {
-      user = await api
-          .get('/api/v1/auth/me', force: true)
-          .timeout(const Duration(seconds: 3));
+      user = await api.get('/api/v1/auth/me', force: true);
     } catch (_) {
-      // Any auth/network failure falls back to the login screen instead of
-      // trapping the user behind an endless loading indicator.
+      // An invalid/expired session falls back to login; a slow request is no
+      // longer converted into a synthetic client timeout.
       user = null;
     } finally {
       if (user != null) _warmControlPlane();
-      _restoreFallback?.cancel();
       if (mounted) {
         setState(() => loading = false);
         if (user != null && _pendingDeepLink != null && !_deepLinkHandled) {
@@ -1080,18 +995,21 @@ class PartnerRouteLoader extends StatelessWidget {
         'offset': '0',
       },
     ).toString();
-    final portfolio = await api
-        .get(portfolioPath, maxAge: const Duration(seconds: 5))
-        .timeout(const Duration(seconds: 3));
+    final portfolio = await api.get(
+      portfolioPath,
+      maxAge: const Duration(seconds: 5),
+    );
     for (final row in items(portfolio)) {
       if ('${row['id'] ?? ''}' == partnerId) {
         return <String, dynamic>{'partner': row};
       }
     }
 
-    return api
-        .get(detailPath, force: true, maxAge: const Duration(seconds: 3))
-        .timeout(const Duration(seconds: 3));
+    return api.get(
+      detailPath,
+      force: true,
+      maxAge: const Duration(seconds: 3),
+    );
   }
 
   @override
@@ -1975,26 +1893,9 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     selected = widget.initialSelected.clamp(0, navCount - 1);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_prebuildPriorityPages());
-    });
-  }
-
-  Future<void> _prebuildPriorityPages() async {
-    // API warmup makes the data hot; prebuilding the most frequently switched
-    // workspaces removes the remaining first-widget-mount penalty. Stagger the
-    // work so login/first paint stays responsive.
-    for (final index in const [1, 4, 5, 6, 7]) {
-      if (!mounted) return;
-      if (index == selected || !visibleNavIndexes().contains(index) || _pageCache.containsKey(index)) {
-        continue;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 90));
-      if (!mounted) return;
-      setState(() {
-        _pageCache.putIfAbsent(index, () => _pageForIndex(index));
-      });
-    }
+    // CENTRAL-21: do not pre-mount hidden workspaces. Mounting a page executes
+    // its initState and would recreate a browser request wave on hard refresh.
+    // The Gateway materializers are the only read-model warmup authority.
   }
 
   static const int navCount = 10;
@@ -3795,13 +3696,11 @@ class _PartnersPageState extends State<PartnersPage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyModel,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
       applyModel(model);
     } catch (e) {
       if (mounted && generation == _loadGeneration) {
@@ -4625,14 +4524,7 @@ class _PartnersPageState extends State<PartnersPage> {
                   ),
                   const SizedBox(height: 14),
                 ],
-                if (error != null) ...[
-                  _MessageCard(
-                    icon: Icons.cloud_off_outlined,
-                    title: uiLiteral('Partner data is partially unavailable'),
-                    message: error!,
-                  ),
-                  const SizedBox(height: 14),
-                ],
+
                 ResponsiveKpiGrid(
                       children: [
                         Kpi(label: 'Partner records', value: '$allRecords', note: 'All lifecycle states', icon: Icons.apartment_outlined, accent: brandNavy, onTap: () => applyPortfolioPreset()),
@@ -5016,20 +4908,14 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       final model = await widget.api.get(
         '/api/v1/central/partners/$id',
         maxAge: const Duration(seconds: 5),
-      ).timeout(const Duration(seconds: 8));
+      );
       if (!mounted || generation != _supplementalLoadGeneration) return;
       final core = model['partner'] is Map
           ? Map<String, dynamic>.from(model['partner'] as Map)
           : partner;
-      final meta = model['meta'] is Map
-          ? Map<String, dynamic>.from(model['meta'] as Map)
-          : <String, dynamic>{};
       final moduleView = model['module_view'] is Map
           ? Map<String, dynamic>.from(model['module_view'] as Map)
           : <String, dynamic>{};
-      final unavailable = meta['unavailable'] is List
-          ? (meta['unavailable'] as List).map((e) => '$e').toList()
-          : <String>[];
       setState(() {
         partner = core;
         modules = items(<String, dynamic>{'items': model['modules']});
@@ -5071,26 +4957,16 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             : null;
         preferredConnectorEnvironment = '${model['preferred_connector_environment'] ?? 'STAGING'}';
         loading = false;
-        supplementalLoading = false;
-        supplementalError = unavailable.isEmpty
-            ? null
-            : 'Some secondary services are temporarily unavailable: ${unavailable.join(', ')}. Available sections remain usable.';
+        supplementalLoading = model['ready'] != true;
+        supplementalError = null;
       });
       _scrollToInitialSection();
-    } catch (e) {
+    } catch (_) {
       if (!mounted || generation != _supplementalLoadGeneration) return;
       setState(() {
-        loading = false;
+        loading = !hasPrimary;
         supplementalLoading = false;
-        if (hasPrimary) {
-          supplementalError = e is TimeoutException
-              ? 'The partner workspace timed out after 8 seconds. The already loaded partner record remains usable.'
-              : 'The latest Go partner read model could not be refreshed. The already loaded partner record remains usable.';
-        } else {
-          error = e is TimeoutException
-              ? 'The partner workspace timed out after 8 seconds.'
-              : e.toString();
-        }
+        supplementalError = null;
       });
     }
   }
@@ -5208,9 +5084,6 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
         path,
         force: force,
         maxAge: const Duration(seconds: 3),
-      ).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => throw TimeoutException('Partner module view timed out after 5 seconds'),
       );
       if (!mounted) return;
       setState(() {
@@ -5224,11 +5097,9 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
             ? (view['active_module_keys'] as List).map((e) => '$e').toList()
             : activeModuleKeys;
       });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        supplementalError = 'Module view could not be refreshed: $e';
-      });
+    } catch (_) {
+      // Keep the current authoritative workspace snapshot visible. Background
+      // materialization refreshes the partner read model independently.
     }
   }
 
@@ -6417,12 +6288,7 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
       ),
       body: loading
           ? const _BrandLoading()
-          : error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Partner workspace unavailable', message: error!),
-                )
-              : Content(
+          : Content(
                   eyebrow: 'PARTNER WORKSPACE  |  ${partner['id']}',
                   title: '${partner['display_name']}',
                   subtitle: [
@@ -6454,20 +6320,12 @@ class _PartnerWorkspaceState extends State<PartnerWorkspace> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (supplementalLoading) ...[
-                        const _MessageCard(
-                          icon: Icons.sync_rounded,
-                          title: 'Secondary data is loading',
-                          message: 'The partner workspace is usable now. Billing, modules, impact and environment sections are loading independently.',
+                        const LinearProgressIndicator(
+                          minHeight: 2,
+                          color: brandGold,
+                          backgroundColor: brandMist,
                         ),
                         const SizedBox(height: 12),
-                      ],
-                      if (supplementalError != null) ...[
-                        _MessageCard(
-                          icon: Icons.sync_problem_outlined,
-                          title: 'Secondary data is loading independently',
-                          message: supplementalError!,
-                        ),
-                        const SizedBox(height: 16),
                       ],
                       KeyedSubtree(
                         key: _overviewKey,
@@ -7051,14 +6909,12 @@ class _PackagesPageState extends State<PackagesPage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            force: force,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyPrimary,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyPrimary,
+      );
       applyPrimary(model);
       if (model['ready'] == true) unawaited(loadSupplementary());
     } catch (e) {
@@ -7201,8 +7057,6 @@ class _PackagesPageState extends State<PackagesPage> {
         setState(() {
           analyticsLoading = false;
           modulesLoading = false;
-          analyticsError = 'Package analytics snapshot is warming. Refresh when ready.';
-          modulesError = 'Module catalog snapshot is warming. Refresh when ready.';
         });
         return;
       }
@@ -7212,16 +7066,12 @@ class _PackagesPageState extends State<PackagesPage> {
         if (modulesReady) {
           modules = items(<String, dynamic>{'items': model['modules']});
           modulesError = null;
-        } else {
-          modulesError = 'Module catalog is temporarily unavailable. Package cards remain usable.';
         }
         if (analyticsReady) {
           analytics = model['analytics'] is Map
               ? Map<String, dynamic>.from(model['analytics'] as Map)
               : <String, dynamic>{};
           analyticsError = null;
-        } else {
-          analyticsError = 'Package analytics is temporarily unavailable. Package definitions remain usable.';
         }
         modulesLoading = false;
         analyticsLoading = false;
@@ -7229,21 +7079,17 @@ class _PackagesPageState extends State<PackagesPage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applySupplementary,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applySupplementary,
+      );
       applySupplementary(model);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         modulesLoading = false;
         analyticsLoading = false;
-        modulesError = e.toString();
-        analyticsError = e.toString();
       });
     }
   }
@@ -7540,36 +7386,13 @@ class _PackagesPageState extends State<PackagesPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && plans.isEmpty) {
+    if (plans.isEmpty && !packageReady) {
       return const Content(
         showHeader: false,
         eyebrow: 'COMMERCIAL CONTROL PLANE',
         title: 'Packages',
         subtitle: 'Central subscription packages, prices and module entitlements.',
         child: _BrandLoading(),
-      );
-    }
-    if (error != null && plans.isEmpty) {
-      return Content(
-        showHeader: false,
-        eyebrow: 'COMMERCIAL CONTROL PLANE',
-        title: 'Packages',
-        subtitle: 'Central subscription packages, prices and module entitlements.',
-        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Retry'))],
-        child: _MessageCard(icon: Icons.cloud_off_outlined, title: 'Packages could not be loaded', message: error!),
-      );
-    }
-    if (!loading && !packageReady && plans.isEmpty) {
-      return Content(
-        showHeader: false,
-        title: 'Packages',
-        subtitle: 'Subscription packages, module entitlements and configuration.',
-        actions: [OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const LText('Refresh'))],
-        child: const _MessageCard(
-          icon: Icons.hourglass_empty_rounded,
-          title: 'Package snapshot is warming',
-          message: 'No materialized package snapshot exists yet. This page does not start an infinite polling loop; refresh when backend preparation completes.',
-        ),
       );
     }
     final analyticsPackages = analytics['packages'] is List
@@ -7657,16 +7480,9 @@ class _PackagesPageState extends State<PackagesPage> {
               );
             },
           ),
-          if (modulesLoading) ...[
+          if (modulesLoading && modules.isEmpty) ...[
             const SizedBox(height: 10),
             const LinearProgressIndicator(minHeight: 2),
-          ] else if (modulesError != null && modules.isEmpty) ...[
-            const SizedBox(height: 10),
-            _MessageCard(
-              icon: Icons.widgets_outlined,
-              title: 'Module catalog is temporarily unavailable',
-              message: modulesError!,
-            ),
           ],
           const SizedBox(height: 18),
           _PackageComparisonTable(
@@ -7686,17 +7502,11 @@ class _PackagesPageState extends State<PackagesPage> {
                 : _MiniCounter(label: uiBilingual('${analyticsPartners.length} PARTNERS', '${analyticsPartners.length} PARTNER')),
           ),
           const SizedBox(height: 12),
-          if (analyticsError != null && analytics.isEmpty)
-            _MessageCard(
-              icon: Icons.query_stats_outlined,
-              title: 'Package analytics is temporarily unavailable',
-              message: analyticsError!,
-            )
-          else if (analyticsLoading && analytics.isEmpty)
-            const _MessageCard(
-              icon: Icons.sync_rounded,
-              title: 'Loading package analytics',
-              message: 'Package cards remain usable while analytics loads independently.',
+          if (analyticsLoading && analytics.isEmpty)
+            const LinearProgressIndicator(
+              minHeight: 2,
+              color: brandGold,
+              backgroundColor: brandMist,
             )
           else if (analyticsPackages.isEmpty)
             const _MessageCard(
@@ -8368,21 +8178,12 @@ class _FinancePageState extends State<FinancePage> {
   final GlobalKey onboardingKey = GlobalKey();
   final GlobalKey invoiceKey = GlobalKey();
   bool loading = true;
-  bool warming = false;
-  int _warmRetryCount = 0;
-  Timer? _warmRetry;
   String? error;
 
   @override
   void initState() {
     super.initState();
     load();
-  }
-
-  @override
-  void dispose() {
-    _warmRetry?.cancel();
-    super.dispose();
   }
 
   String _financePath() {
@@ -8409,35 +8210,15 @@ class _FinancePageState extends State<FinancePage> {
       if (!mounted || path != _financePath()) return;
       if (model['ready'] != true) {
         setState(() {
-          loading = false;
-          warming = true;
+          loading = true;
           error = null;
         });
-        // Snapshot production is asynchronous. Hammering the Gateway every
-        // 400 ms cannot make the materializer finish faster and can compete
-        // with the very service calls needed to build the snapshot. Retry a
-        // bounded number of times, then leave an explicit warming state that
-        // the user can refresh manually.
-        _warmRetry?.cancel();
-        if (_warmRetryCount < 2) {
-          _warmRetryCount += 1;
-          _warmRetry = Timer(Duration(milliseconds: 900 * _warmRetryCount), () {
-            if (mounted && path == _financePath()) {
-              unawaited(load(force: true, quiet: true));
-            }
-          });
-        } else {
-          setState(() => loading = false);
-        }
         return;
       }
       final chart = model['chart'] is Map
           ? Map<String, dynamic>.from(model['chart'] as Map)
           : <String, dynamic>{};
-      _warmRetry?.cancel();
-      _warmRetryCount = 0;
       setState(() {
-        warming = false;
         profile = model['profile'] is Map
             ? Map<String, dynamic>.from(model['profile'] as Map)
             : null;
@@ -8455,19 +8236,23 @@ class _FinancePageState extends State<FinancePage> {
     }
 
     try {
-      final model = await widget.api
-          .get(
-            path,
-            force: force,
-            maxAge: const Duration(seconds: 5),
-            onRefresh: applyModel,
-          )
-          .timeout(const Duration(seconds: 3));
+      final model = await widget.api.get(
+        path,
+        force: force,
+        maxAge: const Duration(seconds: 5),
+        onRefresh: applyModel,
+      );
       applyModel(model);
     } catch (e) {
       if (!mounted) return;
+      final hasLastKnownGood = profile != null ||
+          financeKpis.isNotEmpty ||
+          invoices.isNotEmpty ||
+          partners.isNotEmpty ||
+          onboardingRows.isNotEmpty ||
+          chartRows.isNotEmpty;
       setState(() {
-        loading = false;
+        loading = !hasLastKnownGood;
         error = e.toString();
       });
     }
@@ -9116,9 +8901,7 @@ class _FinancePageState extends State<FinancePage> {
         showHeader: false,
         eyebrow: 'CENTRAL-6 · COMMERCIAL CONTROL',
         title: 'Licensing & Finance',
-        subtitle: warming
-            ? 'Preparing the finance snapshot. The page will update automatically without continuous polling.'
-            : 'Loading the latest finance snapshot.',
+        subtitle: 'Loading the authoritative finance snapshot.',
         child: const _BrandLoading(),
       );
     }
@@ -9147,19 +8930,9 @@ class _FinancePageState extends State<FinancePage> {
       showHeader: false,
       title: 'Licensing & Finance',
       subtitle: 'Invoicing, receivables, licenses and partner onboarding overview.',
-      child: error != null
-          ? _MessageCard(icon: Icons.cloud_off_outlined, title: 'Finance workspace unavailable', message: error!)
-          : Column(
+      child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (warming) ...[
-                  const _MessageCard(
-                    icon: Icons.sync_rounded,
-                    title: 'Finance snapshot is warming',
-                    message: 'The latest persisted finance view is being prepared. Continuous polling is disabled; use Refresh if the snapshot is still unavailable.',
-                  ),
-                  const SizedBox(height: 14),
-                ],
                 if (loading) const LinearProgressIndicator(minHeight: 2),
                 ResponsiveKpiGrid(
                   children: [
@@ -10754,9 +10527,6 @@ class _SystemPageState extends State<SystemPage> {
         final access = model['access'] is Map
             ? Map<String,dynamic>.from(model['access'] as Map)
             : <String,dynamic>{};
-        final meta = model['meta'] is Map
-            ? Map<String,dynamic>.from(model['meta'] as Map)
-            : <String,dynamic>{};
         final kpis = model['kpis'] is Map
             ? Map<String,dynamic>.from(model['kpis'] as Map)
             : <String,dynamic>{};
@@ -10782,10 +10552,6 @@ class _SystemPageState extends State<SystemPage> {
         final canBackupsWrite = access['backups_write'] == true;
         final canBackupsApprove = access['backups_approve'] == true;
         final canAudit = access['audit'] == true;
-        final status = '${meta['status'] ?? 'healthy'}'.toLowerCase();
-        final unavailable = meta['unavailable'] is List
-            ? (meta['unavailable'] as List).map((e) => '$e').where((e) => e.isNotEmpty).toList()
-            : <String>[];
         final backupPartnerIds = <String>{
           if (canBackups) '_platform',
           for (final p in partners)
@@ -10824,20 +10590,10 @@ class _SystemPageState extends State<SystemPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (provisional) ...[
-                _MessageCard(
-                  icon: snapshot.hasError ? Icons.cloud_off_outlined : Icons.sync_rounded,
-                  title: uiLiteral(snapshot.hasError ? 'Operations data is temporarily unavailable' : 'Operations data is loading'),
-                  message: snapshot.hasError
-                      ? '${snapshot.error}'
-                      : uiLiteral('The complete System & Operations layout remains visible while the latest health snapshot is prepared.'),
-                ),
-                const SizedBox(height: 14),
-              ],
-              if ((status == 'partial' || status == 'unavailable' || status == 'stale') && unavailable.isNotEmpty) ...[
-                _MessageCard(
-                  icon: status == 'stale' ? Icons.history_rounded : Icons.warning_amber_rounded,
-                  title: uiLiteral(status == 'stale' ? 'Operations data is temporarily stale' : 'Operations data is partially available'),
-                  message: '${uiLiteral('Unavailable services')}: ${unavailable.join(', ')}',
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  color: brandGold,
+                  backgroundColor: brandMist,
                 ),
                 const SizedBox(height: 14),
               ],

@@ -13,49 +13,90 @@ def check(ok: bool, message: str) -> None:
         failures.append(message)
 
 css = read('frontend/web/himate-brand-r4.css')
+landing = read('frontend/web/landing.html')
 frontend = read('frontend/lib/main.dart')
 modules = read('frontend/lib/module_control_plane.dart')
 gateway = read('services/cmd/gateway/central10.go')
 gateway_main = read('services/cmd/gateway/main.go')
+readiness = read('services/cmd/gateway/read_model_readiness.go')
 step3 = read('services/cmd/gateway/central_step3_snapshots.go')
 step4 = read('services/cmd/gateway/central_step4_snapshots.go')
+partner_snapshots = read('services/cmd/gateway/central_partner_workspace_snapshots.go')
+read_models = read('services/cmd/gateway/materialized_read_models.go')
 fixture = read('services/cmd/partners/test_fixture.go')
 
-# 1. Public landing/subpage geometry is restored without undoing approved fonts.
+# 1. Public landing geometry is restored to the Sep 19 reference while the
+# protected current logo/brand asset remains untouched.
 for token in [
-    '--public-inset:24px;',
-    '.wrap{width:min(1540px,calc(100% - 48px));margin-inline:auto}',
-    'width:min(1540px,calc(100% - 48px))!important;',
+    'CENTRAL-21: approved Sep 19 landing geometry restoration',
+    '--public-inset:clamp(64px,5.1vw,92px);',
+    'width:min(1510px,calc(100% - (var(--public-inset)*2)))',
+    '.hero-bg{',
+    'left:23%;',
+    'right:-23%;',
+    'padding-top:138px;',
+    'min-height:clamp(100px,6.3vw,130px);',
     '--design-heading-font:"Cormorant Garamond";',
     '--design-body-font:"Inter";',
 ]:
-    check(token in css, f'public layout/font contract missing: {token}')
+    check(token in css, f'approved public layout/font contract missing: {token}')
+check('/brand/himate_identity_wordmark_2026.webp' in landing,
+      'protected HIMATE logo asset path changed')
+restoration = css[css.find('CENTRAL-21: approved Sep 19 landing geometry restoration'):]
+check('.brand-logo' not in restoration and 'identity_wordmark' not in restoration and 'himate_logo' not in restoration,
+      'landing restoration layer must never override protected logo selectors/assets')
 for page in ['landing.html','platform.html','modules.html','programs.html','impact.html','partners.html']:
     html = read('frontend/web/' + page)
     check('href="/himate-brand-r4.css"' in html, f'{page} no longer uses protected shared public stylesheet')
 
-# 2-3. Critical Central routes must be renderable on cold hard refresh.
-check('a.warmMissingCentralSnapshots()' in gateway_main, 'gateway becomes live before critical Central snapshots are warmed')
+# 2-3. Critical Central reads are Last-Known-Good snapshots, not browser
+# deadlines or persisted degraded models.
 for token in [
+    'a.warmMissingCentralSnapshots()',
+    'a.warmMissingCentralPartnerWorkspaces()',
+]:
+    check(token in readiness, f'deterministic readiness warmup contract missing: {token}')
+for token in [
+    'go a.runCentralStep3Materializer()',
+    'go a.runCentralStep4Materializer()',
+    'go a.runCentralPartnerWorkspaceMaterializer()',
+]:
+    check(token in gateway_main, f'gateway background materializer startup missing: {token}')
+for token in [
+    'func centralSnapshotValid(key string, payload map[string]any) bool',
+    'strings.EqualFold(central10String(payload["status"]), "healthy")',
+    'central read-model refresh rejected; retaining last-known-good snapshot',
     'func (a *app) warmMissingCentralSnapshots()',
-    'centralStep3RegistryKey, a.refreshCentralStep3Registry',
-    'centralStep3PlansKey, a.refreshCentralStep3Plans',
-    'centralStep4PartnersKey, a.refreshCentralStep4Partners',
-    'centralStep4FinanceKey, a.refreshCentralStep4Finance',
-    '"status": "unavailable"',
 ]:
-    check(token in step3 or token in step4, f'cold snapshot contract missing: {token}')
-check('explicit unavailable model' in step4, 'Partners first-run failure can still leave no renderable snapshot')
+    check(token in step3, f'Last-Known-Good snapshot contract missing: {token}')
 for token in [
-    ".timeout(const Duration(seconds: 3))",
-    "class _PartnersPageState",
-    "class _PackagesPageState",
-    "class _FinancePageState",
+    'centralStep4PartnersKey',
+    'centralStep4FinanceKey',
+    'centralStep4AdministrationKey',
+    'centralStep4SystemKey',
+    'refreshCentralStep4Administration',
+    'refreshCentralStep4System',
 ]:
-    check(token in frontend, f'bounded Central frontend request contract missing: {token}')
-check(modules.count('.timeout(const Duration(seconds: 3))') >= 2, 'Module registry/commercial cold loads are not both bounded')
+    check(token in step4, f'authoritative Central screen materializer missing: {token}')
 
-# 4 & 6. Partner deep link renders from hot portfolio first and always provides back navigation.
+for forbidden in [
+    '.timeout(const Duration(seconds: 3))',
+    'TimeoutException(\'Partner module view timed out',
+    'Finance snapshot is warming',
+    'Module snapshot is warming',
+]:
+    check(forbidden not in frontend + '\n' + modules,
+          f'forbidden CENTRAL-20 client failure UX survived: {forbidden}')
+
+warm_start = frontend.find('void _warmControlPlane()')
+warm_end = frontend.find('Future<void> _loadPublishedBrandAssets', warm_start)
+warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ''
+check('api.prefetch(' not in warm, 'hard-refresh control-plane prefetch storm survived')
+check('Gateway owns authoritative read-model warming' in warm,
+      'frontend no longer documents Gateway-owned warmup')
+
+# 4 & 6. Partner deep link renders from a persistent per-partner LKG workspace;
+# the browser request path does not orchestrate microservices.
 for token in [
     'Future<Map<String, dynamic>> _loadPrimaryPartner()',
     "path: '/api/v1/central/partners'",
@@ -64,13 +105,49 @@ for token in [
     "label: LText(uiLiteral('Back to Partners'))",
 ]:
     check(token in frontend, f'Partner workspace direct-load/back contract missing: {token}')
+
+workspace_start = gateway.find('func (a *app) central10PartnerWorkspace(')
+workspace_end = gateway.find('func central10NormalizeDashboardImpact', workspace_start)
+workspace = gateway[workspace_start:workspace_end] if workspace_start >= 0 and workspace_end > workspace_start else ''
+check('partnerWorkspaceForRead(r.Context(), partnerID)' in workspace,
+      'Partner workspace does not perform the one indexed persistent tenant read')
+for forbidden in ['internalGET(', 'WaitGroup', 'context.WithTimeout(r.Context()', 'central10PartnerWorkspaceBudget']:
+    check(forbidden not in workspace,
+          f'Partner workspace request path still performs live orchestration: {forbidden}')
 for token in [
-    'central10PartnerWorkspaceBudget = 1500 * time.Millisecond',
-    'centralStep3SnapshotGet(centralStep4PartnersKey)',
-    'if livePartner != nil',
-    'if status == "healthy"',
+    'centralPartnerWorkspacePrefix',
+    'materializeCentralPartnerWorkspace',
+    'refreshCentralPartnerWorkspaceSnapshots',
+    'centralStep3Store(persistCtx, centralPartnerWorkspaceKey(partnerID), payload)',
 ]:
-    check(token in gateway, f'Partner workspace backend fallback contract missing: {token}')
+    check(token in partner_snapshots, f'per-partner LKG materializer missing: {token}')
+for token in [
+    'CREATE TABLE IF NOT EXISTS identity.partner_workspace_snapshots',
+    'func (a *app) persistPartnerWorkspaceSnapshot',
+    'if partnerID == "" || !partnerWorkspaceSnapshotValid(payload)',
+    'partner read-model refresh rejected; retaining last-known-good snapshot',
+]:
+    check(token in read_models, f'dedicated tenant LKG persistence contract missing: {token}')
+
+# A newly-created Test Partner must never expose a 503 window before the full
+# multi-service workspace materializer catches up. The direct read may rebuild
+# only from committed PostgreSQL state; live service fan-out remains forbidden.
+for token in [
+    'func (a *app) buildPartnerWorkspaceLocalLKG',
+    'FROM partners.partners p WHERE p.id=$1',
+    'FROM billing.invoices x WHERE x.partner_id=$1',
+    'FROM billing.partner_plan_subscriptions x WHERE x.partner_id=$1',
+    'FROM impact.metric_values x WHERE x.partner_id=$1',
+    'FROM evidence.items x WHERE x.partner_id=$1',
+    'func (a *app) refreshPartnerWorkspaceLocalLKG',
+    'func (a *app) ensurePartnerWorkspaceLocalLKG',
+    'Preserve every already-materialized field',
+    'partner materialized cache miss; rebuilding local PostgreSQL LKG',
+]:
+    check(token in read_models, f'Central-20 local tenant LKG fallback missing: {token}')
+check(read_models.find('ensurePartnerWorkspaceLocalLKG(localCtx, partnerID)') <
+      read_models.find('a.refreshGlobalTenantReadModelSlice(ctx, partnerID'),
+      'Tenant mutation does not ensure a local LKG before narrow slice refresh')
 
 # 5. Golden Test Partner represents six distinct historical months plus an active subscription.
 for token in [
@@ -110,4 +187,4 @@ if failures:
         print(' -', failure)
     sys.exit(1)
 
-print('CENTRAL-20 hard-refresh/public-layout/Test-Partner acceptance: PASS')
+print('CENTRAL-20/21 LKG hard-refresh/public-layout/Test-Partner acceptance: PASS')

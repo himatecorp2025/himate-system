@@ -20,6 +20,8 @@ payments = read("services/cmd/billing/payment_provider.go")
 dunning = read("services/cmd/billing/dunning.go")
 gateway = read("services/cmd/gateway/main.go")
 partner_gateway = read("services/cmd/gateway/partner_portal.go")
+partner_workspace = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
+materialized = read("services/cmd/gateway/materialized_read_models.go")
 ui = read("frontend/lib/main.dart")
 gateway_c10 = read("services/cmd/gateway/central10.go")
 gateway_c10_step4 = read("services/cmd/gateway/central_step4_snapshots.go")
@@ -138,12 +140,32 @@ for token in [
     require(token in gateway, f"Central-6 approval permission gate missing: {token}")
 
 for token in [
-    '"/internal/v1/partners/"+url.PathEscape(partnerID)+"/portal-gate"',
-    "a.internalToken",
+    '"/internal/v1/partners/"+escapedID+"/portal-gate"',
     "/invoices?partner_visible=true",
+]:
+    require(token in partner_workspace, f"Partner Portal Central-6 materializer integration missing: {token}")
+for token in [
+    "a.internalToken",
     "partnerInvoicePDF",
 ]:
-    require(token in partner_gateway, f"Partner Portal Central-6 gate/PDF integration missing: {token}")
+    require(token in partner_gateway, f"Partner Portal Central-6 write/PDF integration missing: {token}")
+require("partnerWorkspaceForRead(ctx, partnerID)" in partner_gateway,
+        "Partner Portal access gate is not bound to the persistent tenant read model")
+require("partnerAccessAllowed(ctx,u.PartnerID)" in partner_gateway,
+        "Partner login/session access is not backed by committed authoritative state")
+for token in [
+    'strings.Contains(path, "/onboarding")',
+    'strings.Contains(path, "/invoice")',
+    'accessSlice, billingSlice := readModelTenantSliceScopes',
+]:
+    require(token in materialized, f"Central-6 immediate tenant write-through scope missing: {token}")
+for token in [
+    'fetch("portal_gate", "billing"',
+    'fetch("portal_invoices", "billing"',
+    'snapshot["portal_gate"] = portalGate',
+    'snapshot["portal_billing_invoices"] = portalInvoices',
+]:
+    require(token in partner_workspace, f"Central-6 tenant LKG write-through missing: {token}")
 
 for token in [
     "class FinancePage",

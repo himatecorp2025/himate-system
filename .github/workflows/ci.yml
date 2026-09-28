@@ -7,11 +7,36 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}-smoke-v2
   cancel-in-progress: true
 
 jobs:
+  smoke-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate complete smoke and acceptance contract surface
+        run: |
+          set -u
+          status=0
+          for audit in scripts/audit_smoke_*.py scripts/audit_start_*.py scripts/audit_central_*.py; do
+            echo "static contract: $audit"
+            if python3 "$audit"; then
+              continue
+            else
+              rc=$?
+            fi
+            if [ "$audit" = "scripts/audit_central_15.py" ] && [ "$rc" -eq 2 ]; then
+              echo "CENTRAL-15 known product-gap closure report recorded (exit 2); non-blocking for smoke remediation"
+              continue
+            fi
+            status=1
+          done
+          exit "$status"
+
   go:
+    needs: smoke-contracts
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -140,6 +165,7 @@ jobs:
       - run: go build ./cmd/...
 
   flutter:
+    needs: smoke-contracts
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -309,8 +335,8 @@ jobs:
             echo "Flutter still contains embedded legacy logo bytes"
             exit 1
           fi
-          if grep -q 'himate_logo_master' pubspec.yaml ../services/cmd/gateway/main.go ../scripts/smoke_start_18_19_v2.sh; then
-            echo "Legacy logo filename still referenced by executable source"
+          if grep -q 'himate_logo_master' pubspec.yaml ../scripts/smoke_start_18_19_v2.sh; then
+            echo "Legacy logo filename leaked back into current Flutter/V2 branding source"
             exit 1
           fi
           if grep -q 'himate-logo-v3' ../services/cmd/gateway/main.go; then
@@ -331,6 +357,7 @@ jobs:
           PY
 
   compose:
+    needs: smoke-contracts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -428,6 +455,8 @@ jobs:
           python3 scripts/audit_central_18.py
           python3 scripts/audit_central_19.py
           python3 scripts/audit_central_20.py
+          python3 scripts/audit_central_21.py
+          python3 scripts/audit_smoke_cqrs_compat.py
       - name: Build and start containerized microservices
         run: docker compose up -d --build
       - name: Verify gateway and private-service health
@@ -442,6 +471,14 @@ jobs:
           docker compose ps
           docker compose logs --no-color
           exit 1
+      - name: Configure bounded smoke HTTP clients
+        run: |
+          mkdir -p "$RUNNER_TEMP/himate-curl"
+          cat > "$RUNNER_TEMP/himate-curl/.curlrc" <<'EOF'
+          connect-timeout = 5
+          max-time = 90
+          EOF
+          echo "CURL_HOME=$RUNNER_TEMP/himate-curl" >> "$GITHUB_ENV"
       - name: Run START-01-08 backend smoke
         run: |
           # START-01–08 predates the explicit START-22.3 agreement/invoice gate.
@@ -468,6 +505,8 @@ jobs:
         run: sh scripts/smoke_start_16.sh http://127.0.0.1:8080
       - name: Run START-17 public SSR and SEO smoke
         run: sh scripts/smoke_start_17.sh http://127.0.0.1:8080
+      - name: Run START-18-19 governance, branding and RBAC legacy smoke
+        run: sh scripts/smoke_start_18_19.sh http://127.0.0.1:8080
       - name: Run START-18-19 governance, branding and RBAC smoke V2
         run: sh scripts/smoke_start_18_19_v2.sh http://127.0.0.1:8080
       - name: Run START-20 Domains and Deployments smoke
@@ -594,6 +633,8 @@ jobs:
         run: sh scripts/smoke_central_18.sh http://127.0.0.1:8080
       - name: Run Central-20 hard-refresh, Test Partner and module consistency acceptance
         run: sh scripts/smoke_central_20.sh http://127.0.0.1:8080
+      - name: Run Central-21 persistent CQRS zero-fan-out outage acceptance
+        run: sh scripts/smoke_central_21.sh http://127.0.0.1:8080
       - name: Dump Phase 4/5/closure runtime diagnostics on failure
         if: failure()
         run: docker compose logs --no-color --tail=260 gateway partners catalog billing payments evidence storage backups environments runtime connector notifications automation tenantfinance

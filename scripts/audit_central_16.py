@@ -104,7 +104,7 @@ for token in [
     "Partners",
     "Modules",
     "Connections",
-    "Module snapshot is warming",
+    "Loading the authoritative module registry.",
 ]:
     check(token in modules_ui, f"CENTRAL-16 Modules contract missing: {token}")
 check("Future<void>.delayed(const Duration(milliseconds: 350)" not in modules_ui, "CENTRAL-16 Modules still contains automatic 350ms warming polling")
@@ -115,7 +115,7 @@ for token in [
     "All packages",
     "Active subscriptions",
     "Custom packages",
-    "Package snapshot is warming",
+    "Central subscription packages, prices and module entitlements.",
     "Invoice approval queue",
     "Partner onboarding",
     "New invoice",

@@ -17,6 +17,7 @@ billing_main = read("services/cmd/billing/main.go")
 billing8 = read("services/cmd/billing/central8.go")
 gateway10 = read("services/cmd/gateway/central10.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
+partner_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
 dashboard = read("services/cmd/gateway/dashboard_snapshot.go")
 health = read("services/cmd/health/main.go")
 system = read("services/cmd/gateway/central17_round3.go")
@@ -51,8 +52,8 @@ for token in [
 ]:
     check(token in step4, f"complete Partners snapshot contract missing: {token}")
 for token in [
-    "every Partners view is served from the complete enriched",
-    "centralStep3SnapshotGet(centralStep4PartnersKey)",
+    "centralSnapshotForRead(r.Context(), centralStep4PartnersKey)",
+    'snapshotItems := step4Items(snapshot["items"])',
     "searchContains(",
     '"pagination": map[string]any{',
 ]:
@@ -77,13 +78,19 @@ for token in [
     "initialPartnerId",
     "PartnerRouteLoader(",
     "_openWorkspaceSection(",
-    "initialData: api.peek(path)",
+    "initialData: api.peek('/api/v1/central/partners/$partnerId')",
     "evidence = items(<String, dynamic>{'items': model['evidence']})",
 ]:
     check(token in frontend, f"partner refresh/workspace contract missing: {token}")
 check("_WorkspaceSpec('Evidence', Icons.verified_outlined, 'Impact evidence library', true)" in frontend,
       "Partner Evidence workspace is not active")
-check('runPage("evidence", "evidence"' in gateway10, "partner Evidence is not backed by the Evidence service")
+check(
+    "func (a *app) materializePartnerEvidence(" in partner_snapshots
+    and "const pageSize = 100" in partner_snapshots
+    and '"/api/v1/evidence?partner_id=%s&limit=%d&offset=%d"' in partner_snapshots
+    and '"evidence_api":                    evidenceItems' in partner_snapshots,
+    "partner Evidence is not backed by the background persistent Evidence projection",
+)
 
 for token in [
     "Future<void> activateModule(",
@@ -111,16 +118,25 @@ for token in [
 check("if (canBackups) '_platform'" in frontend, "System backup panel does not expose the platform restore-point scope")
 
 check("centralStep3SnapshotGet(centralStep4PartnersKey)" in admin,
-      "Administration refresh does not reuse the materialized partner snapshot")
-check(".timeout(const Duration(seconds: 6))" in read("frontend/lib/administration_center.dart"),
-      "Administration frontend can still wait without a bounded timeout")
+      "Administration materializer does not reuse the materialized partner snapshot")
+admin_ui = read("frontend/lib/administration_center.dart")
+check(".timeout(const Duration(seconds: 6))" not in admin_ui,
+      "Administration frontend still converts a slow authoritative read into a client timeout")
+check("centralSnapshotForRead(r.Context(), centralStep4AdministrationKey)" in admin,
+      "Administration request path is not persistent-snapshot-only")
 
-for token in [
-    "if len(services)<=1",
-    "services=a.checkServices(ctx)",
-    "a.partnerHealth(ctx)",
-]:
-    check(token in health, f"cold health snapshot self-heal missing: {token}")
+check('mux.HandleFunc("/api/v1/system-health",a.systemHealthSnapshot)' in health,
+      "system-health compatibility GET is not snapshot-only")
+check('mux.HandleFunc("/internal/v1/system-health/refresh",a.systemHealthRefresh)' in health,
+      "system-health background/write-through refresh endpoint missing")
+snapshot_start = health.find("func (a *app)systemHealthSnapshot")
+snapshot_end = health.find("\nfunc ", snapshot_start + 1)
+health_snapshot = health[snapshot_start:snapshot_end if snapshot_end >= 0 else len(health)]
+for forbidden in ["checkServices(", "partnerHealth(", "http.NewRequest", "a.client.Do("]:
+    check(forbidden not in health_snapshot,
+          f"system-health snapshot GET regressed to synchronous self-heal fan-out: {forbidden}")
+check("refreshSystemHealthSnapshots(ctx)" in health,
+      "health background refresh no longer materializes service + partner health snapshots")
 
 check("_applyPackageMutationImmediately(updated)" in frontend,
       "package mutation is not applied immediately on the frontend")
@@ -148,8 +164,10 @@ admin_end = administration_ui.find("\nclass _AdministrationCenterHeroCard", admi
 admin_view = administration_ui[admin_start:admin_end]
 check("child: _BrandLoading()" not in admin_view,
       "Administration browser refresh still replaces the workspace with a blocking loader")
-check("Administration data is loading" in admin_view,
-      "Administration non-blocking refresh state is missing")
+check("const LinearProgressIndicator(" in admin_view,
+      "Administration neutral authoritative-loading state is missing")
+check("Administration data is partially unavailable" not in admin_view,
+      "Administration still exposes degraded read-model errors to the user")
 
 for token in [
     "func central8CanonicalPlanKey(key string) string",
@@ -162,9 +180,9 @@ check("CASE WHEN plan_key='PREMIUM' THEN 'FLEX' ELSE plan_key END" in read("serv
 
 for token in [
     'runMap("partner_design", "cms", "/internal/v1/cms/partner-design/"',
-    '"partner_design": partnerDesign',
+    '"partner_design":                  partnerDesign',
 ]:
-    check(token in gateway10, f"partner Branding & Website read-model contract missing: {token}")
+    check(token in partner_snapshots, f"partner Branding & Website materialized read-model contract missing: {token}")
 
 for token in [
     "_WorkspaceSpec('Branding & Website', Icons.palette_outlined, 'Partner-facing design and CMS', true)",

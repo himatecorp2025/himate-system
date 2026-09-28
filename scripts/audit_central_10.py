@@ -20,8 +20,12 @@ frontend = read("frontend/lib/main.dart")
 modules_ui = read("frontend/lib/module_control_plane.dart")
 gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
+readiness = read("services/cmd/gateway/read_model_readiness.go")
+materialized_reads = read("services/cmd/gateway/materialized_read_models.go")
+hot_responses = read("services/cmd/gateway/central_hot_response_cache.go")
 step3_snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
+partner_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
 dashboard_snapshots = read("services/cmd/gateway/dashboard_snapshot.go")
 render = read("render.yaml")
 impact = read("services/cmd/impact/main.go")
@@ -59,35 +63,68 @@ check("/api/v1/central/partners/{partnerId}" in openapi,
 check("/api/v1/central/partners/{partnerId}/modules" in openapi,
       "Central-10 Partner Workspace module read-model OpenAPI path missing")
 
-# Flutter widgets may remain lazily mounted, but every permission-visible Central
-# read model must be warm before the first menu click.
+# Flutter widgets remain lazily mounted, while the Gateway owns all warmup.
+# Browser prefetch must never race the page's first read on hard refresh.
 for token in [
     "final Map<int, Widget> _pageCache",
     "_pageCache.putIfAbsent",
-    "final primaryTargets = <String>{};",
-    "final deferredTargets = <String>{};",
-    "primaryTargets.add(centralDashboardInitialPath())",
-    "primaryTargets.add(centralPartnersInitialPath())",
-    "primaryTargets.add(centralModulesInitialPath())",
-    "deferredTargets.add(centralModulesCommercialInitialPath())",
-    "primaryTargets.add(centralPackagesInitialPath())",
-    "deferredTargets.add(centralPackagesSupplementaryInitialPath())",
-    "primaryTargets.add(centralFinanceInitialPath())",
-    "deferredTargets.add(centralImpactInitialPath())",
-    "api.prefetch(primaryTargets, maxAge: const Duration(seconds: 30))",
-    "api.prefetch(deferredTargets, maxAge: const Duration(seconds: 30))",
+    "void _warmControlPlane()",
+    "Gateway owns authoritative read-model warming",
 ]:
-    check(token in frontend, f"Central-10.1 Step 5 pre-click warmup contract missing: {token}")
+    check(token in frontend, f"Central-10.1 browser/Gateway warmup contract missing: {token}")
 
 warm_start = frontend.find("void _warmControlPlane()")
 warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
 warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
-check("paths.add('/api/v1/billing/plans')" not in warm,
-      "Central-10 still contains the old eager raw Billing prefetch storm")
-check("paths.add('/api/v1/modules')" not in warm,
-      "Central-10 still eagerly prefetches raw module endpoints")
-check("String? target;" not in warm,
-      "Central-10.1 Step 5 still warms only the current route")
+check("api.prefetch(" not in warm,
+      "Central-10 still launches a browser prefetch storm")
+check("primaryTargets" not in warm and "deferredTargets" not in warm,
+      "Central-10 still keeps obsolete browser warmup queues")
+for token in [
+    "a.warmMissingCentralSnapshots()",
+    "a.warmMissingCentralPartnerWorkspaces()",
+]:
+    check(token in readiness, f"Central Gateway deterministic readiness warmup missing: {token}")
+for token in [
+    "go a.runCentralStep3Materializer()",
+    "go a.runCentralStep4Materializer()",
+    "go a.runCentralPartnerWorkspaceMaterializer()",
+]:
+    check(token in gateway_main, f"Central Gateway background materializer startup missing: {token}")
+
+# CENTRAL-10..21 exact cold-start payloads must be fully encoded before
+# readiness opens; the live hot path writes immutable bytes directly.
+check("a.prewarmCentral10To21HotResponses(ctx)" in readiness
+      and readiness.find("a.prewarmCentral10To21HotResponses(ctx)") <
+          readiness.find("gatewayReadiness.Store(true)"),
+      "Serialized Central/Tenant prewarm does not complete before readiness")
+for token in [
+    "centralHotResponseCache",
+    "partnerHotResponseCache",
+    "serveCentralPrewarmedResponse",
+    "servePartnerPrewarmedResponse",
+    "writePrewarmedResponse",
+    'w.Write(entry.body)',
+    '"/api/v1/central/modules/commercial?perspective=PARTNER&commercial_limit=120"',
+    '"/api/v1/central/modules/commercial?perspective=MODULE&commercial_status=ACTIVE&commercial_limit=120"',
+    '"/api/v1/central/packages/supplementary"',
+    '"/api/v1/central/finance?invoice_status=ALL&revenue_period=MONTHLY&revenue_plan=ALL"',
+    '"/api/v1/central/impact?evidence_limit=12&evidence_offset=0"',
+]:
+    check(token in hot_responses, f"Central serialized hot-response contract missing: {token}")
+hot_write_start = hot_responses.find("func writePrewarmedResponse")
+hot_write_end = hot_responses.find("\nfunc ", hot_write_start + 1)
+hot_write = hot_responses[hot_write_start:hot_write_end if hot_write_end > hot_write_start else len(hot_responses)]
+check(hot_write_start >= 0 and "json." not in hot_write and "w.Write(entry.body)" in hot_write,
+      "Central live hot-response path performs JSON encoding or lost direct byte serving")
+check('meta["duration_ms"] = 0' in hot_responses,
+      "Prewarmed response metadata does not normalize live request duration")
+check(gateway_main.find("a.serveCentralPrewarmedResponse(w, r, u)") <
+      gateway_main.find('if r.URL.Path == "/api/v1/dashboard/summary"'),
+      "Central prewarmed response interceptor does not precede normal read handlers")
+check("invalidateCentralHotResponseCaches()" in materialized_reads
+      and "a.requestCentralHotResponseRefresh()" in materialized_reads,
+      "Mutation/read-model reconciliation does not invalidate and rewarm serialized responses")
 
 # Browser-side fan-out and obsolete read transforms are forbidden on the core paths.
 for token, message in [
@@ -135,7 +172,8 @@ for token in [
     "void Function(Map<String, dynamic> freshData)? onRefresh",
     "ValueListenable<int> cacheSignal(String path)",
     "_storeCache(path, data, maxAge)",
-    "const timeout = Duration(seconds: 4)",
+    "const mutationTimeout = Duration(seconds: 4)",
+    "response = await client.get(uri, headers: headers);",
 ]:
     check(token in frontend, f"Central-10.1 Step 1 network/cache contract missing: {token}")
 
@@ -164,17 +202,14 @@ for exact_prefetch in [
           f"Central-10.1 exact warmup/mount cache key missing: {exact_prefetch}")
 
 for shared_path_contract in [
-    "primaryTargets.add(centralDashboardInitialPath())",
     "final path = centralDashboardInitialPath()",
-    "deferredTargets.add(centralModulesCommercialInitialPath())",
-    "primaryTargets.add(centralFinanceInitialPath())",
+    "String centralModulesCommercialInitialPath()",
     "return centralFinanceInitialPath();",
-    "deferredTargets.add(centralImpactInitialPath())",
     "return centralImpactInitialPath();",
     "valueListenable: api.cacheSignal(path)",
 ]:
     check(shared_path_contract in frontend,
-          f"Central-10.1 shared warmup/mount path or reactive SWR binding missing: {shared_path_contract}")
+          f"Central-10.1 shared canonical path or reactive SWR binding missing: {shared_path_contract}")
 
 check("if (defaultView) return centralModulesCommercialInitialPath();" in modules_ui,
       "Central-10.1 Modules commercial default mount does not reuse the warmup cache key")
@@ -230,11 +265,11 @@ check("onRefresh: applyModel" in modules_ui,
 
 for token in [
     "Partner data is loading",
-    "Loading the latest finance snapshot.",
+    "Loading the authoritative finance snapshot.",
     "Impact data is loading",
 ]:
     check(token in frontend, f"Central-10.1 Loading != Zero guard missing: {token}")
-check("Loading the latest module registry snapshot." in modules_ui,
+check("Loading the authoritative module registry." in modules_ui,
       "Central-10.1 Modules Loading != Zero guard missing")
 
 check("bool loading = true;" in modules_ui,
@@ -262,7 +297,8 @@ for target in [
     check(target in dashboard_loading_compact,
           f"Central-10.1 Dashboard loading card lost navigation callback: {target}")
 
-# CENTRAL-10.1 Step 3: Modules & Packages must be hot-snapshot/progressive surfaces.
+# CENTRAL-10.1 Step 3: Modules & Packages must be single-read materialized surfaces.
+# CENTRAL-21 moved refresh work entirely off the browser request path.
 for route in [
     "/api/v1/central/modules/commercial",
     "/api/v1/central/packages/supplementary",
@@ -278,10 +314,18 @@ packages_supp_start = gateway.find("func (a *app) central10PackagesSupplementary
 money_start = gateway.find("func central10MoneyLabel(", packages_supp_start)
 modules_primary = gateway[modules_start:modules_commercial_start]
 packages_primary = gateway[packages_start:packages_supp_start]
+modules_commercial = gateway[modules_commercial_start:packages_start]
+check(modules_commercial.count("centralSnapshotForRead(") == 1,
+      "Step 3 Modules commercial no longer uses one indexed materialized read")
 
 for forbidden in ["internalGET(", "central10AllPartners(", "central10CommercialSources(", "WaitGroup", "wg.Wait()"]:
     check(forbidden not in modules_primary,
           f"Step 3 Modules primary request still blocks on live fan-out: {forbidden}")
+check(modules_primary.count("centralSnapshotForRead(") == 1,
+      "Step 3 Modules primary no longer uses one indexed materialized read")
+check(packages_primary.count("centralSnapshotForRead(") == 1,
+      "Step 3 Packages primary no longer uses one indexed materialized read")
+
 for forbidden in ["internalGET(", "WaitGroup", "wg.Wait()"]:
     check(forbidden not in packages_primary,
           f"Step 3 Packages primary request still blocks on live fan-out: {forbidden}")
@@ -290,24 +334,31 @@ for forbidden in ["PACKAGES_UNAVAILABLE", "http.StatusBadGateway", "http.StatusS
     check(forbidden not in packages_primary,
           f"Central-10.1 Packages primary path can still fail as a blocking availability error: {forbidden}")
 for required in [
-    "centralStep3SnapshotGet(centralStep3PlansKey)",
-    "a.requestCentralStep3Refresh()",
+    "a.centralSnapshotForRead(r.Context(), centralStep3PlansKey)",
     "common.JSON(w, http.StatusOK, payload)",
-    '"X-Himate-Cache", "warming"',
     '"X-Himate-Cache", "hot-snapshot"',
 ]:
     check(required in packages_primary,
-          f"Central-10.1 Packages progressive snapshot contract missing: {required}")
+          f"Central-10.1 Packages materialized snapshot contract missing: {required}")
+for forbidden in [
+    "a.requestCentralStep3Refresh()",
+    "a.requestCentralStep4Refresh()",
+    "a.requestDashboardRefresh()",
+]:
+    check(forbidden not in packages_primary,
+          f"Central-10.1 Packages browser read still triggers background work: {forbidden}")
 
 packages_supplementary = gateway[packages_supp_start:money_start]
 for required in [
-    "centralStep3SnapshotGet(centralStep3RegistryKey)",
-    "centralStep3SnapshotGet(centralStep3AnalyticsKey)",
+    "a.centralSnapshotForRead(r.Context(), centralStep3AnalyticsKey)",
+    'anyItems(analyticsSnapshot["modules"])',
     '"modules_ready"',
     '"analytics_ready"',
 ]:
     check(required in packages_supplementary,
           f"Central-10.1 Packages supplementary snapshot contract missing: {required}")
+check(packages_supplementary.count("centralSnapshotForRead(") == 1,
+      "Central-10.1 Packages supplementary no longer uses one indexed materialized read")
 for forbidden in ["internalGET(", "WaitGroup", "wg.Wait()", "http.StatusBadGateway"]:
     check(forbidden not in packages_supplementary,
           f"Central-10.1 Packages supplementary request still blocks on live fan-out: {forbidden}")
@@ -319,9 +370,19 @@ for token in [
     "refreshCentralStep3Plans",
     "refreshCentralStep3Analytics",
     "refreshCentralStep3Commercial",
+    "runCentralStep3Materializer",
+    "requestCentralStep3Refresh",
     '"delivery"] = "MATERIALIZED_HOT_SNAPSHOT"',
 ]:
-    check(token in step3_snapshots, f"Step 3 materialized snapshot contract missing: {token}")
+    check(token in step3_snapshots, f"Step 3 background materializer contract missing: {token}")
+
+check("a.requestCentralStep3Refresh()" not in gateway
+      and "a.requestCentralStep4Refresh()" not in gateway
+      and "a.requestAllCentralPartnerWorkspaceRefreshes()" not in gateway,
+      "Central cache invalidation still starts duplicate background materializers")
+check("func (a *app) writeThroughReadModels" in materialized_reads
+      and "stageReadModelRefresh" in materialized_reads,
+      "Authoritative mutation projection pipeline is missing")
 
 for token in [
     "Future<void> loadRegistry()",
@@ -336,7 +397,7 @@ for token in [
     "Future<void> loadSupplementary()",
     "/api/v1/central/packages/supplementary",
     "modulesLoading",
-    "Package cards remain usable while analytics loads independently.",
+    "analyticsLoading",
 ]:
     check(token in frontend, f"Step 3 Packages progressive Flutter contract missing: {token}")
 
@@ -377,8 +438,19 @@ check("healthCheckPath: /api/v1/live" in render,
       "Render deploy gate must use process liveness to avoid downstream-readiness deployment deadlocks")
 check("healthCheckPath: /api/v1/health" not in render,
       "Render deploy gate still blocks on full dependency readiness")
-check("http.StatusServiceUnavailable" in gateway_main and '"readiness": true' in gateway_main,
-      "Step 4 /api/v1/health does not remain fail-closed for dependency diagnostics")
+check('mux.HandleFunc("/api/v1/health", a.serveGatewayHealthCompatibility)' in gateway_main
+      and 'mux.HandleFunc("/health", a.serveGatewayHealthCompatibility)' in gateway_main,
+      "Step 4 Gateway health routes are not using the local LKG compatibility adapter")
+gateway_health_start = materialized_reads.find("func (a *app) serveGatewayHealthCompatibility")
+gateway_health_end = materialized_reads.find("\nfunc ", gateway_health_start + 1)
+gateway_health = materialized_reads[gateway_health_start:gateway_health_end if gateway_health_end > gateway_health_start else len(materialized_reads)]
+check(gateway_health_start >= 0
+      and "centralStep4SystemKey" in gateway_health
+      and '"service_versions"' in gateway_health
+      and '"release_consistent"' in gateway_health
+      and "internalGET(" not in gateway_health
+      and "serveProxy(" not in gateway_health,
+      "Step 4 /api/v1/health regressed from local LKG release-health to request-path fan-out")
 
 # Truthful loading and empty-data behavior.
 for token in [
@@ -518,11 +590,11 @@ check("maximum: 200, default: 120" not in openapi,
 # Responsibility score: explicit user-visible read-model capabilities. The
 # acceptance floor is 95%; Flutter retains only presentation state and action input.
 responsibilities = [
-    ("cache/degraded fallback", "central10StaleTTL" in gateway),
-    ("bounded backend aggregation", "central10ReadBudget = 650 * time.Millisecond" in gateway),
-    ("partner search/filter", 'values.Set("include_stats", "true")' in gateway),
-    ("partner KPI aggregation", '"kpis": map[string]any{' in gateway),
-    ("partner enrichment join", 'catalogByID :=' in gateway and 'billingByID :=' in gateway),
+    ("LKG persistence gate", "centralSnapshotValid" in step3_snapshots and "centralStep3Store" in step3_snapshots),
+    ("startup authoritative warmup", "warmMissingCentralSnapshots" in step3_snapshots),
+    ("partner snapshot search/filter", "snapshotItems := step4Items(snapshot[\"items\"])" in gateway),
+    ("partner KPI aggregation", '"lifecycle_counts":   lifecycleCounts' in step4_snapshots or '"lifecycle_counts": lifecycleCounts' in step4_snapshots),
+    ("partner enrichment materialization", "catalogByID :=" in step4_snapshots and "billingByID :=" in step4_snapshots),
     ("partner category fallback/merge/order", "central10PartnerCategories" in gateway),
     ("module registry filtering", "registryPreset :=" in gateway),
     ("module KPI aggregation", '"module_registry": len(modules)' in gateway),
@@ -539,8 +611,8 @@ responsibilities = [
     ("finance multi-currency ready labels", "central10MoneyLabel" in gateway),
     ("impact screen aggregation", "central10Impact" in gateway and "refreshCentralStep4Impact" in step4_snapshots),
     ("impact evidence filtering", "central10Step4EvidenceMatches" in gateway),
-    ("partner workspace aggregation", "central10PartnerWorkspace" in gateway),
-    ("partner workspace module filter/group/KPIs", "central10PartnerModuleView" in gateway),
+    ("partner workspace materialization", "materializeCentralPartnerWorkspace" in partner_snapshots),
+    ("partner workspace snapshot-only request", "a.partnerWorkspaceForRead(r.Context(), partnerID)" in gateway),
     ("partner workspace subscription join", 'row["subscription"] = subscription' in gateway),
     ("partner workspace environment selection", "central10ProductionEnvironment" in gateway),
     ("weekly window selection", "central10NormalizeDashboardImpact" in gateway),

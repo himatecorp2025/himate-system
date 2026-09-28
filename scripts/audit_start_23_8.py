@@ -233,6 +233,21 @@ require(design_preview.get("api_pattern") == "/api/v1/cms/design/preview + /desi
 # Acceptance and regression gates.
 require("HIMATE START-23.8 CMS, Design & SEO Completion smoke passed" in smoke,
         "START-23.8 Compose proof is incomplete")
+partner_login_start = partner_portal.find("func (a *app) partnerLogin")
+partner_login_end = partner_portal.find("\nfunc ", partner_login_start + 1)
+partner_login = partner_portal[partner_login_start:partner_login_end if partner_login_end > partner_login_start else len(partner_portal)]
+require("partnerAccessAllowed(ctx,u.PartnerID)" in partner_login
+        and "partnerRequestAccess(ctx,u.PartnerID)" not in partner_login,
+        "START-23.8 tenant owner login is not using committed local access authority")
+authoritative_start = partner_portal.find("func (a *app) partnerAuthoritativeAccessAllowed")
+authoritative_end = partner_portal.find("\nfunc ", authoritative_start + 1)
+authoritative_access = partner_portal[authoritative_start:authoritative_end if authoritative_end > authoritative_start else len(partner_portal)]
+require(authoritative_start >= 0
+        and "partners.partners" in authoritative_access
+        and "billing.partner_onboarding" in authoritative_access
+        and "QueryRowContext" in authoritative_access
+        and "internalGET" not in authoritative_access,
+        "START-23.8 tenant login authority is not local and deterministic")
 for token in (
     "audit_start_23_1_23_6.py",
     "audit_start_23_7.py",

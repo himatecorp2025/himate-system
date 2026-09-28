@@ -176,15 +176,98 @@ func (a *app) partnerAuth(r *http.Request)(partnerUser,error){
 
 var errPartnerPortalAccessDisabled = errors.New("partner portal access is disabled")
 
-func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error {
-	var partner map[string]any
-	if err:=a.internalGET(ctx,a.hosts["partners"],"/api/v1/partners/"+url.PathEscape(partnerID),&partner);err!=nil{return err}
-	lifecycle:=strings.ToUpper(strings.TrimSpace(fmt.Sprint(partner["lifecycle"])))
-	if lifecycle=="SUSPENDED"||lifecycle=="ARCHIVED"{return errPartnerPortalAccessDisabled}
-	var gate map[string]any
-	if err:=a.internalGET(ctx,a.hosts["billing"],"/internal/v1/partners/"+url.PathEscape(partnerID)+"/portal-gate",&gate);err!=nil{return err}
-	if gate["allowed"]!=true{return errPartnerPortalAccessDisabled}
+type partnerWorkspaceContextKey struct{}
+
+func (a *app) partnerAccessSnapshot(ctx context.Context, partnerID string) (map[string]any, error) {
+	snapshot, _, ok := a.partnerWorkspaceForRead(ctx, partnerID)
+	if !ok {
+		return nil, fmt.Errorf("partner materialized workspace is not ready")
+	}
+	partner := step4Map(snapshot["partner"])
+	lifecycle := strings.ToUpper(central10String(partner["lifecycle"]))
+	if lifecycle == "SUSPENDED" || lifecycle == "ARCHIVED" {
+		return nil, errPartnerPortalAccessDisabled
+	}
+	gate := step4Map(snapshot["portal_gate"])
+	if gate["allowed"] != true {
+		return nil, errPartnerPortalAccessDisabled
+	}
+	return snapshot, nil
+}
+
+
+func partnerAccessStateAllowed(lifecycle, onboardingRequestID, onboardingState string, portalEnabled, onboardingExists bool) error {
+	lifecycle = strings.ToUpper(strings.TrimSpace(lifecycle))
+	if lifecycle == "SUSPENDED" || lifecycle == "ARCHIVED" {
+		return errPartnerPortalAccessDisabled
+	}
+	if onboardingExists {
+		if strings.ToUpper(strings.TrimSpace(onboardingState)) != "ACTIVE" || !portalEnabled {
+			return errPartnerPortalAccessDisabled
+		}
+		return nil
+	}
+	if strings.TrimSpace(onboardingRequestID) != "" {
+		return errPartnerPortalAccessDisabled
+	}
 	return nil
+}
+
+func (a *app) partnerAuthoritativeAccessAllowed(ctx context.Context, partnerID string) error {
+	partnerID = strings.TrimSpace(partnerID)
+	if partnerID == "" {
+		return errPartnerPortalAccessDisabled
+	}
+	var (
+		partnerExists       bool
+		lifecycle           string
+		onboardingRequestID string
+		onboardingExists    bool
+		onboardingState     string
+		portalEnabled       bool
+	)
+	err := a.db.QueryRowContext(ctx, `
+		SELECT
+			EXISTS(SELECT 1 FROM partners.partners p WHERE p.id=$1),
+			COALESCE((SELECT p.lifecycle FROM partners.partners p WHERE p.id=$1),''),
+			COALESCE((SELECT p.onboarding_request_id FROM partners.partners p WHERE p.id=$1),''),
+			EXISTS(SELECT 1 FROM billing.partner_onboarding o WHERE o.partner_id=$1),
+			COALESCE((SELECT o.state FROM billing.partner_onboarding o WHERE o.partner_id=$1),''),
+			COALESCE((SELECT o.portal_enabled FROM billing.partner_onboarding o WHERE o.partner_id=$1),FALSE)
+	`, partnerID).Scan(
+		&partnerExists,
+		&lifecycle,
+		&onboardingRequestID,
+		&onboardingExists,
+		&onboardingState,
+		&portalEnabled,
+	)
+	if err != nil {
+		return fmt.Errorf("partner access projection query failed: %w", err)
+	}
+	if !partnerExists {
+		return fmt.Errorf("partner access projection is not ready")
+	}
+	return partnerAccessStateAllowed(lifecycle, onboardingRequestID, onboardingState, portalEnabled, onboardingExists)
+}
+func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error {
+	return a.partnerAuthoritativeAccessAllowed(ctx, partnerID)
+}
+
+// partnerRequestAccess keeps authenticated Partner Portal request paths on the
+// persistent tenant LKG whenever it is present. If that workspace is unavailable,
+// the compatibility fallback reads committed Partners/Billing ownership state
+// locally from Postgres; it never performs request-path service fan-out.
+// An explicit disabled/suspended LKG remains fail-closed and is never bypassed.
+func (a *app) partnerRequestAccess(ctx context.Context, partnerID string) (map[string]any, error) {
+	snapshot, err := a.partnerAccessSnapshot(ctx, partnerID)
+	if err == nil || errors.Is(err, errPartnerPortalAccessDisabled) {
+		return snapshot, err
+	}
+	if authErr := a.partnerAuthoritativeAccessAllowed(ctx, partnerID); authErr != nil {
+		return nil, authErr
+	}
+	return nil, nil
 }
 
 func writePartnerAccessError(w http.ResponseWriter, err error) {
@@ -227,6 +310,9 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	if err!=nil{_ = pbkdf2SHA256([]byte(in.Password),make([]byte,16),passwordIterations,32)}
 	if !valid{a.recordLoginFailure(key,now);common.APIError(w,401,"INVALID_CREDENTIALS","Invalid email or password");return}
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second);defer cancel()
+	// Authentication is a compatibility/security decision, not a browser screen
+	// read. Use committed Partners/Billing state so a just-approved tenant can
+	// sign in immediately and a just-suspended tenant is denied immediately.
 	if err:=a.partnerAccessAllowed(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
 	if a.beginMFAFlow(w,r,"PARTNER",u.ID,in.Remember,partnerMFARequired(u.Role)){return}
 	a.clearLoginFailures(key)
@@ -292,6 +378,82 @@ func writeInternalError(w http.ResponseWriter,err error,fallback string){
 	common.APIError(w,502,"UPSTREAM",fallback)
 }
 
+func partnerWorkspaceMap(snapshot map[string]any, key string) map[string]any {
+	if value, ok := snapshot[key].(map[string]any); ok {
+		return central10CopyMap(value)
+	}
+	return map[string]any{}
+}
+
+func partnerWorkspaceItems(snapshot map[string]any, key string) []map[string]any {
+	items := anyItems(snapshot[key])
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, central10CopyMap(item))
+	}
+	return out
+}
+
+func partnerWorkspaceLocaleMap(snapshot map[string]any, key, locale string) map[string]any {
+	root := partnerWorkspaceMap(snapshot, key)
+	if value, ok := root[normalizedLocale(locale)].(map[string]any); ok {
+		return central10CopyMap(value)
+	}
+	if value, ok := root["en_US"].(map[string]any); ok {
+		return central10CopyMap(value)
+	}
+	return map[string]any{}
+}
+
+func partnerWorkspacePolicy(snapshot map[string]any, userID string) map[string]any {
+	policies := partnerWorkspaceMap(snapshot, "portal_user_module_policies")
+	if value, ok := policies[userID].(map[string]any); ok {
+		return central10CopyMap(value)
+	}
+	return map[string]any{}
+}
+
+func partnerWorkspaceModulesForUser(snapshot map[string]any, u partnerUser) map[string]any {
+	out := partnerWorkspaceLocaleMap(snapshot, "portal_modules", u.PreferredLocale)
+	policy := partnerWorkspacePolicy(snapshot, u.ID)
+	effective := stringSetFromAny(policy["effective_module_keys"])
+	rawItems := anyItems(out["items"])
+	items := make([]map[string]any, 0, len(rawItems))
+	for _, raw := range rawItems {
+		// Never mutate nested maps owned by the shared LKG snapshot. Multiple
+		// users can be pre-rendered/read concurrently with different policies.
+		item := central10CopyMap(raw)
+		key := central10String(item["key"])
+		orgOwned := strings.EqualFold(central10String(item["access_state"]), "ACTIVE") && item["executable"] == true
+		granted := orgOwned && effective[key]
+		switch {
+		case !orgOwned:
+			item["user_access_state"] = "ORGANIZATION_LOCKED"
+		case granted:
+			item["user_access_state"] = "GRANTED"
+		default:
+			item["user_access_state"] = "NOT_ASSIGNED"
+		}
+		item["user_executable"] = granted
+		items = append(items, item)
+	}
+	out["items"] = items
+	out["count"] = len(items)
+	out["user_module_access"] = map[string]any{
+		"access_mode":   policy["access_mode"],
+		"security_rule": "PARTNER_ENTITLEMENT_INTERSECT_USER_ASSIGNMENT",
+	}
+	return out
+}
+
+func (a *app) partnerWorkspaceRequest(r *http.Request, u partnerUser) (map[string]any, bool) {
+	if cached, ok := r.Context().Value(partnerWorkspaceContextKey{}).(map[string]any); ok && cached != nil {
+		return cached, true
+	}
+	snapshot, _, ok := a.partnerWorkspaceForRead(r.Context(), u.PartnerID)
+	return snapshot, ok
+}
+
 func (a *app) requirePartnerPermission(w http.ResponseWriter,u partnerUser,permission string)bool{
 	if partnerCan(u,permission){return true}
 	common.APIError(w,403,"FORBIDDEN","Partner permission required: "+permission)
@@ -329,9 +491,20 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
 	if !browserMutationOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
 	accessCtx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
-	accessErr:=a.partnerAccessAllowed(accessCtx,u.PartnerID)
+	var accessSnapshot map[string]any
+	var accessErr error
+	if partnerBrowserMaterializedRead(r) {
+		// Shipped browser GETs stay zero-fan-out and reuse the tenant LKG.
+		accessSnapshot,accessErr=a.partnerRequestAccess(accessCtx,u.PartnerID)
+	} else {
+		// Legacy/smoke reads and every mutation use committed access authority.
+		accessErr=a.partnerAccessAllowed(accessCtx,u.PartnerID)
+	}
 	cancel()
 	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
+	if accessSnapshot!=nil{
+		r=r.WithContext(context.WithValue(r.Context(),partnerWorkspaceContextKey{},accessSnapshot))
+	}
 	go a.recordPartnerPortalActivity(u)
 	mutating:=r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions
 	if mutating{
@@ -345,10 +518,19 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 		}
 		intentID,intentErr:=a.createAuditIntent(r.Context(),baseEvent,requestState)
 		if intentErr!=nil{common.APIError(w,http.StatusServiceUnavailable,"AUDIT_DURABILITY","Mutation blocked because the durable audit intent could not be recorded");return}
-		rec:=&auditResponseWriter{ResponseWriter:w};w=rec
+		rec:=&auditResponseWriter{ResponseWriter:w,deferred:true};w=rec
 		defer func(){
+			defer rec.flushDeferred()
 			status:=rec.status;if status==0{status=200};outcome:="SUCCESS";if status>=400{outcome="FAILED"}
 			newState:=decodeAuditState(rec.body.Bytes());if state,ok:=newState.(map[string]any);ok&&len(state)==0{newState=requestState}
+			if status < http.StatusBadRequest {
+				// Persist a durable fallback first, then run the one authoritative
+				// foreground projection pass. The queue reconciles after its quiet window.
+				refreshCtx,refreshCancel:=context.WithTimeout(context.Background(),time.Second)
+				a.stageReadModelRefresh(refreshCtx,r.URL.Path,u.PartnerID)
+				refreshCancel()
+				a.writeThroughReadModels(u.PartnerID,r.URL.Path)
+			}
 			event:=baseEvent
 			event.Status=status;event.Outcome=outcome;event.NewState=newState;event.DurationMS=time.Since(started).Milliseconds()
 			finalizeCtx,finalizeCancel:=context.WithTimeout(context.Background(),3*time.Second)
@@ -360,6 +542,12 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	r.Header.Set("X-Himate-Partner-ID",u.PartnerID)
 
 	path:=strings.TrimPrefix(r.URL.Path,"/partner/api/v1")
+	if a.servePartnerPrewarmedResponse(w,r,u,path) {
+		return
+	}
+	if a.servePartnerMaterializedGET(w,r,u,path) {
+		return
+	}
 	switch{
 	case path=="/dashboard"&&r.Method==http.MethodGet:
 		if a.requirePartnerPermission(w,u,"dashboard.read"){a.partnerDashboard(w,r,u)}

@@ -94,12 +94,19 @@ for token in [
 ]:
     check(token in connector, f"Connector runtime aggregate missing: {token}")
 for token in [
-    "func (a *app) central13Connections(", "central13AllPartners",
+    "func (a *app) materializeCentralConnections(", "central13AllPartners",
     '"/internal/v1/partner-connections"', '"partner_name"',
     "central13ConnectionStatusForPartner", '"DELETED"',
-    '"source": "PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS"',
+    "func (a *app) central13Connections(",
+    "centralBrowserMaterializedRead(r)",
+    "func (a *app) serveCentral13PersistentConnections(",
+    "centralSnapshotForRead(r.Context(), centralStep4ConnectionsKey)",
+    '"PERSISTED_CONNECTIONS_SCREEN"',
+    "func (a *app) serveLegacyCentral13Connections(",
+    "central10Cached(cacheKey, true)", "central10Store(cacheKey, payload)",
+    '"PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS"',
 ]:
-    check(token in gateway13, f"Gateway Connections read model missing: {token}")
+    check(token in gateway13, f"Gateway Connections dual-path read model missing: {token}")
 for token in [
     'path == "/api/v1/central/connections"', 'return "connectors"',
     'a.central13Connections(w, r, u)',
@@ -117,14 +124,19 @@ for token in [
 check("klaviyo" not in cms_ui.lower(), "Klaviyo leaked into top-level Website/Marketing structure")
 check("klaviyo" not in connections_ui.lower(), "Klaviyo is hard-coded into the partner Connections UI")
 
-# Exact prewarm/cache invalidation and permission-aware submodules.
+# Canonical path/cache invalidation/RBAC remain, but CENTRAL-21 forbids
+# hidden browser prewarm on hard refresh.
 for token in [
     "String centralConnectionsInitialPath()",
-    "deferredTargets.add(centralConnectionsInitialPath())",
     "add('/api/v1/central/connections')",
     "canConnections: can('connectors.read')",
 ]:
-    check(token in frontend, f"Connections prewarm/RBAC contract missing: {token}")
+    check(token in frontend, f"Connections path/RBAC contract missing: {token}")
+warm_start = frontend.find("void _warmControlPlane()")
+warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
+warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
+check("centralConnectionsInitialPath()" not in warm and "api.prefetch(" not in warm,
+      "Connections still participates in browser hard-refresh prewarm")
 check('strings.Contains(lowerKey, "/api/v1/central/connections?")' in read("services/cmd/gateway/central10.go"),
       "Connections server cache invalidation missing")
 

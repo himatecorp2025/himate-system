@@ -68,9 +68,13 @@ for token in [
     '"SUSPENDED"',
     '"INACTIVE"',
     '"ACTIVE"',
-    '"source": "PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS"',
+    '"PERSISTED_CONNECTIONS_SCREEN"',
+    '"PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS"',
+    "centralBrowserMaterializedRead(r)",
+    "serveCentral13PersistentConnections",
+    "serveLegacyCentral13Connections",
 ]:
-    require(token in connections, f"Partner Connections invariant missing: {token}")
+    require(token in connections, f"Partner Connections dual-path invariant missing: {token}")
 require("'Partner Data Connections'" in connections_ui,
         "Partner Data Connections UI invariant missing")
 

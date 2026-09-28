@@ -12,6 +12,8 @@ def check(ok: bool, message: str) -> None:
 
 frontend = read("frontend/lib/main.dart")
 gateway = read("services/cmd/gateway/central10.go")
+models = read("services/cmd/gateway/materialized_read_models.go")
+central_reads = read("services/cmd/gateway/central_materialized_reads.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 billing8 = read("services/cmd/billing/central8.go")
 partners8 = read("services/cmd/partners/central8.go")
@@ -29,46 +31,53 @@ for token in [
     check(token in step4, f"Partners materialization contract missing: {token}")
 
 for token in [
-    "centralStep3SnapshotGet(centralStep4PartnersKey)",
-    "snapshotItems := step4Items(snapshot[\"items\"])",
+    "centralSnapshotForRead(r.Context(), centralStep4PartnersKey)",
+    "materializedPartnerList(r)",
     "searchContains(",
-    '"X-Himate-Cache", "hot-snapshot"',
+    '"X-Himate-Cache", "persistent-read-model"',
+    '"lifecycle_counts"',
+    '"reference_count"',
+]:
+    check(token in central_reads, f"Partners persistent-read/filter contract missing: {token}")
+
+for token in [
+    "snapshotItems := step4Items(snapshot[\"items\"])",
     'delete(row, "base_service_fee")',
     'delete(row, "active_modules")',
     'delete(row, "system_health")',
     '"pagination": map[string]any{',
 ]:
-    check(token in gateway, f"Partners hot-read/filter/RBAC contract missing: {token}")
+    check(token in gateway, f"Central Partners screen RBAC/pagination contract missing: {token}")
 
-check('case strings.Contains(path, "module"), strings.Contains(path, "catalog"):' in gateway,
-      "catalog invalidation path is missing")
-catalog_case = gateway[gateway.find('case strings.Contains(path, "module"), strings.Contains(path, "catalog"):'):]
-catalog_case = catalog_case[:catalog_case.find("case ", 10)] if "case " in catalog_case[10:] else catalog_case
-check("a.requestCentralStep4Refresh()" in catalog_case,
-      "catalog changes do not refresh the Partners materialization")
+check("if scope.module {" in models
+      and "add(centralStep4PartnersKey, a.refreshCentralStep4Partners)" in models,
+      "catalog mutations no longer refresh the Partners materialization through authoritative write-through")
+check("a.requestCentralStep4Refresh()" not in gateway,
+      "catalog cache invalidation still launches a duplicate Step4 materializer")
 
 finance_start = frontend.find("class _FinancePageState")
 finance_end = frontend.find("\nclass ", finance_start + 1)
 finance = frontend[finance_start:finance_end]
-for token in [
-    "int _warmRetryCount = 0;",
-    "Timer? _warmRetry;",
-    "if (_warmRetryCount < 2)",
-    "Duration(milliseconds: 900 * _warmRetryCount)",
+check("Loading the authoritative finance snapshot." in finance,
+      "Finance authoritative loading guard missing")
+for forbidden in [
+    "_warmRetryCount",
+    "Timer? _warmRetry",
     "Finance snapshot is warming",
+    "Duration(milliseconds: 400)",
+    "Duration(milliseconds: 900",
 ]:
-    check(token in finance, f"bounded Finance warming contract missing: {token}")
-check("Duration(milliseconds: 400)" not in finance,
-      "legacy unbounded 400 ms Finance polling remains")
+    check(forbidden not in finance, f"legacy Finance warming/retry contract survived: {forbidden}")
 
-for token in [
-    "final primaryTargets = <String>{};",
-    "final deferredTargets = <String>{};",
-    "Duration(milliseconds: 1500)",
-    "api.prefetch(primaryTargets",
-    "api.prefetch(deferredTargets",
-]:
-    check(token in frontend, f"staged prewarm contract missing: {token}")
+warm_start = frontend.find("void _warmControlPlane()")
+warm_end = frontend.find("Future<void> _loadPublishedBrandAssets", warm_start)
+warm = frontend[warm_start:warm_end] if warm_start >= 0 and warm_end > warm_start else ""
+check("api.prefetch(" not in warm and "primaryTargets" not in warm and "deferredTargets" not in warm,
+      "browser staged prewarm survived CENTRAL-21")
+check("_prebuildPriorityPages" not in frontend,
+      "hidden page prebuild still causes first-load request fan-out")
+check("centralSnapshotForRead(r.Context(), centralStep4FinanceKey)" in gateway,
+      "Finance request path is not bound to the authoritative persistent snapshot")
 
 for source, name in [
     (partners8, "Partners"),

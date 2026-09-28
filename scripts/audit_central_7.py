@@ -28,6 +28,8 @@ billing_plans = read("services/cmd/billing/plans.go")
 dunning = read("services/cmd/billing/dunning.go")
 central6_backend = read("services/cmd/billing/central6.go")
 partner_gateway = read("services/cmd/gateway/partner_portal.go")
+partner_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
+materialized_reads = read("services/cmd/gateway/materialized_read_models.go")
 gateway_security = read("services/cmd/gateway/security_phase4.go")
 partners = read("services/cmd/partners/main.go")
 impact = read("services/cmd/impact/main.go")
@@ -100,8 +102,42 @@ check("workflow_status IN ('SENT','PAID')" in dunning,
 check("Only SENT invoices can be marked paid" in central6_backend,
       "CENTRAL-6 allows payment before invoice distribution")
 
-check('"/internal/v1/partners/"+url.PathEscape(partnerID)+"/portal-gate"' in partner_gateway,
-      "Partner Portal login no longer calls the billing onboarding gate")
+check('gate := step4Map(snapshot["portal_gate"])' in partner_gateway
+      and 'a.partnerWorkspaceForRead(ctx, partnerID)' in partner_gateway,
+      "Partner Portal browser access is not enforcing the persisted tenant portal gate")
+check('runMap("portal_gate", "billing", "/internal/v1/partners/"+escapedID+"/portal-gate", &portalGate)' in partner_snapshots,
+      "Partner workspace materializer no longer refreshes the Billing onboarding gate")
+check('"portal_gate":                     portalGate' in partner_snapshots
+      and '"portal_gate"' in materialized_reads,
+      "Partner Portal gate is not part of the persistent LKG tenant read model")
+authoritative_start = partner_gateway.find("func (a *app) partnerAuthoritativeAccessAllowed")
+authoritative_end = partner_gateway.find("\nfunc ", authoritative_start + 1)
+authoritative_access = partner_gateway[authoritative_start:authoritative_end if authoritative_end > authoritative_start else len(partner_gateway)]
+check(authoritative_start >= 0
+      and "partners.partners" in authoritative_access
+      and "billing.partner_onboarding" in authoritative_access
+      and "QueryRowContext" in authoritative_access
+      and "internalGET" not in authoritative_access,
+      "Partner login compatibility authority is not a local committed projection")
+check("func (a *app) partnerRequestAccess" in partner_gateway
+      and "partnerAccessSnapshot(ctx, partnerID)" in partner_gateway
+      and "partnerAuthoritativeAccessAllowed(ctx, partnerID)" in partner_gateway,
+      "Authenticated Partner Portal access is not LKG-first with authoritative fallback")
+partner_login_start = partner_gateway.find("func (a *app) partnerLogin")
+partner_login_end = partner_gateway.find("\nfunc ", partner_login_start + 1)
+partner_login = partner_gateway[partner_login_start:partner_login_end if partner_login_end > partner_login_start else len(partner_gateway)]
+check("partnerAccessAllowed(ctx,u.PartnerID)" in partner_login
+      and "partnerRequestAccess(ctx,u.PartnerID)" not in partner_login
+      and "internalGET" not in authoritative_access,
+      "Partner login is not using the local committed access authority")
+partner_api_start = partner_gateway.find("func (a *app) partnerAPI")
+partner_api_end = partner_gateway.find("\nfunc ", partner_api_start + 1)
+partner_api = partner_gateway[partner_api_start:partner_api_end if partner_api_end > partner_api_start else len(partner_gateway)]
+check("partnerBrowserMaterializedRead(r)" in partner_api
+      and "partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" in partner_api
+      and "internalGET" not in authoritative_access,
+      "Partner API does not split browser LKG reads from local committed compatibility/mutation authority")
 check("state.State == onboardingActive && state.PortalEnabled" in central6_backend,
       "CENTRAL-6 Portal gate is no longer ACTIVE + portal_enabled")
 

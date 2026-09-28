@@ -46,7 +46,7 @@ checks = [
         "New Partner keeps the complete built-in category catalog available",
         all(token in gateway_c10 for token in ["cat_001","cat_002","cat_003","cat_004","cat_005","cat_006"])
         and "central10PartnerCategories" in gateway_c10
-        and '"categories": mergedCategories' in gateway_c10
+        and '"categories": central10PartnerCategories(common.RequestLocale(r), rawCategories)' in gateway_c10
         and "/api/v1/central/partners?limit=1&offset=0" in add_partner
         and "response['categories']" in add_partner
         and "categoryOptions = loaded" in add_partner

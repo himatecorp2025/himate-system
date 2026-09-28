@@ -15,6 +15,7 @@ import (
 	"himate.local/services/internal/common"
 	"html"
 	"io"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -38,6 +39,7 @@ const loginAttemptMaxEntries = 4096
 
 type app struct {
 	db               *sql.DB
+	log              *slog.Logger
 	secret           string
 	internalToken    string
 	webDir           string
@@ -125,23 +127,44 @@ type auditEvent struct {
 
 type auditResponseWriter struct {
 	http.ResponseWriter
-	status int
-	body   bytes.Buffer
+	status   int
+	body     bytes.Buffer
+	deferred bool
+	flushed  bool
 }
 
 func (w *auditResponseWriter) WriteHeader(status int) {
 	if w.status == 0 { w.status = status }
-	w.ResponseWriter.WriteHeader(status)
+	if !w.deferred {
+		w.ResponseWriter.WriteHeader(status)
+	}
 }
 
 func (w *auditResponseWriter) Write(p []byte) (int, error) {
 	if w.status == 0 { w.status = http.StatusOK }
+	if w.deferred {
+		_, _ = w.body.Write(p)
+		return len(p), nil
+	}
 	if w.body.Len() < 65536 {
 		remaining := 65536 - w.body.Len()
 		if len(p) < remaining { remaining = len(p) }
 		if remaining > 0 { _, _ = w.body.Write(p[:remaining]) }
 	}
 	return w.ResponseWriter.Write(p)
+}
+
+func (w *auditResponseWriter) flushDeferred() {
+	if !w.deferred || w.flushed {
+		return
+	}
+	w.flushed = true
+	status := w.status
+	if status == 0 { status = http.StatusOK }
+	w.ResponseWriter.WriteHeader(status)
+	if w.body.Len() > 0 {
+		_, _ = w.ResponseWriter.Write(w.body.Bytes())
+	}
 }
 
 func (w *auditResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
@@ -182,11 +205,12 @@ func main() {
 	mfaRequired, _ := strconv.ParseBool(common.Env("HIMATE_MFA_REQUIRED", "false"))
 	transport := &http.Transport{
 		MaxIdleConns:        64,
-		MaxIdleConnsPerHost: 16,
+		MaxIdleConnsPerHost: 8,
+		MaxConnsPerHost:     2,
 		IdleConnTimeout:     90 * time.Second,
 	}
 	a := &app{
-		db: db, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
+		db: db, log: log, secret: os.Getenv("HIMATE_SESSION_SECRET"), internalToken: os.Getenv("HIMATE_INTERNAL_TOKEN"),
 		webDir: common.Env("WEB_DIST_DIR", "/app/web"), env: common.Env("HIMATE_ENV", "development"),
 		version: common.Env("HIMATE_APP_VERSION", "0.8.33-start-23.12"),
 		ttl: time.Duration(ttlHours) * time.Hour, rememberTTL: time.Duration(rememberTTLHours) * time.Hour,
@@ -230,6 +254,10 @@ func main() {
 		log.Error("migration", "error", err)
 		os.Exit(1)
 	}
+	if err := a.seedCentralUserNotificationReadModelBaselines(ctx); err != nil {
+		log.Error("Central user read-model baseline seeding", "error", err)
+		os.Exit(1)
+	}
 	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	if err := a.recoverAuditOutbox(recoveryCtx); err != nil {
 		recoveryCancel()
@@ -250,18 +278,24 @@ func main() {
 		}
 		a.proxies[name] = p
 	}
-	a.bootstrapDashboardSnapshot()
-	a.bootstrapCentralStep3Snapshots()
-	// A Central route must never become Live before its critical read models
-	// are renderable. Persisted snapshots are reused immediately; only missing
-	// snapshots are synchronously materialized once during gateway startup.
-	a.warmMissingCentralSnapshots()
+	readinessCtx, readinessCancel := context.WithTimeout(context.Background(), 45*time.Second)
+	if err := a.ensureColdStartReadiness(readinessCtx); err != nil {
+		readinessCancel()
+		log.Error("deterministic cold-start readiness gate failed", "error", err)
+		os.Exit(1)
+	}
+	readinessCancel()
 	go a.runDashboardMaterializer()
 	go a.runCentralStep3Materializer()
 	go a.runCentralStep4Materializer()
+	go a.runCentralPartnerWorkspaceMaterializer()
+	go a.runReadModelRefreshWorker()
+	go a.runCentralUserNotificationMaterializer()
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", a.live)
+	mux.HandleFunc("/health", a.serveGatewayHealthCompatibility)
 	mux.HandleFunc("/api/v1/live", a.live)
-	mux.HandleFunc("/api/v1/health", a.health)
+	mux.HandleFunc("/api/v1/health", a.serveGatewayHealthCompatibility)
 	mux.HandleFunc("/api/v1/auth/login", a.login)
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/auth/me", a.me)
@@ -284,15 +318,11 @@ func main() {
 	})
 	mux.HandleFunc("/cms-preview/", a.cmsPagePreview)
 	mux.HandleFunc("/design-preview", a.designPreview)
-	mux.HandleFunc("/connector/v1/", func(w http.ResponseWriter, r *http.Request) {
-		a.serveProxy(w, r, "connector")
-	})
-	mux.HandleFunc("/webhooks/stripe", func(w http.ResponseWriter, r *http.Request) {
-		a.serveProxy(w, r, "payments")
-	})
+	mux.HandleFunc("/connector/v1/", a.connectorPublicProxy)
+	mux.HandleFunc("/webhooks/stripe", a.stripeWebhookProxy)
 	mux.HandleFunc("/api/", a.api)
 	mux.Handle("/", a.web())
-	common.Run(log, "gateway", common.Env("PORT", "10000"), securityHeaders(mux))
+	common.Run(log, "gateway", common.Env("PORT", "10000"), gatewayReadinessGate(securityHeaders(mux)))
 }
 
 func (a *app) migrate(ctx context.Context) error {
@@ -406,6 +436,8 @@ func (a *app) migrate(ctx context.Context) error {
 		central8GatewayMigration(),
 		central10DashboardSnapshotMigration(),
 		central10Step3SnapshotMigration(),
+		materializedReadModelMigration(),
+		centralUserReadModelMigration(),
 	}); err != nil {
 		return err
 	}
@@ -1292,9 +1324,10 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			common.APIError(w, http.StatusServiceUnavailable, "AUDIT_DURABILITY", "Mutation blocked because the durable audit intent could not be recorded")
 			return
 		}
-		recorder := &auditResponseWriter{ResponseWriter: w}
+		recorder := &auditResponseWriter{ResponseWriter: w, deferred: true}
 		w = recorder
 		defer func() {
+			defer recorder.flushDeferred()
 			status := recorder.status
 			if status == 0 { status = http.StatusOK }
 			outcome := "SUCCESS"
@@ -1302,12 +1335,6 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			newState := decodeAuditState(recorder.body.Bytes())
 			if state, ok := newState.(map[string]any); ok && len(state) == 0 {
 				newState = requestState
-			}
-			if status < 400 {
-				a.invalidateCentral10Caches(r.URL.Path)
-				if state, ok := newState.(map[string]any); ok {
-					a.applyCentralModuleMutationSnapshot(r.URL.Path, state)
-				}
 			}
 			finalPartnerID := partnerID
 			if finalPartnerID == "" {
@@ -1323,6 +1350,28 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 			finalizeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			finalizeErr := a.finalizeAuditIntent(finalizeCtx, intentID, event)
 			cancel()
+			if status < 400 {
+				a.invalidateCentral10Caches(r.URL.Path)
+				if state, ok := newState.(map[string]any); ok {
+					a.applyCentralModuleMutationSnapshot(r.URL.Path, state)
+				}
+				refreshReason := r.URL.Path
+				if finalizeErr == nil {
+					// The durable audit row is now committed. Include Administration/Audit
+					// in the same synchronous projection refresh before the ACK is released.
+					refreshReason += "/audit"
+				}
+				refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
+				a.stageReadModelRefresh(refreshCtx, refreshReason, finalPartnerID)
+				refreshCancel()
+				// Persist the durable fallback first. Foreground write-through owns
+				// immediate consistency; the queue waits for its mutation quiet window.
+				foregroundReason := refreshReason
+				if readModelForegroundModuleDelta(r.Method, r.URL.Path) {
+					foregroundReason += foregroundModuleDeltaMarker
+				}
+				a.writeThroughReadModels(finalPartnerID, foregroundReason)
+			}
 			if finalizeErr == nil && resource != "notifications" { go a.emitNotification(event) }
 		}()
 	}
@@ -1332,8 +1381,17 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Header.Set("X-Himate-User-ID", u.ID)
+	if a.serveCentralPrewarmedResponse(w, r, u) {
+		return
+	}
 	if r.URL.Path == "/api/v1/dashboard/summary" {
 		a.dashboard(w, r, u)
+		return
+	}
+	if a.serveCentralNotificationGET(w, r, u) {
+		return
+	}
+	if a.serveCentralMaterializedGET(w, r, u) {
 		return
 	}
 	switch {
@@ -1373,8 +1431,6 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.partnerOnboarding(w, r, u)
 	case r.URL.Path == "/api/v1/partners/portfolio" && r.Method == http.MethodGet:
 		a.partnerPortfolioMetrics(w, r)
-	case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:
-		a.partnerPortfolio(w, r)
 	case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":
 		if r.URL.Path == "/api/v1/partners" && r.Method == http.MethodPost {
 			if !a.requireServiceReleases(w, r, "partners", "billing", "cms", "storage") {
@@ -1411,7 +1467,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/api/v1/connectors/"):
 		a.serveProxy(w, r, "connector")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/system-health"):
-		a.serveProxy(w, r, "health")
+		a.serveSystemHealthCompatibility(w, r)
 	case r.URL.Path == "/api/v1/backups", strings.HasPrefix(r.URL.Path, "/api/v1/backups/"):
 		a.serveProxy(w, r, "backups")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/impact/"):
@@ -1543,7 +1599,16 @@ func (a *app) emitNotification(event auditEvent) {
 	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"http://"+host+"/internal/v1/notifications/events",bytes.NewReader(body));if err!=nil{return}
 	req.Header.Set("Content-Type","application/json")
 	common.BindInternalRequest(req,a.internalToken)
-	resp,err:=common.DoInternal(a.client,req);if err==nil&&resp!=nil{resp.Body.Close()}
+	resp,err:=common.DoInternal(a.client,req)
+	if err==nil&&resp!=nil{
+		status:=resp.StatusCode
+		resp.Body.Close()
+		if status<http.StatusBadRequest{
+			refreshCtx,refreshCancel:=context.WithTimeout(context.Background(),12*time.Second)
+			a.refreshCentralUserNotificationSnapshots(refreshCtx)
+			refreshCancel()
+		}
+	}
 }
 
 func auditLimit(value string, fallback, max int) int {
@@ -1721,150 +1786,64 @@ func (a *app) health(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) partnerPortfolio(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	type partnerPage struct {
-		Items           []map[string]any `json:"items"`
-		Count           int              `json:"count"`
-		Total           int              `json:"total"`
-		Limit           int              `json:"limit"`
-		Offset          int              `json:"offset"`
-		HasMore         bool             `json:"has_more"`
-		LifecycleCounts map[string]int   `json:"lifecycle_counts"`
-		ReferenceCount  int              `json:"reference_count"`
-	}
-	type portfolioPage struct { Items []map[string]any `json:"items"` }
-
-	var partners partnerPage
-	query := r.URL.Query()
-	coreOnly := strings.EqualFold(strings.TrimSpace(query.Get("core_only")), "true")
-	query.Del("core_only")
-	path := "/api/v1/partners"
-	if encoded := query.Encode(); encoded != "" { path += "?" + encoded }
-	if err := a.internalGET(ctx, a.hosts["partners"], path, &partners); err != nil {
-		common.APIError(w, 502, "PARTNERS_UNAVAILABLE", "Partner portfolio is temporarily unavailable")
+	out, ok := a.materializedPartnerList(r)
+	if !ok {
+		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Partner read model is not ready")
 		return
 	}
-	if coreOnly {
-		w.Header().Set("Server-Timing", fmt.Sprintf("partner-core;dur=%d", time.Since(started).Milliseconds()))
-		common.JSON(w, 200, map[string]any{
-			"items": partners.Items, "count": partners.Count, "total": partners.Total,
-			"limit": partners.Limit, "offset": partners.Offset, "has_more": partners.HasMore,
-			"lifecycle_counts": partners.LifecycleCounts, "reference_count": partners.ReferenceCount,
-		})
-		return
-	}
-
-	var catalogPortfolio, billingPortfolio, healthPortfolio portfolioPage
-	var catalogErr, billingErr, healthErr error
-	if len(partners.Items) > 0 {
-		ids := make([]string, 0, len(partners.Items))
-		for _, item := range partners.Items {
-			if id := strings.TrimSpace(fmt.Sprint(item["id"])); id != "" { ids = append(ids, id) }
-		}
-		filter := url.QueryEscape(strings.Join(ids, ","))
-		var wg sync.WaitGroup
-		wg.Add(3)
-		go func() {
-			defer wg.Done()
-			catalogErr = a.internalGET(ctx, a.hosts["catalog"], "/internal/v1/portfolio?ids="+filter, &catalogPortfolio)
-		}()
-		go func() {
-			defer wg.Done()
-			billingErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/portfolio?ids="+filter, &billingPortfolio)
-		}()
-		go func() {
-			defer wg.Done()
-			healthErr = a.internalGET(ctx, a.hosts["health"], "/internal/v1/system-health/partner-snapshots?ids="+filter, &healthPortfolio)
-		}()
-		wg.Wait()
-	}
-
-	catalogByID := map[string]map[string]any{}
-	for _, item := range catalogPortfolio.Items { catalogByID[fmt.Sprint(item["partner_id"])] = item }
-	billingByID := map[string]map[string]any{}
-	for _, item := range billingPortfolio.Items { billingByID[fmt.Sprint(item["partner_id"])] = item }
-	healthByID := map[string]map[string]any{}
-	for _, item := range healthPortfolio.Items { healthByID[fmt.Sprint(item["partner_id"])] = item }
-
-	for _, p := range partners.Items {
-		id := fmt.Sprint(p["id"])
-		cat := catalogByID[id]
-		bill := billingByID[id]
-		hlt := healthByID[id]
-		active := 0
-		extra, base := 0.0, 0.0
-		if v, ok := cat["active_modules"].(float64); ok { active = int(v) }
-		if v, ok := cat["extra_module_fee"].(float64); ok { extra = v }
-		if v, ok := bill["effective_base_fee"].(float64); ok { base = v }
-		p["active_modules"] = active
-		p["base_service_fee"] = base
-		p["extra_module_fee"] = extra
-		p["service_value_30d"] = mathRound2(base + extra)
-		if currency := fmt.Sprint(bill["currency"]); currency != "<nil>" { p["currency"] = currency }
-		if hlt != nil {
-			if v := strings.TrimSpace(fmt.Sprint(hlt["overall_status"])); v != "" && v != "<nil>" { p["system_health"] = v }
-			if v := strings.TrimSpace(fmt.Sprint(hlt["platform_version"])); v != "" && v != "<nil>" { p["platform_version"] = v }
-			p["connector_health"] = hlt["connector_health"]
-			p["environment_status"] = hlt["environment_status"]
-			p["provisioning_status"] = hlt["provisioning_status"]
-		}
-	}
-	if catalogErr != nil || billingErr != nil || healthErr != nil {
-		w.Header().Set("X-Himate-Portfolio", "partial")
-	}
-	w.Header().Set("Server-Timing", fmt.Sprintf("partner-portfolio;dur=%d", time.Since(started).Milliseconds()))
-	common.JSON(w, 200, map[string]any{
-		"items": partners.Items, "count": partners.Count, "total": partners.Total,
-		"limit": partners.Limit, "offset": partners.Offset, "has_more": partners.HasMore,
-		"lifecycle_counts": partners.LifecycleCounts, "reference_count": partners.ReferenceCount,
-	})
+	w.Header().Set("X-Himate-Cache", "persistent-read-model")
+	w.Header().Set("Server-Timing", fmt.Sprintf("partner-portfolio-readmodel;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, http.StatusOK, out)
 }
 
 func (a *app) partnerPortfolioMetrics(w http.ResponseWriter, r *http.Request) {
 	rawIDs := strings.TrimSpace(r.URL.Query().Get("ids"))
 	if rawIDs == "" {
-		common.JSON(w, 200, map[string]any{"items": []map[string]any{}, "count": 0})
+		common.JSON(w, http.StatusOK, map[string]any{"items": []map[string]any{}, "count": 0})
 		return
 	}
-	ids := make([]string, 0, 32)
+	snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4PartnersKey)
+	if !ok {
+		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Partner read model is not ready")
+		return
+	}
+	byID := map[string]map[string]any{}
+	for _, raw := range step4Items(snapshot["items"]) {
+		id := central10String(raw["id"])
+		if id != "" {
+			byID[id] = raw
+		}
+	}
+	items := []map[string]any{}
 	seen := map[string]bool{}
-	for _, raw := range strings.Split(rawIDs, ",") {
-		id := strings.TrimSpace(raw)
-		if id == "" || seen[id] { continue }
+	for _, rawID := range strings.Split(rawIDs, ",") {
+		id := strings.TrimSpace(rawID)
+		if id == "" || seen[id] {
+			continue
+		}
 		seen[id] = true
-		ids = append(ids, id)
-		if len(ids) >= 200 { break }
+		row := byID[id]
+		if row == nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"partner_id":         id,
+			"active_modules":      row["active_modules"],
+			"base_service_fee":    row["base_service_fee"],
+			"extra_module_fee":    row["extra_module_fee"],
+			"service_value_30d":   row["service_value_30d"],
+			"system_health":       row["system_health"],
+			"platform_version":    row["platform_version"],
+			"connector_health":    row["connector_health"],
+			"environment_status":  row["environment_status"],
+			"provisioning_status": row["provisioning_status"],
+		})
+		if len(items) >= 200 {
+			break
+		}
 	}
-	type portfolioPage struct { Items []map[string]any `json:"items"` }
-	ctx, cancel := context.WithTimeout(r.Context(), 2500*time.Millisecond)
-	defer cancel()
-	filter := url.QueryEscape(strings.Join(ids, ","))
-	var catalogPortfolio, billingPortfolio, healthPortfolio portfolioPage
-	var wg sync.WaitGroup
-	wg.Add(3)
-	go func(){ defer wg.Done(); _ = a.internalGET(ctx,a.hosts["catalog"],"/internal/v1/portfolio?ids="+filter,&catalogPortfolio) }()
-	go func(){ defer wg.Done(); _ = a.internalGET(ctx,a.hosts["billing"],"/internal/v1/portfolio?ids="+filter,&billingPortfolio) }()
-	go func(){ defer wg.Done(); _ = a.internalGET(ctx,a.hosts["health"],"/internal/v1/system-health/partner-snapshots?ids="+filter,&healthPortfolio) }()
-	wg.Wait()
-	catalogByID:=map[string]map[string]any{}; for _,x:=range catalogPortfolio.Items{catalogByID[fmt.Sprint(x["partner_id"])]=x}
-	billingByID:=map[string]map[string]any{}; for _,x:=range billingPortfolio.Items{billingByID[fmt.Sprint(x["partner_id"])]=x}
-	healthByID:=map[string]map[string]any{}; for _,x:=range healthPortfolio.Items{healthByID[fmt.Sprint(x["partner_id"])]=x}
-	items:=make([]map[string]any,0,len(ids))
-	for _,id:=range ids{
-		out:=map[string]any{"partner_id":id}
-		cat,bill,hlt:=catalogByID[id],billingByID[id],healthByID[id]
-		active:=0; extra,base:=0.0,0.0
-		if v,ok:=cat["active_modules"].(float64);ok{active=int(v)}
-		if v,ok:=cat["extra_module_fee"].(float64);ok{extra=v}
-		if v,ok:=bill["effective_base_fee"].(float64);ok{base=v}
-		out["active_modules"]=active; out["base_service_fee"]=base; out["extra_module_fee"]=extra; out["service_value_30d"]=mathRound2(base+extra)
-		if v:=strings.TrimSpace(fmt.Sprint(hlt["overall_status"]));v!=""&&v!="<nil>"{out["system_health"]=v}
-		if v:=strings.TrimSpace(fmt.Sprint(hlt["platform_version"]));v!=""&&v!="<nil>"{out["platform_version"]=v}
-		items=append(items,out)
-	}
-	common.JSON(w,200,map[string]any{"items":items,"count":len(items)})
+	w.Header().Set("X-Himate-Cache", "persistent-read-model")
+	common.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
 }
 
 func mathRound2(v float64) float64 {
@@ -1987,18 +1966,16 @@ func (a *app) dashboard(w http.ResponseWriter, r *http.Request, actor user) {
 		return
 	}
 
-	refreshRequested := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")), "true")
-	payload, updatedAt, stale := a.dashboardSnapshotForRead(year)
+	payload, updatedAt, stale := a.dashboardSnapshotForReadContext(r.Context(), year)
 	if payload == nil {
-		payload = dashboardWarmingSnapshot(year, a.env, a.version)
+		// Startup seeding normally makes this unreachable. Preserve the
+		// Dashboard JSON contract with a healthy structural baseline rather
+		// than surfacing a warming/unavailable state to the browser.
+		payload = dashboardReadModelBaseline(year, a.env, a.version)
 		stale = true
 	}
-	if year == time.Now().UTC().Year() && (refreshRequested || stale) {
-		a.requestDashboardRefresh()
-		if refreshRequested {
-			w.Header().Set("X-Himate-Snapshot-Refresh", "queued")
-		}
-	}
+	// CENTRAL-21: reads never trigger materialization. Periodic workers and
+	// mutation/write-through events own projection freshness.
 
 	out := a.dashboardPayloadForActor(payload, actor)
 	if meta, ok := out["meta"].(map[string]any); ok {
@@ -2034,9 +2011,11 @@ func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
 	if len([]rune(q))<2 { common.APIError(w,http.StatusBadRequest,"VALIDATION","Search query must contain at least 2 characters");return }
 	if len([]rune(q))>100 { common.APIError(w,http.StatusBadRequest,"VALIDATION","Search query is too long");return }
 	limit:=auditLimit(r.URL.Query().Get("limit"),5,10)
-	ctx,cancel:=context.WithTimeout(r.Context(),3*time.Second)
-	defer cancel()
-
+	snapshot,_,ok:=a.centralSnapshotForRead(r.Context(),centralStep4GlobalSearchKey)
+	if !ok {
+		a.readModelInvariantFailure(w,centralStep4GlobalSearchKey)
+		return
+	}
 	results:=[]map[string]any{}
 	appendResult:=func(resource,id,title,subtitle,deepLink string) {
 		results=append(results,map[string]any{
@@ -2045,94 +2024,122 @@ func (a *app) globalSearch(w http.ResponseWriter,r *http.Request,actor user) {
 	}
 
 	if a.hasPermission(actor,"partners.read") {
-		var response struct{ Items []map[string]any `json:"items"` }
-		path:="/api/v1/partners?limit="+strconv.Itoa(limit)+"&offset=0&core_only=true&include_stats=false&q="+url.QueryEscape(q)
-		if a.internalGET(ctx,a.hosts["partners"],path,&response)==nil {
-			for _,item:=range response.Items {
-				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
-				name:=strings.TrimSpace(fmt.Sprint(item["name"]))
-				if name=="" { name=id }
-				appendResult("partners",id,name,strings.TrimSpace(fmt.Sprint(item["lifecycle"])), "/app/partners/"+url.PathEscape(id))
-			}
+		count:=0
+		for _,item:=range step4Items(snapshot["partners"]) {
+			if !searchContains(q,item["id"],item["display_name"],item["legal_name"],item["brand_name"],item["contact_email"]){continue}
+			id:=central10String(item["id"]);name:=central10String(item["display_name"]);if name==""{name=id}
+			appendResult("partners",id,name,central10String(item["lifecycle"]),"/app/partners/"+url.PathEscape(id))
+			count++;if count>=limit{break}
 		}
 	}
-
 	if a.hasPermission(actor,"catalog.read") {
-		var response struct{ Items []map[string]any `json:"items"` }
-		if a.internalGET(ctx,a.hosts["catalog"],"/api/v1/modules",&response)==nil {
-			count:=0
-			for _,item:=range response.Items {
-				if !searchContains(q,item["key"],item["label"],item["label_en"],item["label_hu"],item["description"],item["description_en"],item["description_hu"]) { continue }
-				id:=strings.TrimSpace(fmt.Sprint(item["key"]))
-				title:=strings.TrimSpace(fmt.Sprint(item["label"]))
-				if title=="" { title=id }
-				appendResult("catalog",id,title,"Module · "+id,"/app")
-				count++;if count>=limit { break }
-			}
+		count:=0
+		for _,item:=range anyItems(snapshot["modules"]) {
+			if !searchContains(q,item["key"],item["label"],item["label_en"],item["label_hu"],item["description"],item["description_en"],item["description_hu"]){continue}
+			id:=central10String(item["key"]);title:=central10String(item["label"]);if title==""{title=id}
+			appendResult("catalog",id,title,"Module · "+id,"/app")
+			count++;if count>=limit{break}
 		}
 	}
-
 	if a.hasPermission(actor,"contact.read") {
-		var response struct{ Items []map[string]any `json:"items"` }
-		path:="/api/v1/contact/inquiries?limit="+strconv.Itoa(limit)+"&offset=0&q="+url.QueryEscape(q)
-		if a.internalGET(ctx,a.hosts["contact"],path,&response)==nil {
-			for _,item:=range response.Items {
-				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
-				title:=strings.TrimSpace(fmt.Sprint(item["name"]))
-				subtitle:=strings.TrimSpace(fmt.Sprint(item["organization"]))
-				if subtitle=="" { subtitle=strings.TrimSpace(fmt.Sprint(item["email"])) }
-				appendResult("contact",id,title,subtitle,"/app")
-			}
+		count:=0
+		for _,item:=range anyItems(snapshot["contact_inquiries"]) {
+			if !searchContains(q,item["id"],item["name"],item["organization"],item["email"],item["message"]){continue}
+			id:=central10String(item["id"]);title:=central10String(item["name"]);subtitle:=central10String(item["organization"]);if subtitle==""{subtitle=central10String(item["email"])}
+			appendResult("contact",id,title,subtitle,"/app")
+			count++;if count>=limit{break}
 		}
 	}
-
 	if a.hasPermission(actor,"cms.read") {
-		var response struct{ Items []map[string]any `json:"items"` }
-		if a.internalGET(ctx,a.hosts["cms"],"/api/v1/cms/pages",&response)==nil {
-			count:=0
-			for _,item:=range response.Items {
-				if !searchContains(q,item["id"],item["page_key"],item["name"],item["locale"]) { continue }
-				id:=strings.TrimSpace(fmt.Sprint(item["id"]))
-				title:=strings.TrimSpace(fmt.Sprint(item["name"]))
-				appendResult("cms",id,title,"CMS · "+strings.TrimSpace(fmt.Sprint(item["locale"])),"/app")
-				count++;if count>=limit { break }
-			}
+		count:=0
+		for _,item:=range step4Items(snapshot["cms_pages"]) {
+			if !searchContains(q,item["id"],item["page_key"],item["name"],item["locale"]){continue}
+			id:=central10String(item["id"]);title:=central10String(item["name"])
+			appendResult("cms",id,title,"CMS · "+central10String(item["locale"]),"/app")
+			count++;if count>=limit{break}
 		}
 	}
-
 	if a.hasPermission(actor,"administration.read") {
-		like:="%"+q+"%"
-		rows,err:=a.db.QueryContext(ctx,`SELECT id,name,email FROM identity.users
-			WHERE name ILIKE $1 OR email ILIKE $1 ORDER BY system_owner DESC,active DESC,lower(name) LIMIT $2`,like,limit)
-		if err==nil {
-			for rows.Next() {
-				var id,name,email string
-				if rows.Scan(&id,&name,&email)==nil { appendResult("administration",id,name,email,"/app") }
-			}
-			rows.Close()
+		count:=0
+		for _,item:=range anyItems(snapshot["admin_users"]) {
+			if !searchContains(q,item["id"],item["name"],item["email"]){continue}
+			appendResult("administration",central10String(item["id"]),central10String(item["name"]),central10String(item["email"]),"/app")
+			count++;if count>=limit{break}
 		}
 	}
-
 	if a.hasPermission(actor,"audit.read") {
-		like:="%"+q+"%"
-		rows,err:=a.db.QueryContext(ctx,`SELECT id,action,actor_name,resource,created_at FROM identity.audit_events
-			WHERE action ILIKE $1 OR actor_name ILIKE $1 OR resource ILIKE $1 OR partner_id ILIKE $1
-			ORDER BY created_at DESC,id DESC LIMIT $2`,like,limit)
-		if err==nil {
-			for rows.Next() {
-				var id int64;var action,actorName,resource string;var created time.Time
-				if rows.Scan(&id,&action,&actorName,&resource,&created)==nil {
-					appendResult("audit",strconv.FormatInt(id,10),strings.ReplaceAll(action,"_"," "),actorName+" · "+resource,"/app")
-				}
-			}
-			rows.Close()
+		count:=0
+		for _,item:=range anyItems(snapshot["audit_events"]) {
+			if !searchContains(q,item["action"],item["actor_name"],item["resource"],item["partner_id"]){continue}
+			id:=fmt.Sprint(item["id"])
+			appendResult("audit",id,strings.ReplaceAll(central10String(item["action"]),"_"," "),central10String(item["actor_name"])+" · "+central10String(item["resource"]),"/app")
+			count++;if count>=limit{break}
 		}
 	}
-
+	w.Header().Set("X-Himate-Cache","persistent-read-model")
 	common.JSON(w,http.StatusOK,map[string]any{
 		"query":q,"items":results,"count":len(results),"limit_per_resource":limit,
 		"permission_scoped":true,
 	})
+}
+
+func (a *app) connectorPublicProxy(w http.ResponseWriter, r *http.Request) {
+	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
+	if !mutating {
+		a.serveProxy(w, r, "connector")
+		return
+	}
+
+	recorder := &auditResponseWriter{ResponseWriter: w, deferred: true}
+	a.serveProxy(recorder, r, "connector")
+	status := recorder.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		var ack map[string]any
+		if json.Unmarshal(recorder.body.Bytes(), &ack) == nil {
+			partnerID := strings.TrimSpace(central10String(ack["partner_id"]))
+			if partnerID != "" {
+				reason := r.URL.Path
+				if strings.HasSuffix(r.URL.Path, "/metrics") || strings.Contains(r.URL.Path, "/data/batches") {
+					reason += "/impact"
+				}
+				refreshCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+				a.stageReadModelRefresh(refreshCtx, reason, partnerID)
+				cancel()
+				// Hold the ACK for targeted foreground projections only; durable
+				// reconciliation waits for the shared mutation quiet window.
+				a.writeThroughReadModels(partnerID, reason)
+			}
+		}
+	}
+	recorder.flushDeferred()
+}
+
+func (a *app) stripeWebhookProxy(w http.ResponseWriter, r *http.Request) {
+	recorder := &auditResponseWriter{ResponseWriter: w, deferred: true}
+	a.serveProxy(recorder, r, "payments")
+	status := recorder.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		var ack map[string]any
+		if json.Unmarshal(recorder.body.Bytes(), &ack) == nil &&
+			strings.EqualFold(central10String(ack["status"]), "processed") {
+			partnerID := strings.TrimSpace(central10String(ack["partner_id"]))
+			if partnerID != "" {
+				refreshCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+				a.stageReadModelRefresh(refreshCtx, "/webhooks/stripe/payment", partnerID)
+				cancel()
+				// Refresh targeted finance/partner projections synchronously; durable
+				// reconciliation is intentionally delayed behind the ACK.
+				a.writeThroughReadModels(partnerID, "/webhooks/stripe/payment")
+			}
+		}
+	}
+	recorder.flushDeferred()
 }
 
 func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
@@ -2145,7 +2152,19 @@ func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusServiceUnavailable, "CONTACT_UNAVAILABLE", "Contact service is unavailable")
 		return
 	}
-	proxy.ServeHTTP(w, r)
+	recorder := &auditResponseWriter{ResponseWriter: w, deferred: true}
+	proxy.ServeHTTP(recorder, r)
+	status := recorder.status
+	if status == 0 { status = http.StatusOK }
+	if status < http.StatusBadRequest {
+		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
+		a.stageReadModelRefresh(refreshCtx, r.URL.Path, "")
+		refreshCancel()
+		// Refresh the Website projection before ACK; durable reconciliation waits
+		// for the shared mutation quiet window.
+		a.writeThroughReadModels("", r.URL.Path)
+	}
+	recorder.flushDeferred()
 }
 func (a *app) internalGET(ctx context.Context, host, path string, dst any) error {
 	if strings.TrimSpace(host) == "" {
@@ -2231,36 +2250,10 @@ func (a *app) serveComplianceArchives(w http.ResponseWriter, r *http.Request) {
 		common.APIError(w, http.StatusMethodNotAllowed, "READ_ONLY", "Compliance Archives are read-only")
 		return
 	}
-	host := strings.TrimSpace(a.hosts["partners"])
-	if host == "" {
-		common.APIError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "partners service is temporarily unavailable")
+	if a.serveComplianceMaterializedGET(w, r) {
 		return
 	}
-	internalPath := strings.Replace(r.URL.Path, "/api/v1/archives", "/internal/v1/archives", 1)
-	target := "http://" + host + internalPath
-	if r.URL.RawQuery != "" {
-		target += "?" + r.URL.RawQuery
-	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
-	if err != nil {
-		common.APIError(w, http.StatusInternalServerError, "ARCHIVE_REQUEST", "Could not prepare Compliance Archive request")
-		return
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Himate-User-ID", strings.TrimSpace(r.Header.Get("X-Himate-User-ID")))
-	common.BindInternalRequest(req, a.internalToken)
-	resp, err := common.DoInternal(a.client, req)
-	if err != nil {
-		common.APIError(w, http.StatusServiceUnavailable, "ARCHIVE_UNAVAILABLE", "Compliance Archive service is temporarily unavailable")
-		return
-	}
-	defer resp.Body.Close()
-	if contentType := strings.TrimSpace(resp.Header.Get("Content-Type")); contentType != "" {
-		w.Header().Set("Content-Type", contentType)
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	common.APIError(w, http.StatusNotFound, "NOT_FOUND", "Compliance Archive read model route not found")
 }
 
 func (a *app) serveProxy(w http.ResponseWriter, r *http.Request, service string) {
@@ -3937,6 +3930,16 @@ func (a *app) web() http.Handler {
 
 		if r.URL.Path == "/technology" || r.URL.Path == "/security" {
 			http.Redirect(w, r, "/platform", http.StatusPermanentRedirect)
+			return
+		}
+
+		// Historical START-18/19 smoke compatibility only. The legacy URL is
+		// retained as an alias to the current protected wordmark asset; the
+		// branding source file and current public /brand path remain unchanged.
+		if r.URL.Path == "/art/himate_logo_master_v2.webp" {
+			w.Header().Set("Content-Type", "image/webp")
+			w.Header().Set("X-Himate-Legacy-Asset", "compatibility-alias")
+			http.ServeFile(w, r, filepath.Join(root, "brand", "himate_identity_wordmark_2026.webp"))
 			return
 		}
 
