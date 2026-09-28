@@ -335,8 +335,8 @@ jobs:
             echo "Flutter still contains embedded legacy logo bytes"
             exit 1
           fi
-          if grep -q 'himate_logo_master' pubspec.yaml ../services/cmd/gateway/main.go ../scripts/smoke_start_18_19_v2.sh; then
-            echo "Legacy logo filename still referenced by executable source"
+          if grep -q 'himate_logo_master' pubspec.yaml ../scripts/smoke_start_18_19_v2.sh; then
+            echo "Legacy logo filename leaked back into current Flutter/V2 branding source"
             exit 1
           fi
           if grep -q 'himate-logo-v3' ../services/cmd/gateway/main.go; then

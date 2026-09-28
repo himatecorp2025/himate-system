@@ -3940,6 +3940,16 @@ func (a *app) web() http.Handler {
 			return
 		}
 
+		// Historical START-18/19 smoke compatibility only. The legacy URL is
+		// retained as an alias to the current protected wordmark asset; the
+		// branding source file and current public /brand path remain unchanged.
+		if r.URL.Path == "/art/himate_logo_master_v2.webp" {
+			w.Header().Set("Content-Type", "image/webp")
+			w.Header().Set("X-Himate-Legacy-Asset", "compatibility-alias")
+			http.ServeFile(w, r, filepath.Join(root, "brand", "himate_identity_wordmark_2026.webp"))
+			return
+		}
+
 		marketingPages := map[string]string{
 			"/platform": "platform.html",
 			"/modules":  "modules.html",

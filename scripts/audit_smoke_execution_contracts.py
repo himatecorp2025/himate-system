@@ -81,6 +81,23 @@ for helper in (
     if helper not in smoke_sources:
         failures.append(f"smoke helper is orphaned from the runtime surface: scripts/{helper}")
 
+# START-18/19 is an intentionally retained historical runtime contract. The
+# legacy asset URL must be satisfied by one Gateway compatibility alias that
+# serves the current protected wordmark without restoring the retired asset.
+legacy_logo_path = "/art/himate_logo_master_v2.webp"
+current_wordmark = "himate_identity_wordmark_2026.webp"
+legacy_smoke = (scripts_dir / "smoke_start_18_19.sh").read_text(encoding="utf-8")
+gateway_main = (root / "services" / "cmd" / "gateway" / "main.go").read_text(encoding="utf-8")
+if legacy_logo_path not in legacy_smoke:
+    failures.append("START-18/19 historical logo smoke contract unexpectedly changed")
+if gateway_main.count(legacy_logo_path) != 1:
+    failures.append("Gateway must expose exactly one historical START-18/19 logo compatibility alias")
+alias_start = gateway_main.find(legacy_logo_path)
+alias_end = gateway_main.find("\n\t\tmarketingPages :=", alias_start)
+alias_block = gateway_main[alias_start:alias_end if alias_end > alias_start else alias_start + 800]
+if current_wordmark not in alias_block or "http.ServeFile" not in alias_block:
+    failures.append("START-18/19 legacy logo alias does not serve the protected current wordmark")
+
 for workflow in sorted(workflow_dir.glob("*.yml")):
     for lineno, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), start=1):
         stripped = line.strip()
