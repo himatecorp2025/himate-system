@@ -292,6 +292,9 @@ func (a *app) centralStep3Store(ctx context.Context, key string, payload map[str
 		payload: copyPayload, updatedAt: now,
 	}
 	centralStep3Snapshots.Unlock()
+	if gatewayReadiness.Load() {
+		a.requestCentralHotResponseRefresh()
+	}
 }
 
 func (a *app) logCentralRefreshFailure(key string, unavailable []string) {

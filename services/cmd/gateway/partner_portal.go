@@ -417,7 +417,12 @@ func partnerWorkspaceModulesForUser(snapshot map[string]any, u partnerUser) map[
 	out := partnerWorkspaceLocaleMap(snapshot, "portal_modules", u.PreferredLocale)
 	policy := partnerWorkspacePolicy(snapshot, u.ID)
 	effective := stringSetFromAny(policy["effective_module_keys"])
-	for _, item := range anyItems(out["items"]) {
+	rawItems := anyItems(out["items"])
+	items := make([]map[string]any, 0, len(rawItems))
+	for _, raw := range rawItems {
+		// Never mutate nested maps owned by the shared LKG snapshot. Multiple
+		// users can be pre-rendered/read concurrently with different policies.
+		item := central10CopyMap(raw)
 		key := central10String(item["key"])
 		orgOwned := strings.EqualFold(central10String(item["access_state"]), "ACTIVE") && item["executable"] == true
 		granted := orgOwned && effective[key]
@@ -430,7 +435,10 @@ func partnerWorkspaceModulesForUser(snapshot map[string]any, u partnerUser) map[
 			item["user_access_state"] = "NOT_ASSIGNED"
 		}
 		item["user_executable"] = granted
+		items = append(items, item)
 	}
+	out["items"] = items
+	out["count"] = len(items)
 	out["user_module_access"] = map[string]any{
 		"access_mode":   policy["access_mode"],
 		"security_rule": "PARTNER_ENTITLEMENT_INTERSECT_USER_ASSIGNMENT",

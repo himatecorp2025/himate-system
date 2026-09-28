@@ -188,8 +188,13 @@ check("partnerID: u.PartnerID, userID: u.ID" in hot_responses,
       "Tenant serialized cache is not isolated by partner and authenticated user")
 check("partnerBrowserMaterializedRead(r)" in hot_responses,
       "Tenant serialized cache can bypass the explicit browser CQRS discriminator")
-check("json.Marshal" not in hot_responses and "json.NewEncoder" not in hot_responses,
-      "Serialized hot-response layer introduced runtime JSON encoding")
+hot_write = func_block(hot_responses, "func writePrewarmedResponse")
+check("json." not in hot_write and "w.Write(entry.body)" in hot_write,
+      "Serialized live hot path performs JSON encoding or lost direct byte serving")
+check('meta["duration_ms"] = 0' in hot_responses and 'meta["prewarmed"] = true' in hot_responses,
+      "Prewarmed response metadata is not deterministic")
+check("item := central10CopyMap(raw)" in partner_portal,
+      "Partner per-user prewarm can mutate shared tenant LKG module maps")
 check(main.find("a.serveCentralPrewarmedResponse(w, r, u)") <
       main.find("a.serveCentralMaterializedGET(w, r, u)"),
       "Central serialized hot path does not precede normal materialized dispatch")

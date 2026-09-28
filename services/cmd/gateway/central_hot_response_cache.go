@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -91,9 +92,24 @@ func hotResponseFromRecorder(rec *centralHotRecorder) (centralHotResponse, error
 	if contentType == "" {
 		contentType = "application/json; charset=utf-8"
 	}
+	body := append([]byte(nil), rec.body.Bytes()...)
+	if strings.Contains(strings.ToLower(contentType), "application/json") {
+		var payload map[string]any
+		if json.Unmarshal(body, &payload) == nil {
+			if meta, ok := payload["meta"].(map[string]any); ok {
+				// The cached response represents live request cost, not startup
+				// pre-render CPU. This keeps performance telemetry deterministic.
+				meta["duration_ms"] = 0
+				meta["prewarmed"] = true
+			}
+			if normalized, err := json.Marshal(payload); err == nil {
+				body = append(normalized, '\n')
+			}
+		}
+	}
 	return centralHotResponse{
 		status:      status,
-		body:        append([]byte(nil), rec.body.Bytes()...),
+		body:        body,
 		contentType: contentType,
 		cacheHeader: rec.header.Get("X-Himate-Cache"),
 	}, nil

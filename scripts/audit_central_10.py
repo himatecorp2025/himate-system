@@ -112,8 +112,13 @@ for token in [
     '"/api/v1/central/impact?evidence_limit=12&evidence_offset=0"',
 ]:
     check(token in hot_responses, f"Central serialized hot-response contract missing: {token}")
-check("json.Marshal" not in hot_responses and "json.NewEncoder" not in hot_responses,
-      "Central hot-response layer performs request-time JSON encoding")
+hot_write_start = hot_responses.find("func writePrewarmedResponse")
+hot_write_end = hot_responses.find("\nfunc ", hot_write_start + 1)
+hot_write = hot_responses[hot_write_start:hot_write_end if hot_write_end > hot_write_start else len(hot_responses)]
+check(hot_write_start >= 0 and "json." not in hot_write and "w.Write(entry.body)" in hot_write,
+      "Central live hot-response path performs JSON encoding or lost direct byte serving")
+check('meta["duration_ms"] = 0' in hot_responses,
+      "Prewarmed response metadata does not normalize live request duration")
 check(gateway_main.find("a.serveCentralPrewarmedResponse(w, r, u)") <
       gateway_main.find('if r.URL.Path == "/api/v1/dashboard/summary"'),
       "Central prewarmed response interceptor does not precede normal read handlers")

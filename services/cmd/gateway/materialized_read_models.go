@@ -406,6 +406,9 @@ func (a *app) persistPartnerWorkspaceSnapshot(ctx context.Context, partnerID str
 		payload: centralStep3CopyMap(payload), updatedAt: now,
 	}
 	centralStep3Snapshots.Unlock()
+	if gatewayReadiness.Load() {
+		a.requestCentralHotResponseRefresh()
+	}
 	return true
 }
 
