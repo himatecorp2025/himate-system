@@ -98,6 +98,18 @@ alias_block = gateway_main[alias_start:alias_end if alias_end > alias_start else
 if current_wordmark not in alias_block or "http.ServeFile" not in alias_block:
     failures.append("START-18/19 legacy logo alias does not serve the protected current wordmark")
 
+# Any smoke that inspects the Netscape cookie jar must preserve curl's
+# #HttpOnly_ prefix semantics. Dropping every '#' line silently deletes secure
+# session cookies and creates a false auth regression.
+for path in sorted(scripts_dir.glob("*.sh")):
+    source = path.read_text(encoding="utf-8")
+    if "himate_session" not in source or "splitlines()" not in source:
+        continue
+    if 'not line.startswith("#")' in source and "#HttpOnly_" not in source:
+        failures.append(
+            f"{path.relative_to(root)}: cookie-jar parser discards #HttpOnly_ session records"
+        )
+
 for workflow in sorted(workflow_dir.glob("*.yml")):
     for lineno, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), start=1):
         stripped = line.strip()

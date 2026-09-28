@@ -51,9 +51,18 @@ platform_user="$(login "$PLATFORM_COOKIE" "admin@example.com" "Local-Development
 printf '%s' "$platform_user" | grep -q '"platform_admin"'
 python3 - "$PLATFORM_COOKIE" <<'PY'
 import pathlib,sys,time
-lines=[line for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line and not line.startswith("#")]
-session=[line.split("\t") for line in lines if "\thimate_session\t" in line]
-assert session, "persistent session cookie missing"
+session=[]
+for raw in pathlib.Path(sys.argv[1]).read_text().splitlines():
+    if not raw:
+        continue
+    if raw.startswith("#HttpOnly_"):
+        raw=raw[len("#HttpOnly_"):]
+    elif raw.startswith("#"):
+        continue
+    parts=raw.split("\t")
+    if len(parts) >= 7 and parts[5] == "himate_session":
+        session.append(parts)
+assert session, "persistent HttpOnly session cookie missing"
 expiry=int(session[-1][4])
 assert expiry > time.time() + 25*24*3600, f"remember expiry too short: {expiry}"
 PY
