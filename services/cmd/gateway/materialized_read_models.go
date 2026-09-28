@@ -721,6 +721,13 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch)
 	}
 }
+type readModelRefreshEvent struct {
+	id        int64
+	partnerID string
+	reason    string
+	createdAt time.Time
+}
+
 func (a *app) refreshDashboardSerialized() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), readModelRefreshAcquireBudget)
 	defer cancel()

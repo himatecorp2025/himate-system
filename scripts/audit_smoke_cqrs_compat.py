@@ -286,6 +286,8 @@ check("func classifyReadModelMutation" in models
       and 'partnerMutation := strings.Contains(reason, "partner")' not in models
       and 'len(jobsByKey) == 0 && partnerID == "" && !scope.tenantOnly' in write_through,
       "Partner/tenant mutation classifier can still expand a local mutation into an all-projection refresh storm")
+check("type readModelRefreshEvent struct" in models,
+      "Durable read-model refresh event type disappeared during write-through refactor")
 check('strings.Contains(reason, "environment") || strings.Contains(reason, "provision")' in models,
       "Provisioning write-through no longer refreshes environment-bearing browser projections")
 check('refreshReason += "/audit"' in main,
