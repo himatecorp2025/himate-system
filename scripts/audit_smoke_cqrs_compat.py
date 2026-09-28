@@ -18,6 +18,8 @@ main = read("services/cmd/gateway/main.go")
 reads = read("services/cmd/gateway/central_materialized_reads.go")
 notifications = read("services/cmd/gateway/central_notification_read_models.go")
 workspace = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
+partner_reads = read("services/cmd/gateway/partner_materialized_reads.go")
+partner_portal = read("services/cmd/gateway/partner_portal.go")
 billing = read("services/cmd/billing/main.go")
 frontend = read("frontend/lib/main.dart")
 models = read("services/cmd/gateway/materialized_read_models.go")
@@ -68,7 +70,18 @@ check("X-Himate-Locale" in script_sources.get("scripts/smoke_start_23_5.sh", "")
 check("X-Himate-Locale" in script_sources.get("scripts/smoke_start_23_7.sh", ""),
       "START-23.7 localized legacy compatibility coverage disappeared")
 check("if !centralBrowserMaterializedRead(r)" in reads,
-      "Generic materialized GET interceptor can still capture legacy/smoke reads")
+      "Generic Central materialized GET interceptor can still capture legacy/smoke reads")
+check("func partnerBrowserMaterializedRead" in partner_reads
+      and 'r.Header.Get("X-Himate-Read-Model")' in partner_reads
+      and '"browser"' in partner_reads
+      and 'r.Header.Get("X-Himate-Locale")' in partner_reads,
+      "Partner Portal browser CQRS discriminator is missing or implicit")
+check("if !partnerBrowserMaterializedRead(r)" in partner_reads,
+      "Partner Portal materialized GET interceptor can still capture legacy/smoke reads")
+check("if partnerBrowserMaterializedRead(r)" in partner_portal
+      and "partnerAccessSnapshot" in partner_portal
+      and "partnerAccessAllowed" in partner_portal,
+      "Partner Portal does not separate browser LKG access from legacy authoritative compatibility access")
 check('case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, "/api/v1/environments/"):' in main
       and 'a.serveProxy(w, r, "environments")' in main,
       "Legacy environment GET no longer reaches authoritative Environment service")
@@ -76,8 +89,17 @@ check('case strings.HasPrefix(r.URL.Path, "/api/v1/provisioning/"):' in main
       and 'a.serveProxy(w, r, "provisioning")' in main,
       "Legacy provisioning GET no longer reaches authoritative Provisioning service")
 check('case strings.HasPrefix(r.URL.Path, "/api/v1/system-health"):' in main
-      and 'a.serveProxy(w, r, "health")' in main,
-      "Legacy system-health GET no longer reaches authoritative Health snapshot service")
+      and 'a.serveSystemHealthCompatibility(w, r)' in main,
+      "Legacy system-health GET is not routed through the local LKG compatibility adapter")
+health_compat_start = models.find("func (a *app) serveSystemHealthCompatibility")
+health_compat_end = models.find("\nfunc ", health_compat_start + 1)
+health_compat = models[health_compat_start:health_compat_end if health_compat_end > health_compat_start else len(models)]
+check(health_compat_start >= 0
+      and "centralStep4SystemKey" in health_compat
+      and 'step4Map(snapshot["health_api"])' in health_compat
+      and "internalGET(" not in health_compat
+      and "serveProxy(" not in health_compat,
+      "Legacy system-health compatibility path can still fan out or bypass persistent System LKG")
 check('case r.URL.Path == "/api/v1/partners", r.URL.Path == "/api/v1/partner-categories":' in main,
       "Legacy partner/category compatibility route is missing")
 check('case r.URL.Path == "/api/v1/partners" && r.Method == http.MethodGet:' not in main,
@@ -107,6 +129,22 @@ check("seedCentralUserNotificationReadModelBaselines" in notifications
       and "seedCentralUserNotificationReadModelBaselines(ctx)" in main,
       "Central user notification cold-start seed/readiness contract is incomplete")
 
+# Atomic two-phase cold-start readiness contract.
+check("var gatewayReadiness atomic.Bool" in readiness
+      and "func gatewayReadinessGate" in readiness
+      and "func (a *app) ensureColdStartReadiness" in readiness
+      and "func (a *app) verifyColdStartLKG" in readiness,
+      "Atomic cold-start readiness gate is incomplete")
+ensure_start = readiness.find("func (a *app) ensureColdStartReadiness")
+ensure_block = readiness[ensure_start:]
+check(ensure_start >= 0
+      and ensure_block.find("seedCentralReadModelBaselines") >= 0
+      and ensure_block.find("verifyColdStartLKG") >= 0
+      and ensure_block.find("verifyColdStartLKG") < ensure_block.find("gatewayReadiness.Store(true)"),
+      "Readiness can open before deterministic seed/LKG verification")
+check("gatewayReadinessGate(securityHeaders(mux))" in main,
+      "Gateway public handler is not protected by the atomic readiness gate")
+
 # Projection builders must be read-only with respect to subscription lifecycle.
 check('base+"/summary?read_model_source=1"' in workspace,
       "Partner workspace still calls the mutating legacy Billing summary path")
@@ -119,16 +157,23 @@ check("read_model_source" in summary_block
       "Billing summary does not isolate read-model materialization from lifecycle synchronization")
 
 # Immediate mutation -> browser F5 consistency and legacy health compatibility.
-# Global definitions are cross-tenant: module registry, plan catalog and design
-# changes must update the tenant read-model slice before the mutation ACK.
+# Global definitions are cross-tenant, but foreground mutation latency must not
+# scale with tenant count. The concrete tenant/Central slices are synchronous;
+# global tenant reconciliation belongs to the durable queue.
 check("func readModelGlobalTenantScopes" in models
       and 'path == "/api/v1/modules"' in models
       and 'path == "/api/v1/module-groups"' in models
       and 'path == "/api/v1/billing/plans"' in models
       and 'path == "/api/v1/cms/design"' in models,
       "Global tenant mutation classifier is incomplete")
-check("a.writeThroughGlobalTenantReadModels(reason)" in models,
-      "Synchronous write-through does not refresh all tenant snapshots for global definitions")
+write_through_start = models.find("func (a *app) writeThroughReadModels")
+write_through_end = models.find("\nfunc ", write_through_start + 1)
+write_through = models[write_through_start:write_through_end if write_through_end > write_through_start else len(models)]
+check(write_through_start >= 0
+      and "writeThroughGlobalTenantReadModels(reason)" not in write_through,
+      "Foreground mutation path still performs unbounded all-tenant fan-out")
+check("writeThroughGlobalTenantReadModels" in workspace,
+      "Targeted global tenant reconciliation implementation disappeared")
 check("refreshGlobalTenantReadModelSlice" in workspace
       and "/internal/v1/partner-portal/" in workspace
       and "/api/v1/billing/plans" in workspace
@@ -143,7 +188,12 @@ check("stageReadModelRefresh" in models
       and "stagedRefresh := a.stageReadModelRefresh" in main
       and main.find("stagedRefresh := a.stageReadModelRefresh") < main.find("a.writeThroughReadModels")
       and main.find("a.writeThroughReadModels") < main.find("wakeReadModelRefreshWorker()", main.find("a.writeThroughReadModels")),
-      "Durable refresh worker can still race synchronous write-through for the same mutation")
+      "Admin durable refresh worker can still race synchronous write-through for the same mutation")
+partner_stage = partner_portal.find("stagedRefresh:=a.stageReadModelRefresh")
+partner_write = partner_portal.find("a.writeThroughReadModels", partner_stage)
+partner_wake = partner_portal.find("wakeReadModelRefreshWorker()", partner_write)
+check(partner_stage >= 0 and partner_stage < partner_write < partner_wake,
+      "Partner durable refresh worker can still race synchronous write-through for the same mutation")
 global_slice_start = workspace.find("func (a *app) refreshGlobalTenantReadModelSlice")
 global_slice_end = workspace.find("\nfunc ", global_slice_start + 1)
 global_slice = workspace[global_slice_start:global_slice_end if global_slice_end > global_slice_start else len(workspace)]
@@ -179,6 +229,11 @@ for required in [
 
 check("a.refreshHealthSourceWriteThrough()" in models,
       "System/partner writes no longer synchronously refresh persistent Health compatibility state")
+partner_block_start = write_through.find("if partnerMutation {")
+partner_block_end = write_through.find("\n\t}", partner_block_start)
+partner_block = write_through[partner_block_start:partner_block_end if partner_block_end > partner_block_start else len(write_through)]
+check("centralStep4SystemKey" in partner_block,
+      "Partner mutation does not rebuild system_screen after Health source write-through")
 check('strings.Contains(reason, "environment") || strings.Contains(reason, "provision")' in models,
       "Provisioning write-through no longer refreshes environment-bearing browser projections")
 check('refreshReason += "/audit"' in main,

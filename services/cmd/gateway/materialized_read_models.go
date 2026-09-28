@@ -521,6 +521,7 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 
 	if partnerMutation {
 		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		add(centralStep4SystemKey, a.refreshCentralStep4System)
 		add(centralStep4FinanceKey, a.refreshCentralStep4Finance)
 		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
 		add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections)
