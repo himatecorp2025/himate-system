@@ -237,6 +237,51 @@ func (a *app) materializeCentralAdministration(ctx context.Context) map[string]a
 	}
 }
 
+func central14ApplyRecoveryFields(row map[string]any, recovery map[string]any) {
+	if len(recovery) == 0 {
+		return
+	}
+	row["backup_status"] = central10String(recovery["latest_backup_status"])
+	row["restore_test_status"] = central10String(recovery["latest_restore_test_status"])
+	row["recoverability_status"] = central10String(recovery["recoverability_status"])
+	row["latest_restore_point_id"] = central10String(recovery["latest_restore_point_id"])
+	row["latest_backup_at"] = recovery["latest_backup_at"]
+}
+
+func (a *app) central14LegacyBackupOverlay(ctx context.Context, snapshot map[string]any) (map[string]any, bool) {
+	var backups central14BackupSummary
+	if err := a.internalGET(ctx, a.hosts["backups"], "/internal/v1/backups/summary", &backups); err != nil {
+		if a.log != nil {
+			a.log.Warn("CENTRAL-14 legacy backup overlay retained LKG", "error", err)
+		}
+		return snapshot, false
+	}
+	backupByPartner := mapByPartner(backups.Items)
+	out := central10CopyMap(snapshot)
+
+	rows := step4Items(snapshot["items"])
+	rowsOut := make([]map[string]any, 0, len(rows))
+	for _, raw := range rows {
+		row := central10CopyMap(raw)
+		central14ApplyRecoveryFields(row, backupByPartner[central10String(row["partner_id"])])
+		rowsOut = append(rowsOut, row)
+	}
+	out["items"] = rowsOut
+
+	company := central10CopyMap(step4Map(snapshot["company"]))
+	central14ApplyRecoveryFields(company, backupByPartner["_platform"])
+	if strings.TrimSpace(backups.Provider) != "" {
+		company["backup_provider"] = backups.Provider
+	}
+	out["company"] = company
+
+	kpis := central10CopyMap(step4Map(snapshot["kpis"]))
+	kpis["verified_recovery"] = central14CountStatus(rowsOut, "recoverability_status", "VERIFIED")
+	kpis["needs_recovery_verification"] = central14CountNotStatus(rowsOut, "recoverability_status", "VERIFIED")
+	out["kpis"] = kpis
+	return out, true
+}
+
 func (a *app) central14Administration(w http.ResponseWriter, r *http.Request, actor user) {
 	if r.Method != http.MethodGet {
 		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
@@ -247,6 +292,21 @@ func (a *app) central14Administration(w http.ResponseWriter, r *http.Request, ac
 	if !ok {
 		a.readModelInvariantFailure(w, centralStep4AdministrationKey)
 		return
+	}
+	// Browser reads remain zero-fan-out and use only the persistent LKG.
+	// Historical /api/v1/* compatibility reads may overlay the authoritative
+	// asynchronous Backup/Recovery state so a completed restore test is visible
+	// immediately without waiting for the next background materializer cycle.
+	if !centralBrowserMaterializedRead(r) {
+		overlayCtx, overlayCancel := context.WithTimeout(r.Context(), 2*time.Second)
+		if overlaid, fresh := a.central14LegacyBackupOverlay(overlayCtx, snapshot); fresh {
+			snapshot = overlaid
+			updatedAt = time.Now().UTC()
+			persistCtx, persistCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+			a.centralStep3Store(persistCtx, centralStep4AdministrationKey, snapshot)
+			persistCancel()
+		}
+		overlayCancel()
 	}
 
 	canPartners := a.hasPermission(actor, "partners.read")

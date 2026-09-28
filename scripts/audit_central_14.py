@@ -52,6 +52,7 @@ check("part 'administration_center.dart';" in frontend,
 
 for token in [
     "func (a *app) materializeCentralAdministration(ctx context.Context)",
+    "func (a *app) central14LegacyBackupOverlay(ctx context.Context, snapshot map[string]any)",
     "func (a *app) central14Administration(",
     'a.hasPermission(actor, "partners.read")',
     'a.hasPermission(actor, "billing.read")',
@@ -70,6 +71,15 @@ check('case path == "/api/v1/central/administration":' in gateway and 'return "a
       "Administration read model is not protected by administration RBAC")
 check('a.central14Administration(w, r, u)' in gateway,
       "Administration read model route missing")
+for token in [
+    'if !centralBrowserMaterializedRead(r) {',
+    '"/internal/v1/backups/summary"',
+    "central14ApplyRecoveryFields",
+    "a.centralStep3Store(persistCtx, centralStep4AdministrationKey, snapshot)",
+]:
+    check(token in gateway14, f"Administration legacy backup consistency adapter missing: {token}")
+check('if !centralBrowserMaterializedRead(r) {' in gateway14,
+      "Administration browser path can no longer be proven zero-fan-out")
 
 for token in [
     'mux.HandleFunc("/api/v1/billing/company/documents", a.companyDocuments)',
