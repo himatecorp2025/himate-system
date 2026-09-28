@@ -542,8 +542,9 @@ check(central_api.find("finalizeAuditIntent") < central_api.find("writeThroughRe
       "Central mutation projection refresh runs before durable audit finalization")
 check('refreshReason += "/audit"' in central_api,
       "Central mutation write-through does not include the newly finalized audit projection")
-check('strings.Contains(reason, "environment") || strings.Contains(reason, "provision")' in models and
-      'add(centralStep4WebsiteKey, a.refreshCentralStep4Website)' in models,
+check("if scope.system {" in write_through
+      and 'strings.Contains(foregroundReason, "environment") || strings.Contains(foregroundReason, "provision")' in write_through
+      and 'add(centralStep4WebsiteKey, a.refreshCentralStep4Website)' in write_through,
       "Provisioning/environment write-through does not refresh the browser Website environment projection")
 
 # Provider/webhook writes must participate in the same write-through contract.

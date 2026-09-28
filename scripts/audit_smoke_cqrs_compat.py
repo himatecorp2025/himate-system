@@ -221,6 +221,9 @@ check('strings.Contains(reason, "/modules")' not in models,
 check("writeThroughGlobalTenantReadModelScopes" in workspace
       and '"durable-read-model-batch"' in models,
       "Durable queue does not reuse targeted global tenant slice reconciliation")
+api_start = main.find("func (a *app) api")
+api_end = main.find("\nfunc ", api_start + 1)
+api_block = main[api_start:api_end if api_end > api_start else len(main)]
 api_stage = api_block.find("a.stageReadModelRefresh")
 api_write = api_block.find("a.writeThroughReadModels", api_stage)
 check("stageReadModelRefresh" in models
@@ -298,13 +301,12 @@ check("func classifyReadModelMutation" in models
       "Partner/tenant mutation classifier can still expand a local mutation into an all-projection refresh storm")
 check("type readModelRefreshEvent struct" in models,
       "Durable read-model refresh event type disappeared during write-through refactor")
-check('strings.Contains(reason, "environment") || strings.Contains(reason, "provision")' in models,
+check("if scope.system {" in write_through
+      and 'strings.Contains(foregroundReason, "environment") || strings.Contains(foregroundReason, "provision")' in write_through
+      and "add(centralStep4WebsiteKey, a.refreshCentralStep4Website)" in write_through,
       "Provisioning write-through no longer refreshes environment-bearing browser projections")
 check('refreshReason += "/audit"' in main,
       "Mutation write-through no longer includes the newly committed audit event")
-api_start = main.find("func (a *app) api")
-api_end = main.find("\nfunc ", api_start + 1)
-api_block = main[api_start:api_end if api_end > api_start else len(main)]
 check(api_start >= 0 and
       api_block.find("finalizeAuditIntent") >= 0 and
       api_block.find("writeThroughReadModels") >= 0 and
