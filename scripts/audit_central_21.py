@@ -398,8 +398,9 @@ check("serveComplianceMaterializedGET" in compliance_fallback and
       "http.NewRequestWithContext" not in compliance_fallback and "a.client.Do" not in compliance_fallback,
       "Compliance Archive fallback regressed to live Partners I/O")
 
-# Authenticated Partner Portal requests are LKG-first. The login/compatibility
-# authority remains available only as a fallback when no tenant snapshot exists.
+# Shipped-browser Partner Portal GETs are LKG-first. Authentication, session
+# checks, legacy compatibility reads and mutations use committed local authority
+# so activation/suspension transitions are visible immediately without fan-out.
 access = func_block(partner_portal, "func (a *app) partnerAccessAllowed")
 access_snapshot = func_block(partner_portal, "func (a *app) partnerAccessSnapshot")
 request_access = func_block(partner_portal, "func (a *app) partnerRequestAccess")
@@ -419,19 +420,40 @@ check("partnerAuthoritativeAccessAllowed" in access
       and "internalGET" not in authoritative_access,
       "Partner authoritative fallback is not a local committed projection")
 partner_login = func_block(partner_portal, "func (a *app) partnerLogin")
-check("partnerRequestAccess(ctx,u.PartnerID)" in partner_login
-      and "partnerAccessAllowed(ctx,u.PartnerID)" not in partner_login
-      and "partnerAuthoritativeAccessAllowed" not in partner_login,
-      "Partner login regressed to synchronous live access fan-out")
+check("partnerAccessAllowed(ctx,u.PartnerID)" in partner_login
+      and "partnerRequestAccess(ctx,u.PartnerID)" not in partner_login,
+      "Partner login is not using committed local access authority")
+partner_me = func_block(partner_portal, "func (a *app) partnerMe")
+check("partnerAccessAllowed(ctx,u.PartnerID)" in partner_me
+      and "partnerRequestAccess(ctx,u.PartnerID)" not in partner_me,
+      "Partner session check is not using committed local access authority")
 partner_api_access = func_block(partner_portal, "func (a *app) partnerAPI")
-check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api_access
-      and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api_access
-      and "partnerAuthoritativeAccessAllowed" not in partner_api_access,
-      "Authenticated Partner API request path regressed to live access fan-out")
+check("partnerBrowserMaterializedRead(r)" in partner_api_access
+      and "partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api_access
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" in partner_api_access,
+      "Partner API does not split browser LKG reads from authoritative compatibility/mutations")
 check("partnerWorkspaceContextKey" in partner_portal and
       "context.WithValue" in partner_api_access and
       "r.Context().Value(partnerWorkspaceContextKey{})" in partner_portal,
       "Partner request does not reuse the access-gate tenant snapshot")
+
+tenant_scope = func_block(models, "func readModelTenantSliceScopes")
+tenant_slice = func_block(tenant_snapshots, "func (a *app) refreshGlobalTenantReadModelSlice")
+check('strings.Contains(path, "/onboarding")' in tenant_scope
+      and 'strings.Contains(path, "/invoice")' in tenant_scope
+      and "access, billing bool" in tenant_scope,
+      "Tenant slice classifier does not cover immediate access/Billing consistency")
+for token in [
+    'fetch("partner_access", "partners"',
+    'fetch("portal_gate", "billing"',
+    'fetch("billing_summary", "billing"',
+    'fetch("portal_invoices", "billing"',
+    'snapshot["partner"] = partner',
+    'snapshot["portal_gate"] = portalGate',
+    'snapshot["billing"] = billingSummary',
+    'snapshot["portal_billing_invoices"] = portalInvoices',
+]:
+    check(token in tenant_slice, f"Tenant synchronous access/Billing slice missing: {token}")
 
 # Remaining deep screen reads must also be projected; none may fall through
 # to Catalog/Connector/Partner live proxies.

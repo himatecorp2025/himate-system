@@ -741,7 +741,7 @@ func (a *app) persistedPartnerWorkspaceIDs(ctx context.Context) ([]string, error
 	return ids, rows.Err()
 }
 
-func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID string, moduleScope, planScope, designScope bool) bool {
+func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID string, moduleScope, planScope, designScope, accessScope, billingScope bool) bool {
 	partnerID = strings.TrimSpace(partnerID)
 	if partnerID == "" {
 		return true
@@ -771,11 +771,20 @@ func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID s
 	}
 
 	escapedID := url.PathEscape(partnerID)
+	billingBase := "/api/v1/billing/partners/" + escapedID
 	var modules, portalEN, portalHU, plansRaw, currentPlan, design, media map[string]any
+	var portalGate, billingSummary, portalInvoices, portalSubscriptions map[string]any
+	var portalCharity, portalCharityModules map[string]any
 	portalEN = partnerWorkspaceLocaleMap(snapshot, "portal_modules", "en_US")
 	portalHU = partnerWorkspaceLocaleMap(snapshot, "portal_modules", "hu_HU")
 	plansRaw = partnerWorkspaceMap(snapshot, "portal_plans")
 	currentPlan = partnerWorkspaceMap(snapshot, "portal_plan")
+	portalGate = partnerWorkspaceMap(snapshot, "portal_gate")
+	billingSummary = partnerWorkspaceMap(snapshot, "billing")
+	portalInvoices = partnerWorkspaceMap(snapshot, "portal_billing_invoices")
+	portalSubscriptions = partnerWorkspaceMap(snapshot, "portal_billing_subscriptions")
+	portalCharity = partnerWorkspaceMap(snapshot, "portal_charity")
+	portalCharityModules = partnerWorkspaceMap(snapshot, "portal_charity_modules")
 	var sourceWG sync.WaitGroup
 	var sourceMu sync.Mutex
 	sourceErrors := []string{}
@@ -803,6 +812,17 @@ func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID s
 	if designScope {
 		fetch("partner_design", "cms", "/internal/v1/cms/partner-design/"+escapedID, &design)
 		fetch("portal_design_media", "cms", "/internal/v1/cms/partner-media/"+escapedID, &media)
+	}
+	if accessScope {
+		fetch("partner_access", "partners", "/api/v1/partners/"+escapedID, &partner)
+		fetch("portal_gate", "billing", "/internal/v1/partners/"+escapedID+"/portal-gate", &portalGate)
+	}
+	if billingScope {
+		fetch("billing_summary", "billing", billingBase+"/summary?read_model_source=1", &billingSummary)
+		fetch("portal_invoices", "billing", billingBase+"/invoices?partner_visible=true", &portalInvoices)
+		fetch("portal_subscriptions", "billing", billingBase+"/subscriptions", &portalSubscriptions)
+		fetch("portal_charity", "billing", billingBase+"/commercial-mode", &portalCharity)
+		fetch("portal_charity_modules", "billing", billingBase+"/charity/modules", &portalCharityModules)
 	}
 	sourceWG.Wait()
 	if len(sourceErrors) > 0 {
@@ -847,6 +867,18 @@ func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID s
 		snapshot["partner_design"] = design
 		snapshot["portal_design_media"] = media
 	}
+	if accessScope {
+		snapshot["partner"] = partner
+		snapshot["portal_gate"] = portalGate
+	}
+	if billingScope {
+		snapshot["billing"] = billingSummary
+		snapshot["portal_billing_invoices"] = portalInvoices
+		snapshot["portal_billing_subscriptions"] = portalSubscriptions
+		snapshot["subscriptions"] = anyItems(portalSubscriptions["items"])
+		snapshot["portal_charity"] = portalCharity
+		snapshot["portal_charity_modules"] = portalCharityModules
+	}
 
 	persistCtx, cancel := context.WithTimeout(ctx, readModelPersistBudget)
 	defer cancel()
@@ -883,7 +915,7 @@ func (a *app) writeThroughGlobalTenantReadModelScopes(moduleScope, planScope, de
 		go func() {
 			defer wg.Done()
 			for partnerID := range jobs {
-				if !a.refreshGlobalTenantReadModelSlice(ctx, partnerID, moduleScope, planScope, designScope) {
+				if !a.refreshGlobalTenantReadModelSlice(ctx, partnerID, moduleScope, planScope, designScope, false, false) {
 					failedMu.Lock()
 					failed = append(failed, partnerID)
 					failedMu.Unlock()

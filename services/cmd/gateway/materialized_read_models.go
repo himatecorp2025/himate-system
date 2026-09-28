@@ -632,14 +632,29 @@ func readModelForegroundBillingClass(reason string) string {
 	}
 }
 
-func readModelTenantSliceScopes(reason string) (modules, plans, design bool) {
+func readModelTenantSliceScopes(reason string) (modules, plans, design, access, billing bool) {
 	path := strings.ToLower(strings.TrimSpace(stripForegroundReadModelMarker(reason)))
 	if i := strings.Index(path, "/audit"); i >= 0 { path = path[:i] }
 	modules = strings.Contains(path, "/modules")
 	plans = strings.Contains(path, "/plan") || strings.Contains(path, "/subscription") ||
 		strings.Contains(path, "/charity")
 	design = strings.Contains(path, "/design")
-	return modules, plans, design
+
+	// Access-state changes must be visible to the browser tenant LKG before the
+	// mutation ACK is released. This covers final onboarding approval as well as
+	// lifecycle suspension/archive changes.
+	access = strings.Contains(path, "/onboarding") ||
+		(strings.HasPrefix(path, "/api/v1/partners/") && !strings.Contains(path, "/portal-users"))
+
+	// Partner-facing Billing reads are materialized. Keep their narrow slice
+	// write-through synchronous for invoice/payment/subscription/terms changes so
+	// an immediate browser GET/PDF cannot observe the previous commercial state.
+	billing = strings.Contains(path, "/invoice") || strings.Contains(path, "/subscription") ||
+		strings.Contains(path, "/license") || strings.Contains(path, "/payment") ||
+		strings.Contains(path, "/terms") || strings.Contains(path, "/agreement") ||
+		strings.Contains(path, "/documents") || strings.Contains(path, "/commercial-mode") ||
+		strings.Contains(path, "/charity")
+	return modules, plans, design, access, billing
 }
 
 func (a *app) refreshCentralProjectionSerialized(key string, refresh func()) bool {
@@ -771,18 +786,18 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		go func() { defer wg.Done(); a.refreshCentralProjectionSerialized(key, refresh) }()
 	}
 
-	// Never rebuild the 30+ source tenant workspace in a request path. Only the
-	// module/plan/design slices have immediate browser dependencies and can be
-	// refreshed from their narrow authoritative sources within the ACK budget.
+	// Never rebuild the 30+ source tenant workspace in a request path. Refresh
+	// only the narrow slices with immediate browser dependencies: module/plan/
+	// design plus access-gate and partner-facing Billing state.
 	if partnerID != "" {
-		moduleSlice, planSlice, designSlice := readModelTenantSliceScopes(foregroundReason)
-		if moduleSlice || planSlice || designSlice {
+		moduleSlice, planSlice, designSlice, accessSlice, billingSlice := readModelTenantSliceScopes(foregroundReason)
+		if moduleSlice || planSlice || designSlice || accessSlice || billingSlice {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceGlobalWriteBudget)
 				defer cancel()
-				a.refreshGlobalTenantReadModelSlice(ctx, partnerID, moduleSlice, planSlice, designSlice)
+				a.refreshGlobalTenantReadModelSlice(ctx, partnerID, moduleSlice, planSlice, designSlice, accessSlice, billingSlice)
 			}()
 		}
 	}

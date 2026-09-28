@@ -31,6 +31,21 @@ func TestPartnerAccessStateAllowed(t *testing.T) {
 	}
 }
 
+func TestReadModelTenantSliceScopesCoverImmediatePartnerReads(t *testing.T) {
+	modules, plans, design, access, billing := readModelTenantSliceScopes("/api/v1/billing/partners/ptr_1/onboarding/audit")
+	if modules || plans || design || !access || billing {
+		t.Fatalf("onboarding scopes modules=%v plans=%v design=%v access=%v billing=%v", modules, plans, design, access, billing)
+	}
+	modules, plans, design, access, billing = readModelTenantSliceScopes("/api/v1/billing/invoices/inv_1/mark-paid/audit")
+	if modules || plans || design || access || !billing {
+		t.Fatalf("invoice scopes modules=%v plans=%v design=%v access=%v billing=%v", modules, plans, design, access, billing)
+	}
+	modules, plans, design, access, billing = readModelTenantSliceScopes("/api/v1/partners/ptr_1/audit")
+	if modules || plans || design || !access || billing {
+		t.Fatalf("partner lifecycle scopes modules=%v plans=%v design=%v access=%v billing=%v", modules, plans, design, access, billing)
+	}
+}
+
 func TestClassifyReadModelMutationAvoidsPartnerSubstringStorms(t *testing.T) {
 	portalUsers := classifyReadModelMutation("/api/v1/partners/ptr_1/portal-users/audit")
 	if portalUsers.partner || !portalUsers.admin || !portalUsers.tenantOnly { t.Fatalf("portal user scope=%+v", portalUsers) }

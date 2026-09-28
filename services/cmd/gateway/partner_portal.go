@@ -310,7 +310,10 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	if err!=nil{_ = pbkdf2SHA256([]byte(in.Password),make([]byte,16),passwordIterations,32)}
 	if !valid{a.recordLoginFailure(key,now);common.APIError(w,401,"INVALID_CREDENTIALS","Invalid email or password");return}
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second);defer cancel()
-	if _,err:=a.partnerRequestAccess(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
+	// Authentication is a compatibility/security decision, not a browser screen
+	// read. Use committed Partners/Billing state so a just-approved tenant can
+	// sign in immediately and a just-suspended tenant is denied immediately.
+	if err:=a.partnerAccessAllowed(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
 	if a.beginMFAFlow(w,r,"PARTNER",u.ID,in.Remember,partnerMFARequired(u.Role)){return}
 	a.clearLoginFailures(key)
 	go a.recordPartnerPortalActivity(u)
@@ -334,7 +337,7 @@ func (a *app) partnerMe(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
-	_,accessErr:=a.partnerRequestAccess(ctx,u.PartnerID)
+	accessErr:=a.partnerAccessAllowed(ctx,u.PartnerID)
 	cancel()
 	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
 	common.JSON(w,200,partnerUserMap(u))
@@ -480,7 +483,15 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
 	if !browserMutationOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
 	accessCtx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
-	accessSnapshot,accessErr:=a.partnerRequestAccess(accessCtx,u.PartnerID)
+	var accessSnapshot map[string]any
+	var accessErr error
+	if partnerBrowserMaterializedRead(r) {
+		// Shipped browser GETs stay zero-fan-out and reuse the tenant LKG.
+		accessSnapshot,accessErr=a.partnerRequestAccess(accessCtx,u.PartnerID)
+	} else {
+		// Legacy/smoke reads and every mutation use committed access authority.
+		accessErr=a.partnerAccessAllowed(accessCtx,u.PartnerID)
+	}
 	cancel()
 	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
 	if accessSnapshot!=nil{
