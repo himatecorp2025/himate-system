@@ -69,18 +69,20 @@ checks.append((
     completed_through in {"23.11.4","23.11.5","23.11.6","23.11.7","23.12"},
 ))
 
-failures=[label for label,ok in checks if not ok]
-partner_gateway = read("services/cmd/gateway/partner_portal.go")
+partner_gateway = gateway
 partner_api_start = partner_gateway.find("func (a *app) partnerAPI")
 partner_api_end = partner_gateway.find("\nfunc ", partner_api_start + 1)
 partner_api = partner_gateway[partner_api_start:partner_api_end if partner_api_end > partner_api_start else len(partner_gateway)]
-check("func (a *app) partnerRequestAccess" in partner_gateway
-      and "partnerAccessSnapshot(ctx, partnerID)" in partner_gateway,
-      "START-23.11.4 authenticated workspace access is not LKG-first")
-check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api
-      and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api,
-      "START-23.11.4 workspace mutation can still 503 on synchronous Partners/Billing access fan-out")
+checks.extend([
+ ("authenticated workspace access is LKG-first",
+  "func (a *app) partnerRequestAccess" in partner_gateway and
+  "partnerAccessSnapshot(ctx, partnerID)" in partner_gateway),
+ ("workspace mutation avoids synchronous access fan-out",
+  "partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api and
+  "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api),
+])
 
+failures=[label for label,ok in checks if not ok]
 if failures:
     for failure in failures: print("FAIL:",failure)
     sys.exit(1)
