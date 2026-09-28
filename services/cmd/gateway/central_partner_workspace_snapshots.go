@@ -771,7 +771,11 @@ func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID s
 	}
 
 	escapedID := url.PathEscape(partnerID)
-	var modules, history, portalEN, portalHU, plansRaw, currentPlan, design, media map[string]any
+	var modules, portalEN, portalHU, plansRaw, currentPlan, design, media map[string]any
+	portalEN = partnerWorkspaceLocaleMap(snapshot, "portal_modules", "en_US")
+	portalHU = partnerWorkspaceLocaleMap(snapshot, "portal_modules", "hu_HU")
+	plansRaw = partnerWorkspaceMap(snapshot, "portal_plans")
+	currentPlan = partnerWorkspaceMap(snapshot, "portal_plan")
 	var sourceWG sync.WaitGroup
 	var sourceMu sync.Mutex
 	sourceErrors := []string{}
@@ -789,11 +793,10 @@ func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID s
 
 	if moduleScope {
 		fetch("modules", "catalog", "/api/v1/partners/"+escapedID+"/modules", &modules)
-		fetch("module_commercial_history", "catalog", "/internal/v1/read-model/partner-module-history/"+escapedID, &history)
-	}
-	if moduleScope || planScope {
 		fetch("portal_modules_en", "catalog", "/internal/v1/partner-portal/"+escapedID+"/modules?locale=en_US", &portalEN)
 		fetch("portal_modules_hu", "catalog", "/internal/v1/partner-portal/"+escapedID+"/modules?locale=hu_HU", &portalHU)
+	}
+	if planScope {
 		fetch("portal_plans", "billing", "/api/v1/billing/plans", &plansRaw)
 		fetch("portal_plan", "billing", "/api/v1/billing/partners/"+escapedID+"/plan", &currentPlan)
 	}
@@ -819,7 +822,6 @@ func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID s
 		snapshot["modules"] = moduleView["items"]
 		snapshot["module_view"] = moduleView
 		snapshot["catalog_modules_api"] = modules
-		snapshot["module_commercial_history"] = history
 	}
 	if moduleScope || planScope {
 		portalEN = partnerPortalModulesWithPlanContext(portalEN, plansRaw, currentPlan)

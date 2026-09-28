@@ -333,18 +333,24 @@ func wakeReadModelRefreshWorker() {
 	}
 }
 
-func (a *app) enqueueReadModelRefresh(ctx context.Context, reason, partnerID string) {
+func (a *app) stageReadModelRefresh(ctx context.Context, reason, partnerID string) bool {
 	id, err := a.persistReadModelRefreshEvent(ctx, reason, partnerID)
 	if err != nil {
 		if a.log != nil {
 			a.log.Error("read-model refresh event persistence failed", "partner_id", strings.TrimSpace(partnerID), "reason", reason, "error", err)
 		}
-		return
+		return false
 	}
 	if a.log != nil {
 		a.log.Debug("read-model refresh event persisted", "event_id", id, "partner_id", strings.TrimSpace(partnerID), "reason", reason)
 	}
-	wakeReadModelRefreshWorker()
+	return true
+}
+
+func (a *app) enqueueReadModelRefresh(ctx context.Context, reason, partnerID string) {
+	if a.stageReadModelRefresh(ctx, reason, partnerID) {
+		wakeReadModelRefreshWorker()
+	}
 }
 
 func readModelVerificationKeys(reason string) []string {

@@ -139,6 +139,18 @@ check('strings.Contains(reason, "/modules")' not in models,
 check("writeThroughGlobalTenantReadModelScopes" in workspace
       and '"durable-read-model-batch"' in models,
       "Durable queue does not reuse targeted global tenant slice reconciliation")
+check("stageReadModelRefresh" in models
+      and "stagedRefresh := a.stageReadModelRefresh" in main
+      and main.find("stagedRefresh := a.stageReadModelRefresh") < main.find("a.writeThroughReadModels")
+      and main.find("a.writeThroughReadModels") < main.find("wakeReadModelRefreshWorker()", main.find("a.writeThroughReadModels")),
+      "Durable refresh worker can still race synchronous write-through for the same mutation")
+global_slice_start = workspace.find("func (a *app) refreshGlobalTenantReadModelSlice")
+global_slice_end = workspace.find("\nfunc ", global_slice_start + 1)
+global_slice = workspace[global_slice_start:global_slice_end if global_slice_end > global_slice_start else len(workspace)]
+check('if moduleScope {' in global_slice
+      and 'fetch("portal_plans", "billing"' not in global_slice.split("if planScope {", 1)[0]
+      and 'fetch("portal_plan", "billing"' not in global_slice.split("if planScope {", 1)[0],
+      "Global module write-through still refetches unchanged Billing plan state per tenant")
 check("read-model refresh batch remains pending" not in models
       and "read-model refresh batch consumed after bounded LKG reconciliation attempt" in models,
       "Durable read-model queue can still head-of-line replay a failed batch forever")
