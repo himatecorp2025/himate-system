@@ -67,6 +67,7 @@ func (a *app) invalidateCentral10Caches(path string) {
 		if remove { delete(central10ReadCache.items, key) }
 	}
 	central10ReadCache.Unlock()
+	invalidateCentralHotResponseCaches()
 
 	// Projection scheduling is deliberately not performed here. A successful
 	// mutation already owns one durable-stage + foreground-write-through pipeline.

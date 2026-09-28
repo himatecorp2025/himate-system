@@ -534,6 +534,9 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	r.Header.Set("X-Himate-Partner-ID",u.PartnerID)
 
 	path:=strings.TrimPrefix(r.URL.Path,"/partner/api/v1")
+	if a.servePartnerPrewarmedResponse(w,r,u,path) {
+		return
+	}
 	if a.servePartnerMaterializedGET(w,r,u,path) {
 		return
 	}

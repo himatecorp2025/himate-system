@@ -1381,6 +1381,9 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Header.Set("X-Himate-User-ID", u.ID)
+	if a.serveCentralPrewarmedResponse(w, r, u) {
+		return
+	}
 	if r.URL.Path == "/api/v1/dashboard/summary" {
 		a.dashboard(w, r, u)
 		return

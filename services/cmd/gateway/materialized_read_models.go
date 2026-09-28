@@ -707,6 +707,9 @@ func (a *app) refreshHealthSourceWriteThrough() bool {
 
 
 func (a *app) writeThroughReadModels(partnerID, reason string) {
+	// Never expose pre-encoded bytes across a committed mutation. Dynamic LKG
+	// handlers remain the correctness fallback until post-write rewarm finishes.
+	invalidateCentralHotResponseCaches()
 	reason = strings.ToLower(strings.TrimSpace(reason))
 	foregroundModuleDelta := strings.Contains(reason, foregroundModuleDeltaMarker)
 	reason = stripForegroundReadModelMarker(reason)
@@ -813,6 +816,7 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	if refreshAll || scope.partner || scope.module || scope.website || scope.admin {
 		a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch)
 	}
+	a.requestCentralHotResponseRefresh()
 }
 type readModelRefreshEvent struct {
 	id        int64
@@ -1012,6 +1016,10 @@ func (a *app) processReadModelRefreshQueue() {
 			"last_event_id", lastID,
 		)
 	}
+	// Foreground module-delta writes intentionally defer heavy projection work
+	// to this durable batch. Rewarm serialized screen bytes only after the batch
+	// has reconciled/consumed those changes.
+	a.requestCentralHotResponseRefresh()
 }
 
 func (a *app) runReadModelRefreshWorker() {

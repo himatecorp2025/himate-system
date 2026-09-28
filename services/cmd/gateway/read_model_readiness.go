@@ -251,6 +251,12 @@ func (a *app) ensureColdStartReadiness(ctx context.Context) error {
 	if err := a.verifyColdStartLKG(ctx); err != nil {
 		return err
 	}
+	// CENTRAL-10..21 cold-start contract: exact screen payloads are encoded
+	// into immutable byte slices before readiness opens. The first read-model
+	// hit therefore performs no DB lookup, JSON decode/encode, or downstream I/O.
+	if err := a.prewarmCentral10To21HotResponses(ctx); err != nil {
+		return fmt.Errorf("serialized Central/Tenant prewarm: %w", err)
+	}
 
 	gatewayReadiness.Store(true)
 	return nil
