@@ -87,13 +87,11 @@ func central13BoundedInt(raw string, fallback, max int) int {
 }
 
 func (a *app) materializeCentralConnections(ctx context.Context) map[string]any {
-	partners := []map[string]any{}
-	var partnerErr error
-	if snapshot, _, ok := centralStep3SnapshotGet(centralStep4PartnersKey); ok {
-		partners = step4Items(snapshot["items"])
-	} else {
-		partners, partnerErr = a.central13AllPartners(ctx)
-	}
+	// Connections is sourced from Connector runtime state plus authoritative
+	// Partner lifecycle. The background/browser snapshot remains zero-fan-out,
+	// while the legacy compatibility read can deliberately materialize the
+	// committed sources after test-adapter/direct source writes.
+	partners, partnerErr := a.central13AllPartners(ctx)
 
 	var connections central10ItemsPage
 	var start22Mapping, start22SummaryAll, start22SummaryProduction, start22SummaryStaging map[string]any
@@ -198,18 +196,7 @@ func (a *app) materializeCentralConnections(ctx context.Context) map[string]any 
 	}
 }
 
-func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor user) {
-	if r.Method != http.MethodGet {
-		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
-		return
-	}
-	started := time.Now()
-	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4ConnectionsKey)
-	if !ok {
-		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Connections read model is not ready")
-		return
-	}
-
+func central13ConnectionsPayload(snapshot map[string]any, r *http.Request, started time.Time, source, architecture string, generatedAt time.Time) map[string]any {
 	all := step4Items(snapshot["items"])
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	statusFilter := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("status")))
@@ -242,7 +229,7 @@ func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor
 		end = len(filtered)
 	}
 
-	payload := map[string]any{
+	return map[string]any{
 		"items": filtered[offset:end],
 		"kpis": step4Map(snapshot["kpis"]),
 		"pagination": map[string]any{
@@ -250,16 +237,70 @@ func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor
 			"offset": offset, "has_more": end < len(filtered),
 		},
 		"meta": map[string]any{
-			"architecture": "MATERIALIZED_READ_MODEL",
+			"architecture": architecture,
 			"frontend_role": "PRESENTATION_ONLY",
-			"source": "PERSISTED_CONNECTIONS_SCREEN",
+			"source": source,
 			"duration_ms": time.Since(started).Milliseconds(),
-			"generated_at": updatedAt.UTC(),
+			"generated_at": generatedAt.UTC(),
 		},
 	}
+}
+
+func (a *app) serveCentral13PersistentConnections(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	snapshot, updatedAt, ok := a.centralSnapshotForRead(r.Context(), centralStep4ConnectionsKey)
+	if !ok {
+		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "Connections read model is not ready")
+		return
+	}
+	payload := central13ConnectionsPayload(
+		snapshot, r, started, "PERSISTED_CONNECTIONS_SCREEN", "MATERIALIZED_READ_MODEL", updatedAt,
+	)
 	w.Header().Set("X-Himate-Cache", "persistent-read-model")
 	w.Header().Set("Server-Timing", fmt.Sprintf("central-connections-read-model;dur=%d", time.Since(started).Milliseconds()))
 	common.JSON(w, http.StatusOK, payload)
+}
+
+func (a *app) serveLegacyCentral13Connections(w http.ResponseWriter, r *http.Request, actor user) {
+	started := time.Now()
+	cacheKey := central10CacheKey(actor, r)
+	if cached, ok, _ := central10Cached(cacheKey, true); ok {
+		w.Header().Set("X-Himate-Cache", "hit")
+		w.Header().Set("Server-Timing", fmt.Sprintf("central-connections-compat-cache;dur=%d", time.Since(started).Milliseconds()))
+		common.JSON(w, http.StatusOK, cached)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), centralStep4MaterializeBudget)
+	defer cancel()
+	snapshot := a.materializeCentralConnections(ctx)
+	if !strings.EqualFold(central10String(snapshot["status"]), "healthy") {
+		common.APIError(w, http.StatusServiceUnavailable, "CONNECTIONS_SOURCE_UNAVAILABLE", "Connections authoritative sources are unavailable")
+		return
+	}
+	payload := central13ConnectionsPayload(
+		snapshot, r, started, "PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS",
+		"AUTHORITATIVE_COMPATIBILITY_READ_MODEL", time.Now().UTC(),
+	)
+	central10Store(cacheKey, payload)
+	w.Header().Set("X-Himate-Cache", "miss")
+	w.Header().Set("Server-Timing", fmt.Sprintf("central-connections-compat;dur=%d", time.Since(started).Milliseconds()))
+	common.JSON(w, http.StatusOK, payload)
+}
+
+func (a *app) central13Connections(w http.ResponseWriter, r *http.Request, actor user) {
+	if r.Method != http.MethodGet {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET")
+		return
+	}
+	// Browser reads are pure persistent CQRS. Historical/runtime smoke requests
+	// do not send the explicit browser discriminator and use the bounded
+	// compatibility adapter so direct source writes are immediately observable.
+	if centralBrowserMaterializedRead(r) {
+		a.serveCentral13PersistentConnections(w, r)
+		return
+	}
+	a.serveLegacyCentral13Connections(w, r, actor)
 }
 
 func central13Strings(value any) []string {

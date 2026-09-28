@@ -326,6 +326,24 @@ for source, signature in [
     ]:
         check(forbidden not in block, f"{signature} regressed to read-triggered I/O: {forbidden}")
 
+# Connections is a deliberate dual-path compatibility exception. Browser reads
+# remain persistent zero-fan-out, while non-browser /api/v1 compatibility reads
+# may rebuild from authoritative committed sources for historical/runtime smoke.
+connections_dispatch = func_block(central13, "func (a *app) central13Connections")
+connections_browser = func_block(central13, "func (a *app) serveCentral13PersistentConnections")
+connections_legacy = func_block(central13, "func (a *app) serveLegacyCentral13Connections")
+check("centralBrowserMaterializedRead(r)" in connections_dispatch
+      and "serveCentral13PersistentConnections" in connections_dispatch
+      and "serveLegacyCentral13Connections" in connections_dispatch,
+      "Connections route does not explicitly split browser CQRS and legacy compatibility reads")
+check("centralSnapshotForRead" in connections_browser
+      and "materializeCentralConnections" not in connections_browser,
+      "Connections browser path is not a pure persistent read-model read")
+check("materializeCentralConnections" in connections_legacy
+      and "central10Cached" in connections_legacy
+      and "central10Store" in connections_legacy,
+      "Connections legacy compatibility path is not authoritative and cache-bounded")
+
 # Successful browser read handlers can never emit degraded/warming screen states.
 for source, signature in [
     (central10, "func (a *app) central10Partners"),

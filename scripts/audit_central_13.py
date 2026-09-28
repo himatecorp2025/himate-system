@@ -98,10 +98,15 @@ for token in [
     '"/internal/v1/partner-connections"', '"partner_name"',
     "central13ConnectionStatusForPartner", '"DELETED"',
     "func (a *app) central13Connections(",
+    "centralBrowserMaterializedRead(r)",
+    "func (a *app) serveCentral13PersistentConnections(",
     "centralSnapshotForRead(r.Context(), centralStep4ConnectionsKey)",
-    '"source": "PERSISTED_CONNECTIONS_SCREEN"',
+    '"PERSISTED_CONNECTIONS_SCREEN"',
+    "func (a *app) serveLegacyCentral13Connections(",
+    "central10Cached(cacheKey, true)", "central10Store(cacheKey, payload)",
+    '"PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS"',
 ]:
-    check(token in gateway13, f"Gateway Connections CQRS read model missing: {token}")
+    check(token in gateway13, f"Gateway Connections dual-path read model missing: {token}")
 for token in [
     'path == "/api/v1/central/connections"', 'return "connectors"',
     'a.central13Connections(w, r, u)',
