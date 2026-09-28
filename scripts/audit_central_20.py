@@ -18,6 +18,7 @@ frontend = read('frontend/lib/main.dart')
 modules = read('frontend/lib/module_control_plane.dart')
 gateway = read('services/cmd/gateway/central10.go')
 gateway_main = read('services/cmd/gateway/main.go')
+readiness = read('services/cmd/gateway/read_model_readiness.go')
 step3 = read('services/cmd/gateway/central_step3_snapshots.go')
 step4 = read('services/cmd/gateway/central_step4_snapshots.go')
 partner_snapshots = read('services/cmd/gateway/central_partner_workspace_snapshots.go')
@@ -53,11 +54,14 @@ for page in ['landing.html','platform.html','modules.html','programs.html','impa
 for token in [
     'a.warmMissingCentralSnapshots()',
     'a.warmMissingCentralPartnerWorkspaces()',
+]:
+    check(token in readiness, f'deterministic readiness warmup contract missing: {token}')
+for token in [
     'go a.runCentralStep3Materializer()',
     'go a.runCentralStep4Materializer()',
     'go a.runCentralPartnerWorkspaceMaterializer()',
 ]:
-    check(token in gateway_main, f'gateway startup materializer contract missing: {token}')
+    check(token in gateway_main, f'gateway background materializer startup missing: {token}')
 for token in [
     'func centralSnapshotValid(key string, payload map[string]any) bool',
     'strings.EqualFold(central10String(payload["status"]), "healthy")',

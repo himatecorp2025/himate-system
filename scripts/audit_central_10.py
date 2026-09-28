@@ -20,6 +20,7 @@ frontend = read("frontend/lib/main.dart")
 modules_ui = read("frontend/lib/module_control_plane.dart")
 gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
+readiness = read("services/cmd/gateway/read_model_readiness.go")
 materialized_reads = read("services/cmd/gateway/materialized_read_models.go")
 step3_snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
@@ -81,11 +82,14 @@ check("primaryTargets" not in warm and "deferredTargets" not in warm,
 for token in [
     "a.warmMissingCentralSnapshots()",
     "a.warmMissingCentralPartnerWorkspaces()",
+]:
+    check(token in readiness, f"Central Gateway deterministic readiness warmup missing: {token}")
+for token in [
     "go a.runCentralStep3Materializer()",
     "go a.runCentralStep4Materializer()",
     "go a.runCentralPartnerWorkspaceMaterializer()",
 ]:
-    check(token in gateway_main, f"Central Gateway startup warmup missing: {token}")
+    check(token in gateway_main, f"Central Gateway background materializer startup missing: {token}")
 
 # Browser-side fan-out and obsolete read transforms are forbidden on the core paths.
 for token, message in [

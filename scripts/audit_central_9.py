@@ -28,6 +28,7 @@ impact = read("services/cmd/impact/central8.go")
 impact_main = read("services/cmd/impact/main.go")
 gateway_c10 = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
+readiness = read("services/cmd/gateway/read_model_readiness.go")
 step3 = read("services/cmd/gateway/central_step3_snapshots.go")
 openapi = read("docs/openapi.yaml")
 
@@ -101,7 +102,7 @@ authoritative_warmup = all([
     "final Map<int, Widget> _pageCache" in frontend,
     "Gateway owns authoritative read-model warming" in warm,
     "api.prefetch(" not in warm,
-    "a.warmMissingCentralSnapshots()" in gateway_main,
+    "a.warmMissingCentralSnapshots()" in readiness,
     "func centralSnapshotValid(key string, payload map[string]any) bool" in step3,
     "central read-model refresh rejected; retaining last-known-good snapshot" in step3,
 ])
