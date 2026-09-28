@@ -50,6 +50,7 @@ health_service = read("services/cmd/health/main.go")
 common_go = read("services/internal/common/common.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
 dashboard_snapshots = read("services/cmd/gateway/dashboard_snapshot.go")
+hot_responses = read("services/cmd/gateway/central_hot_response_cache.go")
 
 # Shared database capacity and background materializer concurrency are part of
 # the CQRS contract. A zero-fan-out read path is not production-safe if the
@@ -154,6 +155,50 @@ check("gatewayReadinessGate(securityHeaders(mux))" in main,
       "Public Gateway handler is not protected by the atomic readiness gate")
 check("ensurePartnerReadModelsReady" in readiness and "loadPartnerWorkspaceDB" in readiness,
       "Startup gate does not validate every tenant workspace")
+
+# CENTRAL-10..21 pre-serialized response cache: readiness cannot open until
+# Central and tenant screen payloads are encoded in memory.
+check("a.prewarmCentral10To21HotResponses(ctx)" in cold_start
+      and cold_start.find("a.verifyColdStartLKG(ctx)") <
+          cold_start.find("a.prewarmCentral10To21HotResponses(ctx)") <
+          cold_start.find("gatewayReadiness.Store(true)"),
+      "Cold-start order is not verify LKG -> serialize screens -> ready")
+for token in [
+    "type centralHotResponse struct",
+    "centralHotResponseCache",
+    "partnerHotResponseCache",
+    "centralHotVisiblePartnerIDs",
+    "tenantHotPartnerIDs",
+    "buildCentralHotResponses",
+    "buildPartnerHotResponses",
+    "serveCentralPrewarmedResponse",
+    "servePartnerPrewarmedResponse",
+    "writePrewarmedResponse",
+    'w.Write(entry.body)',
+    'w.Header().Set("X-Himate-Cache", entry.cacheHeader)',
+]:
+    check(token in hot_responses, f"Serialized hot-response architecture missing: {token}")
+for path in [
+    '"/dashboard"', '"/company"', '"/modules"',
+    '"/billing/summary"', '"/billing/subscriptions"', '"/billing/invoices"',
+    '"/impact/summary"', '"/users"', '"/audit"', '"/permissions"', '"/design"',
+]:
+    check(path in hot_responses, f"Tenant browser prewarm surface missing: {path}")
+check("partnerID: u.PartnerID, userID: u.ID" in hot_responses,
+      "Tenant serialized cache is not isolated by partner and authenticated user")
+check("partnerBrowserMaterializedRead(r)" in hot_responses,
+      "Tenant serialized cache can bypass the explicit browser CQRS discriminator")
+check("json.Marshal" not in hot_responses and "json.NewEncoder" not in hot_responses,
+      "Serialized hot-response layer introduced runtime JSON encoding")
+check(main.find("a.serveCentralPrewarmedResponse(w, r, u)") <
+      main.find("a.serveCentralMaterializedGET(w, r, u)"),
+      "Central serialized hot path does not precede normal materialized dispatch")
+check(partner_portal.find("a.servePartnerPrewarmedResponse(w,r,u,path)") <
+      partner_portal.find("a.servePartnerMaterializedGET(w,r,u,path)"),
+      "Tenant serialized hot path does not precede normal materialized dispatch")
+check("invalidateCentralHotResponseCaches()" in models
+      and models.count("a.requestCentralHotResponseRefresh()") >= 2,
+      "Foreground/durable reconciliation does not restore serialized hot responses")
 
 # Cold start always has a DB-backed healthy structural baseline, while startup
 # still attempts to replace seeded rows with real projections before bind.

@@ -22,6 +22,7 @@ gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
 readiness = read("services/cmd/gateway/read_model_readiness.go")
 materialized_reads = read("services/cmd/gateway/materialized_read_models.go")
+hot_responses = read("services/cmd/gateway/central_hot_response_cache.go")
 step3_snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
 partner_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
@@ -90,6 +91,35 @@ for token in [
     "go a.runCentralPartnerWorkspaceMaterializer()",
 ]:
     check(token in gateway_main, f"Central Gateway background materializer startup missing: {token}")
+
+# CENTRAL-10..21 exact cold-start payloads must be fully encoded before
+# readiness opens; the live hot path writes immutable bytes directly.
+check("a.prewarmCentral10To21HotResponses(ctx)" in readiness
+      and readiness.find("a.prewarmCentral10To21HotResponses(ctx)") <
+          readiness.find("gatewayReadiness.Store(true)"),
+      "Serialized Central/Tenant prewarm does not complete before readiness")
+for token in [
+    "centralHotResponseCache",
+    "partnerHotResponseCache",
+    "serveCentralPrewarmedResponse",
+    "servePartnerPrewarmedResponse",
+    "writePrewarmedResponse",
+    'w.Write(entry.body)',
+    '"/api/v1/central/modules/commercial?perspective=PARTNER&commercial_limit=120"',
+    '"/api/v1/central/modules/commercial?perspective=MODULE&commercial_status=ACTIVE&commercial_limit=120"',
+    '"/api/v1/central/packages/supplementary"',
+    '"/api/v1/central/finance?invoice_status=ALL&revenue_period=MONTHLY&revenue_plan=ALL"',
+    '"/api/v1/central/impact?evidence_limit=12&evidence_offset=0"',
+]:
+    check(token in hot_responses, f"Central serialized hot-response contract missing: {token}")
+check("json.Marshal" not in hot_responses and "json.NewEncoder" not in hot_responses,
+      "Central hot-response layer performs request-time JSON encoding")
+check(gateway_main.find("a.serveCentralPrewarmedResponse(w, r, u)") <
+      gateway_main.find('if r.URL.Path == "/api/v1/dashboard/summary"'),
+      "Central prewarmed response interceptor does not precede normal read handlers")
+check("invalidateCentralHotResponseCaches()" in materialized_reads
+      and "a.requestCentralHotResponseRefresh()" in materialized_reads,
+      "Mutation/read-model reconciliation does not invalidate and rewarm serialized responses")
 
 # Browser-side fan-out and obsolete read transforms are forbidden on the core paths.
 for token, message in [
