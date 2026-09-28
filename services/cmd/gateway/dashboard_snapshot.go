@@ -528,24 +528,38 @@ func (a *app) materializeDashboardSnapshot(ctx context.Context, year int) (map[s
 }
 
 func (a *app) dashboardSnapshotForReadContext(ctx context.Context, year int) (map[string]any, time.Time, bool) {
-	payload, updated, err := a.loadDashboardSnapshotContext(ctx, year)
-	if err == nil {
-		a.dashboardMu.Lock()
-		a.dashboardPayload = copyDashboardPayload(payload)
-		a.dashboardUpdatedAt = updated
-		a.dashboardExpires = updated.Add(dashboardSnapshotFreshTTL)
-		a.dashboardMu.Unlock()
-		return payload, updated, time.Since(updated) > dashboardSnapshotFreshTTL
-	}
+	// The current-year dashboard is bootstrapped before readiness and updated
+	// only after persistence succeeds, so its committed in-memory LKG is the hot
+	// browser path. Historical years remain indexed DB reads.
 	if year == time.Now().UTC().Year() {
 		a.dashboardMu.RLock()
 		memory := copyDashboardPayload(a.dashboardPayload)
 		memoryUpdated := a.dashboardUpdatedAt
 		a.dashboardMu.RUnlock()
 		if dashboardSnapshotValid(memory) {
-			if a.log != nil {
-				a.log.Error("dashboard DB read failed; serving in-memory LKG fallback", "error", err)
-			}
+			return memory, memoryUpdated, time.Since(memoryUpdated) > dashboardSnapshotFreshTTL
+		}
+	}
+
+	payload, updated, err := a.loadDashboardSnapshotContext(ctx, year)
+	if err == nil {
+		if year == time.Now().UTC().Year() {
+			a.dashboardMu.Lock()
+			a.dashboardPayload = copyDashboardPayload(payload)
+			a.dashboardUpdatedAt = updated
+			a.dashboardExpires = updated.Add(dashboardSnapshotFreshTTL)
+			a.dashboardMu.Unlock()
+		}
+		return payload, updated, time.Since(updated) > dashboardSnapshotFreshTTL
+	}
+	if year == time.Now().UTC().Year() {
+		// A concurrent refresh may have populated the LKG while the DB recovery
+		// attempt was in flight.
+		a.dashboardMu.RLock()
+		memory := copyDashboardPayload(a.dashboardPayload)
+		memoryUpdated := a.dashboardUpdatedAt
+		a.dashboardMu.RUnlock()
+		if dashboardSnapshotValid(memory) {
 			return memory, memoryUpdated, true
 		}
 	}

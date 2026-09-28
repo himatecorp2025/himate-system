@@ -49,6 +49,7 @@ seeds = read("services/cmd/gateway/read_model_seeds.go")
 health_service = read("services/cmd/health/main.go")
 common_go = read("services/internal/common/common.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
+dashboard_snapshots = read("services/cmd/gateway/dashboard_snapshot.go")
 
 # Shared database capacity and background materializer concurrency are part of
 # the CQRS contract. A zero-fan-out read path is not production-safe if the
@@ -176,17 +177,30 @@ check("readModelSeeded(payload)" in readiness and "job.refresh()" in readiness,
 check("seedPartnerWorkspaceBaseline(ctx, item)" in readiness,
       "Startup readiness does not seed missing tenant workspaces before materialization")
 
-# Read helpers may use DB + memory LKG only, never downstream services.
-for signature in [
-    "func (a *app) centralSnapshotForRead",
-    "func (a *app) partnerWorkspaceForRead",
+# Browser read helpers are committed-memory-first LKG caches with exactly one
+# indexed PostgreSQL recovery path and no downstream service fan-out.
+central_read = func_block(models, "func (a *app) centralSnapshotForRead")
+partner_read = func_block(models, "func (a *app) partnerWorkspaceForRead")
+for block, signature in [
+    (central_read, "centralSnapshotForRead"),
+    (partner_read, "partnerWorkspaceForRead"),
 ]:
-    block = func_block(models, signature)
     check(block != "", f"Read helper missing: {signature}")
     check("internalGET" not in block and "serveProxy" not in block and "a.hosts[" not in block,
           f"{signature} regressed to downstream fan-out")
-check("WHERE snapshot_key=$1" in models, "Central read path is not indexed by snapshot primary key")
-check("WHERE partner_id=$1" in models, "Tenant read path is not indexed by partner primary key")
+check(central_read.find("centralStep3SnapshotGet(key)") >= 0
+      and central_read.find("centralStep3SnapshotGet(key)") < central_read.find("a.loadCentralSnapshotDB(ctx, key)"),
+      "Central browser read path is not memory-LKG first")
+check(partner_read.find("centralStep3SnapshotGet(key)") >= 0
+      and partner_read.find("centralStep3SnapshotGet(key)") < partner_read.find("a.loadPartnerWorkspaceDB(ctx, partnerID)"),
+      "Tenant browser read path is not memory-LKG first")
+check("WHERE snapshot_key=$1" in models, "Central DB recovery path is not indexed by snapshot primary key")
+check("WHERE partner_id=$1" in models, "Tenant DB recovery path is not indexed by partner primary key")
+
+dashboard_read = func_block(dashboard_snapshots, "func (a *app) dashboardSnapshotForReadContext")
+check("dashboardSnapshotValid(memory)" in dashboard_read
+      and dashboard_read.find("dashboardSnapshotValid(memory)") < dashboard_read.find("a.loadDashboardSnapshotContext(ctx, year)"),
+      "Current-year dashboard browser read path is not memory-LKG first")
 check('path == "/api/v1/system-health"' in central_reads and
       'centralSnapshotForRead(r.Context(), centralStep4SystemKey)' in central_reads,
       "Legacy system-health GET is not routed through the persistent System read model")

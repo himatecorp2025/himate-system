@@ -129,9 +129,10 @@ func (a *app) loadCentralSnapshotDB(ctx context.Context, key string) (map[string
 }
 
 // centralSnapshotForRead is the browser-facing Central read path.
-// Normal operation is exactly one indexed PostgreSQL row read. Memory is only
-// a resilience fallback if the local read-model database itself is unavailable;
-// it never triggers a downstream service call.
+// Startup readiness and every successful write-through populate the in-process
+// Last-Known-Good mirror only after the PostgreSQL commit succeeds. Browser
+// reads therefore use the committed memory LKG first and touch PostgreSQL only
+// on a cache miss/recovery path. No downstream service call is ever allowed.
 func (a *app) readModelInvariantFailure(w http.ResponseWriter, key string) {
 	if a.log != nil {
 		a.log.Error("materialized read-model invariant violated on live request", "snapshot_key", key)
@@ -140,6 +141,16 @@ func (a *app) readModelInvariantFailure(w http.ResponseWriter, key string) {
 }
 
 func (a *app) centralSnapshotForRead(ctx context.Context, key string) (map[string]any, time.Time, bool) {
+	// The mirror contains only rows that have already passed LKG validation and
+	// whose PostgreSQL upsert committed successfully. This is the normal hot
+	// read path and keeps browser latency independent of JSONB payload size.
+	if memory, memoryUpdated, ok := centralStep3SnapshotGet(key); ok {
+		return memory, memoryUpdated, true
+	}
+
+	// A cache miss is a recovery condition (for example immediately after a
+	// partial bootstrap). Recover exactly one indexed row from PostgreSQL and
+	// repopulate the mirror for subsequent requests.
 	payload, updated, err := a.loadCentralSnapshotDB(ctx, key)
 	if err == nil {
 		centralStep3Snapshots.Lock()
@@ -150,8 +161,10 @@ func (a *app) centralSnapshotForRead(ctx context.Context, key string) (map[strin
 		return payload, updated, true
 	}
 	if a.log != nil {
-		a.log.Error("central materialized read failed; using in-memory LKG fallback", "snapshot_key", key, "error", err)
+		a.log.Error("central materialized cache miss could not recover from PostgreSQL", "snapshot_key", key, "error", err)
 	}
+	// A concurrent materializer may have repaired the mirror while the DB
+	// recovery attempt was in flight.
 	if memory, memoryUpdated, ok := centralStep3SnapshotGet(key); ok {
 		return memory, memoryUpdated, true
 	}
@@ -333,9 +346,13 @@ func (a *app) loadPartnerWorkspaceDB(ctx context.Context, partnerID string) (map
 
 func (a *app) partnerWorkspaceForRead(ctx context.Context, partnerID string) (map[string]any, time.Time, bool) {
 	partnerID = strings.TrimSpace(partnerID)
+	key := centralPartnerWorkspaceKey(partnerID)
+	if memory, memoryUpdated, ok := centralStep3SnapshotGet(key); ok {
+		return memory, memoryUpdated, true
+	}
+
 	payload, updated, err := a.loadPartnerWorkspaceDB(ctx, partnerID)
 	if err == nil {
-		key := centralPartnerWorkspaceKey(partnerID)
 		centralStep3Snapshots.Lock()
 		centralStep3Snapshots.items[key] = centralStep3SnapshotEntry{
 			payload: centralStep3CopyMap(payload), updatedAt: updated,
@@ -344,9 +361,10 @@ func (a *app) partnerWorkspaceForRead(ctx context.Context, partnerID string) (ma
 		return payload, updated, true
 	}
 	if a.log != nil {
-		a.log.Error("partner materialized read failed; using in-memory LKG fallback", "partner_id", partnerID, "error", err)
+		a.log.Error("partner materialized cache miss could not recover from PostgreSQL", "partner_id", partnerID, "error", err)
 	}
-	return centralStep3SnapshotGet(centralPartnerWorkspaceKey(partnerID))
+	// Preserve a Last-Known-Good written concurrently with the recovery attempt.
+	return centralStep3SnapshotGet(key)
 }
 
 func (a *app) persistPartnerWorkspaceSnapshot(ctx context.Context, partnerID string, payload map[string]any) bool {
