@@ -371,7 +371,12 @@ check("partnerAuthoritativeAccessAllowed" in access
       and 'a.hosts["partners"]' in authoritative_access
       and 'a.hosts["billing"]' in authoritative_access
       and "internalGET" in authoritative_access,
-      "Partner login compatibility access is not backed by authoritative owners")
+      "Partner authoritative fallback is not backed by the owning services")
+partner_login = func_block(partner_portal, "func (a *app) partnerLogin")
+check("partnerRequestAccess(ctx,u.PartnerID)" in partner_login
+      and "partnerAccessAllowed(ctx,u.PartnerID)" not in partner_login
+      and "partnerAuthoritativeAccessAllowed" not in partner_login,
+      "Partner login regressed to synchronous live access fan-out")
 partner_api_access = func_block(partner_portal, "func (a *app) partnerAPI")
 check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api_access
       and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api_access

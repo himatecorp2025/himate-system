@@ -88,6 +88,12 @@ check("func (a *app) partnerRequestAccess" in partner_portal
 check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api_block
       and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api_block,
       "Authenticated Partner Portal request path can still block on live access fan-out")
+partner_login_start = partner_portal.find("func (a *app) partnerLogin")
+partner_login_end = partner_portal.find("\nfunc ", partner_login_start + 1)
+partner_login_block = partner_portal[partner_login_start:partner_login_end if partner_login_end > partner_login_start else len(partner_portal)]
+check("partnerRequestAccess(ctx,u.PartnerID)" in partner_login_block
+      and "partnerAccessAllowed(ctx,u.PartnerID)" not in partner_login_block,
+      "Partner login can still block on live access fan-out")
 check('case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, "/api/v1/environments/"):' in main
       and 'a.serveProxy(w, r, "environments")' in main,
       "Legacy environment GET no longer reaches authoritative Environment service")

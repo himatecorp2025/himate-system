@@ -287,7 +287,7 @@ func (a *app) partnerLogin(w http.ResponseWriter,r *http.Request){
 	if err!=nil{_ = pbkdf2SHA256([]byte(in.Password),make([]byte,16),passwordIterations,32)}
 	if !valid{a.recordLoginFailure(key,now);common.APIError(w,401,"INVALID_CREDENTIALS","Invalid email or password");return}
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second);defer cancel()
-	if err:=a.partnerAccessAllowed(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
+	if _,err:=a.partnerRequestAccess(ctx,u.PartnerID);err!=nil{writePartnerAccessError(w,err);return}
 	if a.beginMFAFlow(w,r,"PARTNER",u.ID,in.Remember,partnerMFARequired(u.Role)){return}
 	a.clearLoginFailures(key)
 	go a.recordPartnerPortalActivity(u)

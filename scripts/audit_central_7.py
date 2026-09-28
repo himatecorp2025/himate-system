@@ -118,6 +118,12 @@ check("func (a *app) partnerRequestAccess" in partner_gateway
       and "partnerAccessSnapshot(ctx, partnerID)" in partner_gateway
       and "partnerAuthoritativeAccessAllowed(ctx, partnerID)" in partner_gateway,
       "Authenticated Partner Portal access is not LKG-first with authoritative fallback")
+partner_login_start = partner_gateway.find("func (a *app) partnerLogin")
+partner_login_end = partner_gateway.find("\nfunc ", partner_login_start + 1)
+partner_login = partner_gateway[partner_login_start:partner_login_end if partner_login_end > partner_login_start else len(partner_gateway)]
+check("partnerRequestAccess(ctx,u.PartnerID)" in partner_login
+      and "partnerAccessAllowed(ctx,u.PartnerID)" not in partner_login,
+      "Partner login still performs synchronous authority fan-out")
 partner_api_start = partner_gateway.find("func (a *app) partnerAPI")
 partner_api_end = partner_gateway.find("\nfunc ", partner_api_start + 1)
 partner_api = partner_gateway[partner_api_start:partner_api_end if partner_api_end > partner_api_start else len(partner_gateway)]
