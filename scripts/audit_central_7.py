@@ -110,10 +110,15 @@ check('runMap("portal_gate", "billing", "/internal/v1/partners/"+escapedID+"/por
 check('"portal_gate":                     portalGate' in partner_snapshots
       and '"portal_gate"' in materialized_reads,
       "Partner Portal gate is not part of the persistent LKG tenant read model")
-check("func (a *app) partnerAuthoritativeAccessAllowed" in partner_gateway
-      and 'a.internalGET(ctx, a.hosts["partners"]' in partner_gateway
-      and 'a.internalGET(ctx, a.hosts["billing"]' in partner_gateway,
-      "Partner login compatibility authority is missing")
+authoritative_start = partner_gateway.find("func (a *app) partnerAuthoritativeAccessAllowed")
+authoritative_end = partner_gateway.find("\nfunc ", authoritative_start + 1)
+authoritative_access = partner_gateway[authoritative_start:authoritative_end if authoritative_end > authoritative_start else len(partner_gateway)]
+check(authoritative_start >= 0
+      and "partners.partners" in authoritative_access
+      and "billing.partner_onboarding" in authoritative_access
+      and "QueryRowContext" in authoritative_access
+      and "internalGET" not in authoritative_access,
+      "Partner login compatibility authority is not a local committed projection")
 check("func (a *app) partnerRequestAccess" in partner_gateway
       and "partnerAccessSnapshot(ctx, partnerID)" in partner_gateway
       and "partnerAuthoritativeAccessAllowed(ctx, partnerID)" in partner_gateway,

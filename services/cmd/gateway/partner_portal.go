@@ -195,47 +195,70 @@ func (a *app) partnerAccessSnapshot(ctx context.Context, partnerID string) (map[
 	return snapshot, nil
 }
 
-func (a *app) partnerAuthoritativeAccessAllowed(ctx context.Context, partnerID string) error {
-	partnerID = strings.TrimSpace(partnerID)
-	if partnerID == "" {
+
+func partnerAccessStateAllowed(lifecycle, onboardingRequestID, onboardingState string, portalEnabled, onboardingExists bool) error {
+	lifecycle = strings.ToUpper(strings.TrimSpace(lifecycle))
+	if lifecycle == "SUSPENDED" || lifecycle == "ARCHIVED" {
 		return errPartnerPortalAccessDisabled
 	}
-	escapedID := url.PathEscape(partnerID)
-	var partner, gate map[string]any
-	var partnerErr, gateErr error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners/"+escapedID, &partner)
-	}()
-	go func() {
-		defer wg.Done()
-		gateErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/partners/"+escapedID+"/portal-gate", &gate)
-	}()
-	wg.Wait()
-	if partnerErr != nil {
-		return partnerErr
+	if onboardingExists {
+		if strings.ToUpper(strings.TrimSpace(onboardingState)) != "ACTIVE" || !portalEnabled {
+			return errPartnerPortalAccessDisabled
+		}
+		return nil
 	}
-	if gateErr != nil {
-		return gateErr
-	}
-	lifecycle := strings.ToUpper(central10String(partner["lifecycle"]))
-	if lifecycle == "SUSPENDED" || lifecycle == "ARCHIVED" || gate["allowed"] != true {
+	if strings.TrimSpace(onboardingRequestID) != "" {
 		return errPartnerPortalAccessDisabled
 	}
 	return nil
 }
 
+func (a *app) partnerAuthoritativeAccessAllowed(ctx context.Context, partnerID string) error {
+	partnerID = strings.TrimSpace(partnerID)
+	if partnerID == "" {
+		return errPartnerPortalAccessDisabled
+	}
+	var (
+		partnerExists       bool
+		lifecycle           string
+		onboardingRequestID string
+		onboardingExists    bool
+		onboardingState     string
+		portalEnabled       bool
+	)
+	err := a.db.QueryRowContext(ctx, `
+		SELECT
+			EXISTS(SELECT 1 FROM partners.partners p WHERE p.id=$1),
+			COALESCE((SELECT p.lifecycle FROM partners.partners p WHERE p.id=$1),''),
+			COALESCE((SELECT p.onboarding_request_id FROM partners.partners p WHERE p.id=$1),''),
+			EXISTS(SELECT 1 FROM billing.partner_onboarding o WHERE o.partner_id=$1),
+			COALESCE((SELECT o.state FROM billing.partner_onboarding o WHERE o.partner_id=$1),''),
+			COALESCE((SELECT o.portal_enabled FROM billing.partner_onboarding o WHERE o.partner_id=$1),FALSE)
+	`, partnerID).Scan(
+		&partnerExists,
+		&lifecycle,
+		&onboardingRequestID,
+		&onboardingExists,
+		&onboardingState,
+		&portalEnabled,
+	)
+	if err != nil {
+		return fmt.Errorf("partner access projection query failed: %w", err)
+	}
+	if !partnerExists {
+		return fmt.Errorf("partner access projection is not ready")
+	}
+	return partnerAccessStateAllowed(lifecycle, onboardingRequestID, onboardingState, portalEnabled, onboardingExists)
+}
 func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error {
 	return a.partnerAuthoritativeAccessAllowed(ctx, partnerID)
 }
 
-// partnerRequestAccess keeps authenticated Partner Portal request paths off the
-// live Partners/Billing fan-out whenever the persistent tenant LKG is present.
-// Authoritative owners are consulted only as a compatibility fallback when the
-// tenant snapshot is genuinely unavailable. An explicit disabled/suspended LKG
-// remains fail-closed and is never bypassed by the fallback.
+// partnerRequestAccess keeps authenticated Partner Portal request paths on the
+// persistent tenant LKG whenever it is present. If that workspace is unavailable,
+// the compatibility fallback reads committed Partners/Billing ownership state
+// locally from Postgres; it never performs request-path service fan-out.
+// An explicit disabled/suspended LKG remains fail-closed and is never bypassed.
 func (a *app) partnerRequestAccess(ctx context.Context, partnerID string) (map[string]any, error) {
 	snapshot, err := a.partnerAccessSnapshot(ctx, partnerID)
 	if err == nil || errors.Is(err, errPartnerPortalAccessDisabled) {

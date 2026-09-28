@@ -239,6 +239,14 @@ partner_login = partner_portal[partner_login_start:partner_login_end if partner_
 require("partnerRequestAccess(ctx,u.PartnerID)" in partner_login
         and "partnerAccessAllowed(ctx,u.PartnerID)" not in partner_login,
         "START-23.8 tenant owner login can still timeout on live Partners/Billing access fan-out")
+authoritative_start = partner_portal.find("func (a *app) partnerAuthoritativeAccessAllowed")
+authoritative_end = partner_portal.find("\nfunc ", authoritative_start + 1)
+authoritative_access = partner_portal[authoritative_start:authoritative_end if authoritative_end > authoritative_start else len(partner_portal)]
+require(authoritative_start >= 0
+        and "partners.partners" in authoritative_access
+        and "billing.partner_onboarding" in authoritative_access
+        and "internalGET" not in authoritative_access,
+        "START-23.8 tenant login fallback is not local and deterministic")
 for token in (
     "audit_start_23_1_23_6.py",
     "audit_start_23_7.py",

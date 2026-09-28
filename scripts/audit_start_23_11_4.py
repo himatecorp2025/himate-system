@@ -80,6 +80,10 @@ checks.extend([
  ("workspace mutation avoids synchronous access fan-out",
   "partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api and
   "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api),
+ ("login fallback avoids live Partners/Billing fan-out",
+  "partners.partners" in partner_gateway and
+  "billing.partner_onboarding" in partner_gateway and
+  "QueryRowContext" in partner_gateway),
 ])
 
 failures=[label for label,ok in checks if not ok]

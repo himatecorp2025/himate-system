@@ -205,11 +205,15 @@ check("refreshHealthSourceWriteThrough" in models and
       "a.refreshHealthSourceWriteThrough()" in models,
       "Gateway write-through does not refresh the health source projection before System CQRS rebuild")
 write_through = func_block(models, "func (a *app) writeThroughReadModels")
-check("if systemMutation {" in write_through
+check("if scope.system {" in write_through
       and "a.refreshHealthSourceWriteThrough()" in write_through
-      and "if partnerMutation || systemMutation {" not in write_through
       and "context.WithTimeout(context.Background(), 3*time.Second)" in models,
-      "Health source write-through is unbounded or generic partner CRUD still pays downstream health fan-out")
+      "Health source write-through is unbounded or not isolated to System mutations")
+check("func classifyReadModelMutation" in models
+      and 'strings.Contains(path, "/portal-users")' in models
+      and 'strings.HasPrefix(path, "/partner/api/v1/")' in models
+      and 'partnerMutation := strings.Contains(reason, "partner")' not in models,
+      "Partner mutation scope is still substring-based and can trigger projection storms")
 check('case path == "/api/v1/partner-categories":' in central_reads and
       'centralSnapshotForRead(r.Context(), centralStep4PartnersKey)' in central_reads,
       "Partner category GET is not routed through the persistent Partners read model")
@@ -368,10 +372,11 @@ check("partnerAccessSnapshot(ctx, partnerID)" in request_access
       and "errors.Is(err, errPartnerPortalAccessDisabled)" in request_access,
       "Partner request access does not use fail-closed LKG-first compatibility fallback")
 check("partnerAuthoritativeAccessAllowed" in access
-      and 'a.hosts["partners"]' in authoritative_access
-      and 'a.hosts["billing"]' in authoritative_access
-      and "internalGET" in authoritative_access,
-      "Partner authoritative fallback is not backed by the owning services")
+      and "partners.partners" in authoritative_access
+      and "billing.partner_onboarding" in authoritative_access
+      and "QueryRowContext" in authoritative_access
+      and "internalGET" not in authoritative_access,
+      "Partner authoritative fallback is not a local committed projection")
 partner_login = func_block(partner_portal, "func (a *app) partnerLogin")
 check("partnerRequestAccess(ctx,u.PartnerID)" in partner_login
       and "partnerAccessAllowed(ctx,u.PartnerID)" not in partner_login

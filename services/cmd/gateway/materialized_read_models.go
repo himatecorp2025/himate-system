@@ -461,48 +461,80 @@ func (a *app) enqueueReadModelRefresh(ctx context.Context, reason, partnerID str
 	}
 }
 
+
+type readModelMutationScope struct {
+	partner    bool
+	module     bool
+	billing    bool
+	impact     bool
+	website    bool
+	system     bool
+	admin      bool
+	tenantOnly bool
+}
+
+func classifyReadModelMutation(reason string) readModelMutationScope {
+	path := strings.ToLower(strings.TrimSpace(stripForegroundReadModelMarker(reason)))
+	hasAudit := strings.Contains(path, "/audit")
+	if i := strings.Index(path, "/audit"); i >= 0 {
+		path = path[:i]
+	}
+	partnerPortal := strings.HasPrefix(path, "/partner/api/v1/")
+	portalUserAdmin := strings.HasPrefix(path, "/api/v1/partners/") && strings.Contains(path, "/portal-users")
+	scope := readModelMutationScope{tenantOnly: partnerPortal || portalUserAdmin}
+
+	scope.partner = path == "/api/v1/partners" ||
+		path == "/api/v1/partner-categories" ||
+		(strings.HasPrefix(path, "/api/v1/partners/") && !portalUserAdmin) ||
+		strings.HasPrefix(path, "/partner/api/v1/company")
+	scope.module = strings.Contains(path, "/modules") || strings.Contains(path, "/module-groups") || strings.Contains(path, "catalog")
+	scope.billing = strings.HasPrefix(path, "/api/v1/billing") || strings.Contains(path, "/billing/") ||
+		strings.Contains(path, "/payments/") || strings.Contains(path, "invoice") ||
+		strings.Contains(path, "subscription") || strings.Contains(path, "/plan") ||
+		strings.Contains(path, "license") || strings.Contains(path, "payment")
+	scope.impact = strings.Contains(path, "impact") || strings.Contains(path, "evidence") || strings.Contains(path, "report")
+	scope.website = strings.Contains(path, "/cms/") || strings.Contains(path, "/seo") ||
+		strings.Contains(path, "/contact") || strings.Contains(path, "/domain") || strings.Contains(path, "/design")
+	scope.system = strings.Contains(path, "environment") || strings.Contains(path, "provision") ||
+		strings.Contains(path, "health") || strings.Contains(path, "backup") || strings.Contains(path, "connector")
+	scope.admin = hasAudit || strings.Contains(path, "/admin/") || strings.Contains(path, "role") ||
+		strings.Contains(path, "secret") || strings.Contains(path, "/permissions") || portalUserAdmin
+	return scope
+}
+
+
 func readModelVerificationKeys(reason string) []string {
-	reason = strings.ToLower(strings.TrimSpace(reason))
+	scope := classifyReadModelMutation(reason)
 	keys := map[string]bool{}
 	add := func(key string) { keys[key] = true }
-	if strings.Contains(reason, "partner") {
-		for _, key := range []string{centralStep4PartnersKey, centralStep4FinanceKey, centralStep4AdministrationKey, centralStep4ConnectionsKey, centralStep4ComplianceKey} {
+	if scope.partner {
+		for _, key := range []string{centralStep4PartnersKey, centralStep4SystemKey, centralStep4FinanceKey, centralStep4AdministrationKey, centralStep4ConnectionsKey, centralStep4ComplianceKey} {
 			add(key)
 		}
 	}
-	if strings.Contains(reason, "module") || strings.Contains(reason, "catalog") {
+	if scope.module {
 		add(centralStep3RegistryKey); add(centralStep3CommercialKey); add(centralStep4PartnersKey)
 	}
-	if strings.Contains(reason, "billing") || strings.Contains(reason, "invoice") ||
-		strings.Contains(reason, "subscription") || strings.Contains(reason, "plan") ||
-		strings.Contains(reason, "license") || strings.Contains(reason, "payment") {
+	if scope.billing {
 		for _, key := range []string{centralStep3PlansKey, centralStep3AnalyticsKey, centralStep3CommercialKey, centralStep4FinanceKey, centralStep4PartnersKey, centralStep4AdministrationKey} {
 			add(key)
 		}
 	}
-	if strings.Contains(reason, "impact") || strings.Contains(reason, "evidence") || strings.Contains(reason, "report") {
-		add(centralStep4ImpactKey)
-	}
-	if strings.Contains(reason, "cms") || strings.Contains(reason, "seo") || strings.Contains(reason, "contact") || strings.Contains(reason, "domain") {
-		add(centralStep4WebsiteKey)
-	}
-	if strings.Contains(reason, "environment") || strings.Contains(reason, "provision") ||
-		strings.Contains(reason, "health") || strings.Contains(reason, "backup") || strings.Contains(reason, "connector") {
+	if scope.impact { add(centralStep4ImpactKey) }
+	if scope.website { add(centralStep4WebsiteKey) }
+	if scope.system {
 		add(centralStep4SystemKey)
-		if strings.Contains(reason, "environment") { add(centralStep4WebsiteKey) }
-		if strings.Contains(reason, "connector") { add(centralStep4ConnectionsKey); add(centralStep4PartnersKey) }
-		if strings.Contains(reason, "backup") { add(centralStep4AdministrationKey) }
+		path := strings.ToLower(strings.TrimSpace(reason))
+		if strings.Contains(path, "environment") { add(centralStep4WebsiteKey) }
+		if strings.Contains(path, "connector") { add(centralStep4ConnectionsKey); add(centralStep4PartnersKey) }
+		if strings.Contains(path, "backup") { add(centralStep4AdministrationKey) }
 	}
-	if strings.Contains(reason, "admin") || strings.Contains(reason, "audit") ||
-		strings.Contains(reason, "role") || strings.Contains(reason, "secret") {
-		add(centralStep4AdministrationKey)
-	}
+	if scope.admin { add(centralStep4AdministrationKey) }
 	out := make([]string, 0, len(keys))
 	for key := range keys { out = append(out, key) }
 	sort.Strings(out)
 	return out
 }
-
 func readModelGlobalTenantScopes(reason string) (modules, plans, design bool) {
 	path := strings.ToLower(strings.TrimSpace(reason))
 	if i := strings.Index(path, "/audit"); i >= 0 {
@@ -617,44 +649,21 @@ func (a *app) refreshHealthSourceWriteThrough() bool {
 	return true
 }
 
+
 func (a *app) writeThroughReadModels(partnerID, reason string) {
 	reason = strings.ToLower(strings.TrimSpace(reason))
 	foregroundModuleDelta := strings.Contains(reason, foregroundModuleDeltaMarker)
 	reason = stripForegroundReadModelMarker(reason)
-
-	// PATCH /api/v1/modules/:key is synchronously applied to the persistent
-	// registry snapshot by applyCentralModuleMutationSnapshot before this call.
-	// Do not rebuild every derived projection 80 times during a canonical
-	// portfolio publish burst; the durable queue coalesces those derived reads.
 	if foregroundModuleDelta {
 		return
 	}
 
+	scope := classifyReadModelMutation(reason)
 	jobsByKey := map[string]func(){}
 	add := func(key string, fn func()) { jobsByKey[key] = fn }
 
-	partnerMutation := strings.Contains(reason, "partner")
-	moduleMutation := strings.Contains(reason, "module") || strings.Contains(reason, "catalog")
-	billingMutation := strings.Contains(reason, "billing") || strings.Contains(reason, "invoice") ||
-		strings.Contains(reason, "subscription") || strings.Contains(reason, "plan") ||
-		strings.Contains(reason, "license") || strings.Contains(reason, "payment")
-	impactMutation := strings.Contains(reason, "impact") || strings.Contains(reason, "evidence") || strings.Contains(reason, "report")
-	websiteMutation := strings.Contains(reason, "cms") || strings.Contains(reason, "seo") ||
-		strings.Contains(reason, "contact") || strings.Contains(reason, "domain")
-	systemMutation := strings.Contains(reason, "environment") || strings.Contains(reason, "provision") ||
-		strings.Contains(reason, "health") || strings.Contains(reason, "backup") || strings.Contains(reason, "connector")
-	adminMutation := strings.Contains(reason, "admin") || strings.Contains(reason, "audit") ||
-		strings.Contains(reason, "role") || strings.Contains(reason, "secret")
-
-	// Health is itself a materialized domain projection. Refresh it on the write
-	// path before rebuilding the Central System projection so an immediate GET/F5
-	// observes the committed provisioning/environment/connector/partner state
-	// without any read-side fan-out.
-	if systemMutation {
-		a.refreshHealthSourceWriteThrough()
-	}
-
-	if partnerMutation {
+	if scope.system { a.refreshHealthSourceWriteThrough() }
+	if scope.partner {
 		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
 		add(centralStep4SystemKey, a.refreshCentralStep4System)
 		add(centralStep4FinanceKey, a.refreshCentralStep4Finance)
@@ -662,12 +671,12 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections)
 		add(centralStep4ComplianceKey, a.refreshCentralStep4Compliance)
 	}
-	if moduleMutation {
+	if scope.module {
 		add(centralStep3RegistryKey, a.refreshCentralStep3Registry)
 		add(centralStep3CommercialKey, a.refreshCentralStep3Commercial)
 		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
 	}
-	if billingMutation {
+	if scope.billing {
 		add(centralStep3PlansKey, a.refreshCentralStep3Plans)
 		add(centralStep3AnalyticsKey, a.refreshCentralStep3Analytics)
 		add(centralStep3CommercialKey, a.refreshCentralStep3Commercial)
@@ -675,34 +684,19 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
 		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
 	}
-	if impactMutation {
-		add(centralStep4ImpactKey, a.refreshCentralStep4Impact)
-	}
-	if websiteMutation {
-		add(centralStep4WebsiteKey, a.refreshCentralStep4Website)
-	}
-	if systemMutation {
+	if scope.impact { add(centralStep4ImpactKey, a.refreshCentralStep4Impact) }
+	if scope.website { add(centralStep4WebsiteKey, a.refreshCentralStep4Website) }
+	if scope.system {
 		add(centralStep4SystemKey, a.refreshCentralStep4System)
-		if strings.Contains(reason, "environment") || strings.Contains(reason, "provision") {
-			add(centralStep4WebsiteKey, a.refreshCentralStep4Website)
-		}
-		if strings.Contains(reason, "connector") {
-			add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections)
-			add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
-		}
-		if strings.Contains(reason, "backup") {
-			add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
-		}
+		if strings.Contains(reason, "environment") || strings.Contains(reason, "provision") { add(centralStep4WebsiteKey, a.refreshCentralStep4Website) }
+		if strings.Contains(reason, "connector") { add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections); add(centralStep4PartnersKey, a.refreshCentralStep4Partners) }
+		if strings.Contains(reason, "backup") { add(centralStep4AdministrationKey, a.refreshCentralStep4Administration) }
 	}
-	if adminMutation {
-		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
-	}
+	if scope.admin { add(centralStep4AdministrationKey, a.refreshCentralStep4Administration) }
 
-	refreshAll := len(jobsByKey) == 0
+	refreshAll := len(jobsByKey) == 0 && partnerID == "" && !scope.tenantOnly
 	if refreshAll {
-		for _, job := range a.centralReadinessJobs() {
-			add(job.key, job.refresh)
-		}
+		for _, job := range a.centralReadinessJobs() { add(job.key, job.refresh) }
 	}
 	delete(jobsByKey, centralStep4GlobalSearchKey)
 
@@ -710,50 +704,23 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	for key, refresh := range jobsByKey {
 		key, refresh := key, refresh
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			a.refreshCentralProjectionSerialized(key, refresh)
-		}()
+		go func() { defer wg.Done(); a.refreshCentralProjectionSerialized(key, refresh) }()
 	}
-
 	if partnerID != "" {
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			a.writeThroughCentralPartnerWorkspace(partnerID)
-		}()
+		go func() { defer wg.Done(); a.writeThroughCentralPartnerWorkspace(partnerID) }()
 	}
-
-	// Global catalog/plan/design definitions can affect every tenant, but a
-	// foreground all-tenant fan-out creates lock storms and makes one mutation
-	// latency proportional to tenant count. The durable queue owns that global
-	// reconciliation. Foreground write-through remains synchronous for the
-	// affected Central projections and for the concrete partnerID (when any).
-	// Legacy/smoke reads use the authoritative compatibility path, so they never
-	// depend on an unfinished global tenant projection.
-
-	refreshDashboard := partnerMutation || moduleMutation || billingMutation || impactMutation || refreshAll
+	refreshDashboard := scope.partner || scope.module || scope.billing || scope.impact || refreshAll
 	if refreshDashboard {
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			a.refreshDashboardSerialized()
-		}()
+		go func() { defer wg.Done(); a.refreshDashboardSerialized() }()
 	}
 	wg.Wait()
 
-	if refreshAll || partnerMutation || moduleMutation || websiteMutation || adminMutation {
+	if refreshAll || scope.partner || scope.module || scope.website || scope.admin {
 		a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch)
 	}
 }
-
-type readModelRefreshEvent struct {
-	id        int64
-	partnerID string
-	reason    string
-	createdAt time.Time
-}
-
 func (a *app) refreshDashboardSerialized() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), readModelRefreshAcquireBudget)
 	defer cancel()
@@ -772,10 +739,9 @@ func (a *app) refreshNotificationsSerialized() bool {
 	})
 }
 
+
 func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
-	if len(events) == 0 {
-		return true
-	}
+	if len(events) == 0 { return true }
 	latestCreatedAt := events[0].createdAt.UTC()
 	partnerIDs := map[string]bool{}
 	targetKeys := map[string]bool{}
@@ -790,37 +756,19 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 
 	for _, item := range events {
 		reason := strings.ToLower(strings.TrimSpace(item.reason))
-		if item.createdAt.After(latestCreatedAt) {
-			latestCreatedAt = item.createdAt.UTC()
-		}
-		if id := strings.TrimSpace(item.partnerID); id != "" {
-			partnerIDs[id] = true
-		}
+		if item.createdAt.After(latestCreatedAt) { latestCreatedAt = item.createdAt.UTC() }
+		if id := strings.TrimSpace(item.partnerID); id != "" { partnerIDs[id] = true }
+		scope := classifyReadModelMutation(reason)
 		keys := readModelVerificationKeys(reason)
-		if len(keys) == 0 {
-			refreshAll = true
-		}
+		if len(keys) == 0 && strings.TrimSpace(item.partnerID) == "" && !scope.tenantOnly { refreshAll = true }
 		for _, key := range keys { targetKeys[key] = true }
 		moduleScope, planScope, designScope := readModelGlobalTenantScopes(reason)
 		globalModuleScope = globalModuleScope || moduleScope
 		globalPlanScope = globalPlanScope || planScope
 		globalDesignScope = globalDesignScope || designScope
-
-		partnerMutation := strings.Contains(reason, "partner")
-		moduleMutation := strings.Contains(reason, "module") || strings.Contains(reason, "catalog")
-		billingMutation := strings.Contains(reason, "billing") || strings.Contains(reason, "invoice") ||
-			strings.Contains(reason, "subscription") || strings.Contains(reason, "plan") ||
-			strings.Contains(reason, "license") || strings.Contains(reason, "payment")
-		impactMutation := strings.Contains(reason, "impact") || strings.Contains(reason, "evidence") || strings.Contains(reason, "report")
-		websiteMutation := strings.Contains(reason, "cms") || strings.Contains(reason, "seo") ||
-			strings.Contains(reason, "contact") || strings.Contains(reason, "domain")
-		systemMutation := strings.Contains(reason, "environment") || strings.Contains(reason, "provision") ||
-			strings.Contains(reason, "health") || strings.Contains(reason, "backup") || strings.Contains(reason, "connector")
-		adminMutation := strings.Contains(reason, "admin") || strings.Contains(reason, "audit") ||
-			strings.Contains(reason, "role") || strings.Contains(reason, "secret")
-		if partnerMutation || systemMutation { refreshHealth = true }
-		if partnerMutation || moduleMutation || billingMutation || impactMutation { refreshDashboard = true }
-		if partnerMutation || moduleMutation || websiteMutation || adminMutation { refreshGlobalSearch = true }
+		if scope.system { refreshHealth = true }
+		if scope.partner || scope.module || scope.billing || scope.impact { refreshDashboard = true }
+		if scope.partner || scope.module || scope.website || scope.admin { refreshGlobalSearch = true }
 	}
 	if refreshAll {
 		for _, job := range a.centralReadinessJobs() {
@@ -831,27 +779,17 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 		refreshHealth = true
 		refreshAllTenants = true
 	}
-	if refreshHealth {
-		a.refreshHealthSourceWriteThrough()
-	}
+	if refreshHealth { a.refreshHealthSourceWriteThrough() }
 
 	jobsByKey := map[string]func(){}
 	for _, job := range a.centralReadinessJobs() {
-		if targetKeys[job.key] && job.key != centralStep4GlobalSearchKey {
-			jobsByKey[job.key] = job.refresh
-		}
+		if targetKeys[job.key] && job.key != centralStep4GlobalSearchKey { jobsByKey[job.key] = job.refresh }
 	}
-
-	// Coalesce a durable batch by projection key: one source event burst yields
-	// one rebuild per affected Central projection and one per affected tenant.
 	var wg sync.WaitGroup
 	for key, refresh := range jobsByKey {
 		key, refresh := key, refresh
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			a.refreshCentralProjectionSerialized(key, refresh)
-		}()
+		go func() { defer wg.Done(); a.refreshCentralProjectionSerialized(key, refresh) }()
 	}
 	if refreshDashboard {
 		wg.Add(1)
@@ -867,9 +805,7 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			globalTenantRefreshOK = a.writeThroughGlobalTenantReadModelScopes(
-				globalModuleScope, globalPlanScope, globalDesignScope, "durable-read-model-batch",
-			)
+			globalTenantRefreshOK = a.writeThroughGlobalTenantReadModelScopes(globalModuleScope, globalPlanScope, globalDesignScope, "durable-read-model-batch")
 		}()
 	}
 	if refreshAllTenants {
@@ -884,40 +820,28 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 	wg.Add(1)
 	go func() { defer wg.Done(); a.refreshNotificationsSerialized() }()
 	wg.Wait()
-	if !globalTenantRefreshOK {
-		return false
-	}
+	if !globalTenantRefreshOK { return false }
 
 	if refreshGlobalSearch {
-		if !a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch) {
-			return false
-		}
+		if !a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch) { return false }
 		targetKeys[centralStep4GlobalSearchKey] = true
 	}
-
 	verifyCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	for key := range targetKeys {
 		_, updated, err := a.loadCentralSnapshotDB(verifyCtx, key)
-		if err != nil || updated.Before(latestCreatedAt) {
-			return false
-		}
+		if err != nil || updated.Before(latestCreatedAt) { return false }
 	}
 	if refreshDashboard {
 		dashboardPayload, updated, err := a.loadDashboardSnapshotContext(verifyCtx, time.Now().UTC().Year())
-		if err != nil || !dashboardSnapshotValid(dashboardPayload) || updated.Before(latestCreatedAt) {
-			return false
-		}
+		if err != nil || !dashboardSnapshotValid(dashboardPayload) || updated.Before(latestCreatedAt) { return false }
 	}
 	for partnerID := range partnerIDs {
 		_, updated, err := a.loadPartnerWorkspaceDB(verifyCtx, partnerID)
-		if err != nil || updated.Before(latestCreatedAt) {
-			return false
-		}
+		if err != nil || updated.Before(latestCreatedAt) { return false }
 	}
 	return true
 }
-
 func (a *app) refreshReadModelsForEvent(partnerID, reason string, createdAt time.Time) bool {
 	return a.refreshReadModelsForBatch([]readModelRefreshEvent{{
 		partnerID: strings.TrimSpace(partnerID),

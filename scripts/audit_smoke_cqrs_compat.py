@@ -85,6 +85,15 @@ check("func (a *app) partnerRequestAccess" in partner_portal
       and "partnerAccessSnapshot(ctx, partnerID)" in partner_portal
       and "partnerAuthoritativeAccessAllowed(ctx, partnerID)" in partner_portal,
       "Partner Portal LKG-first access compatibility adapter is missing")
+auth_start = partner_portal.find("func (a *app) partnerAuthoritativeAccessAllowed")
+auth_end = partner_portal.find("\nfunc ", auth_start + 1)
+auth_block = partner_portal[auth_start:auth_end if auth_end > auth_start else len(partner_portal)]
+check(auth_start >= 0
+      and "partners.partners" in auth_block
+      and "billing.partner_onboarding" in auth_block
+      and "QueryRowContext" in auth_block
+      and "internalGET" not in auth_block,
+      "Partner login compatibility fallback still performs request-path service fan-out")
 check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api_block
       and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api_block,
       "Authenticated Partner Portal request path can still block on live access fan-out")
@@ -268,15 +277,15 @@ for required in [
 
 check("a.refreshHealthSourceWriteThrough()" in models,
       "System writes no longer synchronously refresh persistent Health compatibility state")
-check("if systemMutation {" in write_through
-      and "if partnerMutation || systemMutation {" not in write_through
+check("if scope.system {" in write_through
       and "context.WithTimeout(context.Background(), 3*time.Second)" in models,
-      "Health compatibility write-through is unbounded or still paid by generic partner CRUD")
-partner_block_start = write_through.find("if partnerMutation {")
-partner_block_end = write_through.find("\n\t}", partner_block_start)
-partner_block = write_through[partner_block_start:partner_block_end if partner_block_end > partner_block_start else len(write_through)]
-check("centralStep4SystemKey" in partner_block,
-      "Partner mutation does not rebuild system_screen after Health source write-through")
+      "Health compatibility write-through is unbounded or not isolated to System mutations")
+check("func classifyReadModelMutation" in models
+      and 'strings.Contains(path, "/portal-users")' in models
+      and 'strings.HasPrefix(path, "/partner/api/v1/")' in models
+      and 'partnerMutation := strings.Contains(reason, "partner")' not in models
+      and 'len(jobsByKey) == 0 && partnerID == "" && !scope.tenantOnly' in write_through,
+      "Partner/tenant mutation classifier can still expand a local mutation into an all-projection refresh storm")
 check('strings.Contains(reason, "environment") || strings.Contains(reason, "provision")' in models,
       "Provisioning write-through no longer refreshes environment-bearing browser projections")
 check('refreshReason += "/audit"' in main,
