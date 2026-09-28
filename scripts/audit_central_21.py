@@ -61,8 +61,9 @@ for token in [
     'db.SetConnMaxIdleTime(5 * time.Minute)',
 ]:
     check(token in common_go, f"Topology-safe PostgreSQL pool contract missing: {token}")
+check(re.search(r"readModelRefreshConcurrency\s*=\s*3", models) is not None,
+      "Bounded/coalesced materializer concurrency is not fixed at 3")
 for token in [
-    'readModelRefreshConcurrency   = 3',
     'readModelRefreshSlots = make(chan struct{}, readModelRefreshConcurrency)',
     'withReadModelRefreshSlot',
     'refreshReadModelsForBatch(events)',
