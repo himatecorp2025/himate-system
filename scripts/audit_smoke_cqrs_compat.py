@@ -221,16 +221,17 @@ check('strings.Contains(reason, "/modules")' not in models,
 check("writeThroughGlobalTenantReadModelScopes" in workspace
       and '"durable-read-model-batch"' in models,
       "Durable queue does not reuse targeted global tenant slice reconciliation")
+api_stage = api_block.find("a.stageReadModelRefresh")
+api_write = api_block.find("a.writeThroughReadModels", api_stage)
 check("stageReadModelRefresh" in models
-      and "stagedRefresh := a.stageReadModelRefresh" in main
-      and main.find("stagedRefresh := a.stageReadModelRefresh") < main.find("a.writeThroughReadModels")
-      and main.find("a.writeThroughReadModels") < main.find("wakeReadModelRefreshWorker()", main.find("a.writeThroughReadModels")),
-      "Admin durable refresh worker can still race synchronous write-through for the same mutation")
-partner_stage = partner_portal.find("stagedRefresh:=a.stageReadModelRefresh")
-partner_write = partner_portal.find("a.writeThroughReadModels", partner_stage)
-partner_wake = partner_portal.find("wakeReadModelRefreshWorker()", partner_write)
-check(partner_stage >= 0 and partner_stage < partner_write < partner_wake,
-      "Partner durable refresh worker can still race synchronous write-through for the same mutation")
+      and api_stage >= 0 and api_stage < api_write
+      and "wakeReadModelRefreshWorker()" not in api_block,
+      "Admin mutation path can still race durable reconciliation against synchronous write-through")
+partner_stage = partner_api_block.find("a.stageReadModelRefresh")
+partner_write = partner_api_block.find("a.writeThroughReadModels", partner_stage)
+check(partner_stage >= 0 and partner_stage < partner_write
+      and "wakeReadModelRefreshWorker()" not in partner_api_block,
+      "Partner mutation path can still race durable reconciliation against synchronous write-through")
 global_slice_start = workspace.find("func (a *app) refreshGlobalTenantReadModelSlice")
 global_slice_end = workspace.find("\nfunc ", global_slice_start + 1)
 global_slice = workspace[global_slice_start:global_slice_end if global_slice_end > global_slice_start else len(workspace)]
@@ -249,11 +250,20 @@ check("foregroundModuleDeltaMarker" in models
       and "applyCentralModuleMutationSnapshot" in main
       and "foregroundReason += foregroundModuleDeltaMarker" in main,
       "Canonical module PATCHes no longer use persistent registry delta write-through")
-check("readModelGlobalBurstShouldDefer" in models
-      and "readModelGlobalBurstQuiet" in models
-      and "readModelGlobalBurstMaxDeferral" in models
-      and "if readModelGlobalBurstShouldDefer(events, time.Now().UTC())" in models,
-      "Global definition durable reconciliation can still race every mutation in a burst")
+check("readModelBatchShouldDefer" in models
+      and "readModelMutationQuiet" in models
+      and "readModelMutationMaxDeferral" in models
+      and "gatewayReadiness.Load() && readModelBatchShouldDefer(events, time.Now().UTC())" in models,
+      "Durable reconciliation can still race foreground mutations instead of waiting for the shared quiet window")
+check("MaxConnsPerHost:     2" in main
+      and "readModelRefreshConcurrency    = 2" in models
+      and "centralPartnerWorkspaceSourceConcurrency  = 2" in workspace
+      and "centralPartnerWorkspaceGlobalWriteWorkers = 1" in workspace,
+      "Background projection/downstream concurrency can still exhaust the four-connection service DB budget")
+check("writeThroughCentralPartnerWorkspace(partnerID)" not in write_through
+      and "readModelTenantSliceScopes" in write_through
+      and "refreshGlobalTenantReadModelSlice" in write_through,
+      "Foreground partner mutations can still rebuild the full multi-service tenant workspace before ACK")
 check("Configure bounded smoke HTTP clients" in workflow
       and "CURL_HOME=" in workflow
       and "max-time = 90" in workflow,

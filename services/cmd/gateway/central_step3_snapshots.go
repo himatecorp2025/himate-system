@@ -17,7 +17,7 @@ const (
 	centralStep3CommercialKey    = "modules_commercial"
 	centralStep3PlansKey         = "billing_plans"
 	centralStep3AnalyticsKey     = "package_analytics"
-	centralStep3RefreshInterval  = 10 * time.Second
+	centralStep3RefreshInterval  = 60 * time.Second
 	centralStep3MaterializeBudget = 5 * time.Second
 )
 

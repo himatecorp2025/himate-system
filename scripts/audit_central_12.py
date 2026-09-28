@@ -12,6 +12,7 @@ def check(ok: bool, message: str) -> None:
 
 frontend = read("frontend/lib/main.dart")
 gateway = read("services/cmd/gateway/central10.go")
+models = read("services/cmd/gateway/materialized_read_models.go")
 central_reads = read("services/cmd/gateway/central_materialized_reads.go")
 step4 = read("services/cmd/gateway/central_step4_snapshots.go")
 billing8 = read("services/cmd/billing/central8.go")
@@ -48,12 +49,11 @@ for token in [
 ]:
     check(token in gateway, f"Central Partners screen RBAC/pagination contract missing: {token}")
 
-check('case strings.Contains(path, "module"), strings.Contains(path, "catalog"):' in gateway,
-      "catalog invalidation path is missing")
-catalog_case = gateway[gateway.find('case strings.Contains(path, "module"), strings.Contains(path, "catalog"):'):]
-catalog_case = catalog_case[:catalog_case.find("case ", 10)] if "case " in catalog_case[10:] else catalog_case
-check("a.requestCentralStep4Refresh()" in catalog_case,
-      "catalog changes do not refresh the Partners materialization")
+check("if scope.module {" in models
+      and "add(centralStep4PartnersKey, a.refreshCentralStep4Partners)" in models,
+      "catalog mutations no longer refresh the Partners materialization through authoritative write-through")
+check("a.requestCentralStep4Refresh()" not in gateway,
+      "catalog cache invalidation still launches a duplicate Step4 materializer")
 
 finance_start = frontend.find("class _FinancePageState")
 finance_end = frontend.find("\nclass ", finance_start + 1)

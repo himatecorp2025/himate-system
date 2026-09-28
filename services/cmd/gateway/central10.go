@@ -58,64 +58,20 @@ func (a *app) invalidateCentral10Caches(path string) {
 	for key := range central10ReadCache.items {
 		lowerKey := strings.ToLower(key)
 		remove := false
-		if invalidatePartners && strings.Contains(lowerKey, "/api/v1/central/partners?") {
-			remove = true
-		}
-		if invalidateWorkspaceModules &&
-			strings.Contains(lowerKey, "/api/v1/central/partners/") {
-			remove = true
-		}
-		if invalidateConnections && strings.Contains(lowerKey, "/api/v1/central/connections?") {
-			remove = true
-		}
-		if invalidateAdministration && strings.Contains(lowerKey, "/api/v1/central/administration?") {
-			remove = true
-		}
-		if invalidateWebsite && strings.Contains(lowerKey, "/api/v1/central/website?") {
-			remove = true
-		}
-		if invalidateSystem && strings.Contains(lowerKey, "/api/v1/central/system?") {
-			remove = true
-		}
-		if remove {
-			delete(central10ReadCache.items, key)
-		}
+		if invalidatePartners && strings.Contains(lowerKey, "/api/v1/central/partners?") { remove = true }
+		if invalidateWorkspaceModules && strings.Contains(lowerKey, "/api/v1/central/partners/") { remove = true }
+		if invalidateConnections && strings.Contains(lowerKey, "/api/v1/central/connections?") { remove = true }
+		if invalidateAdministration && strings.Contains(lowerKey, "/api/v1/central/administration?") { remove = true }
+		if invalidateWebsite && strings.Contains(lowerKey, "/api/v1/central/website?") { remove = true }
+		if invalidateSystem && strings.Contains(lowerKey, "/api/v1/central/system?") { remove = true }
+		if remove { delete(central10ReadCache.items, key) }
 	}
 	central10ReadCache.Unlock()
 
-	// Materialized screen snapshots are never destructively flushed. Relevant
-	// mutations only queue recomputation while last-known-good data remains hot.
-	switch {
-	case strings.Contains(path, "partner"):
-		a.requestDashboardRefresh()
-		a.requestCentralStep3Refresh()
-		a.requestCentralStep4Refresh()
-	case strings.Contains(path, "module"), strings.Contains(path, "catalog"):
-		a.requestDashboardRefresh()
-		a.requestCentralStep3Refresh()
-		// Partners materialization contains catalog-derived module/commercial
-		// enrichment, so module changes must refresh that screen snapshot too.
-		a.requestCentralStep4Refresh()
-	case strings.Contains(path, "billing"), strings.Contains(path, "invoice"), strings.Contains(path, "subscription"):
-		a.requestDashboardRefresh()
-		a.requestCentralStep3Refresh()
-		a.requestCentralStep4Refresh()
-	case strings.Contains(path, "impact"), strings.Contains(path, "evidence"), strings.Contains(path, "report"):
-		a.requestDashboardRefresh()
-		a.requestCentralStep4Refresh()
-	}
-
-	if invalidateWorkspaceModules ||
-		strings.Contains(path, "environment") ||
-		strings.Contains(path, "provision") ||
-		strings.Contains(path, "connector") ||
-		strings.Contains(path, "impact") ||
-		strings.Contains(path, "evidence") ||
-		strings.Contains(path, "report") ||
-		strings.Contains(path, "cms") ||
-		strings.Contains(path, "payment") {
-		a.requestAllCentralPartnerWorkspaceRefreshes()
-	}
+	// Projection scheduling is deliberately not performed here. A successful
+	// mutation already owns one durable-stage + foreground-write-through pipeline.
+	// Starting Step3/Step4/dashboard/tenant work here created a second competing
+	// reconciliation path and exhausted downstream service capacity.
 }
 
 func central10MergeModuleSnapshot(snapshot, state map[string]any) (map[string]any, bool) {

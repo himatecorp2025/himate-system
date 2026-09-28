@@ -341,8 +341,13 @@ for token in [
 ]:
     check(token in step3_snapshots, f"Step 3 background materializer contract missing: {token}")
 
-check("a.requestCentralStep3Refresh()" in gateway,
-      "Step 3 write-path invalidation no longer triggers the background materializer")
+check("a.requestCentralStep3Refresh()" not in gateway
+      and "a.requestCentralStep4Refresh()" not in gateway
+      and "a.requestAllCentralPartnerWorkspaceRefreshes()" not in gateway,
+      "Central cache invalidation still starts duplicate background materializers")
+check("func (a *app) writeThroughReadModels" in materialized_reads
+      and "stageReadModelRefresh" in materialized_reads,
+      "Authoritative mutation projection pipeline is missing")
 
 for token in [
     "Future<void> loadRegistry()",

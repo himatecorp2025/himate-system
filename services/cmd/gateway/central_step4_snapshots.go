@@ -20,7 +20,7 @@ const (
 	centralStep4ConnectionsKey    = "connections_screen"
 	centralStep4ComplianceKey     = "compliance_screen"
 	centralStep4GlobalSearchKey   = "global_search"
-	centralStep4RefreshInterval   = 10 * time.Second
+	centralStep4RefreshInterval   = 60 * time.Second
 	centralStep4MaterializeBudget = 6 * time.Second
 )
 

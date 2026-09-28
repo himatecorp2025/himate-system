@@ -205,7 +205,8 @@ func main() {
 	mfaRequired, _ := strconv.ParseBool(common.Env("HIMATE_MFA_REQUIRED", "false"))
 	transport := &http.Transport{
 		MaxIdleConns:        64,
-		MaxIdleConnsPerHost: 16,
+		MaxIdleConnsPerHost: 8,
+		MaxConnsPerHost:     2,
 		IdleConnTimeout:     90 * time.Second,
 	}
 	a := &app{
@@ -1361,18 +1362,15 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 					refreshReason += "/audit"
 				}
 				refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
-				stagedRefresh := a.stageReadModelRefresh(refreshCtx, refreshReason, finalPartnerID)
+				a.stageReadModelRefresh(refreshCtx, refreshReason, finalPartnerID)
 				refreshCancel()
-				// Persist the durable trigger first, but do not let its worker race the
-				// foreground write-through for the same projection locks.
+				// Persist the durable fallback first. Foreground write-through owns
+				// immediate consistency; the queue waits for its mutation quiet window.
 				foregroundReason := refreshReason
 				if readModelForegroundModuleDelta(r.Method, r.URL.Path) {
 					foregroundReason += foregroundModuleDeltaMarker
 				}
 				a.writeThroughReadModels(finalPartnerID, foregroundReason)
-				if stagedRefresh {
-					wakeReadModelRefreshWorker()
-				}
 			}
 			if finalizeErr == nil && resource != "notifications" { go a.emitNotification(event) }
 		}()
@@ -2105,15 +2103,11 @@ func (a *app) connectorPublicProxy(w http.ResponseWriter, r *http.Request) {
 					reason += "/impact"
 				}
 				refreshCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-				stagedRefresh := a.stageReadModelRefresh(refreshCtx, reason, partnerID)
+				a.stageReadModelRefresh(refreshCtx, reason, partnerID)
 				cancel()
-				// External connector ingestion is a write path too. Hold the ACK until
-				// the tenant/Central LKG projections reflect the committed source write,
-				// closing the connector-write -> immediate GET/F5 consistency window.
+				// Hold the ACK for targeted foreground projections only; durable
+				// reconciliation waits for the shared mutation quiet window.
 				a.writeThroughReadModels(partnerID, reason)
-				if stagedRefresh {
-					wakeReadModelRefreshWorker()
-				}
 			}
 		}
 	}
@@ -2134,15 +2128,11 @@ func (a *app) stripeWebhookProxy(w http.ResponseWriter, r *http.Request) {
 			partnerID := strings.TrimSpace(central10String(ack["partner_id"]))
 			if partnerID != "" {
 				refreshCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-				stagedRefresh := a.stageReadModelRefresh(refreshCtx, "/webhooks/stripe/payment", partnerID)
+				a.stageReadModelRefresh(refreshCtx, "/webhooks/stripe/payment", partnerID)
 				cancel()
-				// Billing settlement is complete before the payment service ACK.
-				// Refresh the tenant + finance projections before releasing that
-				// ACK so the immediately following zero-fan-out GET/F5 sees PAID.
+				// Refresh targeted finance/partner projections synchronously; durable
+				// reconciliation is intentionally delayed behind the ACK.
 				a.writeThroughReadModels(partnerID, "/webhooks/stripe/payment")
-				if stagedRefresh {
-					wakeReadModelRefreshWorker()
-				}
 			}
 		}
 	}
@@ -2165,15 +2155,11 @@ func (a *app) publicContact(w http.ResponseWriter, r *http.Request) {
 	if status == 0 { status = http.StatusOK }
 	if status < http.StatusBadRequest {
 		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), time.Second)
-		stagedRefresh := a.stageReadModelRefresh(refreshCtx, r.URL.Path, "")
+		a.stageReadModelRefresh(refreshCtx, r.URL.Path, "")
 		refreshCancel()
-		// Public inquiry creation is an external write path. Refresh the Website
-		// projection before releasing the ACK so Administration/Marketing reads
-		// are immediately consistent without a synchronous read-side fan-out.
+		// Refresh the Website projection before ACK; durable reconciliation waits
+		// for the shared mutation quiet window.
 		a.writeThroughReadModels("", r.URL.Path)
-		if stagedRefresh {
-			wakeReadModelRefreshWorker()
-		}
 	}
 	recorder.flushDeferred()
 }

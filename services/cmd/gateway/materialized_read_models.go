@@ -15,13 +15,13 @@ import (
 
 const (
 	readModelTargetLatency        = 15 * time.Millisecond
-	readModelRefreshPoll          = 2 * time.Second
-	readModelRefreshBatch         = 100
-	readModelPersistBudget        = 2 * time.Second
-	readModelRefreshConcurrency    = 3
+	readModelRefreshPoll           = 5 * time.Second
+	readModelRefreshBatch          = 100
+	readModelPersistBudget         = 2 * time.Second
+	readModelRefreshConcurrency    = 2
 	readModelRefreshAcquireBudget  = 8 * time.Second
-	readModelGlobalBurstQuiet      = 3 * time.Second
-	readModelGlobalBurstMaxDeferral = 12 * time.Second
+	readModelMutationQuiet         = 8 * time.Second
+	readModelMutationMaxDeferral   = 45 * time.Second
 )
 
 var (
@@ -593,30 +593,53 @@ func stripForegroundReadModelMarker(reason string) string {
 	return strings.ReplaceAll(reason, foregroundModuleDeltaMarker, "")
 }
 
-func readModelGlobalBurstShouldDefer(events []readModelRefreshEvent, now time.Time) bool {
+func readModelBatchShouldDefer(events []readModelRefreshEvent, now time.Time) bool {
+	if len(events) == 0 { return false }
 	var oldest, latest time.Time
-	global := false
 	for _, event := range events {
-		modules, plans, design := readModelGlobalTenantScopes(event.reason)
-		if !modules && !plans && !design {
-			continue
-		}
-		global = true
 		at := event.createdAt.UTC()
-		if oldest.IsZero() || at.Before(oldest) {
-			oldest = at
+		if oldest.IsZero() || at.Before(oldest) { oldest = at }
+		if latest.IsZero() || at.After(latest) { latest = at }
+	}
+	if oldest.IsZero() || latest.IsZero() { return false }
+	if now.Sub(oldest) >= readModelMutationMaxDeferral { return false }
+	return now.Sub(latest) < readModelMutationQuiet
+}
+
+func readModelForegroundBillingClass(reason string) string {
+	path := strings.ToLower(strings.TrimSpace(stripForegroundReadModelMarker(reason)))
+	if i := strings.Index(path, "/audit"); i >= 0 { path = path[:i] }
+	switch {
+	case strings.HasPrefix(path, "/api/v1/billing/plans"):
+		return "global"
+	case strings.HasPrefix(path, "/api/v1/billing/partners/"):
+		switch {
+		case strings.Contains(path, "/terms"):
+			return "terms"
+		case strings.Contains(path, "/plan"), strings.Contains(path, "/subscription"),
+			strings.Contains(path, "/charity"), strings.Contains(path, "/commercial-mode"):
+			return "commercial"
+		case strings.Contains(path, "/invoice"), strings.Contains(path, "/license"),
+			strings.Contains(path, "/payment"):
+			return "financial"
+		default:
+			return "partner"
 		}
-		if latest.IsZero() || at.After(latest) {
-			latest = at
-		}
+	case strings.Contains(path, "/payments/"), strings.Contains(path, "/webhooks/stripe"):
+		return "financial"
+	default:
+		return "global"
 	}
-	if !global || oldest.IsZero() || latest.IsZero() {
-		return false
-	}
-	if now.Sub(oldest) >= readModelGlobalBurstMaxDeferral {
-		return false
-	}
-	return now.Sub(latest) < readModelGlobalBurstQuiet
+}
+
+func readModelTenantSliceScopes(reason string) (modules, plans, design bool) {
+	path := strings.ToLower(strings.TrimSpace(stripForegroundReadModelMarker(reason)))
+	if i := strings.Index(path, "/audit"); i >= 0 { path = path[:i] }
+	modules = strings.Contains(path, "/modules")
+	plans = strings.Contains(path, "/plan") || strings.Contains(path, "/subscription") ||
+		strings.Contains(path, "/charity")
+	design = strings.Contains(path, "/design")
+	return modules, plans, design
 }
 
 func (a *app) refreshCentralProjectionSerialized(key string, refresh func()) bool {
@@ -672,11 +695,16 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	reason = strings.ToLower(strings.TrimSpace(reason))
 	foregroundModuleDelta := strings.Contains(reason, foregroundModuleDeltaMarker)
 	reason = stripForegroundReadModelMarker(reason)
-	if foregroundModuleDelta {
-		return
-	}
+	if foregroundModuleDelta { return }
 
-	scope := classifyReadModelMutation(reason)
+	// The durable audit row is already committed. Do not turn the synthetic
+	// "/audit" suffix into a full Administration rebuild on every foreground
+	// mutation; the durable queue folds the audit screen in after the burst.
+	foregroundReason := reason
+	if i := strings.Index(foregroundReason, "/audit"); i >= 0 {
+		foregroundReason = foregroundReason[:i]
+	}
+	scope := classifyReadModelMutation(foregroundReason)
 	jobsByKey := map[string]func(){}
 	add := func(key string, fn func()) { jobsByKey[key] = fn }
 
@@ -684,8 +712,6 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 	if scope.partner {
 		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
 		add(centralStep4SystemKey, a.refreshCentralStep4System)
-		add(centralStep4FinanceKey, a.refreshCentralStep4Finance)
-		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
 		add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections)
 		add(centralStep4ComplianceKey, a.refreshCentralStep4Compliance)
 	}
@@ -694,21 +720,41 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		add(centralStep3CommercialKey, a.refreshCentralStep3Commercial)
 		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
 	}
+
+	billingClass := ""
 	if scope.billing {
-		add(centralStep3PlansKey, a.refreshCentralStep3Plans)
-		add(centralStep3AnalyticsKey, a.refreshCentralStep3Analytics)
-		add(centralStep3CommercialKey, a.refreshCentralStep3Commercial)
-		add(centralStep4FinanceKey, a.refreshCentralStep4Finance)
-		add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
-		add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
+		billingClass = readModelForegroundBillingClass(foregroundReason)
+		switch billingClass {
+		case "terms", "partner":
+			add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		case "commercial":
+			add(centralStep3CommercialKey, a.refreshCentralStep3Commercial)
+			add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		case "financial":
+			add(centralStep4FinanceKey, a.refreshCentralStep4Finance)
+			add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		default:
+			add(centralStep3PlansKey, a.refreshCentralStep3Plans)
+			add(centralStep3AnalyticsKey, a.refreshCentralStep3Analytics)
+			add(centralStep3CommercialKey, a.refreshCentralStep3Commercial)
+			add(centralStep4FinanceKey, a.refreshCentralStep4Finance)
+			add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		}
 	}
 	if scope.impact { add(centralStep4ImpactKey, a.refreshCentralStep4Impact) }
 	if scope.website { add(centralStep4WebsiteKey, a.refreshCentralStep4Website) }
 	if scope.system {
 		add(centralStep4SystemKey, a.refreshCentralStep4System)
-		if strings.Contains(reason, "environment") || strings.Contains(reason, "provision") { add(centralStep4WebsiteKey, a.refreshCentralStep4Website) }
-		if strings.Contains(reason, "connector") { add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections); add(centralStep4PartnersKey, a.refreshCentralStep4Partners) }
-		if strings.Contains(reason, "backup") { add(centralStep4AdministrationKey, a.refreshCentralStep4Administration) }
+		if strings.Contains(foregroundReason, "environment") || strings.Contains(foregroundReason, "provision") {
+			add(centralStep4WebsiteKey, a.refreshCentralStep4Website)
+		}
+		if strings.Contains(foregroundReason, "connector") {
+			add(centralStep4ConnectionsKey, a.refreshCentralStep4Connections)
+			add(centralStep4PartnersKey, a.refreshCentralStep4Partners)
+		}
+		if strings.Contains(foregroundReason, "backup") {
+			add(centralStep4AdministrationKey, a.refreshCentralStep4Administration)
+		}
 	}
 	if scope.admin { add(centralStep4AdministrationKey, a.refreshCentralStep4Administration) }
 
@@ -724,11 +770,25 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		wg.Add(1)
 		go func() { defer wg.Done(); a.refreshCentralProjectionSerialized(key, refresh) }()
 	}
+
+	// Never rebuild the 30+ source tenant workspace in a request path. Only the
+	// module/plan/design slices have immediate browser dependencies and can be
+	// refreshed from their narrow authoritative sources within the ACK budget.
 	if partnerID != "" {
-		wg.Add(1)
-		go func() { defer wg.Done(); a.writeThroughCentralPartnerWorkspace(partnerID) }()
+		moduleSlice, planSlice, designSlice := readModelTenantSliceScopes(foregroundReason)
+		if moduleSlice || planSlice || designSlice {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				ctx, cancel := context.WithTimeout(context.Background(), centralPartnerWorkspaceGlobalWriteBudget)
+				defer cancel()
+				a.refreshGlobalTenantReadModelSlice(ctx, partnerID, moduleSlice, planSlice, designSlice)
+			}()
+		}
 	}
-	refreshDashboard := scope.partner || scope.module || scope.billing || scope.impact || refreshAll
+
+	refreshDashboard := scope.partner || scope.module || scope.impact || refreshAll ||
+		(scope.billing && billingClass != "terms" && billingClass != "partner")
 	if refreshDashboard {
 		wg.Add(1)
 		go func() { defer wg.Done(); a.refreshDashboardSerialized() }()
@@ -902,12 +962,11 @@ func (a *app) processReadModelRefreshQueue() {
 		return
 	}
 
-	// Global definition writes often arrive as a burst (for example publishing
-	// the 40 canonical modules performs 80 PATCHes). Foreground delta write-through
-	// already protects immediate consistency. Let the durable worker wait for a
-	// short quiet window so the entire burst is reconciled once instead of racing
-	// every following mutation for the same projection locks.
-	if readModelGlobalBurstShouldDefer(events, time.Now().UTC()) {
+	// Foreground write-through owns the immediate-consistency window. During
+	// runtime, let every durable mutation burst settle before reconciliation so
+	// the queue cannot race the next request for the same locks/downstream pool.
+	// Cold-start replay bypasses the delay before readiness opens.
+	if gatewayReadiness.Load() && readModelBatchShouldDefer(events, time.Now().UTC()) {
 		return
 	}
 

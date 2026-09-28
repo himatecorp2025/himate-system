@@ -13,12 +13,12 @@ import (
 
 const (
 	centralPartnerWorkspacePrefix             = "partner_workspace:"
-	centralPartnerWorkspaceRefreshInterval    = 30 * time.Second
+	centralPartnerWorkspaceRefreshInterval    = 60 * time.Second
 	centralPartnerWorkspaceMaterializeBudget  = 6 * time.Second
 	centralPartnerWorkspaceStartupBudget      = 12 * time.Second
 	centralPartnerWorkspaceMaterializeWorkers = 2
-	centralPartnerWorkspaceSourceConcurrency  = 4
-	centralPartnerWorkspaceGlobalWriteWorkers = 8
+	centralPartnerWorkspaceSourceConcurrency  = 2
+	centralPartnerWorkspaceGlobalWriteWorkers = 1
 	centralPartnerWorkspaceGlobalWriteBudget  = 3 * time.Second
 )
 

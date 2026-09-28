@@ -505,16 +505,12 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 			status:=rec.status;if status==0{status=200};outcome:="SUCCESS";if status>=400{outcome="FAILED"}
 			newState:=decodeAuditState(rec.body.Bytes());if state,ok:=newState.(map[string]any);ok&&len(state)==0{newState=requestState}
 			if status < http.StatusBadRequest {
-				// The durable refresh event survives process restarts; the immediate
-				// refresh signal minimizes the mutation -> F5 visibility window.
+				// Persist a durable fallback first, then run the one authoritative
+				// foreground projection pass. The queue reconciles after its quiet window.
 				refreshCtx,refreshCancel:=context.WithTimeout(context.Background(),time.Second)
-				stagedRefresh:=a.stageReadModelRefresh(refreshCtx,r.URL.Path,u.PartnerID)
+				a.stageReadModelRefresh(refreshCtx,r.URL.Path,u.PartnerID)
 				refreshCancel()
-				// Foreground write-through owns the immediate-consistency window.
-				// Only wake the durable worker after the synchronous projection pass,
-				// otherwise both paths compete for the same projection locks.
 				a.writeThroughReadModels(u.PartnerID,r.URL.Path)
-				if stagedRefresh{wakeReadModelRefreshWorker()}
 			}
 			event:=baseEvent
 			event.Status=status;event.Outcome=outcome;event.NewState=newState;event.DurationMS=time.Since(started).Milliseconds()

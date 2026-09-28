@@ -62,8 +62,8 @@ for token in [
     'db.SetConnMaxIdleTime(5 * time.Minute)',
 ]:
     check(token in common_go, f"Topology-safe PostgreSQL pool contract missing: {token}")
-check(re.search(r"readModelRefreshConcurrency\s*=\s*3", models) is not None,
-      "Bounded/coalesced materializer concurrency is not fixed at 3")
+check(re.search(r"readModelRefreshConcurrency\s*=\s*2", models) is not None,
+      "Bounded/coalesced materializer concurrency is not fixed at topology-safe value 2")
 for token in [
     'readModelRefreshSlots = make(chan struct{}, readModelRefreshConcurrency)',
     'withReadModelRefreshSlot',
@@ -77,10 +77,19 @@ check('a.refreshCentralProjectionSerialized(refresh.key, refresh.fn)' in step4_s
       "Step4 materializer bypasses the global projection concurrency gate")
 for token in [
     'centralPartnerWorkspaceMaterializeWorkers = 2',
-    'centralPartnerWorkspaceSourceConcurrency  = 4',
+    'centralPartnerWorkspaceSourceConcurrency  = 2',
+    'centralPartnerWorkspaceGlobalWriteWorkers = 1',
+    'centralPartnerWorkspaceRefreshInterval    = 60 * time.Second',
     'a.withReadModelRefreshSlot(partnerCtx, centralPartnerWorkspaceKey(partnerID)',
 ]:
     check(token in tenant_snapshots, f"Tenant materializer concurrency contract missing: {token}")
+for token in [
+    'MaxConnsPerHost:     2',
+    'centralStep3RefreshInterval  = 60 * time.Second',
+    'centralStep4RefreshInterval   = 60 * time.Second',
+]:
+    check(token in main + snapshots + step4_snapshots,
+          f"Background/downstream capacity reservation contract missing: {token}")
 
 # Persistent, indexed Central + tenant projections.
 for token in [
@@ -502,8 +511,9 @@ check("targetKeys := map[string]bool{}" in models and
 check("for key := range targetKeys" in models,
       "Durable refresh verification is not scoped to affected projections")
 
-# Writes are durable + synchronous write-through before the durable worker is
-# woken and before the buffered mutation response is released.
+# Writes are durable + synchronous write-through before the buffered mutation
+# response is released. The durable worker is deliberately not woken from the
+# request path; it reconciles after the mutation quiet window.
 check("identity.read_model_refresh_queue" in models
       and "persistReadModelRefreshEvent" in models
       and "stageReadModelRefresh" in models,
@@ -521,9 +531,10 @@ partner_api = func_block(partner_portal, "func (a *app) partnerAPI")
 for block, label in [(central_api, "Central"), (partner_api, "Partner")]:
     stage = block.find("stageReadModelRefresh")
     write = block.find("writeThroughReadModels", stage)
-    wake = block.find("wakeReadModelRefreshWorker()", write)
-    check(stage >= 0 and stage < write < wake,
-          f"{label} mutation path is not ordered durable-stage -> synchronous write-through -> worker wake")
+    check(stage >= 0 and stage < write,
+          f"{label} mutation path is not ordered durable-stage -> synchronous write-through")
+    check("wakeReadModelRefreshWorker()" not in block,
+          f"{label} mutation path can still wake durable reconciliation before ACK")
     check("flushDeferred" in block,
           f"{label} mutation response is not held until write-through completes")
 
@@ -563,9 +574,18 @@ for block, label in [
 ]:
     stage = block.find("stageReadModelRefresh")
     write = block.find("writeThroughReadModels", stage)
-    wake = block.find("wakeReadModelRefreshWorker()", write)
-    check(stage >= 0 and stage < write < wake,
-          f"{label} is not ordered durable-stage -> synchronous write-through -> worker wake")
+    check(stage >= 0 and stage < write,
+          f"{label} is not ordered durable-stage -> synchronous write-through")
+    check("wakeReadModelRefreshWorker()" not in block,
+          f"{label} can still wake durable reconciliation before ACK")
+check("readModelBatchShouldDefer" in models
+      and "readModelMutationQuiet" in models
+      and "readModelMutationMaxDeferral" in models,
+      "Durable queue is not protected by a general mutation quiet window")
+check("requestCentralStep3Refresh()" not in central10
+      and "requestCentralStep4Refresh()" not in central10
+      and "requestAllCentralPartnerWorkspaceRefreshes()" not in central10,
+      "Central cache invalidation still starts a duplicate materialization pipeline")
 
 if failures:
     print(f"CENTRAL-21 FAIL: {len(failures)} issue(s)")
