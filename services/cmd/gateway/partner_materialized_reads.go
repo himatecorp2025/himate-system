@@ -246,11 +246,21 @@ func servePartnerInvoicePDFFromSnapshot(w http.ResponseWriter, snapshot map[stri
 	_, _ = w.Write(pdf)
 }
 
-// servePartnerMaterializedGET preserves the existing Partner Portal REST
-// contract while making every screen-data GET a single tenant snapshot read.
-// It deliberately performs no internalGET/internalJSON/proxy operation.
+func partnerBrowserMaterializedRead(r *http.Request) bool {
+	if r == nil || r.Method != http.MethodGet {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Himate-Read-Model")), "browser") {
+		return false
+	}
+	return strings.TrimSpace(r.Header.Get("X-Himate-Locale")) != ""
+}
+
+// servePartnerMaterializedGET is exclusively the shipped-browser CQRS path.
+// Historical smoke/legacy callers do not send X-Himate-Read-Model: browser and
+// therefore fall through to the authoritative compatibility handlers below.
 func (a *app) servePartnerMaterializedGET(w http.ResponseWriter, r *http.Request, u partnerUser, path string) bool {
-	if r.Method != http.MethodGet {
+	if !partnerBrowserMaterializedRead(r) {
 		return false
 	}
 

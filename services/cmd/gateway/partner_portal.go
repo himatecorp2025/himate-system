@@ -195,9 +195,40 @@ func (a *app) partnerAccessSnapshot(ctx context.Context, partnerID string) (map[
 	return snapshot, nil
 }
 
+func (a *app) partnerAuthoritativeAccessAllowed(ctx context.Context, partnerID string) error {
+	partnerID = strings.TrimSpace(partnerID)
+	if partnerID == "" {
+		return errPartnerPortalAccessDisabled
+	}
+	escapedID := url.PathEscape(partnerID)
+	var partner, gate map[string]any
+	var partnerErr, gateErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		partnerErr = a.internalGET(ctx, a.hosts["partners"], "/api/v1/partners/"+escapedID, &partner)
+	}()
+	go func() {
+		defer wg.Done()
+		gateErr = a.internalGET(ctx, a.hosts["billing"], "/internal/v1/partners/"+escapedID+"/portal-gate", &gate)
+	}()
+	wg.Wait()
+	if partnerErr != nil {
+		return partnerErr
+	}
+	if gateErr != nil {
+		return gateErr
+	}
+	lifecycle := strings.ToUpper(central10String(partner["lifecycle"]))
+	if lifecycle == "SUSPENDED" || lifecycle == "ARCHIVED" || gate["allowed"] != true {
+		return errPartnerPortalAccessDisabled
+	}
+	return nil
+}
+
 func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error {
-	_, err := a.partnerAccessSnapshot(ctx, partnerID)
-	return err
+	return a.partnerAuthoritativeAccessAllowed(ctx, partnerID)
 }
 
 func writePartnerAccessError(w http.ResponseWriter, err error) {
@@ -410,10 +441,16 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
 	if !browserMutationOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
 	accessCtx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
-	accessSnapshot,accessErr:=a.partnerAccessSnapshot(accessCtx,u.PartnerID)
-	cancel()
-	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
-	r=r.WithContext(context.WithValue(r.Context(),partnerWorkspaceContextKey{},accessSnapshot))
+	if partnerBrowserMaterializedRead(r) {
+		accessSnapshot,accessErr:=a.partnerAccessSnapshot(accessCtx,u.PartnerID)
+		cancel()
+		if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
+		r=r.WithContext(context.WithValue(r.Context(),partnerWorkspaceContextKey{},accessSnapshot))
+	} else {
+		accessErr:=a.partnerAccessAllowed(accessCtx,u.PartnerID)
+		cancel()
+		if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
+	}
 	go a.recordPartnerPortalActivity(u)
 	mutating:=r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions
 	if mutating{
@@ -436,9 +473,13 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 				// The durable refresh event survives process restarts; the immediate
 				// refresh signal minimizes the mutation -> F5 visibility window.
 				refreshCtx,refreshCancel:=context.WithTimeout(context.Background(),time.Second)
-				a.enqueueReadModelRefresh(refreshCtx,r.URL.Path,u.PartnerID)
+				stagedRefresh:=a.stageReadModelRefresh(refreshCtx,r.URL.Path,u.PartnerID)
 				refreshCancel()
+				// Foreground write-through owns the immediate-consistency window.
+				// Only wake the durable worker after the synchronous projection pass,
+				// otherwise both paths compete for the same projection locks.
 				a.writeThroughReadModels(u.PartnerID,r.URL.Path)
+				if stagedRefresh{wakeReadModelRefreshWorker()}
 			}
 			event:=baseEvent
 			event.Status=status;event.Outcome=outcome;event.NewState=newState;event.DurationMS=time.Since(started).Milliseconds()

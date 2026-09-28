@@ -3,13 +3,35 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 type centralReadinessJob struct {
 	key     string
 	refresh func()
+}
+
+var gatewayReadiness atomic.Bool
+
+// gatewayReadinessGate is a final defensive guard in addition to the startup
+// bind ordering. Normal traffic cannot enter the Gateway until the persistent
+// LKG baseline and its in-process mirror have been established.
+func gatewayReadinessGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := ""
+		if r != nil && r.URL != nil {
+			path = r.URL.Path
+		}
+		if gatewayReadiness.Load() || path == "/healthz" || path == "/api/v1/live" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "System warming up, readiness gate active", http.StatusServiceUnavailable)
+	})
 }
 
 func (a *app) centralReadinessJobs() []centralReadinessJob {
@@ -145,4 +167,91 @@ func (a *app) ensureMaterializedReadModelsReady(ctx context.Context) error {
 		}
 	}
 	return lastErr
+}
+
+
+// verifyColdStartLKG closes the cold-start race explicitly: every required
+// persistent Central key is re-read from PostgreSQL, validated as healthy LKG,
+// and mirrored in memory before readiness can become true.
+func (a *app) verifyColdStartLKG(ctx context.Context) error {
+	for key := range centralReadModelBaselines() {
+		payload, updated, err := a.loadCentralSnapshotDB(ctx, key)
+		if err != nil {
+			return fmt.Errorf("cold-start LKG %s: %w", key, err)
+		}
+		if !centralSnapshotValid(key, payload) {
+			return fmt.Errorf("cold-start LKG %s is invalid", key)
+		}
+		centralStep3Snapshots.Lock()
+		centralStep3Snapshots.items[key] = centralStep3SnapshotEntry{
+			payload: centralStep3CopyMap(payload), updatedAt: updated.UTC(),
+		}
+		centralStep3Snapshots.Unlock()
+	}
+
+	year := time.Now().UTC().Year()
+	dashboard, _, err := a.loadDashboardSnapshotContext(ctx, year)
+	if err != nil {
+		return fmt.Errorf("cold-start dashboard LKG: %w", err)
+	}
+	if !dashboardSnapshotValid(dashboard) {
+		return fmt.Errorf("cold-start dashboard LKG is invalid")
+	}
+
+	partners, _, err := a.loadCentralSnapshotDB(ctx, centralStep4PartnersKey)
+	if err != nil {
+		return fmt.Errorf("cold-start partner registry LKG: %w", err)
+	}
+	for _, item := range step4Items(partners["items"]) {
+		partnerID := strings.TrimSpace(central10String(item["id"]))
+		if partnerID == "" {
+			continue
+		}
+		payload, updated, err := a.loadPartnerWorkspaceDB(ctx, partnerID)
+		if err != nil {
+			return fmt.Errorf("cold-start tenant LKG %s: %w", partnerID, err)
+		}
+		key := centralPartnerWorkspaceKey(partnerID)
+		centralStep3Snapshots.Lock()
+		centralStep3Snapshots.items[key] = centralStep3SnapshotEntry{
+			payload: centralStep3CopyMap(payload), updatedAt: updated.UTC(),
+		}
+		centralStep3Snapshots.Unlock()
+	}
+	return nil
+}
+
+// ensureColdStartReadiness is the two-phase startup contract:
+//   1. persist deterministic healthy baselines for every missing/corrupt key;
+//   2. rebuild what is available, validate DB+memory LKG, then atomically open
+//      the request gate. No public listener is bound before this returns.
+func (a *app) ensureColdStartReadiness(ctx context.Context) error {
+	gatewayReadiness.Store(false)
+
+	if err := a.seedCentralReadModelBaselines(ctx); err != nil {
+		return fmt.Errorf("seed deterministic read-model baselines: %w", err)
+	}
+
+	a.bootstrapDashboardSnapshot()
+	a.bootstrapCentralStep3Snapshots()
+	a.bootstrapPartnerWorkspaceSnapshots()
+
+	// Prefer authoritative projections when dependencies are already ready, but
+	// never replace a valid LKG baseline with unavailable/partial state.
+	a.warmMissingCentralSnapshots()
+	a.warmMissingCentralPartnerWorkspaces()
+	a.processReadModelRefreshQueue()
+
+	if err := a.ensureMaterializedReadModelsReady(ctx); err != nil {
+		return err
+	}
+	if err := a.ensureCentralUserNotificationReadModelsReady(ctx); err != nil {
+		return fmt.Errorf("Central user read models not ready: %w", err)
+	}
+	if err := a.verifyColdStartLKG(ctx); err != nil {
+		return err
+	}
+
+	gatewayReadiness.Store(true)
+	return nil
 }

@@ -257,13 +257,6 @@ func main() {
 		log.Error("Central user read-model baseline seeding", "error", err)
 		os.Exit(1)
 	}
-	// Cold-start invariant: every Central/Dashboard read key has a structurally
-	// complete healthy DB row before bootstrap. Existing Last-Known-Good rows
-	// are never overwritten (ON CONFLICT DO NOTHING).
-	if err := a.seedCentralReadModelBaselines(ctx); err != nil {
-		log.Error("materialized read-model baseline seeding", "error", err)
-		os.Exit(1)
-	}
 	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	if err := a.recoverAuditOutbox(recoveryCtx); err != nil {
 		recoveryCancel()
@@ -284,28 +277,10 @@ func main() {
 		}
 		a.proxies[name] = p
 	}
-	a.bootstrapDashboardSnapshot()
-	a.bootstrapCentralStep3Snapshots()
-	a.bootstrapPartnerWorkspaceSnapshots()
-	// Restore only validated Last-Known-Good Central snapshots. Missing or
-	// legacy degraded snapshots are rebuilt before the first normal request;
-	// background materializers keep them fresh without putting fan-out work on
-	// the browser request path.
-	a.warmMissingCentralSnapshots()
-	a.warmMissingCentralPartnerWorkspaces()
-	// Replay durable projection events left by a previous process lifetime
-	// before the readiness gate. Failed events remain pending and never replace
-	// a Last-Known-Good projection; the background worker retries them later.
-	a.processReadModelRefreshQueue()
 	readinessCtx, readinessCancel := context.WithTimeout(context.Background(), 45*time.Second)
-	if err := a.ensureMaterializedReadModelsReady(readinessCtx); err != nil {
+	if err := a.ensureColdStartReadiness(readinessCtx); err != nil {
 		readinessCancel()
-		log.Error("materialized read-model startup gate failed", "error", err)
-		os.Exit(1)
-	}
-	if err := a.ensureCentralUserNotificationReadModelsReady(readinessCtx); err != nil {
-		readinessCancel()
-		log.Error("Central user read-model startup gate failed", "error", err)
+		log.Error("deterministic cold-start readiness gate failed", "error", err)
 		os.Exit(1)
 	}
 	readinessCancel()
@@ -316,6 +291,8 @@ func main() {
 	go a.runReadModelRefreshWorker()
 	go a.runCentralUserNotificationMaterializer()
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", a.live)
+	mux.HandleFunc("/health", a.live)
 	mux.HandleFunc("/api/v1/live", a.live)
 	mux.HandleFunc("/api/v1/health", a.health)
 	mux.HandleFunc("/api/v1/auth/login", a.login)
@@ -344,7 +321,7 @@ func main() {
 	mux.HandleFunc("/webhooks/stripe", a.stripeWebhookProxy)
 	mux.HandleFunc("/api/", a.api)
 	mux.Handle("/", a.web())
-	common.Run(log, "gateway", common.Env("PORT", "10000"), securityHeaders(mux))
+	common.Run(log, "gateway", common.Env("PORT", "10000"), gatewayReadinessGate(securityHeaders(mux)))
 }
 
 func (a *app) migrate(ctx context.Context) error {
@@ -1485,7 +1462,7 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/api/v1/connectors/"):
 		a.serveProxy(w, r, "connector")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/system-health"):
-		a.serveProxy(w, r, "health")
+		a.serveSystemHealthCompatibility(w, r)
 	case r.URL.Path == "/api/v1/backups", strings.HasPrefix(r.URL.Path, "/api/v1/backups/"):
 		a.serveProxy(w, r, "backups")
 	case strings.HasPrefix(r.URL.Path, "/api/v1/impact/"):

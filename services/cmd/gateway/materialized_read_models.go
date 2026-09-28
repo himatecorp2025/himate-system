@@ -166,6 +166,35 @@ func (a *app) centralSnapshotForRead(ctx context.Context, key string) (map[strin
 	return nil, time.Time{}, false
 }
 
+// serveSystemHealthCompatibility satisfies historical START smoke contracts
+// from the persistent System LKG. It never fans out to the Health service on
+// the request path, so a slow/down dependency cannot turn a smoke GET into a
+// timeout. Synchronous write-through refreshes this projection on partner and
+// system mutations before the source mutation ACK is released.
+func (a *app) serveSystemHealthCompatibility(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		common.APIError(w, http.StatusMethodNotAllowed, "METHOD", "Use GET or HEAD")
+		return
+	}
+	snapshot, _, ok := a.centralSnapshotForRead(r.Context(), centralStep4SystemKey)
+	if !ok {
+		common.APIError(w, http.StatusServiceUnavailable, "READ_MODEL_NOT_READY", "System health read model is not ready")
+		return
+	}
+	out := step4Map(snapshot["health_api"])
+	if len(out) == 0 {
+		health := step4Map(snapshot["health"])
+		out = map[string]any{
+			"status":   health["status"],
+			"services": health["services"],
+			"partners": health["partners"],
+		}
+	}
+	w.Header().Set("X-Himate-Cache", "persistent-read-model")
+	w.Header().Set("X-Read-Model", "Authoritative-LKG")
+	common.JSON(w, http.StatusOK, out)
+}
+
 func partnerWorkspaceSnapshotValid(payload map[string]any) bool {
 	if payload == nil || !strings.EqualFold(central10String(payload["status"]), "healthy") {
 		return false
@@ -559,17 +588,13 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		}()
 	}
 
-	// Global catalog/plan/design definitions change tenant-facing projections
-	// for every partner. Refresh only the affected tenant snapshot slices before
-	// releasing the mutation ACK; the durable queue still performs the full
-	// background reconciliation afterwards.
-	if readModelReasonRefreshesAllTenants(reason) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			a.writeThroughGlobalTenantReadModels(reason)
-		}()
-	}
+	// Global catalog/plan/design definitions can affect every tenant, but a
+	// foreground all-tenant fan-out creates lock storms and makes one mutation
+	// latency proportional to tenant count. The durable queue owns that global
+	// reconciliation. Foreground write-through remains synchronous for the
+	// affected Central projections and for the concrete partnerID (when any).
+	// Legacy/smoke reads use the authoritative compatibility path, so they never
+	// depend on an unfinished global tenant projection.
 
 	refreshDashboard := partnerMutation || moduleMutation || billingMutation || impactMutation || refreshAll
 	if refreshDashboard {
