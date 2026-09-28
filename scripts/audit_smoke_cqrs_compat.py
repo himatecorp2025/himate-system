@@ -78,10 +78,16 @@ check("func partnerBrowserMaterializedRead" in partner_reads
       "Partner Portal browser CQRS discriminator is missing or implicit")
 check("if !partnerBrowserMaterializedRead(r)" in partner_reads,
       "Partner Portal materialized GET interceptor can still capture legacy/smoke reads")
-check("if partnerBrowserMaterializedRead(r)" in partner_portal
-      and "partnerAccessSnapshot" in partner_portal
-      and "partnerAccessAllowed" in partner_portal,
-      "Partner Portal does not separate browser LKG access from legacy authoritative compatibility access")
+partner_api_start = partner_portal.find("func (a *app) partnerAPI")
+partner_api_end = partner_portal.find("\nfunc ", partner_api_start + 1)
+partner_api_block = partner_portal[partner_api_start:partner_api_end if partner_api_end > partner_api_start else len(partner_portal)]
+check("func (a *app) partnerRequestAccess" in partner_portal
+      and "partnerAccessSnapshot(ctx, partnerID)" in partner_portal
+      and "partnerAuthoritativeAccessAllowed(ctx, partnerID)" in partner_portal,
+      "Partner Portal LKG-first access compatibility adapter is missing")
+check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api_block
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api_block,
+      "Authenticated Partner Portal request path can still block on live access fan-out")
 check('case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, "/api/v1/environments/"):' in main
       and 'a.serveProxy(w, r, "environments")' in main,
       "Legacy environment GET no longer reaches authoritative Environment service")

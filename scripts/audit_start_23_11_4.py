@@ -70,6 +70,17 @@ checks.append((
 ))
 
 failures=[label for label,ok in checks if not ok]
+partner_gateway = read("services/cmd/gateway/partner_portal.go")
+partner_api_start = partner_gateway.find("func (a *app) partnerAPI")
+partner_api_end = partner_gateway.find("\nfunc ", partner_api_start + 1)
+partner_api = partner_gateway[partner_api_start:partner_api_end if partner_api_end > partner_api_start else len(partner_gateway)]
+check("func (a *app) partnerRequestAccess" in partner_gateway
+      and "partnerAccessSnapshot(ctx, partnerID)" in partner_gateway,
+      "START-23.11.4 authenticated workspace access is not LKG-first")
+check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api,
+      "START-23.11.4 workspace mutation can still 503 on synchronous Partners/Billing access fan-out")
+
 if failures:
     for failure in failures: print("FAIL:",failure)
     sys.exit(1)

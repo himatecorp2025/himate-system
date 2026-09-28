@@ -231,6 +231,22 @@ func (a *app) partnerAccessAllowed(ctx context.Context, partnerID string) error 
 	return a.partnerAuthoritativeAccessAllowed(ctx, partnerID)
 }
 
+// partnerRequestAccess keeps authenticated Partner Portal request paths off the
+// live Partners/Billing fan-out whenever the persistent tenant LKG is present.
+// Authoritative owners are consulted only as a compatibility fallback when the
+// tenant snapshot is genuinely unavailable. An explicit disabled/suspended LKG
+// remains fail-closed and is never bypassed by the fallback.
+func (a *app) partnerRequestAccess(ctx context.Context, partnerID string) (map[string]any, error) {
+	snapshot, err := a.partnerAccessSnapshot(ctx, partnerID)
+	if err == nil || errors.Is(err, errPartnerPortalAccessDisabled) {
+		return snapshot, err
+	}
+	if authErr := a.partnerAuthoritativeAccessAllowed(ctx, partnerID); authErr != nil {
+		return nil, authErr
+	}
+	return nil, nil
+}
+
 func writePartnerAccessError(w http.ResponseWriter, err error) {
 	if errors.Is(err, errPartnerPortalAccessDisabled) {
 		common.APIError(w,http.StatusForbidden,"PARTNER_ACCESS_DISABLED","Partner Portal access is suspended for this partner")
@@ -295,7 +311,7 @@ func (a *app) partnerMe(w http.ResponseWriter,r *http.Request){
 	if r.Method!=http.MethodGet{common.APIError(w,405,"METHOD","Use GET");return}
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
 	ctx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
-	accessErr:=a.partnerAccessAllowed(ctx,u.PartnerID)
+	_,accessErr:=a.partnerRequestAccess(ctx,u.PartnerID)
 	cancel()
 	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
 	common.JSON(w,200,partnerUserMap(u))
@@ -441,15 +457,11 @@ func (a *app) partnerAPI(w http.ResponseWriter,r *http.Request){
 	u,err:=a.partnerAuth(r);if err!=nil{common.APIError(w,401,"UNAUTHORIZED","Partner authentication required");return}
 	if !browserMutationOriginAllowed(r){common.APIError(w,403,"CSRF","Cross-site request rejected");return}
 	accessCtx,cancel:=context.WithTimeout(r.Context(),2*time.Second)
-	if partnerBrowserMaterializedRead(r) {
-		accessSnapshot,accessErr:=a.partnerAccessSnapshot(accessCtx,u.PartnerID)
-		cancel()
-		if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
+	accessSnapshot,accessErr:=a.partnerRequestAccess(accessCtx,u.PartnerID)
+	cancel()
+	if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
+	if accessSnapshot!=nil{
 		r=r.WithContext(context.WithValue(r.Context(),partnerWorkspaceContextKey{},accessSnapshot))
-	} else {
-		accessErr:=a.partnerAccessAllowed(accessCtx,u.PartnerID)
-		cancel()
-		if accessErr!=nil{writePartnerAccessError(w,accessErr);return}
 	}
 	go a.recordPartnerPortalActivity(u)
 	mutating:=r.Method!=http.MethodGet&&r.Method!=http.MethodHead&&r.Method!=http.MethodOptions

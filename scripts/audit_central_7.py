@@ -113,13 +113,17 @@ check('"portal_gate":                     portalGate' in partner_snapshots
 check("func (a *app) partnerAuthoritativeAccessAllowed" in partner_gateway
       and 'a.internalGET(ctx, a.hosts["partners"]' in partner_gateway
       and 'a.internalGET(ctx, a.hosts["billing"]' in partner_gateway,
-      "Legacy/auth Partner Portal compatibility access is not authoritative")
-check("return a.partnerAuthoritativeAccessAllowed(ctx, partnerID)" in partner_gateway,
-      "Legacy/auth Partner Portal access does not use the authoritative compatibility adapter")
-check("if partnerBrowserMaterializedRead(r)" in partner_gateway
-      and "partnerAccessSnapshot(accessCtx,u.PartnerID)" in partner_gateway
-      and "partnerAccessAllowed(accessCtx,u.PartnerID)" in partner_gateway,
-      "Partner API does not split browser LKG access from legacy compatibility access")
+      "Partner login compatibility authority is missing")
+check("func (a *app) partnerRequestAccess" in partner_gateway
+      and "partnerAccessSnapshot(ctx, partnerID)" in partner_gateway
+      and "partnerAuthoritativeAccessAllowed(ctx, partnerID)" in partner_gateway,
+      "Authenticated Partner Portal access is not LKG-first with authoritative fallback")
+partner_api_start = partner_gateway.find("func (a *app) partnerAPI")
+partner_api_end = partner_gateway.find("\nfunc ", partner_api_start + 1)
+partner_api = partner_gateway[partner_api_start:partner_api_end if partner_api_end > partner_api_start else len(partner_gateway)]
+check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api,
+      "Authenticated Partner API still performs request-path authority fan-out")
 check("state.State == onboardingActive && state.PortalEnabled" in central6_backend,
       "CENTRAL-6 Portal gate is no longer ACTIVE + portal_enabled")
 

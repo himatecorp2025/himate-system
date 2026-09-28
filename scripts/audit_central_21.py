@@ -353,29 +353,34 @@ check("serveComplianceMaterializedGET" in compliance_fallback and
       "http.NewRequestWithContext" not in compliance_fallback and "a.client.Do" not in compliance_fallback,
       "Compliance Archive fallback regressed to live Partners I/O")
 
-# Partner access has two explicit modes: browser screen GETs use one tenant LKG;
-# legacy/auth compatibility checks consult the authoritative owners.
+# Authenticated Partner Portal requests are LKG-first. The login/compatibility
+# authority remains available only as a fallback when no tenant snapshot exists.
 access = func_block(partner_portal, "func (a *app) partnerAccessAllowed")
 access_snapshot = func_block(partner_portal, "func (a *app) partnerAccessSnapshot")
+request_access = func_block(partner_portal, "func (a *app) partnerRequestAccess")
 authoritative_access = func_block(partner_portal, "func (a *app) partnerAuthoritativeAccessAllowed")
 check("partnerWorkspaceForRead" in access_snapshot and
       'snapshot["portal_gate"]' in access_snapshot and
       "internalGET" not in access_snapshot,
-      "Partner browser access gate is not sourced from tenant LKG")
+      "Partner request access gate is not sourced from tenant LKG")
+check("partnerAccessSnapshot(ctx, partnerID)" in request_access
+      and "partnerAuthoritativeAccessAllowed(ctx, partnerID)" in request_access
+      and "errors.Is(err, errPartnerPortalAccessDisabled)" in request_access,
+      "Partner request access does not use fail-closed LKG-first compatibility fallback")
 check("partnerAuthoritativeAccessAllowed" in access
       and 'a.hosts["partners"]' in authoritative_access
       and 'a.hosts["billing"]' in authoritative_access
       and "internalGET" in authoritative_access,
-      "Legacy/auth Partner access is not backed by authoritative compatibility owners")
+      "Partner login compatibility access is not backed by authoritative owners")
 partner_api_access = func_block(partner_portal, "func (a *app) partnerAPI")
-check("partnerBrowserMaterializedRead(r)" in partner_api_access
-      and "partnerAccessSnapshot(accessCtx,u.PartnerID)" in partner_api_access
-      and "partnerAccessAllowed(accessCtx,u.PartnerID)" in partner_api_access,
-      "Partner API does not split browser LKG and legacy authoritative access")
+check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api_access
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api_access
+      and "partnerAuthoritativeAccessAllowed" not in partner_api_access,
+      "Authenticated Partner API request path regressed to live access fan-out")
 check("partnerWorkspaceContextKey" in partner_portal and
       "context.WithValue" in partner_api_access and
       "r.Context().Value(partnerWorkspaceContextKey{})" in partner_portal,
-      "Partner browser request does not reuse the access-gate tenant snapshot")
+      "Partner request does not reuse the access-gate tenant snapshot")
 
 # Remaining deep screen reads must also be projected; none may fall through
 # to Catalog/Connector/Partner live proxies.
