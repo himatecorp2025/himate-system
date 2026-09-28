@@ -126,15 +126,18 @@ check("func (a *app) partnerRequestAccess" in partner_gateway
 partner_login_start = partner_gateway.find("func (a *app) partnerLogin")
 partner_login_end = partner_gateway.find("\nfunc ", partner_login_start + 1)
 partner_login = partner_gateway[partner_login_start:partner_login_end if partner_login_end > partner_login_start else len(partner_gateway)]
-check("partnerRequestAccess(ctx,u.PartnerID)" in partner_login
-      and "partnerAccessAllowed(ctx,u.PartnerID)" not in partner_login,
-      "Partner login still performs synchronous authority fan-out")
+check("partnerAccessAllowed(ctx,u.PartnerID)" in partner_login
+      and "partnerRequestAccess(ctx,u.PartnerID)" not in partner_login
+      and "internalGET" not in authoritative_access,
+      "Partner login is not using the local committed access authority")
 partner_api_start = partner_gateway.find("func (a *app) partnerAPI")
 partner_api_end = partner_gateway.find("\nfunc ", partner_api_start + 1)
 partner_api = partner_gateway[partner_api_start:partner_api_end if partner_api_end > partner_api_start else len(partner_gateway)]
-check("partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api
-      and "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api,
-      "Authenticated Partner API still performs request-path authority fan-out")
+check("partnerBrowserMaterializedRead(r)" in partner_api
+      and "partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" in partner_api
+      and "internalGET" not in authoritative_access,
+      "Partner API does not split browser LKG reads from local committed compatibility/mutation authority")
 check("state.State == onboardingActive && state.PortalEnabled" in central6_backend,
       "CENTRAL-6 Portal gate is no longer ACTIVE + portal_enabled")
 

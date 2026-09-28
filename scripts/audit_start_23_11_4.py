@@ -77,13 +77,18 @@ checks.extend([
  ("authenticated workspace access is LKG-first",
   "func (a *app) partnerRequestAccess" in partner_gateway and
   "partnerAccessSnapshot(ctx, partnerID)" in partner_gateway),
- ("workspace mutation avoids synchronous access fan-out",
+ ("workspace request splits browser LKG from local mutation authority",
+  "partnerBrowserMaterializedRead(r)" in partner_api and
   "partnerRequestAccess(accessCtx,u.PartnerID)" in partner_api and
-  "partnerAccessAllowed(accessCtx,u.PartnerID)" not in partner_api),
- ("login fallback avoids live Partners/Billing fan-out",
+  "partnerAccessAllowed(accessCtx,u.PartnerID)" in partner_api),
+ ("login authority avoids live Partners/Billing fan-out",
   "partners.partners" in partner_gateway and
   "billing.partner_onboarding" in partner_gateway and
-  "QueryRowContext" in partner_gateway),
+  "QueryRowContext" in partner_gateway and
+  "internalGET" not in partner_gateway[
+      partner_gateway.find("func (a *app) partnerAuthoritativeAccessAllowed"):
+      partner_gateway.find("\nfunc ", partner_gateway.find("func (a *app) partnerAuthoritativeAccessAllowed") + 1)
+  ]),
 ])
 
 failures=[label for label,ok in checks if not ok]
