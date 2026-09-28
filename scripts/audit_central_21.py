@@ -203,6 +203,12 @@ check("refreshSystemHealthSnapshots" in health_refresh_handler,
 check("refreshHealthSourceWriteThrough" in models and
       "a.refreshHealthSourceWriteThrough()" in models,
       "Gateway write-through does not refresh the health source projection before System CQRS rebuild")
+write_through = func_block(models, "func (a *app) writeThroughReadModels")
+check("if systemMutation {" in write_through
+      and "a.refreshHealthSourceWriteThrough()" in write_through
+      and "if partnerMutation || systemMutation {" not in write_through
+      and "context.WithTimeout(context.Background(), 3*time.Second)" in models,
+      "Health source write-through is unbounded or generic partner CRUD still pays downstream health fan-out")
 check('case path == "/api/v1/partner-categories":' in central_reads and
       'centralSnapshotForRead(r.Context(), centralStep4PartnersKey)' in central_reads,
       "Partner category GET is not routed through the persistent Partners read model")
@@ -466,9 +472,12 @@ check("targetKeys := map[string]bool{}" in models and
 check("for key := range targetKeys" in models,
       "Durable refresh verification is not scoped to affected projections")
 
-# Writes are durable + write-through before buffered response release.
-check("identity.read_model_refresh_queue" in models and "enqueueReadModelRefresh" in models,
-      "Durable asynchronous refresh queue missing")
+# Writes are durable + synchronous write-through before the durable worker is
+# woken and before the buffered mutation response is released.
+check("identity.read_model_refresh_queue" in models
+      and "persistReadModelRefreshEvent" in models
+      and "stageReadModelRefresh" in models,
+      "Durable staged refresh queue missing")
 check("func (a *app) writeThroughReadModels" in models,
       "Synchronous mutation write-through projection refresh missing")
 check("centralStep3WaitBeginRefresh" in snapshots and
@@ -480,9 +489,13 @@ check("deferred bool" in main and "flushDeferred" in main,
 central_api = func_block(main, "func (a *app) api")
 partner_api = func_block(partner_portal, "func (a *app) partnerAPI")
 for block, label in [(central_api, "Central"), (partner_api, "Partner")]:
-    check("writeThroughReadModels" in block, f"{label} mutation path does not perform write-through")
-    check("enqueueReadModelRefresh" in block, f"{label} mutation path does not persist durable refresh event")
-    check("flushDeferred" in block, f"{label} mutation response is not held until write-through completes")
+    stage = block.find("stageReadModelRefresh")
+    write = block.find("writeThroughReadModels", stage)
+    wake = block.find("wakeReadModelRefreshWorker()", write)
+    check(stage >= 0 and stage < write < wake,
+          f"{label} mutation path is not ordered durable-stage -> synchronous write-through -> worker wake")
+    check("flushDeferred" in block,
+          f"{label} mutation response is not held until write-through completes")
 
 check(central_api.find("finalizeAuditIntent") < central_api.find("writeThroughReadModels"),
       "Central mutation projection refresh runs before durable audit finalization")
@@ -498,8 +511,6 @@ check('"partner_id":x.PartnerID' in payments,
 
 connector_proxy = func_block(main, "func (a *app) connectorPublicProxy")
 check(connector_proxy != "", "Gateway connector ingestion projection bridge is missing")
-check("enqueueReadModelRefresh" in connector_proxy and "writeThroughReadModels" in connector_proxy,
-      "Connector ingestion does not synchronously refresh durable tenant/Central projections")
 check('"partner_id"' in connector_proxy and 'reason += "/impact"' in connector_proxy,
       "Connector write-through bridge does not scope tenant/impact projection refreshes")
 check('mux.HandleFunc("/connector/v1/", a.connectorPublicProxy)' in main,
@@ -507,16 +518,24 @@ check('mux.HandleFunc("/connector/v1/", a.connectorPublicProxy)' in main,
 
 public_contact = func_block(main, "func (a *app) publicContact")
 check(public_contact != "", "Public Contact projection bridge is missing")
-check("deferred: true" in public_contact and "enqueueReadModelRefresh" in public_contact and
-      "writeThroughReadModels" in public_contact and "flushDeferred" in public_contact,
-      "Public Contact write does not synchronously refresh Website read models before ACK")
+check("deferred: true" in public_contact and "flushDeferred" in public_contact,
+      "Public Contact write does not buffer the ACK through synchronous projection refresh")
 
 webhook_proxy = func_block(main, "func (a *app) stripeWebhookProxy")
 check(webhook_proxy != "", "Gateway payment webhook projection bridge is missing")
-check("enqueueReadModelRefresh" in webhook_proxy and "writeThroughReadModels" in webhook_proxy,
-      "Payment settlement does not synchronously refresh durable tenant/Central projections")
 check('mux.HandleFunc("/webhooks/stripe", a.stripeWebhookProxy)' in main,
       "Stripe webhook bypasses the CQRS write-through bridge")
+
+for block, label in [
+    (connector_proxy, "Connector ingestion"),
+    (public_contact, "Public Contact"),
+    (webhook_proxy, "Payment settlement"),
+]:
+    stage = block.find("stageReadModelRefresh")
+    write = block.find("writeThroughReadModels", stage)
+    wake = block.find("wakeReadModelRefreshWorker()", write)
+    check(stage >= 0 and stage < write < wake,
+          f"{label} is not ordered durable-stage -> synchronous write-through -> worker wake")
 
 if failures:
     print(f"CENTRAL-21 FAIL: {len(failures)} issue(s)")

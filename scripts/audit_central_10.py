@@ -20,6 +20,7 @@ frontend = read("frontend/lib/main.dart")
 modules_ui = read("frontend/lib/module_control_plane.dart")
 gateway = read("services/cmd/gateway/central10.go")
 gateway_main = read("services/cmd/gateway/main.go")
+materialized_reads = read("services/cmd/gateway/materialized_read_models.go")
 step3_snapshots = read("services/cmd/gateway/central_step3_snapshots.go")
 step4_snapshots = read("services/cmd/gateway/central_step4_snapshots.go")
 partner_snapshots = read("services/cmd/gateway/central_partner_workspace_snapshots.go")
@@ -393,8 +394,19 @@ check("healthCheckPath: /api/v1/live" in render,
       "Render deploy gate must use process liveness to avoid downstream-readiness deployment deadlocks")
 check("healthCheckPath: /api/v1/health" not in render,
       "Render deploy gate still blocks on full dependency readiness")
-check("http.StatusServiceUnavailable" in gateway_main and '"readiness": true' in gateway_main,
-      "Step 4 /api/v1/health does not remain fail-closed for dependency diagnostics")
+check('mux.HandleFunc("/api/v1/health", a.serveGatewayHealthCompatibility)' in gateway_main
+      and 'mux.HandleFunc("/health", a.serveGatewayHealthCompatibility)' in gateway_main,
+      "Step 4 Gateway health routes are not using the local LKG compatibility adapter")
+gateway_health_start = materialized_reads.find("func (a *app) serveGatewayHealthCompatibility")
+gateway_health_end = materialized_reads.find("\nfunc ", gateway_health_start + 1)
+gateway_health = materialized_reads[gateway_health_start:gateway_health_end if gateway_health_end > gateway_health_start else len(materialized_reads)]
+check(gateway_health_start >= 0
+      and "centralStep4SystemKey" in gateway_health
+      and '"service_versions"' in gateway_health
+      and '"release_consistent"' in gateway_health
+      and "internalGET(" not in gateway_health
+      and "serveProxy(" not in gateway_health,
+      "Step 4 /api/v1/health regressed from local LKG release-health to request-path fan-out")
 
 # Truthful loading and empty-data behavior.
 for token in [

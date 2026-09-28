@@ -98,7 +98,7 @@ scenarios = [
     ("liveness", "/api/v1/live", 500, 25, False, 2.5),
     ("landing", "/", 300, 20, False, 2.5),
     ("partners_page", "/api/v1/partners?limit=50&offset=0", 300, 15, True, 4.0),
-    ("health_fanout", "/api/v1/health", 120, 8, True, 6.0),
+    ("health_lkg", "/api/v1/health", 120, 8, True, 6.0),
 ]
 for args in scenarios:
     scenario(*args)
