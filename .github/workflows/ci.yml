@@ -18,11 +18,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate complete smoke and acceptance contract surface
         run: |
-          set -eu
+          set -u
+          status=0
           for audit in scripts/audit_smoke_*.py scripts/audit_start_*.py scripts/audit_central_*.py; do
             echo "static contract: $audit"
-            python3 "$audit"
+            if ! python3 "$audit"; then
+              status=1
+            fi
           done
+          exit "$status"
 
   go:
     needs: smoke-contracts

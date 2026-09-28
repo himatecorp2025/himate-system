@@ -68,7 +68,7 @@ for token in [
     '"SUSPENDED"',
     '"INACTIVE"',
     '"ACTIVE"',
-    '"source": "PARTNERS_CONNECTOR_RUNTIME_WEBSITE_ADAPTERS"',
+    '"source": "PERSISTED_CONNECTIONS_SCREEN"',
 ]:
     require(token in connections, f"Partner Connections invariant missing: {token}")
 require("'Partner Data Connections'" in connections_ui,
