@@ -129,6 +129,24 @@ for token in [
 ]:
     check(token in read_models, f'dedicated tenant LKG persistence contract missing: {token}')
 
+# A newly-created Test Partner must never expose a 503 window before the full
+# multi-service workspace materializer catches up. The direct read may rebuild
+# only from committed PostgreSQL state; live service fan-out remains forbidden.
+for token in [
+    'func (a *app) buildPartnerWorkspaceLocalLKG',
+    'FROM partners.partners p WHERE p.id=$1',
+    'FROM billing.invoices x WHERE x.partner_id=$1',
+    'FROM billing.partner_plan_subscriptions x WHERE x.partner_id=$1',
+    'FROM impact.metric_values x WHERE x.partner_id=$1',
+    'FROM evidence.items x WHERE x.partner_id=$1',
+    'func (a *app) refreshPartnerWorkspaceLocalLKG',
+    'partner materialized cache miss; rebuilding local PostgreSQL LKG',
+]:
+    check(token in read_models, f'Central-20 local tenant LKG fallback missing: {token}')
+check(read_models.find('refreshPartnerWorkspaceLocalLKG(localCtx, partnerID)') <
+      read_models.find('a.refreshGlobalTenantReadModelSlice(ctx, partnerID'),
+      'Tenant mutation does not persist a local LKG before narrow slice refresh')
+
 # 5. Golden Test Partner represents six distinct historical months plus an active subscription.
 for token in [
     "COUNT(DISTINCT date_trunc('month',i.service_period_start))",

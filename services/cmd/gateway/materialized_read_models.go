@@ -344,10 +344,113 @@ func (a *app) loadPartnerWorkspaceDB(ctx context.Context, partnerID string) (map
 	return payload, updated.UTC(), nil
 }
 
+// buildPartnerWorkspaceLocalLKG creates a deterministic tenant workspace from
+// committed PostgreSQL state only. It is the zero-fan-out safety net for a
+// newly-created tenant whose full multi-service workspace has not materialized
+// yet. The full background materializer may replace this snapshot later.
+func (a *app) buildPartnerWorkspaceLocalLKG(ctx context.Context, partnerID string) (map[string]any, error) {
+	partnerID = strings.TrimSpace(partnerID)
+	if partnerID == "" {
+		return nil, fmt.Errorf("partner id is required")
+	}
+
+	var partnerRaw []byte
+	if err := a.db.QueryRowContext(ctx,
+		`SELECT to_jsonb(p) FROM partners.partners p WHERE p.id=$1`,
+		partnerID,
+	).Scan(&partnerRaw); err != nil {
+		return nil, err
+	}
+	var partner map[string]any
+	if err := json.Unmarshal(partnerRaw, &partner); err != nil {
+		return nil, err
+	}
+
+	loadRows := func(query string) ([]map[string]any, error) {
+		var raw []byte
+		if err := a.db.QueryRowContext(ctx, query, partnerID).Scan(&raw); err != nil {
+			return nil, err
+		}
+		rows := []map[string]any{}
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &rows); err != nil {
+				return nil, err
+			}
+		}
+		if rows == nil {
+			rows = []map[string]any{}
+		}
+		return rows, nil
+	}
+	page := func(rows []map[string]any, limit int) map[string]any {
+		return map[string]any{
+			"items": rows,
+			"count": len(rows),
+			"total": len(rows),
+			"limit": limit,
+			"offset": 0,
+			"has_more": false,
+		}
+	}
+
+	invoices, err := loadRows(`SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),'[]'::jsonb)
+		FROM billing.invoices x WHERE x.partner_id=$1`)
+	if err != nil { return nil, err }
+	subscriptions, err := loadRows(`SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),'[]'::jsonb)
+		FROM billing.partner_plan_subscriptions x WHERE x.partner_id=$1`)
+	if err != nil { return nil, err }
+	impactRows, err := loadRows(`SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),'[]'::jsonb)
+		FROM impact.metric_values x WHERE x.partner_id=$1`)
+	if err != nil { return nil, err }
+	evidenceRows, err := loadRows(`SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),'[]'::jsonb)
+		FROM evidence.items x WHERE x.partner_id=$1`)
+	if err != nil { return nil, err }
+
+	payload := partnerWorkspaceBaseline(partner)
+	payload["seeded"] = false
+	payload["local_lkg"] = true
+	payload["local_lkg_source"] = "postgres"
+	payload["invoices"] = invoices
+	payload["subscriptions"] = subscriptions
+	payload["impact_summary"] = impactRows
+	payload["evidence"] = evidenceRows
+	payload["portal_billing_invoices"] = page(invoices, 100)
+	payload["portal_billing_subscriptions"] = page(subscriptions, 100)
+	payload["portal_impact"] = page(impactRows, 100)
+	payload["impact_values_api"] = page(impactRows, 500)
+	payload["evidence_api"] = page(evidenceRows, 100)
+	return payload, nil
+}
+
+func (a *app) refreshPartnerWorkspaceLocalLKG(ctx context.Context, partnerID string) (map[string]any, time.Time, bool) {
+	payload, err := a.buildPartnerWorkspaceLocalLKG(ctx, partnerID)
+	if err != nil {
+		if a.log != nil {
+			a.log.Warn("partner local LKG build failed", "partner_id", strings.TrimSpace(partnerID), "error", err)
+		}
+		return nil, time.Time{}, false
+	}
+	if !a.persistPartnerWorkspaceSnapshot(ctx, partnerID, payload) {
+		return nil, time.Time{}, false
+	}
+	if memory, updated, ok := centralStep3SnapshotGet(centralPartnerWorkspaceKey(partnerID)); ok {
+		return memory, updated, true
+	}
+	return payload, time.Now().UTC(), true
+}
+
 func (a *app) partnerWorkspaceForRead(ctx context.Context, partnerID string) (map[string]any, time.Time, bool) {
 	partnerID = strings.TrimSpace(partnerID)
 	key := centralPartnerWorkspaceKey(partnerID)
 	if memory, memoryUpdated, ok := centralStep3SnapshotGet(key); ok {
+		// A locally-derived LKG is deliberately refreshable from committed DB
+		// history. This closes the Test Partner fixture window without any
+		// request-time microservice fan-out.
+		if memory["local_lkg"] == true {
+			if payload, updated, refreshed := a.refreshPartnerWorkspaceLocalLKG(ctx, partnerID); refreshed {
+				return payload, updated, true
+			}
+		}
 		return memory, memoryUpdated, true
 	}
 
@@ -358,10 +461,18 @@ func (a *app) partnerWorkspaceForRead(ctx context.Context, partnerID string) (ma
 			payload: centralStep3CopyMap(payload), updatedAt: updated,
 		}
 		centralStep3Snapshots.Unlock()
+		if payload["local_lkg"] == true {
+			if refreshedPayload, refreshedAt, refreshed := a.refreshPartnerWorkspaceLocalLKG(ctx, partnerID); refreshed {
+				return refreshedPayload, refreshedAt, true
+			}
+		}
 		return payload, updated, true
 	}
 	if a.log != nil {
-		a.log.Error("partner materialized cache miss could not recover from PostgreSQL", "partner_id", partnerID, "error", err)
+		a.log.Warn("partner materialized cache miss; rebuilding local PostgreSQL LKG", "partner_id", partnerID, "error", err)
+	}
+	if payload, fallbackUpdated, ok := a.refreshPartnerWorkspaceLocalLKG(ctx, partnerID); ok {
+		return payload, fallbackUpdated, true
 	}
 	// Preserve a Last-Known-Good written concurrently with the recovery attempt.
 	return centralStep3SnapshotGet(key)
@@ -726,6 +837,18 @@ func (a *app) writeThroughReadModels(partnerID, reason string) {
 		foregroundReason = foregroundReason[:i]
 	}
 	scope := classifyReadModelMutation(foregroundReason)
+
+	// Every concrete tenant mutation must establish a committed local LKG before
+	// any narrow tenant-slice refresh is allowed to run. A brand-new partner has
+	// no prior workspace row, so starting with the slice refresh would otherwise
+	// race into "sql: no rows" and leave the direct Central workspace route at
+	// 503 until the periodic full materializer happens to catch up.
+	if strings.TrimSpace(partnerID) != "" {
+		localCtx, localCancel := context.WithTimeout(context.Background(), readModelPersistBudget)
+		a.refreshPartnerWorkspaceLocalLKG(localCtx, partnerID)
+		localCancel()
+	}
+
 	jobsByKey := map[string]func(){}
 	add := func(key string, fn func()) { jobsByKey[key] = fn }
 

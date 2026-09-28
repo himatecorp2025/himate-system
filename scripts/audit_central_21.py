@@ -119,6 +119,11 @@ check("if !centralSnapshotValid(key, payload)" in snapshots,
       "Central store no longer rejects non-LKG payloads")
 check("if !partnerWorkspaceSnapshotValid(payload)" in models,
       "Tenant store no longer rejects partial/unavailable payloads")
+check("func (a *app) buildPartnerWorkspaceLocalLKG" in models
+      and "func (a *app) refreshPartnerWorkspaceLocalLKG" in models
+      and 'payload["local_lkg"] = true' in models
+      and "internalGET(" not in func_block(models, "func (a *app) buildPartnerWorkspaceLocalLKG"),
+      "Tenant direct-route fallback is not a local zero-fan-out PostgreSQL LKG")
 check("retaining last-known-good" in snapshots.lower(),
       "Central degraded refresh no longer documents LKG retention")
 check("retaining Last-Known-Good" in models or "retaining last-known-good" in models.lower(),
