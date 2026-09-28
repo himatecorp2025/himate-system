@@ -144,6 +144,22 @@ check(ensure_start >= 0
       "Readiness can open before deterministic seed/LKG verification")
 check("gatewayReadinessGate(securityHeaders(mux))" in main,
       "Gateway public handler is not protected by the atomic readiness gate")
+check('path == "/healthz"' in readiness
+      and 'path == "/api/v1/live"' not in readiness[readiness.find("func gatewayReadinessGate"):readiness.find("\nfunc ", readiness.find("func gatewayReadinessGate") + 1)],
+      "Readiness gate exposes a non-healthz route before deterministic LKG readiness")
+check('mux.HandleFunc("/api/v1/health", a.serveGatewayHealthCompatibility)' in main
+      and 'mux.HandleFunc("/health", a.serveGatewayHealthCompatibility)' in main,
+      "Gateway health compatibility routes still use live request-path fan-out")
+gateway_health_start = models.find("func (a *app) serveGatewayHealthCompatibility")
+gateway_health_end = models.find("\nfunc ", gateway_health_start + 1)
+gateway_health = models[gateway_health_start:gateway_health_end if gateway_health_end > gateway_health_start else len(models)]
+check(gateway_health_start >= 0
+      and "centralStep4SystemKey" in gateway_health
+      and "service_versions" in gateway_health
+      and "release_consistent" in gateway_health
+      and "internalGET(" not in gateway_health
+      and "serveProxy(" not in gateway_health,
+      "Gateway release-health compatibility path can still fan out or lose release contract fields")
 
 # Projection builders must be read-only with respect to subscription lifecycle.
 check('base+"/summary?read_model_source=1"' in workspace,
@@ -228,7 +244,11 @@ for required in [
           f"Cross-tenant mutation/read smoke coverage disappeared: {required}")
 
 check("a.refreshHealthSourceWriteThrough()" in models,
-      "System/partner writes no longer synchronously refresh persistent Health compatibility state")
+      "System writes no longer synchronously refresh persistent Health compatibility state")
+check("if systemMutation {" in write_through
+      and "if partnerMutation || systemMutation {" not in write_through
+      and "context.WithTimeout(context.Background(), 3*time.Second)" in models,
+      "Health compatibility write-through is unbounded or still paid by generic partner CRUD")
 partner_block_start = write_through.find("if partnerMutation {")
 partner_block_end = write_through.find("\n\t}", partner_block_start)
 partner_block = write_through[partner_block_start:partner_block_end if partner_block_end > partner_block_start else len(write_through)]
