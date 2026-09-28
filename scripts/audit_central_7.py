@@ -104,14 +104,22 @@ check("Only SENT invoices can be marked paid" in central6_backend,
 
 check('gate := step4Map(snapshot["portal_gate"])' in partner_gateway
       and 'a.partnerWorkspaceForRead(ctx, partnerID)' in partner_gateway,
-      "Partner Portal login is not enforcing the persisted tenant portal gate")
+      "Partner Portal browser access is not enforcing the persisted tenant portal gate")
 check('runMap("portal_gate", "billing", "/internal/v1/partners/"+escapedID+"/portal-gate", &portalGate)' in partner_snapshots,
       "Partner workspace materializer no longer refreshes the Billing onboarding gate")
 check('"portal_gate":                     portalGate' in partner_snapshots
       and '"portal_gate"' in materialized_reads,
       "Partner Portal gate is not part of the persistent LKG tenant read model")
-check('a.internalGET(ctx,a.hosts["billing"]' not in partner_gateway[partner_gateway.find("func (a *app) partnerAccessAllowed"):partner_gateway.find("func writePartnerAccessError")],
-      "Partner Portal login access check regressed to synchronous Billing fan-out")
+check("func (a *app) partnerAuthoritativeAccessAllowed" in partner_gateway
+      and 'a.internalGET(ctx, a.hosts["partners"]' in partner_gateway
+      and 'a.internalGET(ctx, a.hosts["billing"]' in partner_gateway,
+      "Legacy/auth Partner Portal compatibility access is not authoritative")
+check("return a.partnerAuthoritativeAccessAllowed(ctx, partnerID)" in partner_gateway,
+      "Legacy/auth Partner Portal access does not use the authoritative compatibility adapter")
+check("if partnerBrowserMaterializedRead(r)" in partner_gateway
+      and "partnerAccessSnapshot(accessCtx,u.PartnerID)" in partner_gateway
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" in partner_gateway,
+      "Partner API does not split browser LKG access from legacy compatibility access")
 check("state.State == onboardingActive && state.PortalEnabled" in central6_backend,
       "CENTRAL-6 Portal gate is no longer ACTIVE + portal_enabled")
 

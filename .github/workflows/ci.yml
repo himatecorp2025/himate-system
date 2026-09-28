@@ -11,7 +11,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  smoke-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate complete smoke and acceptance contract surface
+        run: |
+          set -eu
+          for audit in scripts/audit_smoke_*.py scripts/audit_start_*.py scripts/audit_central_*.py; do
+            echo "static contract: $audit"
+            python3 "$audit"
+          done
+
   go:
+    needs: smoke-contracts
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -140,6 +154,7 @@ jobs:
       - run: go build ./cmd/...
 
   flutter:
+    needs: smoke-contracts
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -331,6 +346,7 @@ jobs:
           PY
 
   compose:
+    needs: smoke-contracts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

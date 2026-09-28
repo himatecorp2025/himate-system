@@ -113,21 +113,34 @@ check("retaining Last-Known-Good" in models or "retaining last-known-good" in mo
       "Tenant degraded refresh no longer documents LKG retention")
 
 # Startup must not bind the public port until every required projection exists.
+check("var gatewayReadiness atomic.Bool" in readiness
+      and "func gatewayReadinessGate" in readiness
+      and "func (a *app) ensureColdStartReadiness" in readiness
+      and "func (a *app) verifyColdStartLKG" in readiness,
+      "Atomic two-phase startup readiness contract is incomplete")
+cold_start = func_block(readiness, "func (a *app) ensureColdStartReadiness")
 for token in [
+    "a.seedCentralReadModelBaselines(ctx)",
     "a.bootstrapCentralStep3Snapshots()",
     "a.bootstrapPartnerWorkspaceSnapshots()",
     "a.warmMissingCentralSnapshots()",
     "a.warmMissingCentralPartnerWorkspaces()",
     "a.processReadModelRefreshQueue()",
-    "a.ensureMaterializedReadModelsReady(readinessCtx)",
+    "a.ensureMaterializedReadModelsReady(ctx)",
+    "a.verifyColdStartLKG(ctx)",
+    "gatewayReadiness.Store(true)",
 ]:
-    check(token in main, f"Startup read-model gate missing: {token}")
-check(main.find("a.ensureMaterializedReadModelsReady(readinessCtx)") <
-      main.find("common.Run(log,"),
-      "Gateway binds public traffic before materialized read-model readiness")
-check(main.find("a.processReadModelRefreshQueue()") <
-      main.find("a.ensureMaterializedReadModelsReady(readinessCtx)"),
-      "Durable projection events are not replayed before the startup readiness gate")
+    check(token in cold_start, f"Startup read-model gate missing: {token}")
+check(cold_start.find("a.seedCentralReadModelBaselines(ctx)") <
+      cold_start.find("a.bootstrapCentralStep3Snapshots()") <
+      cold_start.find("a.verifyColdStartLKG(ctx)") <
+      cold_start.find("gatewayReadiness.Store(true)"),
+      "Cold-start phases are not ordered seed -> bootstrap -> verify -> ready")
+check("a.ensureColdStartReadiness(readinessCtx)" in main
+      and main.find("a.ensureColdStartReadiness(readinessCtx)") < main.find("common.Run(log,"),
+      "Gateway binds public traffic before deterministic read-model readiness")
+check("gatewayReadinessGate(securityHeaders(mux))" in main,
+      "Public Gateway handler is not protected by the atomic readiness gate")
 check("ensurePartnerReadModelsReady" in readiness and "loadPartnerWorkspaceDB" in readiness,
       "Startup gate does not validate every tenant workspace")
 
@@ -144,8 +157,8 @@ check("err != sql.ErrNoRows" in seeds and
       "ON CONFLICT(snapshot_key) DO UPDATE" in seeds and
       "ON CONFLICT(partner_id) DO UPDATE" in seeds,
       "Cold-start baseline repair contract missing for absent/corrupt projections")
-check("a.seedCentralReadModelBaselines(ctx)" in main and
-      main.find("a.seedCentralReadModelBaselines(ctx)") < main.find("a.bootstrapCentralStep3Snapshots()"),
+check("a.seedCentralReadModelBaselines(ctx)" in cold_start
+      and cold_start.find("a.seedCentralReadModelBaselines(ctx)") < cold_start.find("a.bootstrapCentralStep3Snapshots()"),
       "Cold-start baseline seeding does not happen before snapshot bootstrap")
 for token in [
     "centralStep3RegistryKey", "centralStep3PlansKey", "centralStep3AnalyticsKey",
@@ -211,8 +224,22 @@ check('case r.URL.Path == "/api/v1/environments", strings.HasPrefix(r.URL.Path, 
       'a.serveProxy(w, r, "environments")' in main,
       "Legacy environment compatibility path no longer reaches the authoritative environment service")
 check('case strings.HasPrefix(r.URL.Path, "/api/v1/system-health"):' in main and
-      'a.serveProxy(w, r, "health")' in main,
-      "Legacy system-health compatibility path no longer reaches the authoritative health snapshot service")
+      'a.serveSystemHealthCompatibility(w, r)' in main,
+      "Legacy system-health compatibility path is not routed through local persistent LKG")
+health_compat = func_block(models, "func (a *app) serveSystemHealthCompatibility")
+check("centralStep4SystemKey" in health_compat
+      and 'step4Map(snapshot["health_api"])' in health_compat
+      and "internalGET" not in health_compat
+      and "serveProxy" not in health_compat,
+      "Legacy system-health compatibility path can still perform request-time fan-out")
+gateway_health = func_block(models, "func (a *app) serveGatewayHealthCompatibility")
+check('mux.HandleFunc("/health", a.serveGatewayHealthCompatibility)' in main
+      and 'mux.HandleFunc("/api/v1/health", a.serveGatewayHealthCompatibility)' in main
+      and "centralSnapshotForRead" in gateway_health,
+      "Gateway health compatibility routes are not local LKG reads")
+for forbidden in ["internalGET", "serveProxy", "a.client.Do", "http.NewRequest"]:
+    check(forbidden not in gateway_health,
+          f"Gateway health compatibility regressed to request fan-out: {forbidden}")
 check(partner_portal.find("a.servePartnerMaterializedGET(w,r,u,path)") <
       partner_portal.find("switch{", partner_portal.find("a.servePartnerMaterializedGET(w,r,u,path)")),
       "Partner materialized GET interceptor does not precede legacy routing")
@@ -319,21 +346,29 @@ check("serveComplianceMaterializedGET" in compliance_fallback and
       "http.NewRequestWithContext" not in compliance_fallback and "a.client.Do" not in compliance_fallback,
       "Compliance Archive fallback regressed to live Partners I/O")
 
-# Partner login/access gating is a tenant projection read, not a Billing call.
+# Partner access has two explicit modes: browser screen GETs use one tenant LKG;
+# legacy/auth compatibility checks consult the authoritative owners.
 access = func_block(partner_portal, "func (a *app) partnerAccessAllowed")
 access_snapshot = func_block(partner_portal, "func (a *app) partnerAccessSnapshot")
-check("partnerAccessSnapshot" in access and
-      "partnerWorkspaceForRead" in access_snapshot and
-      'snapshot["portal_gate"]' in access_snapshot,
-      "Partner Portal access gate is not sourced from tenant LKG")
-for block in [access, access_snapshot]:
-    check("internalGET" not in block and 'a.hosts["billing"]' not in block,
-          "Partner Portal login regressed to synchronous Billing fan-out")
+authoritative_access = func_block(partner_portal, "func (a *app) partnerAuthoritativeAccessAllowed")
+check("partnerWorkspaceForRead" in access_snapshot and
+      'snapshot["portal_gate"]' in access_snapshot and
+      "internalGET" not in access_snapshot,
+      "Partner browser access gate is not sourced from tenant LKG")
+check("partnerAuthoritativeAccessAllowed" in access
+      and 'a.hosts["partners"]' in authoritative_access
+      and 'a.hosts["billing"]' in authoritative_access
+      and "internalGET" in authoritative_access,
+      "Legacy/auth Partner access is not backed by authoritative compatibility owners")
 partner_api_access = func_block(partner_portal, "func (a *app) partnerAPI")
+check("partnerBrowserMaterializedRead(r)" in partner_api_access
+      and "partnerAccessSnapshot(accessCtx,u.PartnerID)" in partner_api_access
+      and "partnerAccessAllowed(accessCtx,u.PartnerID)" in partner_api_access,
+      "Partner API does not split browser LKG and legacy authoritative access")
 check("partnerWorkspaceContextKey" in partner_portal and
       "context.WithValue" in partner_api_access and
       "r.Context().Value(partnerWorkspaceContextKey{})" in partner_portal,
-      "Partner Portal request does not reuse the access-gate tenant snapshot")
+      "Partner browser request does not reuse the access-gate tenant snapshot")
 
 # Remaining deep screen reads must also be projected; none may fall through
 # to Catalog/Connector/Partner live proxies.
