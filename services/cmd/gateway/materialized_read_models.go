@@ -19,7 +19,7 @@ const (
 	readModelRefreshBatch         = 100
 	readModelPersistBudget        = 2 * time.Second
 	readModelRefreshConcurrency   = 3
-	readModelRefreshAcquireBudget = 45 * time.Second
+	readModelRefreshAcquireBudget = 8 * time.Second
 )
 
 var (
@@ -614,6 +614,9 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 	targetKeys := map[string]bool{}
 	refreshAll := false
 	refreshAllTenants := false
+	globalModuleScope := false
+	globalPlanScope := false
+	globalDesignScope := false
 	refreshDashboard := false
 	refreshGlobalSearch := false
 	refreshHealth := false
@@ -631,7 +634,10 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 			refreshAll = true
 		}
 		for _, key := range keys { targetKeys[key] = true }
-		if readModelReasonRefreshesAllTenants(reason) { refreshAllTenants = true }
+		moduleScope, planScope, designScope := readModelGlobalTenantScopes(reason)
+		globalModuleScope = globalModuleScope || moduleScope
+		globalPlanScope = globalPlanScope || planScope
+		globalDesignScope = globalDesignScope || designScope
 
 		partnerMutation := strings.Contains(reason, "partner")
 		moduleMutation := strings.Contains(reason, "module") || strings.Contains(reason, "catalog")
@@ -689,6 +695,16 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 		wg.Add(1)
 		go func() { defer wg.Done(); a.writeThroughCentralPartnerWorkspace(partnerID) }()
 	}
+	globalTenantRefreshOK := true
+	if !refreshAll && (globalModuleScope || globalPlanScope || globalDesignScope) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			globalTenantRefreshOK = a.writeThroughGlobalTenantReadModelScopes(
+				globalModuleScope, globalPlanScope, globalDesignScope, "durable-read-model-batch",
+			)
+		}()
+	}
 	if refreshAllTenants {
 		wg.Add(1)
 		go func() {
@@ -701,6 +717,9 @@ func (a *app) refreshReadModelsForBatch(events []readModelRefreshEvent) bool {
 	wg.Add(1)
 	go func() { defer wg.Done(); a.refreshNotificationsSerialized() }()
 	wg.Wait()
+	if !globalTenantRefreshOK {
+		return false
+	}
 
 	if refreshGlobalSearch {
 		if !a.refreshCentralProjectionSerialized(centralStep4GlobalSearchKey, a.refreshCentralStep4GlobalSearch) {
@@ -767,26 +786,32 @@ func (a *app) processReadModelRefreshQueue() {
 		return
 	}
 
-	if !a.refreshReadModelsForBatch(events) {
-		if a.log != nil {
-			a.log.Warn(
-				"read-model refresh batch remains pending",
-				"event_count", len(events),
-				"first_event_id", events[0].id,
-				"last_event_id", events[len(events)-1].id,
-			)
-		}
-		return
-	}
-
+	reconciled := a.refreshReadModelsForBatch(events)
 	lastID := events[len(events)-1].id
+
+	// The durable queue is a reconciliation trigger, not a head-of-line lock.
+	// Immediate mutation consistency is handled synchronously on the write path,
+	// while periodic materializers retain/retry Last-Known-Good snapshots.
+	// A transient partial dependency must therefore not replay the same 100-event
+	// batch every two seconds and starve foreground mutations indefinitely.
 	if _, err := a.db.Exec(
 		`UPDATE identity.read_model_refresh_queue
 		 SET processed_at=NOW()
 		 WHERE processed_at IS NULL AND id <= $1`,
 		lastID,
-	); err != nil && a.log != nil {
-		a.log.Error("read-model refresh batch acknowledgement failed", "last_event_id", lastID, "error", err)
+	); err != nil {
+		if a.log != nil {
+			a.log.Error("read-model refresh batch acknowledgement failed", "last_event_id", lastID, "error", err)
+		}
+		return
+	}
+	if !reconciled && a.log != nil {
+		a.log.Warn(
+			"read-model refresh batch consumed after bounded LKG reconciliation attempt",
+			"event_count", len(events),
+			"first_event_id", events[0].id,
+			"last_event_id", lastID,
+		)
 	}
 }
 

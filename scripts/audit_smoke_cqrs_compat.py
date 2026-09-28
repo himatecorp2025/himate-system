@@ -136,6 +136,18 @@ check("refreshGlobalTenantReadModelSlice" in workspace
       "Global tenant write-through does not rebuild module/plan/design tenant slices")
 check('strings.Contains(reason, "/modules")' not in models,
       "All-tenant refresh classifier is still broad enough to capture partner-scoped module writes")
+check("writeThroughGlobalTenantReadModelScopes" in workspace
+      and '"durable-read-model-batch"' in models,
+      "Durable queue does not reuse targeted global tenant slice reconciliation")
+check("read-model refresh batch remains pending" not in models
+      and "read-model refresh batch consumed after bounded LKG reconciliation attempt" in models,
+      "Durable read-model queue can still head-of-line replay a failed batch forever")
+check("readModelRefreshAcquireBudget = 8 * time.Second" in models,
+      "Foreground read-model lock acquisition is no longer bounded to the accepted budget")
+check("Configure bounded smoke HTTP clients" in workflow
+      and "CURL_HOME=" in workflow
+      and "max-time = 90" in workflow,
+      "Compose smoke HTTP calls are no longer protected by a global timeout")
 
 cross_tenant_smokes = {
     path for path, source in script_sources.items()

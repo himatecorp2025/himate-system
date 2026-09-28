@@ -851,8 +851,7 @@ func (a *app) refreshGlobalTenantReadModelSlice(ctx context.Context, partnerID s
 	return a.persistPartnerWorkspaceSnapshot(persistCtx, partnerID, snapshot)
 }
 
-func (a *app) writeThroughGlobalTenantReadModels(reason string) bool {
-	moduleScope, planScope, designScope := readModelGlobalTenantScopes(reason)
+func (a *app) writeThroughGlobalTenantReadModelScopes(moduleScope, planScope, designScope bool, reason string) bool {
 	if !moduleScope && !planScope && !designScope {
 		return true
 	}
@@ -913,6 +912,11 @@ sendLoop:
 		return false
 	}
 	return true
+}
+
+func (a *app) writeThroughGlobalTenantReadModels(reason string) bool {
+	moduleScope, planScope, designScope := readModelGlobalTenantScopes(reason)
+	return a.writeThroughGlobalTenantReadModelScopes(moduleScope, planScope, designScope, reason)
 }
 
 func (a *app) requestCentralPartnerWorkspaceRefresh(partnerID string) {
